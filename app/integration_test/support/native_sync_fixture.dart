@@ -18,11 +18,17 @@
 //
 // The pool exposes no waiter count, so the pause cannot be observed from
 // outside before it ends. [NativeSyncFixture.waitUntilApplyPaused] therefore
-// waits until the line was flushed to the client socket and the row is still
-// unapplied; the test then proves the pause retroactively: the sync isolate
-// discards lines it receives after its abort, so a row that is applied by the
-// time a disconnect completes was received, and its apply pending, before the
-// disconnect began.
+// only waits until the line was flushed to the client socket plus a settle
+// period, with the row still unapplied. It is not a positive observation.
+// The test proves the pause from the method's own completions: the real
+// `disconnect()` stays pending while the writer is held, and when it returns
+// the row is already applied. The sync isolate discards lines it receives
+// after its abort, so that row was received, and its apply pending, before
+// the disconnect began.
+//
+// Because this pause holds the same writer the method's writer barrier
+// waits for, "the observation has not completed" is not evidence by itself;
+// the test watches the disconnect completion directly.
 //
 // A foreign SQLite write lock (`BEGIN IMMEDIATE` on a separate connection)
 // is NOT a pause: the core's transaction then fails with SQLITE_BUSY and the
@@ -223,8 +229,9 @@ class NativeSyncFixture {
   int? _pausedLine;
 
   /// Completes once the released line was flushed to the SDK's socket and
-  /// the sync isolate had time to receive it, while the writer stays leased
-  /// by the fixture and the rows in [unappliedIds] are still not applied.
+  /// the sync isolate had time to receive it, with the rows in
+  /// [unappliedIds] still not applied. Not a positive observation of the
+  /// queued apply (see the file comment).
   Future<void> waitUntilApplyPaused({
     List<String> unappliedIds = const [],
   }) async {
@@ -237,9 +244,6 @@ class NativeSyncFixture {
       'the paused line was never flushed to the client',
     );
     await settle();
-    if (await writerAvailable()) {
-      throw StateError('the writer is not held; the apply is not paused');
-    }
     for (final id in unappliedIds) {
       if (await _visible(id)) {
         throw StateError('row $id was applied while the apply was paused');

@@ -46,6 +46,70 @@ Future<String> _filesystemType(Directory d) async {
   return (r.stdout as String).trim();
 }
 
+/// Delegates every call to the REAL qualified method and records what it
+/// sees: when the real `disconnect()` completes, whether the watched row was
+/// already applied at that moment (read on a reader connection), and, inside
+/// an extra writer lease taken before the real barrier, whether the row is
+/// visible to the writer. Its own observations come only from the database,
+/// never from SDK status. Callbacks of an earlier [watch] are ignored.
+class _ObservedMethod implements NativeSyncMethod {
+  _ObservedMethod(this._inner);
+
+  final NativeSyncMethod _inner;
+  var _round = 0;
+  String? _row;
+  var disconnectCompleted = false;
+  bool? visibleWhenDisconnectCompleted;
+  bool? visibleInsideBarrier;
+  var barrierCompleted = false;
+
+  void watch(String? row) {
+    _round++;
+    _row = row;
+    disconnectCompleted = false;
+    visibleWhenDisconnectCompleted = null;
+    visibleInsideBarrier = null;
+    barrierCompleted = false;
+  }
+
+  @override
+  String get methodId => _inner.methodId;
+
+  @override
+  Future<void> disconnect(PowerSyncDatabase database) async {
+    final round = _round;
+    final row = _row;
+    await _inner.disconnect(database);
+    if (round != _round) return;
+    disconnectCompleted = true;
+    if (row != null) {
+      visibleWhenDisconnectCompleted =
+          await database.getOptional('SELECT id FROM exercises WHERE id = ?', [
+            row,
+          ]) !=
+          null;
+    }
+  }
+
+  @override
+  Future<void> awaitNativeApplyDrained(PowerSyncDatabase database) async {
+    final round = _round;
+    final row = _row;
+    if (row != null) {
+      await database.writeLock((tx) async {
+        final seen =
+            await tx.getOptional('SELECT id FROM exercises WHERE id = ?', [
+              row,
+            ]) !=
+            null;
+        if (round == _round) visibleInsideBarrier = seen;
+      });
+    }
+    await _inner.awaitNativeApplyDrained(database);
+    if (round == _round) barrierCompleted = true;
+  }
+}
+
 /// A background isolate that talks to the plugin through its own binary
 /// messenger, as a second engine context in the same process would.
 class _BackgroundGate {
@@ -373,6 +437,79 @@ void main() {
     expect(writes, 1);
   });
 
+  test('killed_ticket_holder_requires_recovery', () async {
+    final worker = await GateHelperProcess.start();
+    cleanup.add(worker.close);
+    final admitted = await worker.call(
+      'admit',
+      stateDir.path,
+      'cross-store-write',
+    );
+    expect(admitted['code'], 'ok');
+
+    final gate = SourceWriteGate(stateDirectory: stateDir);
+    final preparation = await gate.closeAdmission('capture-interrupted');
+    final recorded = SourceHold(preparation.captureId, preparation.generation);
+    // A live owner with admitted work keeps the hold pending.
+    await expectLater(
+      gate.drain(preparation, timeout: const Duration(milliseconds: 500)),
+      gateCode('drain_timeout'),
+    );
+
+    // The owner dies with its work in flight: its shared lock vanishes, but
+    // its marker stays, so no hold is ever taken over that work.
+    await worker.kill();
+    await expectLater(
+      gate.drain(preparation, timeout: const Duration(seconds: 2)),
+      gateCode('recovery_required'),
+    );
+    await expectLater(
+      gate.drain(preparation, timeout: const Duration(seconds: 2)),
+      gateCode('recovery_required'),
+      reason: 'nothing clears it implicitly',
+    );
+    expect(await gate.holdStatus(recorded), 'preparing');
+    final other = await GateHelperProcess.start();
+    cleanup.add(other.close);
+    expect(
+      (await other.call(
+        'drain',
+        stateDir.path,
+        preparation.captureId,
+        '${preparation.generation}',
+      ))['code'],
+      'recovery_required',
+    );
+
+    // Only an explicit recovery decision clears it.
+    expect(await gate.acknowledgeInterruptedWork(decisionDigest: 'a' * 64), 1);
+    final hold = await gate.drain(
+      preparation,
+      timeout: const Duration(seconds: 2),
+    );
+    expect(await gate.isHeld(hold), true);
+    await gate.release(hold, decisionDigest: 'b' * 64);
+
+    // A live process's marker is never cleared by an acknowledgement.
+    final live = await other.call('admit', stateDir.path, 'live-write');
+    expect(live['code'], 'ok');
+    expect(await gate.acknowledgeInterruptedWork(decisionDigest: 'c' * 64), 0);
+    final next = await gate.closeAdmission('capture-after');
+    await expectLater(
+      gate.drain(next, timeout: const Duration(milliseconds: 500)),
+      gateCode('drain_timeout'),
+    );
+    expect(
+      (await other.call('complete', stateDir.path, live['ticket']!))['code'],
+      'ok',
+    );
+    final nextHold = await gate.drain(
+      next,
+      timeout: const Duration(seconds: 2),
+    );
+    expect(await gate.isHeld(nextHold), true);
+  });
+
   test('destination_conflict_never_replaces', () async {
     const files = CaptureFiles();
     for (final root in await _scratchRoots()) {
@@ -481,8 +618,9 @@ void main() {
     await attempt(() => files.publishNoReplace(staging, finalDir), 'io_error');
     expect(reportedSuccess, 0);
 
-    // A failed durable gate-state write never closes or opens admission
-    // silently: the closure is refused and admission stays as it was.
+    // A failed gate-state write is never reported as success. A failed FILE
+    // flush happens before the rename: closeAdmission is refused and
+    // admission stays open, exactly as before.
     final gate = SourceWriteGate(stateDirectory: stateDir);
     await files.injectFaultForTesting('file_sync');
     await expectLater(
@@ -492,6 +630,30 @@ void main() {
     var writes = 0;
     await gate.run('write', (_) async => writes++);
     expect(writes, 1);
+
+    // A failed DIRECTORY flush happens after the rename: closeAdmission is
+    // still refused, but the `preparing` record may already be in place, so
+    // admission is closed (fail-closed) until an explicit release.
+    final inFlight = Completer<void>();
+    final running = gate.run('in-flight', (_) => inFlight.future);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await files.injectFaultForTesting('dir_sync');
+    await expectLater(
+      gate.closeAdmission('capture-fault-dir'),
+      gateCode('io_error'),
+    );
+    const recorded = SourceHold('capture-fault-dir', 1);
+    expect(await gate.holdStatus(recorded), 'preparing');
+    await expectLater(
+      gate.run('write', (_) async => writes++),
+      gateCode('admission_closed'),
+    );
+    expect(writes, 1);
+    inFlight.complete();
+    await running;
+    await gate.release(recorded, decisionDigest: 'f' * 64);
+    await gate.run('write', (_) async => writes++);
+    expect(writes, 2);
   });
 
   test(
@@ -525,10 +687,15 @@ void main() {
         profile.evidenceDigest,
       );
       expect(candidate.qualification.methodId, candidateNativeSyncMethodId);
-      // The real method, unmocked; the adapter is the production class.
+      // The real method, unmocked, observed through a delegating spy; the
+      // adapter is the production class (its seam evidence is never current
+      // for a production adapter).
+      final observed = _ObservedMethod(
+        nativeSyncMethodById(candidateNativeSyncMethodId)!,
+      );
       final quiescence = NativeSyncQuiescence.withMethodForTesting(
         qualification: candidate.qualification,
-        method: nativeSyncMethodById(candidateNativeSyncMethodId)!,
+        method: observed,
       );
 
       final f = await openNativeSyncFixture(profile);
@@ -551,9 +718,14 @@ void main() {
       await f.stageCheckpoint([const SyntheticRow('ex-2', 'Synthetic two')]);
       final queueBefore = await f.queue();
 
-      // 1. The native apply continuation is paused.
+      // 1. The native apply continuation is paused. The fixture's pause holds
+      // the same writer the method's barrier needs, so the observation not
+      // completing proves little by itself; what is asserted is that the real
+      // disconnect() itself stays pending, and that when it returns the row
+      // is already applied.
       await f.pauseNextApply();
       await f.waitUntilApplyPaused(unappliedIds: ['ex-2']);
+      observed.watch('ex-2');
       var observationCompletedWhileNativeApplyPaused = false;
       final observing = quiescence
           .disconnectAndObserve(
@@ -567,6 +739,9 @@ void main() {
             () => observationCompletedWhileNativeApplyPaused = true,
           );
       await Future<void>.delayed(const Duration(milliseconds: 1500));
+      final disconnectCompletedWhileNativeApplyPaused =
+          observed.disconnectCompleted;
+      expect(disconnectCompletedWhileNativeApplyPaused, false);
       expect(observationCompletedWhileNativeApplyPaused, false);
       expect(await f.visible('ex-2'), false);
       expect(await gate.isHeld(hold), true);
@@ -574,11 +749,13 @@ void main() {
       await f.releaseApply();
       final evidence = await observing;
       expect(evidence.disconnectCompleted && evidence.nativeApplyDrained, true);
-      // Retroactive proof that the paused continuation was the apply: lines
-      // received after the abort are discarded, so this row was received, and
-      // its apply pending, before the disconnect began; and it was applied
-      // before the disconnect (hence the evidence) completed.
-      expect(await f.visible('ex-2'), true);
+      // The real disconnect() returned only after the paused apply ran: the
+      // row is visible at that moment (reader) and inside the barrier
+      // (writer). Lines received after the abort are discarded, so this row
+      // was received, and its apply pending, before the disconnect began.
+      expect(observed.visibleWhenDisconnectCompleted, true);
+      expect(observed.visibleInsideBarrier, true);
+      expect(observed.barrierCompleted, true);
       expect(f.database.currentStatus.connected, false);
       expect(await f.queue(), queueBefore);
       expect(
@@ -601,6 +778,7 @@ void main() {
       await queued.connect();
       await _until(() async => queued.uploadCalls > 0);
       expect(await queued.writerAvailable(), true);
+      observed.watch(null);
       var observationCompletedWhileDisconnectPending = false;
       final observingQueued = quiescence
           .disconnectAndObserve(
@@ -614,6 +792,8 @@ void main() {
             () => observationCompletedWhileDisconnectPending = true,
           );
       await Future<void>.delayed(const Duration(milliseconds: 1500));
+      // Here nothing holds the writer, so the barrier cannot be what blocks.
+      expect(observed.disconnectCompleted, false);
       expect(observationCompletedWhileDisconnectPending, false);
       queued.releaseUploads();
       final queuedEvidence = await observingQueued;
@@ -660,6 +840,7 @@ void main() {
       await f.stageCheckpoint([const SyntheticRow('ex-3', 'Synthetic three')]);
       await f.pauseNextApply();
       await f.waitUntilApplyPaused(unappliedIds: ['ex-3']);
+      observed.watch('ex-3');
       await expectLater(
         quiescence.disconnectAndObserve(
           f.database,
@@ -670,8 +851,12 @@ void main() {
         ),
         throwsA(isA<TimeoutException>()),
       );
+      expect(observed.disconnectCompleted, false);
       await f.releaseApply();
-      await _until(() async => !f.database.currentStatus.connected);
+      // The abandoned observation's disconnect still finishes, after the
+      // apply, and nothing is lost.
+      await _until(() async => observed.barrierCompleted);
+      expect(observed.visibleWhenDisconnectCompleted, true);
       expect(await f.visible('ex-3'), true);
 
       // 6. A connection change during observation yields no evidence.
@@ -680,6 +865,7 @@ void main() {
       await f.stageCheckpoint([const SyntheticRow('ex-4', 'Synthetic four')]);
       await f.pauseNextApply();
       await f.waitUntilApplyPaused(unappliedIds: ['ex-4']);
+      observed.watch('ex-4');
       final changing = quiescence.disconnectAndObserve(
         f.database,
         profile,
