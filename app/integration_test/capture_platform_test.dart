@@ -931,8 +931,8 @@ void main() {
     final orphan = File('${draft.path}.tmp')..writeAsStringSync('{"name":"x');
     final draftStore = DraftStore(directory: () async => source);
     final finishedStore = FinishedSessionStore(directory: () async => source);
-    final preservation = RawPreservation(locations.preparation);
-    final journal = CaptureJournal(locations.journal);
+    final preservation = RawPreservation(locations.preparation, base: source);
+    final journal = CaptureJournal(locations.journal, base: source);
     final gate = SourceWriteGate(stateDirectory: locations.gate);
     final now = DateTime(2026, 10, 10, 12);
 
@@ -940,7 +940,7 @@ void main() {
       final calls = <String>[];
       final outcome = await runCaptureAwareStartup(
         journal: journal,
-        probeGate: () => probeSourceGate(gate),
+        probeGate: () => probeSourceGate(gate, base: source),
         source: source,
         preservation: preservation,
         files: [
@@ -958,7 +958,7 @@ void main() {
       return (outcome, calls);
     }
 
-    expect(await probeSourceGate(gate), 'open');
+    expect(await probeSourceGate(gate, base: source), 'open');
 
     // A held journal written through the native primitive holds startup.
     await journal.write(
@@ -995,7 +995,7 @@ void main() {
 
     // A capture recorded only in the native gate also holds startup.
     final preparation = await gate.closeAdmission('native-startup-probe');
-    expect(await probeSourceGate(gate), 'mismatch');
+    expect(await probeSourceGate(gate, base: source), 'mismatch');
     (outcome, calls) = await start();
     expect(
       (outcome as CaptureRecoveryRequired).recovery.code,
@@ -1006,7 +1006,7 @@ void main() {
       SourceHold(preparation.captureId, preparation.generation),
       decisionDigest: 'f' * 64,
     );
-    expect(await probeSourceGate(gate), 'open');
+    expect(await probeSourceGate(gate, base: source), 'open');
 
     // Ordinary startup: the malformed draft is durably preserved before its
     // loader deletes it; the orphan stays in place, preserved separately.
@@ -1035,6 +1035,103 @@ void main() {
         .listSync(recursive: true)
         .where((e) => e.path.contains('.capture-tmp-'));
     expect(leftovers, isEmpty);
+
+    // A failed directory flush during preservation holds this
+    // capture-capable startup: zero ordinary steps, source bytes intact.
+    draft.writeAsBytesSync([0xfe, 0x7b]);
+    final faultCalls = <String>[];
+    final faulted = await runCaptureAwareStartup(
+      journal: journal,
+      probeGate: () async {
+        final answer = await probeSourceGate(gate, base: source);
+        await const CaptureFiles().injectFaultForTesting('dir_sync');
+        return answer;
+      },
+      source: source,
+      preservation: preservation,
+      files: [
+        await draftStartupFile(draftStore, (_) async {
+          faultCalls.add('load:draft');
+          await draftStore.load();
+        }),
+        await finishedStartupFile(finishedStore, (_) async {
+          faultCalls.add('load:finished');
+        }),
+      ],
+      steps: _RecordingSteps(faultCalls),
+      now: now,
+    );
+    expect(
+      (faulted as CaptureRecoveryRequired).recovery.code,
+      'preservation_failed',
+    );
+    expect(faultCalls, isEmpty);
+    expect(draft.readAsBytesSync(), [0xfe, 0x7b]);
+  });
+
+  test('ensure_directory_flushes_chain_and_fails_closed', () async {
+    const files = CaptureFiles();
+    for (final root in await _scratchRoots()) {
+      cleanup.add(() => root.delete(recursive: true));
+      final leaf = Directory('${root.path}/capture/preparation/blobs');
+
+      await files.ensureDirectory(leaf, base: root);
+      expect(leaf.existsSync(), isTrue);
+      // Created private (0700) at every level.
+      for (final d in [leaf, leaf.parent, leaf.parent.parent]) {
+        expect(d.statSync().mode & 0x1ff, 0x1c0, reason: d.path);
+      }
+      // Idempotent on an existing chain.
+      await files.ensureDirectory(leaf, base: root);
+
+      // A failed directory flush is never success, for a new component and
+      // for an existing chain alike (existing components are re-flushed, so
+      // one left unflushed by an earlier call cannot pass silently).
+      await files.injectFaultForTesting('dir_sync');
+      await expectLater(
+        files.ensureDirectory(Directory('${root.path}/fresh/one'), base: root),
+        gateCode('io_error'),
+      );
+      await files.injectFaultForTesting('dir_sync');
+      await expectLater(
+        files.ensureDirectory(leaf, base: root),
+        gateCode('io_error'),
+      );
+      // The retry after a failure flushes again and succeeds.
+      await files.ensureDirectory(Directory('${root.path}/fresh/one'), base: root);
+
+      // Outside the base, a `..` segment, a file or a link in the chain.
+      await expectLater(
+        files.ensureDirectory(
+          Directory('${root.parent.path}/elsewhere'),
+          base: root,
+        ),
+        gateCode('invalid_argument'),
+      );
+      await expectLater(
+        files.ensureDirectory(Directory('${root.path}/a/../b'), base: root),
+        gateCode('invalid_argument'),
+      );
+      File('${root.path}/plain').writeAsStringSync('x');
+      await expectLater(
+        files.ensureDirectory(Directory('${root.path}/plain/sub'), base: root),
+        gateCode('not_a_directory'),
+      );
+      Link('${root.path}/link').createSync(leaf.path);
+      await expectLater(
+        files.ensureDirectory(Directory('${root.path}/link/sub'), base: root),
+        gateCode('not_a_directory'),
+      );
+      expect(Directory('${leaf.path}/sub').existsSync(), isFalse);
+      // A base that does not exist is refused.
+      await expectLater(
+        files.ensureDirectory(
+          Directory('${root.path}/nobase/x'),
+          base: Directory('${root.path}/nobase'),
+        ),
+        gateCode('invalid_argument'),
+      );
+    }
   });
 }
 

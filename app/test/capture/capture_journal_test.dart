@@ -70,7 +70,7 @@ void main() {
     dir = Directory.systemTemp.createTempSync('capture_journal_test');
     file = File(p.join(dir.path, 'capture', 'journal.json'));
     fake = FakeCaptureFiles('journal');
-    journal = CaptureJournal(file, files: fake.files);
+    journal = CaptureJournal(file, base: dir, files: fake.files);
   });
 
   tearDown(() {
@@ -125,7 +125,7 @@ void main() {
     expect(file.existsSync(), isFalse);
     // Without a native primitive the journal cannot be written at all.
     await expectLater(
-      CaptureJournal(file).write(_state()),
+      CaptureJournal(file, base: dir).write(_state()),
       throwsA(isA<SourceGateException>()
           .having((e) => e.code, 'code', 'platform_unavailable')),
     );

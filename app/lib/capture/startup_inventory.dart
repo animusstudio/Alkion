@@ -350,9 +350,18 @@ Map<String, Object?> _versionJson(RawFileObservation o) => {
 /// primitive every preservation fails (`platform_unavailable`), and callers
 /// then leave the source untouched.
 class RawPreservation {
-  RawPreservation(this.preparation, {this.files = const CaptureFiles()});
+  RawPreservation(
+    this.preparation, {
+    required this.base,
+    this.files = const CaptureFiles(),
+  });
 
   final Directory preparation;
+
+  /// An existing directory above [preparation] (the application-support
+  /// directory): every directory between it and a written file is made
+  /// durable before the file is written.
+  final Directory base;
 
   /// The durable file primitive every write goes through.
   final CaptureFiles files;
@@ -460,9 +469,7 @@ class RawPreservation {
   }
 
   Future<void> _durably(File destination, List<int> bytes) async {
-    // Directory creation is not itself flushed here; the durable primitive
-    // flushes the file and its directory entry.
-    await destination.parent.create(recursive: true);
+    await files.ensureDirectory(destination.parent, base: base);
     await files.durableReplace(destination, bytes);
   }
 }
@@ -476,14 +483,20 @@ const captureSourceFiles = {
 
 /// Capture-mode inventory: reads every store file in [source] and its
 /// leftover `.tmp`, and preserves every present version's exact bytes into
-/// [preparation]. Nothing in [source] is decoded, deleted, renamed or
-/// promoted. Failures are reported per entry, never thrown.
+/// [preparation] (made durable from [base], by default [source]). Nothing
+/// in [source] is decoded, deleted, renamed or promoted. Failures are
+/// reported per entry, never thrown.
 Future<StartupInventory> inspectCaptureStartup(
   Directory source,
   Directory preparation, {
   CaptureFiles files = const CaptureFiles(),
+  Directory? base,
 }) async {
-  final preservation = RawPreservation(preparation, files: files);
+  final preservation = RawPreservation(
+    preparation,
+    base: base ?? source,
+    files: files,
+  );
   final entries = <InventoryEntry>[];
   for (final MapEntry(key: role, value: name) in captureSourceFiles.entries) {
     for (final authoritative in [true, false]) {

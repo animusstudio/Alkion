@@ -748,7 +748,9 @@
   "updatesPermissionMessage": "Reps needs permission to install app updates. Enable it on the next screen, then tap Install again.",
   "updatesOpenSettings": "Open settings",
   "captureRecoveryTitle": "Capture not finished",
+  "captureRecoveryPreservationTitle": "Workouts not opened",
   "captureRecoveryBody": "Reps found a data capture on this device that is not finished, or could not check whether one is. Until that is resolved, Reps does not open your workouts or sync, so nothing changes.",
+  "captureRecoveryPreservationBody": "Reps could not make a safety copy of a stored workout file, so it has not opened your workouts or synced. Opening them now could overwrite that file.",
   "captureRecoveryKept": "Your workouts are still on this device. Reps did not delete or change them.",
   "captureRecoveryCode": "Status: {code}",
   "@captureRecoveryCode": {

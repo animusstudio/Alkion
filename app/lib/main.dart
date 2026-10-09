@@ -65,11 +65,13 @@ Future<void> main() async {
   final capture = CaptureLocations(appSupport);
   final boot = _AppBoot();
   final outcome = await runCaptureAwareStartup(
-    journal: CaptureJournal(capture.journal),
-    probeGate: () =>
-        probeSourceGate(SourceWriteGate(stateDirectory: capture.gate)),
+    journal: CaptureJournal(capture.journal, base: appSupport),
+    probeGate: () => probeSourceGate(
+      SourceWriteGate(stateDirectory: capture.gate),
+      base: appSupport,
+    ),
     source: appSupport,
-    preservation: RawPreservation(capture.preparation),
+    preservation: RawPreservation(capture.preparation, base: appSupport),
     files: [
       await draftStartupFile(boot.draftStore, (_) => boot.loadDraft()),
       await finishedStartupFile(boot.finishedStore, boot.loadFinished),
@@ -77,6 +79,9 @@ Future<void> main() async {
     steps: boot,
     now: DateTime.now(),
   );
+  // Without the capture plugin (not capture-capable), a store whose bytes
+  // could not be preserved is simply not loaded and stays on disk as it is;
+  // see StartupAllowed.skippedLoaders.
   if (outcome case CaptureRecoveryRequired(:final recovery)) {
     runApp(CaptureRecoveryApp(recovery: recovery));
     return;

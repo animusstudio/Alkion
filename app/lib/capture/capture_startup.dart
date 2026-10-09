@@ -32,28 +32,37 @@ class CaptureLocations {
 }
 
 /// Asks the native gate whether any capture is recorded in [gate]'s state
-/// directory, without naming one. Returns the native code: `open` (none),
-/// `mismatch` (some capture is recorded), or a failure code such as
-/// `platform_unavailable`, `unsupported`, `state_corrupt` or `io_error`.
+/// directory, without naming one. Never throws. Returns the native code:
+/// `open` (none), `mismatch` (some capture is recorded), or a failure code
+/// such as `platform_unavailable`, `unsupported`, `state_corrupt`,
+/// `io_error` or `probe_failed`.
+///
+/// The state directory is created through the native durable primitive
+/// first, so on a platform without the plugin nothing is created and the
+/// answer is `platform_unavailable` before any file-system work could fail.
 ///
 /// This relies on `verifyHold` answering `open` for an open record before
 /// it compares identities, and on no capture ever being recorded under the
 /// empty id (the native side refuses it).
-Future<String> probeSourceGate(SourceWriteGate gate) async {
+Future<String> probeSourceGate(
+  SourceWriteGate gate, {
+  required Directory base,
+  CaptureFiles files = const CaptureFiles(),
+}) async {
   try {
-    await gate.stateDirectory.create(recursive: true);
+    await files.ensureDirectory(gate.stateDirectory, base: base);
     return await gate.holdStatus(const SourceHold('', 0));
   } on SourceGateException catch (e) {
     return e.code;
-  } on FileSystemException {
-    return 'io_error';
+  } catch (_) {
+    return 'probe_failed';
   }
 }
 
-/// Native gate answers that mean "no native gate can hold this startup":
-/// no plugin on this platform, or no usable lock primitive here (so no
-/// capture could ever have closed admission).
-const _noNativeGate = {'open', 'platform_unavailable', 'unsupported'};
+/// Gate answers of a startup that is not capture-capable: no plugin on this
+/// platform, or no usable lock primitive here. No capture can have closed
+/// admission there, so capture state never holds such a startup.
+const _notCaptureCapable = {'platform_unavailable', 'unsupported'};
 
 /// The ordinary boot steps, in their existing order. The startup sequence
 /// runs them only when no capture holds the source; the store loaders run
@@ -87,8 +96,8 @@ class CaptureRecoveryState {
     this.inventory,
   });
 
-  /// `capture_active`, a `journal_*` code, `gate_<native code>` or
-  /// `startup_inspection_failed`.
+  /// `capture_active`, a `journal_*` code, `gate_<native code>`,
+  /// `preservation_failed` or `startup_inspection_failed`.
   final String code;
 
   /// The journal stage, when one was read.
@@ -111,7 +120,8 @@ final class StartupAllowed extends StartupOutcome {
   final StartupInventory inventory;
 
   /// Store roles whose loader did not run because their bytes could not be
-  /// preserved; their files were left untouched.
+  /// preserved; their files were left untouched. Only ever non-empty on a
+  /// startup that is not capture-capable.
   final Set<String> skippedLoaders;
 }
 
@@ -124,20 +134,27 @@ final class CaptureRecoveryRequired extends StartupOutcome {
 
 /// Capture-first startup.
 ///
-/// 1. Reads the capture journal. An active stage (anything but
-///    `resume_allowed`/`resumed`), or a journal that is unreadable, of an
-///    unknown version or naming an unknown stage, holds startup.
-/// 2. Probes the native gate. A recorded capture (or an unreadable gate
-///    record) holds startup even without a journal.
-/// 3. Held: inventories and preserves raw source files, runs NO ordinary
-///    step and NO loader, and returns [CaptureRecoveryRequired].
-/// 4. Otherwise preserves every byte a loader could destroy
-///    ([preserveBeforeLoaders]), then runs the ordinary steps in their
-///    existing order, skipping only loaders whose bytes could not be kept.
+/// 1. Probes the native gate. `platform_unavailable`/`unsupported` mean
+///    this startup is not capture-capable (Android builds today): capture
+///    state never holds it, and step 4 applies.
+/// 2. Capture-capable: an active journal stage (anything but
+///    `resume_allowed`/`resumed`), a journal that is unreadable, of an
+///    unknown version or naming an unknown stage, a recorded native capture
+///    or any other gate failure holds startup.
+/// 3. Capture-capable: every byte a loader could delete and every leftover
+///    `.tmp` (which the next save overwrites) is preserved
+///    ([preserveBeforeLoaders]). If anything cannot be read or preserved,
+///    startup is held (`preservation_failed`): continuing would let the
+///    first ordinary save or clear destroy those bytes.
+/// 4. Not capture-capable: the same preservation is attempted (it fails
+///    without the plugin); a store whose bytes were not kept is not loaded
+///    and its file is left as it is, and startup continues as before.
 ///
+/// Held: raw source files are inventoried and preserved where possible, NO
+/// ordinary step and NO loader runs, and [CaptureRecoveryRequired] is
+/// returned. Otherwise the ordinary steps run in their existing order.
 /// Startup never repairs ids, promotes temporary files or fabricates
-/// missing history; it only reads, copies into private preparation, and
-/// then runs today's boot.
+/// missing history.
 Future<StartupOutcome> runCaptureAwareStartup({
   required CaptureJournal journal,
   required Future<String> Function() probeGate,
@@ -147,31 +164,44 @@ Future<StartupOutcome> runCaptureAwareStartup({
   required OrdinaryStartupSteps steps,
   required DateTime now,
 }) async {
-  final CaptureRecoveryState? held;
+  String gate;
   try {
-    held = await _heldBy(journal, probeGate);
+    gate = await probeGate();
   } catch (_) {
-    return CaptureRecoveryRequired(
-      await _withInventory(
-        const CaptureRecoveryState(code: 'startup_inspection_failed'),
-        source,
-        preservation,
-      ),
-    );
+    gate = 'probe_failed';
   }
-  if (held != null) {
-    return CaptureRecoveryRequired(
-      await _withInventory(held, source, preservation),
-    );
+  final capable = !_notCaptureCapable.contains(gate);
+
+  if (capable) {
+    CaptureRecoveryState? held;
+    try {
+      held = await _heldBy(journal, gate);
+    } catch (_) {
+      held = const CaptureRecoveryState(code: 'startup_inspection_failed');
+    }
+    if (held != null) {
+      return CaptureRecoveryRequired(
+        await _withInventory(held, source, preservation),
+      );
+    }
   }
 
-  StartupFilePlan plan;
+  StartupFilePlan? plan;
   try {
     plan = await preserveBeforeLoaders(files, preservation, now);
   } catch (_) {
-    // Unexpected: keep every store untouched rather than guess.
-    plan = const StartupFilePlan(StartupInventory([]), {});
+    plan = null;
   }
+  if (capable && (plan == null || !plan.inventory.complete)) {
+    return CaptureRecoveryRequired(
+      CaptureRecoveryState(
+        code: 'preservation_failed',
+        inventory: plan?.inventory,
+      ),
+    );
+  }
+  // Not capture-capable and the pass failed unexpectedly: load nothing.
+  plan ??= const StartupFilePlan(StartupInventory([]), {});
 
   await steps.loadSettings();
   await steps.openDatabase();
@@ -191,10 +221,7 @@ Future<StartupOutcome> runCaptureAwareStartup({
   );
 }
 
-Future<CaptureRecoveryState?> _heldBy(
-  CaptureJournal journal,
-  Future<String> Function() probeGate,
-) async {
+Future<CaptureRecoveryState?> _heldBy(CaptureJournal journal, String gate) async {
   CaptureJournalState? state;
   try {
     state = await journal.read();
@@ -208,8 +235,7 @@ Future<CaptureRecoveryState?> _heldBy(
       captureId: state.captureId,
     );
   }
-  final gate = await probeGate();
-  if (!_noNativeGate.contains(gate)) {
+  if (gate != 'open') {
     return CaptureRecoveryState(
       code: 'gate_$gate',
       stage: state?.stage.wire,
@@ -230,6 +256,7 @@ Future<CaptureRecoveryState> _withInventory(
       source,
       preservation.preparation,
       files: preservation.files,
+      base: preservation.base,
     );
   } catch (_) {
     inventory = null;

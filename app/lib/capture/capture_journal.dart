@@ -219,10 +219,18 @@ final _uuid = RegExp(
 /// any final capture, and is only ever replaced through the native durable
 /// primitive (flushed temporary file, rename, directory flush).
 class CaptureJournal {
-  CaptureJournal(this.file, {CaptureFiles files = const CaptureFiles()})
-      : _files = files;
+  CaptureJournal(
+    this.file, {
+    required this.base,
+    CaptureFiles files = const CaptureFiles(),
+  }) : _files = files;
 
   final File file;
+
+  /// An existing directory above [file] (the application-support
+  /// directory): every directory between it and the journal is made durable
+  /// before the journal is written.
+  final Directory base;
   final CaptureFiles _files;
 
   /// The recorded state, or null when the journal is verifiably absent.
@@ -253,7 +261,7 @@ class CaptureJournal {
     } on CaptureJournalException {
       throw const CaptureJournalException('journal_unsafe_value');
     }
-    await file.parent.create(recursive: true);
+    await _files.ensureDirectory(file.parent, base: base);
     await _files.durableReplace(file, utf8.encode(jsonEncode(json)));
   }
 }

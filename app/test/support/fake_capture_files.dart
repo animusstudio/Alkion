@@ -1,4 +1,5 @@
-// Host stand-in for the native `durableReplace` primitive.
+// Host stand-in for the native `ensureDirectory` and `durableReplace`
+// primitives.
 //
 // Host tests have no native plugin. This handler answers the channel the way
 // the native side does (temporary file + rename, `code: ok`), or with a
@@ -27,6 +28,9 @@ class FakeCaptureFiles {
   /// Paths written, in order.
   final writes = <String>[];
 
+  /// Directories ensured, in order.
+  final directories = <String>[];
+
   CaptureFiles get files =>
       CaptureFiles(platform: RepsCapturePlatform(channel: channel));
 
@@ -39,6 +43,16 @@ class FakeCaptureFiles {
     final args = Map<String, Object?>.from(call.arguments as Map);
     if (failWith != null) return {'code': failWith};
     switch (call.method) {
+      case 'ensureDirectory':
+        final path = args['path']! as String;
+        final base = args['base']! as String;
+        if (!Directory(base).existsSync() ||
+            (path != base && !path.startsWith('$base/'))) {
+          return {'code': 'invalid_argument'};
+        }
+        Directory(path).createSync(recursive: true);
+        directories.add(path);
+        return {'code': 'ok'};
       case 'durableReplace':
         final path = args['path']! as String;
         final parent = File(path).parent;

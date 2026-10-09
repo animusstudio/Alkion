@@ -143,11 +143,16 @@ void main() {
     final manager = SessionManager(finishedStore: finishedStore);
     addTearDown(manager.dispose);
     return runCaptureAwareStartup(
-      journal: CaptureJournal(locations.journal, files: fake.files),
+      journal: CaptureJournal(
+        locations.journal,
+        base: source,
+        files: fake.files,
+      ),
       probeGate: () async => gate,
       source: source,
       preservation: RawPreservation(
         locations.preparation,
+        base: source,
         files: preservationFiles ?? fake.files,
       ),
       files: [
@@ -209,7 +214,7 @@ void main() {
     final orphan = utf8.encode('{"name":"half-writ');
     draftTmp.writeAsBytesSync(orphan);
 
-    final preservation = RawPreservation(locations.preparation);
+    final preservation = RawPreservation(locations.preparation, base: source);
     final atLoad = <String, RawFileObservation>{};
     final steps = _SpySteps();
     final loads = <String>[];
@@ -304,7 +309,7 @@ void main() {
     // The one final flush: pre-flush, orphan and flushed bytes are three
     // distinct preserved versions with an explicit replacement relation.
     final preservation =
-        RawPreservation(locations.preparation, files: fake.files);
+        RawPreservation(locations.preparation, base: source, files: fake.files);
     final replacement = await preservation.preserveAcrossFlush(
       role: 'draft',
       file: draftFile,
@@ -347,7 +352,7 @@ void main() {
     draftFile.writeAsBytesSync([0xff, 0x7b]);
     final store = DraftStore(directory: () async => source);
     final preservation =
-        RawPreservation(locations.preparation, files: fake.files);
+        RawPreservation(locations.preparation, base: source, files: fake.files);
 
     final replacement = await preservation.preserveAcrossFlush(
       role: 'draft',
@@ -377,7 +382,7 @@ void main() {
   test('preflush_preservation_failure_blocks_the_flush', () async {
     draftFile.writeAsBytesSync([0xff, 0x7b]);
     var flushes = 0;
-    final failing = RawPreservation(locations.preparation);
+    final failing = RawPreservation(locations.preparation, base: source);
     await expectLater(
       failing.preserveAcrossFlush(
         role: 'draft',
@@ -389,7 +394,7 @@ void main() {
     );
     _chmod('000', draftFile.path);
     await expectLater(
-      RawPreservation(locations.preparation, files: fake.files)
+      RawPreservation(locations.preparation, base: source, files: fake.files)
           .preserveAcrossFlush(
         role: 'draft',
         file: draftFile,
@@ -408,48 +413,158 @@ void main() {
     await FinishedSessionStore(directory: () async => source).save(_expired());
     final expiredBytes = finishedFile.readAsBytesSync();
 
-    // No native file primitive (as on a platform without the plugin): the
-    // bytes cannot be preserved, so neither loader may run.
+    // Capture-capable (the native gate answers `open`) but the durable write
+    // fails: startup is held before any ordinary step, so no later save or
+    // clear can destroy the bytes that were not kept.
+    final failing = FakeCaptureFiles('failing')..failWith = 'io_error';
+    addTearDown(failing.detach);
     final steps = _SpySteps();
     final loads = <String>[];
     final outcome = await start(
       steps: steps,
       loads: loads,
-      preservationFiles: const CaptureFiles(),
+      preservationFiles: failing.files,
     );
     final destructiveLoaderCalls = loads.length;
     expect(destructiveLoaderCalls, 0);
-    expect(outcome, isA<StartupAllowed>());
-    expect((outcome as StartupAllowed).skippedLoaders, {'draft', 'finished'});
-    // Ordinary startup continues without them, as if absent in memory only.
-    expect(steps.calls, _ordinary);
+    expect(steps.calls, isEmpty);
+    expect(outcome, isA<CaptureRecoveryRequired>());
+    final recovery = (outcome as CaptureRecoveryRequired).recovery;
+    expect(recovery.code, 'preservation_failed');
+    expect(
+      recovery.inventory!.errors.map((e) => e.role).toSet(),
+      {'draft', 'finished'},
+    );
     expect(draftFile.readAsBytesSync(), [0xff, 0x7b]);
     expect(finishedFile.readAsBytesSync(), expiredBytes);
 
-    // Unreadable is not absent: an unreadable finished file blocks its
-    // loader even when preservation works, while an absent draft does not.
+    // Unreadable is not absent: an unreadable snapshot holds startup even
+    // when preservation works, while an absent draft would not.
     draftFile.deleteSync();
     _chmod('000', finishedFile.path);
     final unreadable = await readRawFile(finishedFile);
     expect(unreadable.status, 'inspection_failed');
     expect((await readRawFile(draftFile)).status, 'absent');
+    final steps2 = _SpySteps();
     final loads2 = <String>[];
-    final outcome2 = await start(steps: _SpySteps(), loads: loads2);
-    expect(loads2, ['draft']);
-    expect((outcome2 as StartupAllowed).skippedLoaders, {'finished'});
+    final outcome2 = await start(steps: steps2, loads: loads2);
+    expect(steps2.calls, isEmpty);
+    expect(loads2, isEmpty);
+    final recovery2 = (outcome2 as CaptureRecoveryRequired).recovery;
+    expect(recovery2.code, 'preservation_failed');
     expect(
-      outcome2.inventory.entries
+      recovery2.inventory!.entries
           .singleWhere((e) => e.role == 'finished' && e.authoritative)
           .status,
       'inspection_failed',
     );
     _chmod('600', finishedFile.path);
     expect(finishedFile.readAsBytesSync(), expiredBytes);
+
+    // An orphan `.tmp` that cannot be kept also holds: the next save would
+    // overwrite it.
+    finishedFile.deleteSync();
+    draftTmp.writeAsBytesSync(utf8.encode('{"name":"half'));
+    _chmod('000', draftTmp.path);
+    final steps3 = _SpySteps();
+    final loads3 = <String>[];
+    final outcome3 = await start(steps: steps3, loads: loads3);
+    expect(
+      (outcome3 as CaptureRecoveryRequired).recovery.code,
+      'preservation_failed',
+    );
+    expect(steps3.calls, isEmpty);
+    expect(loads3, isEmpty);
+  });
+
+  test('platform_without_plugin_skips_loader_and_boots', () async {
+    draftFile.writeAsBytesSync([0xff, 0x7b]);
+    await FinishedSessionStore(directory: () async => source).save(_expired());
+    final expiredBytes = finishedFile.readAsBytesSync();
+
+    // Not capture-capable (no plugin, as on Android builds): the copy fails,
+    // the destructive loaders are skipped, the files stay byte-identical
+    // and the app boots as before.
+    final steps = _SpySteps();
+    final loads = <String>[];
+    final outcome = await start(
+      steps: steps,
+      loads: loads,
+      gate: 'platform_unavailable',
+      preservationFiles: const CaptureFiles(),
+    );
+    expect(loads, isEmpty);
+    expect(outcome, isA<StartupAllowed>());
+    expect((outcome as StartupAllowed).skippedLoaders, {'draft', 'finished'});
+    expect(steps.calls, _ordinary);
+    expect(draftFile.readAsBytesSync(), [0xff, 0x7b]);
+    expect(finishedFile.readAsBytesSync(), expiredBytes);
+
+    // A valid or absent store still loads there.
+    draftFile.deleteSync();
+    finishedFile.deleteSync();
+    final loads2 = <String>[];
+    final outcome2 = await start(
+      steps: _SpySteps(),
+      loads: loads2,
+      gate: 'unsupported',
+      preservationFiles: const CaptureFiles(),
+    );
+    expect(loads2, ['draft', 'finished']);
+    expect((outcome2 as StartupAllowed).skippedLoaders, isEmpty);
+  });
+
+  test('probe_without_plugin_never_holds_startup', () async {
+    // A gate directory that could never be created (its parent is a file).
+    final blocker = File(p.join(locations.root.path, 'gate'));
+    blocker.parent.createSync(recursive: true);
+    blocker.writeAsStringSync('not a directory');
+    final gate = SourceWriteGate(
+      stateDirectory: Directory(p.join(blocker.path, 'state')),
+    );
+
+    // Without the plugin the probe answers before touching the file system.
+    expect(
+      await probeSourceGate(gate, base: source, files: const CaptureFiles()),
+      'platform_unavailable',
+    );
+    expect(blocker.readAsStringSync(), 'not a directory');
+
+    // Even with unreadable capture state on disk, such a startup is not
+    // held by capture code.
+    locations.journal.writeAsBytesSync([0xff, 0x7b]);
+    final steps = _SpySteps();
+    final draftStore = DraftStore(directory: () async => source);
+    final finishedStore = FinishedSessionStore(directory: () async => source);
+    final outcome = await runCaptureAwareStartup(
+      journal: CaptureJournal(locations.journal, base: source),
+      probeGate: () =>
+          probeSourceGate(gate, base: source, files: const CaptureFiles()),
+      source: source,
+      preservation: RawPreservation(locations.preparation, base: source),
+      files: [
+        await draftStartupFile(draftStore, (_) async {}),
+        await finishedStartupFile(finishedStore, (_) async {}),
+      ],
+      steps: steps,
+      now: _now,
+    );
+    expect(outcome, isA<StartupAllowed>());
+    expect(steps.calls, _ordinary);
+
+    // With the plugin present, a directory the gate cannot use holds.
+    final failing = FakeCaptureFiles('probe')..failWith = 'io_error';
+    addTearDown(failing.detach);
+    expect(
+      await probeSourceGate(gate, base: source, files: failing.files),
+      'io_error',
+    );
   });
 
   test('journal_hold_precedes_identity_backfill_connect', () async {
     draftFile.writeAsBytesSync([0xff, 0x7b]);
-    final journal = CaptureJournal(locations.journal, files: fake.files);
+    final journal =
+        CaptureJournal(locations.journal, base: source, files: fake.files);
 
     const active = [
       CaptureStage.preparing,

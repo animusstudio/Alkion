@@ -41,4 +41,15 @@ void main() {
     expect(find.text('Capture not finished'), findsOneWidget);
     expect(find.text('Status: journal_unknown_version'), findsOneWidget);
   });
+
+  testWidgets('a failed safety copy says so', (tester) async {
+    await tester.pumpWidget(wrapL10n(const CaptureRecoveryScreen(
+      recovery: CaptureRecoveryState(code: 'preservation_failed'),
+    )));
+    expect(find.textContaining('could not make a safety copy'),
+        findsOneWidget);
+    expect(find.textContaining('found a data capture'), findsNothing);
+    expect(find.text('Workouts not opened'), findsOneWidget);
+    expect(find.text('Capture not finished'), findsNothing);
+  });
 }

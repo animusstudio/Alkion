@@ -44,6 +44,7 @@ class CaptureRecoveryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
+    final copyFailed = recovery.code == 'preservation_failed';
     final code = recovery.stage == null
         ? recovery.code
         : '${recovery.code} · ${recovery.stage}';
@@ -54,12 +55,16 @@ class CaptureRecoveryScreen extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.pad),
           children: [
             Text(
-              l.captureRecoveryTitle,
+              copyFailed
+                  ? l.captureRecoveryPreservationTitle
+                  : l.captureRecoveryTitle,
               style: WorkoutType.display(size: 26, color: tokens.text),
             ),
             const SizedBox(height: AppSpacing.pad),
             Text(
-              l.captureRecoveryBody,
+              copyFailed
+                  ? l.captureRecoveryPreservationBody
+                  : l.captureRecoveryBody,
               style: WorkoutType.body(color: tokens.text),
             ),
             const SizedBox(height: AppSpacing.pad),
