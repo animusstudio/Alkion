@@ -31,14 +31,15 @@ that range is never a qualification.
 | PowerSync SDK | `2.2.0` (`app/pubspec.lock`; pinned by a test) | same | same |
 | sqlite_async / sqlite3 / connection pool | `0.14.2` / `3.3.2` / `0.2.5` | same | same |
 | SQLite library | `3.53.1` (library strings), `libsqlite3.so` sha256 `9b1c8c24c3cec49156bd8458e2c4eb01401a8a98375df1396ebb657c1e78512b` | not observed | not observed |
-| Native core loaded | `powersync_rs_version()` = `0.4.13/670c312e` | not observed in-app | not observed |
+| Native core loaded | `powersync_rs_version()` = `0.4.13/670c312e` | `0.4.13/670c312e`, observed in the debug bundle by `capture_platform_test.dart` | not observed |
 | Core binary | `libpowersync_core.so` sha256 `b9885eb188ee827453bd94100b657cda76e23722610abf2e33170ca15d2c0de3`, equal to the SDK pin for `libpowersync_x64.linux.so` (`powersync/lib/src/setup/native.dart:3,31`) | built from the same hook download | SDK pins `libpowersync_aarch64.android.so` `8151b637…`; not observed |
 | Core migrations | `ps_migration` ids 1–12 | not observed | not observed |
 | Physical schema fingerprint | `f6c62733f60a8cc70a97474014cd98f31400338e1d7299f5283f6c4a34ddb777` | not observed | not observed |
 | Public schema fingerprint | `077764b3aaf948377dec78e8bc303018d8d2172b402be2d8568f84803b12f808` | not observed | not observed |
 | Non-destructive opening | **PASS** (tests below) | UNRUN | UNRUN |
-| Native sync quiescence | candidate traced, **UNRUN**; nothing registered | UNRUN | UNRUN |
-| Result | Opening/SQL profile `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13` registered; attested capture **unsupported** until native quiescence is qualified | Uses the same `linux` row. Capture opening re-observes the platform, core and pre-initialize fingerprints on every open; the app and SDK versions are caller-asserted (see below). In-app observation UNRUN; attested capture **unsupported** | **unsupported** (no Android SDK or device on the qualifying host) |
+| Native sync quiescence | Covered by the `linux` registration (same core binary); host `flutter test` runs prove nothing native | **PASS** in the debug bundle; method `powersync-2.2.0/disconnect-awaits-sync-isolate-exit+writer-barrier/v1` registered (see "Native sync quiescence: Linux qualification"); release mode UNRUN | **unsupported** (UNRUN; nothing registered) |
+| Source-write gate and durable files | Host contract tests only | **PASS** in the debug bundle (see "Source-write gate and durable files"); release mode UNRUN | **unsupported** (Kotlin written, compile and tests UNRUN) |
+| Result | Opening/SQL profile `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13` and its native sync quiescence registered; attested capture **unsupported** until every source writer participates in the gate and the capture boundary is qualified end to end | Uses the same `linux` row. Capture opening re-observes the platform, core and pre-initialize fingerprints on every open; the app and SDK versions are caller-asserted (see below). Attested capture **unsupported** for the same reason | **unsupported** (no Android SDK or device on the qualifying host) |
 
 The fingerprints were observed on synthetic fixtures with a full queue, an
 empty queue and a WAL-only tail; all three agree, and opening and observing
@@ -236,23 +237,104 @@ What does **not** prevent it, so other components must handle it:
 - Native threads or deferred work inside the core binary, if any, are outside
   this fence. The core source was not inspected.
 
-Status: **candidate, UNRUN**. It is reasoned from Dart source only. It is not
-implemented and no `NativeSyncQualification` is registered, so
-`NativeSyncQuiescence.disconnectAndObserve` throws
-`UnsupportedCaptureProfile('native_sync_unqualified')` and returns no evidence
-for every profile. Download pause therefore cannot be attested yet, and per
-the owner direction the profile stays unsupported for attested capture. An
-empty queue, a disconnected status or an application lock does not change
-that.
+Status: **qualified on Linux only** (next section). The method is
+implemented as `_DisconnectThenWriterBarrier` in
+`app/lib/capture/native_sync_quiescence.dart` and registered for exactly the
+Linux source profile. For every other platform or profile,
+`NativeSyncQuiescence.disconnectAndObserve` still throws
+`UnsupportedCaptureProfile('native_sync_unqualified')`. An empty queue, a
+disconnected status or an application lock never substitutes for it.
 
-Reachable seam for native qualification: serve a synthetic sync stream through
-a test connector endpoint, and hold `database.writeLock` from the main
-isolate while a line is pending. The sync isolate's next `powersync_control`
-then waits on the shared writer, which is a real paused apply continuation. A
-`disconnectAndObserve` started meanwhile must not return until the writer is
-released, the apply finishes and the isolate exits. This seam uses only
-supported APIs; whether it pauses inside every apply path is what the native
-test must show.
+## Native sync quiescence: Linux qualification
+
+Registered record (`linuxNativeSyncQualificationRecord`):
+
+| Field | Value |
+| --- | --- |
+| Platform | `linux` |
+| Source profile | `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13`, profile evidence digest `b46bac3bc14bda5b3abcc4066f6ee47f70ec3d2e71d2bfad7f4d1b23e70e2a67` |
+| Method id | `powersync-2.2.0/disconnect-awaits-sync-isolate-exit+writer-barrier/v1` |
+| Inspected sources | `powersync-2.2.0` `streaming_sync.dart:98-128,156-191,434-439,474-563`, `native_powersync_database.dart:64-86,161-185,201-236`, `connection_manager.dart:60-86,145-168`, `bucket_storage.dart:118-128`; `sqlite_async-0.14.2` `native_sqlite_database.dart:123-148` (the core binary itself was not inspected) |
+| Native test | `app/integration_test/capture_platform_test.dart#paused_native_apply_and_pending_disconnect_block_observation` with `app/integration_test/support/native_sync_fixture.dart` |
+| Run | 2026-10-10, `make -C app capture-integration CAPTURE_DEVICE=linux`; Linux debug bundle, Flutter 3.44.0, x86_64, kernel `7.1.8-1-cachyos`, core `0.4.13/670c312e` observed in the bundle |
+| `qualificationEvidenceDigest` | `fc18201d073c46e1fc312a7c60542012a9469fbc8cfbbb033eb43296c16b8f4f`, SHA-256 over the canonical JSON of the record (evidence list, method id, platform, profile evidence digest) |
+
+Order of work: the test first ran the real, unmocked method through the
+production adapter class (`NativeSyncQuiescence.withMethodForTesting` with
+`nativeSyncMethodById(candidateNativeSyncMethodId)`, which only skips the
+registry lookup). Every native assertion passed and only the final "is it
+registered" assertion failed. The record was registered after that, and the
+same test now also runs the registered production adapter.
+
+### Fixture
+
+`openNativeSyncFixture(profile)` creates a fresh database in a temporary
+directory, checks that it qualifies as exactly `profile`, and serves the
+PowerSync sync-stream protocol from a loopback HTTP server: NDJSON
+`checkpoint`, `data` (synthetic `exercises` rows) and `checkpoint_complete`
+lines, a synthetic token checked on every request, and a write-checkpoint
+endpoint. The connector never acknowledges an upload. The SDK, its sync
+isolate, the shared connection pool and the native core are all real. The
+core applies each line inside `powersync_control` on the shared writer.
+
+Pausing the apply: `pauseNextApply()` leases the shared pool writer from the
+app isolate (`database.writeLock`) and only then releases the staged
+`checkpoint_complete` line. The sync isolate's `powersync_control` write
+transaction for that line waits for the writer, so the core's apply cannot
+start until `releaseApply()`. The pool exposes no waiter count, so
+`waitUntilApplyPaused()` waits until the line was flushed to the SDK's socket
+plus a settle period, with the row still unapplied. The test then proves the
+pause retroactively. The sync loop discards every line it handles after its
+abort (`streaming_sync.dart:478-481`). A row that is visible once the
+disconnect has completed was therefore received, and its apply pending,
+before the disconnect began. It was also applied before the disconnect, and
+so the evidence, completed.
+
+Rejected seam: a foreign SQLite write lock (`BEGIN IMMEDIATE` on a separate
+plain connection). Tried first, it does not pause anything. The core's
+`BEGIN IMMEDIATE` failed with `SQLITE_BUSY` ("database is locked"), the SDK
+logged a sync error and the line was dropped.
+
+### What the test asserts (all **PASS**)
+
+1. With application tickets drained and the gate held, the apply is paused.
+   `disconnectAndObserve` has not completed after 1.5 s and the row is not
+   applied. After `releaseApply()` the evidence has both booleans true, the
+   row is applied, the SDK reports disconnected, the queue is unchanged and
+   `isCurrent` is true.
+2. A disconnect left pending by an admitted upload that has not finished (in a
+   second database with two queued local writes) yields no evidence after
+   1.5 s while the writer is free. Once the upload finishes (it is refused),
+   evidence appears, and the queue is byte-identical: nothing is cleared or
+   dequeued.
+3. Evidence is rejected for another capture id, another gate generation and
+   the other database, in both directions.
+4. `connectionWillChange` plus a reconnect makes earlier evidence stale.
+5. A 1 s timeout while the apply is paused throws `TimeoutException` with no
+   evidence. After release, the row is applied and the disconnect completes.
+6. A connection change while the observation is in flight throws
+   `native_sync_connection_changed`.
+7. The registry holds exactly this record, and the production adapter
+   produces current evidence.
+
+Mutation check: with `disconnect` not awaited (`unawaited(database.disconnect())`),
+the test **FAILS** (`native_sync_connection_changed`). The assertions
+therefore depend on the disconnect really being awaited.
+
+Limits:
+
+- The run was a debug bundle. A release-mode bundle is UNRUN.
+- The method covers one `PowerSyncDatabase` instance and its sync isolate.
+  Another engine or process with its own database and sync is excluded only
+  through the source-write gate below and the coordinator's process policy,
+  not by this method.
+- Only the `checkpoint_complete` apply path and an in-flight upload were
+  exercised. Other `powersync_control` operations (`start`, `connection`,
+  `completed_upload`, `refreshed_token`, `stop`) run in the same sequential
+  loop on the same writer, so the same disconnect wait covers them, but they
+  were not paused individually.
+- Native threads inside the core binary were not inspected. The observed
+  behavior is that the apply completed before `disconnect()` returned.
 
 ## Adapter contract (host tests, not qualification)
 
@@ -270,13 +352,154 @@ current for a production adapter.
 | Test (`app/test/capture/native_sync_quiescence_test.dart`) | Result |
 | --- | --- |
 | `disconnect_pending_never_returns_evidence`: with the SDK disconnected and the queue empty, a pending disconnect or a pending native drain yields no evidence, and the observation times out. The drain is not requested until the disconnect has completed (an already-drained signal cannot predate it), and evidence appears only after both complete, in that order. | PASS |
-| `unqualified_native_method_refuses_observation`: nothing is registered; the candidate method without registration, and a seam bound to another profile, platform or method, are refused before running; the queue is untouched. | PASS |
+| `unqualified_native_method_refuses_observation`: only the Linux record is registered; the method under any other qualification digest, and a seam bound to another profile, platform or method, are refused before running; the queue is untouched. | PASS |
 | `evidence_rejects_other_database_generation_or_connection`: evidence is rejected for another capture id, gate generation, database instance, profile digest, after `connectionWillChange`, after a change during observation, and for a closed database. | PASS |
+
+## Source-write gate and durable files
+
+`app/lib/capture/source_write_gate.dart` is the facade. The native side is
+the local path plugin `app/packages/reps_capture_platform/`, registered
+through Flutter's generated registrants on channel `reps/capture`. All
+admission decisions are native. The Dart classes hold no admission state, so
+every engine or isolate, each with its own `SourceWriteGate` instance, sees
+the same gate. No existing app writer uses the gate yet; it is a new facade
+only.
+
+- `SourceWriteGate(stateDirectory:)` takes a caller-provided private
+  directory for the lock and state files. Tests always pass a fresh
+  temporary directory.
+- `run(operation, body, {parent})` admits one logical operation and keeps its
+  `SourceTicket(id, generation)` until `body` and every nested
+  `run(..., parent: ticket)` have finished; the native ticket is
+  reference-counted. A nested run is admitted even while admission is
+  closed, because it belongs to admitted work. A parent that already finished
+  is refused (`parent_completed`).
+- `closeAdmission(captureId)` durably records `preparing` with the next
+  generation and returns a `SourcePreparation(captureId, generation, ticket)`.
+  A second capture is refused (`capture_in_progress`).
+- `drain(preparation, timeout:)` completes the preparation ticket, then waits
+  until no ticket of any process is left and takes the exclusive hold,
+  recorded durably as `held`. It returns `SourceHold(captureId, generation)`
+  or throws `drain_timeout`; admission then stays closed.
+- `release(hold, decisionDigest:)` reopens admission only for exactly that
+  capture and generation, and records the decision digest.
+  `holdStatus(hold)` / `isHeld(hold)` answer `held` (live in this process),
+  `recorded` (durable record, no live owner, e.g. after the owner died),
+  `preparing`, `open` or `mismatch`.
+- `CaptureFiles.durableReplace(file, bytes)` and
+  `CaptureFiles.publishNoReplace(staging, finalDirectory)` return only after
+  the native side flushed everything listed below. Any failure throws
+  `SourceGateException` with a stable code (`io_error`, `destination_exists`,
+  `cross_device`, `unsupported`, `invalid_argument`, ...). A missing native
+  implementation is `platform_unavailable`. None of these is ever reported as
+  success.
+
+Channel methods: `admit`, `complete`, `prepare`, `drain`, `release`,
+`verifyHold`, `durableReplace`, `publishNoReplace`, plus the debug-only test
+seam `injectFault`. Every method answers a map with a `code`; an unusable
+lock or rename primitive answers `unsupported`.
+
+### Linux mechanism (`linux/reps_capture_platform_plugin.cc`)
+
+- A `std::mutex` guards the process ticket table, per canonical state
+  directory.
+- `admission.lock` is taken with `flock(LOCK_EX)` for every admission
+  decision (bounded wait of 2 s, then `busy`). The durable record
+  `gate.state` is read and written only while that lock is held.
+- `tickets.lock` is held `LOCK_SH` by every process that has admitted
+  tickets, and `LOCK_EX` by the process holding a capture. The hold is taken
+  with a non-blocking `LOCK_EX` only once this process has no tickets left,
+  so any other process's admitted work keeps it pending. The kernel drops a
+  dead process's locks.
+- `gate.state` holds exactly `reps-capture-gate/1`, `generation=`, `state=`
+  (`open`, `preparing` or `held`), `capture=` and `decision=`. Anything else
+  is `state_corrupt`, which keeps admission closed. The record survives
+  process loss, so a restart cannot admit until an explicit release.
+- `durableReplace` writes a new `O_EXCL` temporary file in the same
+  directory, fsyncs it, `rename(2)`s it and fsyncs the directory. If the file
+  flush fails, it never renames.
+- `publishNoReplace` fsyncs every file and directory under the staging
+  directory, then calls `renameat2(..., RENAME_NOREPLACE)`, then fsyncs both
+  parent directories. Errors map to codes: `EEXIST`/`ENOTEMPTY` to
+  `destination_exists`, `EXDEV` to `cross_device`, and
+  `EINVAL`/`ENOSYS`/`EOPNOTSUPP` (filesystem without the flag) to
+  `unsupported`.
+- The C entry point `reps_capture_native_call` exposes the same gate
+  functions the channel handler uses, so a second OS process can drive the
+  very same code.
+- File primitives run on a worker thread. Gate calls run on the platform
+  thread; they do one small fsynced write at most.
+
+### Android mechanism (`android/src/main/kotlin/.../{SourceGate,CaptureFiles,RepsCapturePlatformPlugin}.kt`)
+
+- A process-wide `ReentrantLock`. One long-lived `FileChannel` per lock
+  file, because POSIX record locks are per process and closing any channel
+  of a file drops them all. `admission.lock` is locked exclusively for each
+  decision; `tickets.lock` is shared or exclusive as on Linux. The record
+  format is the same.
+- Every engine registers the plugin independently and all engines share the
+  same process objects. Calls run on one process-wide worker thread.
+- Durable files use `FileDescriptor.sync()` / `Os.fsync` for files and
+  directories.
+- No-replace publication: `Os.mkdir(final)` atomically reserves the
+  destination (`EEXIST` gives `destination_exists`), then `Os.rename`
+  replaces only that empty reservation. `rename(2)` cannot replace a
+  non-empty directory. This path was chosen because Android has no Java API
+  for `renameat2` and bionic exposes it only from API 30 (minSdk is 24), so
+  using it would add an NDK build. A crash between the two calls leaves an
+  empty, coordinator-owned directory, which recovery can remove with
+  `rmdir(2)`; `rmdir` refuses a non-empty directory.
+- Status: written only. Compile, unit, engine/process race, durability and
+  release-mode tests are all **UNRUN** (no Android SDK or device, Ruling R2).
+  Android is therefore **unsupported**.
+
+### Evidence
+
+Linux: `make -C app capture-integration CAPTURE_DEVICE=linux`, debug bundle,
+2026-10-10, kernel `7.1.8-1-cachyos`, x86_64. File primitives were run on
+`/tmp` (tmpfs) and on a disposable directory under `app/build/` (ext4).
+Android: nothing ran.
+
+| Test (`app/integration_test/capture_platform_test.dart`) | Linux | Android |
+| --- | --- | --- |
+| `nested_ticket_lives_through_last_continuation`: the parent operation returns while its nested file save still runs under the same ticket. Drain stays `preparing` until the save finishes and then holds. A finished parent cannot be reused. | **PASS** | UNRUN |
+| `two_engines_hold_excludes_background_and_process`: a ticket admitted in a background isolate (own `BackgroundIsolateBinaryMessenger`) and one admitted in a second OS process (python3 loading the bundled plugin library and calling `reps_capture_native_call`) each keep the hold pending until completed. Under the hold, the foreground gate, a second gate instance, the background isolate and the other process are all refused (`writesWhileHeld == 0`). The other process can neither prepare nor release that capture. | **PASS** | UNRUN |
+| `missing_plugin_fails_before_write`: an unregistered channel gives `platform_unavailable` before the body runs; `durableReplace` leaves the file untouched; a missing state directory gives `invalid_argument`. | **PASS** | UNRUN |
+| `killed_owner_preserves_durable_hold`: a second process prepares and holds, then is SIGKILLed. A fresh gate cannot admit or start a capture; status is `recorded`. Only a release naming the same capture and generation reopens admission. A process killed while `preparing` also leaves admission closed. | **PASS** | UNRUN |
+| `destination_conflict_never_replaces`: publication to an absent destination moves the whole tree. A non-empty or an empty existing destination is refused with `destination_exists`, existing bytes stay unchanged and staging stays intact. `durableReplace` replaces whole contents and leaves no temporary file. Run on tmpfs and ext4. | **PASS** | UNRUN |
+| `flush_or_directory_sync_failure_blocks`: an injected file or directory flush failure makes `durableReplace` and `publishNoReplace` fail with `io_error`. A failed file flush never renames or publishes. A failed gate-state write refuses `closeAdmission` and leaves admission open. | **PASS** (debug only; fault injection is compiled out of release builds) | UNRUN |
+| `paused_native_apply_and_pending_disconnect_block_observation` | **PASS** (see above) | UNRUN |
+
+Mutation check: with the drain treating another process's shared ticket
+lock as free, `two_engines_hold_excludes_background_and_process` **FAILS**
+("the other process still holds a ticket").
+
+Host contract tests (`app/test/capture/source_write_gate_test.dart`, same six
+names) drive the facade against a Dart reference model of the channel, except
+`missing_plugin_fails_before_write`, which uses the real absent channel. They
+pin facade behavior only and are **PASS**. They prove nothing native.
+
+Limits:
+
+- A dead process's admitted work is not detected by the gate: its shared
+  lock simply disappears. Detecting interrupted work belongs to startup
+  recovery.
+- `release` by any process that names the right capture and generation
+  reopens admission, even while the owner is alive. The owner's exclusive
+  lock then still refuses new tickets in other processes, which is
+  fail-closed. Release is a coordinator decision.
+- Release-mode behavior, flush failures in release builds, and filesystems
+  without `flock` or `RENAME_NOREPLACE` (they answer `unsupported`) were not
+  run.
+- The state directory must be private and on a local filesystem.
 
 ## Native qualification command
 
 `make -C app capture-integration CAPTURE_DEVICE=<device id>` runs
 `integration_test/capture_platform_test.dart` on one explicitly chosen device.
-It fails with a message if `CAPTURE_DEVICE` is unset. That test does not exist
-yet; until it passes on a device, every row above stays unsupported for
-attested capture. Host unit tests never establish Android support.
+It fails with a message if `CAPTURE_DEVICE` is unset. It contains the seven
+native tests in "Source-write gate and durable files" and "Native sync
+quiescence: Linux qualification". On 2026-10-10 it passed with
+`CAPTURE_DEVICE=linux` (debug bundle) in four consecutive runs after
+registration. It has never run on Android. Host unit tests never establish
+Android support.

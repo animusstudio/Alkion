@@ -1,0 +1,23 @@
+name: reps_capture_platform
+description: >-
+  Native source-write gate and durable file publication for Reps capture
+  (Android and Linux). Local path plugin; not published.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: io.github.psychonaut0.reps.capture
+        pluginClass: RepsCapturePlatformPlugin
+      linux:
+        pluginClass: RepsCapturePlatformPlugin

@@ -1,0 +1,742 @@
+// Native capture qualification on one explicitly chosen device:
+//   make -C app capture-integration CAPTURE_DEVICE=linux
+//
+// Everything here runs against the real `reps/capture` plugin and the real
+// PowerSync SDK/core. Every state directory, capture directory and database
+// is a fresh temporary directory; no app-support data is ever touched.
+import 'dart:async';
+import 'dart:io';
+import 'dart:isolate';
+
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:powersync/powersync.dart';
+import 'package:reps_capture_platform/reps_capture_platform.dart';
+import 'package:workout_tracker/capture/capture_profile.dart';
+import 'package:workout_tracker/capture/native_sync_quiescence.dart';
+import 'package:workout_tracker/capture/source_write_gate.dart';
+import 'package:workout_tracker/sync/schema.dart';
+
+import 'support/gate_helper_process.dart';
+import 'support/native_sync_fixture.dart';
+
+Matcher gateCode(String code) =>
+    throwsA(isA<SourceGateException>().having((e) => e.code, 'code', code));
+
+Matcher unsupported(String code) => throwsA(
+  isA<UnsupportedCaptureProfile>().having((e) => e.code, 'code', code),
+);
+
+/// Filesystem roots the file primitives are exercised on: the system temp
+/// directory and a disposable directory inside the build output (the
+/// filesystem the checkout, and typically the home directory, lives on).
+Future<List<Directory>> _scratchRoots() async {
+  final build = File(Platform.resolvedExecutable).parent.parent;
+  return [
+    await Directory.systemTemp.createTemp('reps-capture-native'),
+    await Directory(
+      '${build.path}/capture-native-scratch',
+    ).create(recursive: true).then((d) => d.createTemp('fs')),
+  ];
+}
+
+Future<String> _filesystemType(Directory d) async {
+  final r = await Process.run('stat', ['-f', '-c', '%T', d.path]);
+  return (r.stdout as String).trim();
+}
+
+/// A background isolate that talks to the plugin through its own binary
+/// messenger, as a second engine context in the same process would.
+class _BackgroundGate {
+  _BackgroundGate._(this._isolate, this._commands, this._results);
+
+  final Isolate _isolate;
+  final SendPort _commands;
+  final StreamIterator<Object?> _results;
+
+  static Future<_BackgroundGate> spawn(Directory stateDir) async {
+    final results = ReceivePort();
+    final iterator = StreamIterator<Object?>(results);
+    final isolate = await Isolate.spawn(_main, (
+      RootIsolateToken.instance!,
+      stateDir.path,
+      results.sendPort,
+    ));
+    await iterator.moveNext();
+    return _BackgroundGate._(isolate, iterator.current as SendPort, iterator);
+  }
+
+  /// Asks the isolate to run one write through the gate. With [holdOpen] the
+  /// admitted body waits until [finishHeld].
+  Future<String> write({bool holdOpen = false}) async {
+    _commands.send(holdOpen ? 'write-held' : 'write');
+    await _results.moveNext();
+    return _results.current as String;
+  }
+
+  Future<String> finishHeld() async {
+    _commands.send('finish');
+    await _results.moveNext();
+    return _results.current as String;
+  }
+
+  void kill() => _isolate.kill(priority: Isolate.immediate);
+
+  static Future<void> _main((RootIsolateToken, String, SendPort) args) async {
+    final (token, dir, results) = args;
+    BackgroundIsolateBinaryMessenger.ensureInitialized(token);
+    final gate = SourceWriteGate(stateDirectory: Directory(dir));
+    final commands = ReceivePort();
+    results.send(commands.sendPort);
+    Completer<void>? held;
+    var writes = 0;
+    await for (final command in commands) {
+      switch (command) {
+        case 'write' || 'write-held':
+          final gateOpen = Completer<void>();
+          if (command == 'write-held') held = gateOpen;
+          final running = gate.run('background-write', (_) async {
+            if (command == 'write-held') {
+              results.send('admitted');
+              await gateOpen.future;
+            }
+            writes++;
+          });
+          if (command == 'write') {
+            try {
+              await running;
+              results.send('written:$writes');
+            } on SourceGateException catch (e) {
+              results.send('rejected:${e.code}:$writes');
+            }
+          } else {
+            unawaited(
+              running.then(
+                (_) {},
+                onError: (Object e) {
+                  results.send('rejected:${(e as SourceGateException).code}');
+                },
+              ),
+            );
+          }
+        case 'finish':
+          held?.complete();
+          held = null;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          results.send('finished:$writes');
+      }
+    }
+  }
+}
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  late Directory stateDir;
+  final cleanup = <Future<void> Function()>[];
+
+  setUp(() async {
+    stateDir = await Directory.systemTemp.createTemp('reps-capture-gate');
+  });
+
+  tearDown(() async {
+    for (final c in cleanup.reversed) {
+      await c();
+    }
+    cleanup.clear();
+    if (await stateDir.exists()) await stateDir.delete(recursive: true);
+  });
+
+  test('nested_ticket_lives_through_last_continuation', () async {
+    final gate = SourceWriteGate(stateDirectory: stateDir);
+    final nestedSave = Completer<void>();
+    var nestedSaved = false;
+    late Future<void> nested;
+
+    await gate.run('finish', (ticket) async {
+      nested = gate.run('recordFinished', (inner) async {
+        expect(inner, ticket);
+        await nestedSave.future;
+        await File('${stateDir.path}/finished.json').writeAsString('{}');
+        nestedSaved = true;
+      }, parent: ticket);
+    });
+
+    final preparation = await gate.closeAdmission('capture-nested');
+    var drainCompletedBeforeNestedSave = false;
+    final draining = gate
+        .drain(preparation, timeout: const Duration(seconds: 10))
+        .whenComplete(() {
+          if (!nestedSaved) drainCompletedBeforeNestedSave = true;
+        });
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(drainCompletedBeforeNestedSave, false);
+    expect(
+      await gate.holdStatus(
+        SourceHold(preparation.captureId, preparation.generation),
+      ),
+      'preparing',
+    );
+
+    nestedSave.complete();
+    await nested;
+    final hold = await draining;
+    expect(drainCompletedBeforeNestedSave, false);
+    expect(await gate.isHeld(hold), true);
+
+    await gate.release(hold, decisionDigest: 'a' * 64);
+    late SourceTicket finished;
+    await gate.run('edit', (t) async => finished = t);
+    expect(finished.generation, hold.generation);
+    await expectLater(
+      gate.run('late', (_) async {}, parent: finished),
+      gateCode('parent_completed'),
+    );
+  });
+
+  test('two_engines_hold_excludes_background_and_process', () async {
+    final gate = SourceWriteGate(stateDirectory: stateDir);
+    final background = await _BackgroundGate.spawn(stateDir);
+    cleanup.add(() async => background.kill());
+    final helper = await GateHelperProcess.start();
+    cleanup.add(helper.close);
+
+    // Work admitted in another isolate and in another process before the
+    // capture is prepared keeps the hold from being taken.
+    expect(await background.write(holdOpen: true), 'admitted');
+    final other = await helper.call('admit', stateDir.path, 'notification');
+    expect(other['code'], 'ok');
+
+    final preparation = await gate.closeAdmission('capture-two');
+    var held = false;
+    final holding = gate
+        .drain(preparation, timeout: const Duration(seconds: 20))
+        .whenComplete(() => held = true);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(held, false, reason: 'background ticket still admitted');
+    expect(await background.finishHeld(), 'finished:1');
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(held, false, reason: 'the other process still holds a ticket');
+    expect(
+      (await helper.call('complete', stateDir.path, other['ticket']!))['code'],
+      'ok',
+    );
+    final hold = await holding;
+    expect(await gate.isHeld(hold), true);
+
+    var writesWhileHeld = 0;
+    await expectLater(
+      gate.run('foreground', (_) async => writesWhileHeld++),
+      gateCode('admission_closed'),
+    );
+    final second = SourceWriteGate(stateDirectory: stateDir);
+    await expectLater(
+      second.run('second-engine', (_) async => writesWhileHeld++),
+      gateCode('admission_closed'),
+    );
+    expect(await background.write(), 'rejected:admission_closed:1');
+    final processAdmit = await helper.call('admit', stateDir.path, 'process');
+    expect(processAdmit['code'], 'admission_closed');
+    expect(writesWhileHeld, 0);
+
+    // The other process cannot take or release this capture either.
+    expect(
+      (await helper.call('prepare', stateDir.path, 'capture-other'))['code'],
+      'capture_in_progress',
+    );
+    expect(
+      (await helper.call(
+        'release',
+        stateDir.path,
+        'capture-other',
+        '${hold.generation}',
+        'c' * 64,
+      ))['code'],
+      'mismatch',
+    );
+    await expectLater(
+      gate.closeAdmission('capture-again'),
+      gateCode('capture_in_progress'),
+    );
+
+    await gate.release(hold, decisionDigest: 'd' * 64);
+    expect(await background.write(), 'written:2');
+    expect(
+      (await helper.call('admit', stateDir.path, 'process'))['code'],
+      'ok',
+    );
+  });
+
+  test('missing_plugin_fails_before_write', () async {
+    const absent = RepsCapturePlatform(
+      channel: MethodChannel('reps/capture/not-registered'),
+    );
+    final gate = SourceWriteGate(stateDirectory: stateDir, platform: absent);
+    var successOnMissingPlugin = false;
+    var bodyRan = false;
+    try {
+      await gate.run('write', (_) async => bodyRan = true);
+      successOnMissingPlugin = true;
+    } on SourceGateException catch (e) {
+      expect(e.code, 'platform_unavailable');
+    }
+    expect(successOnMissingPlugin, false);
+    expect(bodyRan, false);
+    final destination = File('${stateDir.path}/journal.json');
+    await destination.writeAsBytes([1, 2, 3], flush: true);
+    await expectLater(
+      const CaptureFiles(platform: absent).durableReplace(destination, [9]),
+      gateCode('platform_unavailable'),
+    );
+    expect(await destination.readAsBytes(), [1, 2, 3]);
+
+    // A missing or unusable state directory is refused, never assumed open.
+    final missing = SourceWriteGate(
+      stateDirectory: Directory('${stateDir.path}/does-not-exist'),
+    );
+    await expectLater(
+      missing.run('write', (_) async => bodyRan = true),
+      gateCode('invalid_argument'),
+    );
+    expect(bodyRan, false);
+  });
+
+  test('killed_owner_preserves_durable_hold', () async {
+    final owner = await GateHelperProcess.start();
+    cleanup.add(owner.close);
+    final prepared = await owner.call(
+      'prepare',
+      stateDir.path,
+      'capture-killed',
+    );
+    expect(prepared['code'], 'ok');
+    final generation = prepared['generation']!;
+    expect(
+      (await owner.call(
+        'complete',
+        stateDir.path,
+        prepared['ticket']!,
+      ))['code'],
+      'ok',
+    );
+    expect(
+      (await owner.call(
+        'drain',
+        stateDir.path,
+        'capture-killed',
+        generation,
+      ))['code'],
+      'held',
+    );
+    await owner.kill();
+
+    // A restarted app cannot admit, and cannot start another capture.
+    final gate = SourceWriteGate(stateDirectory: stateDir);
+    final hold = SourceHold('capture-killed', int.parse(generation));
+    var writes = 0;
+    await expectLater(
+      gate.run('boot-backfill', (_) async => writes++),
+      gateCode('admission_closed'),
+    );
+    expect(writes, 0);
+    expect(await gate.holdStatus(hold), 'recorded');
+    expect(await gate.isHeld(hold), false);
+    await expectLater(
+      gate.closeAdmission('capture-new'),
+      gateCode('capture_in_progress'),
+    );
+
+    // Process loss while preparing also stays closed.
+    await expectLater(
+      gate.release(
+        SourceHold('capture-killed', hold.generation + 1),
+        decisionDigest: 'b' * 64,
+      ),
+      gateCode('mismatch'),
+    );
+    await gate.release(hold, decisionDigest: 'b' * 64);
+    await gate.run('boot-backfill', (_) async => writes++);
+    expect(writes, 1);
+
+    final preparer = await GateHelperProcess.start();
+    cleanup.add(preparer.close);
+    expect(
+      (await preparer.call('prepare', stateDir.path, 'capture-p'))['code'],
+      'ok',
+    );
+    await preparer.kill();
+    await expectLater(
+      gate.run('boot-backfill', (_) async => writes++),
+      gateCode('admission_closed'),
+    );
+    expect(writes, 1);
+  });
+
+  test('destination_conflict_never_replaces', () async {
+    const files = CaptureFiles();
+    for (final root in await _scratchRoots()) {
+      cleanup.add(() => root.delete(recursive: true));
+      final fs = await _filesystemType(root);
+      // ignore: avoid_print
+      print('capture file primitives on ${root.path}: $fs');
+
+      Future<Directory> staged(String name) async {
+        final d = await Directory('${root.path}/$name').create();
+        await File(
+          '${d.path}/manifest.json',
+        ).writeAsString('{"staged":"$name"}');
+        await Directory('${d.path}/stores').create();
+        await File('${d.path}/stores/a.json').writeAsString('[]');
+        return d;
+      }
+
+      // An absent destination is published whole.
+      final first = await staged('staging-1');
+      final published = Directory('${root.path}/capture-1');
+      await files.publishNoReplace(first, published);
+      expect(await first.exists(), false);
+      expect(
+        await File('${published.path}/manifest.json').readAsString(),
+        '{"staged":"staging-1"}',
+      );
+
+      // A non-empty and an empty existing destination are both refused.
+      final originalBytes = await File(
+        '${published.path}/manifest.json',
+      ).readAsBytes();
+      final second = await staged('staging-2');
+      await expectLater(
+        files.publishNoReplace(second, published),
+        gateCode('destination_exists'),
+      );
+      final bytesAtExistingDestination = await File(
+        '${published.path}/manifest.json',
+      ).readAsBytes();
+      expect(bytesAtExistingDestination, originalBytes);
+      expect(await File('${second.path}/manifest.json').exists(), true);
+
+      final empty = await Directory('${root.path}/capture-empty').create();
+      await expectLater(
+        files.publishNoReplace(second, empty),
+        gateCode('destination_exists'),
+      );
+      expect(await empty.list().isEmpty, true);
+      expect(await second.exists(), true);
+
+      // durableReplace swaps whole contents and leaves no temporary file.
+      final journal = File('${root.path}/journal.json');
+      await files.durableReplace(journal, [1, 2, 3]);
+      await files.durableReplace(journal, [4, 5]);
+      expect(await journal.readAsBytes(), [4, 5]);
+      expect(
+        await root.list().where((e) => e.path.contains('.capture-tmp')).isEmpty,
+        true,
+      );
+    }
+  });
+
+  test('flush_or_directory_sync_failure_blocks', () async {
+    const files = CaptureFiles();
+    final root = await Directory.systemTemp.createTemp('reps-capture-faults');
+    cleanup.add(() => root.delete(recursive: true));
+    final journal = File('${root.path}/journal.json');
+    await journal.writeAsBytes([1], flush: true);
+
+    var reportedSuccess = 0;
+    Future<void> attempt(Future<void> Function() op, String code) async {
+      try {
+        await op();
+        reportedSuccess++;
+      } on SourceGateException catch (e) {
+        expect(e.code, code);
+      }
+    }
+
+    await files.injectFaultForTesting('file_sync');
+    await attempt(() => files.durableReplace(journal, [2]), 'io_error');
+    expect(
+      await journal.readAsBytes(),
+      [1],
+      reason: 'a failed file flush never renames over the destination',
+    );
+    await files.injectFaultForTesting('dir_sync');
+    await attempt(() => files.durableReplace(journal, [3]), 'io_error');
+    expect(
+      await root.list().where((e) => e.path.contains('.capture-tmp')).isEmpty,
+      true,
+    );
+
+    final staging = await Directory('${root.path}/staging').create();
+    await File('${staging.path}/manifest.json').writeAsString('{}');
+    final finalDir = Directory('${root.path}/capture');
+    await files.injectFaultForTesting('file_sync');
+    await attempt(() => files.publishNoReplace(staging, finalDir), 'io_error');
+    expect(
+      await finalDir.exists(),
+      false,
+      reason: 'a failed flush never publishes',
+    );
+    await files.injectFaultForTesting('dir_sync');
+    await attempt(() => files.publishNoReplace(staging, finalDir), 'io_error');
+    expect(reportedSuccess, 0);
+
+    // A failed durable gate-state write never closes or opens admission
+    // silently: the closure is refused and admission stays as it was.
+    final gate = SourceWriteGate(stateDirectory: stateDir);
+    await files.injectFaultForTesting('file_sync');
+    await expectLater(
+      gate.closeAdmission('capture-fault'),
+      gateCode('io_error'),
+    );
+    var writes = 0;
+    await gate.run('write', (_) async => writes++);
+    expect(writes, 1);
+  });
+
+  test(
+    'paused_native_apply_and_pending_disconnect_block_observation',
+    () async {
+      final probe = await Directory.systemTemp.createTemp(
+        'reps-native-profile',
+      );
+      cleanup.add(() => probe.delete(recursive: true));
+      final probeDb = PowerSyncDatabase(
+        schema: schema,
+        path: '${probe.path}/workout-tracker.db',
+      );
+      await probeDb.initialize();
+      final runtime = qualifiedSourceProfiles
+          .singleWhere((p) => p.runtime.platform == Platform.operatingSystem)
+          .runtime;
+      final profile = await qualifyCaptureProfile(probeDb, runtime);
+      final observedCore = (await probeDb.get(
+        'SELECT powersync_rs_version() AS v',
+      ))['v'];
+      await probeDb.close();
+      // ignore: avoid_print
+      print(
+        'native core in this bundle: $observedCore; profile ${profile.profileId}',
+      );
+
+      final candidate = linuxNativeSyncQualificationRecord;
+      expect(
+        candidate.qualification.profileEvidenceDigest,
+        profile.evidenceDigest,
+      );
+      expect(candidate.qualification.methodId, candidateNativeSyncMethodId);
+      // The real method, unmocked; the adapter is the production class.
+      final quiescence = NativeSyncQuiescence.withMethodForTesting(
+        qualification: candidate.qualification,
+        method: nativeSyncMethodById(candidateNativeSyncMethodId)!,
+      );
+
+      final f = await openNativeSyncFixture(profile);
+      cleanup.add(f.close);
+      final queued = await openNativeSyncFixture(profile, queue: true);
+      cleanup.add(queued.close);
+
+      // Application tickets are fully drained and the gate is held: none of
+      // that is evidence about native sync.
+      final gate = SourceWriteGate(stateDirectory: stateDir);
+      final hold = await gate.drain(
+        await gate.closeAdmission('capture-native'),
+        timeout: const Duration(seconds: 5),
+      );
+      expect(await gate.isHeld(hold), true);
+
+      quiescence.connectionWillChange(f.database);
+      await f.connect();
+      await f.deliverCheckpoint([const SyntheticRow('ex-1', 'Synthetic one')]);
+      await f.stageCheckpoint([const SyntheticRow('ex-2', 'Synthetic two')]);
+      final queueBefore = await f.queue();
+
+      // 1. The native apply continuation is paused.
+      await f.pauseNextApply();
+      await f.waitUntilApplyPaused(unappliedIds: ['ex-2']);
+      var observationCompletedWhileNativeApplyPaused = false;
+      final observing = quiescence
+          .disconnectAndObserve(
+            f.database,
+            profile,
+            captureId: hold.captureId,
+            gateGeneration: hold.generation,
+            timeout: const Duration(seconds: 30),
+          )
+          .whenComplete(
+            () => observationCompletedWhileNativeApplyPaused = true,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      expect(observationCompletedWhileNativeApplyPaused, false);
+      expect(await f.visible('ex-2'), false);
+      expect(await gate.isHeld(hold), true);
+
+      await f.releaseApply();
+      final evidence = await observing;
+      expect(evidence.disconnectCompleted && evidence.nativeApplyDrained, true);
+      // Retroactive proof that the paused continuation was the apply: lines
+      // received after the abort are discarded, so this row was received, and
+      // its apply pending, before the disconnect began; and it was applied
+      // before the disconnect (hence the evidence) completed.
+      expect(await f.visible('ex-2'), true);
+      expect(f.database.currentStatus.connected, false);
+      expect(await f.queue(), queueBefore);
+      expect(
+        quiescence.isCurrent(
+          evidence,
+          f.database,
+          profile,
+          captureId: hold.captureId,
+          gateGeneration: hold.generation,
+        ),
+        true,
+      );
+
+      // 2. Disconnect pending while the writer is free: an admitted upload is
+      // still in flight in the other database.
+      final queueRows = await queued.queue();
+      expect(queueRows, hasLength(2));
+      queued.holdUploads();
+      quiescence.connectionWillChange(queued.database);
+      await queued.connect();
+      await _until(() async => queued.uploadCalls > 0);
+      expect(await queued.writerAvailable(), true);
+      var observationCompletedWhileDisconnectPending = false;
+      final observingQueued = quiescence
+          .disconnectAndObserve(
+            queued.database,
+            profile,
+            captureId: hold.captureId,
+            gateGeneration: hold.generation,
+            timeout: const Duration(seconds: 30),
+          )
+          .whenComplete(
+            () => observationCompletedWhileDisconnectPending = true,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      expect(observationCompletedWhileDisconnectPending, false);
+      queued.releaseUploads();
+      final queuedEvidence = await observingQueued;
+      expect(
+        queuedEvidence.disconnectCompleted && queuedEvidence.nativeApplyDrained,
+        true,
+      );
+      expect(
+        await queued.queue(),
+        queueRows,
+        reason: 'observation never clears or dequeues the source queue',
+      );
+
+      // 3. Mismatched or stale evidence is rejected.
+      bool current(
+        NativeSyncPauseEvidence e,
+        PowerSyncDatabase d, {
+        String? captureId,
+        int? generation,
+      }) => quiescence.isCurrent(
+        e,
+        d,
+        profile,
+        captureId: captureId ?? hold.captureId,
+        gateGeneration: generation ?? hold.generation,
+      );
+      expect(current(evidence, f.database, captureId: 'capture-other'), false);
+      expect(
+        current(evidence, f.database, generation: hold.generation + 1),
+        false,
+      );
+      expect(current(evidence, queued.database), false);
+      expect(current(queuedEvidence, f.database), false);
+      expect(current(queuedEvidence, queued.database), true);
+
+      // 4. A reconnect changes the epoch; the earlier evidence is stale.
+      quiescence.connectionWillChange(f.database);
+      expect(current(evidence, f.database), false);
+      await f.connect();
+      expect(f.streamRequests, 2);
+      expect(current(evidence, f.database), false);
+
+      // 5. Timeout while the apply is paused yields no evidence.
+      await f.stageCheckpoint([const SyntheticRow('ex-3', 'Synthetic three')]);
+      await f.pauseNextApply();
+      await f.waitUntilApplyPaused(unappliedIds: ['ex-3']);
+      await expectLater(
+        quiescence.disconnectAndObserve(
+          f.database,
+          profile,
+          captureId: hold.captureId,
+          gateGeneration: hold.generation,
+          timeout: const Duration(seconds: 1),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      await f.releaseApply();
+      await _until(() async => !f.database.currentStatus.connected);
+      expect(await f.visible('ex-3'), true);
+
+      // 6. A connection change during observation yields no evidence.
+      quiescence.connectionWillChange(f.database);
+      await f.connect();
+      await f.stageCheckpoint([const SyntheticRow('ex-4', 'Synthetic four')]);
+      await f.pauseNextApply();
+      await f.waitUntilApplyPaused(unappliedIds: ['ex-4']);
+      final changing = quiescence.disconnectAndObserve(
+        f.database,
+        profile,
+        captureId: hold.captureId,
+        gateGeneration: hold.generation,
+        timeout: const Duration(seconds: 30),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      quiescence.connectionWillChange(f.database);
+      await f.releaseApply();
+      await expectLater(
+        changing,
+        unsupported('native_sync_connection_changed'),
+      );
+      expect(await f.queue(), queueBefore);
+      expect(await queued.queue(), queueRows);
+
+      // Only this passing run authorizes the registration below.
+      expect(
+        registeredNativeSyncQualifications,
+        contains(candidate.qualification),
+      );
+      expect(nativeSyncQualificationFor(profile), candidate.qualification);
+      final production = NativeSyncQuiescence(
+        qualification: nativeSyncQualificationFor(profile)!,
+      );
+      quiescence.connectionWillChange(f.database);
+      await f.connect();
+      final productionEvidence = await production.disconnectAndObserve(
+        f.database,
+        profile,
+        captureId: hold.captureId,
+        gateGeneration: hold.generation,
+        timeout: const Duration(seconds: 30),
+      );
+      expect(
+        production.isCurrent(
+          productionEvidence,
+          f.database,
+          profile,
+          captureId: hold.captureId,
+          gateGeneration: hold.generation,
+        ),
+        true,
+      );
+      await gate.release(hold, decisionDigest: 'e' * 64);
+    },
+    timeout: const Timeout(Duration(minutes: 5)),
+  );
+}
+
+Future<void> _until(Future<bool> Function() condition) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 20));
+  while (!await condition()) {
+    if (DateTime.now().isAfter(deadline)) {
+      throw TimeoutException('condition not reached');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
+}

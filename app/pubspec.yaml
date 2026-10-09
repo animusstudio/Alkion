@@ -54,9 +54,15 @@ dependencies:
   # Android OTA: downloads the release APK with progress and launches the OS
   # installer (in-app updates). Android-only; no-op on Linux desktop.
   ota_update: ^7.1.0
+  # Native source-write gate and durable capture publication (local plugin).
+  reps_capture_platform:
+    path: packages/reps_capture_platform
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  # On-device native capture qualification (make -C app capture-integration).
+  integration_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   # Generates the Android launcher icon (incl. adaptive) from assets/icon/.

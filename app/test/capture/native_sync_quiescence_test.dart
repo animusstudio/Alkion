@@ -164,9 +164,11 @@ void main() {
     final queued = await pendingUploadCount(database);
     expect(queued, greaterThan(0));
 
-    // Nothing is registered until a real native test qualifies it.
-    expect(registeredNativeSyncQualifications, isEmpty);
-    expect(nativeSyncQualificationFor(profile), isNull);
+    // Only the exact combination a real native test qualified is
+    // registered; a qualification for the same method with any other
+    // evidence digest is not.
+    expect(registeredNativeSyncQualifications,
+        [linuxNativeSyncQualificationRecord.qualification]);
 
     final candidate = NativeSyncQualification(
       platform: profile.runtime.platform,

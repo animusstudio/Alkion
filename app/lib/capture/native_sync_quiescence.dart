@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 import 'package:powersync/powersync.dart' show PowerSyncDatabase, uuid;
 
@@ -42,17 +44,96 @@ class NativeSyncQualification {
 }
 
 /// Exact combinations whose native quiescence has been proven by a real
-/// native test. None yet: until one passes, every profile is unsupported and
-/// no capture may attest that download/native apply is paused.
-const registeredNativeSyncQualifications = <NativeSyncQualification>[];
+/// native test. Only Linux is registered (see
+/// docs/reps-capture-qualification.md); every other combination stays
+/// unsupported and no capture may attest that download/native apply is
+/// paused there.
+final List<NativeSyncQualification> registeredNativeSyncQualifications =
+    List.unmodifiable([linuxNativeSyncQualificationRecord.qualification]);
 
-/// The candidate mechanism identified in the pinned SDK source (see
+/// The mechanism identified in the pinned SDK source (see
 /// docs/reps-capture-qualification.md): a non-clearing `disconnect()`, whose
 /// completion waits for the sync isolate to exit, followed by one exclusive
-/// acquisition of the shared SQLite writer. A candidate only — it is neither
-/// implemented here nor qualified.
+/// lease of the shared SQLite pool writer.
 const candidateNativeSyncMethodId =
     'powersync-2.2.0/disconnect-awaits-sync-isolate-exit+writer-barrier/v1';
+
+/// A native qualification with the evidence it was recorded from. The
+/// [qualification]'s `qualificationEvidenceDigest` is SHA-256 over the
+/// canonical JSON of this whole record.
+@immutable
+class NativeSyncQualificationRecord {
+  const NativeSyncQualificationRecord({
+    required this.platform,
+    required this.profileEvidenceDigest,
+    required this.methodId,
+    required this.evidence,
+  });
+
+  final String platform;
+  final String profileEvidenceDigest;
+  final String methodId;
+
+  /// Inspected sources, the native test and its recorded run.
+  final List<String> evidence;
+
+  String get evidenceDigest => sha256
+      .convert(utf8.encode(jsonEncode({
+        'evidence': evidence,
+        'method_id': methodId,
+        'platform': platform,
+        'profile_evidence_digest': profileEvidenceDigest,
+      })))
+      .toString();
+
+  NativeSyncQualification get qualification => NativeSyncQualification(
+        platform: platform,
+        profileEvidenceDigest: profileEvidenceDigest,
+        methodId: methodId,
+        qualificationEvidenceDigest: evidenceDigest,
+      );
+}
+
+/// The Linux record for [candidateNativeSyncMethodId] on the registered Linux
+/// source profile.
+final NativeSyncQualificationRecord linuxNativeSyncQualificationRecord =
+    NativeSyncQualificationRecord(
+  platform: 'linux',
+  profileEvidenceDigest: qualifiedSourceProfiles
+      .singleWhere((p) => p.runtime.platform == 'linux')
+      .evidenceDigest,
+  methodId: candidateNativeSyncMethodId,
+  evidence: const [
+    'source:powersync-2.2.0/lib/src/sync/streaming_sync.dart:98-128,156-191,434-439,474-563',
+    'source:powersync-2.2.0/lib/src/database/native/native_powersync_database.dart:64-86,161-185,201-236',
+    'source:powersync-2.2.0/lib/src/sync/connection_manager.dart:60-86,145-168',
+    'source:powersync-2.2.0/lib/src/sync/bucket_storage.dart:118-128',
+    'source:sqlite_async-0.14.2/lib/src/native/database/native_sqlite_database.dart:123-148',
+    'test:app/integration_test/capture_platform_test.dart#paused_native_apply_and_pending_disconnect_block_observation',
+    'fixture:app/integration_test/support/native_sync_fixture.dart#pool-writer-lease-pause',
+    'run:2026-10-10 make -C app capture-integration CAPTURE_DEVICE=linux; '
+        'debug bundle, Flutter 3.44.0, x86_64, core 0.4.13/670c312e; '
+        'all native assertions PASS before registration',
+  ],
+);
+
+/// Awaits the non-clearing disconnect, then leases the shared pool writer
+/// once. Every isolate of the process writes through that one writer, so a
+/// lease granted after the sync isolate exited fences any transaction it
+/// left behind.
+class _DisconnectThenWriterBarrier implements NativeSyncMethod {
+  const _DisconnectThenWriterBarrier();
+
+  @override
+  String get methodId => candidateNativeSyncMethodId;
+
+  @override
+  Future<void> disconnect(PowerSyncDatabase database) => database.disconnect();
+
+  @override
+  Future<void> awaitNativeApplyDrained(PowerSyncDatabase database) =>
+      database.writeLock((_) async {});
+}
 
 /// The registered qualification for [profile] on its platform, if any.
 NativeSyncQualification? nativeSyncQualificationFor(QualifiedProfile profile) {
@@ -79,8 +160,17 @@ abstract interface class NativeSyncMethod {
   Future<void> awaitNativeApplyDrained(PowerSyncDatabase database);
 }
 
-/// Native methods by id, added alongside their qualification.
-const Map<String, NativeSyncMethod> _nativeSyncMethods = {};
+/// Native methods by id. A method only produces evidence for a
+/// combination listed in [registeredNativeSyncQualifications].
+const Map<String, NativeSyncMethod> _nativeSyncMethods = {
+  candidateNativeSyncMethodId: _DisconnectThenWriterBarrier(),
+};
+
+/// The real method for [methodId], for the native qualification test, which
+/// must run it before any registration exists.
+@visibleForTesting
+NativeSyncMethod? nativeSyncMethodById(String methodId) =>
+    _nativeSyncMethods[methodId];
 
 /// Proof that, for one capture attempt and gate generation, one database
 /// instance's sync connection was disconnected and its native apply drained.
