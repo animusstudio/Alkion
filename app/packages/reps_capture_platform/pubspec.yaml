@@ -13,11 +13,16 @@ dependencies:
   flutter:
     sdk: flutter
 
+# Only Linux is enabled. The Android sources under android/ have never been
+# compiled (no Android SDK on the qualifying host), so Android is left out of
+# `platforms` and app builds do not include them; on Android every call fails
+# closed with MissingPluginException (`platform_unavailable`). Enabling it
+# needs these two lines plus compile and device qualification on an SDK host:
+#   android:
+#     package: io.github.psychonaut0.reps.capture
+#     pluginClass: RepsCapturePlatformPlugin
 flutter:
   plugin:
     platforms:
-      android:
-        package: io.github.psychonaut0.reps.capture
-        pluginClass: RepsCapturePlatformPlugin
       linux:
         pluginClass: RepsCapturePlatformPlugin

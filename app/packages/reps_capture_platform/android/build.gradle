@@ -1,5 +1,7 @@
 // Android build of the reps/capture plugin. Mirrors the Flutter 3.44 plugin
-// template (AGP 9 with built-in Kotlin), in Groovy.
+// template (AGP 9 with built-in Kotlin), in Groovy. NOT enabled: the plugin's
+// pubspec lists only linux, so no app build includes this module until it is
+// compiled and qualified on an Android SDK host.
 group = "io.github.psychonaut0.reps.capture"
 version = "1.0"
 
@@ -37,5 +39,11 @@ android {
 
     defaultConfig {
         minSdk = 24
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
