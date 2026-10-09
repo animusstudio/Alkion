@@ -4,7 +4,7 @@
 FLUTTER := fvm flutter
 DART := fvm dart
 
-.PHONY: help install get scaffold-linux scaffold-android analyze test fmt format build build-apk build-apk-release run run-android doctor devices clean
+.PHONY: help install get scaffold-linux scaffold-android analyze test capture-integration fmt format build build-apk build-apk-release run run-android doctor devices clean
 
 help:
 	@echo "Targets (run from repo root as 'make -C app <target>'):"
@@ -14,6 +14,7 @@ help:
 	@echo "  scaffold-android  Generate the Android platform folder"
 	@echo "  analyze        Static analysis (flutter analyze)"
 	@echo "  test           Run all Flutter tests"
+	@echo "  capture-integration  Native capture qualification; needs CAPTURE_DEVICE=<id>"
 	@echo "  fmt            Format Dart sources in place (dart format)"
 	@echo "  format         Verify formatting, fail if changes needed (CI)"
 	@echo "  build          Build the Linux desktop bundle (compiles native libs)"
@@ -43,6 +44,15 @@ analyze:
 # Optional: TEST=test/path/foo_test.dart to run a single file.
 test:
 	$(FLUTTER) test $(TEST)
+
+# Native capture qualification runs on one explicitly chosen device; no device
+# is ever selected implicitly. Example: CAPTURE_DEVICE=linux
+capture-integration:
+	@if [ -z "$(CAPTURE_DEVICE)" ]; then \
+		echo "capture-integration: set CAPTURE_DEVICE=<device id> explicitly (see 'make -C app devices')" >&2; \
+		exit 2; \
+	fi
+	$(FLUTTER) test integration_test/capture_platform_test.dart -d $(CAPTURE_DEVICE)
 
 fmt:
 	$(DART) format .

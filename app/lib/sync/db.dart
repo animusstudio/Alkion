@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:powersync/powersync.dart';
 
 import '../auth/auth_store.dart';
+import '../capture/capture_profile.dart';
 import 'connector.dart';
 import 'schema.dart';
 
@@ -24,15 +25,41 @@ PowerSyncDatabase get db {
 @visibleForTesting
 set dbForTests(PowerSyncDatabase? d) => _db = d;
 
+/// Where the app keeps its local PowerSync database.
+Future<String> appDatabasePath() async {
+  final dir = await getApplicationSupportDirectory();
+  return p.join(dir.path, 'workout-tracker.db');
+}
+
 /// Opens (or returns) the local PowerSync database. As of PowerSync v2 the
 /// `powersync` package loads its SQLite extension via build hooks, so no
 /// separate libs package or native path wiring is needed on Linux desktop.
 Future<PowerSyncDatabase> openDatabase() async {
   if (_db != null) return _db!;
-  final dir = await getApplicationSupportDirectory();
-  final path = p.join(dir.path, 'workout-tracker.db');
+  final path = await appDatabasePath();
   final database = PowerSyncDatabase(schema: schema, path: path);
   await database.initialize();
+  _db = database;
+  return database;
+}
+
+/// Opens the database at [path] for capture, before normal startup: its
+/// layout and core are first inspected read-only and must match [profile]
+/// exactly; only then is it initialized, by that profile's procedure alone.
+/// Never creates a missing database, connects, clears or runs app backfills.
+///
+/// The result becomes the app-wide [db], so a later [openDatabase] returns
+/// this same instance. Throws [UnsupportedCaptureProfile] (leaving the source
+/// untouched) for anything not exactly qualified, or if a database is
+/// already open.
+Future<PowerSyncDatabase> openCaptureDatabase({
+  required String path,
+  required QualifiedOpenProfile profile,
+}) async {
+  if (_db != null) {
+    throw const UnsupportedCaptureProfile('database_already_open');
+  }
+  final database = await openQualifiedSource(path: path, profile: profile);
   _db = database;
   return database;
 }
