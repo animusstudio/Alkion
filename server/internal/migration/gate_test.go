@@ -1,0 +1,249 @@
+package migration
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"workout-tracker/server/internal/db"
+)
+
+func testAccount(t *testing.T) (*pgxpool.Pool, string, TransitionCommand) {
+	t.Helper()
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := db.Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	var user, instance string
+	if err := pool.QueryRow(ctx, `INSERT INTO users(email,password_hash) VALUES (gen_random_uuid()::text||'@example.invalid','synthetic') RETURNING id::text`).Scan(&user); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1::uuid`, user) })
+	if err := pool.QueryRow(ctx, `SELECT instance_id::text FROM legacy_server_instance WHERE singleton`).Scan(&instance); err != nil {
+		t.Fatal(err)
+	}
+	var transition, operation string
+	if err := pool.QueryRow(ctx, `SELECT gen_random_uuid()::text,gen_random_uuid()::text`).Scan(&transition, &operation); err != nil {
+		t.Fatal(err)
+	}
+	command := TransitionCommand{Key: TransitionKey{Scope: ScopeBinding{OldInstanceID: instance, OldAccountID: user, HubInstanceID: "00000000-0000-4000-8000-000000000001", HubSpaceID: "00000000-0000-4000-8000-000000000002", HubSourceID: "00000000-0000-4000-8000-000000000003"}, TransitionID: transition, Epoch: 1}, OperationID: operation}
+	command.RequestHash = FreezeRequestHash(command)
+	return pool, user, command
+}
+
+func TestFreezeReceiptSnapshotAndIdentity(t *testing.T) {
+	pool, user, command := testAccount(t)
+	ctx := context.Background()
+	store := NewStore(pool)
+	receipt, err := store.Freeze(ctx, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot []byte
+	if err := pool.QueryRow(ctx, `SELECT snapshot FROM account_writer_freeze_receipts WHERE account_id=$1::uuid`, user).Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(snapshot)
+	if receipt.Digest != hex.EncodeToString(sum[:]) {
+		t.Fatal("persisted snapshot does not reproduce receipt digest")
+	}
+	var evidence struct {
+		Families []struct {
+			Name string
+			Rows []json.RawMessage
+		}
+	}
+	if err := json.Unmarshal(snapshot, &evidence); err != nil {
+		t.Fatal(err)
+	}
+	if len(evidence.Families) != 7 {
+		t.Fatalf("families: %d", len(evidence.Families))
+	}
+	for _, change := range []func(*TransitionCommand){
+		func(c *TransitionCommand) { c.OperationID = "00000000-0000-4000-8000-000000000099" },
+		func(c *TransitionCommand) { c.Key.Scope.HubSpaceID = "00000000-0000-4000-8000-000000000099" },
+		func(c *TransitionCommand) { c.Key.Scope.OldInstanceID = "00000000-0000-4000-8000-000000000099" },
+		func(c *TransitionCommand) { c.Key.Epoch++ },
+		func(c *TransitionCommand) { c.Key.TransitionID = "00000000-0000-4000-8000-000000000099" },
+	} {
+		changed := command
+		change(&changed)
+		changed.RequestHash = FreezeRequestHash(changed)
+		if _, err := store.Freeze(ctx, changed); err == nil {
+			t.Fatalf("changed freeze accepted: %+v", changed)
+		}
+	}
+	changed := command
+	changed.RequestHash = strings.Repeat("0", 64)
+	if _, err := store.Freeze(ctx, changed); err == nil {
+		t.Fatal("unvalidated request hash accepted")
+	}
+	// Retirement and canceled retries cannot reopen authority or destroy evidence.
+	if _, err := pool.Exec(ctx, `UPDATE account_writer_authority SET state='RETIRED' WHERE account_id=$1::uuid`, user); err != nil {
+		t.Fatal(err)
+	}
+	recoveredPool, err := pgxpool.NewWithConfig(ctx, pool.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recoveredPool.Close()
+	again, err := NewStore(recoveredPool).Freeze(ctx, command)
+	if err != nil || again != receipt {
+		t.Fatalf("retry: %+v %v", again, err)
+	}
+	expired, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := store.Freeze(expired, command); err == nil {
+		t.Fatal("canceled freeze succeeded")
+	}
+	var state string
+	if err := pool.QueryRow(ctx, `SELECT state FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&state); err != nil || state != "RETIRED" {
+		t.Fatalf("retirement reopened: %s %v", state, err)
+	}
+}
+
+func TestFreezeReceiptCannotBeRewrittenOrDeleted(t *testing.T) {
+	pool, user, command := testAccount(t)
+	ctx := context.Background()
+	if _, err := NewStore(pool).Freeze(ctx, command); err != nil {
+		t.Fatal(err)
+	}
+	for _, sql := range []string{`UPDATE account_writer_freeze_receipts SET request_hash=repeat('0',64) WHERE account_id=$1::uuid`, `DELETE FROM account_writer_freeze_receipts WHERE account_id=$1::uuid`, `DELETE FROM account_writer_authority WHERE account_id=$1::uuid`, `DELETE FROM users WHERE id=$1::uuid`} {
+		if _, err := pool.Exec(ctx, sql, user); err == nil {
+			t.Errorf("immutable authority evidence removed: %s", sql)
+		}
+	}
+}
+
+func TestFreezeFailureRollsBackGate(t *testing.T) {
+	pool, user, command := testAccount(t)
+	ctx := context.Background()
+	// A failure after snapshot/UPDATE must undo the state change too.
+	schema := "freeze_failure_" + strings.ReplaceAll(user, "-", "")
+	if _, err := pool.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE") }()
+	if _, err := pool.Exec(ctx, "CREATE TABLE "+schema+".account_writer_freeze_receipts (LIKE public.account_writer_freeze_receipts INCLUDING ALL, CHECK (false))"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := pool.Config()
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema + ",public"
+	isolated, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer isolated.Close()
+	if _, err := NewStore(isolated).Freeze(ctx, command); err == nil {
+		t.Fatal("receipt failure accepted")
+	}
+	var gates int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&gates); err != nil {
+		t.Fatal(err)
+	}
+	if gates != 0 {
+		t.Fatal("failed freeze committed its gate")
+	}
+	if _, err := NewStore(pool).Freeze(ctx, command); err != nil {
+		t.Fatalf("freeze retry after rollback: %v", err)
+	}
+}
+
+func TestLockAccountWriterUniqueInitialization(t *testing.T) {
+	pool, user, _ := testAccount(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var wg sync.WaitGroup
+	results := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tx, err := pool.Begin(ctx)
+			if err != nil {
+				results <- err
+				return
+			}
+			defer tx.Rollback(context.Background())
+			gate, err := LockAccountWriter(ctx, tx, user)
+			if err == nil && (gate.State != OldActive || gate.Epoch != 0) {
+				t.Error("initial state differs")
+			}
+			if err == nil {
+				err = tx.Commit(ctx)
+			}
+			results <- err
+		}()
+	}
+	wg.Wait()
+	close(results)
+	for err := range results {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("initial account rows=%d err=%v", n, err)
+	}
+}
+
+func TestFreezeRejectsZeroIdentity(t *testing.T) {
+	pool, _, command := testAccount(t)
+	command.Key.Scope.HubInstanceID = "00000000-0000-0000-0000-000000000000"
+	command.RequestHash = FreezeRequestHash(command)
+	if _, err := NewStore(pool).Freeze(context.Background(), command); err == nil {
+		t.Error("zero instance identity admitted")
+	}
+}
+
+func TestSnapshotDigestIndependentOfSessionTimezone(t *testing.T) {
+	pool, user, _ := testAccount(t)
+	ctx := context.Background()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	gate, err := LockAccountWriter(ctx, tx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO bodyweight_logs (user_id,date,weight_kg,created_at) VALUES ($1::uuid,'2026-10-09',80,'2026-10-09T10:00:00Z')`, user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `SET LOCAL TIME ZONE 'Europe/Rome'`); err != nil {
+		t.Fatal(err)
+	}
+	first, err := snapshotAccount(ctx, tx, gate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `SET LOCAL TIME ZONE 'UTC'`); err != nil {
+		t.Fatal(err)
+	}
+	second, err := snapshotAccount(ctx, tx, gate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Fatal("snapshot digest encoding depends on session timezone")
+	}
+}

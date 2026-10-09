@@ -149,3 +149,14 @@ secret in git). Grant it `LOGIN` + a password out-of-band, reading the value fro
 
 The PowerSync service connects to the source database as this role; its password
 must match `PS_REPLICATION_PASSWORD` in `infra/.env`.
+
+## Account writer authority
+
+The legacy upload route now checks a durable account writer gate inside its
+transaction before reading the request body. Frozen/retired accounts and gate
+failures return queue-preserving 503; expired authentication remains 401. Uploads
+are bounded to 1 MiB and 10 seconds. The internal freeze primitive records an
+immutable snapshot and receipt; no external migration controls are exposed.
+
+See [the writer inventory and remaining readiness gates](docs/account-writer-fence.md).
+This implementation has not been deployed or certified for a migration cutover.

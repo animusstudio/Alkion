@@ -44,6 +44,8 @@ func NewRouter(d Deps) *chi.Mux {
 			r.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(d.Verifier, d.APIAudience))
 				pr.Post("/auth/powersync-token", d.Auth.PowerSyncToken)
+				// Authentication must run before Upload; Upload locks current
+				// authority inside its SQL transaction before reading the body.
 				if d.Upload != nil {
 					pr.Post("/sync/upload", d.Upload.Upload)
 				}

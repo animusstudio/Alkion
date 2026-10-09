@@ -96,7 +96,7 @@ func main() {
 			Upload:      uploadHandler,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
+		ReadTimeout:       api.UploadTimeout,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
