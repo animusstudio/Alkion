@@ -16,6 +16,7 @@ import (
 	"workout-tracker/server/internal/auth"
 	"workout-tracker/server/internal/config"
 	"workout-tracker/server/internal/db"
+	"workout-tracker/server/internal/migration"
 )
 
 func main() {
@@ -72,6 +73,38 @@ func main() {
 	}
 	logger.Info("migrations applied")
 
+	var migrationControl *api.MigrationControl
+	peerConfig, err := migration.LoadRuntimeConfig(os.Getenv("REPS_MIGRATION_PEER_CONFIG"))
+	if err != nil {
+		logger.Error("migration configuration failed")
+		os.Exit(1)
+	}
+	if peerConfig != nil {
+		store := migration.NewStore(pool)
+		// Pin the configured old instance to the durable database identity at startup.
+		var instance string
+		if err := pool.QueryRow(ctx, `SELECT instance_id::text FROM legacy_server_instance WHERE singleton`).Scan(&instance); err != nil || instance != peerConfig.Scope.OldInstanceID {
+			logger.Error("migration instance binding failed")
+			os.Exit(1)
+		}
+		if peerConfig.IncomingPeerInstanceID != peerConfig.Scope.HubInstanceID || peerConfig.OutgoingPeerInstanceID != peerConfig.Scope.HubInstanceID {
+			logger.Error("migration peer instance binding failed")
+			os.Exit(1)
+		}
+		runtime, err := migration.StartRuntime(ctx, *peerConfig, store)
+		if err != nil {
+			logger.Error("migration peer startup failed")
+			os.Exit(1)
+		}
+		defer runtime.Close()
+		go func() {
+			if err := <-runtime.Errors; err != nil && err != http.ErrServerClosed {
+				logger.Error("migration peer listener failed")
+				cancel()
+			}
+		}()
+		migrationControl = api.NewMigrationControl(migration.NewService(store, runtime.Client, peerConfig.Scope))
+	}
 	uploadHandler := api.NewUploadHandler(pool)
 
 	authHandler := api.NewAuthHandler(api.AuthConfig{
@@ -94,6 +127,7 @@ func main() {
 			Verifier:    verifier,
 			APIAudience: cfg.APIAudience,
 			Upload:      uploadHandler,
+			Migration:   migrationControl,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       api.UploadTimeout,

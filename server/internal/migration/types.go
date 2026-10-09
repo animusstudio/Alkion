@@ -1,5 +1,5 @@
-// Package migration fences the legacy account writer. It exposes no HTTP
-// controls; a trusted, authenticated peer protocol must precede external use.
+// Package migration fences the legacy account writer and checks immutable
+// decisions through a separately configured authenticated peer reader.
 package migration
 
 import (
@@ -32,8 +32,9 @@ type TransitionKey struct {
 	Epoch        uint64       `json:"epoch"`
 }
 
-// TransitionCommand is the freeze subset of the forthcoming peer command.
-// Digest must be empty: Freeze computes evidence from committed server rows.
+// TransitionCommand is shared with the peer wire schema. Freeze requires an
+// empty Digest and computes its committed snapshot. Surrender and unfreeze
+// require the authenticated aggregate Hub digest.
 type TransitionCommand struct {
 	Key         TransitionKey `json:"key"`
 	OperationID string        `json:"operation_id"`
@@ -42,12 +43,13 @@ type TransitionCommand struct {
 }
 
 type Receipt struct {
-	Key              TransitionKey `json:"key"`
-	State            string        `json:"state"`
-	Digest           string        `json:"digest"`
-	OperationID      string        `json:"operation_id"`
-	RequestHash      string        `json:"request_hash"`
-	DecisionSequence uint64        `json:"decision_sequence"`
+	Key                  TransitionKey `json:"key"`
+	State                string        `json:"state"`
+	Digest               string        `json:"digest"`
+	ServerSnapshotDigest string        `json:"server_snapshot_digest"`
+	OperationID          string        `json:"operation_id"`
+	RequestHash          string        `json:"request_hash"`
+	DecisionSequence     uint64        `json:"decision_sequence"`
 }
 
 // Gate is read under the account row lock, held through the caller's commit.

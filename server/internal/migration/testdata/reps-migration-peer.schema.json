@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:personal-data-hub:reps-migration-peer:v1",
+  "title": "Reps migration peer protocol v1",
+  "description": "Internal mTLS status and independently authenticated old-account owner commands. Freeze digest is empty on input and computed from the committed snapshot. Surrender/unfreeze digest must exactly equal trusted peer status. Peer receipts are never accepted from an owner client. READY evidence production is a separate authority gate.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/receipt"
+    },
+    {
+      "$ref": "#/$defs/owner_control"
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "not": {
+        "const": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hub_instance_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "old_instance_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "old_account_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "hub_space_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "hub_source_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "hub_instance_id",
+        "old_instance_id",
+        "old_account_id",
+        "hub_space_id",
+        "hub_source_id"
+      ]
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "transition_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        }
+      },
+      "required": [
+        "scope",
+        "transition_id",
+        "epoch"
+      ]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "request_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "const": ""
+            }
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "operation_id",
+        "request_hash",
+        "digest"
+      ]
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "state": {
+          "enum": [
+            "OLD_ACTIVE",
+            "FROZEN",
+            "RETIRED",
+            "PREPARED",
+            "READY",
+            "ABORTED",
+            "ACTIVE",
+            "SUSPENDED"
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/hash"
+        },
+        "server_snapshot_digest": {
+          "$ref": "#/$defs/hash"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "request_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "decision_sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        }
+      },
+      "required": [
+        "key",
+        "state",
+        "digest",
+        "server_snapshot_digest",
+        "operation_id",
+        "request_hash",
+        "decision_sequence"
+      ]
+    },
+    "owner_control": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/command"
+        },
+        "owner_consent": {
+          "const": true
+        }
+      },
+      "required": [
+        "command",
+        "owner_consent"
+      ]
+    }
+  }
+}

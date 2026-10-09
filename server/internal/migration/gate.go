@@ -32,8 +32,8 @@ func LockAccountWriter(ctx context.Context, tx pgx.Tx, accountID string) (Gate, 
 	return gate, nil
 }
 
-// Store has no network-facing entry point. Its caller must establish trusted
-// control/consent before using Freeze; implementing that protocol is separate.
+// Store persists the account gate. Raw Freeze is retained for trusted internal
+// callers; network controls use Service with verified independent owner consent.
 type Store struct{ pool *pgxpool.Pool }
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
@@ -41,6 +41,10 @@ func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 // Freeze serializes with every admitted upload and commits its snapshot and
 // immutable receipt with the gate change. All errors roll back the whole change.
 func (s *Store) Freeze(ctx context.Context, command TransitionCommand) (Receipt, error) {
+	return s.freeze(ctx, command, "")
+}
+
+func (s *Store) freeze(ctx context.Context, command TransitionCommand, owner string) (Receipt, error) {
 	if err := validateFreeze(command); err != nil {
 		return Receipt{}, err
 	}
@@ -58,13 +62,23 @@ func (s *Store) Freeze(ctx context.Context, command TransitionCommand) (Receipt,
 	if gate.OldInstanceID != command.Key.Scope.OldInstanceID {
 		return Receipt{}, ErrConflict
 	}
+	if owner != "" {
+		if err := recordConsent(ctx, tx, owner, "freeze", command); err != nil {
+			return Receipt{}, err
+		}
+	}
 	// Exact retry returns the recorded decision even after later state changes.
-	var receiptBytes []byte
-	err = tx.QueryRow(ctx, `SELECT receipt FROM account_writer_freeze_receipts WHERE account_id=$1::uuid AND transition_id=$2::uuid`, gate.OldAccountID, command.Key.TransitionID).Scan(&receiptBytes)
+	var receiptBytes, persistedSnapshot []byte
+	err = tx.QueryRow(ctx, `SELECT receipt,snapshot FROM account_writer_freeze_receipts WHERE account_id=$1::uuid AND transition_id=$2::uuid`, gate.OldAccountID, command.Key.TransitionID).Scan(&receiptBytes, &persistedSnapshot)
 	if err == nil {
 		var receipt Receipt
 		if err := json.Unmarshal(receiptBytes, &receipt); err != nil {
 			return Receipt{}, err
+		}
+		snapshotSum := sha256.Sum256(persistedSnapshot)
+		receipt.ServerSnapshotDigest = hex.EncodeToString(snapshotSum[:])
+		if receipt.Digest != receipt.ServerSnapshotDigest {
+			return Receipt{}, ErrConflict
 		}
 		if receipt.Key != command.Key || receipt.OperationID != command.OperationID || receipt.RequestHash != command.RequestHash {
 			return Receipt{}, ErrConflict
@@ -93,7 +107,7 @@ func (s *Store) Freeze(ctx context.Context, command TransitionCommand) (Receipt,
 	if err != nil {
 		return Receipt{}, err
 	}
-	receipt := Receipt{Key: command.Key, State: Frozen, Digest: hex.EncodeToString(sum[:]), OperationID: command.OperationID, RequestHash: command.RequestHash, DecisionSequence: sequence}
+	receipt := Receipt{Key: command.Key, State: Frozen, Digest: hex.EncodeToString(sum[:]), ServerSnapshotDigest: hex.EncodeToString(sum[:]), OperationID: command.OperationID, RequestHash: command.RequestHash, DecisionSequence: sequence}
 	receiptBytes, err = json.Marshal(receipt)
 	if err != nil {
 		return Receipt{}, err

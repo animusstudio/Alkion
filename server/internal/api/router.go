@@ -23,6 +23,7 @@ type Deps struct {
 	Verifier    *auth.Verifier
 	APIAudience string
 	Upload      *UploadHandler
+	Migration   *MigrationControl
 }
 
 // NewRouter builds the chi router. Auth is nil-safe for the health-only tests:
@@ -51,6 +52,12 @@ func NewRouter(d Deps) *chi.Mux {
 				}
 			})
 		}
+	}
+	if d.Migration != nil && d.Verifier != nil {
+		r.Group(func(pr chi.Router) {
+			pr.Use(RequireAuth(d.Verifier, d.APIAudience))
+			pr.Post("/migration/transitions/{id}/{action}", d.Migration.Control)
+		})
 	}
 	return r
 }

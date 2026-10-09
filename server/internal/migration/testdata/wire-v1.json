@@ -1,0 +1,39 @@
+{
+  "schema_sha256": "989e41423c9c4947790ba213481b905cac6b1ff94671826cf88127e5059e447e",
+  "action": "surrender",
+  "command": {
+    "key": {
+      "scope": {
+        "hub_instance_id": "00000000-0000-4000-8000-000000000001",
+        "old_instance_id": "00000000-0000-4000-8000-000000000002",
+        "old_account_id": "00000000-0000-4000-8000-000000000003",
+        "hub_space_id": "00000000-0000-4000-8000-000000000004",
+        "hub_source_id": "00000000-0000-4000-8000-000000000005"
+      },
+      "transition_id": "00000000-0000-4000-8000-000000000006",
+      "epoch": 1
+    },
+    "operation_id": "00000000-0000-4000-8000-000000000007",
+    "request_hash": "c8d8393454f28ee93db4e3068cbd320e1dfba78455b09d0bcfa6a6aef391c56d",
+    "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "receipt": {
+    "key": {
+      "scope": {
+        "hub_instance_id": "00000000-0000-4000-8000-000000000001",
+        "old_instance_id": "00000000-0000-4000-8000-000000000002",
+        "old_account_id": "00000000-0000-4000-8000-000000000003",
+        "hub_space_id": "00000000-0000-4000-8000-000000000004",
+        "hub_source_id": "00000000-0000-4000-8000-000000000005"
+      },
+      "transition_id": "00000000-0000-4000-8000-000000000006",
+      "epoch": 1
+    },
+    "state": "RETIRED",
+    "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "server_snapshot_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "operation_id": "00000000-0000-4000-8000-000000000007",
+    "request_hash": "c8d8393454f28ee93db4e3068cbd320e1dfba78455b09d0bcfa6a6aef391c56d",
+    "decision_sequence": 2
+  }
+}
