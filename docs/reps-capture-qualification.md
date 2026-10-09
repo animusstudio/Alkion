@@ -563,14 +563,135 @@ Limits:
   run.
 - The state directory must be private and on a local filesystem.
 
+## Capture-first startup and raw-file preservation
+
+`app/lib/capture/capture_startup.dart` (`runCaptureAwareStartup`) now runs
+first in `main()`. Settings, `openDatabase()`, identity, the boot
+backfills, template absorption, the draft and finished-snapshot loaders and
+`connectSync` all run after it, and only when it allows them. Private
+capture state lives in `<appSupport>/capture/`: `journal.json`, the gate
+state directory `gate/`, and the preparation area `preparation/`. None of
+it is a source store, and none of it is ever part of a final capture.
+
+1. **Journal** (`app/lib/capture/capture_journal.dart`). The journal is
+   versioned JSON (`format: reps-capture-journal`, `version: 1`). It holds
+   the capture UUID, installation context, producer/runtime/store versions,
+   mode (`rehearsal`, `local_hold`) and stage, plus the gate generation,
+   prior sync intent (`enabled`/`disabled`/`unknown`), the safe inventory,
+   the per-file digest/length map and an optional manifest digest. The
+   stage set is closed: `preparing`, `held`, `copying`, `sealed`,
+   `published`, `resume_allowed`, `resumed`, `local_hold`. Decoding is
+   strict. An unknown version, an unknown stage, an unknown key, bytes that
+   are not UTF-8, or an unreadable file or link are errors, never "absent".
+   Map keys and values are short tokens: no `:` (so no URL scheme), no `@`
+   (so no e-mail address), and no credential key names (`access_token`,
+   `refresh_token`, `email`, `server_url`, ...). Writes go only through
+   `CaptureFiles.durableReplace`, so without the native plugin no journal
+   can be written.
+2. **Hold.** Startup is held when the journal is in any stage except
+   `resume_allowed`/`resumed`, or cannot be trusted. It is also held when
+   the native gate reports a recorded capture (`probeSourceGate` asks
+   `verifyHold` for the empty capture id: `open` means none is recorded,
+   `mismatch` means some capture is), or answers any other failure code.
+   `platform_unavailable` (no plugin, as on Android builds) and
+   `unsupported` (no lock primitive, so no capture could have closed
+   admission) leave the decision to the journal. While held, the source
+   files are inventoried and their bytes copied into preparation, nothing
+   ordinary runs, and a minimal localized recovery screen shows a safe code
+   (`app/lib/ui/capture_recovery_screen.dart`). The screen does not open
+   settings, the database, sign-in or sync.
+3. **Ordinary startup** (`preserveBeforeLoaders`). Before any loader runs,
+   the exact bytes it could delete are copied into preparation: a draft
+   that does not decode, a finished snapshot that does not decode or is no
+   longer resumable at the boot timestamp (the same `now` the loader then
+   uses), and every leftover `.tmp`, which the next save would overwrite. A
+   valid or verifiably absent file needs no copy, and its loader runs as
+   before.
+4. **Preservation failure.** When a store file is unreadable or a
+   non-regular file, or its bytes cannot be copied or recorded, that
+   store's loader does not run. The file stays exactly as it is, and the
+   app starts as if it were absent, in memory only. Startup still
+   continues. This was chosen over a recovery screen because the visible
+   result matches what the old loader showed (no draft, no Resume), while
+   nothing is deleted. On a platform without the native plugin every copy
+   fails, so such files are simply left in place.
+
+Raw reads (`app/lib/capture/startup_inventory.dart`):
+
+- `readRawFile` never decodes, deletes, renames or follows a link.
+- `captured` carries the exact bytes and their SHA-256.
+- `absent` is reported only after listing the containing directory.
+- `inspection_failed` covers unreadable files, unlistable directories and
+  files over 64 MiB.
+- `unsupported` covers links, directories and other non-regular files.
+
+Preservation (`RawPreservation`):
+
+- Copies are content-addressed (`preparation/blobs/<sha256>`). Each one is
+  written through `durableReplace`, then read back and re-hashed.
+- Safe records (names, statuses, lengths, digests, reasons; never bytes)
+  go in `preparation/records/<sha256>.json`.
+- Nothing is cleaned up automatically.
+- A leftover `.tmp` is always a separate, non-authoritative entry. It is
+  never promoted, and the authoritative role stays `absent` when only the
+  `.tmp` exists.
+- `preserveAcrossFlush` is the same mechanism for the running app's final
+  flush. It preserves the pre-flush file and any leftover `.tmp`, records
+  them, runs the flush, then preserves the flushed bytes and records
+  `replaced_by`. If the pre-flush bytes cannot be read or copied, the flush
+  never runs.
+
+| Test | Result |
+| --- | --- |
+| `app/test/capture/startup_inventory_test.dart` `raw_reads_never_decode_or_delete`: captured/absent/unsupported (directory, link)/inspection_failed (oversized, mode 000) are distinct; nothing changes on disk. | PASS (host) |
+| `malformed_and_expired_bytes_precede_loader`: at the moment each real loader is entered, the preserved copy holds the exact malformed draft bytes (`ff 7b`) and the expired snapshot bytes. The orphan `.tmp` is preserved separately, still in place, and non-authoritative. The loaders then behave as before. | PASS (host) |
+| `preflush_and_tmp_versions_are_distinct`: authoritative, `.tmp` and flushed versions have three distinct digests, all preserved with the `replaced_by` relation; a lone `.tmp` leaves the authoritative role `absent`. | PASS (host) |
+| `valid_live_draft_over_malformed_file_keeps_both_versions`: malformed on-disk bytes and the flushed valid draft are both kept, with a `replacement` record. | PASS (host) |
+| `preflush_preservation_failure_blocks_the_flush`: no native primitive, or an unreadable pre-flush file, means zero flushes and unchanged bytes. | PASS (host) |
+| `failed_preservation_never_runs_loader`: without the native primitive, zero loader calls, both files byte-identical, and ordinary steps still run. An unreadable (mode 000) snapshot withholds only its own loader; an absent draft does not. | PASS (host) |
+| `journal_hold_precedes_identity_backfill_connect`: each of the six holding stages, an unknown version, an unknown stage, non-UTF-8 bytes, an unreadable journal and a gate `mismatch` all give zero settings/database/identity/migration/session/loader/connect calls, with source bytes unchanged. `resume_allowed`/`resumed` start normally. | PASS (host) |
+| `app/test/capture/capture_journal_test.dart`: closed stage set, round trip through the durable primitive, failed durable write never succeeds, credentials/URLs/e-mail refused before any write, unknown/malformed journals refused. | PASS (host) |
+| `app/integration_test/capture_platform_test.dart` `startup_preserves_through_native_files_and_gate` (real plugin, temporary directories, Linux debug bundle, 2026-10-10): `probeSourceGate` answers `open` on a fresh gate, `mismatch` after a real `closeAdmission`, and `open` again after `release`. A `held` journal written through the native `durableReplace` gives `capture_active` with zero steps, and the held startup still copied the malformed bytes natively. A gate-only record gives `gate_mismatch` with zero steps. Ordinary startup preserves the malformed draft and the orphan `.tmp`, then runs every step and loader in order. No `.capture-tmp-` file is left. | **PASS** (Linux) / UNRUN (Android) |
+
+Mutation checks (each restored afterwards) were run on 2026-10-10:
+
+- Never preserving before loaders fails two tests.
+- Running a loader despite a preservation failure fails one.
+- Reporting an unreadable file as absent fails four.
+- Loading settings before the journal check fails three.
+- Marking a `.tmp` as authoritative fails two.
+
+Limits:
+
+- Apart from the one Linux integration test, these are host tests. Their
+  durable primitive is the host stand-in
+  `test/support/fake_capture_files.dart`, or the real absent channel. Native
+  durability of the copies rests on the Linux `durableReplace` evidence
+  above. The real `main()` boot (settings, database, sign-in) was not run
+  over a disposable directory, because ordinary boot reads secure storage.
+- `Directory.create` of `capture/`, `preparation/blobs/` and
+  `preparation/records/` is not itself flushed. The native primitive flushes
+  the file and its own directory, not the new directory's entry in its
+  parent.
+- A store file changed by another process between inspection and its loader
+  is not detected. At cold start no other writer of these files runs.
+- The running app's finished-snapshot expiry timer and autosave still clear
+  or overwrite files without this preservation. That wiring belongs to the
+  session-operation work.
+- Startup preservation cannot recover bytes that builds before this one
+  already deleted.
+
 ## Native qualification command
 
 `make -C app capture-integration CAPTURE_DEVICE=<device id>` runs
 `integration_test/capture_platform_test.dart` on one explicitly chosen device.
-It fails with a message if `CAPTURE_DEVICE` is unset. It contains the eight
-native tests in "Source-write gate and durable files" and "Native sync
-quiescence: Linux qualification". On 2026-10-10 it passed with
+It fails with a message if `CAPTURE_DEVICE` is unset. It contains nine
+native tests: the eight in "Source-write gate and durable files" and
+"Native sync quiescence: Linux qualification", plus
+`startup_preserves_through_native_files_and_gate` in "Capture-first startup
+and raw-file preservation". On 2026-10-10 it passed with
 `CAPTURE_DEVICE=linux` (debug bundle): first in four consecutive runs, then
 in three consecutive runs after review round 1, with the stricter
-assertions and the recovery test (eight tests). It has never run on Android. Host unit tests never establish
+assertions and the recovery test (eight tests), then once with all nine
+tests after the startup test was added. It has never run on Android. Host unit tests never establish
 Android support.

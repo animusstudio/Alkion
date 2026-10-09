@@ -375,5 +375,9 @@
   "updatesInstalling": "Instalando…",
   "updatesPermissionTitle": "Permitir actualizaciones",
   "updatesPermissionMessage": "Reps necesita permiso para instalar actualizaciones. Actívalo en la siguiente pantalla y vuelve a tocar Instalar.",
-  "updatesOpenSettings": "Abrir ajustes"
+  "updatesOpenSettings": "Abrir ajustes",
+  "captureRecoveryTitle": "Captura sin terminar",
+  "captureRecoveryBody": "Reps encontró en este dispositivo una captura de datos sin terminar, o no pudo comprobar si hay una. Hasta que se resuelva, Reps no abre tus entrenamientos ni sincroniza, así que nada cambia.",
+  "captureRecoveryKept": "Tus entrenamientos siguen en este dispositivo. Reps no los ha borrado ni modificado.",
+  "captureRecoveryCode": "Estado: {code}"
 }

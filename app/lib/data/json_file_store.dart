@@ -42,10 +42,26 @@ class JsonFileStore<T> {
     return File(p.join(dir.path, filename));
   }
 
+  /// The temporary file [save] writes before renaming it over [file]. One
+  /// left behind by an interrupted save is an orphan: it is never read as
+  /// the stored value.
+  Future<File> temporaryFile() async => File('${(await file()).path}.tmp');
+
+  /// Decodes raw file [bytes] exactly as [load] would read them, without
+  /// touching any file: null when they are not valid UTF-8 or not a valid
+  /// value of `T` — the bytes [load] would clear.
+  T? decodeBytes(List<int> bytes) {
+    try {
+      return tryDecode(utf8.decode(bytes));
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Serialises [value] to JSON and writes it atomically via a temp file.
   Future<void> save(T value) async {
     final f = await file();
-    final tmp = File('${f.path}.tmp');
+    final tmp = await temporaryFile();
     await tmp.writeAsString(jsonEncode(encode(value)), flush: true);
     await tmp.rename(f.path);
   }

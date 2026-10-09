@@ -375,5 +375,9 @@
   "updatesInstalling": "Installazione…",
   "updatesPermissionTitle": "Consenti aggiornamenti",
   "updatesPermissionMessage": "Reps ha bisogno dell'autorizzazione per installare gli aggiornamenti. Abilitala nella schermata successiva, poi tocca di nuovo Installa.",
-  "updatesOpenSettings": "Apri impostazioni"
+  "updatesOpenSettings": "Apri impostazioni",
+  "captureRecoveryTitle": "Acquisizione non completata",
+  "captureRecoveryBody": "Reps ha trovato su questo dispositivo un'acquisizione dei dati non completata, oppure non è riuscita a verificare se ce n'è una. Finché non è risolta, Reps non apre i tuoi allenamenti e non sincronizza, così nulla cambia.",
+  "captureRecoveryKept": "I tuoi allenamenti sono ancora su questo dispositivo. Reps non li ha eliminati né modificati.",
+  "captureRecoveryCode": "Stato: {code}"
 }

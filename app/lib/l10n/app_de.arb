@@ -375,5 +375,9 @@
   "updatesInstalling": "Wird installiert…",
   "updatesPermissionTitle": "Updates erlauben",
   "updatesPermissionMessage": "Reps benötigt die Berechtigung, App-Updates zu installieren. Aktiviere sie im nächsten Bildschirm und tippe dann erneut auf Installieren.",
-  "updatesOpenSettings": "Einstellungen öffnen"
+  "updatesOpenSettings": "Einstellungen öffnen",
+  "captureRecoveryTitle": "Erfassung nicht abgeschlossen",
+  "captureRecoveryBody": "Reps hat auf diesem Gerät eine nicht abgeschlossene Datenerfassung gefunden oder konnte nicht prüfen, ob eine läuft. Bis das geklärt ist, öffnet Reps deine Trainings nicht und synchronisiert nicht, damit sich nichts ändert.",
+  "captureRecoveryKept": "Deine Trainings sind weiterhin auf diesem Gerät. Reps hat nichts gelöscht oder geändert.",
+  "captureRecoveryCode": "Status: {code}"
 }

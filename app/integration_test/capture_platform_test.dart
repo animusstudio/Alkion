@@ -13,9 +13,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:powersync/powersync.dart';
 import 'package:reps_capture_platform/reps_capture_platform.dart';
+import 'package:crypto/crypto.dart';
+import 'package:workout_tracker/capture/capture_journal.dart';
 import 'package:workout_tracker/capture/capture_profile.dart';
+import 'package:workout_tracker/capture/capture_startup.dart';
 import 'package:workout_tracker/capture/native_sync_quiescence.dart';
 import 'package:workout_tracker/capture/source_write_gate.dart';
+import 'package:workout_tracker/capture/startup_inventory.dart';
+import 'package:workout_tracker/data/active_session_draft.dart';
+import 'package:workout_tracker/data/finished_session_store.dart';
 import 'package:workout_tracker/sync/schema.dart';
 
 import 'support/gate_helper_process.dart';
@@ -915,6 +921,145 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 5)),
   );
+
+  test('startup_preserves_through_native_files_and_gate', () async {
+    final source = await Directory.systemTemp.createTemp('reps-capture-src');
+    cleanup.add(() => source.delete(recursive: true));
+    final locations = CaptureLocations(source);
+    final draft = File('${source.path}/${DraftStore.fileName}')
+      ..writeAsBytesSync([0xff, 0x7b]);
+    final orphan = File('${draft.path}.tmp')..writeAsStringSync('{"name":"x');
+    final draftStore = DraftStore(directory: () async => source);
+    final finishedStore = FinishedSessionStore(directory: () async => source);
+    final preservation = RawPreservation(locations.preparation);
+    final journal = CaptureJournal(locations.journal);
+    final gate = SourceWriteGate(stateDirectory: locations.gate);
+    final now = DateTime(2026, 10, 10, 12);
+
+    Future<(StartupOutcome, List<String>)> start() async {
+      final calls = <String>[];
+      final outcome = await runCaptureAwareStartup(
+        journal: journal,
+        probeGate: () => probeSourceGate(gate),
+        source: source,
+        preservation: preservation,
+        files: [
+          await draftStartupFile(draftStore, (_) async {
+            calls.add('load:draft');
+            await draftStore.load();
+          }),
+          await finishedStartupFile(finishedStore, (_) async {
+            calls.add('load:finished');
+          }),
+        ],
+        steps: _RecordingSteps(calls),
+        now: now,
+      );
+      return (outcome, calls);
+    }
+
+    expect(await probeSourceGate(gate), 'open');
+
+    // A held journal written through the native primitive holds startup.
+    await journal.write(
+      CaptureJournalState(
+        captureId: '3f1c2a4e-8b7d-4c6a-9e2f-1a2b3c4d5e6f',
+        installation: const {'platform': 'linux'},
+        producerVersion: '0.18.1+37',
+        runtimeVersions: const {},
+        storeVersions: const {},
+        mode: CaptureMode.rehearsal,
+        stage: CaptureStage.held,
+        gateGeneration: 1,
+        priorSyncIntent: PriorSyncIntent.unknown,
+        inventory: const [],
+        files: const {},
+        manifestSha256: null,
+      ),
+    );
+    var (outcome, calls) = await start();
+    expect(
+      (outcome as CaptureRecoveryRequired).recovery.code,
+      'capture_active',
+    );
+    expect(calls, isEmpty);
+    expect(draft.readAsBytesSync(), [0xff, 0x7b]);
+    // Held startup still copied every present version natively.
+    expect(
+      (await readRawFile(
+        preservation.blobFile(sha256.convert([0xff, 0x7b]).toString()),
+      )).bytes,
+      [0xff, 0x7b],
+    );
+    await locations.journal.delete();
+
+    // A capture recorded only in the native gate also holds startup.
+    final preparation = await gate.closeAdmission('native-startup-probe');
+    expect(await probeSourceGate(gate), 'mismatch');
+    (outcome, calls) = await start();
+    expect(
+      (outcome as CaptureRecoveryRequired).recovery.code,
+      'gate_mismatch',
+    );
+    expect(calls, isEmpty);
+    await gate.release(
+      SourceHold(preparation.captureId, preparation.generation),
+      decisionDigest: 'f' * 64,
+    );
+    expect(await probeSourceGate(gate), 'open');
+
+    // Ordinary startup: the malformed draft is durably preserved before its
+    // loader deletes it; the orphan stays in place, preserved separately.
+    (outcome, calls) = await start();
+    expect(outcome, isA<StartupAllowed>());
+    expect(calls, [
+      'settings',
+      'openDatabase',
+      'identity',
+      'migrations',
+      'sessions',
+      'load:draft',
+      'load:finished',
+      'connect',
+    ]);
+    expect(draft.existsSync(), isFalse);
+    expect(orphan.existsSync(), isTrue);
+    final inventory = (outcome as StartupAllowed).inventory;
+    expect(inventory.complete, isTrue);
+    expect(
+      inventory.entries.where((e) => e.preserved).map((e) => e.reason).toSet(),
+      {'malformed', 'orphan_tmp'},
+    );
+    // No temporary file of the durable primitive is left behind.
+    final leftovers = locations.preparation
+        .listSync(recursive: true)
+        .where((e) => e.path.contains('.capture-tmp-'));
+    expect(leftovers, isEmpty);
+  });
+}
+
+class _RecordingSteps implements OrdinaryStartupSteps {
+  _RecordingSteps(this.calls);
+
+  final List<String> calls;
+
+  @override
+  Future<void> loadSettings() async => calls.add('settings');
+
+  @override
+  Future<void> openDatabase() async => calls.add('openDatabase');
+
+  @override
+  Future<void> initIdentity() async => calls.add('identity');
+
+  @override
+  Future<void> runBootMigrations() async => calls.add('migrations');
+
+  @override
+  Future<void> prepareSessions() async => calls.add('sessions');
+
+  @override
+  Future<void> connect() async => calls.add('connect');
 }
 
 Future<void> _until(Future<bool> Function() condition) async {

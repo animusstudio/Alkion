@@ -2,9 +2,16 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import 'auth/auth_store.dart';
+import 'capture/capture_journal.dart';
+import 'capture/capture_startup.dart';
+import 'capture/source_write_gate.dart';
+import 'capture/startup_inventory.dart';
+import 'data/active_session_draft.dart';
+import 'data/finished_session_store.dart';
 import 'data/catalog_seed.dart';
 import 'data/is_template_backfill.dart';
 import 'data/muscle_target_repository.dart';
@@ -20,8 +27,10 @@ import 'settings/settings_service.dart';
 import 'shell/app_shell.dart';
 import 'shell/session_launcher.dart';
 import 'sync/db.dart';
+import 'sync/db.dart' as sync_db show openDatabase;
 import 'sync/sync_health.dart';
 import 'theme/app_theme.dart';
+import 'ui/capture_recovery_screen.dart';
 import 'ui/onboarding_screen.dart';
 import 'units/unit_service.dart';
 import 'util/error_surface.dart';
@@ -49,52 +58,32 @@ Future<void> main() async {
   // month names for every supported locale (it/de/es), not just en.
   await initializeDateFormatting();
 
-  // Load client-local settings first so apiBaseUrl is set before
-  // openDatabase/connectSync (PowerSync and the connector read it at startup).
-  final settingsService = SettingsService();
-  await settingsService.load();
-  final unitService = UnitService();
-  await unitService.load();
-
-  apiBaseUrl = settingsService.serverUrl;
-
-  final auth = AuthStore();
-  await openDatabase();
-
-  final identity = IdentityService();
-  await identity.init(
-    probeExistingUserId: () => SessionRepository(db).anyUserId(),
+  // Capture first: before settings, the database, identity, boot migrations,
+  // the stored-workout loaders or sync touch anything, check whether a data
+  // capture holds the source and keep any stored bytes a loader would delete.
+  final appSupport = await getApplicationSupportDirectory();
+  final capture = CaptureLocations(appSupport);
+  final boot = _AppBoot();
+  final outcome = await runCaptureAwareStartup(
+    journal: CaptureJournal(capture.journal),
+    probeGate: () =>
+        probeSourceGate(SourceWriteGate(stateDirectory: capture.gate)),
+    source: appSupport,
+    preservation: RawPreservation(capture.preparation),
+    files: [
+      await draftStartupFile(boot.draftStore, (_) => boot.loadDraft()),
+      await finishedStartupFile(boot.finishedStore, boot.loadFinished),
+    ],
+    steps: boot,
+    now: DateTime.now(),
   );
-
-  await backfillTopSets(db);
-
-  // Normalize is_template = NULL → 0 (rows created by pre-fix builds) BEFORE
-  // absorb, so its de-dup queries (exact is_template = 0) can see owned rows.
-  await backfillIsTemplate(db);
-
-  // Absorb synced template rows into user-owned rows (nothing is locked).
-  await absorbTemplates(db, identity.currentUserId);
-
-  final sessionManager = SessionManager();
-  sessionManager.init();
-  final workoutNotification = WorkoutNotification();
-  await workoutNotification.init(
-    onTap: () {
-      final ctx = appNavigatorKey.currentContext;
-      if (ctx != null) openActiveSession(ctx, sessionManager);
-    },
-    onAdd30: () => sessionManager.add30FromNotification(),
-  );
-  sessionManager.notifier = workoutNotification;
-  await sessionManager.resumeFromDraft();
-  await sessionManager.loadLastFinished();
-
-  final loggedIn = await auth.load();
-  if (shouldConnectSync(
-      syncEnabled: settingsService.syncEnabled, loggedIn: loggedIn)) {
-    await connectSync(auth); // resume sync only for an opted-in remembered session
+  if (outcome case CaptureRecoveryRequired(:final recovery)) {
+    runApp(CaptureRecoveryApp(recovery: recovery));
+    return;
   }
 
+  final settingsService = boot.settingsService;
+  final auth = boot.auth;
   final syncHealth = SyncHealth(
     status: db.statusStream,
     initial: db.currentStatus,
@@ -109,10 +98,84 @@ Future<void> main() async {
     syncHealth: syncHealth,
     auth: auth,
     settingsService: settingsService,
-    unitService: unitService,
-    identity: identity,
-    sessionManager: sessionManager,
+    unitService: boot.unitService,
+    identity: boot.identity,
+    sessionManager: boot.sessionManager,
   ));
+}
+
+/// The ordinary boot, step by step in its long-standing order:
+/// settings → openDatabase → identity → backfills → absorb →
+/// SessionManager/notification → resume draft → finished snapshot →
+/// optional connectSync. [runCaptureAwareStartup] decides whether it runs.
+class _AppBoot implements OrdinaryStartupSteps {
+  final draftStore = DraftStore();
+  final finishedStore = FinishedSessionStore();
+  final settingsService = SettingsService();
+  final unitService = UnitService();
+  final auth = AuthStore();
+  final identity = IdentityService();
+  late final SessionManager sessionManager;
+
+  @override
+  Future<void> loadSettings() async {
+    // Load client-local settings first so apiBaseUrl is set before
+    // openDatabase/connectSync (PowerSync and the connector read it at
+    // startup).
+    await settingsService.load();
+    await unitService.load();
+    apiBaseUrl = settingsService.serverUrl;
+  }
+
+  @override
+  Future<void> openDatabase() => sync_db.openDatabase();
+
+  @override
+  Future<void> initIdentity() => identity.init(
+        probeExistingUserId: () => SessionRepository(db).anyUserId(),
+      );
+
+  @override
+  Future<void> runBootMigrations() async {
+    await backfillTopSets(db);
+
+    // Normalize is_template = NULL → 0 (rows created by pre-fix builds)
+    // BEFORE absorb, so its de-dup queries (exact is_template = 0) can see
+    // owned rows.
+    await backfillIsTemplate(db);
+
+    // Absorb synced template rows into user-owned rows (nothing is locked).
+    await absorbTemplates(db, identity.currentUserId);
+  }
+
+  @override
+  Future<void> prepareSessions() async {
+    sessionManager = SessionManager(finishedStore: finishedStore);
+    sessionManager.init();
+    final workoutNotification = WorkoutNotification();
+    await workoutNotification.init(
+      onTap: () {
+        final ctx = appNavigatorKey.currentContext;
+        if (ctx != null) openActiveSession(ctx, sessionManager);
+      },
+      onAdd30: () => sessionManager.add30FromNotification(),
+    );
+    sessionManager.notifier = workoutNotification;
+  }
+
+  Future<void> loadDraft() => sessionManager.resumeFromDraft(store: draftStore);
+
+  Future<void> loadFinished(DateTime now) =>
+      sessionManager.loadLastFinished(now: now);
+
+  @override
+  Future<void> connect() async {
+    final loggedIn = await auth.load();
+    if (shouldConnectSync(
+        syncEnabled: settingsService.syncEnabled, loggedIn: loggedIn)) {
+      await connectSync(auth); // resume sync only for an opted-in remembered session
+    }
+  }
 }
 
 class App extends StatefulWidget {
