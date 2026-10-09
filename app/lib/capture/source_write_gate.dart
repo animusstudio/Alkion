@@ -143,6 +143,9 @@ class SourceWriteGate {
   /// Completes [preparation]'s own ticket, then waits until every admitted
   /// ticket in every process has finished and takes the exclusive hold.
   /// Throws `drain_timeout` after [timeout]; admission then stays closed.
+  /// Throws `recovery_required` when a process died while it had admitted
+  /// work in flight: its half-finished work was never drained, so no hold is
+  /// taken until [acknowledgeInterruptedWork] records a recovery decision.
   Future<SourceHold> drain(
     SourcePreparation preparation, {
     required Duration timeout,
@@ -175,6 +178,19 @@ class SourceWriteGate {
           throw SourceGateException(r['code']! as String);
       }
     }
+  }
+
+  /// Explicit recovery decision: forgets the in-flight markers of processes
+  /// that died with admitted work, after the coordinator has dealt with
+  /// what that work may have left behind. Returns how many were cleared.
+  /// Markers of live processes are never touched. Never called implicitly.
+  Future<int> acknowledgeInterruptedWork({
+    required String decisionDigest,
+  }) async {
+    final r = await _call('acknowledgeInterrupted', {
+      'decisionDigest': decisionDigest,
+    });
+    return r['interrupted']! as int;
   }
 
   /// Releases [hold] (or a still-preparing capture with the same id and

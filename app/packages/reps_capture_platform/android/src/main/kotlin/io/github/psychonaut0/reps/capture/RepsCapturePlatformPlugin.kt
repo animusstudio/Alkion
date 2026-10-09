@@ -52,6 +52,7 @@ class RepsCapturePlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             "drain" -> SourceGate.drain(dir, capture, generation)
             "release" -> SourceGate.release(dir, capture, generation, call.argument<String>("decisionDigest"))
             "verifyHold" -> SourceGate.verifyHold(dir, capture, generation)
+            "acknowledgeInterrupted" -> SourceGate.acknowledgeInterrupted(dir, call.argument<String>("decisionDigest"))
             "durableReplace" -> GateResult(
                 CaptureFiles.durableReplace(
                     call.argument<String>("path") ?: "",

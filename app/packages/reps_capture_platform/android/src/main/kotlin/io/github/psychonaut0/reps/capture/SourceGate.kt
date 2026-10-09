@@ -14,12 +14,14 @@ data class GateResult(
     val ticket: String? = null,
     val generation: Long? = null,
     val tickets: Int? = null,
+    val interrupted: Int? = null,
 ) {
     fun toMap(): Map<String, Any> = buildMap {
         put("code", code)
         ticket?.let { put("ticket", it) }
         generation?.let { put("generation", it) }
         tickets?.let { put("tickets", it) }
+        interrupted?.let { put("interrupted", it) }
     }
 }
 
@@ -35,6 +37,10 @@ data class GateResult(
  *   and exclusively by the process holding a capture.
  * - A `preparing`/`held` record keeps admission closed across process loss
  *   until an explicit release for the same capture and generation.
+ * - While this process has tickets it keeps a durable, locked marker in
+ *   `inflight/`; a marker whose lock is free belongs to a process that died
+ *   with work in flight, so `drain` answers `recovery_required` until
+ *   [acknowledgeInterrupted] (an explicit recovery decision) removes it.
  *
  * FileChannel locks are POSIX record locks owned by the process, and closing
  * any channel of a file drops them all, so each lock file has exactly one
@@ -47,7 +53,12 @@ object SourceGate {
 
     private class TicketRef(var refs: Int, val generation: Long)
 
-    private class GateDir(path: File) {
+    private val nonce = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+
+    private class GateDir(val path: File) {
+        var markerFile: File? = null
+        var markerChannel: FileChannel? = null
+        var markerLock: FileLock? = null
         val admission: FileChannel = RandomAccessFile(File(path, "admission.lock"), "rw").channel
         val ticketsChannel: FileChannel = RandomAccessFile(File(path, "tickets.lock"), "rw").channel
         var shared: FileLock? = null
@@ -142,10 +153,82 @@ object SourceGate {
         } ?: throw Refusal("admission_closed") // another process holds a capture
     }
 
+    private fun ensureMarker(g: GateDir) {
+        if (g.markerLock != null) return
+        val inflight = File(g.path, "inflight")
+        if (!inflight.isDirectory) {
+            if (!inflight.mkdir() || !CaptureFiles.syncDir(g.path)) throw Refusal("io_error")
+        }
+        val file = File(inflight, "${android.os.Process.myPid()}-$nonce.marker")
+        val channel = RandomAccessFile(file, "rw").channel
+        val lock = try {
+            channel.tryLock()
+        } catch (e: IOException) {
+            null
+        }
+        if (lock == null) {
+            channel.close()
+            throw Refusal("io_error")
+        }
+        try {
+            channel.force(true)
+            if (!CaptureFiles.syncDir(inflight)) throw IOException("dir sync")
+        } catch (e: IOException) {
+            file.delete()
+            lock.release()
+            channel.close()
+            throw Refusal("io_error")
+        }
+        g.markerFile = file
+        g.markerChannel = channel
+        g.markerLock = lock
+    }
+
+    /** Removes the (still locked) marker, then drops the shared ticket lock. */
     private fun releaseSharedIfIdle(g: GateDir) {
-        if (g.tickets.isEmpty()) {
-            g.shared?.release()
-            g.shared = null
+        if (g.tickets.isNotEmpty()) return
+        g.markerFile?.let { file ->
+            file.delete()
+            file.parentFile?.let { CaptureFiles.syncDir(it) }
+            g.markerLock?.release()
+            g.markerChannel?.close()
+        }
+        g.markerFile = null
+        g.markerChannel = null
+        g.markerLock = null
+        g.shared?.release()
+        g.shared = null
+    }
+
+    /** "ok", "pending" (a live owner) or "recovery_required" with the count. */
+    private fun scanMarkers(g: GateDir, remove: Boolean): Pair<String, Int> {
+        val inflight = File(g.path, "inflight")
+        val markers = inflight.listFiles { f -> f.name.endsWith(".marker") } ?: return "ok" to 0
+        var orphans = 0
+        var live = false
+        for (marker in markers) {
+            if (marker == g.markerFile) continue
+            if (!marker.exists()) continue
+            RandomAccessFile(marker, "rw").channel.use { channel ->
+                val lock = try {
+                    channel.tryLock()
+                } catch (e: IOException) {
+                    throw Refusal("io_error")
+                }
+                if (lock == null) {
+                    live = true
+                } else {
+                    orphans++
+                    if (remove) marker.delete()
+                    lock.release()
+                }
+            }
+        }
+        if (remove && orphans > 0 && !CaptureFiles.syncDir(inflight)) throw Refusal("io_error")
+        return when {
+            live -> "pending" to orphans
+            orphans > 0 -> "recovery_required" to orphans
+            else -> "ok" to 0
         }
     }
 
@@ -178,7 +261,13 @@ object SourceGate {
         underAdmission(g) {
             val record = read(path)
             if (record.state != "open") throw Refusal("admission_closed")
-            ensureShared(g)
+            try {
+                ensureShared(g)
+                ensureMarker(g)
+            } catch (r: Refusal) {
+                releaseSharedIfIdle(g)
+                throw r
+            }
             newTicket(g, record.generation)
         }
     }
@@ -197,7 +286,13 @@ object SourceGate {
         underAdmission(g) {
             val record = read(path)
             if (record.state != "open") throw Refusal("capture_in_progress")
-            ensureShared(g)
+            try {
+                ensureShared(g)
+                ensureMarker(g)
+            } catch (r: Refusal) {
+                releaseSharedIfIdle(g)
+                throw r
+            }
             val next = record.copy(generation = record.generation + 1, state = "preparing", capture = capture)
             try {
                 write(path, next)
@@ -221,6 +316,16 @@ object SourceGate {
             } catch (e: IOException) {
                 throw Refusal("io_error")
             } ?: return@underAdmission GateResult("pending") // another process has admitted work
+            val (scan, orphans) = try {
+                scanMarkers(g, remove = false)
+            } catch (r: Refusal) {
+                lock.release()
+                throw r
+            }
+            if (scan != "ok") {
+                lock.release()
+                return@underAdmission GateResult(scan, interrupted = orphans.takeIf { it > 0 })
+            }
             if (record.state == "preparing") {
                 try {
                     write(path, record.copy(state = "held"))
@@ -244,6 +349,16 @@ object SourceGate {
             g.hold?.release()
             g.hold = null
             GateResult("ok")
+        }
+    }
+
+    /** Explicit recovery decision; never called automatically. */
+    fun acknowledgeInterrupted(dir: String?, decision: String?): GateResult = guarded {
+        if (decision == null || !token.matches(decision)) throw Refusal("invalid_argument")
+        val (_, g) = gate(dir)
+        underAdmission(g) {
+            val (_, orphans) = scanMarkers(g, remove = true)
+            GateResult("ok", interrupted = orphans)
         }
     }
 

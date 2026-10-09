@@ -29,9 +29,11 @@ FLUTTER_PLUGIN_EXPORT void reps_capture_platform_plugin_register_with_registrar(
 //
 // `method` is one of admit(dir, operation, parent), complete(dir, ticket),
 // prepare(dir, capture), drain(dir, capture, generation),
-// release(dir, capture, generation, decision) or verifyHold(dir, capture,
-// generation); unused arguments may be NULL. The result is written to `out`
-// as `code=<code>[;ticket=<id>][;generation=<n>][;tickets=<n>]`. Returns 0
+// release(dir, capture, generation, decision), verifyHold(dir, capture,
+// generation) or acknowledgeInterrupted(dir, decision); unused arguments may
+// be NULL. The result is written to `out` as
+// `code=<code>[;ticket=<id>][;generation=<n>][;tickets=<n>][;interrupted=<n>]`.
+// Returns 0
 // when the code is `ok`, `held` or `pending`, and 1 otherwise.
 FLUTTER_PLUGIN_EXPORT int reps_capture_native_call(const char* method,
                                                    const char* dir,

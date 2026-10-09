@@ -12,6 +12,10 @@
 //   - `gate.state` survives process loss: a `preparing` or `held` record
 //     keeps admission closed after a crash or restart until an explicit
 //     release names the same capture and generation.
+//   - while a process has admitted tickets it also keeps a durable marker in
+//     `inflight/`, locked by that process; a marker left by a process that
+//     died with work in flight makes `drain` answer `recovery_required` until
+//     `acknowledgeInterrupted` (an explicit recovery decision) removes it.
 // Durable files: write a new temporary file, fsync it, rename, fsync the
 // directory. Publication fsyncs the whole staging tree and renames it with
 // renameat2(RENAME_NOREPLACE), so an existing destination is refused
@@ -53,6 +57,7 @@ struct Result {
   std::string ticket;
   int64_t generation = -1;
   int64_t tickets = -1;
+  int64_t interrupted = -1;
 };
 
 Result Code(const std::string& code) {
@@ -214,6 +219,8 @@ struct Ticket {
 struct GateDir {
   int ticket_fd = -1;  // LOCK_SH while this process has admitted tickets
   int hold_fd = -1;    // LOCK_EX while this process holds a capture
+  int marker_fd = -1;  // LOCK_EX on this process's in-flight marker
+  std::string marker_path;
   std::map<std::string, Ticket> tickets;
 };
 
@@ -377,11 +384,120 @@ std::string EnsureShared(GateDir& gate, const std::string& dir) {
   return "ok";
 }
 
+// ---- In-flight markers ---------------------------------------------------
+//
+// While a process has admitted tickets it keeps a durable marker file
+// `inflight/<pid>-<nonce>.marker`, locked LOCK_EX by that process alone. A
+// marker whose lock can be taken by someone else belongs to a process that
+// died with admitted work in flight: its half-finished cross-store work was
+// never drained, so no hold may be taken over it until an explicit recovery
+// acknowledgement removes the marker.
+
+std::string ProcessNonce() {
+  static const std::string nonce = [] {
+    unsigned char bytes[8] = {0};
+    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    bool ok = fd >= 0 && read(fd, bytes, sizeof bytes) == sizeof bytes;
+    if (fd >= 0) close(fd);
+    if (!ok) {
+      uint64_t t = static_cast<uint64_t>(
+          std::chrono::steady_clock::now().time_since_epoch().count());
+      memcpy(bytes, &t, sizeof bytes);
+    }
+    char hex[17];
+    for (int i = 0; i < 8; i++) snprintf(hex + 2 * i, 3, "%02x", bytes[i]);
+    return std::string(hex, 16);
+  }();
+  return nonce;
+}
+
+std::string EnsureMarker(GateDir& gate, const std::string& dir) {
+  if (gate.marker_fd >= 0) return "ok";
+  const std::string inflight = dir + "/inflight";
+  if (mkdir(inflight.c_str(), 0700) == 0) {
+    if (!SyncDir(dir)) return "io_error";
+  } else if (errno != EEXIST) {
+    return "io_error";
+  }
+  const std::string path = inflight + "/" + std::to_string(getpid()) + "-" +
+                           ProcessNonce() + ".marker";
+  int fd = open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  if (fd < 0) return "io_error";
+  if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+    int error = errno;
+    close(fd);
+    return LockErrorCode(error);
+  }
+  if (SyncFd(fd, kFileSync) != 0 || !SyncDir(inflight)) {
+    unlink(path.c_str());
+    close(fd);
+    return "io_error";
+  }
+  gate.marker_fd = fd;
+  gate.marker_path = path;
+  return "ok";
+}
+
+// Removes the marker (still locked, so no scan can mistake it for an
+// orphan), then drops the shared ticket lock.
 void ReleaseSharedIfIdle(GateDir& gate) {
-  if (gate.tickets.empty() && gate.ticket_fd >= 0) {
+  if (!gate.tickets.empty()) return;
+  if (gate.marker_fd >= 0) {
+    unlink(gate.marker_path.c_str());
+    SyncDir(Dirname(gate.marker_path));
+    close(gate.marker_fd);
+    gate.marker_fd = -1;
+    gate.marker_path.clear();
+  }
+  if (gate.ticket_fd >= 0) {
     close(gate.ticket_fd);
     gate.ticket_fd = -1;
   }
+}
+
+// Scans other processes' markers. Returns "ok" when there are none,
+// "pending" when a live owner still holds one, otherwise
+// "recovery_required" with [orphans] counted (and removed when [remove]).
+std::string ScanMarkers(const GateDir& gate, const std::string& dir,
+                        bool remove, int64_t* orphans) {
+  *orphans = 0;
+  const std::string inflight = dir + "/inflight";
+  DIR* d = opendir(inflight.c_str());
+  if (d == nullptr) return errno == ENOENT ? "ok" : "io_error";
+  std::vector<std::string> markers;
+  errno = 0;
+  while (struct dirent* entry = readdir(d)) {
+    const std::string name = entry->d_name;
+    if (name.size() > 7 && name.compare(name.size() - 7, 7, ".marker") == 0) {
+      markers.push_back(inflight + "/" + name);
+    }
+  }
+  const bool listed = errno == 0;
+  closedir(d);
+  if (!listed) return "io_error";
+  bool live = false;
+  for (const auto& path : markers) {
+    if (path == gate.marker_path) continue;
+    int fd = open(path.c_str(), O_RDWR | O_CLOEXEC);
+    if (fd < 0) {
+      if (errno == ENOENT) continue;  // its owner just finished
+      return "io_error";
+    }
+    if (flock(fd, LOCK_EX | LOCK_NB) == 0) {
+      (*orphans)++;
+      if (remove) unlink(path.c_str());
+    } else if (errno == EWOULDBLOCK) {
+      live = true;
+    } else {
+      int error = errno;
+      close(fd);
+      return LockErrorCode(error);
+    }
+    close(fd);
+  }
+  if (remove && *orphans > 0 && !SyncDir(inflight)) return "io_error";
+  if (live) return "pending";
+  return *orphans > 0 ? "recovery_required" : "ok";
 }
 
 Result NewTicket(GateDir& gate, int64_t generation) {
@@ -421,7 +537,11 @@ Result Admit(const std::string& dir, const std::string& parent) {
   if (code != "ok") return Code(code);
   if (record.state != "open") return Code("admission_closed");
   code = EnsureShared(gate, dir);
-  if (code != "ok") return Code(code);
+  if (code == "ok") code = EnsureMarker(gate, dir);
+  if (code != "ok") {
+    ReleaseSharedIfIdle(gate);
+    return Code(code);
+  }
   return NewTicket(gate, record.generation);
 }
 
@@ -446,7 +566,11 @@ Result Prepare(const std::string& dir, const std::string& capture) {
   if (code != "ok") return Code(code);
   if (record.state != "open") return Code("capture_in_progress");
   code = EnsureShared(gate, dir);
-  if (code != "ok") return Code(code);
+  if (code == "ok") code = EnsureMarker(gate, dir);
+  if (code != "ok") {
+    ReleaseSharedIfIdle(gate);
+    return Code(code);
+  }
   Record next = record;
   next.generation = record.generation + 1;
   next.state = "preparing";
@@ -490,6 +614,16 @@ Result Drain(const std::string& dir, const std::string& capture,
     close(fd);
     // Another process still has admitted work.
     return Code(error == EWOULDBLOCK ? "pending" : LockErrorCode(error));
+  }
+  // No live process has tickets now; a marker left behind means its owner
+  // died with work in flight.
+  int64_t orphans = 0;
+  code = ScanMarkers(gate, dir, false, &orphans);
+  if (code != "ok") {
+    close(fd);
+    Result r = Code(code);
+    if (orphans > 0) r.interrupted = orphans;
+    return r;
   }
   if (record.state == "preparing") {
     record.state = "held";
@@ -542,6 +676,23 @@ Result VerifyHold(const std::string& dir, const std::string& capture,
   return Code(gate.hold_fd >= 0 ? "held" : "recorded");
 }
 
+// Explicit recovery decision: removes the markers of processes that died
+// with work in flight. Never called automatically.
+Result AcknowledgeInterrupted(const std::string& dir,
+                              const std::string& decision) {
+  if (!ValidToken(decision)) return Code("invalid_argument");
+  std::lock_guard<std::mutex> guard(g_mutex);
+  GateDir& gate = g_dirs[dir];
+  AdmissionLock lock(dir);
+  if (lock.code() != "ok") return Code(lock.code());
+  int64_t orphans = 0;
+  std::string code = ScanMarkers(gate, dir, true, &orphans);
+  if (code == "io_error") return Code(code);
+  Result r = Code("ok");
+  r.interrupted = orphans;
+  return r;
+}
+
 Result Dispatch(const std::string& method, const char* dir_arg,
                 const std::string& a1, const std::string& a2,
                 const std::string& a3) {
@@ -551,6 +702,9 @@ Result Dispatch(const std::string& method, const char* dir_arg,
   if (method == "admit") return Admit(dir, a2);
   if (method == "complete") return Complete(dir, a1);
   if (method == "prepare") return Prepare(dir, a1);
+  if (method == "acknowledgeInterrupted") {
+    return AcknowledgeInterrupted(dir, a1);
+  }
   if (!ParseInt(a2, &generation)) return Code("invalid_argument");
   if (method == "drain") return Drain(dir, a1, generation);
   if (method == "release") return Release(dir, a1, generation, a3);
@@ -588,6 +742,10 @@ FlValue* ResultValue(const Result& r) {
   }
   if (r.tickets >= 0) {
     fl_value_set_string_take(map, "tickets", fl_value_new_int(r.tickets));
+  }
+  if (r.interrupted >= 0) {
+    fl_value_set_string_take(map, "interrupted",
+                             fl_value_new_int(r.interrupted));
   }
   return map;
 }
@@ -671,6 +829,8 @@ void HandleMethodCall(FlMethodCall* call) {
     a2 = StringArg(args, "parent");
   } else if (method == "complete") {
     a1 = StringArg(args, "ticket");
+  } else if (method == "acknowledgeInterrupted") {
+    a1 = StringArg(args, "decisionDigest");
   } else {
     a1 = StringArg(args, "captureId");
     a2 = IntArg(args, "generation");
@@ -691,6 +851,9 @@ int reps_capture_native_call(const char* method, const char* dir,
   if (!r.ticket.empty()) text += ";ticket=" + r.ticket;
   if (r.generation >= 0) text += ";generation=" + std::to_string(r.generation);
   if (r.tickets >= 0) text += ";tickets=" + std::to_string(r.tickets);
+  if (r.interrupted >= 0) {
+    text += ";interrupted=" + std::to_string(r.interrupted);
+  }
   if (out != nullptr && out_len > 0) {
     snprintf(out, out_len, "%s", text.c_str());
   }
