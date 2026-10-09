@@ -253,6 +253,15 @@ class CaptureFiles {
     {'path': destination.path, 'bytes': Uint8List.fromList(bytes)},
   );
 
+  /// Makes [directory] and every directory between [base] (which must
+  /// already exist) and it exist durably. Missing components are created,
+  /// and the parent of every component below [base] is flushed, whether this
+  /// call created that component or an earlier, interrupted one did. A
+  /// symbolic link or file in the chain answers `not_a_directory`; a
+  /// [directory] outside [base] answers `invalid_argument`.
+  Future<void> ensureDirectory(Directory directory, {required Directory base}) =>
+      _ok('ensureDirectory', {'path': directory.path, 'base': base.path});
+
   /// Flushes every file and directory under [staging], then renames it to
   /// [finalDirectory] atomically WITHOUT replacing anything already there
   /// (`destination_exists`), and flushes the parent directories. A platform

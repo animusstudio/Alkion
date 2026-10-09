@@ -94,6 +94,45 @@ object CaptureFiles {
         return if (syncDir(parent)) "ok" else "io_error"
     }
 
+    /**
+     * Makes every directory from [basePath] (which must exist) down to [path]
+     * exist durably: each missing component is created and the parent of every
+     * component below [basePath] is flushed, created now or not. Symbolic links
+     * below [basePath] are refused. Mirrors the Linux primitive; uncompiled
+     * until an Android SDK host builds it.
+     */
+    fun ensureDirectory(path: String, basePath: String): String {
+        if (!path.startsWith("/") || !basePath.startsWith("/")) return "invalid_argument"
+        val base = basePath.trimEnd('/').ifEmpty { "/" }
+        val rest = when {
+            path == base -> ""
+            path.startsWith("$base/") -> path.substring(base.length + 1).trimEnd('/')
+            else -> return "invalid_argument"
+        }
+        if (!File(base).isDirectory) return "invalid_argument"
+        var current = File(base)
+        if (rest.isEmpty()) return "ok"
+        for (part in rest.split('/')) {
+            if (part.isEmpty() || part == "." || part == "..") return "invalid_argument"
+            val parent = current
+            current = File(parent, part)
+            try {
+                Os.mkdir(current.path, OsConstants.S_IRWXU)
+            } catch (e: ErrnoException) {
+                if (e.errno == OsConstants.ENOTDIR) return "not_a_directory"
+                if (e.errno != OsConstants.EEXIST) return "io_error"
+            }
+            val mode = try {
+                Os.lstat(current.path).st_mode
+            } catch (e: ErrnoException) {
+                return "io_error"
+            }
+            if (!OsConstants.S_ISDIR(mode)) return "not_a_directory"
+            if (!syncDir(parent)) return "io_error"
+        }
+        return "ok"
+    }
+
     private fun syncTree(file: File): String {
         val mode = try {
             Os.lstat(file.path).st_mode

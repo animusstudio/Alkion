@@ -59,6 +59,12 @@ class RepsCapturePlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                     call.argument<ByteArray>("bytes") ?: return GateResult("invalid_argument"),
                 ),
             )
+            "ensureDirectory" -> GateResult(
+                CaptureFiles.ensureDirectory(
+                    call.argument<String>("path") ?: "",
+                    call.argument<String>("base") ?: "",
+                ),
+            )
             "publishNoReplace" -> GateResult(
                 CaptureFiles.publishNoReplace(
                     call.argument<String>("staging") ?: "",

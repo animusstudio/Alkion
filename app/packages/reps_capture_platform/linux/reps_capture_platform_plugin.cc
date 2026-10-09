@@ -141,6 +141,56 @@ std::string DurableReplace(const std::string& path, const uint8_t* data,
   return SyncDir(Dirname(path)) ? "ok" : "io_error";
 }
 
+// Makes every directory from [base] (which must exist) down to [path] exist
+// durably: each missing component is created (mode 0700), and the parent of
+// EVERY component below [base] is flushed, whether this call created it or
+// not. A component left unflushed by an earlier failed or killed call is
+// therefore flushed by the next call before success is reported. Symbolic
+// links below [base] are refused.
+std::string EnsureDirectory(const std::string& path, const std::string& base) {
+  if (path.empty() || base.empty() || path[0] != '/' || base[0] != '/') {
+    return "invalid_argument";
+  }
+  std::string trimmed_base = base;
+  while (trimmed_base.size() > 1 && trimmed_base.back() == '/') {
+    trimmed_base.pop_back();
+  }
+  std::string rest;
+  if (path == trimmed_base) {
+    rest = "";
+  } else if (path.compare(0, trimmed_base.size() + 1, trimmed_base + "/") == 0) {
+    rest = path.substr(trimmed_base.size() + 1);
+  } else {
+    return "invalid_argument";
+  }
+  struct stat st;
+  if (stat(trimmed_base.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+    return "invalid_argument";
+  }
+  std::string current = trimmed_base;
+  size_t start = 0;
+  while (start <= rest.size()) {
+    size_t end = rest.find('/', start);
+    if (end == std::string::npos) end = rest.size();
+    const std::string part = rest.substr(start, end - start);
+    start = end + 1;
+    if (part.empty()) {
+      if (end == rest.size()) break;  // trailing '/'
+      return "invalid_argument";
+    }
+    if (part == "." || part == "..") return "invalid_argument";
+    const std::string parent = current;
+    current += "/" + part;
+    if (mkdir(current.c_str(), 0700) != 0 && errno != EEXIST) {
+      return errno == ENOTDIR ? "not_a_directory" : "io_error";
+    }
+    if (lstat(current.c_str(), &st) != 0) return "io_error";
+    if (!S_ISDIR(st.st_mode)) return "not_a_directory";
+    if (!SyncDir(parent)) return "io_error";
+  }
+  return "ok";
+}
+
 // fsyncs every regular file and directory under [path], children first.
 std::string SyncTree(const std::string& path) {
   struct stat st;
@@ -797,6 +847,14 @@ void HandleMethodCall(FlMethodCall* call) {
     const std::string path = StringArg(args, "path");
     RespondFromWorker(call, [path, copy]() {
       return DurableReplace(path, copy.data(), copy.size());
+    });
+    return;
+  }
+  if (method == "ensureDirectory") {
+    const std::string path = StringArg(args, "path");
+    const std::string base = StringArg(args, "base");
+    RespondFromWorker(call, [path, base]() {
+      return EnsureDirectory(path, base);
     });
     return;
   }
