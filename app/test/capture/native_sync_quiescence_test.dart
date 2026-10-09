@@ -46,6 +46,17 @@ class ControlledNativeSync implements NativeSyncMethod {
   }
 }
 
+/// The same controllable seam, claiming the registered method's id.
+class ControlledCandidateSync extends ControlledNativeSync {
+  @override
+  String get methodId => candidateNativeSyncMethodId;
+}
+
+/// The documented `qualificationEvidenceDigest` of the Linux record
+/// (docs/reps-capture-qualification.md).
+const _documentedLinuxQualificationDigest =
+    'd4ab5a782f2f22ba20bff793c56ee094da89a36a2f374fd3bbf2f7c1e05b7aa4';
+
 Matcher unsupported(String code) =>
     throwsA(isA<UnsupportedCaptureProfile>().having((e) => e.code, 'code', code));
 
@@ -328,5 +339,49 @@ void main() {
         observer.isCurrent(last, otherDatabase, profile,
             captureId: 'capture-1', gateGeneration: 9),
         false);
+  });
+
+  test('seam_evidence_never_current_for_production', () async {
+    final (database, profile) = await openSource(queue: false);
+    final registered = nativeSyncQualificationFor(profile);
+    expect(registered, linuxNativeSyncQualificationRecord.qualification);
+
+    // A seam bound to the REGISTERED qualification and method id.
+    final seam = NativeSyncQuiescence.withMethodForTesting(
+        qualification: registered!, method: ControlledCandidateSync()..releaseAll());
+    final evidence = await seam.disconnectAndObserve(database, profile,
+        captureId: 'capture-1',
+        gateGeneration: 1,
+        timeout: const Duration(seconds: 5));
+    expect(evidence.methodId, candidateNativeSyncMethodId);
+    expect(evidence.qualificationEvidenceDigest,
+        registered.qualificationEvidenceDigest);
+    expect(
+        seam.isCurrent(evidence, database, profile,
+            captureId: 'capture-1', gateGeneration: 1),
+        true);
+
+    final production = NativeSyncQuiescence(qualification: registered);
+    expect(
+        production.isCurrent(evidence, database, profile,
+            captureId: 'capture-1', gateGeneration: 1),
+        false,
+        reason: 'test-seam evidence is never production evidence');
+    final otherSeam = NativeSyncQuiescence.withMethodForTesting(
+        qualification: registered, method: ControlledCandidateSync()..releaseAll());
+    expect(
+        otherSeam.isCurrent(evidence, database, profile,
+            captureId: 'capture-1', gateGeneration: 1),
+        false);
+  });
+
+  test('linux_native_sync_record_digest_matches_guide', () async {
+    expect(linuxNativeSyncQualificationRecord.evidenceDigest,
+        _documentedLinuxQualificationDigest);
+    final guide =
+        await File('../docs/reps-capture-qualification.md').readAsString();
+    expect(guide, contains(_documentedLinuxQualificationDigest));
+    expect(guide,
+        contains(linuxNativeSyncQualificationRecord.profileEvidenceDigest));
   });
 }

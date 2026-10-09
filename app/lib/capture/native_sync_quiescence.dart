@@ -113,7 +113,12 @@ final NativeSyncQualificationRecord linuxNativeSyncQualificationRecord =
     'fixture:app/integration_test/support/native_sync_fixture.dart#pool-writer-lease-pause',
     'run:2026-10-10 make -C app capture-integration CAPTURE_DEVICE=linux; '
         'debug bundle, Flutter 3.44.0, x86_64, core 0.4.13/670c312e; '
-        'all native assertions PASS before registration',
+        'real disconnect() observed by a delegating spy: pending while the '
+        'apply is paused and while an upload is in flight, the paused row '
+        'applied when it returns and inside the barrier; PASS',
+    'mutation:disconnect not awaited, SDK status guards bypassed: FAIL '
+        '(disconnect completed while the apply was paused; row not applied '
+        'when it returned)',
   ],
 );
 
@@ -186,7 +191,8 @@ class NativeSyncPauseEvidence {
     required this.connectionEpoch,
     required this.disconnectCompleted,
     required this.nativeApplyDrained,
-  });
+    required Object origin,
+  }) : _origin = origin;
 
   final String captureId;
   final String databaseInstanceId;
@@ -197,6 +203,18 @@ class NativeSyncPauseEvidence {
   final int connectionEpoch;
   final bool disconnectCompleted;
   final bool nativeApplyDrained;
+
+  /// Which adapter kind produced it: production adapters share one origin,
+  /// every test-seam adapter has its own, so seam evidence is never current
+  /// for a production adapter.
+  final Object _origin;
+}
+
+/// Origin of evidence from production adapters (registered methods only).
+const Object _productionOrigin = _ProductionOrigin();
+
+class _ProductionOrigin {
+  const _ProductionOrigin();
 }
 
 /// Opaque per-instance identities and connection epochs, shared by every
@@ -223,21 +241,25 @@ _Epoch _epoch(PowerSyncDatabase database) => _epochs[database] ??= _Epoch();
 class NativeSyncQuiescence {
   NativeSyncQuiescence({required this.qualification})
       : _method = _nativeSyncMethods[qualification.methodId],
-        _requireRegistration = true;
+        _requireRegistration = true,
+        _origin = _productionOrigin;
 
-  /// Binds a controllable completion seam for host contract tests. Evidence
-  /// it produces is never current for a production adapter and qualifies
-  /// nothing.
+  /// Binds a method seam for tests, without the registry lookup. Its
+  /// evidence carries an origin private to this adapter, so it is never
+  /// current for a production adapter (or any other seam) and qualifies
+  /// nothing, even when [qualification] is a registered one.
   @visibleForTesting
   NativeSyncQuiescence.withMethodForTesting({
     required this.qualification,
     required NativeSyncMethod method,
   })  : _method = method,
-        _requireRegistration = false;
+        _requireRegistration = false,
+        _origin = Object();
 
   final NativeSyncQualification qualification;
   final NativeSyncMethod? _method;
   final bool _requireRegistration;
+  final Object _origin;
 
   bool get _registered =>
       !_requireRegistration ||
@@ -306,6 +328,7 @@ class NativeSyncQuiescence {
       connectionEpoch: epoch,
       disconnectCompleted: disconnectCompleted,
       nativeApplyDrained: nativeApplyDrained,
+      origin: _origin,
     );
   }
 
@@ -327,6 +350,7 @@ class NativeSyncQuiescence {
     final method = _method;
     return _registered &&
         method != null &&
+        identical(evidence._origin, _origin) &&
         evidence.disconnectCompleted &&
         evidence.nativeApplyDrained &&
         !database.closed &&
