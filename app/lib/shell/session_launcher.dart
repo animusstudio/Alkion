@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../capture/session_capture_hooks.dart';
+import '../capture/source_write_gate.dart';
 import '../data/active_session_draft.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
@@ -120,27 +122,37 @@ Future<ActiveSessionController?> prepareResume(
   if (manager.hasActive || f == null || !isResumable(f, sessionId, t)) return null;
   if (!manager.tryBeginLaunch()) return null;
   try {
-    final session = await sessionRepo.sessionById(sessionId);
-    if (session == null) {
-      manager.forgetFinished(sessionId); // deleted (or synced away) since
-      return null;
-    }
-    final rows = await sessionRepo.setsForSession(sessionId);
-    final draft = await restoreFinishedDraft(
-      f,
-      rows,
-      durationMin: session.durationMin,
-      exerciseRepo: exerciseRepo,
-      sessionRepo: sessionRepo,
-      now: t,
-    );
-    if (manager.hasActive) return null;
-    // Persist before registering, so process death right after Resume boots
-    // straight back into the resumed workout.
-    await draftStore.save(draft);
-    final controller = ActiveSessionController.fromDraft(draft, draftStore: draftStore);
-    manager.register(controller);
-    return controller;
+    // One source operation from the lookups through the draft save and
+    // registration, so a capture awaits all of it (and refuses it whole).
+    return await SessionWriteLedger.instance.track(runSourceWrite(
+      'session.resume',
+      (ticket) async {
+        final session = await sessionRepo.sessionById(sessionId);
+        if (session == null) {
+          // Deleted (or synced away) since.
+          await manager.forgetFinished(sessionId, parent: ticket);
+          return null;
+        }
+        final rows = await sessionRepo.setsForSession(sessionId);
+        final draft = await restoreFinishedDraft(
+          f,
+          rows,
+          durationMin: session.durationMin,
+          exerciseRepo: exerciseRepo,
+          sessionRepo: sessionRepo,
+          now: t,
+        );
+        if (manager.hasActive) return null;
+        // Persist before registering, so process death right after Resume
+        // boots straight back into the resumed workout.
+        await SessionWriteLedger.instance
+            .write('draft', () => draftStore.save(draft));
+        final controller =
+            ActiveSessionController.fromDraft(draft, draftStore: draftStore);
+        manager.register(controller);
+        return controller;
+      },
+    ));
   } finally {
     manager.endLaunch();
   }
@@ -151,18 +163,26 @@ Future<ActiveSessionController?> prepareResume(
 /// finish snapshot to [manager], so the workout can be resumed from History.
 /// (`finish()` notifies inside the transaction, before the commit; adopting
 /// there would let a failed commit replace a good snapshot.)
+///
+/// One source operation: its ticket spans the transaction, the draft clear
+/// inside it and the awaited `recordFinished`, including that save's error
+/// and clear continuations, so a capture cannot take its boundary between
+/// the COMMIT and the persisted snapshot.
 Future<String> finishWorkout(
   ActiveSessionController controller,
   SessionManager? manager, {
   required Future<String> Function(Future<String> Function(SqlExecutor executor) body) transact,
   DraftStore? draftStore,
-}) async {
-  final sessionId =
-      await transact((executor) => controller.finish(executor, draftStore: draftStore));
-  final finished = controller.lastFinished;
-  if (finished != null && manager != null) unawaited(manager.recordFinished(finished));
-  return sessionId;
-}
+}) =>
+    SessionWriteLedger.instance.track(runSourceWrite('session.finish', (ticket) async {
+      final sessionId =
+          await transact((executor) => controller.finish(executor, draftStore: draftStore));
+      final finished = controller.lastFinished;
+      if (finished != null && manager != null) {
+        await manager.recordFinished(finished, parent: ticket);
+      }
+      return sessionId;
+    }));
 
 /// History's Resume action: restores the finished workout [sessionId] and
 /// opens it. Callers handle "another workout is running" themselves (it needs

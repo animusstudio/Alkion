@@ -115,9 +115,9 @@ void main() {
     expect(c.lastFinished, isNull);
   });
 
-  test('discard records no snapshot', () {
+  test('discard records no snapshot', () async {
     final c = ActiveSessionController()..seedForTest(draftWith());
-    c.discard();
+    await c.discard();
     expect(c.lastFinished, isNull);
   });
 }

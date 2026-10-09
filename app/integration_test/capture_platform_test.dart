@@ -338,21 +338,22 @@ void main() {
     );
   });
 
-  test('missing_plugin_fails_before_write', () async {
+  test('missing_plugin_runs_ordinary_writes_ungated', () async {
+    // A build without the plugin is not capture-capable: no capture can
+    // close admission there, so ordinary writes run ungated, while every
+    // capture primitive still fails.
     const absent = RepsCapturePlatform(
       channel: MethodChannel('reps/capture/not-registered'),
     );
     final gate = SourceWriteGate(stateDirectory: stateDir, platform: absent);
-    var successOnMissingPlugin = false;
+    SourceTicket? ran;
+    await gate.run('write', (t) async => ran = t);
+    expect(ran, SourceTicket.ungated);
+    await expectLater(
+      gate.closeAdmission('capture-1'),
+      gateCode('platform_unavailable'),
+    );
     var bodyRan = false;
-    try {
-      await gate.run('write', (_) async => bodyRan = true);
-      successOnMissingPlugin = true;
-    } on SourceGateException catch (e) {
-      expect(e.code, 'platform_unavailable');
-    }
-    expect(successOnMissingPlugin, false);
-    expect(bodyRan, false);
     final destination = File('${stateDir.path}/journal.json');
     await destination.writeAsBytes([1, 2, 3], flush: true);
     await expectLater(
@@ -361,7 +362,8 @@ void main() {
     );
     expect(await destination.readAsBytes(), [1, 2, 3]);
 
-    // A missing or unusable state directory is refused, never assumed open.
+    // With the plugin present, a missing or unusable state directory is
+    // refused, never assumed open or run ungated.
     final missing = SourceWriteGate(
       stateDirectory: Directory('${stateDir.path}/does-not-exist'),
     );

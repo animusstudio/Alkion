@@ -57,14 +57,14 @@ void main() {
       expect(c.restEndedAt, start.add(const Duration(seconds: 90)));
     });
 
-    test('a new rest clears it; discard clears it', () {
+    test('a new rest clears it; discard clears it', () async {
       final c = _c([_b('a', work: [_s('a1')])]);
       c.startRest(90);
       c.stopRest();
       c.startRest(60);
       expect(c.restEndedAt, isNull);
       c.stopRest();
-      c.discard();
+      await c.discard();
       expect(c.restEndedAt, isNull);
     });
 

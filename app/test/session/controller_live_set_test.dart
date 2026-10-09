@@ -198,10 +198,10 @@ void main() {
       });
     });
 
-    test('discard resets it', () {
+    test('discard resets it', () async {
       final c = _c([_b('a', work: [_s('a1')])]);
       c.logLiveSet();
-      c.discard();
+      await c.discard();
       expect(c.rirPromptSetId, isNull);
     });
   });
@@ -276,12 +276,12 @@ void main() {
       expect(a.workingSets.map((x) => x.id), ['a1', 'x']);
     });
 
-    test('restoreSet after discard does not throw', () {
+    test('restoreSet after discard does not throw', () async {
       final a = _b('a', work: [_s('a1'), _s('a2')]);
       final c = _c([a]);
       final s = a.workingSets[1];
       final idx = c.removeSet(a, s);
-      c.discard();
+      await c.discard();
       expect(() => c.restoreSet(a, s, idx), returnsNormally);
     });
   });

@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'auth/auth_store.dart';
 import 'capture/capture_journal.dart';
 import 'capture/capture_startup.dart';
+import 'capture/session_capture_hooks.dart';
 import 'capture/source_write_gate.dart';
 import 'capture/startup_inventory.dart';
 import 'data/active_session_draft.dart';
@@ -63,13 +64,13 @@ Future<void> main() async {
   // capture holds the source and keep any stored bytes a loader would delete.
   final appSupport = await getApplicationSupportDirectory();
   final capture = CaptureLocations(appSupport);
-  final boot = _AppBoot();
+  // Every source writer from here on admits through this one gate.
+  final gate = SourceWriteGate(stateDirectory: capture.gate);
+  appSourceGate = gate;
+  final boot = _AppBoot(RawPreservation(capture.preparation, base: appSupport));
   final outcome = await runCaptureAwareStartup(
     journal: CaptureJournal(capture.journal, base: appSupport),
-    probeGate: () => probeSourceGate(
-      SourceWriteGate(stateDirectory: capture.gate),
-      base: appSupport,
-    ),
+    probeGate: () => probeSourceGate(gate, base: appSupport),
     source: appSupport,
     preservation: RawPreservation(capture.preparation, base: appSupport),
     files: [
@@ -114,6 +115,11 @@ Future<void> main() async {
 /// SessionManager/notification → resume draft → finished snapshot →
 /// optional connectSync. [runCaptureAwareStartup] decides whether it runs.
 class _AppBoot implements OrdinaryStartupSteps {
+  _AppBoot(this.preservation);
+
+  /// Where a capture keeps the pre-flush draft bytes.
+  final RawPreservation preservation;
+
   final draftStore = DraftStore();
   final finishedStore = FinishedSessionStore();
   final settingsService = SettingsService();
@@ -121,6 +127,10 @@ class _AppBoot implements OrdinaryStartupSteps {
   final auth = AuthStore();
   final identity = IdentityService();
   late final SessionManager sessionManager;
+
+  /// The session side of a data capture (commit input, drain and flush,
+  /// freeze/resume callbacks).
+  late final SessionCaptureHooks captureHooks;
 
   @override
   Future<void> loadSettings() async {
@@ -141,22 +151,28 @@ class _AppBoot implements OrdinaryStartupSteps {
       );
 
   @override
-  Future<void> runBootMigrations() async {
-    await backfillTopSets(db);
+  Future<void> runBootMigrations() =>
+      runSourceWrite('boot.migrations', (ticket) async {
+        await backfillTopSets(db, parent: ticket);
 
-    // Normalize is_template = NULL → 0 (rows created by pre-fix builds)
-    // BEFORE absorb, so its de-dup queries (exact is_template = 0) can see
-    // owned rows.
-    await backfillIsTemplate(db);
+        // Normalize is_template = NULL → 0 (rows created by pre-fix builds)
+        // BEFORE absorb, so its de-dup queries (exact is_template = 0) can
+        // see owned rows.
+        await backfillIsTemplate(db, parent: ticket);
 
-    // Absorb synced template rows into user-owned rows (nothing is locked).
-    await absorbTemplates(db, identity.currentUserId);
-  }
+        // Absorb synced template rows into user-owned rows (nothing is
+        // locked).
+        await absorbTemplates(db, identity.currentUserId, parent: ticket);
+      });
 
   @override
   Future<void> prepareSessions() async {
     sessionManager = SessionManager(finishedStore: finishedStore);
     sessionManager.init();
+    captureHooks = SessionCaptureHooks(
+      manager: sessionManager,
+      preservation: preservation,
+    );
     final workoutNotification = WorkoutNotification();
     await workoutNotification.init(
       onTap: () {
@@ -218,12 +234,15 @@ class _AppState extends State<App> {
   Future<void> _onOnboardingChosen(
       BuildContext ctx, OnboardingChoice choice) async {
     if (choice == OnboardingChoice.starter) {
-      await db.writeTransaction(
-        (tx) => seedStarterCatalog(
-            PowerSyncTxExecutor(tx), widget.identity.currentUserId),
-      );
-      await MuscleTargetRepository(db)
-          .seedDefaultsIfEmpty(widget.identity.currentUserId);
+      await runSourceWrite('onboarding.seed', (ticket) async {
+        await db.writeTransaction(
+          (tx) => seedStarterCatalog(
+              PowerSyncTxExecutor(tx), widget.identity.currentUserId),
+        );
+        await MuscleTargetRepository(db).seedDefaultsIfEmpty(
+            widget.identity.currentUserId,
+            parent: ticket);
+      });
     }
     await widget.identity.completeOnboarding(); // notifies → re-route to shell
   }

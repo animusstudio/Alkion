@@ -1,6 +1,6 @@
 // Host contract tests for the source-write gate facade.
 //
-// Host tests have no native plugin. Except for `missing_plugin_fails_before_write`
+// Host tests have no native plugin. Except for `missing_plugin_runs_ordinary_writes_ungated`
 // (which uses the real, absent channel), they drive the facade against a
 // small reference model of the native `reps/capture` protocol. They pin how
 // the Dart side admits, nests, drains, releases and reports failures; they
@@ -265,19 +265,18 @@ void main() {
     );
   });
 
-  test('missing_plugin_fails_before_write', () async {
-    // No handler is registered for the real channel on the host.
+  test('missing_plugin_runs_ordinary_writes_ungated', () async {
+    // No handler is registered for the real channel on the host: a build
+    // without the plugin is not capture-capable. Ordinary writes keep
+    // working there, ungated (no capture can close admission), but nothing
+    // capture-related can succeed.
     final gate = SourceWriteGate(stateDirectory: stateDir);
-    var successOnMissingPlugin = false;
-    var bodyRan = false;
-    try {
-      await gate.run('write', (_) async => bodyRan = true);
-      successOnMissingPlugin = true;
-    } on SourceGateException catch (e) {
-      expect(e.code, 'platform_unavailable');
-    }
-    expect(successOnMissingPlugin, false);
-    expect(bodyRan, false);
+    SourceTicket? ran;
+    await gate.run('write', (t) async => ran = t);
+    expect(ran, SourceTicket.ungated);
+    SourceTicket? nested;
+    await gate.run('nested', (t) async => nested = t, parent: ran);
+    expect(nested, SourceTicket.ungated);
     await expectLater(
       gate.closeAdmission('capture-1'),
       gateCode('platform_unavailable'),
@@ -290,6 +289,51 @@ void main() {
       gateCode('platform_unavailable'),
     );
     expect(await destination.readAsBytes(), [1, 2, 3]);
+  });
+
+  test('present_plugin_refuses_or_fails_closed', () async {
+    // Where the plugin answers, a closed admission is a visible refusal and
+    // any other gate failure is never treated as "run ungated".
+    final process = machine.spawn('fg');
+    final gate = SourceWriteGate(
+      stateDirectory: stateDir,
+      platform: process.platform,
+    );
+    final preparation = await gate.closeAdmission('capture-1');
+    var bodyRan = false;
+    await expectLater(
+      gate.run('write', (_) async => bodyRan = true),
+      gateCode('admission_closed'),
+    );
+    // An ungated "parent" is never reused: it is refused like new work.
+    await expectLater(
+      gate.run('write', (_) async => bodyRan = true,
+          parent: SourceTicket.ungated),
+      gateCode('admission_closed'),
+    );
+    expect(bodyRan, false);
+    await gate.release(
+      SourceHold('capture-1', preparation.generation),
+      decisionDigest: 'a' * 64,
+    );
+
+    final broken = MethodChannel('reps/capture/test/broken');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(broken, (_) async {
+      throw PlatformException(code: 'boom');
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding
+        .instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(broken, null));
+    final failing = SourceWriteGate(
+      stateDirectory: stateDir,
+      platform: RepsCapturePlatform(channel: broken),
+    );
+    await expectLater(
+      failing.run('write', (_) async => bodyRan = true),
+      gateCode('platform_error'),
+    );
+    expect(bodyRan, false);
   });
 
   test('killed_owner_preserves_durable_hold', () async {

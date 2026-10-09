@@ -5,6 +5,8 @@ import 'dart:math' show max;
 import 'package:flutter/foundation.dart';
 import 'package:powersync/powersync.dart' show uuid;
 
+import '../capture/session_capture_hooks.dart';
+import '../capture/source_write_gate.dart';
 import '../data/active_session_draft.dart';
 import '../data/day_template_repository.dart'; // resolveSlot, DayTemplate
 import '../data/exercise_repository.dart';
@@ -333,10 +335,27 @@ class ActiveSessionController extends ChangeNotifier {
   final DraftStore? _draftStore;
   Timer? _saveDebounce;
 
+  /// The store the draft autosaves to, or null when it is not persisted.
+  DraftStore? get draftStore => _draftStore;
+
   /// Autosave debounce window (exposed for tests).
   static const saveDebounce = Duration(seconds: 1);
 
   SessionDraft? _draft;
+
+  /// Fences autosaves: each scheduling, finish, discard and freeze moves it
+  /// on, and an autosave whose epoch is no longer current never writes —
+  /// not even one whose timer already fired and is waiting for admission.
+  int _saveEpoch = 0;
+
+  /// Generation of the capture that froze this controller's callbacks.
+  int? _frozenGeneration;
+
+  /// A mutation happened while frozen, so its autosave is still owed.
+  bool _savePending = false;
+
+  /// Whether a capture froze autosave and rest auto-stop.
+  bool get callbacksFrozen => _frozenGeneration != null;
 
   @override
   void notifyListeners() {
@@ -346,17 +365,73 @@ class ActiveSessionController extends ChangeNotifier {
 
   void _scheduleSave() {
     final store = _draftStore;
-    if (store == null || _draft == null) return;
+    final d = _draft;
+    if (store == null || d == null) return;
     _saveDebounce?.cancel();
+    _saveDebounce = null;
+    final epoch = ++_saveEpoch;
+    if (callbacksFrozen) {
+      _savePending = true;
+      return;
+    }
+    // Copied now: the autosave writes the state it was scheduled for.
+    final copy = d.deepCopy();
     _saveDebounce = Timer(saveDebounce, () {
-      final d = _draft;
-      if (d != null) store.save(d);
+      if (epoch != _saveEpoch || callbacksFrozen) return;
+      SessionWriteLedger.instance.detach(runSourceWrite(
+        'session.autosave',
+        (_) async {
+          // A finish, discard, newer schedule or capture freeze since the
+          // timer fired supersedes this save.
+          if (epoch != _saveEpoch || callbacksFrozen) return;
+          await SessionWriteLedger.instance.write('draft', () => store.save(copy));
+        },
+      ));
     });
+  }
+
+  /// Stops autosave and rest auto-stop for capture [generation]: the pending
+  /// debounce is cancelled and already scheduled callbacks are fenced. Later
+  /// mutations stay in memory until [resumeCallbacks].
+  void freezeCallbacks(int generation) {
+    if (_saveDebounce?.isActive ?? false) _savePending = true;
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
+    _saveEpoch++;
+    _frozenGeneration = generation;
+  }
+
+  /// The capture flushed the current draft: nothing is owed for the state
+  /// before this call.
+  void markFlushed() => _savePending = false;
+
+  /// Ends a freeze: a rest whose countdown ran out meanwhile ends at its due
+  /// time (no silent extension, no timer continuity), and a mutation made
+  /// while frozen is autosaved.
+  void resumeCallbacks(DateTime now) {
+    if (!callbacksFrozen) return;
+    _frozenGeneration = null;
+    final start = restStart;
+    var changed = false;
+    if (start != null) {
+      final due = start.add(Duration(seconds: restTotal));
+      if (!now.isBefore(due)) {
+        restEndedAt = due;
+        restStart = null;
+        restTotal = 0;
+        changed = true;
+      }
+    }
+    if (changed || _savePending) {
+      _savePending = false;
+      notifyListeners();
+    }
   }
 
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _saveEpoch++;
     super.dispose();
   }
 
@@ -865,7 +940,10 @@ class ActiveSessionController extends ChangeNotifier {
 
     // Clear the on-disk draft (if a store is provided) then the in-memory state.
     _saveDebounce?.cancel();
-    await draftStore?.clear();
+    _saveEpoch++;
+    if (draftStore != null) {
+      await SessionWriteLedger.instance.write('draft', draftStore.clear);
+    }
     // Recorded only once nothing above can fail any more.
     _lastFinished = FinishedSession(
       sessionId: sessionId,
@@ -885,17 +963,30 @@ class ActiveSessionController extends ChangeNotifier {
     return sessionId;
   }
 
-  /// Clears the in-memory draft without persisting. Used when the user
+  /// Clears the in-memory draft without persisting, and deletes the draft
+  /// file so a discarded workout cannot resurrect. Used when the user
   /// discards the session.
-  void discard() {
-    _saveDebounce?.cancel();
-    _draft = null;
-    restStart = null;
-    restTotal = 0;
-    restEndedAt = null;
-    _focusedSetId = null;
-    _rirPromptSetId = null;
-    _draftStore?.clear(); // fire-and-forget; a discarded workout must not resurrect
-    notifyListeners();
-  }
+  ///
+  /// One logical source operation: admitted before anything changes, so a
+  /// refusal (a capture holds the source) throws and leaves the workout as
+  /// it was. Completes once the file clear finished; its failure is thrown
+  /// and stays observable to capture.
+  Future<void> discard() => SessionWriteLedger.instance.track(
+        runSourceWrite('session.discard', (_) async {
+          _saveDebounce?.cancel();
+          _saveEpoch++;
+          _draft = null;
+          restStart = null;
+          restTotal = 0;
+          restEndedAt = null;
+          _focusedSetId = null;
+          _rirPromptSetId = null;
+          final store = _draftStore;
+          final clearing = store == null
+              ? null
+              : SessionWriteLedger.instance.write('draft', store.clear);
+          notifyListeners();
+          await clearing;
+        }),
+      );
 }

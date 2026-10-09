@@ -2,6 +2,7 @@ import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../capture/source_write_gate.dart';
 import 'exercise_repository.dart' show uniqueSlug;
 
 /// SharedPreferences key holding the string list of template ids that have been
@@ -244,7 +245,15 @@ List<AbsorbOp> absorbOps({
 
 /// Boot-time executor: absorbs all visible templates. Returns the number of
 /// ops applied (0 = nothing to do — the common case).
-Future<int> absorbTemplates(PowerSyncDatabase db, String userId) async {
+///
+/// One source operation, from the reads through the absorb tombstones;
+/// [parent] when it is part of a larger one (the boot migrations).
+Future<int> absorbTemplates(PowerSyncDatabase db, String userId,
+        {SourceTicket? parent}) =>
+    runSourceWrite('boot.absorb_templates', (_) => _absorbTemplates(db, userId),
+        parent: parent);
+
+Future<int> _absorbTemplates(PowerSyncDatabase db, String userId) async {
   final exRows =
       await db.getAll('SELECT * FROM exercises WHERE is_template = 1');
   final dayRows =

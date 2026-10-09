@@ -90,7 +90,7 @@ void main() {
       final c = ActiveSessionController(draftStore: store);
       c.seedEmpty(name: 'Custom', focus: '');
       c.markChanged();
-      c.discard();
+      await c.discard();
       await Future<void>.delayed(
           ActiveSessionController.saveDebounce + const Duration(milliseconds: 200));
       expect(store.saveCount, 0); // pending save cancelled

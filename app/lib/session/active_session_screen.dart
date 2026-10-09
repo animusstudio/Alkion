@@ -79,9 +79,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       // open, stop the rest here (the OS alarm covers the backgrounded case;
       // the deleted SessionManager Dart timer used to cover this one).
       // stopRest is a guarded no-op if already stopped.
+      // While a capture holds the source the rest is not stopped here; it is
+      // reconciled to its due time when the capture releases.
       final c = _controller;
       final start = c?.restStart;
-      if (c != null && start != null) {
+      if (c != null && start != null && !c.callbacksFrozen) {
         final remaining =
             c.restTotal - DateTime.now().difference(start).inSeconds;
         if (remaining <= 0) c.stopRest();
@@ -139,7 +141,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
     if (!hasDone) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      controller.discard();
+      if (!await _discard(context, controller)) return;
       if (context.mounted) Navigator.of(context).pop();
       return;
     }
@@ -157,8 +159,29 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
     if (confirmed == true) {
       if (context.mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      controller.discard();
+      if (!context.mounted || !await _discard(context, controller)) return;
       if (context.mounted) Navigator.of(context).pop();
+    }
+  }
+
+  /// Discards the workout, including its draft file. False (with the error
+  /// shown, the workout left running when nothing was discarded) if that
+  /// failed — e.g. while a capture holds the source.
+  Future<bool> _discard(
+      BuildContext context, ActiveSessionController controller) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final l = AppLocalizations.of(context);
+    final danger = context.tokens.danger;
+    try {
+      await controller.discard();
+      return true;
+    } catch (_) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(l.editorSaveFailed),
+        backgroundColor: danger,
+      ));
+      // Discarded in memory but its file survived: leave the empty screen.
+      return !controller.hasSession;
     }
   }
 

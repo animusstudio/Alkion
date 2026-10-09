@@ -38,7 +38,7 @@ that range is never a qualification.
 | Public schema fingerprint | `077764b3aaf948377dec78e8bc303018d8d2172b402be2d8568f84803b12f808` | not observed | not observed |
 | Non-destructive opening | **PASS** (tests below) | UNRUN | UNRUN |
 | Native sync quiescence | Covered by the `linux` registration (same core binary); host `flutter test` runs prove nothing native | **PASS** in the debug bundle; method `powersync-2.2.0/disconnect-awaits-sync-isolate-exit+writer-barrier/v1` registered (see "Native sync quiescence: Linux qualification"); release mode UNRUN | **unsupported** (UNRUN; nothing registered) |
-| Source-write gate and durable files | Host contract tests only | **PASS** in the debug bundle (see "Source-write gate and durable files"); release mode UNRUN | **unsupported**: the plugin is not enabled for Android (Kotlin sources kept, never compiled); every call fails closed with `platform_unavailable` |
+| Source-write gate and durable files | Host contract tests only | **PASS** in the debug bundle (see "Source-write gate and durable files"); release mode UNRUN | **unsupported**: the plugin is not enabled for Android (Kotlin sources kept, never compiled); every capture call fails closed with `platform_unavailable`, while ordinary writes run ungated (Ruling R15) |
 | Result | Opening/SQL profile `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13` and its native sync quiescence registered; attested capture **unsupported** until every source writer participates in the gate and the capture boundary is qualified end to end | Uses the same `linux` row. Capture opening re-observes the platform, core and pre-initialize fingerprints on every open; the app and SDK versions are caller-asserted (see below). Attested capture **unsupported** for the same reason | **unsupported** (no Android SDK or device on the qualifying host) |
 
 The fingerprints were observed on synthetic fixtures with a full queue, an
@@ -398,8 +398,8 @@ the local path plugin `app/packages/reps_capture_platform/`, registered
 through Flutter's generated registrants on channel `reps/capture`. All
 admission decisions are native. The Dart classes hold no admission state, so
 every engine or isolate, each with its own `SourceWriteGate` instance, sees
-the same gate. No existing app writer uses the gate yet; it is a new facade
-only.
+the same gate. The app's SQL and workout-file writers admit through it; see
+"Session operations".
 
 - `SourceWriteGate(stateDirectory:)` takes a caller-provided private
   directory for the lock and state files. Tests always pass a fresh
@@ -409,7 +409,13 @@ only.
   `run(..., parent: ticket)` have finished; the native ticket is
   reference-counted. A nested run is admitted even while admission is
   closed, because it belongs to admitted work. A parent that already finished
-  is refused (`parent_completed`).
+  is refused (`parent_completed`). With the plugin present, a closed
+  admission refuses new work (`admission_closed`) and any other gate failure
+  fails closed. Without it (`platform_unavailable`, a build that is not
+  capture-capable, where no capture can close admission) `run` executes the
+  body ungated with `SourceTicket.ungated`, so ordinary writes keep working
+  (Ruling R15). An ungated ticket is never reused as a parent by a gate whose
+  plugin answers: that work is admitted or refused like new work.
 - `closeAdmission(captureId)` durably records `preparing` with the next
   generation and returns a `SourcePreparation(captureId, generation, ticket)`.
   A second capture is refused (`capture_in_progress`).
@@ -531,7 +537,7 @@ Android: nothing ran.
 | --- | --- | --- |
 | `nested_ticket_lives_through_last_continuation`: the parent operation returns while its nested file save still runs under the same ticket. Drain stays `preparing` until the save finishes and then holds. A finished parent cannot be reused. | **PASS** | UNRUN |
 | `two_engines_hold_excludes_background_and_process`: a ticket admitted in a background isolate (own `BackgroundIsolateBinaryMessenger`) and one admitted in a second OS process (python3 loading the bundled plugin library and calling `reps_capture_native_call`) each keep the hold pending until completed. Under the hold, the foreground gate, a second gate instance, the background isolate and the other process are all refused (`writesWhileHeld == 0`). The other process can neither prepare nor release that capture. | **PASS** | UNRUN |
-| `missing_plugin_fails_before_write`: an unregistered channel gives `platform_unavailable` before the body runs; `durableReplace` leaves the file untouched; a missing state directory gives `invalid_argument`. | **PASS** | UNRUN |
+| `missing_plugin_runs_ordinary_writes_ungated`: with an unregistered channel, `run` executes its body with `SourceTicket.ungated`, while `closeAdmission` and `durableReplace` give `platform_unavailable` and leave the file untouched; with the plugin present, a missing state directory gives `invalid_argument` and the body never runs. | **PASS** | UNRUN |
 | `killed_owner_preserves_durable_hold`: a second process prepares and holds, then is SIGKILLed. A fresh gate cannot admit or start a capture; status is `recorded`. Only a release naming the same capture and generation reopens admission. A process killed while `preparing` also leaves admission closed. | **PASS** | UNRUN |
 | `killed_ticket_holder_requires_recovery`: while a second process holds an admitted ticket, `drain` times out. After that process is SIGKILLed with the ticket in flight, `drain` refuses with `recovery_required`, repeatedly. A third process sees the same, and the record stays `preparing`. Only `acknowledgeInterruptedWork` (which removes 1 marker) lets `drain` hold. An acknowledgement never removes a live process's marker (0 removed), and that live ticket keeps the next hold pending until it completes. | **PASS** | UNRUN |
 | `destination_conflict_never_replaces`: publication to an absent destination moves the whole tree. A non-empty or an empty existing destination is refused with `destination_exists`, existing bytes stay unchanged and staging stays intact. `durableReplace` replaces whole contents and leaves no temporary file. Run on tmpfs and ext4. | **PASS** | UNRUN |
@@ -544,7 +550,8 @@ lock as free, `two_engines_hold_excludes_background_and_process` **FAILS**
 
 Host contract tests (`app/test/capture/source_write_gate_test.dart`, same six
 names) drive the facade against a Dart reference model of the channel, except
-`missing_plugin_fails_before_write`, which uses the real absent channel. They
+`missing_plugin_runs_ordinary_writes_ungated`, which uses the real absent
+channel, plus `present_plugin_refuses_or_fails_closed`. They
 pin facade behavior only and are **PASS**. They prove nothing native.
 
 Limits:
@@ -707,11 +714,87 @@ Limits:
   Relaunching runs the checks again.
 - A store file changed by another process between inspection and its loader
   is not detected. At cold start no other writer of these files runs.
-- The running app's finished-snapshot expiry timer and autosave still clear
-  or overwrite files without this preservation. That wiring belongs to the
-  session-operation work.
+- Outside a capture, the running app's finished-snapshot expiry and
+  autosave still clear or overwrite the files without preserving them. A
+  capture freezes both and preserves the draft's pre-flush bytes before its
+  one final flush (see "Session operations").
 - Startup preservation cannot recover bytes that builds before this one
   already deleted.
+
+## Session operations
+
+Every SQL, workout-file and session-callback writer of the running app is one
+admitted logical operation (`runSourceWrite` over the app gate that `main`
+installs before any ordinary startup step). Read-only queries and watch
+streams are not wrapped. Preferences, notifications and PowerSync transport
+are not yet wrapped; until they are, attested capture stays **unsupported**.
+
+| Operation | Ticket scope |
+| --- | --- |
+| Exercise create/update/delete, day save/delete, bodyweight log, muscle target set | the repository method's whole write transaction |
+| History set update/add/delete, session delete | the whole transaction, top-set recompute included |
+| Muscle-target default seed | count check and insert; nested under onboarding |
+| Onboarding starter seed | catalog transaction plus target seed (`parent:`) |
+| Boot migrations | one operation; top-set and `is_template` backfills and template absorption (reads, writes and absorb tombstones) run nested (`parent:`) |
+| Boot draft resume, boot finished-snapshot load | load including any clear of undecodable or expired bytes (after startup preservation) |
+| Finish (`finishWorkout`) | transaction, draft clear, and the awaited `recordFinished` save including its error/clear continuation (`parent:`) |
+| Discard | admitted before anything changes (a refusal leaves the workout running and is shown); in-memory teardown and draft-file clear |
+| Resume from History | lookups, draft save, registration; a vanished session's snapshot forget runs nested |
+| Finished-snapshot forget / expiry | in-memory drop and file clear; refused while admission is closed |
+| Autosave | debounced, deep copy taken when scheduled; fenced by an epoch so a superseded, finished, discarded or frozen save never writes, even after its admission returned |
+
+`DraftStore`/`FinishedSessionStore` (`JsonFileStore`) run every save, load
+and clear of one store file one at a time in call order, across instances,
+and encode the value when `save` is called: an older save cannot rename over
+a newer one.
+
+`SessionCaptureHooks` (`app/lib/capture/session_capture_hooks.dart`) is the
+session side of the boundary for the coordinator:
+
+- `commitEditorInput(preparation)` refuses (`unsaved_editor_input`) while a
+  Plan editor holds unsaved edits (its existing `EditorGuard` dirty check),
+  a History set editor has an open card or unpersisted edit, or the
+  bodyweight sheet is open. Such forms need a normal Save or Cancel; nothing
+  saves them. Otherwise it commits focused fields and stops gliding rulers
+  with `commitPendingInput()` under the preparation ticket; writes that
+  committing starts synchronously inherit that ticket.
+- `drainAndFlush(preparation)` freezes callbacks, awaits every running
+  workout-store operation (autosaves, discard clears, finish adoption,
+  resume saves, expiry), then flushes a deep copy of the live draft once,
+  under the preparation ticket, through `RawPreservation.preserveAcrossFlush`
+  (pre-flush and orphan `.tmp` bytes preserved first, replacement relation
+  recorded). A store write whose failure was not superseded (an autosave,
+  a discard clear, a finished-snapshot save that fell back to clearing)
+  makes it throw `persistence_failed`; the app's visible behavior for those
+  failures is unchanged.
+- `freezeCallbacks(generation)` stops autosave, the session screen's rest
+  auto-stop, lifecycle reconcile and the finished-snapshot expiry; already
+  scheduled callbacks are fenced. `resumeCallbacks(now)` ends a rest whose
+  countdown ran out at its due time (no timer continuity, no silent
+  extension), autosaves a mutation made while frozen, reconciles a lifecycle
+  resume and re-checks or expires the finished snapshot. It is meant to run
+  after the source is released.
+
+Host tests (`app/test/capture/session_capture_hooks_test.dart`, a Dart model
+of the admission protocol; they prove nothing native), all **PASS**:
+
+| Test | What it pins |
+| --- | --- |
+| `finish_ticket_includes_commit_adoption_and_file` | after COMMIT the gate is not idle until the finished snapshot is saved; a failing save's clear continuation also holds the ticket, and its failure blocks `drainAndFlush` |
+| `old_autosave_cannot_overwrite_new_flush` | an autosave admitted before the capture but answered late never writes; the file holds exactly the flush bytes; frozen mutations do not autosave; concurrent writers of one store finish in call order |
+| `discard_resume_expiry_drain_or_block` | an admitted discard clear, resume save and expiry finish before the drain returns; a refused discard changes nothing; a failed discard clear blocks; a new expiry while frozen clears nothing and is reconciled on resume |
+| `input_mid_fling_commits_once` | a weight ruler mid-fling is stopped on its shown value; one flush persists it with set ids, order and `startedAt`; no autosave |
+| `unrepresented_unsaved_form_blocks` | an edited Plan day and an open History set editor refuse with `unsaved_editor_input` and write nothing |
+
+Limits:
+
+- A History set edit whose 400 ms debounce fires after admission closes is
+  refused and not retried; the capture itself refuses while that sheet has an
+  open card, but a coordinator should check `unsavedEditors()` before closing
+  admission.
+- A refused discard shows the generic "Couldn't save" message.
+- The real `main()` with the Linux plugin was not run end to end with these
+  writers; native admission is covered by the capture integration tests.
 
 ## Native qualification command
 
@@ -727,5 +810,6 @@ and raw-file preservation". On 2026-10-10 it passed with
 in three consecutive runs after review round 1, with the stricter
 assertions and the recovery test (eight tests), then once with nine tests
 after the startup test was added, then once with all ten after review
-round 1. It has never run on Android. Host unit tests never establish
+round 1, then once more after the session-operation work (with
+`missing_plugin_runs_ordinary_writes_ungated`). It has never run on Android. Host unit tests never establish
 Android support.

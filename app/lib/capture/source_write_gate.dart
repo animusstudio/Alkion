@@ -32,6 +32,13 @@ class SourceGateException implements Exception {
 class SourceTicket {
   const SourceTicket(this.id, this.generation);
 
+  /// The stand-in ticket of an operation that ran without a gate: on a
+  /// platform without the native plugin (not capture-capable), or where no
+  /// app gate is installed (host tests). A gate whose plugin answers never
+  /// reuses it as a parent: a continuation passing it is admitted, or
+  /// refused, like a new operation.
+  static const ungated = SourceTicket('', 0);
+
   final String id;
 
   /// Gate generation current when the ticket was admitted.
@@ -97,6 +104,10 @@ class SourceWriteGate {
   final Directory stateDirectory;
   final RepsCapturePlatform _platform;
 
+  /// Set once the native side answered `platform_unavailable`: this build
+  /// has no capture plugin, so no capture can ever close admission here.
+  bool _platformUnavailable = false;
+
   static const _pollStart = Duration(milliseconds: 5);
   static const _pollMax = Duration(milliseconds: 50);
 
@@ -105,17 +116,32 @@ class SourceWriteGate {
   /// ticket, so it is admitted even while admission is closed; a parent whose
   /// operation already finished is refused (`parent_completed`).
   ///
-  /// Throws [SourceGateException] before [body] runs if admission is
-  /// refused or the native gate is unavailable.
+  /// Where the native plugin is present, throws [SourceGateException] before
+  /// [body] runs if admission is refused (`admission_closed` while a capture
+  /// prepares or holds the source) or the gate fails. Without the plugin
+  /// (`platform_unavailable`: a build that is not capture-capable, where no
+  /// capture can close admission) [body] runs ungated with
+  /// [SourceTicket.ungated], so ordinary writes keep working.
   Future<T> run<T>(
     String operation,
     Future<T> Function(SourceTicket ticket) body, {
     SourceTicket? parent,
   }) async {
-    final admitted = await _call('admit', {
-      'operation': operation,
-      if (parent != null) 'parent': parent.id,
-    });
+    if (_platformUnavailable) return body(parent ?? SourceTicket.ungated);
+    final Map<String, Object?> admitted;
+    try {
+      admitted = await _call('admit', {
+        'operation': operation,
+        // An ungated parent ran before any gate existed: nothing to reuse,
+        // so this is an ordinary admission (refused while closed).
+        if (parent != null && parent != SourceTicket.ungated)
+          'parent': parent.id,
+      });
+    } on SourceGateException catch (e) {
+      if (e.code != 'platform_unavailable') rethrow;
+      _platformUnavailable = true;
+      return body(parent ?? SourceTicket.ungated);
+    }
     final ticket = SourceTicket(
       admitted['ticket']! as String,
       admitted['generation']! as int,
@@ -233,6 +259,44 @@ class SourceWriteGate {
     'dir': stateDirectory.path,
     ...arguments,
   });
+}
+
+/// The gate every source writer of this engine admits through. `main`
+/// installs it before any ordinary startup step can write; null (no gate,
+/// every write ungated) in host tests that do not install one.
+SourceWriteGate? appSourceGate;
+
+SourceTicket? _defaultParent;
+
+/// Runs [body] as one admitted logical source operation through
+/// [appSourceGate] (see [SourceWriteGate.run]). A nested continuation passes
+/// the running operation's ticket as [parent]; without one it inherits the
+/// parent set by [withDefaultParent] around the synchronous call that
+/// started it. With no app gate, [body] runs at once, ungated.
+Future<T> runSourceWrite<T>(
+  String operation,
+  Future<T> Function(SourceTicket ticket) body, {
+  SourceTicket? parent,
+}) {
+  final gate = appSourceGate;
+  final p = parent ?? _defaultParent;
+  if (gate == null) return body(p ?? SourceTicket.ungated);
+  return gate.run(operation, body, parent: p);
+}
+
+/// Calls [body] synchronously with [ticket] as the parent of every source
+/// write it starts without naming one: writes that committing editor input
+/// triggers then run under the capture's preparation ticket instead of being
+/// refused by the closed admission. Only writes started before [body]
+/// returns inherit it.
+T withDefaultParent<T>(SourceTicket ticket, T Function() body) {
+  final previous = _defaultParent;
+  _defaultParent = ticket;
+  try {
+    return body();
+  } finally {
+    _defaultParent = previous;
+  }
 }
 
 /// Durable file primitives for capture state and publication. Each call

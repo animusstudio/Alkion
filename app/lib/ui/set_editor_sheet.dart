@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../capture/session_capture_hooks.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
@@ -58,9 +59,15 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   // One debounce timer per set with a pending, unpersisted edit.
   final Map<String, Timer> _timers = {};
 
+  /// While a set's editing card is open, or an edit is not yet persisted,
+  /// a data capture waits for the sheet to be closed normally.
+  late final Object _unsavedForm = UnsavedEditors.instance.register(
+      'history_sets', () => _openId != null || _timers.isNotEmpty);
+
   @override
   void initState() {
     super.initState();
+    _unsavedForm; // registered while the sheet is open
     _sets = widget.block.sets
         .map(
           (s) => _EditableSet(
@@ -76,6 +83,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
 
   @override
   void dispose() {
+    UnsavedEditors.instance.unregister(_unsavedForm);
     // Fire-and-forget: the sheet is going away, nothing left to await into.
     for (final entry in _timers.entries) {
       entry.value.cancel();

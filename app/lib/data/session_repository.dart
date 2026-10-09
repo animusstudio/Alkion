@@ -1,6 +1,7 @@
 import 'package:powersync/powersync.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 
+import '../capture/source_write_gate.dart';
 import 'models.dart';
 import 're_listenable.dart';
 import 'top_set_backfill.dart';
@@ -261,15 +262,18 @@ class SessionRepository {
     required int? rir,
   }) async {
     final op = updateSetOp(id, weightKg: weightKg, reps: reps, rir: rir);
-    await db.writeTransaction((tx) async {
-      await tx.execute(op.sql, op.args);
-      final g = await tx.getOptional(
-          'SELECT session_id, exercise_id FROM sets WHERE id = ?', [id]);
-      if (g != null) {
-        await _recomputeTopSet(
-            tx, g['session_id'] as String, g['exercise_id'] as String);
-      }
-    });
+    await runSourceWrite(
+      'history.update_set',
+      (_) => db.writeTransaction((tx) async {
+        await tx.execute(op.sql, op.args);
+        final g = await tx.getOptional(
+            'SELECT session_id, exercise_id FROM sets WHERE id = ?', [id]);
+        if (g != null) {
+          await _recomputeTopSet(
+              tx, g['session_id'] as String, g['exercise_id'] as String);
+        }
+      }),
+    );
   }
 
   /// Appends a set to (sessionId, exerciseId); re-derives the group's top set.
@@ -283,7 +287,7 @@ class SessionRepository {
     required bool isWarmup,
   }) async {
     final id = uuid.v4();
-    await db.writeTransaction((tx) async {
+    await runSourceWrite('history.add_set', (_) => db.writeTransaction((tx) async {
       // Session-wide, not per exercise: set_number carries the workout's
       // exercise order, so a set added here stays after everything logged —
       // a set added to an existing exercise keeps its place, and an exercise
@@ -302,14 +306,14 @@ class SessionRepository {
           isWarmup: isWarmup);
       await tx.execute(op.sql, op.args);
       await _recomputeTopSet(tx, sessionId, exerciseId);
-    });
+    }));
     return id;
   }
 
   /// Deletes a single set by id, then re-derives the group's is_top_set so
   /// offline Progress stays correct.
   Future<void> deleteSet(String id) async {
-    await db.writeTransaction((tx) async {
+    await runSourceWrite('history.delete_set', (_) => db.writeTransaction((tx) async {
       final g = await tx.getOptional(
           'SELECT session_id, exercise_id FROM sets WHERE id = ?',
           [id]); // BEFORE delete
@@ -318,15 +322,18 @@ class SessionRepository {
         await _recomputeTopSet(
             tx, g['session_id'] as String, g['exercise_id'] as String);
       }
-    });
+    }));
   }
 
   /// Deletes a whole session and its sets.
   Future<void> deleteSession(String id) async {
-    await db.writeTransaction((tx) async {
-      await tx.execute(
-          'DELETE FROM sets WHERE session_id = ?', [id]); // clean local view
-      await tx.execute('DELETE FROM sessions WHERE id = ?', [id]);
-    });
+    await runSourceWrite(
+      'history.delete_session',
+      (_) => db.writeTransaction((tx) async {
+        await tx.execute(
+            'DELETE FROM sets WHERE session_id = ?', [id]); // clean local view
+        await tx.execute('DELETE FROM sessions WHERE id = ?', [id]);
+      }),
+    );
   }
 }

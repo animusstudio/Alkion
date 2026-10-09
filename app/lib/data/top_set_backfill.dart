@@ -1,5 +1,7 @@
 import 'package:powersync/powersync.dart';
 
+import '../capture/source_write_gate.dart';
+
 /// The id of the heaviest non-warmup set among [groupRows] (all from ONE
 /// (session,exercise) group), tie-break weight DESC (numeric), reps DESC,
 /// set_number ASC, id ASC. Returns null if there is no non-warmup set.
@@ -48,14 +50,16 @@ Set<String> topSetIdsToStamp(List<Map<String, Object?>> rows) {
 
 /// One-time, idempotent backfill of is_top_set for existing local sessions
 /// (no-op once every group already has a top set). Safe to run every launch.
-Future<void> backfillTopSets(PowerSyncDatabase db) async {
-  final rows = await db.getAll(
-    'SELECT id, session_id, exercise_id, weight_kg, reps, set_number, is_warmup, is_top_set FROM sets');
-  final ids = topSetIdsToStamp(rows.map((r) => Map<String, Object?>.from(r)).toList());
-  if (ids.isEmpty) return;
-  await db.writeTransaction((tx) async {
-    for (final id in ids) {
-      await tx.execute('UPDATE sets SET is_top_set = 1 WHERE id = ?', [id]);
-    }
-  });
-}
+/// One source operation (read and write); [parent] when part of a larger one.
+Future<void> backfillTopSets(PowerSyncDatabase db, {SourceTicket? parent}) =>
+    runSourceWrite('boot.backfill_top_sets', (_) async {
+      final rows = await db.getAll(
+        'SELECT id, session_id, exercise_id, weight_kg, reps, set_number, is_warmup, is_top_set FROM sets');
+      final ids = topSetIdsToStamp(rows.map((r) => Map<String, Object?>.from(r)).toList());
+      if (ids.isEmpty) return;
+      await db.writeTransaction((tx) async {
+        for (final id in ids) {
+          await tx.execute('UPDATE sets SET is_top_set = 1 WHERE id = ?', [id]);
+        }
+      });
+    }, parent: parent);

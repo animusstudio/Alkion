@@ -1,5 +1,6 @@
 import 'package:powersync/powersync.dart';
 
+import '../capture/source_write_gate.dart';
 import '../util/dates.dart';
 import 'models.dart';
 import 're_listenable.dart';
@@ -348,7 +349,10 @@ class DayTemplateRepository {
   /// FIRST so the server can verify parent ownership before accepting items.
   ///
   /// [id] null → new/cloned day (INSERT); non-null → owned day (UPDATE).
-  Future<void> saveDay({String? id, required DayDraft draft}) async {
+  Future<void> saveDay({String? id, required DayDraft draft}) =>
+      runSourceWrite('day.save', (_) => _saveDay(id, draft));
+
+  Future<void> _saveDay(String? id, DayDraft draft) async {
     await db.writeTransaction((tx) async {
       // Determine next position (for INSERT only).
       int nextPosition = 1;
@@ -399,16 +403,19 @@ class DayTemplateRepository {
   ///
   /// Local SQLite has no cascade, so items must be deleted before the day row.
   Future<void> deleteDay(String id) async {
-    await db.writeTransaction((tx) async {
-      await tx.execute(
-        'DELETE FROM day_template_items WHERE day_template_id = ?',
-        [id],
-      );
-      await tx.execute(
-        'DELETE FROM day_templates WHERE id = ?',
-        [id],
-      );
-    });
+    await runSourceWrite(
+      'day.delete',
+      (_) => db.writeTransaction((tx) async {
+        await tx.execute(
+          'DELETE FROM day_template_items WHERE day_template_id = ?',
+          [id],
+        );
+        await tx.execute(
+          'DELETE FROM day_templates WHERE id = ?',
+          [id],
+        );
+      }),
+    );
   }
 
   /// Fetches a single day template by id, including its slots.

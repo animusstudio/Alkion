@@ -1,5 +1,6 @@
 import 'package:powersync/powersync.dart';
 
+import '../capture/source_write_gate.dart';
 import 'models.dart';
 import 're_listenable.dart';
 
@@ -51,14 +52,17 @@ class BodyweightRepository {
     required String dateIso,
     required double kg,
   }) async {
-    await db.writeTransaction((tx) async {
-      final existing = await tx.getOptional(
-        'SELECT id FROM bodyweight_logs WHERE date = ? LIMIT 1',
-        [dateIso],
-      );
-      final op =
-          bodyweightUpsertOp(existing?['id'] as String?, dateIso, kg, uuid.v4());
-      await tx.execute(op.sql, op.args);
-    });
+    await runSourceWrite(
+      'bodyweight.log',
+      (_) => db.writeTransaction((tx) async {
+        final existing = await tx.getOptional(
+          'SELECT id FROM bodyweight_logs WHERE date = ? LIMIT 1',
+          [dateIso],
+        );
+        final op = bodyweightUpsertOp(
+            existing?['id'] as String?, dateIso, kg, uuid.v4());
+        await tx.execute(op.sql, op.args);
+      }),
+    );
   }
 }
