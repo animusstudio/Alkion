@@ -108,7 +108,12 @@ void main() {
         .whenComplete(() => observationCompletedWhileDisconnectPending = true);
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(observationCompletedWhileDisconnectPending, false);
+    // The drain is never requested while the disconnect is pending, so an
+    // already-drained signal cannot predate the disconnect.
+    expect(method.disconnectCalls, 1);
+    expect(method.drainCalls, 0);
     await expectLater(pending, throwsA(isA<TimeoutException>()));
+    expect(method.drainCalls, 0);
 
     // The reverse: disconnect done, native apply still pending.
     final method2 = ControlledNativeSync()..disconnectReleased.complete();
@@ -121,16 +126,27 @@ void main() {
           timeout: const Duration(milliseconds: 200)),
       throwsA(isA<TimeoutException>()),
     );
+    expect(method2.drainCalls, 1);
 
-    // Only both completions produce evidence.
+    // Only both completions, in order, produce evidence: the drain is
+    // requested after the disconnect completes, and evidence waits for it.
     final method3 = ControlledNativeSync();
     final observer3 = NativeSyncQuiescence.withMethodForTesting(
         qualification: harnessQualification(profile), method: method3);
-    final observing = observer3.disconnectAndObserve(database, profile,
-        captureId: 'capture-1',
-        gateGeneration: 1,
-        timeout: const Duration(seconds: 5));
-    method3.releaseAll();
+    var observed = false;
+    final observing = observer3
+        .disconnectAndObserve(database, profile,
+            captureId: 'capture-1',
+            gateGeneration: 1,
+            timeout: const Duration(seconds: 5))
+        .whenComplete(() => observed = true);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(method3.drainCalls, 0);
+    method3.disconnectReleased.complete();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(method3.drainCalls, 1);
+    expect(observed, false);
+    method3.applyDrained.complete();
     final evidence = await observing;
     expect(evidence.disconnectCompleted, true);
     expect(evidence.nativeApplyDrained, true);

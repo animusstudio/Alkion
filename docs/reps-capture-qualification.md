@@ -38,7 +38,7 @@ that range is never a qualification.
 | Public schema fingerprint | `077764b3aaf948377dec78e8bc303018d8d2172b402be2d8568f84803b12f808` | not observed | not observed |
 | Non-destructive opening | **PASS** (tests below) | UNRUN | UNRUN |
 | Native sync quiescence | candidate traced, **UNRUN**; nothing registered | UNRUN | UNRUN |
-| Result | Opening/SQL profile `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13` registered; attested capture **unsupported** until native quiescence is qualified | Covered by the same `linux` profile only when the running app reports exactly the registered version, core and fingerprints; this is re-checked on every capture opening. In-app observation UNRUN; attested capture **unsupported** | **unsupported** (no Android SDK or device on the qualifying host) |
+| Result | Opening/SQL profile `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13` registered; attested capture **unsupported** until native quiescence is qualified | Uses the same `linux` row. Capture opening re-observes the platform, core and pre-initialize fingerprints on every open; the app and SDK versions are caller-asserted (see below). In-app observation UNRUN; attested capture **unsupported** | **unsupported** (no Android SDK or device on the qualifying host) |
 
 The fingerprints were observed on synthetic fixtures with a full queue, an
 empty queue and a WAL-only tail; all three agree, and opening and observing
@@ -55,11 +55,37 @@ the same database after initialization gives the same values.
 - The runtime string is `physical=<hex>;public=<hex>`
   (`app/lib/capture/capture_profile.dart`).
 
-Any change to the app schema, the SDK, the core, the platform or the app
-version yields an unsupported profile until a new row is observed and
-registered. Registration lives in `qualifiedSourceProfiles`; its
-`evidenceDigest` is SHA-256 over the canonical record (runtime, opening
-profile and the evidence references listed in it).
+Registration lives in `qualifiedSourceProfiles`; its `evidenceDigest` is
+SHA-256 over the canonical record (runtime, opening profile and the evidence
+references listed in it).
+
+What is observed and what is asserted:
+
+- **Observed on every check.** `qualifyCaptureProfile` reads the loaded core
+  version and both fingerprints from the open database and compares them with
+  the runtime, and compares the runtime's platform with
+  `Platform.operatingSystem`. `openCaptureDatabase` does the same for the
+  platform, core and pre-initialize fingerprint, read-only, before anything is
+  initialized. A different schema, core or platform is therefore refused even
+  if the caller claims otherwise.
+- **Caller-asserted, not observed.** `appVersion`, `sdkVersion` and
+  `producerRevision` are taken from the `CaptureRuntime` the caller supplies.
+  `qualifyCaptureProfile` requires the whole runtime to equal a registered
+  row, so an asserted app version other than `0.18.1+37` is refused
+  (`runtime_unqualified`, tested). It cannot detect a caller that asserts the
+  registered version while running another build. The call site must
+  therefore fill `appVersion` from `PackageInfo` (version and build number)
+  and `sdkVersion`/`producerRevision` from build constants, never from the
+  registry. `openCaptureDatabase` does not consider app or SDK versions at
+  all.
+- **SDK pin.** The registered `sdkVersion` is checked against the
+  `powersync` version resolved in `app/pubspec.lock` by
+  `opens_fixture_without_domain_or_queue_mutation`. Changing the SDK fails
+  that test until the trace and the row are redone.
+
+A new app version, SDK, core, schema or platform needs a newly observed and
+registered row; until then capture of a correctly reported runtime is
+unsupported.
 
 ## Non-destructive opening
 
@@ -230,7 +256,10 @@ test must show.
 
 ## Adapter contract (host tests, not qualification)
 
-`NativeSyncQuiescence` binds evidence to an opaque database identity, a
+`NativeSyncQuiescence.disconnectAndObserve` awaits the non-clearing
+disconnect first and only then requests the native apply drain, both under
+one timeout, matching the candidate's order. It binds evidence to an opaque
+database identity, a
 connection epoch advanced by `connectionWillChange`, the capture id, the gate
 generation, the profile's evidence digest, the method id and the
 qualification evidence digest. The host tests use a controllable completion
@@ -240,7 +269,7 @@ current for a production adapter.
 
 | Test (`app/test/capture/native_sync_quiescence_test.dart`) | Result |
 | --- | --- |
-| `disconnect_pending_never_returns_evidence`: with the SDK disconnected and the queue empty, a pending disconnect or a pending native drain yields no evidence, and the observation times out; evidence appears only after both complete. | PASS |
+| `disconnect_pending_never_returns_evidence`: with the SDK disconnected and the queue empty, a pending disconnect or a pending native drain yields no evidence, and the observation times out. The drain is not requested until the disconnect has completed (an already-drained signal cannot predate it), and evidence appears only after both complete, in that order. | PASS |
 | `unqualified_native_method_refuses_observation`: nothing is registered; the candidate method without registration, and a seam bound to another profile, platform or method, are refused before running; the queue is untouched. | PASS |
 | `evidence_rejects_other_database_generation_or_connection`: evidence is rejected for another capture id, gate generation, database instance, profile digest, after `connectionWillChange`, after a change during observation, and for a closed database. | PASS |
 

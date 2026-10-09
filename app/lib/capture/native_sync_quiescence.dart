@@ -74,7 +74,8 @@ abstract interface class NativeSyncMethod {
   /// Non-clearing disconnect; completes when the disconnect has completed.
   Future<void> disconnect(PowerSyncDatabase database);
 
-  /// Completes only once native apply work is drained and fenced.
+  /// Completes only once native apply work is drained and fenced. Requested
+  /// only after [disconnect] has completed.
   Future<void> awaitNativeApplyDrained(PowerSyncDatabase database);
 }
 
@@ -152,8 +153,9 @@ class NativeSyncQuiescence {
       !_requireRegistration ||
       registeredNativeSyncQualifications.contains(qualification);
 
-  /// Disconnects [database] without clearing it and returns evidence only
-  /// once both the disconnect and native apply drain have completed.
+  /// Disconnects [database] without clearing it, then — only after the
+  /// disconnect has completed — awaits the native apply drain, and returns
+  /// evidence only once both have completed, all within [timeout].
   ///
   /// Throws [UnsupportedCaptureProfile] when the qualification is not
   /// registered or does not cover [profile] and its method, or when the
@@ -184,12 +186,16 @@ class NativeSyncQuiescence {
 
     var disconnectCompleted = false;
     var nativeApplyDrained = false;
-    await Future.wait([
-      method.disconnect(database).then((_) => disconnectCompleted = true),
-      method
-          .awaitNativeApplyDrained(database)
-          .then((_) => nativeApplyDrained = true),
-    ]).timeout(timeout);
+    // Strictly in order, under one timeout: a drain observed before the
+    // disconnect completed would not fence work the connection still does
+    // while shutting down (for example its final `stop` control call).
+    await () async {
+      await method.disconnect(database);
+      disconnectCompleted = true;
+      await method.awaitNativeApplyDrained(database);
+      nativeApplyDrained = true;
+    }()
+        .timeout(timeout);
 
     if (_epoch(database).value != epoch ||
         database.closed ||
