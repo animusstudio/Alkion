@@ -165,7 +165,16 @@ func allFamilies(t *testing.T, pool *pgxpool.Pool) string {
 	return payload
 }
 
-func TestUploadFreezeWaitsForCommit(t *testing.T) {
+func TestUploadFreezeWaitsForCommit(t *testing.T) { freezeWaitsForCommit(t, true) }
+
+// TestUploadFreezeWaitsForFirstUploadCommit (H4T10-3): the same ordering for
+// an account's first-ever upload. Before migration 00025 the gate row was
+// created lazily inside the first upload's transaction, so freeze and a later
+// upload both waited on the uncommitted unique-index insert and either could
+// win; the later upload then changed rows after freeze was requested.
+func TestUploadFreezeWaitsForFirstUploadCommit(t *testing.T) { freezeWaitsForCommit(t, false) }
+
+func freezeWaitsForCommit(t *testing.T, initialize bool) {
 	pool := uploadTestPool(t)
 	if err := db.Migrate(context.Background(), os.Getenv("TEST_DATABASE_URL")); err != nil {
 		t.Fatal(err)
@@ -174,9 +183,11 @@ func TestUploadFreezeWaitsForCommit(t *testing.T) {
 	h := NewUploadHandler(pool)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// Establish the unique account row before exercising lock ordering.
-	if rec := postUpload(t, h, user, `{"batch":[]}`); rec.Code != 200 {
-		t.Fatalf("initialize: %d", rec.Code)
+	if initialize {
+		// A prior upload: the account has already used the old writer.
+		if rec := postUpload(t, h, user, `{"batch":[]}`); rec.Code != 200 {
+			t.Fatalf("initialize: %d", rec.Code)
+		}
 	}
 	reader, writer := io.Pipe()
 	started := make(chan struct{})
@@ -297,22 +308,31 @@ func TestUploadGateOversizeDoesNotAcknowledge(t *testing.T) {
 	pool := uploadTestPool(t)
 	user := seedUploadUser(t, pool)
 	// Even a valid first JSON document cannot hide an unbounded trailing body.
+	before := gateRow(t, pool, user)
 	rec := postUpload(t, NewUploadHandler(pool), user, `{"batch":[]}`+strings.Repeat(" ", int(MaxUploadBytes)))
 	if rec.Code != 503 {
 		t.Fatalf("oversized queue acknowledged: %d %s", rec.Code, rec.Body.String())
 	}
-	var gates int
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&gates); err != nil {
-		t.Fatal(err)
+	if after := gateRow(t, pool, user); after != before {
+		t.Fatalf("failed upload changed the gate: %s -> %s", before, after)
 	}
-	if gates != 0 {
-		t.Fatalf("failed upload committed gate initialization: %d", gates)
+}
+
+// gateRow is the account's writer gate, committed at account creation
+// (migration 00025, H4T10-3). A failed upload must leave it unchanged.
+func gateRow(t *testing.T, pool *pgxpool.Pool, user string) string {
+	t.Helper()
+	var row string
+	if err := pool.QueryRow(context.Background(), `SELECT row(a.*)::text FROM account_writer_authority a WHERE account_id=$1::uuid`, user).Scan(&row); err != nil {
+		t.Fatalf("account gate row not pre-created: %v", err)
 	}
+	return row
 }
 
 func TestUploadGateCanceledBodyRollsBack(t *testing.T) {
 	pool := uploadTestPool(t)
 	user := seedUploadUser(t, pool)
+	before := gateRow(t, pool, user)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	reader, writer := io.Pipe()
@@ -338,12 +358,8 @@ func TestUploadGateCanceledBodyRollsBack(t *testing.T) {
 	if rec.Code != 503 {
 		t.Fatalf("canceled queue acknowledged: %d", rec.Code)
 	}
-	var gates int
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&gates); err != nil {
-		t.Fatal(err)
-	}
-	if gates != 0 {
-		t.Fatal("canceled upload committed")
+	if after := gateRow(t, pool, user); after != before {
+		t.Fatalf("canceled upload changed the gate: %s -> %s", before, after)
 	}
 }
 
@@ -406,6 +422,7 @@ func TestUploadGateCommitFailurePreservesQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer isolated.Close()
+	before := gateRow(t, pool, user)
 	rec := postUpload(t, NewUploadHandler(isolated), user, `{"batch":[{"op":"PUT","table":"bodyweight_logs","id":"00000000-0000-4000-8000-000000000001","data":{"date":"2026-10-09","weight_kg":"80.00"}}]}`)
 	if rec.Code != 503 || strings.Contains(rec.Body.String(), "applied") {
 		t.Fatalf("commit failure acknowledged: %d %s", rec.Code, rec.Body.String())
@@ -417,11 +434,8 @@ func TestUploadGateCommitFailurePreservesQueue(t *testing.T) {
 	if rows != 0 {
 		t.Fatal("failed commit left row changes")
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&rows); err != nil {
-		t.Fatal(err)
-	}
-	if rows != 0 {
-		t.Fatal("failed commit left gate initialization")
+	if after := gateRow(t, pool, user); after != before {
+		t.Fatalf("failed commit changed the gate: %s -> %s", before, after)
 	}
 }
 

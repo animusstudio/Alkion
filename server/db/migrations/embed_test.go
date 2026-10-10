@@ -16,7 +16,7 @@ func TestEmbeddedMigrations(t *testing.T) {
 			sql++
 		}
 	}
-	if sql != 24 {
-		t.Fatalf("embedded migrations: got %d .sql files, want 24", sql)
+	if sql != 25 {
+		t.Fatalf("embedded migrations: got %d .sql files, want 25", sql)
 	}
 }

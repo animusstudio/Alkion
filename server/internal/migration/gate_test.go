@@ -151,15 +151,19 @@ func TestFreezeFailureRollsBackGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer isolated.Close()
+	gate := func() string {
+		var row string
+		if err := pool.QueryRow(ctx, `SELECT row(a.*)::text FROM account_writer_authority a WHERE account_id=$1::uuid`, user).Scan(&row); err != nil {
+			t.Fatal(err)
+		}
+		return row
+	}
+	before := gate()
 	if _, err := NewStore(isolated).Freeze(ctx, command); err == nil {
 		t.Fatal("receipt failure accepted")
 	}
-	var gates int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&gates); err != nil {
-		t.Fatal(err)
-	}
-	if gates != 0 {
-		t.Fatal("failed freeze committed its gate")
+	if after := gate(); after != before {
+		t.Fatalf("failed freeze changed its gate: %s -> %s", before, after)
 	}
 	if _, err := NewStore(pool).Freeze(ctx, command); err != nil {
 		t.Fatalf("freeze retry after rollback: %v", err)
@@ -202,6 +206,25 @@ func TestLockAccountWriterUniqueInitialization(t *testing.T) {
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("initial account rows=%d err=%v", n, err)
+	}
+}
+
+// TestAccountCreationCommitsWriterGate (H4T10-3, migration 00025): the gate
+// row is committed together with the account, before any write, so upload
+// and Freeze always queue on the same existing row.
+func TestAccountCreationCommitsWriterGate(t *testing.T) {
+	pool, user, _ := testAccount(t)
+	var state, instance string
+	var epoch, sequence int64
+	if err := pool.QueryRow(context.Background(), `SELECT a.state,a.epoch,a.decision_sequence,a.instance_id::text FROM account_writer_authority a JOIN legacy_server_instance i ON i.instance_id=a.instance_id AND i.singleton WHERE a.account_id=$1::uuid`, user).Scan(&state, &epoch, &sequence, &instance); err != nil {
+		t.Fatalf("no committed gate row for a new account: %v", err)
+	}
+	if state != OldActive || epoch != 0 || sequence != 0 {
+		t.Fatalf("new account gate %s/%d/%d", state, epoch, sequence)
+	}
+	var orphans int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM users u WHERE NOT EXISTS(SELECT 1 FROM account_writer_authority a WHERE a.account_id=u.id)`).Scan(&orphans); err != nil || orphans != 0 {
+		t.Fatalf("accounts without a gate row: %d %v", orphans, err)
 	}
 }
 

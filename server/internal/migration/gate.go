@@ -14,8 +14,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// LockAccountWriter initializes under the unique account key BEFORE locking.
-// Never synthesize an active gate after a missing table/instance or SQL failure.
+// LockAccountWriter locks the account's writer gate row for the caller's
+// transaction. Migration 00025 commits that row when the account is created,
+// so every writer and Freeze queue on the same existing row (H4T10-3); the
+// insert below is only a no-op fallback. Never synthesize an active gate
+// after a missing table/instance or SQL failure.
 func LockAccountWriter(ctx context.Context, tx pgx.Tx, accountID string) (Gate, error) {
 	var gate Gate
 	if _, err := tx.Exec(ctx, `INSERT INTO account_writer_authority (account_id,instance_id)
