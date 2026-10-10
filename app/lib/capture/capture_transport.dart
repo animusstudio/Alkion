@@ -98,6 +98,18 @@ class TransportAdmission {
 
   bool get isOpen => _closedFor == null;
 
+  /// The app's sync policy as its own connection changes left it: true after
+  /// a successful connect, false after a disconnect or clear. Recorded by
+  /// `changeSyncConnection`, never derived from SDK status (which reads
+  /// "not connected" while an opted-in loop is retrying after an error).
+  bool get syncRequested => _syncRequested;
+  bool _syncRequested = false;
+
+  /// Records that the app's last successful connection change [connected]
+  /// or disconnected sync.
+  void recordConnectionChange({required bool connected}) =>
+      _syncRequested = connected;
+
   /// Throws `admission_closed` (naming [operation]) while a capture has
   /// transport admission closed.
   void ensureOpen(String operation) {
@@ -148,7 +160,14 @@ class TransportAdmission {
     _closedFor = captureId;
   }
 
-  void _open() => _closedFor = null;
+  /// Reopens admission only if it is closed for [captureId]; returns
+  /// whether it did. A late or repeated resume of another capture changes
+  /// nothing.
+  bool _openFor(String captureId) {
+    if (_closedFor != captureId) return false;
+    _closedFor = null;
+    return true;
+  }
 
   /// Waits until every admitted upload has finished, or [timeout] passed.
   Future<bool> _drain(Duration timeout) async {
@@ -175,6 +194,7 @@ class TransportAdmission {
   @visibleForTesting
   void resetForTesting() {
     _closedFor = null;
+    _syncRequested = false;
     _inFlight.clear();
     _uncertain.clear();
   }
@@ -216,8 +236,10 @@ class TransportPauseEvidence {
   /// Uploads whose acceptance is unknown; safe ids and codes only.
   final List<UncertainUpload> uncertainUploads;
 
-  /// Whether sync was connected or connecting when the drain began: the
-  /// prior policy [CaptureTransport.resumePriorPolicy] restores.
+  /// The app's sync policy when this capture first closed transport
+  /// admission (see [TransportAdmission.syncRequested]): the prior policy
+  /// [CaptureTransport.resumePriorPolicy] restores. Never read from SDK
+  /// status.
   final bool previouslyConnected;
 
   /// Safe code for why a pause is not attested, or null.
@@ -293,14 +315,33 @@ class CaptureTransport {
   final Future<void> Function() _reloadPreferences;
   final DateTime Function() _clock;
 
-  /// Closes transport admission for [preparation] without draining
-  /// anything: new uploads, credential fetches and refreshes, logins,
-  /// connection changes, sign-out and OTA installs are refused from now on.
-  /// The coordinator calls it right after closing the source gate, so
-  /// account changes are held from the first step; [pauseAndDrain] closes
-  /// it too. Throws `capture_in_progress` for another capture.
-  void closeAdmission(SourcePreparation preparation) =>
-      _admission._close(preparation.captureId);
+  /// Step one of a capture: closes transport admission for [captureId]
+  /// synchronously, before anything is awaited (new uploads, credential
+  /// fetches and refreshes, logins, connection changes, sign-out and OTA
+  /// installs are refused from here on) and records the app's sync policy at
+  /// that instant, then closes [gate]'s admission. If the gate close fails,
+  /// transport admission is reopened for [captureId] and the error rethrown.
+  /// Throws `capture_in_progress`, changing nothing, while another capture
+  /// has transport admission closed.
+  Future<SourcePreparation> closeAdmission(
+      SourceWriteGate gate, String captureId) async {
+    _hold(captureId);
+    try {
+      return await gate.closeAdmission(captureId);
+    } catch (_) {
+      if (_admission._openFor(captureId)) _priorPolicy.remove(captureId);
+      rethrow;
+    }
+  }
+
+  /// The app's sync policy recorded when each capture first closed
+  /// transport admission.
+  final _priorPolicy = <String, bool>{};
+
+  void _hold(String captureId) {
+    _admission._close(captureId);
+    _priorPolicy.putIfAbsent(captureId, () => _admission.syncRequested);
+  }
 
   /// Drains the transport for [preparation] within [timeout]. Never throws
   /// for a blocked boundary: the returned evidence says what was and was not
@@ -312,9 +353,9 @@ class CaptureTransport {
     required Duration timeout,
   }) async {
     final deadline = _clock().add(timeout);
-    final status = database.currentStatus;
-    final previouslyConnected = status.connected || status.connecting;
-    _admission._close(preparation.captureId);
+    _hold(preparation.captureId);
+    // A retried drain of the same capture reports the first recorded value.
+    final previouslyConnected = _priorPolicy[preparation.captureId]!;
 
     TransportPauseEvidence result({
       required bool uploadPaused,
@@ -402,13 +443,23 @@ class CaptureTransport {
   /// it again once the source gate has drained every engine's writers.
   Future<void> reloadPreferences() => _reloadPreferences();
 
-  /// Reopens transport admission and restores the prior sync policy only:
-  /// reconnects (through the gated connect path, after the capture released
-  /// the source) when sync was connected before the capture, and otherwise
-  /// leaves it disconnected. Never enables sync because of a capture.
-  Future<void> resumePriorPolicy(bool previouslyConnected) async {
-    _admission._open();
+  /// Reopens transport admission closed for [captureId] and restores the
+  /// prior sync policy only: reconnects (through the gated connect path,
+  /// after the capture released the source) when the app's policy was to be
+  /// connected before the capture, and otherwise leaves sync off. Never
+  /// enables sync because of a capture.
+  ///
+  /// Acts only while transport admission is closed for [captureId]: a late
+  /// or repeated resume of an aborted or earlier capture neither reopens a
+  /// later capture's admission nor reconnects, and returns false.
+  Future<bool> resumePriorPolicy(
+    bool previouslyConnected, {
+    required String captureId,
+  }) async {
+    if (!_admission._openFor(captureId)) return false;
+    _priorPolicy.remove(captureId);
     if (previouslyConnected) await _reconnect();
+    return true;
   }
 
   static Future<void> _reloadSharedPreferences() async {

@@ -75,10 +75,13 @@ Future<PowerSyncDatabase> openCaptureDatabase({
 /// capture has transport or source admission closed. Once admitted, the
 /// change is reported to the native sync quiescence evidence first
 /// ([nativeSyncConnectionWillChange]), so no capture evidence observed
-/// before it stays current, and only then [change] runs.
+/// before it stays current, and only then [change] runs. Once it succeeded,
+/// the app's sync policy is recorded: [connects] true for a connect, false
+/// for a disconnect or clear (see [TransportAdmission.syncRequested]).
 Future<void> changeSyncConnection(
   String operation,
   Future<void> Function(PowerSyncDatabase database) change, {
+  required bool connects,
   SourceTicket? parent,
   PowerSyncDatabase? database,
 }) async {
@@ -88,6 +91,7 @@ Future<void> changeSyncConnection(
     TransportAdmission.instance.ensureOpen(operation);
     nativeSyncConnectionWillChange(target);
     await change(target);
+    TransportAdmission.instance.recordConnectionChange(connected: connects);
   }, parent: parent);
 }
 
@@ -95,17 +99,20 @@ Future<void> changeSyncConnection(
 /// boot resume, login/registration attach, signing in again, and restoring
 /// a capture's prior policy all connect through here.
 Future<void> connectSync(AuthStore auth) => changeSyncConnection(
-    'sync.connect', (d) => d.connect(connector: WorkoutConnector(auth)));
+    'sync.connect', (d) => d.connect(connector: WorkoutConnector(auth)),
+    connects: true);
 
 /// Stop syncing without clearing anything (signing in again stops the old
 /// loop first).
 Future<void> disconnectSync() =>
-    changeSyncConnection('sync.disconnect', (d) => d.disconnect());
+    changeSyncConnection('sync.disconnect', (d) => d.disconnect(),
+        connects: false);
 
 /// Stop syncing and wipe ALL local data (used on logout).
 Future<void> disconnectAndClear({SourceTicket? parent}) =>
     changeSyncConnection('sync.disconnect_and_clear',
         (d) => d.disconnectAndClear(),
+        connects: false,
         parent: parent);
 
 /// How many local changes are still waiting to upload. They exist only on

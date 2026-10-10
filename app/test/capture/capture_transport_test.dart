@@ -95,6 +95,22 @@ class _SpyRealSync implements NativeSyncMethod {
       _real.awaitNativeApplyDrained(database);
 }
 
+/// A connector whose credentials never arrive: the SDK reports a download
+/// error (neither connected nor connecting) and keeps retrying, as when an
+/// opted-in device is offline.
+class _OfflineConnector extends PowerSyncBackendConnector {
+  int fetches = 0;
+
+  @override
+  Future<PowerSyncCredentials?> fetchCredentials() async {
+    fetches++;
+    throw Exception('synthetic: no network');
+  }
+
+  @override
+  Future<void> uploadData(PowerSyncDatabase database) async {}
+}
+
 /// An AuthStore holding known tokens; [refreshes] counts /auth/refresh.
 class _Auth {
   _Auth._(this.store, this.refreshes);
@@ -271,7 +287,7 @@ void main() {
     expect(transport.isCurrent(evidence, preparation), true);
 
     // Ordinary behavior returns with the prior policy only.
-    await transport.resumePriorPolicy(false);
+    await transport.resumePriorPolicy(false, captureId: 'capture-upload');
     expect(TransportAdmission.instance.isOpen, true);
   });
 
@@ -336,7 +352,7 @@ void main() {
 
     // An upload still out when the bounded drain ends is uncertain too, and
     // the transport reports no pause.
-    await transport.resumePriorPolicy(false);
+    await transport.resumePriorPolicy(false, captureId: 'capture-lost');
     mode = 'hang';
     final hanging = connector.uploadData(database);
     unawaited(hanging.then((_) {}, onError: (Object _) {}));
@@ -375,7 +391,7 @@ void main() {
 
     // No qualification for the profile: never paused, whatever the SDK
     // status or queue says.
-    await transport.resumePriorPolicy(false);
+    await transport.resumePriorPolicy(false, captureId: 'capture-native');
     final unqualified = CaptureTransport(
       database: database,
       profile: profile,
@@ -442,7 +458,7 @@ void main() {
     expect(transport.isCurrent(evidence, preparation), false);
 
     // A connection change DURING the observation never yields a pause.
-    await transport.resumePriorPolicy(false);
+    await transport.resumePriorPolicy(false, captureId: 'capture-stale');
     final method = _ControlledSync();
     method.onDisconnect = () {
       nativeSyncConnectionWillChange(database);
@@ -481,7 +497,6 @@ void main() {
     );
 
     // A capture has closed admission and drained the transport.
-    final preparation = await gate.closeAdmission('capture-account');
     final transport = CaptureTransport(
       database: database,
       profile: profile,
@@ -489,12 +504,11 @@ void main() {
       reconnect: () => connectSync(auth.store),
     );
     // Account changes are held from the first step, before any drain.
-    transport.closeAdmission(preparation);
+    final preparation = await transport.closeAdmission(gate, 'capture-account');
     await expectLater(auth.store.login('early@example.invalid', 'synthetic'),
         throwsA(isA<SourceGateException>()));
-    expect(
-        () => transport.closeAdmission(
-            const SourcePreparation('capture-other', 9, SourceTicket('p', 9))),
+    await expectLater(
+        transport.closeAdmission(gate, 'capture-other'),
         throwsA(isA<SourceGateException>()
             .having((e) => e.code, 'code', 'capture_in_progress')));
     final evidence = await transport.pauseAndDrain(preparation,
@@ -546,11 +560,11 @@ void main() {
     // changes anything, so the capture's evidence is no longer current.
     await gate.release(SourceHold(preparation.captureId, preparation.generation),
         decisionDigest: 'test');
-    await transport.resumePriorPolicy(false);
+    await transport.resumePriorPolicy(false, captureId: 'capture-account');
     var currentWhenChanging = true;
     await changeSyncConnection('sync.test_change', (d) async {
       currentWhenChanging = transport.isCurrent(evidence, preparation);
-    });
+    }, connects: false);
     expect(currentWhenChanging, false);
     expect(model.admitted, contains('sync.test_change'));
     var installed = await installer
@@ -558,5 +572,164 @@ void main() {
         .toList();
     expect(installed, [-1]);
     expect(executed, 1);
+  });
+  test('prior_policy_comes_from_app_not_sdk_status', () async {
+    final (database, profile) = await openSource();
+    final model = GateModel('policy');
+    addTearDown(model.detach);
+    final gate = model.gate(gateDir);
+    appSourceGate = gate;
+    var reconnects = 0;
+    final transport = CaptureTransport(
+      database: database,
+      profile: profile,
+      quiescence: production(profile),
+      reconnect: () async => reconnects++,
+    );
+
+    Future<TransportPauseEvidence> captureAndRelease(String id) async {
+      final preparation = await transport.closeAdmission(gate, id);
+      final evidence = await transport.pauseAndDrain(preparation,
+          timeout: const Duration(seconds: 20));
+      expect(evidence.downloadPaused, true);
+      await gate.release(SourceHold(id, preparation.generation),
+          decisionDigest: 'test');
+      expect(
+          await transport.resumePriorPolicy(evidence.previouslyConnected,
+              captureId: id),
+          true);
+      return evidence;
+    }
+
+    // 1. Opted in and connecting while offline: the SDK reports a download
+    //    error, neither connected nor connecting, and keeps retrying.
+    final offline = _OfflineConnector();
+    await changeSyncConnection(
+        'sync.connect', (d) => d.connect(connector: offline),
+        connects: true, database: database);
+    final deadline = DateTime.now().add(const Duration(seconds: 15));
+    while (database.currentStatus.downloadError == null) {
+      if (DateTime.now().isAfter(deadline)) fail('no download error seen');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    expect(database.currentStatus.connected, false);
+    expect(database.currentStatus.connecting, false);
+    expect(offline.fetches, greaterThan(0));
+    final erroring = await captureAndRelease('capture-offline');
+    expect(erroring.previouslyConnected, true);
+    expect(reconnects, 1, reason: 'the opted-in sync loop is restored');
+
+    // 2. Policy on with nothing reporting a connection at all (the SDK
+    //    status is never consulted, connected or not).
+    final idle = await captureAndRelease('capture-idle');
+    expect(idle.previouslyConnected, true);
+    expect(reconnects, 2);
+
+    // 3. Policy off (the app disconnected sync): never reconnected.
+    await changeSyncConnection('sync.disconnect', (d) => d.disconnect(),
+        connects: false, database: database);
+    final off = await captureAndRelease('capture-off');
+    expect(off.previouslyConnected, false);
+    expect(reconnects, 2);
+  });
+
+  test('transport_closes_before_gate_and_reopens_on_failure', () async {
+    final (database, profile) = await openSource();
+    dbForTests = database;
+    final model = GateModel('ordering');
+    addTearDown(model.detach);
+    final gate = model.gate(gateDir);
+    appSourceGate = gate;
+    final transport = CaptureTransport(
+      database: database,
+      profile: profile,
+      quiescence: production(profile),
+      reconnect: () async => fail('nothing reconnects here'),
+    );
+    var changes = 0;
+    Future<void> connect() => changeSyncConnection(
+        'sync.connect', (d) async => changes++,
+        connects: true);
+    Matcher refused() => throwsA(isA<SourceGateException>()
+        .having((e) => e.code, 'code', 'admission_closed'));
+
+    // Gate closed, transport still open: a connect is refused by the gate.
+    final foreign = await gate.closeAdmission('capture-foreign');
+    expect(TransportAdmission.instance.isOpen, true);
+    await expectLater(connect(), refused());
+    expect(changes, 0);
+
+    // The gate is busy: closing for another capture closes transport
+    // admission at once, then reopens it when the gate close fails.
+    final failing = transport.closeAdmission(gate, 'capture-loses');
+    expect(TransportAdmission.instance.isOpen, false,
+        reason: 'closed synchronously, before the gate answered');
+    await expectLater(failing,
+        throwsA(isA<SourceGateException>()
+            .having((e) => e.code, 'code', 'capture_in_progress')));
+    expect(TransportAdmission.instance.isOpen, true);
+    await gate.release(SourceHold(foreign.captureId, foreign.generation),
+        decisionDigest: 'test');
+    await connect();
+    expect(changes, 1);
+
+    // Ordinary order: transport closed synchronously, then the gate.
+    final closing = transport.closeAdmission(gate, 'capture-ok');
+    expect(TransportAdmission.instance.isOpen, false);
+    final preparation = await closing;
+    expect(model.state, 'preparing');
+    await expectLater(connect(), refused());
+    expect(changes, 1);
+    await gate.release(SourceHold(preparation.captureId, preparation.generation),
+        decisionDigest: 'test');
+    expect(
+        await transport.resumePriorPolicy(false, captureId: 'capture-ok'),
+        true);
+  });
+
+  test('late_resume_cannot_reopen_later_capture', () async {
+    final (database, profile) = await openSource();
+    dbForTests = database;
+    final model = GateModel('late-resume');
+    addTearDown(model.detach);
+    final auth = await _Auth.create();
+    final gate = model.gate(gateDir);
+    appSourceGate = gate;
+    var reconnects = 0;
+    final transport = CaptureTransport(
+      database: database,
+      profile: profile,
+      quiescence: production(profile),
+      reconnect: () async => reconnects++,
+    );
+
+    // Capture A aborts and resumes once.
+    final a = await transport.closeAdmission(gate, 'capture-a');
+    await gate.release(SourceHold(a.captureId, a.generation),
+        decisionDigest: 'test');
+    expect(await transport.resumePriorPolicy(true, captureId: 'capture-a'),
+        true);
+    expect(reconnects, 1);
+
+    // Capture B closes admission; a late or duplicated resume of A neither
+    // reopens B's transport admission nor reconnects.
+    final b = await transport.closeAdmission(gate, 'capture-b');
+    expect(await transport.resumePriorPolicy(true, captureId: 'capture-a'),
+        false);
+    expect(TransportAdmission.instance.isOpen, false);
+    expect(reconnects, 1);
+    await expectLater(connectSync(auth.store),
+        throwsA(isA<SourceGateException>()));
+
+    // B's own resume works once; a repeat does nothing.
+    await gate.release(SourceHold(b.captureId, b.generation),
+        decisionDigest: 'test');
+    expect(await transport.resumePriorPolicy(true, captureId: 'capture-b'),
+        true);
+    expect(reconnects, 2);
+    expect(await transport.resumePriorPolicy(true, captureId: 'capture-b'),
+        false);
+    expect(reconnects, 2);
+    expect(TransportAdmission.instance.isOpen, true);
   });
 }
