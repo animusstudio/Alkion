@@ -197,28 +197,38 @@ func TestUploadFreezeWaitsForCommit(t *testing.T) {
 	}
 	frozen := make(chan freezeResult, 1)
 	go func() { r, e := migration.NewStore(pool).Freeze(ctx, cmd); frozen <- freezeResult{r, e} }()
-	// Observe the real database lock wait before queuing the later upload.
-	for {
-		var waiting bool
-		err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%account_writer_authority%' AND pid<>pg_backend_pid())`).Scan(&waiting)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if waiting {
-			break
-		}
-		select {
-		case <-time.After(time.Millisecond * 5):
-		case <-ctx.Done():
-			t.Fatal("freeze did not wait for account lock")
+	// Observe the real database lock waits: freeze first, then the later
+	// upload's FOR UPDATE queued behind it, both blocked by the first upload's
+	// transaction. Releasing the first upload before the later one is queued
+	// would let it lock the row in the instant between the first commit and
+	// freeze re-locking it (PostgreSQL row-lock waiters are not a strict
+	// queue for a newcomer that finds the row unlocked).
+	waitForAccountLockWaiters := func(want int, failure string) {
+		t.Helper()
+		for {
+			var waiting int
+			err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%account_writer_authority%' AND cardinality(pg_blocking_pids(pid))>0 AND pid<>pg_backend_pid()`).Scan(&waiting)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if waiting >= want {
+				return
+			}
+			select {
+			case <-time.After(time.Millisecond * 5):
+			case <-ctx.Done():
+				t.Fatal(failure)
+			}
 		}
 	}
+	waitForAccountLockWaiters(1, "freeze did not wait for account lock")
 	second := httptest.NewRecorder()
 	body := &unreadQueueBody{}
 	secondReq := httptest.NewRequest(http.MethodPost, "/sync/upload", body)
 	secondReq = secondReq.WithContext(context.WithValue(ctx, userIDKey, user))
 	secondDone := make(chan struct{})
 	go func() { h.Upload(second, secondReq); close(secondDone) }()
+	waitForAccountLockWaiters(2, "later upload did not queue its account lock behind freeze")
 	_, err := io.WriteString(writer, allFamilies(t, pool))
 	if err != nil {
 		t.Fatal(err)
