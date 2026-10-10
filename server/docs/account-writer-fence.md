@@ -19,9 +19,10 @@ on a database failure. `Store.Freeze(ctx, command)` uses the same row lock, veri
 canonical nonzero UUID identities, the exact old instance/account, next epoch and
 validated request hash, and atomically records FROZEN plus an immutable receipt.
 Exact retries return the persisted receipt; different command identities conflict.
-There is no exposed freeze route, reopen function, peer transport, surrender or
-Hub activation implementation in this slice. Trusted controls and consent belong
-to the next protocol slice.
+Explicitly configured owner Freeze/Surrender/Unfreeze routes verify old JWT
+ownership and record separate consent. Surrender and Unfreeze fetch current Hub
+READY/ABORTED proofs through pinned mTLS outside the transaction, then recheck the
+exact locked gate and snapshot. Hub activation remains a separate implementation.
 
 Snapshot format `reps-account-snapshot-v1` contains the pinned old account/instance
 and seven families in alphabetical order. Each family contains every column of
@@ -53,8 +54,34 @@ credentials and restore paths block readiness. No production services or role
 memberships were inspected, changed or deployed. Template maintenance and any
 cross-account exercise references need disposition before a stable migration
 baseline can be certified. Device/SDK response behavior, R1/R2/R3 evidence,
-authenticated peer binding and H6 recovery remain separate acceptance gates.
+deployed authenticated peer binding qualification and H6 recovery remain separate
+acceptance gates.
 
 Tests use only generated identities and synthetic workout fixtures in an owned
 disposable PostgreSQL database. Frozen test accounts/immutable receipts can remain
 until that entire disposable container is discarded; ordinary deletion is denied.
+
+## Authenticated abort completion proof
+
+Unfreeze requires an authenticated exact Hub ABORTED receipt with the same
+aggregate digest and frozen server snapshot. It durably records the immutable
+unfreeze decision and advances old authority from FROZEN at epoch e to OLD_ACTIVE
+at e+1; RETIRED is never reopened. The original four-field command and peer receipt
+schema/hashes are unchanged. Request hashing binds unfreeze to its original e,
+while its result key reports e+1.
+
+Peer Status for that advanced key additionally checks the current gate remains
+OLD_ACTIVE at the exact epoch and decision sequence, with no current transition
+or Hub binding. After a later Freeze or RETIRED it denies the historical
+OLD_ACTIVE proof. Exact owner command retries still return immutable historical
+results without resetting current authority. The Hub independently fetches this
+current proof to complete abort and release only its current reservation; its
+original transition stays permanently ABORTED.
+
+`TestActualTwoPostgresAbortCompletion` exercises actual public Hub controls,
+old JWT owner controls, both pinned mTLS status directions and both real
+PostgreSQL authority stores. It proves Prepare -> old Freeze -> blocked Ready
+with durable baseline -> Abort -> Unfreeze -> authenticated completion -> ordinary
+Hub evidence writes -> fresh higher epoch. It uses generated owner/TLS identities
+and synthetic data only; the default Hub checker still blocks READY and no
+production cutover, local R1/R2/R3/H6 qualification or activation is claimed.

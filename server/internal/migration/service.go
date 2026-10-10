@@ -199,8 +199,9 @@ func recordConsent(ctx context.Context, tx pgx.Tx, owner, action string, c Trans
 	return nil
 }
 
-// Status returns the current immutable transition decision. Abort status remains
-// discoverable by transition ID and its resulting advanced epoch after unfreeze.
+// Status serves immutable decisions. OLD_ACTIVE recovery proof additionally
+// requires the current gate to remain at that exact advanced epoch/sequence.
+// Cached owner controls still return immutable historical results.
 func (s *Store) Status(ctx context.Context, k TransitionKey) (Receipt, error) {
 	if ValidateKey(k) != nil {
 		return Receipt{}, ErrConflict
@@ -227,6 +228,16 @@ func (s *Store) Status(ctx context.Context, k TransitionKey) (Receipt, error) {
 	}
 	if ValidateReceipt(r) != nil || r.Key != k {
 		return Receipt{}, ErrConflict
+	}
+	if r.State == OldActive {
+		var current bool
+		err = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM account_writer_authority WHERE account_id=$1::uuid AND instance_id=$2::uuid AND state='OLD_ACTIVE' AND epoch=$3 AND decision_sequence=$4 AND transition_id IS NULL AND hub_instance_id IS NULL AND hub_space_id IS NULL AND hub_source_id IS NULL)`, k.Scope.OldAccountID, k.Scope.OldInstanceID, k.Epoch, r.DecisionSequence).Scan(&current)
+		if err != nil {
+			return Receipt{}, err
+		}
+		if !current {
+			return Receipt{}, ErrConflict
+		}
 	}
 	return r, nil
 }

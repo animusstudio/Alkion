@@ -320,3 +320,57 @@ func TestPeerHistoricalFreezeSnapshotWithoutRewrite(t *testing.T) {
 		t.Fatalf("immutable historical receipt rewritten=%t %v", rewritten, err)
 	}
 }
+
+func TestAbortCompletionStatusRequiresCurrentOldActive(t *testing.T) {
+	pool, user, c := testAccount(t)
+	ctx := OwnerConsentContext(context.Background(), user, true)
+	store := NewStore(pool)
+	frozen, err := store.Freeze(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := &testPeer{receipt: Receipt{Key: c.Key, State: "ABORTED", Digest: strings.Repeat("e", 64), ServerSnapshotDigest: frozen.Digest, OperationID: c.OperationID, RequestHash: strings.Repeat("a", 64), DecisionSequence: 2}}
+	service := NewService(store, peer, c.Key.Scope)
+	abort := decisionCommand(c, peer.receipt.Digest, "unfreeze")
+	recovered, err := service.Unfreeze(ctx, abort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, e := store.Status(ctx, recovered.Key); e != nil || r != recovered {
+		t.Fatalf("current recovery proof %+v %v", r, e)
+	}
+	next := c
+	if err = pool.QueryRow(ctx, `SELECT gen_random_uuid()::text,gen_random_uuid()::text`).Scan(&next.Key.TransitionID, &next.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	next.Key.Epoch = recovered.Key.Epoch + 1
+	next.RequestHash = FreezeRequestHash(next)
+	nf, err := store.Freeze(ctx, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Status(ctx, recovered.Key); err == nil {
+		t.Fatal("historical OLD_ACTIVE proof still served after later Freeze")
+	}
+	// Delayed exact controls retain immutable replies without changing the gate.
+	if r, e := service.Unfreeze(ctx, abort); e != nil || r != recovered {
+		t.Fatalf("delayed abort retry %+v %v", r, e)
+	}
+	if _, err = store.Freeze(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	peer.receipt = Receipt{Key: next.Key, State: "READY", Digest: strings.Repeat("f", 64), ServerSnapshotDigest: nf.Digest, OperationID: next.OperationID, RequestHash: strings.Repeat("a", 64), DecisionSequence: 2}
+	retired, err := service.Surrender(ctx, decisionCommand(next, peer.receipt.Digest, "surrender"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retired.State != Retired {
+		t.Fatal(retired)
+	}
+	if _, err = store.Status(ctx, recovered.Key); err == nil {
+		t.Fatal("historical OLD_ACTIVE proof still served after RETIRED")
+	}
+	if _, err = service.Unfreeze(ctx, decisionCommand(next, peer.receipt.Digest, "unfreeze")); err == nil {
+		t.Fatal("RETIRED reopened")
+	}
+}
