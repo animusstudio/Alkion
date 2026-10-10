@@ -731,6 +731,57 @@ void main() {
     await _until(() => store.saveCount == saves + 1);
   });
 
+  test('retry_owed_never_lands_a_stale_write_over_a_newer_one', () async {
+    final editors = UnsavedEditors.instance;
+    // The stored rows, keyed like the History set editor's owed writes.
+    final stored = <String, String>{};
+    Future<void> Function() write(String key, String value,
+            {Future<void>? before, bool fails = false}) =>
+        () async {
+          if (before != null) await before;
+          if (fails) throw const SourceGateException('admission_closed');
+          stored[key] = value;
+        };
+
+    for (final newerLands in [true, false]) {
+      editors.resetForTesting();
+      stored.clear();
+      // Two owed edits; the first retry is still awaited when ...
+      final firstRetry = Completer<void>();
+      editors.owe('set-a', 'history_sets',
+          write('set-a', 'a1', before: firstRetry.future));
+      editors.owe('set-k', 'history_sets', write('set-k', 'k1'));
+      final retrying = editors.retryOwed();
+      await pumpEventQueue();
+
+      // ... a newer edit of set-k lands (or is refused and owed instead).
+      final newer = write('set-k', 'k2', fails: !newerLands);
+      editors.owe('set-k', 'history_sets', newer);
+      try {
+        await newer();
+        editors.paid('set-k', newer);
+      } on SourceGateException {
+        // Stays owed.
+      }
+      firstRetry.complete();
+      await retrying;
+
+      expect(stored['set-a'], 'a1');
+      expect(editors.isOwed('set-a'), false);
+      if (newerLands) {
+        expect(stored['set-k'], 'k2', reason: 'the newest value wins');
+        expect(editors.isOwed('set-k'), false);
+        expect(editors.unsaved(), isEmpty);
+      } else {
+        expect(stored.containsKey('set-k'), false,
+            reason: 'the superseded edit never lands');
+        expect(editors.isOwed('set-k'), true,
+            reason: 'the newer edit is still owed and blocks capture');
+        expect(editors.unsaved(), ['history_sets']);
+      }
+    }
+  });
+
   test('history_delete_ticket_spans_forget', () async {
     final finished = _HeldFinishedStore()..clearGate = Completer<void>();
     final m = SessionManager(finishedStore: finished);

@@ -129,9 +129,13 @@ class UnsavedEditors {
   /// Whether a write for [key] is still owed.
   bool isOwed(String key) => _owed.containsKey(key);
 
-  /// Retries every owed write once; one that fails again stays owed.
+  /// Retries every owed write once; one that fails again stays owed. A
+  /// write superseded while an earlier retry was awaited (a newer edit of
+  /// the same key landed or was owed meanwhile) is skipped, never replayed
+  /// over the newer value.
   Future<void> retryOwed() async {
     for (final MapEntry(:key, :value) in _owed.entries.toList()) {
+      if (!identical(_owed[key]?.write, value.write)) continue;
       try {
         await value.write();
         paid(key, value.write);
