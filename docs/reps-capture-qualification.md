@@ -1935,8 +1935,9 @@ From the Hub snapshot root (`/tmp/claude-1000/hub-b50c8e5`, `git archive` of
   `571ca19a…` both times. The capture tree was byte- and metadata-identical
   before and after. **PASS**.
 - `python3 -I scripts/verify-capture-rehearsal.py /tmp/claude-1000/hub-b50c8e5
-  /tmp/reps-capture-synthetic`, run twice: **PASS**, 84 checks each run,
-  identical results. It refuses a git working tree. It builds the
+  /tmp/reps-capture-synthetic`, run twice: **PASS**, 88 checks each run,
+  identical results. It requires all four producer tests of the run to
+  have passed. It refuses a git working tree. It builds the
   rehearsal into a temporary directory, so exit codes are exact (`go run`
   maps a program's exit 2 to its own exit 1).
 
@@ -1954,8 +1955,9 @@ From the Hub snapshot root (`/tmp/claude-1000/hub-b50c8e5`, `git archive` of
   report says `cutover_ready: false`, and the capture directories were
   unchanged. Producer acceptance is an integrity result. The Go findings
   above are the rehearsal's semantics, never producer checks.
-- A negative run on a tampered copy (wrong expected exit, a wrong queue
-  digest, one flipped capture byte) failed with each mismatch named.
+- Negative runs on tampered copies (wrong expected exit, a wrong queue
+  digest, one flipped capture byte, a missing test result) failed with
+  each mismatch named.
 
 ### Check results (2026-10-10, Linux host)
 

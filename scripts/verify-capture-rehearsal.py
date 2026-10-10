@@ -14,7 +14,8 @@ is written into the Hub tree. OUTPUT_DIR is the directory
 fixture capture, its kind (certified or EXPLORATORY), the producer's digests
 and the expected rehearsal result.
 
-For every fixture capture this checks:
+It requires every producer test of that run to have passed. For every
+fixture capture it then checks:
 
 * the rehearsal exits as expected: 0 for a valid capture, 2 for a blocked
   one, and every summary and report says `cutover_ready: false`;
@@ -42,6 +43,15 @@ import sys
 import tempfile
 
 GO_PACKAGE = "./connectors/reps/cmd/reps-migration-rehearsal"
+
+# Every producer test must have passed in the run that wrote the fixtures;
+# a failed test leaves no "pass" entry.
+REQUIRED_RESULTS = (
+    "kill_each_boundary_and_restart_twice",
+    "foreground_background_native_writer_races",
+    "full_disk_permission_unreadable_and_limit_faults",
+    "go_rehearsal_raw_digests_and_dispositions",
+)
 
 
 def sha256_bytes(data):
@@ -244,6 +254,10 @@ def main(argv):
     checks = Checks()
     checks.check(acceptance.get("cutover_ready") is False,
                  "acceptance.json must say cutover_ready false")
+    results = acceptance.get("results", {})
+    for test in REQUIRED_RESULTS:
+        checks.check(results.get(test) == "pass",
+                     f"acceptance result {test}: {results.get(test, 'missing')}")
     captures = acceptance.get("captures", [])
     checks.check(len(captures) > 0, "acceptance.json lists no captures")
     checks.check(any(c["expected"]["exit"] == 0 for c in captures),
