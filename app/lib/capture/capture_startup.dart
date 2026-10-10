@@ -29,6 +29,13 @@ class CaptureLocations {
   File get journal => File(p.join(root.path, 'journal.json'));
   Directory get gate => Directory(p.join(root.path, 'gate'));
   Directory get preparation => Directory(p.join(root.path, 'preparation'));
+
+  /// Private per-capture staging directories (`staging/<capture id>`), on
+  /// the same file system as [captures] so publication is one rename.
+  Directory get staging => Directory(p.join(root.path, 'staging'));
+
+  /// Published, immutable captures (`captures/<capture id>`).
+  Directory get captures => Directory(p.join(root.path, 'captures'));
 }
 
 /// Asks the native gate whether any capture is recorded in [gate]'s state
@@ -94,10 +101,13 @@ class CaptureRecoveryState {
     this.stage,
     this.captureId,
     this.inventory,
+    this.decision,
   });
 
   /// `capture_active`, a `journal_*` code, `gate_<native code>`,
-  /// `preservation_failed` or `startup_inspection_failed`.
+  /// `preservation_failed`, `startup_inspection_failed`, or the capture
+  /// coordinator's recovery code (for example `capture_interrupted`,
+  /// `awaiting_resume_decision`, `local_hold`, `sealed_divergence`).
   final String code;
 
   /// The journal stage, when one was read.
@@ -107,7 +117,18 @@ class CaptureRecoveryState {
   /// Raw source files as inventoried (and preserved where possible) while
   /// held. Null if inventory itself failed.
   final StartupInventory? inventory;
+
+  /// The explicit decision that would end the hold (`resume_original`,
+  /// `owner_review`), when the coordinator named one.
+  final String? decision;
 }
+
+/// The capture coordinator's restart recovery, run when a capture holds
+/// startup. It may finish what a durable record already decided (completing
+/// a recorded resumption, finishing a verified publication) and returns
+/// the state that still holds startup, or null when it found nothing
+/// holding it any more. It never releases a hold by itself.
+typedef StartupCaptureRecovery = Future<CaptureRecoveryState?> Function();
 
 sealed class StartupOutcome {
   const StartupOutcome();
@@ -150,9 +171,13 @@ final class CaptureRecoveryRequired extends StartupOutcome {
 ///    without the plugin); a store whose bytes were not kept is not loaded
 ///    and its file is left as it is, and startup continues as before.
 ///
-/// Held: raw source files are inventoried and preserved where possible, NO
-/// ordinary step and NO loader runs, and [CaptureRecoveryRequired] is
-/// returned. Otherwise the ordinary steps run in their existing order.
+/// Held: [recover] (the coordinator's restart recovery) runs first, if
+/// given. When it reports that nothing holds startup any more, the checks
+/// of step 2 run again from scratch and startup continues only if they now
+/// pass. Otherwise raw source files are inventoried and preserved where
+/// possible, NO ordinary step and NO loader runs, and
+/// [CaptureRecoveryRequired] is returned. Otherwise the ordinary steps run
+/// in their existing order.
 /// Startup never repairs ids, promotes temporary files or fabricates
 /// missing history.
 Future<StartupOutcome> runCaptureAwareStartup({
@@ -163,6 +188,7 @@ Future<StartupOutcome> runCaptureAwareStartup({
   required List<StartupFileSpec> files,
   required OrdinaryStartupSteps steps,
   required DateTime now,
+  StartupCaptureRecovery? recover,
 }) async {
   String gate;
   try {
@@ -178,6 +204,24 @@ Future<StartupOutcome> runCaptureAwareStartup({
       held = await _heldBy(journal, gate);
     } catch (_) {
       held = const CaptureRecoveryState(code: 'startup_inspection_failed');
+    }
+    if (held != null && recover != null) {
+      CaptureRecoveryState? after;
+      try {
+        after = await recover();
+      } catch (_) {
+        after = held;
+      }
+      if (after == null) {
+        // A recorded decision was completed: look again, from scratch.
+        try {
+          held = await _heldBy(journal, await probeGate());
+        } catch (_) {
+          held = const CaptureRecoveryState(code: 'startup_inspection_failed');
+        }
+      } else {
+        held = after;
+      }
     }
     if (held != null) {
       return CaptureRecoveryRequired(
@@ -266,6 +310,7 @@ Future<CaptureRecoveryState> _withInventory(
     stage: state.stage,
     captureId: state.captureId,
     inventory: inventory,
+    decision: state.decision,
   );
 }
 

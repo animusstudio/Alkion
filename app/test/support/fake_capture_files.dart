@@ -31,6 +31,19 @@ class FakeCaptureFiles {
   /// Directories ensured, in order.
   final directories = <String>[];
 
+  /// Directories published (`staging -> final`), in order.
+  final published = <String>[];
+
+  /// Per-method failure codes (`durableReplace`, `publishNoReplace`, ...);
+  /// [failWith] overrides them all.
+  final failMethods = <String, String>{};
+
+  /// What `availableBytes` answers.
+  int availableBytes = 1 << 40;
+
+  /// Called with `files:<method>:<path>` for every successful call.
+  void Function(String event)? log;
+
   CaptureFiles get files =>
       CaptureFiles(platform: RepsCapturePlatform(channel: channel));
 
@@ -42,6 +55,8 @@ class FakeCaptureFiles {
   Future<Object?> _handle(MethodCall call) async {
     final args = Map<String, Object?>.from(call.arguments as Map);
     if (failWith != null) return {'code': failWith};
+    final failure = failMethods[call.method];
+    if (failure != null) return {'code': failure};
     switch (call.method) {
       case 'ensureDirectory':
         final path = args['path']! as String;
@@ -52,6 +67,7 @@ class FakeCaptureFiles {
         }
         Directory(path).createSync(recursive: true);
         directories.add(path);
+        log?.call('files:ensureDirectory:$path');
         return {'code': 'ok'};
       case 'durableReplace':
         final path = args['path']! as String;
@@ -61,7 +77,30 @@ class FakeCaptureFiles {
         tmp.writeAsBytesSync(args['bytes']! as Uint8List, flush: true);
         tmp.renameSync(path);
         writes.add(path);
+        log?.call('files:durableReplace:$path');
         return {'code': 'ok'};
+      case 'publishNoReplace':
+        final staging = args['staging']! as String;
+        final destination = args['final']! as String;
+        if (FileSystemEntity.typeSync(staging, followLinks: false) !=
+            FileSystemEntityType.directory) {
+          return {'code': 'invalid_argument'};
+        }
+        if (FileSystemEntity.typeSync(destination, followLinks: false) !=
+            FileSystemEntityType.notFound) {
+          return {'code': 'destination_exists'};
+        }
+        if (!Directory(destination).parent.existsSync()) {
+          return {'code': 'invalid_argument'};
+        }
+        Directory(staging).renameSync(destination);
+        published.add('$staging -> $destination');
+        log?.call('files:publishNoReplace:$destination');
+        return {'code': 'ok'};
+      case 'availableBytes':
+        final path = args['path']! as String;
+        if (!Directory(path).existsSync()) return {'code': 'invalid_argument'};
+        return {'code': 'ok', 'bytes': availableBytes};
     }
     return {'code': 'unsupported'};
   }

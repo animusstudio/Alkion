@@ -156,6 +156,16 @@ object CaptureFiles {
         return if (syncDir(file)) "ok" else "io_error"
     }
 
+    /** Bytes still usable on the file system holding [path] (StatFs). */
+    fun availableBytes(path: String): GateResult {
+        if (path.isEmpty() || !File(path).isDirectory) return GateResult("invalid_argument")
+        return try {
+            GateResult("ok", bytes = android.os.StatFs(path).availableBytes)
+        } catch (e: IllegalArgumentException) {
+            GateResult("io_error")
+        }
+    }
+
     fun publishNoReplace(stagingPath: String, finalPath: String): String {
         if (stagingPath.isEmpty() || finalPath.isEmpty()) return "invalid_argument"
         val staging = File(stagingPath)

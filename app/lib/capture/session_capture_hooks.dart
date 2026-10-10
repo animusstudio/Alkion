@@ -280,6 +280,14 @@ class SessionCaptureHooks {
 
   void freezeCallbacks(int generation) => manager.freezeCallbacks(generation);
 
+  /// Freezes callbacks for [preparation] and awaits every running
+  /// workout-store operation, without flushing: afterwards the store files
+  /// change only through [drainAndFlush]'s one flush.
+  Future<void> quiesce(SourcePreparation preparation) async {
+    freezeCallbacks(preparation.generation);
+    await _ledger.settle();
+  }
+
   /// Ends the freeze of capture [generation] once the source is released.
   /// A resume naming another generation than the one frozen (a stale call
   /// from an earlier capture) changes nothing. Owed writes are retried.

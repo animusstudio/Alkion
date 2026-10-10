@@ -58,7 +58,8 @@ capture-integration:
 # Builds the Hub's reps-migration-rehearsal from an explicitly named Hub
 # source tree (read only; e.g. a `git archive` of the pinned commit) into a
 # temporary directory and runs it over a capture produced from a synthetic
-# PowerSync database. Needs Go; the Hub tree is never modified.
+# PowerSync database, then over a capture the coordinator published. Needs
+# Go; the Hub tree is never modified.
 capture-go-compat:
 	@if [ -z "$(HUB_SRC)" ]; then \
 		echo "capture-go-compat: set HUB_SRC=<Hub source tree> explicitly" >&2; \
@@ -66,7 +67,8 @@ capture-go-compat:
 	fi
 	@bin_dir=$$(mktemp -d) && trap 'rm -rf "$$bin_dir"' EXIT && \
 		go -C "$(HUB_SRC)" build -o "$$bin_dir/reps-migration-rehearsal" ./connectors/reps/cmd/reps-migration-rehearsal && \
-		REPS_REHEARSAL_BIN="$$bin_dir/reps-migration-rehearsal" $(FLUTTER) test test/capture/capture_artifact_test.dart --plain-name rehearsal_accepts_produced_capture
+		REPS_REHEARSAL_BIN="$$bin_dir/reps-migration-rehearsal" $(FLUTTER) test test/capture/capture_artifact_test.dart --plain-name rehearsal_accepts_produced_capture && \
+		REPS_REHEARSAL_BIN="$$bin_dir/reps-migration-rehearsal" $(FLUTTER) test test/capture/capture_coordinator_test.dart --plain-name rehearsal_accepts_certified_capture
 
 fmt:
 	$(DART) format .

@@ -206,6 +206,17 @@ class SourceWriteGate {
     }
   }
 
+  /// Completes [preparation]'s own ticket without taking the hold, for a
+  /// capture abandoned before (or instead of) its drain. A ticket an
+  /// earlier drain already completed is not an error.
+  Future<void> completePreparation(SourcePreparation preparation) async {
+    final r = await _invoke('complete', {'ticket': preparation.ticket.id});
+    final code = r['code'];
+    if (code != 'ok' && code != 'unknown_ticket') {
+      throw SourceGateException(code! as String);
+    }
+  }
+
   /// Explicit recovery decision: forgets the in-flight markers of processes
   /// that died with admitted work, after the coordinator has dealt with
   /// what that work may have left behind. Returns how many were cleared.
@@ -336,6 +347,20 @@ class CaptureFiles {
         'staging': staging.path,
         'final': finalDirectory.path,
       });
+
+  /// Bytes still usable by this app on the file system holding [directory]
+  /// (an existing directory). Read only.
+  Future<int> availableBytes(Directory directory) async {
+    final r = await _invokeNative(_platform, 'availableBytes', {
+      'path': directory.path,
+    });
+    if (r['code'] != 'ok') throw SourceGateException(r['code']! as String);
+    final bytes = r['bytes'];
+    if (bytes is! int || bytes < 0) {
+      throw const SourceGateException('malformed_result');
+    }
+    return bytes;
+  }
 
   /// Debug builds only: makes the next native file (`file_sync`) or
   /// directory (`dir_sync`) flush fail, to prove failures propagate.

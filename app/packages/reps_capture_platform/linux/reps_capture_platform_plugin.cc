@@ -33,6 +33,7 @@
 #include <string.h>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -58,6 +59,7 @@ struct Result {
   int64_t generation = -1;
   int64_t tickets = -1;
   int64_t interrupted = -1;
+  int64_t bytes = -1;
 };
 
 Result Code(const std::string& code) {
@@ -797,6 +799,9 @@ FlValue* ResultValue(const Result& r) {
     fl_value_set_string_take(map, "interrupted",
                              fl_value_new_int(r.interrupted));
   }
+  if (r.bytes >= 0) {
+    fl_value_set_string_take(map, "bytes", fl_value_new_int(r.bytes));
+  }
   return map;
 }
 
@@ -864,6 +869,28 @@ void HandleMethodCall(FlMethodCall* call) {
     RespondFromWorker(call, [staging, destination]() {
       return PublishNoReplace(staging, destination);
     });
+    return;
+  }
+  if (method == "availableBytes") {
+    // Bytes an unprivileged writer may still use on the file system holding
+    // `path` (statvfs f_bavail * f_frsize). Read only.
+    const std::string path = StringArg(args, "path");
+    struct statvfs st;
+    if (path.empty()) {
+      Respond(call, Code("invalid_argument"));
+    } else if (statvfs(path.c_str(), &st) != 0) {
+      Respond(call, Code(errno == ENOENT || errno == ENOTDIR
+                             ? "invalid_argument"
+                             : "io_error"));
+    } else {
+      Result r = Code("ok");
+      const uint64_t available =
+          static_cast<uint64_t>(st.f_bavail) * static_cast<uint64_t>(st.f_frsize);
+      r.bytes = available > static_cast<uint64_t>(INT64_MAX)
+                    ? INT64_MAX
+                    : static_cast<int64_t>(available);
+      Respond(call, r);
+    }
     return;
   }
   if (method == "injectFault") {

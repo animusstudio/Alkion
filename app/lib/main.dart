@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import 'auth/auth_store.dart';
+import 'capture/capture_coordinator.dart';
 import 'capture/capture_journal.dart';
 import 'capture/capture_startup.dart';
 import 'capture/capture_transport.dart';
@@ -70,6 +71,9 @@ Future<void> main() async {
   final gate = SourceWriteGate(stateDirectory: capture.gate);
   appSourceGate = gate;
   final boot = _AppBoot(RawPreservation(capture.preparation, base: appSupport));
+  // Restart recovery only: it finishes what a durable capture record already
+  // decided and never releases a hold by itself.
+  final coordinator = CaptureCoordinator(locations: capture, gate: gate);
   final outcome = await runCaptureAwareStartup(
     journal: CaptureJournal(capture.journal, base: appSupport),
     probeGate: () => probeSourceGate(gate, base: appSupport),
@@ -81,6 +85,7 @@ Future<void> main() async {
     ],
     steps: boot,
     now: DateTime.now(),
+    recover: coordinator.recoverForStartup,
   );
   // Without the capture plugin (not capture-capable), a store whose bytes
   // could not be preserved is simply not loaded and stays on disk as it is;

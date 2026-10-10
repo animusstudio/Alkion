@@ -14,14 +14,22 @@ import 'package:integration_test/integration_test.dart';
 import 'package:powersync/powersync.dart';
 import 'package:reps_capture_platform/reps_capture_platform.dart';
 import 'package:crypto/crypto.dart';
+import 'package:workout_tracker/capture/capture_artifact.dart'
+    show verifyCaptureDirectory;
+import 'package:workout_tracker/capture/capture_coordinator.dart';
 import 'package:workout_tracker/capture/capture_journal.dart';
 import 'package:workout_tracker/capture/capture_profile.dart';
 import 'package:workout_tracker/capture/capture_startup.dart';
+import 'package:workout_tracker/capture/capture_transport.dart';
 import 'package:workout_tracker/capture/native_sync_quiescence.dart';
+import 'package:workout_tracker/capture/session_capture_hooks.dart';
 import 'package:workout_tracker/capture/source_write_gate.dart';
 import 'package:workout_tracker/capture/startup_inventory.dart';
 import 'package:workout_tracker/data/active_session_draft.dart';
 import 'package:workout_tracker/data/finished_session_store.dart';
+import 'package:workout_tracker/session/session_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path/path.dart' as p;
 import 'package:workout_tracker/sync/schema.dart';
 
 import 'support/gate_helper_process.dart';
@@ -1135,6 +1143,95 @@ void main() {
       );
     }
   });
+
+  test('coordinator_publishes_and_recovers_through_native_primitives', () async {
+    // The production path end to end: real gate, durable files, no-replace
+    // publication, statvfs, the registered native sync adapter through
+    // CaptureTransport.forProfile, and the app version from PackageInfo.
+    final source = await Directory.systemTemp.createTemp('reps-capture-coord');
+    cleanup.add(() => source.delete(recursive: true));
+    SharedPreferences.setMockInitialValues({'unit': 'kg'});
+    TransportAdmission.instance.resetForTesting();
+    final locations = CaptureLocations(source);
+    final gate = SourceWriteGate(stateDirectory: locations.gate);
+    const files = CaptureFiles();
+    await files.ensureDirectory(locations.gate, base: source);
+    appSourceGate = gate;
+    cleanup.add(() async => appSourceGate = null);
+    final database = PowerSyncDatabase(
+        schema: schema, path: p.join(source.path, 'workout-tracker.db'));
+    await database.initialize();
+    cleanup.add(database.close);
+    await database.execute(
+      'INSERT INTO sessions (id, date, split_label, created_at) '
+      'VALUES (?, ?, ?, ?)',
+      ['d1000000-0000-4000-8000-000000000001', '2026-10-01', 'Custom',
+        '2026-10-01T10:00:00.000Z'],
+    );
+    final manager = SessionManager(finishedStore: _NoFinished());
+    cleanup.add(() async => manager.dispose());
+    final hooks = SessionCaptureHooks(
+      manager: manager,
+      preservation: RawPreservation(locations.preparation, base: source),
+    );
+    CaptureCoordinator coordinator() => CaptureCoordinator(
+          locations: locations,
+          gate: gate,
+          sources: CaptureSourceBindings(
+            database: database,
+            hooks: hooks,
+            transportFor: (profile) => CaptureTransport.forProfile(
+              database: database,
+              profile: profile,
+              reconnect: () async {},
+            ),
+          ),
+        );
+
+    // statvfs answers for the private capture directory.
+    final available = await files.availableBytes(locations.gate);
+    final df = await Process.run('stat', ['-f', '-c', '%a %S', source.path]);
+    final parts = (df.stdout as String).trim().split(' ');
+    final expected = int.parse(parts[0]) * int.parse(parts[1]);
+    expect((available - expected).abs(), lessThan(64 << 20));
+    await expectLater(
+        files.availableBytes(Directory(p.join(source.path, 'missing'))),
+        gateCode('invalid_argument'));
+
+    final certified = await coordinator().capture(mode: CaptureMode.localHold);
+    expect(certified.directory.path,
+        p.join(locations.captures.path, certified.captureId));
+    expect((await verifyCaptureDirectory(certified.directory)).manifestSha256,
+        certified.manifestSha256);
+    expect(
+        Directory(p.join(locations.staging.path, certified.captureId))
+            .existsSync(),
+        isFalse);
+    final journal =
+        await CaptureJournal(locations.journal, base: source).read();
+    expect(journal!.stage, CaptureStage.localHold);
+    expect(await gate.holdStatus(
+            SourceHold(certified.captureId, journal.gateGeneration!)),
+        'held');
+    await expectLater(gate.run('test.write', (_) async {}),
+        gateCode('admission_closed'));
+
+    // Another coordinator (as after a restart) recovers the same artifact
+    // and keeps the hold.
+    final recovered = await coordinator().recover();
+    expect(recovered.stage, CaptureStage.localHold);
+    expect(recovered.capture!.manifestSha256, certified.manifestSha256);
+    expect(await probeSourceGate(gate, base: source), 'mismatch');
+
+    await coordinator().resumeOriginal(
+        captureId: certified.captureId, decisionDigest: 'a' * 64);
+    expect(await probeSourceGate(gate, base: source), 'open');
+    expect(
+        (await CaptureJournal(locations.journal, base: source).read())!.stage,
+        CaptureStage.resumed);
+    await gate.run('test.write', (_) async {});
+    expect(TransportAdmission.instance.isOpen, isTrue);
+  });
 }
 
 class _RecordingSteps implements OrdinaryStartupSteps {
@@ -1169,4 +1266,13 @@ Future<void> _until(Future<bool> Function() condition) async {
     }
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
+}
+
+class _NoFinished extends FinishedSessionStore {
+  @override
+  Future<FinishedSession?> load() async => null;
+  @override
+  Future<void> save(FinishedSession f) async {}
+  @override
+  Future<void> clear() async {}
 }

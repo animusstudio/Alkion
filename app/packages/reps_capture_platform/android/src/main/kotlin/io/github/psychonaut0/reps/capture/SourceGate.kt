@@ -15,6 +15,7 @@ data class GateResult(
     val generation: Long? = null,
     val tickets: Int? = null,
     val interrupted: Int? = null,
+    val bytes: Long? = null,
 ) {
     fun toMap(): Map<String, Any> = buildMap {
         put("code", code)
@@ -22,6 +23,7 @@ data class GateResult(
         generation?.let { put("generation", it) }
         tickets?.let { put("tickets", it) }
         interrupted?.let { put("interrupted", it) }
+        bytes?.let { put("bytes", it) }
     }
 }
 

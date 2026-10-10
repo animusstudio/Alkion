@@ -5,6 +5,11 @@
 // while a capture prepares or holds, drain to `held`), so the Dart writers'
 // use of tickets can be pinned. It proves nothing about native locking or
 // other engines; that is qualified by integration_test/capture_platform_test.dart.
+//
+// [GateModel.simulateRestart] models a process restart: the durable record
+// (state, capture, generation) survives, this process's tickets and live
+// hold do not, so a held capture answers `recorded` until a drain takes the
+// hold again, as the native gate does.
 import 'dart:async';
 import 'dart:io';
 
@@ -31,6 +36,20 @@ class GateModel {
   /// Operations refused because admission was closed, in order.
   final refused = <String>[];
 
+  /// Every gate method called, in order (`prepare`, `drain`, `release`, ...).
+  final calls = <String>[];
+
+  /// Called with `gate:<method>` for every call, before it is answered.
+  void Function(String event)? log;
+
+  /// When set, a drain that would take the hold answers this code instead
+  /// (for example `recovery_required` for work left by a dead process) until
+  /// [acknowledgeInterrupted] clears it.
+  String? drainCode;
+
+  /// Decision digests of releases and acknowledgements, in order.
+  final decisions = <String>[];
+
   /// Admissions for these operations are decided when they arrive but
   /// answered only after [releaseHeld].
   final holdAdmits = <String>{};
@@ -41,7 +60,19 @@ class GateModel {
   var _capture = '';
   var _counter = 0;
 
+  /// Whether this (model) process owns the live hold.
+  var _live = false;
+
   bool get idle => tickets.isEmpty;
+  int get generation => _generation;
+  String get capture => _capture;
+
+  /// A process restart: tickets and the live hold are gone, the durable
+  /// record stays.
+  void simulateRestart() {
+    tickets.clear();
+    _live = false;
+  }
   int get heldCount => _held.length;
   String get state => _state;
 
@@ -70,6 +101,12 @@ class GateModel {
 
   Future<Object?> _handle(MethodCall call) async {
     final args = Map<String, Object?>.from(call.arguments as Map);
+    calls.add(call.method);
+    log?.call('gate:${call.method}');
+    bool matches() =>
+        _state != 'open' &&
+        _capture == args['captureId'] &&
+        _generation == args['generation'];
     switch (call.method) {
       case 'admit':
         final operation = args['operation'] as String;
@@ -108,17 +145,31 @@ class GateModel {
         _capture = args['captureId'] as String;
         return _newTicket();
       case 'drain':
-        if (_capture != args['captureId']) return {'code': 'mismatch'};
+        if (!matches()) return {'code': 'mismatch'};
+        if (_live) return {'code': 'held'};
         if (tickets.isNotEmpty) return {'code': 'pending'};
+        final code = drainCode;
+        if (code != null) return {'code': code};
         _state = 'held';
+        _live = true;
         return {'code': 'held'};
       case 'verifyHold':
-        if (_capture != args['captureId']) return {'code': 'mismatch'};
-        return {'code': _state};
+        if (_state == 'open') return {'code': 'open'};
+        if (!matches()) return {'code': 'mismatch'};
+        if (_state == 'preparing') return {'code': 'preparing'};
+        return {'code': _live ? 'held' : 'recorded'};
       case 'release':
+        if (!matches()) return {'code': 'mismatch'};
+        decisions.add(args['decisionDigest'] as String);
         _state = 'open';
         _capture = '';
+        _live = false;
         return {'code': 'ok'};
+      case 'acknowledgeInterrupted':
+        decisions.add(args['decisionDigest'] as String);
+        final interrupted = drainCode == null ? 0 : 1;
+        drainCode = null;
+        return {'code': 'ok', 'interrupted': interrupted};
     }
     return {'code': 'unsupported'};
   }

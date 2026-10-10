@@ -338,6 +338,10 @@ class CaptureTransport {
   /// transport admission.
   final _priorPolicy = <String, bool>{};
 
+  /// The sync policy recorded when [captureId] closed transport admission,
+  /// or null while it has not (or was resumed).
+  bool? priorPolicyFor(String captureId) => _priorPolicy[captureId];
+
   void _hold(String captureId) {
     _admission._close(captureId);
     _priorPolicy.putIfAbsent(captureId, () => _admission.syncRequested);

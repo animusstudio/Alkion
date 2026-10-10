@@ -138,6 +138,7 @@ class CaptureJournalState {
   CaptureJournalState copyWith({
     CaptureStage? stage,
     int? gateGeneration,
+    PriorSyncIntent? priorSyncIntent,
     List<InventoryEntry>? inventory,
     Map<String, CaptureFileDigest>? files,
     String? manifestSha256,
@@ -151,7 +152,7 @@ class CaptureJournalState {
         mode: mode,
         stage: stage ?? this.stage,
         gateGeneration: gateGeneration ?? this.gateGeneration,
-        priorSyncIntent: priorSyncIntent,
+        priorSyncIntent: priorSyncIntent ?? this.priorSyncIntent,
         inventory: inventory ?? this.inventory,
         files: files ?? this.files,
         manifestSha256: manifestSha256 ?? this.manifestSha256,
