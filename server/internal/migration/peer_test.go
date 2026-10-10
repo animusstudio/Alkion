@@ -32,6 +32,22 @@ func testKey() TransitionKey {
 func testReceipt() Receipt {
 	return Receipt{Key: testKey(), State: "READY", Digest: strings.Repeat("a", 64), ServerSnapshotDigest: strings.Repeat("c", 64), OperationID: "00000000-0000-4000-8000-000000000007", RequestHash: strings.Repeat("b", 64), DecisionSequence: 1}
 }
+
+func TestOldOwnerFreezeDigestMustBeString(t *testing.T) {
+	command := TransitionCommand{Key: testKey(), OperationID: "00000000-0000-4000-8000-000000000007"}
+	raw, err := json.Marshal(OldOwnerControl{Command: command, OwnerConsent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeOldOwnerControl(raw); err != nil {
+		t.Fatalf("empty freeze digest rejected: %v", err)
+	}
+	withNull := strings.Replace(string(raw), `"digest":""`, `"digest":null`, 1)
+	if _, err := DecodeOldOwnerControl([]byte(withNull)); err == nil {
+		t.Fatal("null freeze digest accepted")
+	}
+}
+
 func testCert(t *testing.T, ca *x509.Certificate, cakey *ecdsa.PrivateKey, server bool) (tls.Certificate, *x509.Certificate, *ecdsa.PrivateKey) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

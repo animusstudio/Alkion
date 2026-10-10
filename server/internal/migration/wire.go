@@ -72,7 +72,7 @@ func DecodeOldOwnerControl(payload []byte) (OldOwnerControl, error) {
 		return OldOwnerControl{}, err
 	}
 	command, err := strictObject(object["command"], "key", "operation_id", "request_hash", "digest")
-	if err != nil || strictKey(command["key"]) != nil {
+	if err != nil || strictKey(command["key"]) != nil || bytes.Equal(bytes.TrimSpace(command["digest"]), []byte("null")) {
 		return OldOwnerControl{}, ErrInvalidPeer
 	}
 	var control OldOwnerControl
