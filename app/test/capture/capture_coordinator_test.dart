@@ -48,6 +48,7 @@ import 'package:workout_tracker/data/active_session_draft.dart';
 import 'package:workout_tracker/data/models.dart';
 import 'package:workout_tracker/session/active_session_controller.dart';
 import 'package:workout_tracker/session/session_manager.dart';
+import 'package:workout_tracker/sync/db.dart' show changeSyncConnection;
 import 'package:workout_tracker/sync/schema.dart';
 
 import '../support/capture_faults.dart';
@@ -756,6 +757,58 @@ void main() {
               quiescence: null,
               reconnect: () async {},
             )));
+  });
+
+  test('connection_change_finishing_after_observation_never_certifies',
+      () async {
+    await install(liveDraft: false);
+    final before = await i.sourceState();
+
+    // A connection change admitted before the capture whose SDK call
+    // finishes only once the network drain has observed its evidence.
+    var release = Completer<void>();
+    var change = changeSyncConnection('sync.connect', (d) => release.future,
+        connects: false, database: i.database);
+    await pumpEventQueue();
+    await expectLater(
+        i.coordinator(
+          drainTimeout: const Duration(seconds: 2),
+          onStep: (step) async {
+            if (step == 'network_drained' && !release.isCompleted) {
+              release.complete();
+              await change;
+            }
+          },
+        ).capture(mode: CaptureMode.rehearsal),
+        throwsA(isA<CaptureBlocked>()));
+    if (!release.isCompleted) release.complete();
+    await change;
+    expect(i.events, isNot(contains('step:read')));
+    expect(i.locations.captures.existsSync() &&
+            i.locations.captures.listSync().isNotEmpty,
+        false);
+    expect((await i.readJournal())!.stage, CaptureStage.resumed);
+    expect(i.model.state, 'open');
+    expect(TransportAdmission.instance.isOpen, true);
+    expect(await i.sourceState(), before);
+
+    // One that finishes while the drain waits for it is observed
+    // afterwards, so its connection is fenced and the capture certifies.
+    i.events.clear();
+    release = Completer<void>();
+    change = changeSyncConnection('sync.connect', (d) async {
+      await release.future;
+      i.events.add('change:done');
+    }, connects: false, database: i.database);
+    await pumpEventQueue();
+    final certified = await i.coordinator(onStep: (step) {
+      if (step == 'local_drained') {
+        Timer(const Duration(milliseconds: 50), release.complete);
+      }
+    }).capture(mode: CaptureMode.rehearsal);
+    await change;
+    expect(certified.captureId, isNotEmpty);
+    expect(at('change:done'), lessThan(at('sync:pause_done')));
   });
 
   test('second_capture_rejected', () async {

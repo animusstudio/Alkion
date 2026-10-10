@@ -732,4 +732,97 @@ void main() {
     expect(reconnects, 2);
     expect(TransportAdmission.instance.isOpen, true);
   });
+
+  test('connection_change_completing_after_evidence_invalidates_it', () async {
+    final (database, profile) = await openSource();
+    final quiescence = production(profile);
+    const captureId = 'capture-late-connect';
+    const generation = 5;
+    bool current(NativeSyncPauseEvidence e) => quiescence.isCurrent(
+        e, database, profile,
+        captureId: captureId, gateGeneration: generation);
+
+    for (final fails in [false, true]) {
+      // A connection change admitted before the capture closed admission,
+      // whose SDK call is still running (for example waiting for the SDK's
+      // connect mutex) when the evidence is observed.
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      final change = changeSyncConnection('sync.connect', (d) async {
+        entered.complete();
+        await release.future;
+        if (fails) throw StateError('synthetic connect failure');
+      }, connects: true, database: database);
+      await entered.future;
+      final evidence = await quiescence.disconnectAndObserve(
+          database, profile,
+          captureId: captureId,
+          gateGeneration: generation,
+          timeout: const Duration(seconds: 20));
+      expect(current(evidence), true);
+
+      // The change completes after the observation: whatever it started
+      // (successfully or not) is not fenced by that evidence.
+      release.complete();
+      if (fails) {
+        await expectLater(change, throwsStateError);
+      } else {
+        await change;
+      }
+      expect(current(evidence), false,
+          reason: 'a connection change that completed after the '
+              'observation (fails: $fails)');
+    }
+  });
+
+  test('pause_awaits_admitted_connection_change', () async {
+    final (database, profile) = await openSource();
+    final spy = _SpyRealSync();
+    final transport = CaptureTransport(
+      database: database,
+      profile: profile,
+      quiescence: NativeSyncQuiescence.withMethodForTesting(
+          qualification: nativeSyncQualificationFor(profile)!, method: spy),
+      reconnect: () async {},
+    );
+    const preparation =
+        SourcePreparation('capture-connecting', 2, SourceTicket('prep', 2));
+
+    // Admitted before the capture closed admission; its SDK call is held.
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    var changed = false;
+    final change = changeSyncConnection('sync.connect', (d) async {
+      entered.complete();
+      await release.future;
+      changed = true;
+    }, connects: true, database: database);
+    await entered.future;
+
+    // Not finished within the bound: no disconnect, no pause attested.
+    final timedOut = await transport.pauseAndDrain(preparation,
+        timeout: const Duration(milliseconds: 300));
+    expect(spy.disconnectCalls, 0);
+    expect(timedOut.uploadPaused, true);
+    expect(timedOut.downloadPaused, false);
+    expect(timedOut.nativeSync, isNull);
+    expect(timedOut.blockedCode, 'connection_change_drain_timeout');
+    expect(transport.isCurrent(timedOut, preparation), false);
+
+    // Within the bound: the drain waits for the change and only then
+    // disconnects and observes, so the evidence fences what it started.
+    final draining = transport.pauseAndDrain(preparation,
+        timeout: const Duration(seconds: 20));
+    await pumpEventQueue();
+    expect(spy.disconnectCalls, 0,
+        reason: 'nothing is observed while an admitted change runs');
+    release.complete();
+    await change;
+    final evidence = await draining;
+    expect(changed, true);
+    expect(spy.disconnectCalls, 1);
+    expect(evidence.downloadPaused, true);
+    expect(evidence.blockedCode, isNull);
+    expect(transport.isCurrent(evidence, preparation), true);
+  });
 }

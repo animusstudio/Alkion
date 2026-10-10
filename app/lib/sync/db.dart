@@ -72,12 +72,15 @@ Future<PowerSyncDatabase> openCaptureDatabase({
 /// operation named [operation] ([parent] when it is part of a larger one).
 ///
 /// Refused (`admission_closed`, before anything changes) while a data
-/// capture has transport or source admission closed. Once admitted, the
-/// change is reported to the native sync quiescence evidence first
-/// ([nativeSyncConnectionWillChange]), so no capture evidence observed
-/// before it stays current, and only then [change] runs. Once it succeeded,
-/// the app's sync policy is recorded: [connects] true for a connect, false
-/// for a disconnect or clear (see [TransportAdmission.syncRequested]).
+/// capture has transport or source admission closed. Once admitted, it is
+/// an admitted transport operation a capture's drain awaits
+/// ([TransportAdmission.runConnectionChange]). The change is reported to
+/// the native sync quiescence evidence ([nativeSyncConnectionWillChange])
+/// before [change] runs and again once it returned or failed, so no capture
+/// evidence observed before or while it ran stays current. Once it
+/// succeeded, the app's sync policy is recorded: [connects] true for a
+/// connect, false for a disconnect or clear (see
+/// [TransportAdmission.syncRequested]).
 Future<void> changeSyncConnection(
   String operation,
   Future<void> Function(PowerSyncDatabase database) change, {
@@ -85,14 +88,24 @@ Future<void> changeSyncConnection(
   SourceTicket? parent,
   PowerSyncDatabase? database,
 }) async {
-  TransportAdmission.instance.ensureOpen(operation);
+  final admission = TransportAdmission.instance;
+  admission.ensureOpen(operation);
   final target = database ?? db;
-  await runSourceWrite(operation, (_) async {
-    TransportAdmission.instance.ensureOpen(operation);
-    nativeSyncConnectionWillChange(target);
-    await change(target);
-    TransportAdmission.instance.recordConnectionChange(connected: connects);
-  }, parent: parent);
+  await admission.runConnectionChange(
+    operation,
+    () => runSourceWrite(operation, (_) async {
+      admission.ensureOpen(operation);
+      nativeSyncConnectionWillChange(target);
+      try {
+        await change(target);
+      } finally {
+        // The SDK serializes connects and disconnects on its own mutex: what
+        // this call started may follow an observation made while it ran.
+        nativeSyncConnectionWillChange(target);
+      }
+      admission.recordConnectionChange(connected: connects);
+    }, parent: parent),
+  );
 }
 
 /// Connect the open database to the sync service using [auth]'s credentials:

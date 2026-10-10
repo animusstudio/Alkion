@@ -82,8 +82,8 @@ class UploadAttempt {
 ///
 /// Where the native gate exists it refuses the same work while admission is
 /// closed; this admission also covers builds and tests without a gate, and
-/// tracks the uploads a capture must await and the uncertain ones it must
-/// report.
+/// tracks the uploads and connection changes a capture must await and the
+/// uncertain uploads it must report.
 class TransportAdmission {
   TransportAdmission._();
 
@@ -91,6 +91,9 @@ class TransportAdmission {
 
   String? _closedFor;
   final _inFlight = <UploadAttempt, Future<void>>{};
+
+  /// Admitted connection changes still running, settled either way.
+  final _changing = <Object, Future<void>>{};
 
   /// Uncertain uploads by `ps_crud.tx_id` (or first crud id), until a later
   /// upload of the same batch completes.
@@ -127,6 +130,22 @@ class TransportAdmission {
         onError: (Object e) => _settle(attempt, e));
     _inFlight[attempt] = settled;
     settled.whenComplete(() => _inFlight.remove(attempt));
+    return run;
+  }
+
+  /// Runs one change of the sync connection (connect, disconnect, clear)
+  /// as an admitted transport operation, so a capture's drain awaits it
+  /// before it observes the connection. Refused (`admission_closed`, naming
+  /// [operation]) before [body] runs while admission is closed. Errors of
+  /// [body] propagate unchanged.
+  Future<T> runConnectionChange<T>(
+      String operation, Future<T> Function() body) {
+    ensureOpen(operation);
+    final token = Object();
+    final run = Future.sync(body);
+    final settled = run.then<void>((_) {}, onError: (Object _) {});
+    _changing[token] = settled;
+    settled.whenComplete(() => _changing.remove(token));
     return run;
   }
 
@@ -169,19 +188,27 @@ class TransportAdmission {
     return true;
   }
 
-  /// Waits until every admitted upload has finished, or [timeout] passed.
-  Future<bool> _drain(Duration timeout) async {
+  /// Waits until every admitted upload and connection change has finished.
+  /// Returns null then, or, once [timeout] passed, `upload_drain_timeout`
+  /// while an upload is still running and otherwise
+  /// `connection_change_drain_timeout`.
+  Future<String?> _drain(Duration timeout) async {
     final deadline = DateTime.now().add(timeout);
-    while (_inFlight.isNotEmpty) {
+    while (true) {
+      if (_inFlight.isEmpty && _changing.isEmpty) return null;
       final left = deadline.difference(DateTime.now());
-      if (left <= Duration.zero) return false;
+      if (left <= Duration.zero) {
+        return _inFlight.isNotEmpty
+            ? 'upload_drain_timeout'
+            : 'connection_change_drain_timeout';
+      }
       try {
-        await Future.wait(_inFlight.values.toList()).timeout(left);
+        await Future.wait([..._inFlight.values, ..._changing.values])
+            .timeout(left);
       } on TimeoutException {
-        return false;
+        // Checked again above: the deadline has passed.
       }
     }
-    return true;
   }
 
   List<UncertainUpload> _report({required bool includeInFlight}) => [
@@ -196,6 +223,7 @@ class TransportAdmission {
     _closedFor = null;
     _syncRequested = false;
     _inFlight.clear();
+    _changing.clear();
     _uncertain.clear();
   }
 
@@ -269,8 +297,9 @@ class TransportPauseEvidence {
 ///
 /// [pauseAndDrain] stops admission to connector uploads, credential refresh,
 /// connection changes, sign-out and OTA installs, awaits every admitted
-/// upload through its queue completion or failure, then asks the native
-/// adapter for a non-clearing disconnect and native apply drain. It never
+/// upload through its queue completion or failure and every admitted
+/// connection change, then asks the native adapter for a non-clearing
+/// disconnect and native apply drain. It never
 /// clears, completes or dequeues queued work, and never infers a pause from
 /// SDK status, the queue size or the application gate.
 class CaptureTransport {
@@ -376,9 +405,13 @@ class CaptureTransport {
           blockedCode: code,
         );
 
-    // 1. Admitted uploads finish: response, completion or failure.
-    if (!await _admission._drain(deadline.difference(_clock()))) {
-      return result(uploadPaused: false, code: 'upload_drain_timeout');
+    // 1. Admitted uploads finish (response, completion or failure), and so
+    //    do admitted connection changes: a connect still running could
+    //    otherwise start a sync loop after the observation below.
+    final drained = await _admission._drain(deadline.difference(_clock()));
+    if (drained != null) {
+      return result(
+          uploadPaused: drained != 'upload_drain_timeout', code: drained);
     }
 
     // 2. Non-clearing disconnect and native apply drain, proven only by a
