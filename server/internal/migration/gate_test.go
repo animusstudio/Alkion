@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"workout-tracker/server/db/migrations"
 	"workout-tracker/server/internal/db"
 )
 
@@ -170,8 +171,28 @@ func TestFreezeFailureRollsBackGate(t *testing.T) {
 	}
 }
 
+// deleteAccountGateRow removes the gate row that migration 00025's trigger
+// committed with the account, recreating an account that predates the eager
+// row (for example one committed while 00025 ran, before 00026 re-backfilled
+// it). Only a fresh account with no receipts or decisions can lose its row.
+func deleteAccountGateRow(t *testing.T, pool *pgxpool.Pool, user string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `DELETE FROM account_writer_authority WHERE account_id=$1::uuid`, user); err != nil {
+		t.Fatalf("delete gate row: %v", err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("gate row still present before the lazy path: rows=%d err=%v", n, err)
+	}
+}
+
+// TestLockAccountWriterUniqueInitialization exercises LockAccountWriter's lazy
+// fallback: with no committed gate row, concurrent first lockers must create
+// exactly one OLD_ACTIVE epoch-0 row and all succeed.
 func TestLockAccountWriterUniqueInitialization(t *testing.T) {
 	pool, user, _ := testAccount(t)
+	deleteAccountGateRow(t, pool, user)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var wg sync.WaitGroup
@@ -204,8 +225,59 @@ func TestLockAccountWriterUniqueInitialization(t *testing.T) {
 		}
 	}
 	var n int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&n); err != nil || n != 1 {
+	var state string
+	var epoch, sequence int64
+	if err := pool.QueryRow(ctx, `SELECT count(*),min(state),min(epoch),min(decision_sequence) FROM account_writer_authority WHERE account_id=$1::uuid`, user).Scan(&n, &state, &epoch, &sequence); err != nil || n != 1 {
 		t.Fatalf("initial account rows=%d err=%v", n, err)
+	}
+	if state != OldActive || epoch != 0 || sequence != 0 {
+		t.Fatalf("lazily created gate %s/%d/%d", state, epoch, sequence)
+	}
+}
+
+// TestRebackfillRestoresMissingGateRows (migration 00026): an account left
+// without a gate row by 00025's backfill-before-trigger window gets its
+// OLD_ACTIVE epoch-0 row from the re-backfill, and the re-backfill changes
+// no existing row.
+func TestRebackfillRestoresMissingGateRows(t *testing.T) {
+	pool, user, command := testAccount(t)
+	_, other, _ := testAccount(t)
+	ctx := context.Background()
+	if _, err := NewStore(pool).Freeze(ctx, command); err != nil {
+		t.Fatalf("freeze an existing gate: %v", err)
+	}
+	gateOf := func(account string) string {
+		var row string
+		if err := pool.QueryRow(ctx, `SELECT a::text FROM account_writer_authority a WHERE account_id=$1::uuid`, account).Scan(&row); err != nil {
+			t.Fatalf("gate of %s: %v", account, err)
+		}
+		return row
+	}
+	frozenBefore := gateOf(user)
+	deleteAccountGateRow(t, pool, other)
+	raw, err := migrations.FS.ReadFile("00026_rebackfill_account_writer_gate_rows.sql")
+	if err != nil {
+		t.Fatalf("read 00026: %v", err)
+	}
+	up, _, ok := strings.Cut(string(raw), "-- +goose Down")
+	if !ok || !strings.Contains(up, "-- +goose Up") {
+		t.Fatal("00026 lacks goose Up/Down sections")
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := pool.Exec(ctx, up); err != nil {
+			t.Fatalf("re-backfill run %d: %v", i+1, err)
+		}
+	}
+	var state, instance string
+	var epoch, sequence int64
+	if err := pool.QueryRow(ctx, `SELECT a.state,a.epoch,a.decision_sequence,a.instance_id::text FROM account_writer_authority a JOIN legacy_server_instance i ON i.instance_id=a.instance_id AND i.singleton WHERE a.account_id=$1::uuid`, other).Scan(&state, &epoch, &sequence, &instance); err != nil {
+		t.Fatalf("re-backfill left the account without a gate row: %v", err)
+	}
+	if state != OldActive || epoch != 0 || sequence != 0 {
+		t.Fatalf("re-backfilled gate %s/%d/%d", state, epoch, sequence)
+	}
+	if after := gateOf(user); after != frozenBefore {
+		t.Fatalf("re-backfill changed an existing gate: %s -> %s", frozenBefore, after)
 	}
 }
 
