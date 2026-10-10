@@ -12,6 +12,7 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/stepper.dart';
+import '../widgets/w_dialog.dart';
 
 /// The Targets sub-tab: edit weekly per-muscle set goals.
 ///
@@ -40,15 +41,28 @@ class _TargetsTabState extends State<TargetsTab> {
 
         return TargetsList(
           targets: byMuscle,
-          onChanged: (muscle, sets) => _repo.setTarget(
-            muscle: muscle,
-            sets: sets,
-            userId: context.read<IdentityService>().currentUserId,
-            existing: byMuscle[muscle],
-          ),
+          onChanged: (muscle, sets) =>
+              _setTarget(muscle, sets, byMuscle[muscle]),
         );
       },
     );
+  }
+
+  /// Persists a stepped target; a failed or refused write (e.g. while a
+  /// data capture holds the source) is shown, never dropped silently.
+  Future<void> _setTarget(
+      String muscle, int sets, MuscleTarget? existing) async {
+    final userId = context.read<IdentityService>().currentUserId;
+    try {
+      await _repo.setTarget(
+        muscle: muscle,
+        sets: sets,
+        userId: userId,
+        existing: existing,
+      );
+    } catch (e) {
+      if (mounted) await showWriteFailed(context, e);
+    }
   }
 }
 

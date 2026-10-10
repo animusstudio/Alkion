@@ -39,10 +39,12 @@ import 'package:workout_tracker/theme/app_theme.dart';
 import 'package:workout_tracker/theme/icons.dart';
 import 'package:workout_tracker/theme/tokens.dart';
 import 'package:workout_tracker/ui/day_editor.dart';
+import 'package:workout_tracker/ui/history_screen.dart';
 import 'package:workout_tracker/ui/set_editor_sheet.dart';
 import 'package:workout_tracker/ui/split_tab.dart';
 import 'package:workout_tracker/units/unit_service.dart';
 import 'package:workout_tracker/widgets/plan_form.dart';
+import 'package:workout_tracker/widgets/ruler_picker.dart';
 
 import '../support/fake_capture_files.dart';
 import '../support/fake_stores.dart';
@@ -279,12 +281,16 @@ void main() {
         files: fakeFiles.files,
       );
 
+  SessionCaptureHooks hooks(SessionManager m) =>
+      SessionCaptureHooks(manager: m, preservation: preservation());
+
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('reps-session-capture');
     model = _GateModel('m${++serial}');
     fakeFiles = FakeCaptureFiles('f$serial');
     appSourceGate = model.gate(Directory('${temp.path}/capture/gate'));
     SessionWriteLedger.instance.resetForTesting();
+    UnsavedEditors.instance.resetForTesting();
   });
 
   tearDown(() async {
@@ -292,6 +298,7 @@ void main() {
     model.detach();
     fakeFiles.detach();
     SessionWriteLedger.instance.resetForTesting();
+    UnsavedEditors.instance.resetForTesting();
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
@@ -434,7 +441,7 @@ void main() {
     await expectLater(
         runSourceWrite('exercise.update', (_) async {}),
         _gateCode('admission_closed'));
-    hooks.resumeCallbacks(DateTime.now());
+    hooks.resumeCallbacks(DateTime.now(), generation: prep.generation);
     await appSourceGate!.release(
         SourceHold('capture-1', prep.generation), decisionDigest: 'a' * 64);
 
@@ -446,7 +453,7 @@ void main() {
     await expectLater(c2.discard(), throwsA(isA<FileSystemException>()));
     final prep2 = await appSourceGate!.closeAdmission('capture-2');
     await expectLater(hooks.drainAndFlush(prep2), _captureCode('persistence_failed'));
-    hooks.resumeCallbacks(DateTime.now());
+    hooks.resumeCallbacks(DateTime.now(), generation: prep2.generation);
     await appSourceGate!.release(
         SourceHold('capture-2', prep2.generation), decisionDigest: 'b' * 64);
     SessionWriteLedger.instance.resetForTesting();
@@ -476,7 +483,7 @@ void main() {
     expect(resumeStore.saveCount, 2, reason: 'resume save, then the one flush');
     await appSourceGate!.release(
         SourceHold('capture-3', prep3.generation), decisionDigest: 'c' * 64);
-    hooks.resumeCallbacks(DateTime.now());
+    hooks.resumeCallbacks(DateTime.now(), generation: prep3.generation);
     await m.active!.discard();
 
     // An expiry that already started finishes before the drain returns.
@@ -497,7 +504,7 @@ void main() {
     await draining4;
     expect(expiring.clearCount, 1);
     expect(m4.lastFinished, isNull);
-    hooks4.resumeCallbacks(DateTime.now());
+    hooks4.resumeCallbacks(DateTime.now(), generation: prep4.generation);
     await appSourceGate!.release(
         SourceHold('capture-4', prep4.generation), decisionDigest: 'd' * 64);
 
@@ -518,7 +525,7 @@ void main() {
     expect(m5.lastFinished, isNotNull);
     await appSourceGate!.release(
         SourceHold('capture-5', prep5.generation), decisionDigest: 'e' * 64);
-    hooks5.resumeCallbacks(resumableUntil(later).add(const Duration(seconds: 1)));
+    hooks5.resumeCallbacks(resumableUntil(later).add(const Duration(seconds: 1)), generation: prep5.generation);
     await _until(() => frozenStore.clearCount == 1);
     expect(m5.lastFinished, isNull);
   });
@@ -587,6 +594,256 @@ void main() {
     expect(saved.name, original.name);
 
     await tester.pumpWidget(const SizedBox());
+    m.dispose();
+  });
+
+  test('failed_flush_is_retried_never_reported', () async {
+    final store = _RecordingDraftStore(temp);
+    final m = SessionManager(finishedStore: FakeFinishedSessionStore());
+    addTearDown(m.dispose);
+    final c = ActiveSessionController.fromDraft(_draft(weight: 100),
+        draftStore: store);
+    addTearDown(c.dispose);
+    m.register(c);
+    c.markChanged(); // an autosave is owed when the capture starts
+    final hooks = SessionCaptureHooks(manager: m, preservation: preservation());
+
+    final prep = await appSourceGate!.closeAdmission('capture-1');
+    fakeFiles.failWith = 'io_error'; // preservation cannot write
+    await expectLater(hooks.drainAndFlush(prep),
+        throwsA(isA<PreservationException>()));
+    expect(hooks.finalFlushCount, 0);
+    expect(hooks.lastFlush, isNull);
+    expect(SessionWriteLedger.instance.failures.keys, contains('draft'));
+    expect(store.saveCount, 0, reason: 'the flush never ran');
+
+    // A retry of the same capture flushes; it does not report the earlier
+    // attempt as done.
+    fakeFiles.failWith = null;
+    await hooks.drainAndFlush(prep);
+    expect(hooks.finalFlushCount, 1);
+    expect(store.saveCount, 1);
+    expect(hooks.lastFlush, isNotNull);
+    expect(SessionWriteLedger.instance.failures, isEmpty);
+
+    // The next capture never exposes this capture's replacement relation.
+    await appSourceGate!.release(
+        SourceHold('capture-1', prep.generation), decisionDigest: 'a' * 64);
+    hooks.resumeCallbacks(DateTime.now(), generation: prep.generation);
+    await c.discard();
+    final prep2 = await appSourceGate!.closeAdmission('capture-2');
+    await hooks.drainAndFlush(prep2);
+    expect(hooks.lastFlush, isNull);
+  });
+
+  test('failed_flush_keeps_autosave_owed', () async {
+    final store = _RecordingDraftStore(temp);
+    final m = SessionManager(finishedStore: FakeFinishedSessionStore());
+    addTearDown(m.dispose);
+    final c = ActiveSessionController.fromDraft(_draft(weight: 100),
+        draftStore: store);
+    addTearDown(c.dispose);
+    m.register(c);
+    c.markChanged();
+    final hooks = SessionCaptureHooks(manager: m, preservation: preservation());
+    final prep = await appSourceGate!.closeAdmission('capture-1');
+    fakeFiles.failWith = 'io_error';
+    await expectLater(hooks.drainAndFlush(prep), throwsA(anything));
+    fakeFiles.failWith = null;
+    await appSourceGate!.release(
+        SourceHold('capture-1', prep.generation), decisionDigest: 'a' * 64);
+    hooks.resumeCallbacks(DateTime.now(), generation: prep.generation);
+    await Future<void>.delayed(
+        ActiveSessionController.saveDebounce + const Duration(milliseconds: 150));
+    expect(store.saveCount, 1, reason: 'the mutation the flush missed is saved');
+  });
+
+  test('refused_autosave_stays_owed_until_release', () async {
+    final store = _RecordingDraftStore(temp);
+    final m = SessionManager(finishedStore: FakeFinishedSessionStore());
+    addTearDown(m.dispose);
+    final c = ActiveSessionController.fromDraft(_draft(weight: 100),
+        draftStore: store);
+    addTearDown(c.dispose);
+    m.register(c);
+
+    c.draft.blocks.single.workingSets.first.weightKg = 105;
+    c.markChanged();
+    // Admission closes before the debounce fires (a capture that has not
+    // frozen callbacks yet, and then aborts).
+    final prep = await appSourceGate!.closeAdmission('capture-1');
+    await Future<void>.delayed(
+        ActiveSessionController.saveDebounce * 2 + const Duration(milliseconds: 150));
+    expect(store.saveCount, 0, reason: 'refused, and retried while closed');
+    expect(SessionWriteLedger.instance.failures, isEmpty,
+        reason: 'a refusal changed nothing on disk');
+
+    await appSourceGate!.release(
+        SourceHold('capture-1', prep.generation), decisionDigest: 'a' * 64);
+    await _until(() => store.saveCount == 1);
+    final saved = (await store.load())!;
+    expect(saved.blocks.single.workingSets.first.weightKg, 105);
+
+    // The same refusal settled by an explicit (unfrozen) resume.
+    c.markChanged();
+    final prep2 = await appSourceGate!.closeAdmission('capture-2');
+    await Future<void>.delayed(
+        ActiveSessionController.saveDebounce + const Duration(milliseconds: 150));
+    expect(store.saveCount, 1);
+    await appSourceGate!.release(
+        SourceHold('capture-2', prep2.generation), decisionDigest: 'b' * 64);
+    hooks(m).resumeCallbacks(DateTime.now(), generation: prep2.generation);
+    await _until(() => store.saveCount == 2);
+  });
+
+  test('stale_resume_cannot_unfreeze_later_capture', () async {
+    final store = _RecordingDraftStore(temp);
+    final m = SessionManager(finishedStore: FakeFinishedSessionStore());
+    addTearDown(m.dispose);
+    final c = ActiveSessionController.fromDraft(_draft(), draftStore: store);
+    addTearDown(c.dispose);
+    m.register(c);
+    final h = hooks(m);
+
+    final prep1 = await appSourceGate!.closeAdmission('capture-1');
+    await h.drainAndFlush(prep1);
+    await appSourceGate!.release(
+        SourceHold('capture-1', prep1.generation), decisionDigest: 'a' * 64);
+    h.resumeCallbacks(DateTime.now(), generation: prep1.generation);
+    expect(c.callbacksFrozen, false);
+
+    final prep2 = await appSourceGate!.closeAdmission('capture-2');
+    await h.drainAndFlush(prep2);
+    final saves = store.saveCount;
+    // A late resume of the first capture arrives while the second holds.
+    h.resumeCallbacks(DateTime.now(), generation: prep1.generation);
+    expect(c.callbacksFrozen, true);
+    expect(m.callbacksFrozen, true);
+    c.markChanged();
+    await Future<void>.delayed(
+        ActiveSessionController.saveDebounce + const Duration(milliseconds: 150));
+    expect(store.saveCount, saves, reason: 'still frozen: nothing written');
+
+    await appSourceGate!.release(
+        SourceHold('capture-2', prep2.generation), decisionDigest: 'b' * 64);
+    h.resumeCallbacks(DateTime.now(), generation: prep2.generation);
+    expect(c.callbacksFrozen, false);
+    await _until(() => store.saveCount == saves + 1);
+  });
+
+  test('history_delete_ticket_spans_forget', () async {
+    final finished = _HeldFinishedStore()..clearGate = Completer<void>();
+    final m = SessionManager(finishedStore: finished);
+    addTearDown(m.dispose);
+    final at = DateTime.now();
+    await m.recordFinished(_finished(at: at), now: at);
+    final repo = _GatedSessionRepo();
+    model.admitted.clear();
+
+    final deleting = deleteHistorySession(repo, 'S',
+        onDeleted: (ticket) => m.forgetFinished('S', parent: ticket));
+    await _until(() => finished.clearStarted);
+    expect(repo.deleted, ['S']);
+    expect(model.idle, false, reason: 'the delete ticket waits for the forget');
+    expect(model.admitted, ['history.delete_session'],
+        reason: 'the forget reuses the delete ticket');
+    finished.clearGate!.complete();
+    await deleting;
+    expect(model.idle, true);
+    expect(m.lastFinished, isNull);
+    expect(finished.clearCount, 1);
+
+    // Refused whole while a capture holds the source: nothing is deleted or
+    // forgotten.
+    await m.recordFinished(_finished(at: at, id: 'T'), now: at);
+    await appSourceGate!.closeAdmission('capture-1');
+    await expectLater(
+        deleteHistorySession(repo, 'T',
+            onDeleted: (ticket) => m.forgetFinished('T', parent: ticket)),
+        _gateCode('admission_closed'));
+    expect(repo.deleted, ['S']);
+    expect(m.lastFinished?.sessionId, 'T');
+  });
+
+  testWidgets('refused_history_edit_stays_owed', (tester) async {
+    final repo = _GatedSessionRepo();
+    final m = SessionManager(finishedStore: FakeFinishedSessionStore());
+    final h = hooks(m);
+    await tester.pumpWidget(wrapL10n(SetEditorSheet(
+      block: const ExerciseBlockData(exerciseId: 'bench', sets: [
+        LoggedSet(id: 's1', exerciseId: 'bench', setNumber: 1,
+            weightKg: 100, reps: 5, rir: 1, isWarmup: false,
+            isTopSet: false, isPr: false),
+      ], topWeight: 100, topReps: 5, isPr: false),
+      exercise: _bench,
+      sessionId: 'session-1',
+      sessionRepo: repo,
+      units: UnitService(),
+    )));
+    await tester.tap(find.byKey(const Key('set-line-s1')));
+    await tester.pumpAndSettle();
+    await tester.timedDrag(find.byKey(const Key('live-weight')),
+        const Offset(-1 * RulerPicker.defaultItemExtent, 0),
+        const Duration(milliseconds: 100));
+    await tester.pump();
+
+    final prep = (await tester.runAsync(
+        () => appSourceGate!.closeAdmission('capture-1')))!;
+    Future<void> settle() async {
+      for (var i = 0; i < 5; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    // The debounce fires while admission is closed: refused, and shown.
+    await tester.pump(const Duration(milliseconds: 500));
+    await settle();
+    expect(find.text("Couldn't save"), findsOneWidget);
+    expect(repo.updates, isEmpty);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await settle(); // the ruler's glide ends; its refusals are owed too
+    final edited = tester
+        .widget<RulerPicker>(find.byKey(const Key('live-weight')))
+        .value
+        .toStringAsFixed(2);
+    expect(edited, isNot('100.00'));
+    if (find.text('OK').evaluate().isNotEmpty) {
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+    }
+
+    // Collapsing while still closed is refused too; the edit stays owed and
+    // keeps blocking capture although no card is open and no timer runs.
+    await tester.tap(find.byKey(const Key('set-line-s1')));
+    await settle();
+    expect(find.text("Couldn't save"), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(h.unsavedEditors(), ['history_sets']);
+    Object? error;
+    await tester.runAsync(() async {
+      try {
+        await h.commitEditorInput(prep);
+      } catch (e) {
+        error = e;
+      }
+    });
+    expect(error, isA<SessionCaptureException>()
+        .having((e) => e.detail, 'detail', contains('history_sets')));
+    expect(repo.updates, isEmpty, reason: 'never saved automatically');
+
+    // Released: the owed edit is written, with the value the sheet shows,
+    // even after the sheet itself has closed.
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => appSourceGate!.release(
+        SourceHold('capture-1', prep.generation), decisionDigest: 'a' * 64));
+    h.resumeCallbacks(DateTime.now(), generation: prep.generation);
+    await settle();
+    expect(repo.updates.last, edited);
+    expect(h.unsavedEditors(), isEmpty);
     m.dispose();
   });
 
@@ -724,6 +981,25 @@ class _ResumeRepo implements SessionRepository {
 }
 
 class _NoExercises implements ExerciseRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Session writes that go through the app gate, like the real repository.
+class _GatedSessionRepo implements SessionRepository {
+  final updates = <String>[];
+  final deleted = <String>[];
+
+  @override
+  Future<void> updateSet(String id,
+          {required String weightKg, required int reps, required int? rir}) =>
+      runSourceWrite('history.update_set', (_) async => updates.add(weightKg));
+
+  @override
+  Future<void> deleteSession(String id, {SourceTicket? parent}) =>
+      runSourceWrite('history.delete_session', (_) async => deleted.add(id),
+          parent: parent);
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

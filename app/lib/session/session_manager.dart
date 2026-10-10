@@ -87,12 +87,18 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     _active?.freezeCallbacks(generation);
   }
 
-  /// Ends a freeze at [now]: the controller reconciles its rest and owed
-  /// autosave, a lifecycle resume seen meanwhile is reconciled, and the
-  /// finished snapshot is re-checked against [now] (expiring it if its
-  /// window closed meanwhile) and its expiry re-armed.
-  void resumeCallbacks(DateTime now) {
-    if (!callbacksFrozen) return;
+  /// Ends the freeze of capture [generation] at [now], once the source is
+  /// released: the controller reconciles its rest and owed autosave, a
+  /// lifecycle resume seen meanwhile is reconciled, and the finished
+  /// snapshot is re-checked against [now] (expiring it if its window closed
+  /// meanwhile) and its expiry re-armed. Unfrozen (a capture aborted before
+  /// it froze), the same reconcile settles what refused writes still owe.
+  ///
+  /// A call naming another generation than the frozen one is a stale resume
+  /// of an earlier capture: nothing changes and it returns false.
+  bool resumeCallbacks(DateTime now, {required int generation}) {
+    final frozen = _frozenGeneration;
+    if (frozen != null && frozen != generation) return false;
     _frozenGeneration = null;
     _callbackEpoch++;
     _active?.resumeCallbacks(now);
@@ -101,6 +107,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       unawaited(_reconcileRestFromBlob());
     }
     _recheckFinished(now);
+    return true;
   }
 
   Future<void> _reconcileRestFromBlob() async {

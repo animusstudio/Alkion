@@ -375,9 +375,16 @@ class ActiveSessionController extends ChangeNotifier {
       return;
     }
     // Copied now: the autosave writes the state it was scheduled for.
-    final copy = d.deepCopy();
+    _armSave(store, d.deepCopy(), epoch);
+  }
+
+  void _armSave(DraftStore store, SessionDraft copy, int epoch) {
     _saveDebounce = Timer(saveDebounce, () {
-      if (epoch != _saveEpoch || callbacksFrozen) return;
+      if (epoch != _saveEpoch) return;
+      if (callbacksFrozen) {
+        _savePending = true;
+        return;
+      }
       SessionWriteLedger.instance.detach(runSourceWrite(
         'session.autosave',
         (_) async {
@@ -386,9 +393,26 @@ class ActiveSessionController extends ChangeNotifier {
           if (epoch != _saveEpoch || callbacksFrozen) return;
           await SessionWriteLedger.instance.write('draft', () => store.save(copy));
         },
-      ));
+      ).catchError((Object e) {
+        // Refused (a capture closed admission) or failed: still owed, unless
+        // the workout ended meanwhile.
+        if (_draft == null) return;
+        _savePending = true;
+        // A refusal is retried after the debounce while nothing newer was
+        // scheduled and no capture froze callbacks (the capture then
+        // flushes the draft itself, or resumeCallbacks saves it).
+        if (e is SourceGateException &&
+            epoch == _saveEpoch &&
+            !callbacksFrozen) {
+          _armSave(store, copy, epoch);
+        }
+      }));
     });
   }
+
+  /// Moves on whenever the draft's persisted state may become stale; the
+  /// capture compares it to know whether its flush covered every change.
+  int get saveEpoch => _saveEpoch;
 
   /// Stops autosave and rest auto-stop for capture [generation]: the pending
   /// debounce is cancelled and already scheduled callbacks are fenced. Later
@@ -401,15 +425,17 @@ class ActiveSessionController extends ChangeNotifier {
     _frozenGeneration = generation;
   }
 
-  /// The capture flushed the current draft: nothing is owed for the state
-  /// before this call.
-  void markFlushed() => _savePending = false;
+  /// The capture's flush of the draft as it was at [epoch] landed: nothing
+  /// is owed unless the draft was scheduled for saving again since.
+  void markFlushed(int epoch) {
+    if (epoch == _saveEpoch) _savePending = false;
+  }
 
-  /// Ends a freeze: a rest whose countdown ran out meanwhile ends at its due
-  /// time (no silent extension, no timer continuity), and a mutation made
-  /// while frozen is autosaved.
+  /// Ends a freeze (or, unfrozen, settles what a refused autosave still
+  /// owes): a rest whose countdown ran out meanwhile ends at its due time
+  /// (no silent extension, no timer continuity), and an owed save or a
+  /// mutation made while frozen is autosaved.
   void resumeCallbacks(DateTime now) {
-    if (!callbacksFrozen) return;
     _frozenGeneration = null;
     final start = restStart;
     var changed = false;

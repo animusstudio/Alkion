@@ -103,12 +103,49 @@ class SessionWriteLedger {
 /// automatically (Plan editors, History's set editor, the bodyweight sheet).
 /// A form registers while it is open; capture refuses its boundary while any
 /// reports unsaved input, so the person finishes it with Save or Cancel.
+///
+/// Also holds edits whose write was refused or failed (a History set edit
+/// refused while a capture closed admission): such an edit stays owed — and
+/// blocks capture — until its write lands, even after its form closed.
 class UnsavedEditors {
   UnsavedEditors._();
 
   static final instance = UnsavedEditors._();
 
   final _open = <Object, ({String kind, bool Function() unsaved})>{};
+  final _owed = <String, ({String kind, Future<void> Function() write})>{};
+
+  /// Records that [write] (the latest value for [key]) has not landed yet.
+  /// Replaces an older owed write for the same key.
+  void owe(String key, String kind, Future<void> Function() write) =>
+      _owed[key] = (kind: kind, write: write);
+
+  /// [write] landed: [key] is no longer owed, unless a newer write for it
+  /// was owed meanwhile.
+  void paid(String key, Future<void> Function() write) {
+    if (identical(_owed[key]?.write, write)) _owed.remove(key);
+  }
+
+  /// Whether a write for [key] is still owed.
+  bool isOwed(String key) => _owed.containsKey(key);
+
+  /// Retries every owed write once; one that fails again stays owed.
+  Future<void> retryOwed() async {
+    for (final MapEntry(:key, :value) in _owed.entries.toList()) {
+      try {
+        await value.write();
+        paid(key, value.write);
+      } catch (_) {
+        // Still owed; still blocks capture.
+      }
+    }
+  }
+
+  @visibleForTesting
+  void resetForTesting() {
+    _open.clear();
+    _owed.clear();
+  }
 
   /// Registers an open form of [kind]; pass the returned handle to
   /// [unregister] when it closes.
@@ -120,9 +157,13 @@ class UnsavedEditors {
 
   void unregister(Object handle) => _open.remove(handle);
 
-  /// Kinds of the open forms holding unsaved input, sorted.
-  List<String> unsaved() =>
-      ({for (final f in _open.values) if (f.unsaved()) f.kind}).toList()
+  /// Kinds of the open forms holding unsaved input and of owed writes,
+  /// sorted.
+  List<String> unsaved() => ({
+        for (final f in _open.values)
+          if (f.unsaved()) f.kind,
+        for (final o in _owed.values) o.kind,
+      }).toList()
         ..sort();
 }
 
@@ -131,8 +172,9 @@ class UnsavedEditors {
 /// The coordinator closes admission, then calls [commitEditorInput] and
 /// [drainAndFlush] with its preparation; [freezeCallbacks] (also done by
 /// [drainAndFlush]) stops autosave, rest auto-stop, lifecycle reconcile and
-/// finished-snapshot expiry, and [resumeCallbacks] reconciles them after the
-/// source is released.
+/// finished-snapshot expiry. Once the source is released — after a published
+/// capture or an aborted one — the coordinator calls [resumeCallbacks] with
+/// the same generation, which reconciles them and retries owed writes.
 class SessionCaptureHooks {
   SessionCaptureHooks({
     required this.manager,
@@ -181,39 +223,50 @@ class SessionCaptureHooks {
   /// then flushes a deep copy of the live draft exactly once, after
   /// preserving its pre-flush bytes. Throws `persistence_failed` if a store
   /// write failed and was not superseded; a failed preservation or flush
-  /// throws too. Never reports success after a failure.
+  /// throws too (recorded as a `draft` failure) and a retry for the same
+  /// capture flushes again. Never reports success after a failure.
   Future<void> drainAndFlush(SourcePreparation preparation) async {
-    freezeCallbacks(preparation.generation);
-    await _ledger.settle();
-
     final key = (
       captureId: preparation.captureId,
       generation: preparation.generation,
     );
+    // The replacement relation belongs to one capture only.
+    if (_flushedFor != key) _lastFlush = null;
+    freezeCallbacks(preparation.generation);
+    await _ledger.settle();
+
     final controller = manager.active;
     final draft = controller?.draftOrNull;
     final store = controller?.draftStore;
     if (_flushedFor != key && controller != null && draft != null &&
         store != null) {
       final copy = draft.deepCopy();
-      controller.markFlushed();
-      _flushedFor = key;
-      final file = await store.file();
-      final temporary = await store.temporaryFile();
-      _lastFlush = await _ledger.track(runSourceWrite(
-        'capture.flush_draft',
-        (_) => _ledger.write(
-          'draft',
-          () => preservation.preserveAcrossFlush(
-            role: 'draft',
-            file: file,
-            temporary: temporary,
-            flush: () => store.save(copy),
+      final epochAtCopy = controller.saveEpoch;
+      try {
+        final file = await store.file();
+        final temporary = await store.temporaryFile();
+        final flushed = await _ledger.track(runSourceWrite(
+          'capture.flush_draft',
+          (_) => _ledger.write(
+            'draft',
+            () => preservation.preserveAcrossFlush(
+              role: 'draft',
+              file: file,
+              temporary: temporary,
+              flush: () => store.save(copy),
+            ),
           ),
-        ),
-        parent: preparation.ticket,
-      ));
-      finalFlushCount++;
+          parent: preparation.ticket,
+        ));
+        // Only a flush that landed counts.
+        _lastFlush = flushed;
+        _flushedFor = key;
+        controller.markFlushed(epochAtCopy);
+        finalFlushCount++;
+      } catch (e) {
+        _ledger.recordFailure('draft', e);
+        rethrow;
+      }
     }
 
     final failures = _ledger.failures;
@@ -227,7 +280,13 @@ class SessionCaptureHooks {
 
   void freezeCallbacks(int generation) => manager.freezeCallbacks(generation);
 
-  void resumeCallbacks(DateTime now) => manager.resumeCallbacks(now);
+  /// Ends the freeze of capture [generation] once the source is released.
+  /// A resume naming another generation than the one frozen (a stale call
+  /// from an earlier capture) changes nothing. Owed writes are retried.
+  void resumeCallbacks(DateTime now, {required int generation}) {
+    if (!manager.resumeCallbacks(now, generation: generation)) return;
+    _ledger.detach(_editors.retryOwed());
+  }
 
   /// Kinds of open forms that would block a capture now; the coordinator
   /// can check this before closing admission.

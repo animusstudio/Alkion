@@ -13,6 +13,7 @@ import '../units/unit_service.dart';
 import '../util/dates.dart';
 import '../util/number_input.dart';
 import '../widgets/stepper.dart';
+import '../widgets/w_dialog.dart';
 
 /// Shows the "Log bodyweight" modal bottom sheet.
 ///
@@ -244,10 +245,17 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     final nav = Navigator.of(context);
     final unitService = context.read<UnitService>();
     final kg = UnitService.toKg(_val, unitService.unit);
-    await BodyweightRepository(db).logBodyweight(
-      dateIso: isoDate(DateTime.now()),
-      kg: kg,
-    );
+    try {
+      await BodyweightRepository(db).logBodyweight(
+        dateIso: isoDate(DateTime.now()),
+        kg: kg,
+      );
+    } catch (e) {
+      // E.g. refused while a data capture holds the source: the sheet stays
+      // open with its value, and the failure is shown.
+      if (mounted) await showWriteFailed(context, e);
+      return;
+    }
     nav.pop();
   }
 

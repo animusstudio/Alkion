@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:workout_tracker/capture/source_write_gate.dart';
 import 'package:workout_tracker/data/models.dart';
 import 'package:workout_tracker/data/session_repository.dart';
 import 'package:workout_tracker/session/resume.dart';
@@ -24,8 +25,13 @@ class FakeSessionRepository implements SessionRepository {
     return Future.value(sets);
   }
 
+  /// When set, deleteSession is refused with it (nothing deleted).
+  Object? deleteError;
+
   @override
-  Future<void> deleteSession(String id) {
+  Future<void> deleteSession(String id, {SourceTicket? parent}) {
+    final error = deleteError;
+    if (error != null) return Future.error(error);
     deleted.add(id);
     return Future.value();
   }
@@ -59,7 +65,7 @@ Widget card(FakeSessionRepository repo,
         {HistorySessionRow? session,
         SessionResumeState state = SessionResumeState.none,
         VoidCallback? onResume,
-        VoidCallback? onDeleted}) =>
+        HistoryDeleted? onDeleted}) =>
     wrapL10n(SessionCard(
       session: session ?? sessionRow(),
       catalogMap: catalog,
@@ -124,7 +130,7 @@ void main() {
   testWidgets('a confirmed Delete removes the session and reports it', (tester) async {
     final repo = FakeSessionRepository([logged(100)]);
     var deletedCalls = 0;
-    await tester.pumpWidget(card(repo, onDeleted: () => deletedCalls++));
+    await tester.pumpWidget(card(repo, onDeleted: (_) async => deletedCalls++));
     await expand(tester);
 
     await tester.tap(deleteAction);
@@ -137,10 +143,30 @@ void main() {
     expect(deletedCalls, 1);
   });
 
+  testWidgets('a refused Delete is shown and reports nothing', (tester) async {
+    final repo = FakeSessionRepository([logged(100)])
+      ..deleteError = const SourceGateException('admission_closed');
+    var deletedCalls = 0;
+    await tester.pumpWidget(card(repo, onDeleted: (_) async => deletedCalls++));
+    await expand(tester);
+
+    await tester.tap(deleteAction);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Couldn't save"), findsOneWidget);
+    expect(find.textContaining('admission_closed'), findsOneWidget);
+    expect(repo.deleted, isEmpty);
+    expect(deletedCalls, 0);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a cancelled Delete keeps the session', (tester) async {
     final repo = FakeSessionRepository([logged(100)]);
     var deletedCalls = 0;
-    await tester.pumpWidget(card(repo, onDeleted: () => deletedCalls++));
+    await tester.pumpWidget(card(repo, onDeleted: (_) async => deletedCalls++));
     await expand(tester);
 
     await tester.tap(deleteAction);

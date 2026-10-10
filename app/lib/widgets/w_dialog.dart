@@ -72,6 +72,21 @@ Future<bool?> showWConfirm(
   );
 }
 
+/// The editors' write-failure feedback: a "Couldn't save" dialog naming
+/// [error] (for example a write refused while a data capture holds the
+/// source). Does nothing if [context] is no longer mounted.
+Future<void> showWriteFailed(BuildContext context, Object error) async {
+  debugPrint('write failed: $error');
+  if (!context.mounted) return;
+  final l = AppLocalizations.of(context);
+  await showWDialog<void>(
+    context,
+    title: l.editorSaveFailed,
+    message: '$error',
+    actions: [WDialogAction(label: l.commonOk, value: null)],
+  );
+}
+
 class _WDialogBody<T> extends StatelessWidget {
   const _WDialogBody({
     required this.title,

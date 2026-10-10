@@ -732,7 +732,8 @@ are not yet wrapped; until they are, attested capture stays **unsupported**.
 | Operation | Ticket scope |
 | --- | --- |
 | Exercise create/update/delete, day save/delete, bodyweight log, muscle target set | the repository method's whole write transaction |
-| History set update/add/delete, session delete | the whole transaction, top-set recompute included |
+| History set update/add/delete | the whole transaction, top-set recompute included |
+| History session delete (`deleteHistorySession`) | the delete transaction plus the nested forget of its finished snapshot and that file clear (`parent:`) |
 | Muscle-target default seed | count check and insert; nested under onboarding |
 | Onboarding starter seed | catalog transaction plus target seed (`parent:`) |
 | Boot migrations | one operation; top-set and `is_template` backfills and template absorption (reads, writes and absorb tombstones) run nested (`parent:`) |
@@ -741,7 +742,16 @@ are not yet wrapped; until they are, attested capture stays **unsupported**.
 | Discard | admitted before anything changes (a refusal leaves the workout running and is shown); in-memory teardown and draft-file clear |
 | Resume from History | lookups, draft save, registration; a vanished session's snapshot forget runs nested |
 | Finished-snapshot forget / expiry | in-memory drop and file clear; refused while admission is closed |
-| Autosave | debounced, deep copy taken when scheduled; fenced by an epoch so a superseded, finished, discarded or frozen save never writes, even after its admission returned |
+| Autosave | debounced, deep copy taken when scheduled; fenced by an epoch so a superseded, finished, discarded or frozen save never writes, even after its admission returned; a refused autosave stays owed and is retried after the debounce until admission reopens (or saved by `resumeCallbacks`) |
+
+A refused write is visible where it originates: the session screen's discard
+and finish, the exercise/day editors (as before), and now the targets
+stepper, the bodyweight sheet, History's add-exercise and delete-session and
+the History set editor show the editors' "Couldn't save" dialog
+(`showWriteFailed`) naming the refusal. A History set edit whose write was
+refused or failed stays owed (`UnsavedEditors.owe`): it keeps blocking
+capture even after its sheet closed, is written again on the next collapse,
+switch or close, and is retried by `resumeCallbacks`.
 
 `DraftStore`/`FinishedSessionStore` (`JsonFileStore`) run every save, load
 and clear of one store file one at a time in call order, across instances,
@@ -755,7 +765,8 @@ session side of the boundary for the coordinator:
   Plan editor holds unsaved edits (its existing `EditorGuard` dirty check),
   a History set editor has an open card or unpersisted edit, or the
   bodyweight sheet is open. Such forms need a normal Save or Cancel; nothing
-  saves them. Otherwise it commits focused fields and stops gliding rulers
+  saves them; an owed (refused) History set edit blocks too. Otherwise it
+  commits focused fields and stops gliding rulers
   with `commitPendingInput()` under the preparation ticket; writes that
   committing starts synchronously inherit that ticket.
 - `drainAndFlush(preparation)` freezes callbacks, awaits every running
@@ -763,17 +774,22 @@ session side of the boundary for the coordinator:
   resume saves, expiry), then flushes a deep copy of the live draft once,
   under the preparation ticket, through `RawPreservation.preserveAcrossFlush`
   (pre-flush and orphan `.tmp` bytes preserved first, replacement relation
-  recorded). A store write whose failure was not superseded (an autosave,
+  recorded). The flush counts only once it landed: any failure on its path
+  is recorded as a `draft` failure and a retry for the same capture flushes
+  again; `lastFlush` belongs to the current capture only. A store write whose failure was not superseded (an autosave,
   a discard clear, a finished-snapshot save that fell back to clearing)
   makes it throw `persistence_failed`; the app's visible behavior for those
   failures is unchanged.
 - `freezeCallbacks(generation)` stops autosave, the session screen's rest
   auto-stop, lifecycle reconcile and the finished-snapshot expiry; already
-  scheduled callbacks are fenced. `resumeCallbacks(now)` ends a rest whose
+  scheduled callbacks are fenced. `resumeCallbacks(now, generation:)`, called
+  with the frozen capture's generation once the source is released (also
+  after an aborted capture), ends a rest whose
   countdown ran out at its due time (no timer continuity, no silent
   extension), autosaves a mutation made while frozen, reconciles a lifecycle
-  resume and re-checks or expires the finished snapshot. It is meant to run
-  after the source is released.
+  resume, re-checks or expires the finished snapshot and retries owed
+  writes. A call naming another generation than the frozen one (a stale
+  resume of an earlier capture) changes nothing.
 
 Host tests (`app/test/capture/session_capture_hooks_test.dart`, a Dart model
 of the admission protocol; they prove nothing native), all **PASS**:
@@ -785,13 +801,24 @@ of the admission protocol; they prove nothing native), all **PASS**:
 | `discard_resume_expiry_drain_or_block` | an admitted discard clear, resume save and expiry finish before the drain returns; a refused discard changes nothing; a failed discard clear blocks; a new expiry while frozen clears nothing and is reconciled on resume |
 | `input_mid_fling_commits_once` | a weight ruler mid-fling is stopped on its shown value; one flush persists it with set ids, order and `startedAt`; no autosave |
 | `unrepresented_unsaved_form_blocks` | an edited Plan day and an open History set editor refuse with `unsaved_editor_input` and write nothing |
+| `failed_flush_is_retried_never_reported` | a flush whose preservation fails throws, records a `draft` failure and sets no `lastFlush`; the retry for the same capture flushes once; the next capture has no `lastFlush` |
+| `failed_flush_keeps_autosave_owed` | the mutation a failed flush missed is autosaved after release |
+| `refused_autosave_stays_owed_until_release` | an autosave refused before the freeze is retried and lands after release, also via an unfrozen `resumeCallbacks` |
+| `stale_resume_cannot_unfreeze_later_capture` | a resume naming the earlier capture's generation leaves the later capture frozen; nothing is written until its own resume |
+| `history_delete_ticket_spans_forget` | the delete's ticket stays live until the nested snapshot forget cleared its file; refused whole while admission is closed |
+| `refused_history_edit_stays_owed` | a History set edit refused (debounce, then collapse) while admission is closed is shown, stays owed and blocks capture after the card closed, and is written with the shown value after release, though the sheet itself closed |
+
+`app/test/ui/history_session_card_test.dart`
+`a refused Delete is shown and reports nothing` pins the visible refusal of
+History's delete.
 
 Limits:
 
-- A History set edit whose 400 ms debounce fires after admission closes is
-  refused and not retried; the capture itself refuses while that sheet has an
-  open card, but a coordinator should check `unsavedEditors()` before closing
-  admission.
+- A History set edit refused while admission is closed is shown, stays owed
+  and blocks the capture; a coordinator should still check
+  `unsavedEditors()` before closing admission, to avoid the refusal at all.
+- Owed History edits live in memory: a process killed while one is owed
+  loses that edit (the capture never certified a boundary without it).
 - A refused discard shows the generic "Couldn't save" message.
 - The real `main()` with the Linux plugin was not run end to end with these
   writers; native admission is covered by the capture integration tests.
@@ -811,5 +838,6 @@ in three consecutive runs after review round 1, with the stricter
 assertions and the recovery test (eight tests), then once with nine tests
 after the startup test was added, then once with all ten after review
 round 1, then once more after the session-operation work (with
-`missing_plugin_runs_ordinary_writes_ungated`). It has never run on Android. Host unit tests never establish
+`missing_plugin_runs_ordinary_writes_ungated`), and once after its review
+round 1. It has never run on Android. Host unit tests never establish
 Android support.

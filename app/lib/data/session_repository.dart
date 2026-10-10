@@ -325,8 +325,10 @@ class SessionRepository {
     }));
   }
 
-  /// Deletes a whole session and its sets.
-  Future<void> deleteSession(String id) async {
+  /// Deletes a whole session and its sets. [parent] when the delete is part
+  /// of a larger operation (History's delete, which also forgets the
+  /// session's finished snapshot).
+  Future<void> deleteSession(String id, {SourceTicket? parent}) async {
     await runSourceWrite(
       'history.delete_session',
       (_) => db.writeTransaction((tx) async {
@@ -334,6 +336,7 @@ class SessionRepository {
             'DELETE FROM sets WHERE session_id = ?', [id]); // clean local view
         await tx.execute('DELETE FROM sessions WHERE id = ?', [id]);
       }),
+      parent: parent,
     );
   }
 }
