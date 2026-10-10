@@ -4,7 +4,7 @@
 FLUTTER := fvm flutter
 DART := fvm dart
 
-.PHONY: help install get scaffold-linux scaffold-android analyze test capture-integration fmt format build build-apk build-apk-release run run-android doctor devices clean
+.PHONY: help install get scaffold-linux scaffold-android analyze test capture-integration capture-go-compat fmt format build build-apk build-apk-release run run-android doctor devices clean
 
 help:
 	@echo "Targets (run from repo root as 'make -C app <target>'):"
@@ -15,6 +15,7 @@ help:
 	@echo "  analyze        Static analysis (flutter analyze)"
 	@echo "  test           Run all Flutter tests"
 	@echo "  capture-integration  Native capture qualification; needs CAPTURE_DEVICE=<id>"
+	@echo "  capture-go-compat    Hub rehearsal over a produced capture; needs HUB_SRC=<Hub checkout>"
 	@echo "  fmt            Format Dart sources in place (dart format)"
 	@echo "  format         Verify formatting, fail if changes needed (CI)"
 	@echo "  build          Build the Linux desktop bundle (compiles native libs)"
@@ -53,6 +54,19 @@ capture-integration:
 		exit 2; \
 	fi
 	$(FLUTTER) test integration_test/capture_platform_test.dart -d $(CAPTURE_DEVICE)
+
+# Builds the Hub's reps-migration-rehearsal from an explicitly named Hub
+# source tree (read only; e.g. a `git archive` of the pinned commit) into a
+# temporary directory and runs it over a capture produced from a synthetic
+# PowerSync database. Needs Go; the Hub tree is never modified.
+capture-go-compat:
+	@if [ -z "$(HUB_SRC)" ]; then \
+		echo "capture-go-compat: set HUB_SRC=<Hub source tree> explicitly" >&2; \
+		exit 2; \
+	fi
+	@bin_dir=$$(mktemp -d) && trap 'rm -rf "$$bin_dir"' EXIT && \
+		go -C "$(HUB_SRC)" build -o "$$bin_dir/reps-migration-rehearsal" ./connectors/reps/cmd/reps-migration-rehearsal && \
+		REPS_REHEARSAL_BIN="$$bin_dir/reps-migration-rehearsal" $(FLUTTER) test test/capture/capture_artifact_test.dart --plain-name rehearsal_accepts_produced_capture
 
 fmt:
 	$(DART) format .

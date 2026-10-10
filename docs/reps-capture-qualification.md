@@ -1015,6 +1015,284 @@ Limits:
   autosave and rest-blob update are refused and redone after release. Showing
   the extension as unavailable is a UI concern for the capture screen.
 
+## Capture stores and the v1 artifact
+
+The store readers are in `app/lib/capture/capture_reader.dart`
+(`readCapturePayload`). The artifact writer and verifier are in
+`app/lib/capture/capture_artifact.dart` (`captureManifestFor`,
+`writeAndVerifyCapture`, `verifyCaptureDirectory`). The wire types are in
+`app/lib/capture/capture_manifest.dart`. The wire contract is the Hub's
+executable rehearsal reader at `b50c8e5`
+(`connectors/reps/migration/{capture,queue,prefs,sqlstore,localfiles}.go`
+and `testdata/sample-capture`). Where that Go reader is stricter than the
+design, the producer follows Go. Where the design is stricter, the producer
+follows the design.
+
+### SQL and upload queue: one read transaction
+
+One `db.readTransaction` runs, in order:
+
+1. The core version and layout re-check (`observeCaptureContext`, the same
+   observation as `qualifyCaptureProfile`). It is compared with the
+   qualified profile. On any drift (another core, an unknown table, a
+   changed view) nothing is read, and the SQL and queue stores are
+   declared `unsupported` (`core_version_unqualified` or
+   `schema_unqualified`).
+2. For each of the seven tables, `SELECT * FROM "<table>" ORDER BY id`. That
+   is every column of the public view, raw values and original ids
+   included: owner, template and derived columns, `''` weights and
+   `NULL`s. Besides the view, the stored row object (`ps_data__<table>`,
+   via `json_each`) is read. A stored key that no view column exposes stays
+   in the row with its exact scalar value and is reported as an unknown
+   column. A key that collides with a column under case folding, a
+   structured value, a blob or a non-finite real makes the SQL store
+   `unsupported`.
+3. `SELECT id, tx_id, data FROM ps_crud ORDER BY id`. `data` is also read as
+   a blob, so the text is proven byte-exact. `id` becomes `client_id`.
+   `CrudEntry`, `getCrudBatch`, `getNextCrudTransaction` and
+   `pendingUploadCount` are never used; a test checks the reader source for
+   them.
+4. `main.sqlite_sequence` for `ps_crud` and `ps_buckets.target_op` of
+   `$local`, both as `typeof` plus `CAST(... AS TEXT)`.
+   - If the row is there, it is recorded `observed`. `crud_sequence` is
+     written as a JSON number from its decimal digits, and
+     `local_target_op` as decimal text.
+   - If the row is missing, it is recorded `no_row` and the field is
+     omitted.
+   - A query that fails, or a value that is not an integer, makes the queue
+     `inspection_failed` (`bookkeeping_unreadable`). It is never read as
+     zero or absent.
+5. The count of non-`$local` buckets, for sync history.
+
+Integers are written from their exact decimal digits and never pass
+through a double. The v1 Go reader accepts integer literals of at most 18
+characters, so a queue id or an integer preference of 10^18 or more makes
+that store `unsupported` (`queue_id_beyond_reader`,
+`unsupported_value`). The producer reports that instead of writing a
+capture the reader rejects.
+
+### Raw files and the source directory
+
+`workout-draft.json` and `workout-last-finished.json` are read raw at the
+boundary (`readRawFile`). Nothing is decoded, deleted or renamed. Malformed
+and expired bytes are captured under their required role. A file is
+`absent` only after verified absence. A link or other non-regular entry is
+`unsupported`. A file over 64 MiB is `unsupported` (`store_oversized`).
+
+Each of the following is a separate `opaque` store, named
+`<store>_<origin>[_<sha12>]`. Its bytes are read back from the preparation
+blob and checked against the recorded SHA-256:
+
+- an orphan `.tmp`, as it is now;
+- the pre-flush and temporary-before versions of each flush
+  (`RawReplacement`);
+- each version a `StartupInventory` entry preserved earlier.
+
+A version identical to a held store is recorded, not copied twice. All of
+them, and the replacement relations, are listed in the evidence file. A
+draft whose bytes differ from its flush's `after` blocks the capture
+(`active_draft_changed_after_flush`).
+
+Every entry of the application-support directory needs a disposition.
+Unknown entries block the capture (`unknown_source_entry`); only their
+count is recorded, never their names. The dispositions are:
+
+| Entry | Disposition |
+| --- | --- |
+| `workout-draft.json`, `workout-last-finished.json` | `active_draft`, `last_finished` (raw bytes) |
+| `workout-draft.json.tmp`, `workout-last-finished.json.tmp` | `opaque` |
+| `workout-tracker.db` | rows are the `sql_snapshot`/`upload_queue` stores; file declared `sqlite_database`, `excluded`/`replica_bookkeeping` |
+| `workout-tracker.db-wal`, `-shm` | `sqlite_wal`, `sqlite_shm`, `excluded`/`replica_bookkeeping`; originals left intact |
+| `shared_preferences.json` (Linux) | the `preferences` store (typed entries) |
+| `capture/` | coordinator state (journal, gate, preparation); never a store |
+| secure storage (keyring/Keystore) | `secure_storage`, `excluded`/`credentials`; never opened |
+
+### Preference key inventory
+
+Entries come from the platform store with every prefix (`getAllWithParameters`
+with prefix `''`). `flutter.` is removed, and entries are sorted by key.
+Each entry keeps its type (`string`, `int`, `double`, `bool`,
+`string_list`), its original value and its list order. Only stored
+entries are captured; displayed defaults are never reconstructed.
+
+| Key | Type | Disposition |
+| --- | --- | --- |
+| `unit`, `settings.locale`, `settings.bodyweight_goal`, `profile_name` | string | `data_setting` |
+| `settings.rest_compound_seconds`, `settings.rest_isolation_seconds` | int | `data_setting` |
+| `identity.current_user_id` | string | `local_identity` |
+| `identity.onboarding_complete` | bool | `local_identity` |
+| `absorb.template_ids` | string_list | `local_identity` |
+| `mode`, `update.etag` | string | `device_preference` |
+| `accent`, `settings.last_update_check_ms`, `sync.last_synced_at_ms` | int | `device_preference` |
+| `settings.auto_check_updates` | bool | `device_preference` |
+| `server_url` | string | `installation_wiring`; portable only as an absolute http(s) URL with a host and no user info, `@`, query or fragment |
+| `settings.sync_enabled` | bool | `installation_wiring` |
+| `rest.name`, `rest.started_at` | string | `volatile_runtime` |
+| `rest.start_ms`, `rest.total` | int | `volatile_runtime` |
+
+The following make the whole preference store `unsupported`, with a
+blocker. The detail carries codes and counts only, never keys or values.
+No redacted store is ever written, and the source is not touched.
+
+- `access_token`, `refresh_token` and `email` (`credential_key`). No
+  review admits them.
+- A credential-bearing `server_url` (`credential_bearing_server_url`).
+- A key with no inventory entry that the caller did not name in
+  `reviewedUnknownPreferences` (`unknown_key`).
+- A key without the `flutter.` prefix (`unprefixed_key`).
+- A value no v1 type carries (`unsupported_value`).
+
+A reviewed unknown key is captured as `reviewed_unknown`.
+
+### Evidence and sync history
+
+`stores/capture-evidence.json` is a declared opaque store (`capture_evidence`,
+format `reps-capture-evidence/1`). It holds:
+
+- the capture id and gate generation;
+- the producer revision, profile id and profile evidence digest, and the
+  runtime (versions and schema fingerprint);
+- SQL/queue status and bookkeeping coverage, and the unknown column names
+  (safe tokens only);
+- `TransportPauseEvidence.toSafeJson()`: upload/download flags, the native
+  method and qualification digest, and uncertain uploads as queue ids and
+  codes;
+- sync history and its evidence;
+- the replacement relations, the raw versions and the startup inventory;
+- preference dispositions, the count of unknown source entries, and the
+  blockers.
+
+It never holds record contents, credentials or keys of unknown stores, and
+the manifest never gets extra fields.
+
+`sync_history` is `connected` only on positive evidence: non-`$local`
+replica buckets, or a stored `sync.last_synced_at_ms`. Otherwise it is
+`unknown`. `never_connected` is never produced, because no qualified
+installation history exists.
+
+### Artifact
+
+`captureManifestFor` plans every store with its exact size and SHA-256.
+Counts come from the copied arrays. `captured_at` is UTC with `Z`. The SQL
+store is named `sql`, as in the v1 sample; the other required stores are
+named after their roles.
+
+A required store over 64 MiB is declared `unsupported` (`store_oversized`)
+and never truncated or chunked. An oversized opaque store is left out and
+blocks the capture.
+
+`writeAndVerifyCapture(staging, payload, manifest)` works as follows:
+
+- It refuses a non-empty staging directory (`staging_not_empty`), a
+  manifest that is not this payload's (`manifest_mismatch`) and a manifest
+  over 1 MiB (`manifest_oversized`), all before writing.
+- It streams each store into a new file (exclusive create) under a running
+  bound, then flushes it (`RandomAccessFile.flush`, an fsync) and closes it.
+- It writes `manifest.json` last.
+- It then runs `verifyCaptureDirectory`. The inventory must be exactly the
+  manifest, the declared files and `stores/`. Links, non-regular, unlisted
+  and missing files fail. The strict manifest decode rejects duplicate or
+  case-colliding JSON keys, names and paths, unknown fields, a duplicated
+  or missing required role, paths outside `stores/<file>`, unknown
+  exclusion reasons and file content on non-captured entries. Each file
+  must match its size (64 MiB inclusive) and SHA-256. The SQL, queue and
+  preference stores must have the v1 structure, counts must equal the
+  arrays, and no credential key may appear.
+- I/O failures (including insufficient space) are `write_failed`; nothing
+  partial is ever reported as success.
+
+Directory durability and the no-replace rename belong to publication
+(`CaptureFiles.publishNoReplace` flushes the whole staging tree).
+
+`SealedCapture` carries the capture UUID, the manifest SHA-256, the staging
+directory, immutable per-file digests and `blockers`. It is `usable` only
+when there are no blockers:
+
+- no payload blockers;
+- every required store captured or verifiably absent;
+- all five boundary flags true;
+- `single_read_transaction`.
+
+An unusable capture is still integrity-verified evidence, but it is never a
+final capture. The reader does not check the hold; the coordinator checks
+it is current before and after the read.
+
+### Wire mapping (Go `b50c8e5` → Dart)
+
+| Go | Dart |
+| --- | --- |
+| `CaptureFormat`, `CaptureVersion` | `captureFormat`, `captureVersion` |
+| `maxManifestBytes`, `maxStoreBytes` | `captureManifestByteLimit`, `captureStoreByteLimit` (`acceptsManifestBytes`, `acceptsStoreBytes`, inclusive) |
+| `Manifest{format,version,capture_id,captured_at,source,boundary,stores,counts}` | `CaptureManifest` (`toJson`/`encode`/`decode`) |
+| `Source{app_version,platform,sync_history}` | `CaptureSource` |
+| `Boundary{sql_snapshot,mutation_paused,upload_paused,download_paused,editor_input_committed,autosave_flushed}` | `CaptureBoundary` (all five always written) |
+| `StoreEntry{name,role,status,format,path,bytes,sha256,reason,detail}` (`omitempty`) | `CaptureStore` (empty fields omitted; `bytes` always written for captured) |
+| `Role*`, `Status*`, `storeFormats`, `exclusionReasons` | `CaptureRole`, `CaptureStatus`, `captureStoreFormats`, `captureExclusionReasons` |
+| `checkStoreEntry` statuses per role | `CaptureStore.check` |
+| `checkDuplicateKeys(…, fold)` | `decodeStrictJson(…, foldKeys:)` |
+| `readRegular`, `checkUnlisted` | `verifyCaptureDirectory` |
+| SQL `{"tables":{…}}`, `validateSQL` counts | `SqlStoreCapture`, `_sqlChunks`, `_checkSqlStore` |
+| queue wire `{entries:[{client_id,tx_id,data}],evidence:{crud_sequence,local_target_op}}` | `QueueStoreCapture`/`QueueEntryCapture`, `_queueChunks`, `JsonDigits` |
+| `rawInt` (≤18 characters) | `fitsReaderInteger` |
+| preferences `{entries:[{key,type,value}]}`, `knownPrefs`, `credentialKeys`, `prefTypes` | `PreferencesCapture`/`CapturePreference`, `capturePreferenceInventory`, `credentialPreferenceKeys` |
+| opaque/excluded entries | `OpaqueCapture`, `CaptureExclusion` |
+
+### Tests, all **PASS** (2026-10-10)
+
+| Test | What it pins |
+| --- | --- |
+| `tables_queue_and_bookkeeping_share_snapshot` (`app/test/capture/capture_reader_test.dart`) | A second connection commits a session (queue entry, sequence +1) while the read transaction is open: the payload has none of the three, and a later read has all three. It also pins the seven ordered arrays with raw values; unknown stored keys kept, while case-colliding or structured ones are `unsupported`; an empty queue as `entries: []` with `no_row`; a renamed `ps_buckets` as `inspection_failed`/`bookkeeping_unreadable`; an unknown table reading nothing (`schema_unqualified`). |
+| `queue_text_and_large_ids_unchanged` | It covers exact `ps_crud` text with whitespace and unknown fields under id 2^53+1, and the literal `"client_id":9007199254740993` in the written bytes. Transaction runs are contiguous and the queued DELETE of an absent row is kept. No banned SDK API appears. An id of 10^18 is `queue_id_beyond_reader`. |
+| `malformed_files_are_raw_roles` | Malformed draft and expired finished bytes are captured unchanged under their roles. The orphan `.tmp`, pre-flush and startup-preserved versions are opaque. The replacement relation is in the evidence, and the four exclusions are declared. Source bytes and names are unchanged. A draft changed after its flush blocks. Verified absence gives `absent`, and a link is `unsupported` and never followed. |
+| `typed_safe_unknown_preferences_preserved` | It covers exact types, values and list order without `flutter.`; only stored keys; the explicit dispositions; a reviewed unknown `double` `2.0` written as `2.0`. |
+| `unsafe_unknown_or_url_blocks` | Credential keys, five credential-bearing or non-http(s) `server_url`s, unknown and unprefixed keys, and untyped or out-of-range values give `unsupported` preferences, no entries and a blocker. The secret appears in no written file, and the source is unchanged. An unknown file beside the stores blocks without its name being recorded. |
+| `sync_history_needs_positive_evidence` | It covers `unknown` without evidence, and `connected` from `sync.last_synced_at_ms`. |
+| `strict_v1_integrity_and_limits` (`app/test/capture/capture_artifact_test.dart`) | It covers the exact eight manifest fields, values and store entries; the inventory equal to the declarations; sizes and digests; immutable digests; exploratory boundaries unusable; and 1 MiB/64 MiB equality accepted and +1 refused. A 64 MiB draft is written and a 64 MiB+1 draft is declared `unsupported`, with no file. An oversized manifest, a non-empty staging directory and a mismatched manifest are refused before writing. Rejected tampering, never mutated: an unlisted or case-variant file, a symlink, a flipped byte, a missing file, extra manifest, boundary or store fields, path escapes, duplicate or case-folded names, case-colliding paths, a duplicated or missing required role, an unknown exclusion reason, a path on an absent store, a count mismatch, an unknown count key, duplicate or case-folded JSON keys, an oversized manifest, a credential or malformed preference store, a queue without `entries`, and SQL without tables. |
+| `rehearsal_accepts_produced_capture` | See below. |
+
+Mutation checks:
+
+| Mutation | Result |
+| --- | --- |
+| queue and bookkeeping read in a second transaction | **FAIL** (`tables_queue_and_bookkeeping_share_snapshot`) |
+| `client_id` written through a double | **FAIL** (`queue_text_and_large_ids_unchanged`, and the verifier refuses the store) |
+
+### Go rehearsal over a produced capture: **PASS**
+
+`make -C app capture-go-compat HUB_SRC=<Hub source tree>` builds
+`connectors/reps/cmd/reps-migration-rehearsal` from the named tree into a
+temporary directory. It then runs `rehearsal_accepts_produced_capture`,
+which is skipped without `REPS_REHEARSAL_BIN`. That test:
+
+1. creates a synthetic PowerSync database with UUID ids, queue ids beyond
+   2^53, a PATCH clearing `rir` and a DELETE of an absent row;
+2. adds a malformed draft, an orphan `.tmp` and known preferences;
+3. reads it with `readCapturePayload` and seals it with all five
+   attestations;
+4. runs the rehearsal with `-capture`/`-work`.
+
+On 2026-10-10 it ran with `HUB_SRC` set to a `git archive` of Hub
+`b50c8e5` (Go 1.27.2, offline module cache). The result was exit 0,
+`staging_valid: true`, `exploratory: false`, `cutover_ready: false` and
+findings `blocking 0 / review 4 / info 6`:
+
+- review: `baseline_missing`, `unresolved_operations`,
+  `unresolved_records`, `draft_malformed`;
+- info: `opaque_store_preserved` ×2, `credentials_excluded`,
+  `queued_delete_preserved`, `old_server_ignores_null_clear`,
+  `rest_timer_not_carried`.
+
+`staging.json` carries every `client_id` exactly.
+
+Limits:
+
+- Android is **UNRUN** and capture there is **unsupported** (Ruling R2/R9).
+  Its preference store layout and app-support entries are untested.
+- The producer does not measure free space before writing. Insufficient
+  space fails the write (`write_failed`) without truncation.
+- The SQL rows are not validated semantically (UUIDs, references, decimal
+  text). The Go rehearsal reports those during acceptance.
+
 ## Native qualification command
 
 `make -C app capture-integration CAPTURE_DEVICE=<device id>` runs

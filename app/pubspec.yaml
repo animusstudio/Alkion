@@ -54,6 +54,10 @@ dependencies:
   # Android OTA: downloads the release APK with progress and launches the OS
   # installer (in-app updates). Android-only; no-op on Linux desktop.
   ota_update: ^7.1.0
+  # Raw typed preference entries (every prefix) for capture, and the
+  # counting/failing preference store of the capture tests. Transitive via
+  # shared_preferences; declared to satisfy depend_on_referenced_packages.
+  shared_preferences_platform_interface: ^2.4.2
   # Native source-write gate and durable capture publication (local plugin).
   reps_capture_platform:
     path: packages/reps_capture_platform
@@ -65,10 +69,6 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-  # Counting/failing preference store for the capture preference tests.
-  # Transitive via shared_preferences; declared to satisfy
-  # depend_on_referenced_packages.
-  shared_preferences_platform_interface: ^2.4.2
   # Generates the Android launcher icon (incl. adaptive) from assets/icon/.
   # Config: flutter_launcher_icons.yaml; sources prepared in docs/flutter_icons/.
   flutter_launcher_icons: ^0.14.1

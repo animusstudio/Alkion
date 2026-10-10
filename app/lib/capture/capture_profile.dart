@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 import 'package:powersync/native.dart' show NativePowerSyncOpenFactory;
 import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 import 'package:sqlite3/sqlite3.dart' as sqlite;
+import 'package:sqlite_async/sqlite_async.dart' show SqliteReadContext;
 
 import '../sync/schema.dart';
 
@@ -299,11 +300,15 @@ Future<QualifiedProfile> qualifyCaptureProfile(
 /// transaction.
 Future<CaptureDatabaseObservation> observeCaptureDatabase(
     PowerSyncDatabase database) {
-  return database.readTransaction((tx) async {
-    Future<List<Map<String, Object?>>> query(String sql) async =>
-        [for (final row in await tx.getAll(sql)) Map.of(row)];
-    return _observe(query);
-  });
+  return database.readTransaction(observeCaptureContext);
+}
+
+/// Reads the core version and layout through [tx], an already open read
+/// context, so a caller can tie the observation to its own snapshot.
+Future<CaptureDatabaseObservation> observeCaptureContext(SqliteReadContext tx) {
+  Future<List<Map<String, Object?>>> query(String sql) async =>
+      [for (final row in await tx.getAll(sql)) Map.of(row)];
+  return _observe(query);
 }
 
 /// Observes a database file BEFORE PowerSync initializes it, through a
