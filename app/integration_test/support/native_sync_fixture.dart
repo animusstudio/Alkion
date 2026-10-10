@@ -129,12 +129,18 @@ class NativeSyncFixture {
 
   String get endpoint => 'http://${_server.address.host}:${_server.port}';
 
+  /// The synthetic service's endpoint and token, for a test's own
+  /// connector.
+  PowerSyncCredentials get credentials =>
+      PowerSyncCredentials(endpoint: endpoint, token: _syntheticToken);
+
   /// Connects the SDK to the synthetic service; completes once its sync
-  /// stream request has arrived.
-  Future<void> connect() async {
+  /// stream request has arrived. [connector] replaces the default one, which
+  /// never acknowledges an upload; it must fetch [credentials].
+  Future<void> connect({PowerSyncBackendConnector? connector}) async {
     _streamOpened = Completer<void>();
     await database.connect(
-      connector: _SyntheticConnector(this),
+      connector: connector ?? _SyntheticConnector(this),
       options: const SyncOptions(retryDelay: Duration(milliseconds: 200)),
     );
     await _streamOpened.future.timeout(const Duration(seconds: 20));
@@ -390,7 +396,7 @@ class _SyntheticConnector extends PowerSyncBackendConnector {
 
   @override
   Future<PowerSyncCredentials?> fetchCredentials() async =>
-      PowerSyncCredentials(endpoint: _fixture.endpoint, token: _syntheticToken);
+      _fixture.credentials;
 
   @override
   Future<void> uploadData(PowerSyncDatabase database) async {

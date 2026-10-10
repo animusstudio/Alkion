@@ -1733,11 +1733,262 @@ their autosave owed until release (disclosed by the banner and the hold
 confirmation, not prevented). No receiving UI exists for the ZIP transport
 (`expandCaptureArchive` is the API and is host-tested only).
 
+## Interruption, faults and Go compatibility
+
+### Fault boundaries
+
+`app/lib/capture/capture_faults.dart` defines `CaptureFaults.hit(boundary)`.
+The production implementation does nothing; only tests wire another one
+(`app/test/support/capture_faults.dart`, `ScriptedCaptureFaults`). The
+coordinator passes these boundaries:
+
+- `journal_flush:<stage>` and `journal_renamed:<stage>`, right before and
+  right after every journal replacement (`CaptureJournal.write`). The
+  native `durableReplace` flushes the temporary file, renames it and flushes
+  the directory in one call, so from Dart there is no point between flush
+  and rename. Failures inside that call are covered by the native fault
+  injection in `flush_or_directory_sync_failure_blocks`.
+- `store_flushed:<store>` after each store file is written, flushed and
+  closed, and `manifest_flushed` after `manifest.json`
+  (`writeAndVerifyCapture`).
+- `publication_rename`, right before `publishNoReplace`.
+- every coordinator step (`admission_closed`, `inventory`,
+  `editor_committed`, `local_drained`, `network_drained`, `hold_acquired`,
+  `preferences_reloaded`, `native_current_before_read`, `read`,
+  `native_current_after_read`, `staged`, `published_renamed`,
+  `final_verified`, `released`, and `journal:<stage>`).
+
+That covers journal flush/rename, store and manifest flush, directory
+publication, publication persistence (`journal_renamed:published`) and the
+resume decision (`journal_*:resume_allowed`, `released`,
+`journal_*:resumed`, also inside `resumeOriginal`). Anything a test hook
+throws stops the attempt as process death: nothing is cleaned up or
+released.
+
+### Command
+
+`make -C app capture-recovery CAPTURE_DEVICE=<device id>
+CAPTURE_OUTPUT=<directory>` needs both variables. It refuses an output
+directory that:
+
+- is not strictly below `/tmp` or `$TMPDIR` (after resolving symlinks);
+- is inside the repository;
+- is a symbolic link;
+- exists and is not an empty directory.
+
+Otherwise it creates the directory (mode 0700). On Linux it then builds
+`integration_test/capture_recovery_child.dart` as a debug bundle and copies
+it to a temporary directory, which is deleted afterwards. Then it runs
+`fvm flutter test integration_test/capture_recovery_test.dart -d
+$(CAPTURE_DEVICE) --dart-define=CAPTURE_OUTPUT=... --dart-define=CAPTURE_CHILD=...`.
+
+The child is needed because the integration-test bundle's `main` is the
+test bootstrap, which runs no test code unless the tool drives it. The
+child runs one real capture with the real gate, files, PowerSync database
+and registered native sync adapter. It logs every boundary and, when told
+to, parks at one boundary. The test then SIGKILLs it, so the kernel drops
+its locks as for an app killed there. The child refuses to run without a
+config naming a marked synthetic installation under the system temp
+directory. Only the child process is ever killed.
+
+Every installation is a fresh, marked directory under the system temp
+directory (`integration_test/support/capture_installation.dart`):
+
+- a real PowerSync database: seven tables, UUID ids, a ten-entry upload
+  queue with PUT/PATCH/DELETE, and a synced template carrying an unknown
+  column;
+- a stale malformed draft plus a running workout whose draft the capture
+  flushes;
+- file-backed preferences kept outside the source directory.
+
+The real application-support directory, secure storage and credentials
+are never opened.
+
+Outputs (`CAPTURE_OUTPUT`):
+
+| Path | Kind | Purpose |
+| --- | --- | --- |
+| `synthetic-capture/` | certified, exported through `exportCapture` (receiving verification) | Go must accept: exit 0 |
+| `review-malformed-draft/` | certified | Go must stage it with a `draft_malformed` review |
+| `exploratory-queue-blocked/` | **EXPLORATORY**: refused by the producer (`capture_unusable`, blocker `upload_queue_row_id_invalid`), copied from private staging, never published or certified | Go must block: exit 2 |
+| `acceptance.json` | sanitized | runtime, profile, digests, fault and interruption results, `cutover_ready: false`; no record contents |
+| `rehearsal-work/`, `rehearsal-verify/` | Go work directories | written by the Go rehearsal and the verifier, never by Flutter |
+
+Note on terms: the producer's "exploratory" means "sealed for diagnosis,
+not usable". Go's `exploratory` flag means "boundary attestations
+incomplete". The blocked fixture is producer-exploratory and Go-blocked,
+but its attestations are complete, so Go reports `exploratory: false`
+for it.
+
+### Tests (`app/integration_test/capture_recovery_test.dart`)
+
+Run on 2026-10-10 with `CAPTURE_DEVICE=linux`
+(`CAPTURE_OUTPUT=/tmp/reps-capture-synthetic`, Linux debug bundle, profile
+`reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13`): all four **PASS**.
+
+1. `kill_each_boundary_and_restart_twice`.
+   - Two uninterrupted child runs give the boundary sequence and reference
+     manifests (fixed capture id and clock): rehearsal `847f30bc…` and
+     local hold plus explicit decision `55b4db11…`. The coordinator's
+     evidence names the mode, hence two references.
+   - Then every boundary of the rehearsal (40) and every boundary of the
+     local hold from `journal_flush:sealed` on (14) runs in a fresh copy.
+     The child is parked there and SIGKILLed: 54 real process kills.
+   - After each kill:
+     - the source equals its pre-capture state except the draft, which is
+       either the pre-capture bytes or the one requested flush;
+     - no final directory is partial;
+     - recovery runs twice in another process and gives the same code,
+       stage, decision and digest, and the second run changes nothing;
+     - capture-first startup runs twice and holds (zero ordinary steps)
+       exactly while a decision is owed;
+     - a recovered capture equals the reference manifest;
+     - a recorded hold is never released by a restart, and a published
+       local hold always ends in `local_hold`.
+   - Then the explicit decision opens the gate. A new capture in the
+     parent gets a new id and changes nothing published before.
+   - Outcomes:
+     - up to `journal_renamed:preparing#0`: no journal, `none`;
+     - before `journal_renamed:sealed`: `capture_interrupted`
+       (`resume_original`), never certified, even with a complete manifest
+       already staged;
+     - `sealed` / `published`: `awaiting_resume_decision`, with the
+       publication finished or adopted only after full verification;
+     - local hold `sealed` onwards: `local_hold`;
+     - after a recorded `resume_allowed`: `resumed`.
+2. `foreground_background_native_writer_races`. PowerSync applies no
+   checkpoint while uploads are pending, so this runs as two fixtures with
+   one capture each.
+   - Uploads: sync is opted in through `changeSyncConnection` with the
+     app's `WorkoutConnector` against a loopback `/sync/upload`. The first
+     upload loses its response (the connection drops after the request).
+     The retry is held at the service, then answered 503.
+   - A foreground SQL write and a background-engine write (second isolate,
+     its own messenger) are admitted before the capture and kept running.
+   - After `admission_closed`, these are all refused, and nothing reaches
+     the source or the service: a foreground write, a background write,
+     another process (ctypes helper), and an upload.
+   - The network drain stays open while the upload is held. The hold is
+     not taken until both admitted writes finish.
+   - The certified capture has the queue exactly as before (nothing
+     dequeued) and the admitted row, never the refused one. Its evidence
+     has exactly one uncertain upload (`ClientException`; the 503 is not
+     uncertain) and `previously_connected: true`. The prior connected
+     policy is restored once.
+   - Downloads: a checkpoint is staged and its native apply paused behind
+     the shared writer. The capture neither drains nor reads until the
+     apply is released. The paused row is then in the single read, with
+     the (empty) queue.
+3. `full_disk_permission_unreadable_and_limit_faults`. Real gate and
+   files, one fresh installation per fault. After each fault:
+   - the source is unchanged;
+   - nothing partial is final;
+   - an exploratory capture stays in private staging;
+   - no credential reaches any written byte;
+   - two recoveries agree, and the gate ends open;
+   - a retry without the fault certifies.
+
+   | Fault | Result | Stage / decision | Source read |
+   | --- | --- | --- | --- |
+   | file system reports 4096 bytes free (`availableBytes` lowered; the call itself is native) | `insufficient_space` (`free_space`) | resumed / none | yes (space is checked before staging) |
+   | `stores/` made read-only after the first store flush | `staging_failed` / `write_failed` | resumed / none | yes |
+   | `captures/` made read-only before publication | `publish_failed`, hold kept | sealed / `resume_original`; recovery finishes publication, `awaiting_resume_decision`, digest = journal | yes |
+   | draft mode 000 | `inventory_incomplete` (`draft`) | resumed / none | no |
+   | draft 64 MiB + 1 byte (sparse) | `inventory_incomplete` (`draft`) | resumed / none | no |
+   | symbolic link beside the stores | `capture_unusable` (`unknown_source_entry`), exploratory | resumed / none | yes |
+   | unlisted file beside the stores | `capture_unusable` (`unknown_source_entry`), exploratory | resumed / none | yes |
+   | `access_token` preference | `capture_unusable` (`preferences_credential_key`), exploratory; the value appears in no written file | resumed / none | yes |
+   | transport without a registered native sync method | `native_sync_unqualified` | resumed / none | no |
+
+4. `go_rehearsal_raw_digests_and_dispositions`. This produces the three
+   fixtures above and records the producer's digests. It checks:
+   - the stored draft file's SHA-256 equals the manifest's `active_draft`;
+   - every queue entry's client id, transaction id and the SHA-256 of its
+     exact `data` text equal the source `ps_crud`;
+   - the exported trees equal what was written.
+
+   It does not run Go.
+
+`capture_platform_test.dart` adds `fault_boundaries_follow_native_durable_steps`.
+On the production native path, the journal flush/rename pairs of every
+stage, one `store_flushed` per captured store, `manifest_flushed`, the
+publication and the resume decision come in durable order. An
+interruption after `manifest_flushed` leaves only private staging, and two
+recoveries say `capture_interrupted`. The host suite adds
+`every_fault_boundary_recovers_twice_without_partial_output` (Dart gate
+model, no native claim) so CI runs the same matrix, and
+`production_faults_are_inert`.
+
+### Go rehearsal: commands and results
+
+From the Hub snapshot root (`/tmp/claude-1000/hub-b50c8e5`, `git archive` of
+`b50c8e5`, Go 1.27.2; the Hub repository is never touched):
+
+- `go test ./connectors/reps/...` (also `-count=1`): **PASS**, three
+  packages ok.
+- `go run ./connectors/reps/cmd/reps-migration-rehearsal -capture
+  /tmp/reps-capture-synthetic/synthetic-capture -work
+  /tmp/reps-capture-synthetic/rehearsal-work`, run twice on the same work
+  directory: exit 0 both times. Identical output: `staging_valid: true`,
+  `exploratory: false`, findings `blocking 0 / review 3 / info 5`,
+  `cutover_ready: false`. `staging.json` was `52460d59…` and `report.json`
+  `571ca19a…` both times. The capture tree was byte- and metadata-identical
+  before and after. **PASS**.
+- `python3 -I scripts/verify-capture-rehearsal.py /tmp/claude-1000/hub-b50c8e5
+  /tmp/reps-capture-synthetic`, run twice: **PASS**, 84 checks each run,
+  identical results. It refuses a git working tree. It builds the
+  rehearsal into a temporary directory, so exit codes are exact (`go run`
+  maps a program's exit 2 to its own exit 1).
+
+  | Fixture | Exits | Findings (blocking/review/info) | Visible dispositions |
+  | --- | --- | --- | --- |
+  | `synthetic-capture` | 0, 0, 0 | 0 / 3 / 5 | `unknown_column_preserved`, `column:exercises.legacy_note` `preserved_unavailable` |
+  | `review-malformed-draft` | 0, 0, 0 | 0 / 4 / 5 | `draft_malformed`, `store:active_draft` `preserved_for_recovery_review` |
+  | `exploratory-queue-blocked` | 2, 2, 2 | 1 / 0 / 4 | blocking `queue_entry_invalid`, nothing staged |
+
+  For each fixture the three runs are: a first run, a rerun of the same
+  work directory, and a run into a separate work directory. They produced
+  identical `staging.json`/`report.json` bytes. The staged draft
+  `original_sha256` and every staged queue entry equal the producer's
+  digests. For the blocked fixture the captured queue equals them. Every
+  report says `cutover_ready: false`, and the capture directories were
+  unchanged. Producer acceptance is an integrity result. The Go findings
+  above are the rehearsal's semantics, never producer checks.
+- A negative run on a tampered copy (wrong expected exit, a wrong queue
+  digest, one flipped capture byte) failed with each mismatch named.
+
+### Check results (2026-10-10, Linux host)
+
+| Check | Result |
+| --- | --- |
+| `make -C app analyze` | **PASS** (No issues found) |
+| `make -C app test` | **PASS** (1382 passed, 2 skipped: the two `REPS_REHEARSAL_BIN` tests) |
+| `make -C app build` | **PASS** (Linux release bundle) |
+| `make -C app capture-integration CAPTURE_DEVICE=linux` | **PASS** (13 tests) |
+| `make -C app capture-recovery CAPTURE_DEVICE=linux CAPTURE_OUTPUT=/tmp/reps-capture-synthetic` | **PASS** (4 tests) |
+| Go `go test`, `go run` ×2, verifier ×2 | **PASS** |
+| `make -C app format` | **FAIL**, pre-existing: 271 files would be reformatted at this commit. None is a file this work created. The five it touched (`capture_coordinator.dart`, `capture_journal.dart`, `capture_artifact.dart`, `capture_coordinator_test.dart`, `capture_platform_test.dart`) were already unformatted at the base and were left so. |
+| `make -C app build-apk` | **FAIL** (unmet acceptance): `[!] No Android SDK found. Try setting the ANDROID_HOME environment variable.` (Ruling R2) |
+| Android `capture-recovery` / release-mode tests | **UNRUN**: no SDK or device (Ruling R2). On a non-Linux device the four tests record `unsupported` and skip. `flutter test` has no release mode; release-mode Android runs would need `flutter drive`. |
+
+Limits:
+
+- A kill lands only between Dart steps. It cannot land inside one native
+  call, for example between the file flush and the rename of
+  `durableReplace`; native fault injection covers those failures.
+- "Full disk" is a lowered `availableBytes` answer plus a real write the
+  OS refuses (permissions). No file system was actually filled.
+- Uploads: lost response, a held request then 503. A 2xx whose local
+  completion is paused is not exercised natively; the host test
+  `lost_response_retains_uncertainty` covers `complete_failed`.
+- Everything is synthetic. Installed-device, signed-upgrade and Android
+  rows stay **UNRUN**/unsupported. `cutover_ready` is false everywhere.
+
 ## Native qualification command
 
 `make -C app capture-integration CAPTURE_DEVICE=<device id>` runs
 `integration_test/capture_platform_test.dart` on one explicitly chosen device.
-It fails with a message if `CAPTURE_DEVICE` is unset. It contains twelve
+It fails with a message if `CAPTURE_DEVICE` is unset. It contains thirteen
 native tests: the eight in "Source-write gate and durable files" and
 "Native sync quiescence: Linux qualification",
 `startup_preserves_through_native_files_and_gate` and
@@ -1746,7 +1997,8 @@ and raw-file preservation", and
 `coordinator_publishes_and_recovers_through_native_primitives` in
 "Coordinator, publication and recovery", and
 `export_copies_through_native_no_replace_publication` in "Capture screen,
-decisions and explicit export". On 2026-10-10 it passed with
+decisions and explicit export". `fault_boundaries_follow_native_durable_steps` is described in
+"Interruption, faults and Go compatibility". On 2026-10-10 it passed with
 `CAPTURE_DEVICE=linux` (debug bundle): first in four consecutive runs, then
 in three consecutive runs after review round 1, with the stricter
 assertions and the recovery test (eight tests), then once with nine tests
@@ -1756,5 +2008,6 @@ round 1, then once more after the session-operation work (with
 round 1, then twice after the preference, notification and transport
 writers were wrapped (unchanged ten tests), then with all eleven after the
 coordinator was added, then with all twelve after explicit export was
-added. It has never run on Android. Host unit tests never establish
+added, then with all thirteen after the fault boundaries were added. It has
+never run on Android. Host unit tests never establish
 Android support.

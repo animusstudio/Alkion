@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show immutable;
 
+import 'capture_faults.dart';
 import 'source_write_gate.dart';
 import 'startup_inventory.dart';
 
@@ -224,7 +225,9 @@ class CaptureJournal {
     this.file, {
     required this.base,
     CaptureFiles files = const CaptureFiles(),
-  }) : _files = files;
+    CaptureFaults faults = const CaptureFaults(),
+  })  : _files = files,
+        _faults = faults;
 
   final File file;
 
@@ -233,6 +236,7 @@ class CaptureJournal {
   /// before the journal is written.
   final Directory base;
   final CaptureFiles _files;
+  final CaptureFaults _faults;
 
   /// The recorded state, or null when the journal is verifiably absent.
   /// Throws [CaptureJournalException] for anything unreadable, malformed,
@@ -263,7 +267,12 @@ class CaptureJournal {
       throw const CaptureJournalException('journal_unsafe_value');
     }
     await _files.ensureDirectory(file.parent, base: base);
+    // One native call flushes the temporary file, renames it over the
+    // journal and flushes the directory: before it the previous journal is
+    // on disk, after it this one.
+    await _faults.hit('journal_flush:${state.stage.wire}');
     await _files.durableReplace(file, utf8.encode(jsonEncode(json)));
+    await _faults.hit('journal_renamed:${state.stage.wire}');
   }
 }
 

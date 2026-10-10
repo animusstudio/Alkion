@@ -4,7 +4,7 @@
 FLUTTER := fvm flutter
 DART := fvm dart
 
-.PHONY: help install get scaffold-linux scaffold-android analyze test capture-integration capture-go-compat fmt format build build-apk build-apk-release run run-android doctor devices clean
+.PHONY: help install get scaffold-linux scaffold-android analyze test capture-integration capture-recovery capture-go-compat fmt format build build-apk build-apk-release run run-android doctor devices clean
 
 help:
 	@echo "Targets (run from repo root as 'make -C app <target>'):"
@@ -15,6 +15,7 @@ help:
 	@echo "  analyze        Static analysis (flutter analyze)"
 	@echo "  test           Run all Flutter tests"
 	@echo "  capture-integration  Native capture qualification; needs CAPTURE_DEVICE=<id>"
+	@echo "  capture-recovery     Interruption/fault/Go fixtures; needs CAPTURE_DEVICE=<id> CAPTURE_OUTPUT=<fresh temp dir>"
 	@echo "  capture-go-compat    Hub rehearsal over a produced capture; needs HUB_SRC=<Hub checkout>"
 	@echo "  fmt            Format Dart sources in place (dart format)"
 	@echo "  format         Verify formatting, fail if changes needed (CI)"
@@ -54,6 +55,52 @@ capture-integration:
 		exit 2; \
 	fi
 	$(FLUTTER) test integration_test/capture_platform_test.dart -d $(CAPTURE_DEVICE)
+
+# Cross-store interruption, fault and Go-compatibility fixtures on one
+# explicitly chosen device, written into CAPTURE_OUTPUT: a synthetic
+# directory that must not exist yet or be empty, lie strictly below /tmp or
+# $TMPDIR and outside this repository. On Linux a disposable child bundle
+# (integration_test/capture_recovery_child.dart) is built first and copied to
+# a temporary directory; the test starts and SIGKILLs only that child, on its
+# own synthetic installations. Example:
+#   make -C app capture-recovery CAPTURE_DEVICE=linux CAPTURE_OUTPUT=/tmp/reps-capture-synthetic
+# The Go rehearsal then runs separately: scripts/verify-capture-rehearsal.py.
+capture-recovery:
+	@if [ -z "$(CAPTURE_DEVICE)" ]; then \
+		echo "capture-recovery: set CAPTURE_DEVICE=<device id> explicitly (see 'make -C app devices')" >&2; \
+		exit 2; \
+	fi
+	@if [ -z "$(CAPTURE_OUTPUT)" ]; then \
+		echo "capture-recovery: set CAPTURE_OUTPUT=<fresh directory under /tmp or \$$TMPDIR>" >&2; \
+		exit 2; \
+	fi
+	@set -e; \
+	out=$$(realpath -m -- "$(CAPTURE_OUTPUT)"); \
+	repo=$$(realpath -- ..); \
+	ok=0; \
+	for base in /tmp "$${TMPDIR:-/tmp}"; do \
+		b=$$(realpath -m -- "$$base"); \
+		case "$$out" in "$$b"/?*) ok=1 ;; esac; \
+	done; \
+	if [ "$$ok" != 1 ]; then echo "capture-recovery: CAPTURE_OUTPUT must lie below /tmp or \$$TMPDIR: $$out" >&2; exit 2; fi; \
+	case "$$out/" in "$$repo"/*) echo "capture-recovery: CAPTURE_OUTPUT must be outside the repository" >&2; exit 2 ;; esac; \
+	if [ -L "$(CAPTURE_OUTPUT)" ]; then echo "capture-recovery: CAPTURE_OUTPUT must not be a symbolic link" >&2; exit 2; fi; \
+	if [ -e "$$out" ]; then \
+		if [ ! -d "$$out" ] || [ -n "$$(ls -A -- "$$out")" ]; then \
+			echo "capture-recovery: CAPTURE_OUTPUT must not exist yet or be an empty directory: $$out" >&2; exit 2; \
+		fi; \
+	else \
+		mkdir -m 700 -- "$$out"; \
+	fi; \
+	child=$$(mktemp -d "$${TMPDIR:-/tmp}/reps-capture-child.XXXXXX"); \
+	trap 'rm -rf "$$child"' EXIT; \
+	defines="--dart-define=CAPTURE_OUTPUT=$$out"; \
+	if [ "$(CAPTURE_DEVICE)" = linux ]; then \
+		$(FLUTTER) build linux --debug -t integration_test/capture_recovery_child.dart; \
+		cp -a build/linux/x64/debug/bundle "$$child/bundle"; \
+		defines="$$defines --dart-define=CAPTURE_CHILD=$$child/bundle/workout_tracker"; \
+	fi; \
+	$(FLUTTER) test integration_test/capture_recovery_test.dart -d $(CAPTURE_DEVICE) $$defines
 
 # Builds the Hub's reps-migration-rehearsal from an explicitly named Hub
 # source tree (read only; e.g. a `git archive` of the pinned commit) into a

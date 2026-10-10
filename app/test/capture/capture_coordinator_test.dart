@@ -34,6 +34,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workout_tracker/capture/capture_artifact.dart'
     show verifyCaptureDirectory;
 import 'package:workout_tracker/capture/capture_coordinator.dart';
+import 'package:workout_tracker/capture/capture_faults.dart';
 import 'package:workout_tracker/capture/capture_journal.dart'
     hide CaptureFileDigest;
 import 'package:workout_tracker/capture/capture_profile.dart';
@@ -49,6 +50,7 @@ import 'package:workout_tracker/session/active_session_controller.dart';
 import 'package:workout_tracker/session/session_manager.dart';
 import 'package:workout_tracker/sync/schema.dart';
 
+import '../support/capture_faults.dart';
 import '../support/fake_capture_files.dart';
 import '../support/fake_stores.dart';
 import '../support/gate_model.dart';
@@ -358,6 +360,7 @@ class _Installation {
     SessionCaptureHooks? hooks,
     Duration drainTimeout = const Duration(seconds: 5),
     bool sources = true,
+    CaptureFaults faults = const CaptureFaults(),
   }) =>
       CaptureCoordinator(
         locations: locations,
@@ -378,6 +381,7 @@ class _Installation {
               ),
         clock: () => _clockNow,
         drainTimeout: drainTimeout,
+        faults: faults,
         onStep: (step) {
           events.add('step:$step');
           return onStep?.call(step);
@@ -1368,6 +1372,186 @@ void main() {
     expect(now.stage, CaptureStage.preparing);
     expect(now.gateGeneration, theirs.gateGeneration);
     expect(i.model.capture, foreign);
+  });
+
+  test('every_fault_boundary_recovers_twice_without_partial_output', () async {
+    await install();
+    // Once the pre-capture draft was flushed, every later attempt passes the
+    // same boundaries.
+    await i.coordinator().capture(mode: CaptureMode.rehearsal);
+    i.restart(liveDraft: true);
+
+    // Reference runs list every boundary in order: a rehearsal, and a local
+    // hold followed by the explicit resume decision.
+    final rehearsal = ScriptedCaptureFaults();
+    await i.coordinator(faults: rehearsal).capture(mode: CaptureMode.rehearsal);
+    final hold = ScriptedCaptureFaults();
+    final held = await i.coordinator(faults: hold).capture(mode: CaptureMode.localHold);
+    await i.coordinator(faults: hold)
+        .resumeOriginal(captureId: held.captureId, decisionDigest: '0' * 64);
+    i.restart(liveDraft: true);
+
+    int pos(List<String> hits, String boundary) {
+      final index = hits.indexOf(boundary);
+      expect(index, isNonNegative, reason: '$boundary never reached');
+      return index;
+    }
+
+    final r = rehearsal.hits;
+    expect(r.first, 'journal_flush:preparing');
+    final firstStore = r.indexWhere((h) => h.startsWith('store_flushed:'));
+    expect(firstStore, greaterThan(pos(r, 'journal_renamed:copying')));
+    expect(r.where((h) => h.startsWith('store_flushed:')).toSet(),
+        containsAll(['store_flushed:sql', 'store_flushed:upload_queue',
+          'store_flushed:active_draft', 'store_flushed:preferences']));
+    for (final (a, b) in [
+      ('manifest_flushed', 'journal_flush:sealed'),
+      ('journal_renamed:sealed', 'publication_rename'),
+      ('publication_rename', 'published_renamed'),
+      ('published_renamed', 'journal_renamed:published'),
+      ('journal_renamed:published', 'final_verified'),
+      ('final_verified', 'journal_renamed:resume_allowed'),
+      ('journal_renamed:resume_allowed', 'released'),
+      ('released', 'journal_renamed:resumed'),
+    ]) {
+      expect(pos(r, a), lessThan(pos(r, b)), reason: '$a before $b');
+    }
+    expect(r.last, 'journal:resumed');
+    expect(pos(hold.hits, 'journal_renamed:local_hold'),
+        lessThan(pos(hold.hits, 'journal_renamed:resume_allowed')));
+
+    // Every point of the rehearsal, and every point of the local hold from
+    // `sealed` on (before it the two modes run the same steps).
+    final sealedAt = pos(hold.hits, 'journal_flush:sealed');
+    final cases = [
+      for (final (b, n, _) in interruptionPoints(r)) (CaptureMode.rehearsal, b, n),
+      for (final (b, n, k) in interruptionPoints(hold.hits))
+        if (k >= sealedAt) (CaptureMode.localHold, b, n),
+    ];
+    expect(cases.length, greaterThan(40));
+
+    Map<String, Object?> summary(CaptureRecovery x) => {
+          'code': x.code,
+          'stage': x.stage?.wire,
+          'capture': x.captureId,
+          'digest': x.capture?.manifestSha256,
+          'decision': x.decision.wire,
+        };
+    final published = <String, Map<String, String>>{};
+    final outcomes = <String>{};
+
+    for (final (mode, boundary, occurrence) in cases) {
+      final reason = '${mode.wire} @ $boundary#$occurrence';
+      final before = await i.sourceState();
+      final faults = ScriptedCaptureFaults.at(boundary, occurrence);
+      Object? stopped;
+      try {
+        final c = await i.coordinator(faults: faults).capture(mode: mode);
+        if (mode == CaptureMode.localHold) {
+          await i.coordinator(faults: faults)
+              .resumeOriginal(captureId: c.captureId, decisionDigest: '0' * 64);
+        }
+      } on CaptureFaultInjected catch (e) {
+        stopped = e;
+      }
+      expect(stopped, isA<CaptureFaultInjected>(), reason: reason);
+      expect(faults.interruptedAt, boundary, reason: reason);
+      i.restart();
+      final journal = await i.readJournal();
+
+      // Recovery twice: the same answer, nothing changed by the second.
+      final first = await i.coordinator().recover();
+      final treeAfterFirst = _tree(i.locations.root);
+      final stateAfterFirst = i.model.state;
+      final second = await i.coordinator().recover();
+      expect(summary(second), summary(first), reason: reason);
+      expect(_tree(i.locations.root), treeAfterFirst, reason: reason);
+      expect(i.model.state, stateAfterFirst, reason: reason);
+      outcomes.add(first.code);
+
+      // A recovered capture is exactly what the journal recorded.
+      final recorded = await i.readJournal();
+      if (first.capture != null) {
+        expect(first.capture!.manifestSha256, recorded!.manifestSha256,
+            reason: reason);
+      }
+      // No final directory is partial: each one verifies in full and is
+      // never changed afterwards.
+      if (i.locations.captures.existsSync()) {
+        for (final d in i.locations.captures.listSync()) {
+          final verified = await verifyCaptureDirectory(Directory(d.path));
+          final id = p.basename(d.path);
+          published[id] ??= _tree(Directory(d.path));
+          expect(_tree(Directory(d.path)), published[id], reason: reason);
+          if (id == recorded?.captureId) {
+            expect(verified.manifestSha256, recorded!.manifestSha256,
+                reason: reason);
+          }
+        }
+      }
+
+      // The source keeps everything but the one requested draft flush.
+      final after = await i.sourceState();
+      expect({...after}..remove('draft'), {...before}..remove('draft'),
+          reason: reason);
+
+      // A recorded hold is never released by recovery, and a local hold
+      // never by anything but the explicit decision.
+      final stage = recorded?.stage;
+      if (stage == CaptureStage.copying ||
+          stage == CaptureStage.sealed ||
+          stage == CaptureStage.published ||
+          stage == CaptureStage.localHold ||
+          (stage == CaptureStage.held && recorded!.gateGeneration != null)) {
+        expect(i.model.state, isNot('open'), reason: reason);
+      }
+      if (mode == CaptureMode.localHold &&
+          journal != null &&
+          journal.captureId == recorded?.captureId &&
+          {CaptureStage.published, CaptureStage.localHold}
+              .contains(journal.stage)) {
+        expect(recorded!.stage, CaptureStage.localHold, reason: reason);
+        expect(i.model.state, 'held', reason: reason);
+      }
+
+      // Startup holds exactly while a decision is owed, both times.
+      for (var restart = 0; restart < 2; restart++) {
+        final (outcome, steps) = await i.startup();
+        if (second.decision == CaptureDecision.none) {
+          expect(outcome, isA<StartupAllowed>(), reason: reason);
+        } else {
+          expect(steps.ran, isEmpty, reason: reason);
+        }
+      }
+
+      // The explicit decision returns the source to ordinary use.
+      if (second.decision == CaptureDecision.resumeOriginal) {
+        await i.coordinator().resumeOriginal(
+            captureId: second.captureId!, decisionDigest: 'b' * 64);
+      }
+      expect(i.model.state, 'open', reason: reason);
+      expect((await i.readJournal())?.stage ?? CaptureStage.resumed,
+          CaptureStage.resumed,
+          reason: reason);
+      i.restart(liveDraft: true);
+    }
+    expect(outcomes, containsAll(['capture_interrupted', 'awaiting_resume_decision',
+      'local_hold', 'resumed']));
+
+    // A new capture still works, with a new id; nothing earlier changed.
+    final fresh = await i.coordinator().capture(mode: CaptureMode.rehearsal);
+    expect(published.keys, isNot(contains(fresh.captureId)));
+    for (final MapEntry(key: id, value: tree) in published.entries) {
+      expect(_tree(Directory(p.join(i.locations.captures.path, id))), tree);
+    }
+  });
+
+  test('production_faults_are_inert', () async {
+    const faults = CaptureFaults();
+    await faults.hit('journal_flush:preparing');
+    await install(liveDraft: false);
+    final certified = await i.coordinator().capture(mode: CaptureMode.rehearsal);
+    expect(certified.captureId, isNotEmpty);
   });
 
   test('platform_without_plugin_is_unsupported', () async {

@@ -10,6 +10,7 @@ import 'package:powersync/powersync.dart' show PowerSyncDatabase, uuid;
 
 import '../data/active_session_draft.dart';
 import 'capture_artifact.dart';
+import 'capture_faults.dart';
 import 'capture_journal.dart' hide CaptureFileDigest;
 import 'capture_journal.dart' as journal show CaptureFileDigest;
 import 'capture_manifest.dart';
@@ -266,6 +267,25 @@ class _Interrupted implements Exception {
   final StackTrace stack;
 }
 
+/// Passes every boundary to the injected [CaptureFaults]; anything it
+/// throws stops the attempt as process death would.
+class _InterruptingFaults extends CaptureFaults {
+  const _InterruptingFaults(this._inner);
+
+  final CaptureFaults _inner;
+
+  @override
+  Future<void> hit(String boundary) async {
+    try {
+      await _inner.hit(boundary);
+    } on _Interrupted {
+      rethrow;
+    } catch (e, s) {
+      throw _Interrupted(e, s);
+    }
+  }
+}
+
 /// Owns one capture attempt at a time: its private journal, the six
 /// boundary steps, publication and restart recovery.
 ///
@@ -304,9 +324,11 @@ class CaptureCoordinator {
     DateTime Function()? clock,
     String Function()? newCaptureId,
     @visibleForTesting FutureOr<void> Function(String step)? onStep,
+    CaptureFaults faults = const CaptureFaults(),
   })  : _clock = clock ?? DateTime.now,
         _newCaptureId = newCaptureId ?? uuid.v4,
-        _onStep = onStep;
+        _onStep = onStep,
+        _faults = _InterruptingFaults(faults);
 
   final CaptureLocations locations;
   final SourceWriteGate gate;
@@ -321,6 +343,9 @@ class CaptureCoordinator {
   final DateTime Function() _clock;
   final String Function() _newCaptureId;
   final FutureOr<void> Function(String step)? _onStep;
+
+  /// Fault boundaries (production: none). See [CaptureFaults].
+  final CaptureFaults _faults;
 
   /// Journals with an attempt running in this process (any coordinator).
   static final _running = <String>{};
@@ -344,8 +369,8 @@ class CaptureCoordinator {
 
   String get _key => locations.journal.absolute.path;
 
-  CaptureJournal get _journal =>
-      CaptureJournal(locations.journal, base: locations.source, files: files);
+  CaptureJournal get _journal => CaptureJournal(locations.journal,
+      base: locations.source, files: files, faults: _faults);
 
   RawPreservation get _preservation =>
       RawPreservation(locations.preparation, base: locations.source, files: files);
@@ -355,12 +380,14 @@ class CaptureCoordinator {
 
   Future<void> _step(String step) async {
     final hook = _onStep;
-    if (hook == null) return;
-    try {
-      await hook(step);
-    } catch (e, s) {
-      throw _Interrupted(e, s);
+    if (hook != null) {
+      try {
+        await hook(step);
+      } catch (e, s) {
+        throw _Interrupted(e, s);
+      }
     }
+    await _faults.hit(step);
   }
 
   Future<CaptureJournalState> _persist(CaptureJournalState state) async {
@@ -551,6 +578,8 @@ class CaptureCoordinator {
       final current = await _journal.read();
       if (current == null || current.captureId != refused.captureId) return;
       await _journal.write(previous ?? refused.copyWith(stage: CaptureStage.resumed));
+    } on _Interrupted {
+      rethrow;
     } catch (_) {
       // The journal then names an attempt that holds nothing; recovery sees
       // an open gate and needs only the explicit decision.
@@ -775,7 +804,10 @@ class CaptureCoordinator {
     }
     final SealedCapture sealed;
     try {
-      sealed = await writeAndVerifyCapture(staging, payload, manifest);
+      sealed = await writeAndVerifyCapture(staging, payload, manifest,
+          faults: _faults);
+    } on _Interrupted {
+      rethrow;
     } on CaptureArtifactException catch (e) {
       throw _Stop('staging_failed', detail: e.code);
     } catch (_) {
@@ -1010,6 +1042,7 @@ class CaptureCoordinator {
   Future<String?> _publish(Directory staging, Directory finalDirectory) async {
     try {
       await files.ensureDirectory(locations.captures, base: locations.source);
+      await _faults.hit('publication_rename');
       await files.publishNoReplace(staging, finalDirectory);
       return null;
     } on SourceGateException catch (e) {

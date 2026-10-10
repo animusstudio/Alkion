@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart' show immutable, listEquals;
 import 'package:path/path.dart' as p;
 
+import 'capture_faults.dart';
 import 'capture_manifest.dart';
 import 'capture_profile.dart' show captureTables;
 import 'capture_reader.dart';
@@ -129,14 +130,16 @@ CaptureManifest captureManifestFor(
 /// `manifest_mismatch` and `manifest_oversized` before anything is written;
 /// `store_oversized`, `store_mismatch` or any verification code after. A
 /// failed staging directory is left as it is for the caller; it is never
-/// published.
+/// published. [faults] is told after each store and the manifest are
+/// flushed and closed.
 Future<SealedCapture> writeAndVerifyCapture(
   Directory staging,
   CapturePayload payload,
-  CaptureManifest manifest,
-) async {
+  CaptureManifest manifest, {
+  CaptureFaults faults = const CaptureFaults(),
+}) async {
   try {
-    return await _writeAndVerify(staging, payload, manifest);
+    return await _writeAndVerify(staging, payload, manifest, faults);
   } on FileSystemException catch (e) {
     // Insufficient space, permissions, a vanished directory: never a
     // truncated or partial success.
@@ -153,6 +156,7 @@ Future<SealedCapture> _writeAndVerify(
   Directory staging,
   CapturePayload payload,
   CaptureManifest manifest,
+  CaptureFaults faults,
 ) async {
   if (FileSystemEntity.typeSync(staging.path, followLinks: false) !=
       FileSystemEntityType.directory) {
@@ -201,12 +205,14 @@ Future<SealedCapture> _writeAndVerify(
     if (written.bytes != d.bytes || written.sha256 != d.sha256) {
       throw CaptureArtifactException('store_mismatch', d.name);
     }
+    await faults.hit('store_flushed:${d.name}');
   }
   final writtenManifest = await _writeNew(
     File(p.join(staging.path, 'manifest.json')),
     [manifestBytes],
     'manifest',
   );
+  await faults.hit('manifest_flushed');
 
   final verified = await verifyCaptureDirectory(staging);
   if (verified.manifestSha256 != writtenManifest.sha256) {

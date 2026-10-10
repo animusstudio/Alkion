@@ -6,7 +6,6 @@
 // is a fresh temporary directory; no app-support data is ever touched.
 import 'dart:async';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +32,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'package:workout_tracker/sync/schema.dart';
 
+import '../test/support/capture_faults.dart';
+import 'support/background_gate.dart';
 import 'support/gate_helper_process.dart';
 import 'support/native_sync_fixture.dart';
 
@@ -125,90 +126,6 @@ class _ObservedMethod implements NativeSyncMethod {
   }
 }
 
-/// A background isolate that talks to the plugin through its own binary
-/// messenger, as a second engine context in the same process would.
-class _BackgroundGate {
-  _BackgroundGate._(this._isolate, this._commands, this._results);
-
-  final Isolate _isolate;
-  final SendPort _commands;
-  final StreamIterator<Object?> _results;
-
-  static Future<_BackgroundGate> spawn(Directory stateDir) async {
-    final results = ReceivePort();
-    final iterator = StreamIterator<Object?>(results);
-    final isolate = await Isolate.spawn(_main, (
-      RootIsolateToken.instance!,
-      stateDir.path,
-      results.sendPort,
-    ));
-    await iterator.moveNext();
-    return _BackgroundGate._(isolate, iterator.current as SendPort, iterator);
-  }
-
-  /// Asks the isolate to run one write through the gate. With [holdOpen] the
-  /// admitted body waits until [finishHeld].
-  Future<String> write({bool holdOpen = false}) async {
-    _commands.send(holdOpen ? 'write-held' : 'write');
-    await _results.moveNext();
-    return _results.current as String;
-  }
-
-  Future<String> finishHeld() async {
-    _commands.send('finish');
-    await _results.moveNext();
-    return _results.current as String;
-  }
-
-  void kill() => _isolate.kill(priority: Isolate.immediate);
-
-  static Future<void> _main((RootIsolateToken, String, SendPort) args) async {
-    final (token, dir, results) = args;
-    BackgroundIsolateBinaryMessenger.ensureInitialized(token);
-    final gate = SourceWriteGate(stateDirectory: Directory(dir));
-    final commands = ReceivePort();
-    results.send(commands.sendPort);
-    Completer<void>? held;
-    var writes = 0;
-    await for (final command in commands) {
-      switch (command) {
-        case 'write' || 'write-held':
-          final gateOpen = Completer<void>();
-          if (command == 'write-held') held = gateOpen;
-          final running = gate.run('background-write', (_) async {
-            if (command == 'write-held') {
-              results.send('admitted');
-              await gateOpen.future;
-            }
-            writes++;
-          });
-          if (command == 'write') {
-            try {
-              await running;
-              results.send('written:$writes');
-            } on SourceGateException catch (e) {
-              results.send('rejected:${e.code}:$writes');
-            }
-          } else {
-            unawaited(
-              running.then(
-                (_) {},
-                onError: (Object e) {
-                  results.send('rejected:${(e as SourceGateException).code}');
-                },
-              ),
-            );
-          }
-        case 'finish':
-          held?.complete();
-          held = null;
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-          results.send('finished:$writes');
-      }
-    }
-  }
-}
-
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -276,7 +193,7 @@ void main() {
 
   test('two_engines_hold_excludes_background_and_process', () async {
     final gate = SourceWriteGate(stateDirectory: stateDir);
-    final background = await _BackgroundGate.spawn(stateDir);
+    final background = await BackgroundGate.spawn(stateDir);
     cleanup.add(() async => background.kill());
     final helper = await GateHelperProcess.start();
     cleanup.add(helper.close);
@@ -1232,6 +1149,106 @@ void main() {
         CaptureStage.resumed);
     await gate.run('test.write', (_) async {});
     expect(TransportAdmission.instance.isOpen, isTrue);
+  });
+
+  test('fault_boundaries_follow_native_durable_steps', () async {
+    // The fault boundaries sit on the production native path in the order
+    // the durable steps happen; an interruption right after the manifest is
+    // flushed leaves only private staging, and recovery says so twice.
+    final source = await Directory.systemTemp.createTemp('reps-capture-faults');
+    cleanup.add(() => source.delete(recursive: true));
+    SharedPreferences.setMockInitialValues({'unit': 'kg'});
+    TransportAdmission.instance.resetForTesting();
+    CaptureCoordinator.forgetProcessStateForTesting();
+    final locations = CaptureLocations(source);
+    final gate = SourceWriteGate(stateDirectory: locations.gate);
+    await const CaptureFiles().ensureDirectory(locations.gate, base: source);
+    appSourceGate = gate;
+    cleanup.add(() async => appSourceGate = null);
+    final database = PowerSyncDatabase(
+        schema: schema, path: p.join(source.path, 'workout-tracker.db'));
+    await database.initialize();
+    cleanup.add(database.close);
+    final manager = SessionManager(finishedStore: _NoFinished());
+    cleanup.add(() async => manager.dispose());
+    CaptureCoordinator coordinator([ScriptedCaptureFaults? faults]) =>
+        CaptureCoordinator(
+          locations: locations,
+          gate: gate,
+          faults: faults ?? ScriptedCaptureFaults(),
+          sources: CaptureSourceBindings(
+            database: database,
+            hooks: SessionCaptureHooks(
+              manager: manager,
+              preservation: RawPreservation(locations.preparation, base: source),
+            ),
+            transportFor: (profile) => CaptureTransport.forProfile(
+              database: database,
+              profile: profile,
+              reconnect: () async {},
+            ),
+          ),
+        );
+
+    final faults = ScriptedCaptureFaults();
+    final certified = await coordinator(faults).capture(mode: CaptureMode.rehearsal);
+    final h = faults.hits;
+    int at(String b) {
+      expect(h, contains(b));
+      return h.indexOf(b);
+    }
+
+    for (final stage in ['preparing', 'held', 'copying', 'sealed', 'published',
+      'resume_allowed', 'resumed']) {
+      expect(at('journal_flush:$stage'), lessThan(at('journal_renamed:$stage')));
+    }
+    final manifest = (await verifyCaptureDirectory(certified.directory)).manifest;
+    expect({for (final b in h) if (b.startsWith('store_flushed:')) b}, {
+      for (final s in manifest.stores)
+        if (s.isCaptured) 'store_flushed:${s.name}',
+    });
+    final lastStore = h.lastIndexWhere((b) => b.startsWith('store_flushed:'));
+    expect(lastStore, lessThan(at('manifest_flushed')));
+    expect(at('journal_renamed:copying'),
+        lessThan(h.indexWhere((b) => b.startsWith('store_flushed:'))));
+    for (final (a, b) in [
+      ('manifest_flushed', 'journal_flush:sealed'),
+      ('journal_renamed:sealed', 'publication_rename'),
+      ('publication_rename', 'published_renamed'),
+      ('published_renamed', 'journal_renamed:published'),
+      ('journal_renamed:published', 'final_verified'),
+      ('journal_renamed:resume_allowed', 'released'),
+      ('released', 'journal_renamed:resumed'),
+    ]) {
+      expect(at(a), lessThan(at(b)), reason: '$a before $b');
+    }
+
+    final stop = ScriptedCaptureFaults(
+        interruptWhen: (b) => b == 'manifest_flushed');
+    await expectLater(coordinator(stop).capture(mode: CaptureMode.rehearsal),
+        throwsA(isA<CaptureFaultInjected>()));
+    // The interruption stands for process death: this process's in-memory
+    // capture state (the attempt, transport admission) is gone, as after a
+    // restart; the native record and the files stay.
+    CaptureCoordinator.forgetProcessStateForTesting();
+    TransportAdmission.instance.resetForTesting();
+    final journal = (await CaptureJournal(locations.journal, base: source).read())!;
+    expect(journal.stage, CaptureStage.copying);
+    expect(File(p.join(locations.staging.path, journal.captureId, 'manifest.json'))
+        .existsSync(), isTrue);
+    expect(Directory(p.join(locations.captures.path, journal.captureId))
+        .existsSync(), isFalse);
+    final first = await coordinator().recover();
+    final second = await coordinator().recover();
+    expect((first.code, first.stage, first.capture),
+        ('capture_interrupted', CaptureStage.copying, null));
+    expect((second.code, second.stage, second.capture),
+        (first.code, first.stage, first.capture));
+    expect(await probeSourceGate(gate, base: source), 'mismatch');
+    await coordinator().resumeOriginal(
+        captureId: journal.captureId, decisionDigest: 'a' * 64);
+    expect(await probeSourceGate(gate, base: source), 'open');
+    await gate.run('test.write', (_) async {});
   });
 
   test('export_copies_through_native_no_replace_publication', () async {
