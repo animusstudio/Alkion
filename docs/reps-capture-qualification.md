@@ -30,7 +30,7 @@ authorization to capture real data.
 | Profile | Capture producer | Installation access | Status |
 | --- | --- | --- | --- |
 | `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13`, Linux debug bundle x86_64 (development loop) | **PASS**: native sync quiescence, source-write gate, capture-first startup, coordinator, export, interruption/fault matrix and Go rehearsal (sections below) | **qualified**, development loop only (checker over `acceptance.json` sha256 `5aed6bb5…4ce8`, source `583bddb`) | **supported** for synthetic development-loop capture; not a public Linux distribution |
-| Same profile, Linux release-mode bundle | `make -C app build` **PASS**; no capture test ran in release mode | not checked | **UNRUN** (unverified) |
+| Same profile, Linux release-mode bundle | `make -C app build` **PASS**; capture is enabled in that bundle (the plugin and the Linux registration are compiled in, and nothing refuses capture in release mode), but no capture test ran in release mode | not checked | **unsupported** (UNRUN): capture is enabled there but unqualified |
 | Linux host `flutter test` | host contract tests only, nothing native | n/a | not a capture profile |
 | Android, any installed build (release, preview, debug, local) | capture plugin excluded from Android builds (Ruling R9); Kotlin never compiled; every Android compile/test **UNRUN** (Ruling R2) | **unsupported**: installed metadata never observed, no capture-capable bridge | **unsupported** |
 | Android capture bridge (`make -C app build-capture-apk-release`) | signing guard written; the build **UNRUN** (`No Android SDK found`), `apksigner`/`aapt` **UNRUN** | no bridge APK exists | **unsupported** |
@@ -245,10 +245,19 @@ the barrier proves the writer is free.
 What does **not** prevent it, so other components must handle it:
 
 - A later `connect()` restarts sync (`db.dart` `connectSync`, called from
-  `main.dart` and `ui/sign_in_again.dart`). Every connect or reconnect must
-  call `connectionWillChange(database)` first and pass the source-write gate.
-  The adapter also refuses evidence while the status reports
-  connected/connecting, but a status check alone is not proof.
+  `main.dart` and `ui/sign_in_again.dart`). Every connect or reconnect goes
+  through `changeSyncConnection`: it passes transport admission and the
+  source-write gate, is tracked as an admitted connection change that
+  `pauseAndDrain` awaits before it observes, and advances the connection
+  epoch (`connectionWillChange`) both before the SDK call and after it
+  returns or fails. The SDK serializes `connect()` behind its own
+  `syncConnectMutex`, so a connect admitted just before a capture closed
+  admission can start its sync isolate after a disconnect that began
+  later; only awaiting it and the second epoch advance exclude that. The
+  adapter also refuses evidence while the status reports
+  connected/connecting, but that is not proof: the status is posted
+  asynchronously from the sync isolate, so a connect that has just started
+  may not show in it yet.
 - `disconnectAndClear` (logout, `main.dart`, `ui/sign_in_again.dart`) clears
   the stores and must be blocked during capture.
 - Another `PowerSyncDatabase` on the same file, in another engine or another
@@ -643,7 +652,11 @@ it is a source store, and none of it is ever part of a final capture.
    files are inventoried and their bytes copied into preparation, nothing
    ordinary runs, and a minimal localized recovery screen shows a safe code
    (`app/lib/ui/capture_recovery_screen.dart`). The screen does not open
-   settings, the database, sign-in or sync. Before holding, `main` runs the
+   settings, the database, sign-in or sync. For the holds that need no
+   decision (`preservation_failed`, `gate_busy`, `gate_io_error`) it
+   offers **Try again**, without a confirmation: it re-runs capture-first
+   startup (`main.dart` `_start`), which changes nothing by itself and
+   shows the screen again while the cause remains. Before holding, `main` runs the
    coordinator's restart recovery (`CaptureCoordinator.recoverForStartup`,
    see "Coordinator, publication and recovery"). It only finishes what a
    durable record already decided; when it reports that nothing holds
@@ -660,7 +673,9 @@ it is a source store, and none of it is ever part of a final capture.
    non-regular entry, or over 64 MiB, or its bytes cannot be copied or
    recorded. This applies to an authoritative file or a `.tmp`.
    - **Capture-capable:** startup is held with `preservation_failed` and
-     zero ordinary steps. The recovery screen says a safety copy failed.
+     zero ordinary steps. The recovery screen says a safety copy failed and
+     offers **Try again** (no confirmation), which runs capture-first
+     startup again; it holds again if the copy still fails.
      Continuing would let the first ordinary save (about a second into a
      workout), a discard/finish clear, or the next finish destroy the bytes
      that were not kept.
@@ -842,6 +857,7 @@ of the admission protocol; they prove nothing native), all **PASS**:
 | `refused_autosave_stays_owed_until_release` | an autosave refused before the freeze is retried and lands after release, also via an unfrozen `resumeCallbacks` |
 | `stale_resume_cannot_unfreeze_later_capture` | a resume naming the earlier capture's generation leaves the later capture frozen; nothing is written until its own resume |
 | `history_delete_ticket_spans_forget` | the delete's ticket stays live until the nested snapshot forget cleared its file; refused whole while admission is closed |
+| `retry_owed_never_lands_a_stale_write_over_a_newer_one` | with two owed edits, a newer edit of the second key that lands (or is refused) while the first retry is awaited is never overwritten by the superseded retry: the newest value is stored and the registry is clean, or the newer edit stays owed and blocks capture |
 | `refused_history_edit_stays_owed` | a History set edit refused (debounce, then collapse) while admission is closed is shown, stays owed and blocks capture after the card closed, and is written with the shown value after release, though the sheet itself closed |
 
 `app/test/ui/history_session_card_test.dart`
@@ -873,6 +889,26 @@ service shows the last value durably stored again: the one loaded, or the
 last one written successfully. It is never merely the value shown before
 that call, which an earlier refused change may have set.
 
+#### Linux preference cache
+
+On Linux, `shared_preferences_linux` 2.4.1 loads `shared_preferences.json`
+once per engine and then serves `getAll`/`getAllWithParameters` (and so
+`SharedPreferences.reload()` and the capture's preference read) from that
+in-memory map; a reload does not re-read the file. A `setValue` or `remove`
+changes that map first and then writes the whole map to the file; if the
+write fails it returns false, and the map keeps the unwritten value. The
+captured preferences are therefore this engine's cache, which equals the
+file only while every write succeeded. That correctness rests on the
+writers checking the result: `writePreferences` turns a false result into
+`PreferenceWriteFailed`, the ledger records it, and capture is blocked
+(`persistence_failed`) until a later write of that operation succeeds. No
+other engine writes preferences on Linux (the background +30s fires only
+on Android), so the reload adds nothing there; it matters only where
+another engine's writes reach the store through the platform. A write to
+the file by another Linux process of the app is not seen by this engine's
+cache either; such a process is excluded only while the gate holds (its
+writers are refused), not before.
+
 ### Writer inventory (file:line at this commit)
 
 | Writer | Location | Operation | Ticket scope |
@@ -892,7 +928,7 @@ that call, which an earlier refused change may have set.
 | Connector upload | `app/lib/sync/connector.dart:73` | `sync.upload` (transport admission + gate) | `getNextCrudTransaction` through the POST and `transaction.complete()` or the failure |
 | Credential fetch / refresh | `app/lib/sync/connector.dart:41,50`; `app/lib/auth/auth_store.dart:120` | transport admission | refused while closed; an admitted upload never refreshes while closed |
 | Login / registration (account switch) | `app/lib/auth/auth_store.dart:74,92` | transport admission | refused while closed |
-| Connect / reconnect (boot resume, login attach, sign in again, back-out restore, capture policy restore) | `app/lib/sync/db.dart:101`, called from `app/lib/main.dart:199`, `app/lib/ui/sign_in_again.dart:71,82,138` | `sync.connect` | admission checked, then `nativeSyncConnectionWillChange(db)`, then `db.connect` |
+| Connect / reconnect (boot resume, login attach, sign in again, back-out restore, capture policy restore) | `app/lib/sync/db.dart:101`, called from `app/lib/main.dart:199`, `app/lib/ui/sign_in_again.dart:71,82,138` | `sync.connect` | admission checked; the whole change is an admitted connection change (`TransportAdmission.runConnectionChange`); `nativeSyncConnectionWillChange(db)`, then `db.connect`, then `nativeSyncConnectionWillChange(db)` again whether it succeeded or failed |
 | Disconnect before signing in again | `app/lib/sync/db.dart:107`, from `app/lib/ui/sign_in_again.dart:60` | `sync.disconnect` | same order |
 | Disconnect and clear (sign-out, discard-local) | `app/lib/sync/db.dart:112`, from `app/lib/main.dart:216`, `app/lib/ui/sign_in_again.dart:131` | `sync.disconnect_and_clear` | same order |
 | Sign-out (`logOutAndForget`) | `app/lib/main.dart:208` | `account.logout` | clear, token revoke/forget, sync off and last-sync clear nested (`parent:`) |
@@ -903,10 +939,18 @@ that call, which an earlier refused change may have set.
 the single way the app changes the sync connection. Once a change succeeds,
 it records the app's sync policy in `TransportAdmission.syncRequested`: true
 after a connect, false after a disconnect or clear. It refuses (`admission_closed`) before anything
-changes while transport admission is closed. Otherwise it is admitted through
-the gate and calls `nativeSyncConnectionWillChange(database)` (the
-connection-epoch bump `NativeSyncQuiescence.connectionWillChange` delegates
-to) before the SDK call, so no earlier capture evidence stays current.
+changes while transport admission is closed. Otherwise it runs as an
+admitted connection change (`TransportAdmission.runConnectionChange`), which
+`pauseAndDrain` awaits like an admitted upload before it observes the
+connection. It is admitted through the gate and calls
+`nativeSyncConnectionWillChange(database)` (the connection-epoch bump
+`NativeSyncQuiescence.connectionWillChange` delegates to) before the SDK
+call, so no earlier capture evidence stays current, and again once the SDK
+call returned or failed, so no evidence observed while it ran stays current
+either. Without the second bump, a connect whose SDK call was still waiting
+for the SDK's connect mutex could start a sync isolate after the evidence
+was observed, with the epoch unchanged and the connecting status not yet
+posted.
 
 Refusals are visible where they start:
 
@@ -958,11 +1002,13 @@ one bounded timeout:
    and refreshes, logins, connects, disconnects, clears, sign-out and OTA
    installs.
 2. Awaits every admitted upload through its `transaction.complete()` or its
-   failure.
+   failure, and every admitted connection change (connect, disconnect,
+   clear) through its end, success or failure.
 3. Calls `NativeSyncQuiescence.disconnectAndObserve(database, profile,
    captureId:, gateGeneration:, timeout: remaining)` with the registered
    qualification for the profile (`CaptureTransport.forProfile`).
-4. Reloads this engine's preference cache.
+4. Reloads this engine's preference cache (see "Linux preference cache"
+   below for what that does and does not re-read).
 
 It never clears, completes or dequeues queued work. It never reads the SDK
 status, `pendingUploadCount` or the gate as evidence.
@@ -981,6 +1027,9 @@ The returned `TransportPauseEvidence` has these fields:
   value.
 - `blockedCode`, one of:
   - `upload_drain_timeout`
+  - `connection_change_drain_timeout` (uploads drained, an admitted
+    connection change still running at the bound: `uploadPaused` true,
+    nothing observed)
   - `native_sync_unqualified`
   - `native_sync_timeout`
   - `native_sync_failed`
@@ -1022,6 +1071,7 @@ releasing the source gate, and also after an aborted capture.
 | `refused_undo_shows_last_stored_value` | stored kg: `setUnit(lb)` then `setUnit(kg)`, both refused, show kg (not lb); the same for the theme mode; after release a successful write becomes the value a later refusal shows |
 | `settings_writers_are_admitted_and_refused_visibly` | settings writes are admitted; while closed they throw `admission_closed`, write nothing and restore the shown value |
 | `background_plus30_and_notifier_block_under_hold` | the background +30s takes its ticket before any preference load/reload, holds it through the plugin calls, and is drained before the hold; under the hold neither engine's notification writes anything (`backgroundWritesWhileHeld == 0`); a refused foreground update is written after release |
+| `background_plus30_runs_ungated_when_app_support_is_unavailable` | the background +30s entry point with a failing `path_provider` still extends the rest by 30 s and updates the notification, ungated, exactly as without the capture plugin |
 | `upload_ticket_includes_complete` (`app/test/capture/capture_transport_test.dart`) | with the server's answer in and `transaction.complete()` blocked on the writer, neither the gate nor the transport drain is idle (`idleBeforeQueueCompletion == false`) and the disconnect has not started; afterwards exactly that batch left the queue; new uploads are refused and send nothing |
 | `lost_response_retains_uncertainty` | a lost response leaves the batch queued and reports it `uncertain` with safe ids/code only; a 503 is not uncertain; a request still out at the bounded timeout gives `uploadPaused == false`, `upload_drain_timeout` and an `in_flight` entry |
 | `native_apply_not_idle_blocks_attestation` | an undrained native apply gives `downloadPaused == false` (`native_sync_timeout`); no registered qualification gives `native_sync_unqualified` although the SDK reports disconnected |
@@ -1030,6 +1080,8 @@ releasing the source gate, and also after an aborted capture.
 | `transport_closes_before_gate_and_reopens_on_failure` | gate closed and transport open: a connect is refused by the gate; `closeAdmission` closes transport admission before the gate answers; a failing gate close reopens it |
 | `late_resume_cannot_reopen_later_capture` | a late resume of an aborted capture neither reopens a later capture's transport admission nor reconnects; a repeated resume does nothing |
 | `logout_reconnect_install_rejected_during_capture` | connect, disconnect, disconnect-and-clear, sign-out, credential fetch/refresh, login and OTA install are refused while closed; nothing is cleared, signed out, refreshed or installed and the evidence stays current; after release a connection change invalidates the evidence before it runs |
+| `connection_change_completing_after_evidence_invalidates_it` | evidence observed while an admitted connection change's SDK call still runs is current until that call returns or fails, and not current afterwards |
+| `pause_awaits_admitted_connection_change` | `pauseAndDrain` does not disconnect or observe while an admitted connection change runs: at the bound it returns `connection_change_drain_timeout` with no evidence; within it, it observes only after the change ended and that evidence is current |
 
 Mutation checks:
 
@@ -1512,6 +1564,7 @@ are kept.
 | --- | --- |
 | `prepare_drain_hold_read_publish_in_order`: the journal `preparing` precedes `gate:prepare`. The pre-capture draft blob is written before the editor commit and before the flush. The flush precedes the transport's network drain (the production adapter's disconnect and apply drain), which precedes `held`, `gate:drain` and the preference reload. Current evidence precedes the read. Then `sealed`, the no-replace rename, `published`, final verification, `resume_allowed`, release and `resumed`, in that order. `captured_at` ends `Z`, there are exactly eight manifest keys, five true flags and one `prepare`. The journal digests equal the verified files. The pre-flush bytes are captured unchanged. Only the requested flush changed the source (rows, queue, sequence and preferences are identical). Afterwards: gate open, callbacks resumed, admission open, no reconnect (prior policy off). | **PASS** |
 | `stale_native_evidence_prevents_read`: each of these gives `native_sync_*`, zero reads, nothing staged or published, a recorded release and an unchanged source: a connection-epoch change after the drain, evidence for another capture, for another gate generation or from another database instance, a transport bound to another profile, test-seam evidence (registered qualification, real method) behind a transport whose `isCurrent` always answers true, and no registered method. The other host tests get certified captures only from the registered production adapter, through a transport that only logs. An epoch change or a released hold *during* the read gives one read and no publication (`native_sync_stale`, `hold_lost`). | **PASS** |
+| `connection_change_finishing_after_observation_never_certifies`: a connection change admitted before the capture whose SDK call would end only after the network drain gives a blocked attempt, zero reads, nothing published, a recorded release and an unchanged source (before this fix the same run certified). One that ends while the drain waits is observed afterwards and the capture certifies. | **PASS** |
 | `second_capture_rejected`: a second capture through the same coordinator or another one is `capture_in_progress`, with no second `prepare`, unchanged tickets and the journal still naming the first. A capture recorded by another process blocks before the journal is touched. | **PASS** |
 | `sealed_match_adopted_divergence_refused`: crash after the rename, then restart: the final directory is adopted (`finalCaptureDigest == sealedDigest`), a retry returns the same digest and the hold stays. A tampered staging byte gives `sealed_divergence` twice, with staging tree, journal bytes and recorded hashes unchanged and no final directory. A foreign destination gives `destination_conflict`, with both trees unchanged. Intact staging is published at restart. A released hold gives `hold_lost`. | **PASS** |
 | `published_waits_for_resume_decision`: crash after `published`, then two restarts: startup is held with zero ordinary steps and `awaiting_resume_decision`/`resume_original`, writes are refused, and the digest is unchanged. A decision for another capture changes nothing. `resumeOriginal` releases, and startup then runs all six steps. Final tree and source are unchanged. | **PASS** |
@@ -2031,9 +2084,9 @@ From the Hub snapshot root (`/tmp/claude-1000/hub-b50c8e5`, `git archive` of
 | Check | Result |
 | --- | --- |
 | `make -C app analyze` | **PASS** (No issues found) |
-| `make -C app test` | **PASS** (1382 passed, 2 skipped: the two `REPS_REHEARSAL_BIN` tests) |
+| `make -C app test` | **PASS** (1395 passed, 2 skipped: the two `REPS_REHEARSAL_BIN` tests; after the connection-change, owed-retry, background +30s and startup try-again fixes) |
 | `make -C app build` | **PASS** (Linux release bundle) |
-| `make -C app capture-integration CAPTURE_DEVICE=linux` | **PASS** (13 tests) |
+| `make -C app capture-integration CAPTURE_DEVICE=linux` | **PASS** (13 tests; re-run after `changeSyncConnection` became an admitted connection change with a second epoch advance; the native method and its qualification record are unchanged) |
 | `make -C app capture-recovery CAPTURE_DEVICE=linux CAPTURE_OUTPUT=/tmp/reps-capture-synthetic` | **PASS** (4 tests) |
 | Go `go test`, `go run` ×2, verifier ×2 | **PASS** |
 | `make -C app format` | **FAIL**, pre-existing: 271 files would be reformatted at this commit. None is a file this work created. The five it touched (`capture_coordinator.dart`, `capture_journal.dart`, `capture_artifact.dart`, `capture_coordinator_test.dart`, `capture_platform_test.dart`) were already unformatted at the base and were left so. |

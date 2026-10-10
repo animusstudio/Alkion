@@ -441,8 +441,8 @@ class CaptureTransport {
       return result(uploadPaused: true, code: 'native_sync_failed');
     }
 
-    // 3. Background preference writers already drained by now are visible
-    //    to this engine.
+    // 3. Reload this engine's preference cache (on Linux the plugin serves
+    //    its own in-memory cache; see docs/reps-capture-qualification.md).
     try {
       await _reloadPreferences();
     } catch (_) {
