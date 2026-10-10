@@ -118,22 +118,15 @@ func main() {
 		PowerSyncTTL:      cfg.PowerSyncTokenTTL,
 	})
 
-	srv := &http.Server{
-		Addr: cfg.HTTPAddr,
-		Handler: api.NewRouter(api.Deps{
-			Pinger:      pool,
-			JWKS:        auth.JWKSHandler(&priv.PublicKey, kid),
-			Auth:        authHandler,
-			Verifier:    verifier,
-			APIAudience: cfg.APIAudience,
-			Upload:      uploadHandler,
-			Migration:   migrationControl,
-		}),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       api.UploadTimeout,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
+	srv := api.NewServer(cfg.HTTPAddr, api.NewRouter(api.Deps{
+		Pinger:      pool,
+		JWKS:        auth.JWKSHandler(&priv.PublicKey, kid),
+		Auth:        authHandler,
+		Verifier:    verifier,
+		APIAudience: cfg.APIAudience,
+		Upload:      uploadHandler,
+		Migration:   migrationControl,
+	}))
 
 	go func() {
 		logger.Info("server starting", "addr", cfg.HTTPAddr, "kid", kid)

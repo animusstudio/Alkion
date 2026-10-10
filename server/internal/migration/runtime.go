@@ -103,9 +103,16 @@ func StartRuntime(ctx context.Context, cfg RuntimeConfig, reader PeerReader) (*R
 	if err != nil {
 		return nil, err
 	}
-	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024, TLSConfig: &tls.Config{Certificates: []tls.Certificate{serverCert}, ClientCAs: incomingRoots, ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS13}}
+	server := NewServer(handler, serverCert, incomingRoots)
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(tls.NewListener(listener, server.TLSConfig)) }()
 	go func() { <-ctx.Done(); _ = server.Close() }()
 	return &Runtime{Client: client, server: server, Errors: done}, nil
+}
+
+// NewServer is the peer listener's server: production timeouts and size
+// limits, TLS 1.3 and a required verified client chain (the handler then
+// pins the client leaf). Serve it on tls.NewListener(l, server.TLSConfig).
+func NewServer(handler http.Handler, certificate tls.Certificate, clientRoots *x509.CertPool) *http.Server {
+	return &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024, TLSConfig: &tls.Config{Certificates: []tls.Certificate{certificate}, ClientCAs: clientRoots, ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS13}}
 }

@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -60,4 +61,17 @@ func NewRouter(d Deps) *chi.Mux {
 		})
 	}
 	return r
+}
+
+// NewServer is the public API server with its production timeouts: the read
+// timeout bounds held upload bodies (UploadTimeout).
+func NewServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       UploadTimeout,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 }

@@ -70,8 +70,9 @@ func (d *discardResponse) Unwrap() http.ResponseWriter { return d.ResponseWriter
 // TestHandoverRepsProcess is the old-backend half of the Hub's two-backend
 // handover acceptance harness (apps/api/internal/migrationacceptance). It
 // serves the production router (JWT, /sync/upload, owner migration
-// controls) over HTTP and the production mTLS peer handler and client, on
-// the disposable TEST_DATABASE_URL. The only TEST-ONLY seams are the stdin
+// controls) through the production server constructor (NewServer) and the
+// production mTLS peer handler, server and client, on the disposable
+// TEST_DATABASE_URL. The only TEST-ONLY seams are the stdin
 // frames: synthetic accounts/tokens and injected faults (a crash after the
 // handler commits, before any response byte; a dropped peer response).
 func TestHandoverRepsProcess(t *testing.T) {
@@ -131,8 +132,6 @@ func TestHandoverRepsProcess(t *testing.T) {
 
 	var cfg struct {
 		Scope             migration.ScopeBinding `json:"scope"`
-		PublicAddr        string                 `json:"public_addr"`
-		PeerAddr          string                 `json:"peer_addr"`
 		PeerCertificate   []byte                 `json:"peer_certificate"`
 		PeerKey           []byte                 `json:"peer_key"`
 		PeerClientCA      []byte                 `json:"peer_client_ca"`
@@ -190,22 +189,21 @@ func TestHandoverRepsProcess(t *testing.T) {
 		}
 		peerHandler.ServeHTTP(w, r)
 	})
-	peerListener, err := net.Listen("tcp", cfg.PeerAddr)
-	if err != nil {
-		t.Fatal(err)
+	// Listeners are inherited from the orchestrator (fds 3 and 4), so a
+	// restarted process never races another process for its port. Both
+	// servers are the production constructors with production timeouts.
+	inherited := func(fd uintptr, name string) net.Listener {
+		l, err := net.FileListener(os.NewFile(fd, name))
+		if err != nil {
+			t.Fatalf("inherited %s listener: %v", name, err)
+		}
+		return l
 	}
-	peerServer := &http.Server{Handler: peer, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		_ = peerServer.Serve(tls.NewListener(peerListener, &tls.Config{Certificates: []tls.Certificate{cert}, ClientCAs: clientRoots, ClientAuth: tls.RequireAndVerifyClientCert, MinVersion: tls.VersionTLS13}))
-	}()
+	peerServer := migration.NewServer(peer, cert, clientRoots)
+	go func() { _ = peerServer.Serve(tls.NewListener(inherited(4, "peer"), peerServer.TLSConfig)) }()
 	defer peerServer.Close()
-	publicListener, err := net.Listen("tcp", cfg.PublicAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The production server's whole-request read timeout bounds held bodies.
-	publicServer := &http.Server{Handler: public, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second}
-	go func() { _ = publicServer.Serve(publicListener) }()
+	publicServer := NewServer("", public)
+	go func() { _ = publicServer.Serve(inherited(3, "public")) }()
 	defer publicServer.Close()
 	fmt.Println("HANDOVER_READY=reps")
 
