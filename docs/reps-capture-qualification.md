@@ -19,6 +19,36 @@ Pinned dependency sources inspected (read-only, under
 `powersync/` stands for `powersync-2.2.0/` and `sqlite_async/` for
 `sqlite_async-0.14.2/`.
 
+## Profile status
+
+The final status per exact profile, after all producer work and the
+installation matrix ([reps-capture-installation.md](reps-capture-installation.md)).
+**supported** means a certified capture is produced and verified there on
+synthetic data; it never means `cutover_ready`, transfer receipt or
+authorization to capture real data.
+
+| Profile | Capture producer | Installation access | Status |
+| --- | --- | --- | --- |
+| `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13`, Linux debug bundle x86_64 (development loop) | **PASS**: native sync quiescence, source-write gate, capture-first startup, coordinator, export, interruption/fault matrix and Go rehearsal (sections below) | **qualified**, development loop only (checker over `acceptance.json` sha256 `5aed6bb5…4ce8`, source `583bddb`) | **supported** for synthetic development-loop capture; not a public Linux distribution |
+| Same profile, Linux release-mode bundle | `make -C app build` **PASS**; no capture test ran in release mode | not checked | **UNRUN** (unverified) |
+| Linux host `flutter test` | host contract tests only, nothing native | n/a | not a capture profile |
+| Android, any installed build (release, preview, debug, local) | capture plugin excluded from Android builds (Ruling R9); Kotlin never compiled; every Android compile/test **UNRUN** (Ruling R2) | **unsupported**: installed metadata never observed, no capture-capable bridge | **unsupported** |
+| Android capture bridge (`make -C app build-capture-apk-release`) | signing guard written; the build **UNRUN** (`No Android SDK found`), `apksigner`/`aapt` **UNRUN** | no bridge APK exists | **unsupported** |
+| Older/different Android package id | none | **unsupported**: no proven transfer path | **unsupported** |
+| Any other app version, SDK, core, schema or platform | none | none | **unsupported** |
+
+Installation checks (2026-10-10, Linux host, after the signing guard):
+
+| Check | Result |
+| --- | --- |
+| `python3 -m unittest discover -s tests -p test_capture_installation.py` | **PASS** |
+| `make -C app capture-recovery CAPTURE_DEVICE=linux CAPTURE_OUTPUT=/tmp/reps-capture-installation` at `583bddb` | **PASS** (4 tests) |
+| `python3 -I scripts/verify-capture-rehearsal.py /tmp/claude-1000/hub-b50c8e5 /tmp/reps-capture-installation` | **PASS** (95 checks) |
+| `python3 -I scripts/check-capture-installation.py --acceptance /tmp/reps-capture-installation/acceptance.json <Linux row>` | **qualified** (`development_loop`) |
+| `make -C app build-capture-apk-release` | **UNRUN**: `[!] No Android SDK found. Try setting the ANDROID_HOME environment variable.` before Gradle ran; no APK |
+| Gradle guard negative test (no signing prerequisites → no APK; debug builds still usable) | **UNRUN** (same error; `make -C app build-apk` also fails) |
+| Installed-device metadata, signed in-place upgrade, rollback, receiving on Android | **UNRUN**: needs explicit owner direction and an SDK/device host |
+
 ## Source profile evidence matrix
 
 Profiles are exact combinations. The SDK accepts any native core in
@@ -39,7 +69,7 @@ that range is never a qualification.
 | Non-destructive opening | **PASS** (tests below) | UNRUN | UNRUN |
 | Native sync quiescence | Covered by the `linux` registration (same core binary); host `flutter test` runs prove nothing native | **PASS** in the debug bundle; method `powersync-2.2.0/disconnect-awaits-sync-isolate-exit+writer-barrier/v1` registered (see "Native sync quiescence: Linux qualification"); release mode UNRUN | **unsupported** (UNRUN; nothing registered) |
 | Source-write gate and durable files | Host contract tests only | **PASS** in the debug bundle (see "Source-write gate and durable files"); release mode UNRUN | **unsupported**: the plugin is not enabled for Android (Kotlin sources kept, never compiled); every capture call fails closed with `platform_unavailable`, while ordinary writes run ungated (Ruling R15) |
-| Result | Opening/SQL profile `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13` and its native sync quiescence registered; attested capture **unsupported** until every source writer participates in the gate and the capture boundary is qualified end to end | Uses the same `linux` row. Capture opening re-observes the platform, core and pre-initialize fingerprints on every open; the app and SDK versions are caller-asserted (see below). Attested capture **unsupported** for the same reason | **unsupported** (no Android SDK or device on the qualifying host) |
+| Result | Opening/SQL profile `reps-0.18.1+37/linux/powersync-2.2.0/core-0.4.13` and its native sync quiescence registered; host runs certify nothing native. Final status: see "Profile status" | Uses the same `linux` row. Capture opening re-observes the platform, core and pre-initialize fingerprints on every open; the app and SDK versions are caller-asserted (see below). Attested capture: see "Profile status" | **unsupported** (no Android SDK or device on the qualifying host) |
 
 The fingerprints were observed on synthetic fixtures with a full queue, an
 empty queue and a WAL-only tail; all three agree, and opening and observing

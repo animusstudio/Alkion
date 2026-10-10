@@ -4,7 +4,7 @@
 FLUTTER := fvm flutter
 DART := fvm dart
 
-.PHONY: help install get scaffold-linux scaffold-android analyze test capture-integration capture-recovery capture-go-compat fmt format build build-apk build-apk-release run run-android doctor devices clean
+.PHONY: help install get scaffold-linux scaffold-android analyze test capture-integration capture-recovery capture-go-compat fmt format build build-apk build-apk-release build-capture-apk-release run run-android doctor devices clean
 
 help:
 	@echo "Targets (run from repo root as 'make -C app <target>'):"
@@ -22,6 +22,7 @@ help:
 	@echo "  build          Build the Linux desktop bundle (compiles native libs)"
 	@echo "  build-apk         Build a debug APK"
 	@echo "  build-apk-release Build a signed release APK (needs android/key.properties)"
+	@echo "  build-capture-apk-release  Capture-bridge release APK; release signing required, no debug fallback"
 	@echo "  run            Run on the Linux desktop target"
 	@echo "  run-android       Run on a connected Android device"
 	@echo "  doctor         flutter doctor -v"
@@ -131,6 +132,15 @@ build-apk:
 
 build-apk-release:
 	$(FLUTTER) build apk --release
+
+# Capture-bridge release APK. Gradle's captureDistribution property disables
+# the debug-signing fallback: without the release signing configuration
+# (android/key.properties) the build fails before producing an APK. The guard
+# only tests that file's presence; it reads and prints no signing value.
+# Building it bumps no version and tags, dispatches, installs or publishes
+# nothing.
+build-capture-apk-release:
+	ORG_GRADLE_PROJECT_captureDistribution=true $(FLUTTER) build apk --release
 
 run:
 	$(FLUTTER) run -d linux

@@ -67,9 +67,39 @@ adb install -r /tmp/preview/app-release.apk
 ```
 The next real release (a higher run number) replaces the preview through the normal OTA update.
 
+## Capture-bridge builds (signing guard)
+`make -C app build-capture-apk-release` builds a release APK meant to become a
+capture bridge. It sets the Gradle property `captureDistribution=true`
+(`ORG_GRADLE_PROJECT_captureDistribution=true`), which disables the
+debug-signing fallback: without `key.properties` the build fails during Gradle
+configuration, before any APK is produced. The guard only tests that the file
+exists; it never reads or prints a signing value. Without the property every
+other build (`build-apk`, `build-apk-release`, the release and preview
+workflows) behaves exactly as before, and none of them is a capture bridge.
+
+Building it bumps no version and tags, dispatches, installs or publishes
+nothing; each of those needs its own explicit direction. Today the APK is
+**not** capture-capable on Android: the capture plugin is excluded from Android
+builds until it is compiled and qualified on an SDK host.
+
+Record the bridge's public metadata (repo root, `<v>` = installed build-tools):
+```bash
+sha256sum app/build/app/outputs/flutter-apk/app-release.apk
+"$ANDROID_HOME"/build-tools/<v>/apksigner verify --print-certs \
+  app/build/app/outputs/flutter-apk/app-release.apk      # Signer #1 certificate SHA-256 digest
+"$ANDROID_HOME"/build-tools/<v>/aapt dump badging \
+  app/build/app/outputs/flutter-apk/app-release.apk | grep -E "^(package|sdkVersion|native-code)"
+git rev-parse HEAD
+```
+A bridge is qualified per installation in `docs/reps-capture-installation.md`
+with `scripts/check-capture-installation.py`; matching metadata alone never
+qualifies it. A preview installation whose build number is above the bridge
+cannot take it, even with the same signer.
+
 ## Notes
 - `key.properties`, `*.jks`, `*.keystore` are gitignored — never commit them.
 - Without `key.properties` (e.g. a contributor / PR CI), `flutter build apk --release`
   falls back to debug signing so it still builds; only the `v*`-tag release path on the
   main repo signs with the real key (it has the secrets).
+  `make -C app build-capture-apk-release` is the exception: it fails instead.
 - Distribution is GitHub Releases only; a LAN mirror (ct-mgmt) is deferred.
