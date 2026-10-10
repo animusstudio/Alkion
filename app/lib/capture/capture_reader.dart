@@ -83,13 +83,15 @@ bool isPortableServerUrl(String value) {
       !uri.hasFragment;
 }
 
-/// The seven tables as copied: every column of each public view plus any
-/// stored key the view does not expose, rows ordered by id, raw values.
+/// The seven tables as copied from their stored rows, ordered by id: the
+/// row id, then every stored member in stored order with its exact JSON
+/// literal ([JsonLiteral]); view columns the stored object lacks stay absent.
 @immutable
 class SqlStoreCapture {
   SqlStoreCapture.captured(
     Map<String, List<Map<String, Object?>>> tables, {
     Map<String, List<String>> unknownColumns = const {},
+    Map<String, Map<String, int>> absentColumns = const {},
   })  : status = CaptureStatus.captured,
         detail = null,
         tables = Map.unmodifiable({
@@ -97,11 +99,13 @@ class SqlStoreCapture {
             e.key: List<Map<String, Object?>>.unmodifiable(
                 [for (final row in e.value) Map<String, Object?>.unmodifiable(row)]),
         }),
-        unknownColumns = Map.unmodifiable(unknownColumns);
+        unknownColumns = Map.unmodifiable(unknownColumns),
+        absentColumns = Map.unmodifiable(absentColumns);
 
   const SqlStoreCapture.failed(this.status, this.detail)
       : tables = const {},
-        unknownColumns = const {};
+        unknownColumns = const {},
+        absentColumns = const {};
 
   final String status;
   final String? detail;
@@ -109,6 +113,9 @@ class SqlStoreCapture {
 
   /// Stored keys no view column exposes, by table: preserved, unavailable.
   final Map<String, List<String>> unknownColumns;
+
+  /// View columns missing from stored rows: table -> column -> row count.
+  final Map<String, Map<String, int>> absentColumns;
 }
 
 /// One `ps_crud` row: `id` as `client_id`, `tx_id`, and `data` exactly as
@@ -341,6 +348,7 @@ Future<CapturePayload> readCapturePayload(
   if (queue.status != CaptureStatus.captured) {
     blockers.add('${CaptureRole.queue}_${queue.status}');
   }
+  blockers.addAll(queueEntryBlockers(queue.entries));
 
   final files = await _readFiles(
     source,
@@ -348,6 +356,7 @@ Future<CapturePayload> readCapturePayload(
     inventory,
     replacements,
     databaseFileName,
+    profile.runtime.platform,
   );
   blockers.addAll(files.blockers);
 
@@ -396,6 +405,8 @@ Future<CapturePayload> readCapturePayload(
       'detail': sql.detail,
       'boundary': 'single_read_transaction',
       'tables_queue_bookkeeping_one_transaction': true,
+      'absent_view_columns': sql.absentColumns,
+      'value_source': 'stored_json_literals',
       'unknown_columns': {
         for (final e in sql.unknownColumns.entries)
           e.key: {
@@ -518,88 +529,87 @@ Future<_Snapshot> _readSnapshot(
   }
 }
 
+/// Copies the seven tables from their stored rows (`ps_data__<table>`), not
+/// from the views: a view casts each column (`CAST(json_extract(..) AS
+/// TEXT|INTEGER)`), turning a stored `62.50` into `'62.5'` and `"abc"` in an
+/// integer column into `0`. Each row is its row id followed by every stored
+/// member in stored order, each value as its exact JSON literal. A view
+/// column the stored object lacks stays absent (the app reads it as NULL;
+/// nothing is invented) and is counted as evidence. Anything that cannot be
+/// reproduced exactly makes the store `unsupported`.
 Future<SqlStoreCapture> _readTables(SqliteReadContext tx) async {
   final tables = <String, List<Map<String, Object?>>>{};
   final unknown = <String, List<String>>{};
+  final absent = <String, Map<String, int>>{};
   for (final table in captureTables) {
-    final view = await tx.getAll('SELECT * FROM "$table" ORDER BY id');
-    final columns = view.columnNames;
-    final folded = <String>{};
-    for (final c in columns) {
-      if (!folded.add(c.toLowerCase())) {
-        throw const _Unreadable(CaptureStatus.unsupported, 'column_case_collision');
-      }
-    }
-    // Stored keys the view does not expose (a server column the app schema
-    // lacks) stay present as unknown columns.
+    final viewColumns = [
+      for (final r in await tx.getAll('PRAGMA table_info("$table")'))
+        r['name']! as String,
+    ];
+    final viewIds = [
+      for (final r in await tx.getAll('SELECT id FROM "$table" ORDER BY id'))
+        r['id'],
+    ];
     final stored = await tx.getAll(
-      'SELECT d.id AS id, j.key AS key, j.type AS type, j.atom AS atom '
-      'FROM "ps_data__$table" d, json_each(d.data) j ORDER BY d.id, j.id',
+      'SELECT id, typeof(id) AS id_type, data, typeof(data) AS data_type, '
+      'CAST(data AS BLOB) AS data_bytes FROM "ps_data__$table" ORDER BY id',
     );
-    final extras = <Object?, Map<String, Object?>>{};
+    if (stored.length != viewIds.length) {
+      throw const _Unreadable(CaptureStatus.unsupported, 'view_storage_mismatch');
+    }
     final extraNames = <String>{};
-    for (final r in stored) {
-      final key = r['key'];
-      if (key is! String) {
-        throw const _Unreadable(CaptureStatus.unsupported, 'stored_row_not_object');
-      }
-      if (columns.contains(key) && key != 'id') continue;
-      if (key.toLowerCase() == 'id') {
-        throw const _Unreadable(CaptureStatus.unsupported, 'stored_id_key');
-      }
-      final value = switch (r['type']) {
-        'null' => null,
-        'true' => true,
-        'false' => false,
-        'integer' || 'real' || 'text' => r['atom'],
-        _ => throw const _Unreadable(
-            CaptureStatus.unsupported, 'unknown_column_structured'),
-      };
-      final row = extras.putIfAbsent(r['id'], () => {});
-      if (row.containsKey(key)) {
-        throw const _Unreadable(CaptureStatus.unsupported, 'duplicate_stored_key');
-      }
-      row[key] = value;
-      extraNames.add(key);
-    }
-    for (final name in extraNames) {
-      if (!folded.add(name.toLowerCase())) {
-        throw const _Unreadable(CaptureStatus.unsupported, 'column_case_collision');
-      }
-    }
-
+    final missing = <String, int>{};
     final rows = <Map<String, Object?>>[];
-    for (final r in view) {
-      final row = <String, Object?>{};
-      for (var i = 0; i < columns.length; i++) {
-        row[columns[i]] = _sqlValue(r.values[i]);
+    for (var i = 0; i < stored.length; i++) {
+      final r = stored[i];
+      if (r['id_type'] != 'text' || r['id'] != viewIds[i]) {
+        throw const _Unreadable(CaptureStatus.unsupported, 'view_storage_mismatch');
       }
-      final extra = extras.remove(row['id']);
-      if (extra != null) {
-        for (final e in extra.entries) {
-          row[e.key] = _sqlValue(e.value);
+      if (r['data_type'] != 'text') {
+        throw const _Unreadable(CaptureStatus.unsupported, 'stored_data_not_text');
+      }
+      final text = r['data']! as String;
+      final bytes = r['data_bytes']! as Uint8List;
+      final encoded = utf8.encode(text);
+      if (encoded.length != bytes.length || !_sameBytes(encoded, bytes)) {
+        throw const _Unreadable(CaptureStatus.unsupported, 'stored_data_not_utf8');
+      }
+      final List<(String, JsonLiteral)> members;
+      try {
+        members = decodeJsonObjectLiterals(text);
+      } on CaptureArtifactException catch (e) {
+        throw _Unreadable(
+          CaptureStatus.unsupported,
+          switch ((e.code, e.detail)) {
+            ('duplicate_key', 'folded') => 'column_case_collision',
+            ('duplicate_key', _) => 'stored_duplicate_key',
+            _ => 'stored_data_invalid',
+          },
+        );
+      }
+      final row = <String, Object?>{'id': r['id']! as String};
+      for (final (key, literal) in members) {
+        if (key.toLowerCase() == 'id') {
+          throw const _Unreadable(CaptureStatus.unsupported, 'stored_id_key');
         }
+        row[key] = literal;
+        if (!viewColumns.contains(key)) extraNames.add(key);
+      }
+      for (final column in viewColumns) {
+        if (!row.containsKey(column)) missing[column] = (missing[column] ?? 0) + 1;
       }
       rows.add(row);
     }
-    if (extras.isNotEmpty) {
-      // Stored rows the view did not return: the view and storage disagree.
-      throw const _Unreadable(CaptureStatus.unsupported, 'view_storage_mismatch');
-    }
     tables[table] = rows;
     if (extraNames.isNotEmpty) unknown[table] = extraNames.toList()..sort();
+    if (missing.isNotEmpty) absent[table] = missing;
   }
-  return SqlStoreCapture.captured(tables, unknownColumns: unknown);
+  return SqlStoreCapture.captured(
+    tables,
+    unknownColumns: unknown,
+    absentColumns: absent,
+  );
 }
-
-/// A raw SQLite value JSON can carry exactly; a blob or non-finite real is
-/// not one.
-Object? _sqlValue(Object? value) => switch (value) {
-      null || int() || String() => value,
-      double d when d.isFinite => d,
-      double() => throw const _Unreadable(CaptureStatus.unsupported, 'non_finite_value'),
-      _ => throw const _Unreadable(CaptureStatus.unsupported, 'blob_value'),
-    };
 
 Future<QueueStoreCapture> _readQueue(SqliteReadContext tx) async {
   final rows = await tx.getAll(
@@ -612,9 +622,6 @@ Future<QueueStoreCapture> _readQueue(SqliteReadContext tx) async {
     final txId = r['tx_id'];
     if (id is! int || (txId != null && txId is! int)) {
       throw const _Unreadable(CaptureStatus.unsupported, 'queue_id_not_integer');
-    }
-    if (!fitsReaderInteger(id) || (txId != null && !fitsReaderInteger(txId as int))) {
-      throw const _Unreadable(CaptureStatus.unsupported, 'queue_id_beyond_reader');
     }
     String? data;
     switch (r['data_type']) {
@@ -670,6 +677,38 @@ Future<QueueStoreCapture> _readQueue(SqliteReadContext tx) async {
   );
 }
 
+/// The queue entries the v1 reader would refuse, as safe codes. They are
+/// still copied exactly, but block a usable capture: a `tx_id` or `data`
+/// that is NULL, a `client_id` below 1 or not strictly increasing, a
+/// transaction id that reappears after another one (not contiguous), and
+/// ids beyond the reader's 18-character integer literals. (`data` that is
+/// not text is refused while reading.)
+List<String> queueEntryBlockers(List<QueueEntryCapture> entries) {
+  final out = <String>{};
+  int? last;
+  int? previousTx;
+  final seenTx = <int>{};
+  for (final e in entries) {
+    if (e.clientId < 1 || (last != null && e.clientId <= last)) {
+      out.add('upload_queue_order_invalid');
+    }
+    last = e.clientId;
+    if (!fitsReaderInteger(e.clientId)) out.add('upload_queue_id_beyond_reader');
+    final tx = e.txId;
+    if (tx == null) {
+      out.add('upload_queue_tx_id_missing');
+    } else {
+      if (!fitsReaderInteger(tx)) out.add('upload_queue_id_beyond_reader');
+      if (tx != previousTx && !seenTx.add(tx)) {
+        out.add('upload_queue_tx_not_contiguous');
+      }
+    }
+    previousTx = tx;
+    if (e.data == null) out.add('upload_queue_data_missing');
+  }
+  return out.toList()..sort();
+}
+
 bool _sameBytes(List<int> a, List<int> b) {
   for (var i = 0; i < a.length; i++) {
     if (a[i] != b[i]) return false;
@@ -696,6 +735,7 @@ Future<_Files> _readFiles(
   StartupInventory inventory,
   List<RawReplacement> replacements,
   String databaseFileName,
+  String platform,
 ) async {
   final blockers = <String>{};
   final opaque = <OpaqueCapture>[];
@@ -852,14 +892,19 @@ Future<_Files> _readFiles(
     draft: authoritative[CaptureRole.draft]!,
     lastFinished: authoritative[CaptureRole.lastFinished]!,
     opaque: opaque,
-    exclusions: const [
+    exclusions: [
       // Tokens and the account e-mail: never opened, never copied.
-      CaptureExclusion('secure_storage', 'credentials'),
+      const CaptureExclusion('secure_storage', 'credentials'),
+      // flutter_local_notifications_linux keeps the shown notifications in
+      // `notification_plugin_cache.json` under $XDG_RUNTIME_DIR: volatile
+      // runtime state of this session, never read or copied.
+      if (platform == 'linux')
+        const CaptureExclusion('notification_plugin_cache', 'volatile_runtime'),
       // The database files themselves: their rows are the SQL and queue
       // stores; the files (and WAL/SHM) stay intact in the installation.
-      CaptureExclusion('sqlite_database', 'replica_bookkeeping'),
-      CaptureExclusion('sqlite_wal', 'replica_bookkeeping'),
-      CaptureExclusion('sqlite_shm', 'replica_bookkeeping'),
+      const CaptureExclusion('sqlite_database', 'replica_bookkeeping'),
+      const CaptureExclusion('sqlite_wal', 'replica_bookkeeping'),
+      const CaptureExclusion('sqlite_shm', 'replica_bookkeeping'),
     ],
     versions: versions,
     unknownEntries: unknownEntries,

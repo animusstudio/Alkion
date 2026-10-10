@@ -606,6 +606,66 @@ class JsonDigits {
   final String digits;
 }
 
+/// One JSON value kept as its exact source text: a number keeps its
+/// spelling (`62.50`, `1E+2`, digits beyond 64 bits), a string its escapes.
+/// Only ever holds text that parses as one strict JSON value.
+@immutable
+class JsonLiteral {
+  /// Validates [text] as exactly one JSON value (duplicate keys, also under
+  /// case folding, are refused, as the v1 reader refuses them).
+  factory JsonLiteral(String text) {
+    decodeStrictJson(utf8.encode(text), foldKeys: true);
+    return JsonLiteral._(text);
+  }
+
+  const JsonLiteral._(this.text);
+
+  final String text;
+
+  @override
+  bool operator ==(Object other) => other is JsonLiteral && other.text == text;
+
+  @override
+  int get hashCode => text.hashCode;
+
+  @override
+  String toString() => 'JsonLiteral($text)';
+}
+
+/// The members of the JSON object [text], in their stored order, each value
+/// as its exact source text. Nested objects must not repeat a key, also
+/// under case folding. Throws [CaptureArtifactException]: `json_invalid`
+/// for anything but one object, `duplicate_key` for a repeated member
+/// (exact, or equal under case folding).
+List<(String, JsonLiteral)> decodeJsonObjectLiterals(String text) {
+  final parser = _StrictJson(text, true);
+  parser.whitespace();
+  if (parser.position >= text.length || text.codeUnitAt(parser.position) != 0x7b) {
+    throw const CaptureArtifactException('json_invalid', 'not_object');
+  }
+  final members = parser.objectLiterals();
+  parser.whitespace();
+  if (parser.position != text.length) {
+    throw const CaptureArtifactException('json_invalid', 'trailing');
+  }
+  return members;
+}
+
+/// Appends a row object to [out] with its members in their own order (the
+/// stored order), values written by [writeCaptureJson].
+void writeCaptureRow(BytesBuilder out, Map<String, Object?> row) {
+  out.addByte(0x7b);
+  var first = true;
+  for (final MapEntry(:key, :value) in row.entries) {
+    if (!first) out.addByte(0x2c);
+    first = false;
+    out.add(utf8.encode(jsonEncode(key)));
+    out.addByte(0x3a);
+    writeCaptureJson(out, value);
+  }
+  out.addByte(0x7d);
+}
+
 const _chunkHint = 1 << 16;
 
 /// Appends [value]'s compact JSON to [out]. Object keys are sorted; integers
@@ -626,6 +686,8 @@ void writeCaptureJson(BytesBuilder out, Object? value) {
         throw const CaptureArtifactException('number_invalid');
       }
       out.add(ascii.encode(d.toString()));
+    case JsonLiteral l:
+      out.add(utf8.encode(l.text));
     case JsonDigits j:
       out.add(ascii.encode(j.digits));
     case String s:
@@ -722,6 +784,45 @@ class _StrictJson {
     if (!text.startsWith(word, position)) fail('literal');
     position += word.length;
     return result;
+  }
+
+  /// The members of the object at [position] with their exact value text.
+  List<(String, JsonLiteral)> objectLiterals() {
+    position++;
+    final out = <(String, JsonLiteral)>[];
+    final seen = <String>{};
+    whitespace();
+    if (position < text.length && text.codeUnitAt(position) == 0x7d) {
+      position++;
+      return out;
+    }
+    while (true) {
+      whitespace();
+      if (position >= text.length || text.codeUnitAt(position) != 0x22) {
+        fail('key');
+      }
+      final key = string();
+      if (out.any((m) => m.$1 == key)) {
+        throw const CaptureArtifactException('duplicate_key', 'exact');
+      }
+      if (!seen.add(foldKeys ? key.toLowerCase() : key)) {
+        throw const CaptureArtifactException('duplicate_key', 'folded');
+      }
+      whitespace();
+      if (position >= text.length || text.codeUnitAt(position) != 0x3a) {
+        fail('colon');
+      }
+      position++;
+      whitespace();
+      final start = position;
+      value(1);
+      out.add((key, JsonLiteral._(text.substring(start, position))));
+      whitespace();
+      if (position >= text.length) fail('end');
+      final c = text.codeUnitAt(position++);
+      if (c == 0x7d) return out;
+      if (c != 0x2c) fail('object');
+    }
   }
 
   Map<String, Object?> object(int depth) {

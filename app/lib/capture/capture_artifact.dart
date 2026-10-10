@@ -213,7 +213,11 @@ Future<SealedCapture> _writeAndVerify(
     throw const CaptureArtifactException('integrity_mismatch', 'manifest.json');
   }
 
-  final blockers = <String>{...payload.blockers, ...plan.blockers};
+  final blockers = <String>{
+    ...payload.blockers,
+    ...plan.blockers,
+    ...queueEntryBlockers(payload.queue.entries),
+  };
   for (final s in manifest.stores) {
     if (CaptureRole.required.contains(s.role) &&
         (s.status == CaptureStatus.inspectionFailed ||
@@ -398,7 +402,9 @@ void _checkQueueStore(List<int> bytes, Map<String, int> counts) {
         e.length != 3 ||
         e['client_id'] is! int ||
         !e.containsKey('tx_id') ||
-        !e.containsKey('data')) {
+        (e['tx_id'] != null && e['tx_id'] is! int) ||
+        !e.containsKey('data') ||
+        (e['data'] != null && e['data'] is! String)) {
       throw const CaptureArtifactException('store_invalid', 'queue_entry');
     }
   }
@@ -692,7 +698,7 @@ Iterable<List<int>> _sqlChunks(SqlStoreCapture sql) sync* {
     out.add(':['.codeUnits);
     for (var i = 0; i < rows.length; i++) {
       if (i > 0) out.addByte(0x2c);
-      writeCaptureJson(out, rows[i]);
+      writeCaptureRow(out, rows[i]);
       if (captureChunkReady(out)) yield out.takeBytes();
     }
     out.addByte(0x5d);

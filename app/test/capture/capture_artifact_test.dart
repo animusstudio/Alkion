@@ -296,6 +296,33 @@ void main() {
     expect(over.usable, isFalse);
     expect(over.blockers, contains('active_draft_unsupported'));
 
+    // A queue the v1 reader would refuse is written exactly but never usable.
+    final refusedQueue = CapturePayload(
+      captureId: _captureId,
+      generation: 3,
+      appVersion: '0.18.1+37',
+      platform: 'linux',
+      syncHistory: 'unknown',
+      sql: payload.sql,
+      queue: QueueStoreCapture.captured(
+        const [
+          QueueEntryCapture(clientId: 2, txId: null, data: null),
+          QueueEntryCapture(clientId: 2, txId: 1, data: '{}'),
+        ],
+        coverage: const {'crud_sequence': 'no_row', 'local_target_op': 'no_row'},
+      ),
+      draft: payload.draft,
+      lastFinished: payload.lastFinished,
+      preferences: payload.preferences,
+    );
+    final refused = await seal(refusedQueue);
+    expect(refused.usable, isFalse);
+    expect(refused.blockers, containsAll([
+      'upload_queue_data_missing',
+      'upload_queue_order_invalid',
+      'upload_queue_tx_id_missing',
+    ]));
+
     // An oversized manifest is refused before anything is written.
     final crowded = synthetic(exclusions: [
       for (var i = 0; i < 20000; i++)
@@ -437,6 +464,10 @@ void main() {
     await rejectsContent('store_invalid', 'preferences',
         '{"entries":[{"key":"unit","type":"string","value":"kg","Key":"x"}]}');
     await rejectsContent('store_invalid', 'upload_queue', '{"evidence":{}}');
+    await rejectsContent('store_invalid', 'upload_queue',
+        '{"entries":[{"client_id":1,"tx_id":"1","data":"x"}],"evidence":{}}');
+    await rejectsContent('store_invalid', 'upload_queue',
+        '{"entries":[{"client_id":1,"tx_id":1,"data":{}}],"evidence":{}}');
     await rejectsContent('count_mismatch', 'upload_queue',
         '{"entries":[],"evidence":{}}');
     await rejectsContent('store_invalid', 'sql', '{"tables":{}}');

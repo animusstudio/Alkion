@@ -1038,15 +1038,37 @@ One `db.readTransaction` runs, in order:
    changed view) nothing is read, and the SQL and queue stores are
    declared `unsupported` (`core_version_unqualified` or
    `schema_unqualified`).
-2. For each of the seven tables, `SELECT * FROM "<table>" ORDER BY id`. That
-   is every column of the public view, raw values and original ids
-   included: owner, template and derived columns, `''` weights and
-   `NULL`s. Besides the view, the stored row object (`ps_data__<table>`,
-   via `json_each`) is read. A stored key that no view column exposes stays
-   in the row with its exact scalar value and is reported as an unknown
-   column. A key that collides with a column under case folding, a
-   structured value, a blob or a non-finite real makes the SQL store
-   `unsupported`.
+2. For each of the seven tables, the stored rows, not the view values.
+   The public views cast every column (`CAST(json_extract(data, '$.c') AS
+   TEXT)` or `AS INTEGER`, core 0.4.13), so a stored `62.50` reads back as
+   `'62.5'` and a stored `"abc"` in an integer column as `0`. The reader
+   therefore reads:
+   - the view's column names (`PRAGMA table_info`) and its ids
+     (`SELECT id ... ORDER BY id`), which must match the stored rows;
+   - `SELECT id, data, ... FROM "ps_data__<table>" ORDER BY id`. `data` is
+     also read as a blob, so the text is proven byte-exact UTF-8. It is then
+     parsed by a literal-preserving strict parser (`decodeJsonObjectLiterals`).
+
+   Each row is written as its row id, then every stored member in stored
+   order, each value as its exact JSON literal (`JsonLiteral`). That covers
+   number spelling (`62.50`, `1E+2`, digits beyond 64 bits), strings with
+   their escapes, booleans, `null` and nested structures. Owner, template
+   and derived columns, `""` weights and stored `null`s are kept as stored.
+   A view column the stored object lacks stays **absent** from the row. The
+   app reads it as NULL, but nothing is invented. Its row count is recorded
+   in the evidence (`absent_view_columns`). A stored member no view column
+   exposes is kept and reported as an unknown column.
+
+   Anything that cannot be reproduced exactly makes the SQL store
+   `unsupported`, with no rows:
+   - data that is not text or not UTF-8 (`stored_data_not_text`,
+     `stored_data_not_utf8`);
+   - malformed JSON, or JSON that is not an object (`stored_data_invalid`);
+   - a repeated member, also inside a nested object
+     (`stored_duplicate_key`);
+   - two members equal under case folding (`column_case_collision`);
+   - an `id` member (`stored_id_key`);
+   - stored rows that differ from the view's ids (`view_storage_mismatch`).
 3. `SELECT id, tx_id, data FROM ps_crud ORDER BY id`. `data` is also read as
    a blob, so the text is proven byte-exact. `id` becomes `client_id`.
    `CrudEntry`, `getCrudBatch`, `getNextCrudTransaction` and
@@ -1065,11 +1087,23 @@ One `db.readTransaction` runs, in order:
 5. The count of non-`$local` buckets, for sync history.
 
 Integers are written from their exact decimal digits and never pass
-through a double. The v1 Go reader accepts integer literals of at most 18
-characters, so a queue id or an integer preference of 10^18 or more makes
-that store `unsupported` (`queue_id_beyond_reader`,
-`unsupported_value`). The producer reports that instead of writing a
-capture the reader rejects.
+through a double. Queue entries are copied exactly, but every entry the v1
+Go queue reader would refuse is a producer blocker (`queueEntryBlockers`,
+also applied by `writeAndVerifyCapture`), so such a capture is never
+`usable`. The blockers are:
+
+- `upload_queue_tx_id_missing` and `upload_queue_data_missing` for NULL;
+- `upload_queue_order_invalid` for a `client_id` below 1 or not strictly
+  increasing;
+- `upload_queue_tx_not_contiguous`;
+- `upload_queue_id_beyond_reader` for ids over its 18-character integer
+  literals.
+
+`data` stored as anything but text makes the queue `unsupported`
+(`queue_data_not_text`). An integer preference of 10^18 or more makes the
+preference store `unsupported` (`unsupported_value`). The verifier also
+refuses a queue store whose `tx_id` is not an integer or null, or whose
+`data` is not a string or null.
 
 ### Raw files and the source directory
 
@@ -1106,6 +1140,7 @@ count is recorded, never their names. The dispositions are:
 | `shared_preferences.json` (Linux) | the `preferences` store (typed entries) |
 | `capture/` | coordinator state (journal, gate, preparation); never a store |
 | secure storage (keyring/Keystore) | `secure_storage`, `excluded`/`credentials`; never opened |
+| `$XDG_RUNTIME_DIR/…/notification_plugin_cache.json` (Linux, flutter_local_notifications_linux) | `notification_plugin_cache`, `excluded`/`volatile_runtime`; never read |
 
 ### Preference key inventory
 
@@ -1231,9 +1266,9 @@ it is current before and after the read.
 | `checkStoreEntry` statuses per role | `CaptureStore.check` |
 | `checkDuplicateKeys(…, fold)` | `decodeStrictJson(…, foldKeys:)` |
 | `readRegular`, `checkUnlisted` | `verifyCaptureDirectory` |
-| SQL `{"tables":{…}}`, `validateSQL` counts | `SqlStoreCapture`, `_sqlChunks`, `_checkSqlStore` |
+| SQL `{"tables":{…}}`, row values as `json.RawMessage`, `validateSQL` counts | `SqlStoreCapture` of `JsonLiteral`s from `decodeJsonObjectLiterals`, `_sqlChunks`/`writeCaptureRow` (stored order), `_checkSqlStore` |
 | queue wire `{entries:[{client_id,tx_id,data}],evidence:{crud_sequence,local_target_op}}` | `QueueStoreCapture`/`QueueEntryCapture`, `_queueChunks`, `JsonDigits` |
-| `rawInt` (≤18 characters) | `fitsReaderInteger` |
+| `rawInt` (≤18 characters); `validateQueue` client_id/tx_id/data/contiguity | `fitsReaderInteger`; `queueEntryBlockers` |
 | preferences `{entries:[{key,type,value}]}`, `knownPrefs`, `credentialKeys`, `prefTypes` | `PreferencesCapture`/`CapturePreference`, `capturePreferenceInventory`, `credentialPreferenceKeys` |
 | opaque/excluded entries | `OpaqueCapture`, `CaptureExclusion` |
 
@@ -1241,13 +1276,15 @@ it is current before and after the read.
 
 | Test | What it pins |
 | --- | --- |
-| `tables_queue_and_bookkeeping_share_snapshot` (`app/test/capture/capture_reader_test.dart`) | A second connection commits a session (queue entry, sequence +1) while the read transaction is open: the payload has none of the three, and a later read has all three. It also pins the seven ordered arrays with raw values; unknown stored keys kept, while case-colliding or structured ones are `unsupported`; an empty queue as `entries: []` with `no_row`; a renamed `ps_buckets` as `inspection_failed`/`bookkeeping_unreadable`; an unknown table reading nothing (`schema_unqualified`). |
-| `queue_text_and_large_ids_unchanged` | It covers exact `ps_crud` text with whitespace and unknown fields under id 2^53+1, and the literal `"client_id":9007199254740993` in the written bytes. Transaction runs are contiguous and the queued DELETE of an absent row is kept. No banned SDK API appears. An id of 10^18 is `queue_id_beyond_reader`. |
-| `malformed_files_are_raw_roles` | Malformed draft and expired finished bytes are captured unchanged under their roles. The orphan `.tmp`, pre-flush and startup-preserved versions are opaque. The replacement relation is in the evidence, and the four exclusions are declared. Source bytes and names are unchanged. A draft changed after its flush blocks. Verified absence gives `absent`, and a link is `unsupported` and never followed. |
+| `tables_queue_and_bookkeeping_share_snapshot` (`app/test/capture/capture_reader_test.dart`) | A second connection commits a session (queue entry, sequence +1) while the read transaction is open: the payload has none of the three, and a later read has all three. It also pins the seven ordered arrays with stored literals; unknown stored members kept (structured ones as exact text), and case-colliding ones `unsupported`; an empty queue as `entries: []` with `no_row`; a renamed `ps_buckets` as `inspection_failed`/`bookkeeping_unreadable`; an unknown table reading nothing (`schema_unqualified`). |
+| `queue_text_and_large_ids_unchanged` | It covers exact `ps_crud` text with whitespace and unknown fields under id 2^53+1, and the literal `"client_id":9007199254740993` in the written bytes. Transaction runs are contiguous and the queued DELETE of an absent row is kept. No banned SDK API appears. An id of 10^18 is copied but blocks (`upload_queue_id_beyond_reader`). |
+| `stored_literals_are_copied_exactly` | Stored `"weight_kg":62.50` and `"reps":"abc"` are read by the view as `'62.5'` and `0`, but captured as `62.50` and `"abc"`; `"reps":"8"` stays a string. An unknown member keeps `62.50`, `1E+2`, a 30-digit integer, string escapes and a structure. A missing `updated_at` stays absent and is counted. Rows are the id, then stored order, and the written bytes match. Malformed stored JSON, a non-object, exact, nested and case-folded duplicate members, and an `id` member make the store `unsupported`. |
+| `queue_entries_the_reader_refuses_block` | A clean queue has no blockers. NULL `tx_id`, NULL `data`, `client_id` −1, a non-contiguous transaction and a 19-digit `tx_id` are each copied exactly but block, and the sealed capture is not usable. Blob `data` is `unsupported`. |
+| `malformed_files_are_raw_roles` | Malformed draft and expired finished bytes are captured unchanged under their roles. The orphan `.tmp`, pre-flush and startup-preserved versions are opaque. The replacement relation is in the evidence, and the five exclusions are declared (including `notification_plugin_cache`/`volatile_runtime`). Source bytes and names are unchanged. A draft changed after its flush blocks. Verified absence gives `absent`, and a link is `unsupported` and never followed. |
 | `typed_safe_unknown_preferences_preserved` | It covers exact types, values and list order without `flutter.`; only stored keys; the explicit dispositions; a reviewed unknown `double` `2.0` written as `2.0`. |
 | `unsafe_unknown_or_url_blocks` | Credential keys, five credential-bearing or non-http(s) `server_url`s, unknown and unprefixed keys, and untyped or out-of-range values give `unsupported` preferences, no entries and a blocker. The secret appears in no written file, and the source is unchanged. An unknown file beside the stores blocks without its name being recorded. |
 | `sync_history_needs_positive_evidence` | It covers `unknown` without evidence, and `connected` from `sync.last_synced_at_ms`. |
-| `strict_v1_integrity_and_limits` (`app/test/capture/capture_artifact_test.dart`) | It covers the exact eight manifest fields, values and store entries; the inventory equal to the declarations; sizes and digests; immutable digests; exploratory boundaries unusable; and 1 MiB/64 MiB equality accepted and +1 refused. A 64 MiB draft is written and a 64 MiB+1 draft is declared `unsupported`, with no file. An oversized manifest, a non-empty staging directory and a mismatched manifest are refused before writing. Rejected tampering, never mutated: an unlisted or case-variant file, a symlink, a flipped byte, a missing file, extra manifest, boundary or store fields, path escapes, duplicate or case-folded names, case-colliding paths, a duplicated or missing required role, an unknown exclusion reason, a path on an absent store, a count mismatch, an unknown count key, duplicate or case-folded JSON keys, an oversized manifest, a credential or malformed preference store, a queue without `entries`, and SQL without tables. |
+| `strict_v1_integrity_and_limits` (`app/test/capture/capture_artifact_test.dart`) | It covers the exact eight manifest fields, values and store entries; the inventory equal to the declarations; sizes and digests; immutable digests; exploratory boundaries unusable; and 1 MiB/64 MiB equality accepted and +1 refused. A 64 MiB draft is written and a 64 MiB+1 draft is declared `unsupported`, with no file. An oversized manifest, a non-empty staging directory and a mismatched manifest are refused before writing. Rejected tampering, never mutated: an unlisted or case-variant file, a symlink, a flipped byte, a missing file, extra manifest, boundary or store fields, path escapes, duplicate or case-folded names, case-colliding paths, a duplicated or missing required role, an unknown exclusion reason, a path on an absent store, a count mismatch, an unknown count key, duplicate or case-folded JSON keys, an oversized manifest, a credential or malformed preference store, a queue without `entries` or with a non-integer `tx_id` or non-string `data`, and SQL without tables. A payload whose queue the reader would refuse seals unusable. |
 | `rehearsal_accepts_produced_capture` | See below. |
 
 Mutation checks:
@@ -1282,7 +1319,11 @@ findings `blocking 0 / review 4 / info 6`:
   `queued_delete_preserved`, `old_server_ignores_null_clear`,
   `rest_timer_not_carried`.
 
-`staging.json` carries every `client_id` exactly.
+`staging.json` carries every `client_id` exactly. After the stored-literal
+change it was rerun with the same result. The app's own view writes store
+TEXT columns as JSON strings and INTEGER columns as JSON numbers
+(`json_object` in the view triggers), so Go reports no value findings for
+them.
 
 Limits:
 
@@ -1291,7 +1332,11 @@ Limits:
 - The producer does not measure free space before writing. Insufficient
   space fails the write (`write_failed`) without truncation.
 - The SQL rows are not validated semantically (UUIDs, references, decimal
-  text). The Go rehearsal reports those during acceptance.
+  text, value types). They are copied as stored, so a server-synced value
+  the view coerced (for example `"reps":"8"`) reaches the Go rehearsal
+  as it is stored. Per `sqlstore.go` (`checkValue`, from reading the code;
+  no such row is in the run above) it is then reported as `value_invalid`
+  instead of being hidden.
 
 ## Native qualification command
 

@@ -153,15 +153,15 @@ void main() {
         reason: '$table holds exactly the snapshot rows',
       );
     }
-    // Raw values, owner, template and derived columns are kept as stored.
+    // Raw stored literals, owner, template and derived columns are kept.
     final legacy = payload.sql.tables['exercises']!
         .singleWhere((r) => r['id'] == 'own-ex-legacy');
-    expect(legacy['is_template'], isNull);
-    expect(legacy['base_weight_kg'], '');
+    expect(legacy['is_template'], JsonLiteral('null'));
+    expect(legacy['base_weight_kg'], JsonLiteral('""'));
     final set = payload.sql.tables['sets']!.singleWhere((r) => r['id'] == 'set-1-2');
-    expect(set['weight_kg'], '80');
-    expect(set['is_top_set'], 0);
-    expect(set['user_id'], fixtureUserId);
+    expect(set['weight_kg'], JsonLiteral('"80"'));
+    expect(set['is_top_set'], JsonLiteral('0'));
+    expect(set['user_id'], JsonLiteral('"$fixtureUserId"'));
     expect(payload.sql.tables['sessions']!.map((r) => r['id']),
         isNot(contains('s-concurrent')));
 
@@ -231,9 +231,9 @@ void main() {
     final extra = await read(f, database, profile);
     final chest = extra.sql.tables['muscle_targets']!
         .singleWhere((r) => r['id'] == 'synced-mt-chest');
-    expect(chest['server_note'], 'kept');
-    expect(chest['server_rank'], 9007199254740993);
-    expect(chest['target_sets'], 12);
+    expect(chest['server_note'], JsonLiteral('"kept"'));
+    expect(chest['server_rank'], JsonLiteral('9007199254740993'));
+    expect(chest['target_sets'], JsonLiteral('12'));
     expect(extra.sql.unknownColumns,
         {'muscle_targets': ['server_note', 'server_rank']});
     expect((extra.evidence['sql']! as Map)['unknown_columns'], {
@@ -242,8 +242,8 @@ void main() {
         'names': ['server_note', 'server_rank'],
       },
     });
-    // One whose name collides with a column under case folding, or whose
-    // value is structured, cannot be represented exactly: unsupported.
+    // One whose name collides with a column under case folding cannot be
+    // represented in one v1 row: unsupported.
     await database.execute(
         "UPDATE ps_data__muscle_targets SET data = json_set(data, "
         "'\$.Muscle', 'x') WHERE id = 'synced-mt-chest'");
@@ -254,10 +254,13 @@ void main() {
         "UPDATE ps_data__muscle_targets SET data = json_set(json_remove(data, "
         "'\$.Muscle'), '\$.server_meta', json('{\"a\":1}')) "
         "WHERE id = 'synced-mt-chest'");
+    // A structured stored value is kept as its exact JSON text.
     final structured = await read(f, database, profile);
-    expect(structured.sql.status, CaptureStatus.unsupported);
-    expect(structured.sql.detail, 'unknown_column_structured');
-    expect(structured.blockers, contains('sql_snapshot_unsupported'));
+    expect(structured.sql.status, CaptureStatus.captured);
+    expect(
+        structured.sql.tables['muscle_targets']!
+            .singleWhere((r) => r['id'] == 'synced-mt-chest')['server_meta'],
+        JsonLiteral('{"a":1}'));
 
     // An unknown table is layout drift: nothing is read from the database.
     await database.execute('CREATE TABLE unexpected_store (x TEXT)');
@@ -341,16 +344,16 @@ void main() {
       expect(readerSource, isNot(contains(banned)), reason: banned);
     }
 
-    // An id the v1 reader cannot parse (over 18 characters) is reported
-    // unsupported instead of producing a capture it would reject.
+    // An id the v1 reader cannot parse (over 18 characters) is copied but
+    // blocks a usable capture, which the reader would reject.
     await database.execute(
       'INSERT INTO ps_crud (id, tx_id, data) VALUES (?, ?, ?)',
       [1000000000000000000, 9007199254740996, originalCrudText],
     );
     final beyond = await read(f, database, profile);
-    expect(beyond.queue.status, CaptureStatus.unsupported);
-    expect(beyond.queue.detail, 'queue_id_beyond_reader');
-    expect(beyond.queue.entries, isEmpty);
+    expect(beyond.queue.status, CaptureStatus.captured);
+    expect(beyond.queue.entries.last.clientId, 1000000000000000000);
+    expect(beyond.blockers, contains('upload_queue_id_beyond_reader'));
   });
 
   test('malformed_files_are_raw_roles', () async {
@@ -419,6 +422,7 @@ void main() {
       {for (final e in payload.exclusions) e.name: e.reason},
       {
         'secure_storage': 'credentials',
+        'notification_plugin_cache': 'volatile_runtime',
         'sqlite_database': 'replica_bookkeeping',
         'sqlite_wal': 'replica_bookkeeping',
         'sqlite_shm': 'replica_bookkeeping',
@@ -616,5 +620,140 @@ void main() {
     expect(synced.syncHistory, 'connected');
     expect(synced.evidence['sync_history'],
         {'value': 'connected', 'evidence': ['last_synced_preference']});
+  });
+  test('stored_literals_are_copied_exactly', () async {
+    final (f, database, profile) = await source();
+    // Stored row text as a server could have synced it: an integer column
+    // holding text, a weight written as a number with its trailing zero, an
+    // unknown member with an exponent, digits beyond 64 bits and a
+    // structure; `updated_at` is missing.
+    const stored = '{"session_id":"s-1","exercise_id":"tpl-ex-bench",'
+        '"user_id":"synthetic-user-1","set_number":2,"weight_kg":62.50,'
+        '"reps":"abc","rir":2,"is_warmup":0,"is_top_set":0,"is_pr":0,'
+        '"created_at":"2026-10-01T10:30:00.000Z","server_score":62.50,'
+        '"server_exp":1E+2,'
+        '"server_big":123456789012345678901234567890,'
+        '"server_text":"caf\\u00e9 \\"q\\"","server_meta":{"a":[1,2.0]}}';
+    await database.execute(
+        "UPDATE ps_data__sets SET data = ? WHERE id = 'set-1-2'", [stored]);
+    await database.execute(
+        "UPDATE ps_data__sets SET data = json_set(data, '\$.reps', '8') "
+        "WHERE id = 'set-1-3'");
+
+    // What the app's view reads: coerced by its CASTs.
+    final viaView = await database.get(
+        "SELECT reps, weight_kg FROM sets WHERE id = 'set-1-2'");
+    expect(viaView['reps'], 0);
+    expect(viaView['weight_kg'], '62.5');
+
+    final payload = await read(f, database, profile);
+    expect(payload.sql.status, CaptureStatus.captured);
+    final rows = payload.sql.tables['sets']!;
+    final row = rows.singleWhere((r) => r['id'] == 'set-1-2');
+    expect(row.keys.toList(), [
+      'id', 'session_id', 'exercise_id', 'user_id', 'set_number',
+      'weight_kg', 'reps', 'rir', 'is_warmup', 'is_top_set', 'is_pr',
+      'created_at', 'server_score', 'server_exp', 'server_big',
+      'server_text', 'server_meta',
+    ], reason: 'row id, then stored members in stored order; nothing added');
+    expect(row['weight_kg'], JsonLiteral('62.50'));
+    expect(row['reps'], JsonLiteral('"abc"'));
+    expect(row['server_score'], JsonLiteral('62.50'));
+    expect(row['server_exp'], JsonLiteral('1E+2'));
+    expect(row['server_big'],
+        JsonLiteral('123456789012345678901234567890'));
+    expect(row['server_text'], JsonLiteral(r'"caf\u00e9 \"q\""'));
+    expect(row['server_meta'], JsonLiteral('{"a":[1,2.0]}'));
+    expect(row.containsKey('updated_at'), isFalse,
+        reason: 'a missing member is not fabricated as null');
+    expect(rows.singleWhere((r) => r['id'] == 'set-1-3')['reps'],
+        JsonLiteral('"8"'));
+    expect(payload.sql.absentColumns['sets']!['updated_at'], greaterThan(0));
+    expect(payload.sql.unknownColumns['sets'], [
+      'server_big', 'server_exp', 'server_meta', 'server_score', 'server_text',
+    ]);
+    expect((payload.evidence['sql']! as Map)['absent_view_columns'],
+        payload.sql.absentColumns);
+
+    // The written store carries the same literal text, byte for byte.
+    final sealed = await seal(payload);
+    final sql = File(p.join(sealed.directory.path, 'stores', 'sql.json'))
+        .readAsStringSync();
+    for (final literal in [
+      '"weight_kg":62.50',
+      '"reps":"abc"',
+      '"server_exp":1E+2',
+      '"server_big":123456789012345678901234567890',
+      r'"server_text":"caf\u00e9 \"q\""',
+      '"server_meta":{"a":[1,2.0]}',
+      '"reps":"8"',
+    ]) {
+      expect(sql, contains(literal));
+    }
+    expect(sql, contains('{"id":"set-1-2","session_id":"s-1",'));
+
+    // Stored text that cannot be reproduced exactly: unsupported, no rows.
+    // (muscle_targets has no JSON index that would refuse malformed text.)
+    for (final (text, code) in [
+      ('{"reps":', 'stored_data_invalid'),
+      ('[1,2]', 'stored_data_invalid'),
+      ('{"reps":1,"reps":2}', 'stored_duplicate_key'),
+      ('{"reps":1,"Reps":2}', 'column_case_collision'),
+      ('{"meta":{"a":1,"A":2}}', 'stored_duplicate_key'),
+      ('{"id":"other"}', 'stored_id_key'),
+    ]) {
+      await database.execute(
+          "UPDATE ps_data__muscle_targets SET data = ? "
+          "WHERE id = 'synced-mt-chest'", [text]);
+      final refused = await read(f, database, profile);
+      expect(refused.sql.status, CaptureStatus.unsupported, reason: text);
+      expect(refused.sql.detail, code, reason: text);
+      expect(refused.sql.tables, isEmpty);
+      expect(refused.blockers, contains('sql_snapshot_unsupported'));
+    }
+  });
+
+  test('queue_entries_the_reader_refuses_block', () async {
+    Future<CapturePayload> withQueue(List<(int, int?, String?)> rows) async {
+      final (f, database, profile) = await source(queue: false);
+      for (final (id, tx, data) in rows) {
+        await database.execute(
+            'INSERT INTO ps_crud (id, tx_id, data) VALUES (?, ?, ?)',
+            [id, tx, data]);
+      }
+      return read(f, database, profile);
+    }
+
+    const ok = '{"op":"DELETE","type":"sets","id":"x"}';
+    final clean = await withQueue([(1, 1, ok), (2, 1, ok), (3, 2, ok)]);
+    expect(queueEntryBlockers(clean.queue.entries), isEmpty);
+    expect(clean.blockers, isEmpty);
+
+    for (final (rows, code) in [
+      ([(1, null, ok)], 'upload_queue_tx_id_missing'),
+      ([(1, 1, null)], 'upload_queue_data_missing'),
+      ([(-1, 1, ok)], 'upload_queue_order_invalid'),
+      ([(1, 1, ok), (2, 2, ok), (3, 1, ok)], 'upload_queue_tx_not_contiguous'),
+      ([(1, 1000000000000000000, ok)], 'upload_queue_id_beyond_reader'),
+    ]) {
+      final payload = await withQueue(rows);
+      expect(payload.queue.status, CaptureStatus.captured, reason: code);
+      expect(payload.queue.entries, hasLength(rows.length),
+          reason: 'copied exactly');
+      expect(payload.blockers, contains(code));
+      final sealed = await seal(payload);
+      expect(sealed.usable, isFalse, reason: code);
+      expect(sealed.blockers, contains(code));
+    }
+    // Data stored as a blob is not the ps_crud text: refused while reading.
+    final blob = await withQueue([(1, 1, null)]);
+    expect(blob.queue.status, CaptureStatus.captured);
+    final (g, database, profile) = await source(queue: false);
+    await database.execute(
+        "INSERT INTO ps_crud (id, tx_id, data) VALUES (1, 1, X'7b7d')");
+    final number = await read(g, database, profile);
+    expect(number.queue.status, CaptureStatus.unsupported);
+    expect(number.queue.detail, 'queue_data_not_text');
+    expect(number.blockers, contains('upload_queue_unsupported'));
   });
 }
