@@ -124,21 +124,24 @@ Future<void> _start() async {
   // Profile → Data capture: the running app's sources, the registered
   // native sync adapter for a qualified profile, and the old sync policy
   // restored through the ordinary connect path.
-  final captureService = CaptureService(CoordinatorCaptureBackend(
-    CaptureCoordinator(
-      locations: capture,
-      gate: gate,
-      sources: CaptureSourceBindings(
-        database: db,
-        hooks: boot.captureHooks,
-        transportFor: (profile) => CaptureTransport.forProfile(
+  final captureService = CaptureService(
+    CoordinatorCaptureBackend(
+      CaptureCoordinator(
+        locations: capture,
+        gate: gate,
+        sources: CaptureSourceBindings(
           database: db,
-          profile: profile,
-          reconnect: () => connectSync(auth),
+          hooks: boot.captureHooks,
+          transportFor: (profile) => CaptureTransport.forProfile(
+            database: db,
+            profile: profile,
+            reconnect: () => connectSync(auth),
+          ),
         ),
       ),
     ),
-  ));
+    hasActiveWorkout: () => boot.sessionManager.hasActive,
+  );
 
   runApp(App(
     syncHealth: syncHealth,

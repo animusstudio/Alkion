@@ -15,6 +15,7 @@ import 'package:path/path.dart' as p;
 import 'package:workout_tracker/capture/capture_coordinator.dart';
 import 'package:workout_tracker/capture/capture_export.dart';
 import 'package:workout_tracker/capture/capture_manifest.dart';
+import 'package:workout_tracker/capture/capture_service.dart';
 
 import '../support/certified_capture_fixture.dart';
 import '../support/zip_writer.dart';
@@ -286,8 +287,9 @@ void main() {
       try {
         await expand(zip);
         traversalArchiveAccepted = true;
-      } on CaptureArtifactException {
-        // Refused, as it must be.
+      } on CaptureArtifactException catch (e) {
+        // Refused for its path, before anything is written.
+        expect(e.code, 'archive_entry_path', reason: name);
       }
     }
     expect(traversalArchiveAccepted, false);
@@ -369,5 +371,45 @@ void main() {
     File(p.join(deflated.directory.path, 'stores', 'extra')).writeAsStringSync('x');
     await expectLater(verifyReceivedCapture(deflated.directory),
         _artifact('unlisted_file'));
+  });
+
+  test('a_capture_that_no_longer_certifies_is_never_shown_or_copied', () async {
+    final certified = await fixture.certify();
+    final service = CaptureService(CoordinatorCaptureBackend(
+        fixture.coordinator(),
+        exportToDirectory: true));
+    await service.refresh();
+    expect(service.view!.code, 'resumed');
+    expect(service.view!.summary!.manifestSha256, certified.manifestSha256);
+    // Malformed raw bytes are captured and labelled for later review.
+    expect(
+        service.view!.summary!.stores
+            .where((s) => s.role == 'active_draft')
+            .single
+            .reviewLater,
+        isTrue);
+
+    // The published capture changes on disk after it was certified.
+    final store = certified.directory
+        .listSync(recursive: true)
+        .whereType<File>()
+        .firstWhere((f) => p.basename(f.path) != 'manifest.json');
+    store.writeAsBytesSync([...store.readAsBytesSync(), 0x20], flush: true);
+
+    // An export started from the stale view refuses and refreshes the view.
+    final attempt = await service.exportTo(destination.path);
+    expect(attempt!.code, 'capture_changed');
+    expect(attempt.receiptVerified, isFalse);
+    expect(leftovers(), isEmpty);
+    expect(service.view!.code, 'published_divergence');
+    expect(service.view!.summary, isNull);
+    expect(service.view!.held, isFalse);
+
+    // And a later look routes it to review, never to "saved".
+    await service.refresh();
+    expect(service.view!.code, 'published_divergence');
+    final again = await service.backend.exportToDirectory(destination);
+    expect(again.code, 'no_verified_capture');
+    expect(leftovers(), isEmpty);
   });
 }

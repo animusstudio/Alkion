@@ -147,15 +147,22 @@ class _CapturePanelState extends State<CapturePanel> {
     super.initState();
     // Always look again when shown: a restart or another screen may have
     // changed what the coordinator records.
-    if (!_service.busy) _service.refresh();
+    _refreshAfterFrame();
   }
 
   @override
   void didUpdateWidget(CapturePanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.service, widget.service) && !_service.busy) {
-      _service.refresh();
-    }
+    if (!identical(oldWidget.service, widget.service)) _refreshAfterFrame();
+  }
+
+  /// The service notifies its listeners synchronously when work starts, and
+  /// those listeners (a provider above the app among them) must not be
+  /// marked dirty while this route is still building: look after the frame.
+  void _refreshAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_service.busy) _service.refresh();
+    });
   }
 
   @override
@@ -175,7 +182,11 @@ class _CapturePanelState extends State<CapturePanel> {
     final hold = mode == CaptureMode.localHold;
     if (!await _ask(
       hold ? l.captureHoldConfirmTitle : l.captureStartConfirmTitle,
-      hold ? l.captureHoldConfirmBody : l.captureStartConfirmBody,
+      hold
+          ? _service.hasActiveWorkout()
+              ? '${l.captureHoldConfirmBody}\n\n${l.captureHoldWorkoutWarning}'
+              : l.captureHoldConfirmBody
+          : l.captureStartConfirmBody,
       hold ? l.captureHoldConfirm : l.captureStartConfirm,
     )) {
       return;
@@ -359,6 +370,10 @@ class _CapturePanelState extends State<CapturePanel> {
           body: l.captureUnsupportedBody,
           status: status);
     }
+    if (!view.held && view.code == 'published_divergence') {
+      return _InfoCard(
+          title: l.captureReviewTitle, body: l.captureDivergedBody, status: status);
+    }
     if (view.decision == CaptureDecision.ownerReview) {
       return _InfoCard(
           title: l.captureReviewTitle, body: l.captureReviewBody, status: status);
@@ -395,8 +410,15 @@ class _CapturePanelState extends State<CapturePanel> {
       return _InfoCard(title: l.captureSavedTitle, body: l.captureSavedBody);
     }
     if (view.failure != null) return null;
-    if (view.code == 'none' || view.code == 'resumed') {
+    if (view.code == 'none') {
       return _InfoCard(title: l.captureIdleTitle, body: l.captureIdleBody);
+    }
+    if (view.code == 'resumed') {
+      // Released, but the journal names no capture that can be shown: an
+      // interrupted attempt that was resumed, or a newer attempt that
+      // produced nothing while earlier captures stay on disk.
+      return _InfoCard(
+          title: l.captureNoneUsableTitle, body: l.captureNoneUsableBody);
     }
     return _InfoCard(
         title: l.captureReviewTitle, body: l.captureReviewBody, status: status);
@@ -675,9 +697,24 @@ class _ExportResult extends StatelessWidget {
       lines.add(Text(l.captureExportCancelled,
           style: WorkoutType.body(size: 14, color: tokens.text)));
     } else {
-      lines.add(SelectableText(
-          l.captureExportFailed(attempt.code ?? attempt.transportStatus.wire),
+      final code = attempt.code ?? attempt.transportStatus.wire;
+      final message = switch (code) {
+        // The private capture no longer matches what was certified.
+        'capture_changed' => l.captureExportChanged,
+        // A folder was published but did not verify where it is.
+        'received_mismatch' => l.captureExportUnverified(
+            attempt.location == null ? '–' : p.normalize(attempt.location!.path)),
+        'destination_exists' => l.captureExportExists,
+        _ => l.captureExportFailed(code),
+      };
+      lines.add(SelectableText(message,
           style: WorkoutType.body(size: 14, color: tokens.danger)));
+      if (message != l.captureExportFailed(code)) {
+        lines
+          ..add(const SizedBox(height: 4))
+          ..add(SelectableText(l.captureRecoveryCode(code),
+              style: WorkoutType.mono(size: 11.5, color: tokens.dim)));
+      }
     }
     return Column(
         crossAxisAlignment: CrossAxisAlignment.start, children: lines);

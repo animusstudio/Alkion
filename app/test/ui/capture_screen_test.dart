@@ -426,4 +426,97 @@ void main() {
     expect(find.byKey(const Key('capture-resume')), findsNothing);
     expect(find.byKey(const Key('capture-check-again')), findsOneWidget);
   });
+
+  testWidgets('released states without a usable capture say so honestly',
+      (tester) async {
+    // Resumed, but no capture the journal names can be shown (an interrupted
+    // attempt that was resumed, or a newer attempt that made nothing).
+    await _pumpScreen(
+        tester, CaptureService(_FakeBackend(view: const CaptureView(code: 'resumed', captureId: _id))));
+    expect(find.text('No capture to show'), findsOneWidget);
+    expect(find.textContaining('stays privately on this device'), findsOneWidget);
+    expect(find.text('No capture yet'), findsNothing);
+    expect(find.textContaining('Nothing has been captured'), findsNothing);
+    expect(find.byKey(const Key('capture-export')), findsNothing);
+
+    // A published capture that no longer certifies goes to review.
+    await _pumpScreen(
+        tester,
+        CaptureService(_FakeBackend(
+            view: const CaptureView(
+                code: 'published_divergence', stage: 'resumed', captureId: _id))));
+    expect(find.text('Needs a closer look'), findsOneWidget);
+    expect(find.textContaining('no longer matches'), findsOneWidget);
+    expect(find.text('Status: published_divergence · resumed'), findsOneWidget);
+    expect(find.text('Capture saved on this device'), findsNothing);
+    expect(find.byKey(const Key('capture-export')), findsNothing);
+
+    // Only `none` is "no capture yet".
+    await _pumpScreen(tester, CaptureService(_FakeBackend()));
+    expect(find.text('No capture yet'), findsOneWidget);
+  });
+
+  testWidgets('export failures say exactly what happened', (tester) async {
+    final backend =
+        _FakeBackend(view: CaptureView(code: 'resumed', summary: _summary));
+    await _pumpScreen(tester, CaptureService(backend));
+    await tester.enterText(
+        find.byKey(const Key('capture-export-path')), '/tmp/reps-dest');
+
+    // A folder was published but did not verify there.
+    backend.onExport = (parent) => ExportAttempt(
+        manifestSha256: _digest,
+        transportStatus: ExportTransportStatus.failed,
+        code: 'received_mismatch',
+        location: Directory('${parent.path}/reps-capture-$_id'));
+    await tester.ensureVisible(find.byKey(const Key('capture-export')));
+    await tester.tap(find.byKey(const Key('capture-export')));
+    await _confirm(tester, 'Copy');
+    expect(
+        find.textContaining(
+            'A folder was created at /tmp/reps-dest/reps-capture-$_id'),
+        findsOneWidget);
+    expect(find.textContaining("Don't rely on it"), findsOneWidget);
+    expect(find.textContaining('Copy checked'), findsNothing);
+    expect(find.textContaining('unchanged'), findsNothing);
+
+    // The private capture changed since it was certified: no "unchanged"
+    // claim, and the screen re-reads the coordinator instead of still
+    // offering the stale capture.
+    backend.onExport = (parent) => const ExportAttempt(
+        manifestSha256: _digest,
+        transportStatus: ExportTransportStatus.failed,
+        code: 'capture_changed');
+    backend.view = const CaptureView(
+        code: 'published_divergence', stage: 'resumed', captureId: _id);
+    await tester.tap(find.byKey(const Key('capture-export')));
+    await _confirm(tester, 'Copy');
+    expect(backend.calls.last, 'inspect');
+    expect(find.text('Needs a closer look'), findsOneWidget);
+    expect(find.text('Capture saved on this device'), findsNothing);
+    expect(find.byKey(const Key('capture-export')), findsNothing);
+    expect(find.textContaining('unchanged'), findsNothing);
+  });
+
+  testWidgets('a hold confirmation warns about an open workout', (tester) async {
+    var active = true;
+    final backend = _FakeBackend();
+    await _pumpScreen(
+        tester, CaptureService(backend, hasActiveWorkout: () => active));
+    await tester.tap(find.byKey(const Key('capture-start-hold')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('A workout is open'), findsOneWidget);
+    expect(find.textContaining("its changes aren't saved"), findsOneWidget);
+    await _dismiss(tester);
+    expect(backend.calls.where((c) => c.startsWith('capture')), isEmpty);
+
+    active = false;
+    await tester.tap(find.byKey(const Key('capture-start-hold')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('A workout is open'), findsNothing);
+    await _confirm(tester, 'Capture and hold');
+    expect(backend.calls.last, 'capture:localHold');
+    backend.pendingCapture!.complete(const CaptureView(code: 'none'));
+    await tester.pumpAndSettle();
+  });
 }

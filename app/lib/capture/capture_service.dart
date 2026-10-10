@@ -191,6 +191,19 @@ class CoordinatorCaptureBackend implements CaptureBackend {
           code: 'recovery_failed', decision: CaptureDecision.ownerReview);
     }
     _certified = r.capture;
+    final id = r.captureId;
+    if (r.code == 'resumed' &&
+        r.capture == null &&
+        id != null &&
+        FileSystemEntity.typeSync(
+                '${coordinator.locations.captures.path}/$id',
+                followLinks: false) !=
+            FileSystemEntityType.notFound) {
+      // Released, and a published directory for the capture the journal
+      // names exists, but it no longer certifies: never shown or copied.
+      return CaptureView(
+          code: 'published_divergence', stage: r.stage?.wire, captureId: id);
+    }
     return CaptureView(
       code: r.code,
       stage: r.stage?.wire,
@@ -292,9 +305,16 @@ enum CaptureActivity { idle, inspecting, capturing, resuming, exporting }
 /// time. Nothing here starts a capture, a release or an export on its own:
 /// each is a method the person's explicit, confirmed action calls.
 class CaptureService extends ChangeNotifier {
-  CaptureService(this.backend);
+  CaptureService(this.backend, {bool Function()? hasActiveWorkout})
+      : hasActiveWorkout = hasActiveWorkout ?? _none;
 
   final CaptureBackend backend;
+
+  /// Whether a live workout is open, so a local hold's confirmation can
+  /// warn that its changes would not be saved while held.
+  final bool Function() hasActiveWorkout;
+
+  static bool _none() => false;
 
   CaptureView? _view;
   CaptureView? get view => _view;
@@ -364,6 +384,11 @@ class CaptureService extends ChangeNotifier {
         );
       } finally {
         _cancellation = null;
+      }
+      if (_lastExport?.code == 'capture_changed') {
+        // The private capture no longer matches its certification: show
+        // what the coordinator makes of it now, never the stale success.
+        _view = await backend.inspect();
       }
       return _lastExport;
     });

@@ -370,25 +370,34 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           // +30s is unavailable while a data capture holds the source.
           ValueListenableBuilder<bool>(
             valueListenable: controller.captureFrozen,
-            builder: (context, frozen, _) => SessionHeader(
-              draft: draft,
-              elapsed: controller.elapsed,
-              doneWork: controller.doneWork,
-              totalWork: controller.totalWork,
-              prCount: controller.prCount,
-              restStart: controller.restStart,
-              restTotal: controller.restTotal,
-              restEndedAt: controller.restEndedAt,
-              showRestRow: controller.hasLoggedSet,
-              nextLabel: restNextLabel(l, unit, controller.nextPendingSet),
-              onMinimize: () => Navigator.of(context).pop(),
-              onMenu: () => _openWorkoutMenu(controller),
-              onAdd30s: () {
-                HapticFeedback.lightImpact();
-                controller.addRestTime(30);
-              },
-              onSkip: controller.stopRest,
-              restExtensionAvailable: !frozen,
+            builder: (context, frozen, _) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SessionHeader(
+                  draft: draft,
+                  elapsed: controller.elapsed,
+                  doneWork: controller.doneWork,
+                  totalWork: controller.totalWork,
+                  prCount: controller.prCount,
+                  restStart: controller.restStart,
+                  restTotal: controller.restTotal,
+                  restEndedAt: controller.restEndedAt,
+                  showRestRow: controller.hasLoggedSet,
+                  nextLabel: restNextLabel(l, unit, controller.nextPendingSet),
+                  onMinimize: () => Navigator.of(context).pop(),
+                  onMenu: () => _openWorkoutMenu(controller),
+                  onAdd30s: () {
+                    HapticFeedback.lightImpact();
+                    controller.addRestTime(30);
+                  },
+                  onSkip: controller.stopRest,
+                  restExtensionAvailable: !frozen,
+                ),
+                // Persistent while a data capture holds the source: what is
+                // changed now lives in memory only until the hold ends.
+                if (frozen) const CaptureHoldBanner(),
+              ],
             ),
           ),
           Expanded(
@@ -550,6 +559,33 @@ class _DashedButton extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The live workout's notice while a data capture holds the source: its
+/// changes are not being saved, and are lost if the app is closed before
+/// the hold ends.
+class CaptureHoldBanner extends StatelessWidget {
+  const CaptureHoldBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      key: const Key('capture-hold-banner'),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      decoration: BoxDecoration(
+        color: tokens.surface2,
+        border: Border(bottom: BorderSide(color: tokens.danger)),
+      ),
+      child: Semantics(
+        liveRegion: true,
+        child: Text(
+          AppLocalizations.of(context).captureHoldWorkoutBanner,
+          style: WorkoutType.body(size: 13, color: tokens.text),
         ),
       ),
     );

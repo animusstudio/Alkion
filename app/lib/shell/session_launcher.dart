@@ -18,6 +18,7 @@ import '../session/resume.dart';
 import '../session/session_manager.dart';
 import '../sync/db.dart';
 import '../theme/motion.dart';
+import '../widgets/w_dialog.dart';
 
 /// Starts an active session, optionally pre-loaded from a [DayTemplate].
 ///
@@ -39,6 +40,8 @@ Future<void> startSession(
     await openActiveSession(context, manager);
     return;
   }
+
+  if (await refusedDuringCaptureHold(context, manager)) return;
 
   // A second tap while this one is still building must not register a second
   // workout.
@@ -189,6 +192,7 @@ Future<String> finishWorkout(
 /// a dialog); here that case, like every other refusal, is a silent no-op.
 Future<void> resumeFinishedSession(BuildContext context, String sessionId) async {
   final manager = context.read<SessionManager>();
+  if (await refusedDuringCaptureHold(context, manager)) return;
   final controller = await prepareResume(
     manager,
     sessionId,
@@ -209,4 +213,20 @@ Future<DayTemplate?> nextInRotation(
   SessionRepository sessionRepo,
 ) {
   return dayRepo.nextInRotation(sessionRepo);
+}
+
+/// While a data capture holds the source (its callbacks are frozen) a new
+/// workout would live in memory only: refuse it with the hold's copy and
+/// return true. Otherwise false.
+Future<bool> refusedDuringCaptureHold(
+    BuildContext context, SessionManager manager) async {
+  if (!manager.callbacksFrozen) return false;
+  final l = AppLocalizations.of(context);
+  await showWDialog<void>(
+    context,
+    title: l.captureWritesPausedTitle,
+    message: l.captureNewWorkoutRefused,
+    actions: [WDialogAction(label: l.commonOk, value: null)],
+  );
+  return true;
 }

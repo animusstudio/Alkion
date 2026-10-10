@@ -1585,6 +1585,8 @@ What the person sees and decides (every action behind `showWConfirm`):
 | `platform_unavailable` / `unsupported` | "Not available on this device" (Android builds today) | none; no capture or export button |
 | `none` | no capture yet | Capture now (rehearsal), Capture and hold (local hold) |
 | `resumed` + verified capture | saved, what it holds, copy to a folder | new capture, copy |
+| `resumed` without a capture to show (an interrupted attempt resumed, or a newer attempt that produced nothing) | "No capture to show"; earlier files stay private on this device | new capture |
+| `resumed`, but the published directory for the journal's capture no longer certifies (`published_divergence`) | "Needs a closer look"; never shown as saved, never copied | new capture |
 | `local_hold` | local hold: saving, sync and +30s paused | Release hold (`resumeOriginal`), copy |
 | `awaiting_resume_decision` | saved, still paused | Resume original use, copy |
 | `capture_interrupted` | not a usable capture, partial files kept | Resume original use; Resume and capture again (running app: `resumeOriginal`, then a new capture with a new id) |
@@ -1608,6 +1610,20 @@ What the person sees and decides (every action behind `showWConfirm`):
   and a digest prefix. It never shows contents, values, keys, tokens or
   the capture id. The copy never claims migration, backup, upload or
   receipt.
+- The panel's first look (`recover()`) runs after the first frame, so
+  opening the screen never notifies the app-wide provider while the route
+  builds.
+- A local hold's confirmation warns when a workout is open that its changes
+  aren't saved while held. While a capture holds the source, the live
+  workout shows a persistent banner ("changes to this workout aren't being
+  saved ... lost if the app closes before the hold ends"), and starting or
+  resuming a workout is refused with the hold copy (`refusedDuringCaptureHold`,
+  `SessionManager.callbacksFrozen`).
+- Export failures are worded per code: `capture_changed` (the private
+  capture no longer matches its certification; nothing copied; the view is
+  re-read, so it is no longer offered as saved), `received_mismatch` (a
+  folder now exists at the destination but did not verify there: do not
+  rely on it), `destination_exists` (nothing copied or replaced).
 - During a capture and a local hold the live workout's +30s chip is drawn
   unavailable, does nothing, and the rest line reads "+30s unavailable
   during data capture" (`ActiveSessionController.captureFrozen`,
@@ -1688,8 +1704,20 @@ Tests, all **PASS** (2026-10-10):
   `blocked_capture_has_no_success_or_export`,
   `hold_shows_unavailable_rest_and_writes`, interrupted resume (and resume
   then capture), export confirmation and honest results, and the startup
-  decision. Each decision is cancellable and reaches the backend only
-  after confirmation.
+  decision, released states without a usable capture, per-code export
+  failures and the open-workout hold warning. Each decision is cancellable
+  and reaches the backend only after confirmation.
+- `test/ui/capture_hold_entry_test.dart`: the Profile row opens the screen
+  through a `ChangeNotifierProvider` as `main.dart` provides it, with no
+  framework error (it failed with "setState() or markNeedsBuild() called
+  during build" before the first look was deferred); the hold banner; new
+  and resumed workouts refused during a hold.
+- `capture_export_test.dart` `a_capture_that_no_longer_certifies_is_never_shown_or_copied`
+  (real coordinator backend: a tampered published capture refuses export
+  with `capture_changed`, the view becomes `published_divergence`, nothing
+  is written).
+- `test/layout/live_layout_test.dart` adds the live workout held by a
+  capture (banner, +30s unavailable on a running rest) to the sweep.
 - `test/layout/capture_layout_test.dart`: seven screen states, plus three
   startup states, at {320, 412}dp × {1.0, 2.0}× × {en, de, it} and 320dp
   2.0× es. No overflow and no split word.
@@ -1700,10 +1728,9 @@ Tests, all **PASS** (2026-10-10):
   (`destination_private`) and the ZIP transport (`unsupported`), and leaves
   the private tree unchanged: **PASS**.
 
-Limits: the hold is shown on the live rest row, in write refusals and on
-the capture screen; there is no app-wide banner. A live workout's set
-edits during a local hold stay in memory, with their autosave owed until
-release, as before. No receiving UI exists for the ZIP transport
+Limits: a live workout's edits during a local hold stay in memory, with
+their autosave owed until release (disclosed by the banner and the hold
+confirmation, not prevented). No receiving UI exists for the ZIP transport
 (`expandCaptureArchive` is the API and is host-tested only).
 
 ## Native qualification command
