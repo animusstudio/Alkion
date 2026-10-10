@@ -382,6 +382,7 @@
   "captureRecoveryPreservationBody": "Reps no pudo hacer una copia de seguridad de un archivo de entrenamiento guardado, así que no ha abierto tus entrenamientos ni sincronizado. Abrirlos ahora podría sobrescribir ese archivo.",
   "captureRecoveryKept": "Tus entrenamientos siguen en este dispositivo. Reps no los ha borrado ni modificado.",
   "captureRecoveryCode": "Estado: {code}",
+  "captureRecoveryRetry": "Reintentar",
   "captureRowTitle": "Captura de datos",
   "captureRowSub": "Copia local comprobada · sin cuenta",
   "captureScreenTitle": "Captura de datos",

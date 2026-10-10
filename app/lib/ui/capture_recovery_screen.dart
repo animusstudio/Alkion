@@ -27,7 +27,8 @@ class CaptureRecoveryApp extends StatelessWidget {
   /// The coordinator's decisions (without open sources), when available.
   final CaptureService? service;
 
-  /// Runs startup again once a decision released the source.
+  /// Runs startup again once a decision released the source, or when the
+  /// person asks to try again after a transient failure.
   final Future<void> Function()? onResolved;
 
   @override
@@ -55,6 +56,10 @@ class CaptureRecoveryApp extends StatelessWidget {
 /// data), with the explicit decisions the capture coordinator offers for
 /// it: resuming original use, releasing a local hold, and copying a held
 /// capture out. Nothing is decided without the person's confirmation.
+///
+/// A failed safety copy or a transient gate failure needs no decision: it
+/// offers "Try again", which runs startup again at once (startup holds
+/// again if the cause remains).
 class CaptureRecoveryScreen extends StatelessWidget {
   const CaptureRecoveryScreen({
     super.key,
@@ -67,6 +72,10 @@ class CaptureRecoveryScreen extends StatelessWidget {
   final CaptureService? service;
   final Future<void> Function()? onResolved;
 
+  /// Holds that a plain retry of startup may clear: nothing was decided or
+  /// recorded, so running startup again changes nothing by itself.
+  static const _retryable = {'preservation_failed', 'gate_busy', 'gate_io_error'};
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
@@ -76,6 +85,8 @@ class CaptureRecoveryScreen extends StatelessWidget {
         ? recovery.code
         : '${recovery.code} · ${recovery.stage}';
     final service = this.service;
+    final onResolved = this.onResolved;
+    final retry = _retryable.contains(recovery.code) ? onResolved : null;
     return Scaffold(
       backgroundColor: tokens.bg,
       body: SafeArea(
@@ -113,6 +124,11 @@ class CaptureRecoveryScreen extends StatelessWidget {
                 ],
               ),
             ),
+            if (retry != null) ...[
+              const SizedBox(height: AppSpacing.pad),
+              _TryAgain(
+                  label: l.captureRecoveryRetry, onRetry: retry),
+            ],
             if (service != null) ...[
               const SizedBox(height: AppSpacing.pad),
               CapturePanel(
@@ -126,4 +142,36 @@ class CaptureRecoveryScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Runs startup again; ignores taps while a run is in progress.
+class _TryAgain extends StatefulWidget {
+  const _TryAgain({required this.label, required this.onRetry});
+
+  final String label;
+  final Future<void> Function() onRetry;
+
+  @override
+  State<_TryAgain> createState() => _TryAgainState();
+}
+
+class _TryAgainState extends State<_TryAgain> {
+  bool _running = false;
+
+  Future<void> _retry() async {
+    if (_running) return;
+    setState(() => _running = true);
+    try {
+      await widget.onRetry();
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => CaptureAction(
+        key: const Key('capture-recovery-retry'),
+        label: widget.label,
+        onTap: _retry,
+      );
 }

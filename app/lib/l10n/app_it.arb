@@ -382,6 +382,7 @@
   "captureRecoveryPreservationBody": "Reps non è riuscita a fare una copia di sicurezza di un file di allenamento salvato, quindi non ha aperto i tuoi allenamenti né sincronizzato. Aprirli ora potrebbe sovrascrivere quel file.",
   "captureRecoveryKept": "I tuoi allenamenti sono ancora su questo dispositivo. Reps non li ha eliminati né modificati.",
   "captureRecoveryCode": "Stato: {code}",
+  "captureRecoveryRetry": "Riprova",
   "captureRowTitle": "Acquisizione dati",
   "captureRowSub": "Copia locale verificata · senza account",
   "captureScreenTitle": "Acquisizione dati",

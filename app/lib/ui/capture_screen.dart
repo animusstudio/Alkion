@@ -721,6 +721,19 @@ class _ExportResult extends StatelessWidget {
   }
 }
 
+/// The capture screens' full-width accent action, for the startup recovery
+/// screen.
+class CaptureAction extends StatelessWidget {
+  const CaptureAction({super.key, required this.label, required this.onTap});
+
+  final String label;
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) =>
+      _Action(label: label, onTap: onTap, primary: true);
+}
+
 /// A full-width action: [primary] is the screen's accent action, the
 /// default a quiet bordered one, [quiet] a text-only one. Its label may
 /// take two lines and shrinks before it would split a word, so it holds at

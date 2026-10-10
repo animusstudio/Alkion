@@ -760,6 +760,10 @@
       }
     }
   },
+  "captureRecoveryRetry": "Try again",
+  "@captureRecoveryRetry": {
+    "description": "Startup recovery screen: runs startup again, without a confirmation, after a transient gate failure or a failed safety copy."
+  },
   "captureRowTitle": "Data capture",
   "captureRowSub": "Checked local copy · no account",
   "captureScreenTitle": "Data capture",
