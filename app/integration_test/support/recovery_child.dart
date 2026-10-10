@@ -79,7 +79,12 @@ class RecoveryChildConfig {
 
 /// One child run as the parent saw it.
 class RecoveryChildRun {
-  RecoveryChildRun(this.hits, this.outcome, {required this.killed});
+  RecoveryChildRun(
+    this.hits,
+    this.outcome, {
+    required this.killed,
+    required this.exitCode,
+  });
 
   /// Boundaries the child passed, in order.
   final List<String> hits;
@@ -89,8 +94,15 @@ class RecoveryChildRun {
   /// `error TYPE`.
   final String outcome;
 
-  /// Whether the parent killed it (it was parked).
+  /// Whether the parent sent SIGKILL (it was parked).
   final bool killed;
+
+  /// The child's exit status as the OS reported it: `-9` when SIGKILL
+  /// ended it, `0` after a completed run, `70` after an error.
+  final int exitCode;
+
+  /// The child was ended by SIGKILL, per its exit status.
+  bool get diedBySigkill => exitCode == -ProcessSignal.sigkill.signalNumber;
 
   String? get manifestSha256 {
     final parts = outcome.split(' ');
@@ -178,11 +190,12 @@ Future<RecoveryChildRun> runRecoveryChild(
   final all = lines();
   final outcome = all.last;
   final killed = outcome.startsWith('blocked ');
+  final int exitCode;
   if (killed) {
     process.kill(ProcessSignal.sigkill);
-    await process.exitCode;
+    exitCode = await process.exitCode;
   } else {
-    await process.exitCode.timeout(
+    exitCode = await process.exitCode.timeout(
       const Duration(seconds: 30),
       onTimeout: () {
         process.kill(ProcessSignal.sigkill);
@@ -197,5 +210,6 @@ Future<RecoveryChildRun> runRecoveryChild(
     ],
     outcome,
     killed: killed,
+    exitCode: exitCode,
   );
 }

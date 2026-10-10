@@ -80,6 +80,7 @@ Future<void> main() async {
     }
   } catch (e) {
     say('error ${e.runtimeType}');
+    exit(70);
   }
   exit(0);
 }

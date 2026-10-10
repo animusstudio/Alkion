@@ -266,6 +266,24 @@ class SyntheticInstallation {
     }
   }
 
+  /// Size, mode and modification time of every non-directory entry beside
+  /// the stores (links by target) and of the preference file, so a store
+  /// that cannot be read can still be shown untouched.
+  Map<String, String> entryStats() {
+    String stat(FileSystemEntity e) {
+      if (e is Link) return 'link:${e.targetSync()}';
+      final s = e.statSync();
+      return '${s.size}:${s.mode.toRadixString(8)}:'
+          '${s.modified.microsecondsSinceEpoch}';
+    }
+
+    return {
+      for (final e in source.listSync(followLinks: false))
+        if (e is! Directory) p.basename(e.path): stat(e),
+      if (preferencesFile.existsSync()) 'preferences': stat(preferencesFile),
+    };
+  }
+
   /// The queue as the producer must carry it: ids, transaction ids and the
   /// SHA-256 of each exact `data` text, in queue order.
   Future<List<Map<String, Object?>>> queueDigests() async {

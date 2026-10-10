@@ -114,29 +114,37 @@ class _FixtureConnector extends WorkoutConnector {
   }
 }
 
-/// A loopback `/sync/upload` service: the first request loses its response
-/// (the connection drops after the request arrived), the second is held
-/// until released and then answered 503; later ones are answered 503.
+/// A loopback `/sync/upload` service answering each request by [script]:
+/// `lose` (the connection drops after the request arrived, no response),
+/// `held_503` / `held_ok` (held until [release], then 503 / 200), `ok`
+/// (200). Requests past the script are answered 503.
 class _UploadService {
-  _UploadService._(this._server);
+  _UploadService._(this._server, this._script);
 
   final HttpServer _server;
+  final List<String> _script;
   var requests = 0;
-  final secondArrived = Completer<void>();
-  final _release = Completer<void>();
+  final _arrived = <int, Completer<void>>{};
+  final _released = <int, Completer<void>>{};
 
   String get base => 'http://${_server.address.host}:${_server.port}';
 
-  static Future<_UploadService> start() async {
+  static Future<_UploadService> start(List<String> script) async {
     final s = _UploadService._(
       await HttpServer.bind(InternetAddress.loopbackIPv4, 0),
+      script,
     );
     s._server.listen(s._handle);
     return s;
   }
 
-  void release() {
-    if (!_release.isCompleted) _release.complete();
+  /// Completes when request [n] (1-based) has arrived.
+  Future<void> arrived(int n) => (_arrived[n] ??= Completer<void>()).future;
+
+  /// Lets held request [n] be answered.
+  void release(int n) {
+    final c = _released[n] ??= Completer<void>();
+    if (!c.isCompleted) c.complete();
   }
 
   Future<void> _handle(HttpRequest request) async {
@@ -147,21 +155,31 @@ class _UploadService {
       return;
     }
     final n = ++requests;
-    if (n == 1) {
+    final arrived = _arrived[n] ??= Completer<void>();
+    if (!arrived.isCompleted) arrived.complete();
+    final mode = n <= _script.length ? _script[n - 1] : '503';
+    if (mode == 'lose') {
       final socket = await request.response.detachSocket(writeHeaders: false);
       socket.destroy();
       return;
     }
-    if (n == 2) {
-      secondArrived.complete();
-      await _release.future;
+    if (mode.startsWith('held_')) {
+      await (_released[n] ??= Completer<void>()).future;
     }
-    request.response.statusCode = HttpStatus.serviceUnavailable;
+    final ok = mode == 'ok' || mode == 'held_ok';
+    request.response
+      ..statusCode = ok ? HttpStatus.ok : HttpStatus.serviceUnavailable
+      ..write(ok ? '{}' : 'busy');
     await request.response.close();
   }
 
   Future<void> close() async {
-    release();
+    for (final c in _released.values) {
+      if (!c.isCompleted) c.complete();
+    }
+    for (var n = 1; n <= requests; n++) {
+      release(n);
+    }
     await _server.close(force: true);
   }
 }
@@ -406,6 +424,7 @@ void main() {
         captureId: _killCaptureId,
       );
       expect(rehearsal.outcome, startsWith('done certified $_killCaptureId'));
+      expect(rehearsal.exitCode, 0);
       final referenceDigest = rehearsal.manifestSha256!;
       final flushedDraft =
           ((await refRehearsal.sourceState())['files']!
@@ -421,6 +440,7 @@ void main() {
         resume: true,
       );
       expect(hold.outcome, endsWith(' resumed'));
+      expect(hold.exitCode, 0);
       // The coordinator's evidence names the mode, so each mode has its own
       // reference manifest.
       final referenceDigests = {
@@ -457,6 +477,11 @@ void main() {
         );
         expect(run.outcome, 'blocked $boundary $occurrence', reason: reason);
         expect(run.killed, isTrue, reason: reason);
+        expect(
+          run.exitCode,
+          -ProcessSignal.sigkill.signalNumber,
+          reason: '$reason: the child must have died by SIGKILL',
+        );
         final killedJournal = await CaptureJournal(
           i.locations.journal,
           base: i.source,
@@ -571,7 +596,8 @@ void main() {
           'mode': mode,
           'boundary': boundary,
           'occurrence': occurrence,
-          'process_killed': true,
+          'child_exit_status': run.exitCode,
+          'died_by_sigkill': run.diedBySigkill,
           'stage_at_kill': killedJournal?.stage.wire,
           'recovery_code': first.code,
           'recovery_stage': first.stage?.wire,
@@ -674,7 +700,7 @@ void main() {
       await gateFor(f);
       final previousApi = apiBaseUrl;
       cleanup.add(() async => apiBaseUrl = previousApi);
-      final service = await _UploadService.start();
+      final service = await _UploadService.start(['lose', 'held_503']);
       cleanup.add(service.close);
       apiBaseUrl = service.base;
       final auth = AuthStore(
@@ -709,7 +735,7 @@ void main() {
         connects: true,
         database: f.database,
       );
-      await service.secondArrived.future.timeout(const Duration(seconds: 30));
+      await service.arrived(2).timeout(const Duration(seconds: 30));
 
       // A foreground write admitted before the capture, still running.
       final foregroundHeld = Completer<void>();
@@ -778,7 +804,7 @@ void main() {
         isFalse,
         reason: 'an admitted upload is still out',
       );
-      service.release();
+      service.release(2);
       await _until(() => reached('journal_renamed:held'), 'held recorded');
       expect(service.requests, 2, reason: 'retries are refused, not sent');
       // Admitted foreground and background work keeps the hold from being
@@ -831,6 +857,158 @@ void main() {
         ),
         isNull,
       );
+
+      // Each further fixture stands for another installation (another app
+      // process): transport bookkeeping keyed by queue transaction id does
+      // not carry over between databases.
+      Future<
+        (NativeSyncFixture, _UploadService, _FixtureConnector, List<Object?>)
+      >
+      uploadFixture(List<String> script, List<String> rowIds) async {
+        TransportAdmission.instance.resetForTesting();
+        final u = await openNativeSyncFixture(profile);
+        cleanup.add(u.close);
+        await gateFor(u);
+        final svc = await _UploadService.start(script);
+        cleanup.add(svc.close);
+        apiBaseUrl = svc.base;
+        for (final id in rowIds) {
+          await u.database.execute(
+            'INSERT INTO exercises (id, name, slug) VALUES (?, ?, ?)',
+            [id, 'Local $id', 'local-$id'],
+          );
+        }
+        final queued = await u.queue();
+        expect(queued, hasLength(rowIds.length));
+        return (u, svc, _FixtureConnector(auth, u), queued);
+      }
+
+      Future<void> connectUploads(NativeSyncFixture u, _FixtureConnector c) =>
+          changeSyncConnection(
+            'sync.connect',
+            (_) => u.connect(connector: c),
+            connects: true,
+            database: u.database,
+          );
+
+      List<Map<String, Object?>> capturedQueue(CertifiedCapture c) => [
+        for (final e
+            in (store(c, 'upload_queue.json')['entries']! as List).cast<Map>())
+          {'id': e['client_id'], 'tx_id': e['tx_id'], 'data': e['data']},
+      ];
+
+      List<Map> uncertainOf(CertifiedCapture c) =>
+          (((store(c, 'capture-evidence.json')['transport']!
+                      as Map)['uncertain_uploads'])!
+                  as List)
+              .cast<Map>();
+
+      // 1b. The server accepts (2xx) while the local queue completion is
+      //     paused (the shared writer is held, so `complete()` waits): the
+      //     capture neither drains nor reads until the completion settles,
+      //     and the completed batch is simply no longer queued.
+      final (pc, pcService, pcConnector, pcQueue) = await uploadFixture(
+        ['held_ok'],
+        [
+          'a5000000-0000-4000-8000-000000000001',
+          'a5000000-0000-4000-8000-000000000002',
+        ],
+      );
+      await connectUploads(pc, pcConnector);
+      await pcService.arrived(1).timeout(const Duration(seconds: 30));
+      final writerHeld = Completer<void>();
+      final writerRelease = Completer<void>();
+      final writer = pc.database.writeLock((_) async {
+        writerHeld.complete();
+        await writerRelease.future;
+      });
+      await writerHeld.future;
+      pcService.release(1);
+      // The 2xx reached the connector; its complete() now waits.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      final pcFaults = ScriptedCaptureFaults();
+      var pcReconnects = 0;
+      final pcCapturing = coordinatorFor(
+        pc,
+        pcFaults,
+        () => pcReconnects++,
+      ).capture(mode: CaptureMode.rehearsal);
+      await _until(
+        () => pcFaults.hits.contains('admission_closed'),
+        'admission closed',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      expect(
+        pcFaults.hits.contains('network_drained'),
+        isFalse,
+        reason: 'an accepted upload whose completion is paused is not idle',
+      );
+      expect(pcFaults.hits.contains('read'), isFalse);
+      writerRelease.complete();
+      await writer;
+      final completed = await pcCapturing;
+      final firstTx = pcQueue.first as Map;
+      final remaining = [
+        for (final r in pcQueue.cast<Map<String, Object?>>())
+          if (r['tx_id'] != firstTx['tx_id']) r,
+      ];
+      expect(remaining, hasLength(1));
+      expect(
+        capturedQueue(completed),
+        remaining,
+        reason: 'the admitted upload completed before the boundary',
+      );
+      expect(await pc.queue(), remaining);
+      expect(uncertainOf(completed), isEmpty);
+      expect(pcService.requests, 1, reason: 'later uploads were refused');
+      expect(pcReconnects, 1);
+
+      // 1c. The server accepts (2xx) but the local completion fails (a
+      //     synthetic trigger makes the queue DELETE abort): the batch stays
+      //     queued and is reported `complete_failed`, never as accepted.
+      final (cf, cfService, cfConnector, cfQueue) = await uploadFixture(
+        ['ok', 'held_503'],
+        [
+          'a6000000-0000-4000-8000-000000000001',
+          'a6000000-0000-4000-8000-000000000002',
+        ],
+      );
+      await cf.database.execute(
+        'CREATE TRIGGER synthetic_complete_failure BEFORE DELETE ON ps_crud '
+        "BEGIN SELECT RAISE(ABORT, 'synthetic completion failure'); END",
+      );
+      await connectUploads(cf, cfConnector);
+      // Request 1 was accepted and its completion failed; request 2 is the
+      // SDK's retry of the same batch, held at the service.
+      await cfService.arrived(2).timeout(const Duration(seconds: 30));
+      expect(await cf.queue(), cfQueue);
+      // The trigger is not part of any qualified layout; the capture runs on
+      // the ordinary schema.
+      await cf.database.execute('DROP TRIGGER synthetic_complete_failure');
+      final cfFaults = ScriptedCaptureFaults();
+      final cfCapturing = coordinatorFor(
+        cf,
+        cfFaults,
+        () {},
+      ).capture(mode: CaptureMode.rehearsal);
+      await _until(
+        () => cfFaults.hits.contains('admission_closed'),
+        'admission closed',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 1000));
+      expect(cfFaults.hits.contains('network_drained'), isFalse);
+      cfService.release(2);
+      final failed = await cfCapturing;
+      expect(capturedQueue(failed), cfQueue, reason: 'nothing was dequeued');
+      expect(await cf.queue(), cfQueue);
+      final cfFirst = cfQueue.first as Map;
+      final completeFailed = uncertainOf(failed);
+      expect(completeFailed, hasLength(1));
+      expect(completeFailed.single['code'], 'complete_failed');
+      expect(completeFailed.single['disposition'], 'uncertain');
+      expect(completeFailed.single['transaction_id'], cfFirst['tx_id']);
+      expect(completeFailed.single['crud_ids'], [cfFirst['id']]);
+      expect(cfService.requests, 2);
 
       // 2. A native download apply pending behind the shared writer.
       final d = await openNativeSyncFixture(profile);
@@ -903,6 +1081,9 @@ void main() {
         ],
         'upload_response_lost': 'uncertain',
         'upload_held_then_503': 'not_uncertain',
+        'upload_2xx_completion_paused': 'drain_waited_then_dequeued',
+        'upload_2xx_completion_failed':
+            'complete_failed_uncertain_still_queued',
         'native_apply_paused': 'applied_before_disconnect_completed',
         'queue_unchanged': true,
         'captures': [
@@ -913,6 +1094,14 @@ void main() {
           {
             'capture_id': downloaded.captureId,
             'manifest_sha256': downloaded.manifestSha256,
+          },
+          {
+            'capture_id': completed.captureId,
+            'manifest_sha256': completed.manifestSha256,
+          },
+          {
+            'capture_id': failed.captureId,
+            'manifest_sha256': failed.manifestSha256,
           },
         ],
         'result': 'pass',
@@ -960,6 +1149,9 @@ void main() {
         final process = await open(i);
         final before = await i.sourceState();
         await apply?.call(i);
+        // The faulted source itself, before the capture: bytes where
+        // readable, and size/mode/mtime of every entry either way.
+        final applied = {...await i.sourceState(), 'stats': i.entryStats()};
         final scripted = faults?.call(i) ?? ScriptedCaptureFaults();
         CaptureNotCertified? refused;
         try {
@@ -976,6 +1168,14 @@ void main() {
           refused = e;
         }
         expect(refused, isNotNull, reason: '$name was certified');
+        // Before the fault is undone: the faulted item (and everything
+        // else) is exactly as it was, not truncated, cleaned up or removed.
+        final faulted = {...await i.sourceState(), 'stats': i.entryStats()};
+        expect(
+          faulted,
+          applied,
+          reason: '$name: the faulted source must be unchanged',
+        );
         await undo?.call(i);
 
         // Nothing partial is final, nothing was truncated or cleaned up, and
