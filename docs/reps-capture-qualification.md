@@ -1833,7 +1833,9 @@ Run on 2026-10-10 with `CAPTURE_DEVICE=linux`
      evidence names the mode, hence two references.
    - Then every boundary of the rehearsal (40) and every boundary of the
      local hold from `journal_flush:sealed` on (14) runs in a fresh copy.
-     The child is parked there and SIGKILLed: 54 real process kills.
+     The child is parked there and SIGKILLed: 54 real process kills. The
+     test asserts each child's exit status is -9 (death by SIGKILL), not
+     just that a kill was sent; `acceptance.json` records it per row.
    - After each kill:
      - the source equals its pre-capture state except the draft, which is
        either the pre-capture bytes or the one requested flush;
@@ -1857,8 +1859,9 @@ Run on 2026-10-10 with `CAPTURE_DEVICE=linux`
      - local hold `sealed` onwards: `local_hold`;
      - after a recorded `resume_allowed`: `resumed`.
 2. `foreground_background_native_writer_races`. PowerSync applies no
-   checkpoint while uploads are pending, so this runs as two fixtures with
-   one capture each.
+   checkpoint while uploads are pending, so this runs as four fixtures with
+   one capture each (each fixture stands for its own installation, so
+   transport bookkeeping is reset between them).
    - Uploads: sync is opted in through `changeSyncConnection` with the
      app's `WorkoutConnector` against a loopback `/sync/upload`. The first
      upload loses its response (the connection drops after the request).
@@ -1875,13 +1878,39 @@ Run on 2026-10-10 with `CAPTURE_DEVICE=linux`
      has exactly one uncertain upload (`ClientException`; the 503 is not
      uncertain) and `previously_connected: true`. The prior connected
      policy is restored once.
+   - Completion paused after a 2xx: the service holds the first upload
+     request; the test then leases the shared database writer and lets
+     the service answer 200, so the connector's `complete()` cannot run.
+     The capture does not reach `network_drained` or `read` while the
+     completion is paused. Once the writer is free the completion lands
+     before the boundary: the capture's queue (and the source's) lack
+     exactly that transaction, no upload is uncertain, and later uploads
+     are refused rather than sent. The SDK's own `disconnect()` also waits
+     for an in-flight upload, so this run proves the combined behaviour.
+     That the transport drain itself waits (no disconnect requested) is
+     pinned by the host test `upload_ticket_includes_complete`, which
+     spies on the disconnect.
+   - Completion failed after a 2xx: a synthetic `BEFORE DELETE ON ps_crud`
+     trigger makes the queue completion abort after the service answered
+     200. The SDK's retry of the same batch is held at the service, the
+     trigger is dropped (it is no qualified layout), and the capture runs.
+     The batch is still queued in the capture and the source, and the
+     evidence has exactly one uncertain upload: `complete_failed`, that
+     transaction id and its crud ids. It is never treated as accepted.
    - Downloads: a checkpoint is staged and its native apply paused behind
      the shared writer. The capture neither drains nor reads until the
      apply is released. The paused row is then in the single read, with
      the (empty) queue.
 3. `full_disk_permission_unreadable_and_limit_faults`. Real gate and
    files, one fresh installation per fault. After each fault:
-   - the source is unchanged;
+   - right after the refusal and **before** the fault is undone, the
+     faulted source equals the source as faulted: every readable file's
+     bytes, plus size, mode and modification time of every entry beside
+     the stores and of the preference file, links by target. So the
+     64 MiB + 1 draft is not truncated, the unreadable draft is not
+     touched, and the symlink, unlisted file and credential preference are
+     neither removed nor rewritten;
+   - after the fault is undone, the source equals its original state;
    - nothing partial is final;
    - an exploratory capture stays in private staging;
    - no credential reaches any written byte;
@@ -1931,13 +1960,17 @@ From the Hub snapshot root (`/tmp/claude-1000/hub-b50c8e5`, `git archive` of
   /tmp/reps-capture-synthetic/rehearsal-work`, run twice on the same work
   directory: exit 0 both times. Identical output: `staging_valid: true`,
   `exploratory: false`, findings `blocking 0 / review 3 / info 5`,
-  `cutover_ready: false`. `staging.json` was `52460d59…` and `report.json`
-  `571ca19a…` both times. The capture tree was byte- and metadata-identical
+  `cutover_ready: false`. `staging.json` was `5395a809…` and `report.json`
+  `df677ccc…` both times. The capture tree was byte- and metadata-identical
   before and after. **PASS**.
 - `python3 -I scripts/verify-capture-rehearsal.py /tmp/claude-1000/hub-b50c8e5
-  /tmp/reps-capture-synthetic`, run twice: **PASS**, 88 checks each run,
+  /tmp/reps-capture-synthetic`, run twice: **PASS**, 95 checks each run,
   identical results. It requires all four producer tests of the run to
-  have passed. It refuses a git working tree. It builds the
+  have passed. The expectations are its own, never read from the
+  producer: exactly the three fixtures; kind fixes the exit (certified →
+  0, exploratory → 2) and a producer claiming another kind or exit fails;
+  the findings and dispositions that must be visible are listed in the
+  script. It refuses a git working tree. It builds the
   rehearsal into a temporary directory, so exit codes are exact (`go run`
   maps a program's exit 2 to its own exit 1).
 
@@ -1951,13 +1984,17 @@ From the Hub snapshot root (`/tmp/claude-1000/hub-b50c8e5`, `git archive` of
   work directory, and a run into a separate work directory. They produced
   identical `staging.json`/`report.json` bytes. The staged draft
   `original_sha256` and every staged queue entry equal the producer's
-  digests. For the blocked fixture the captured queue equals them. Every
+  digests. For the blocked fixture nothing is staged, so the only counted
+  queue check compares Go's output: the entry its blocking finding names
+  (`client_id 11`) is one the producer recorded. The captured queue file
+  also equals the producer's digests, but that is not Go output and is
+  reported uncounted. Every
   report says `cutover_ready: false`, and the capture directories were
   unchanged. Producer acceptance is an integrity result. The Go findings
   above are the rehearsal's semantics, never producer checks.
-- Negative runs on tampered copies (wrong expected exit, a wrong queue
-  digest, one flipped capture byte, a missing test result) failed with
-  each mismatch named.
+- Negative runs on tampered copies (a wrong queue digest, one flipped
+  capture byte, a missing test result, a blocked fixture relabelled
+  certified with exit 0) failed with each mismatch named.
 
 ### Check results (2026-10-10, Linux host)
 
@@ -1980,9 +2017,10 @@ Limits:
   `durableReplace`; native fault injection covers those failures.
 - "Full disk" is a lowered `availableBytes` answer plus a real write the
   OS refuses (permissions). No file system was actually filled.
-- Uploads: lost response, a held request then 503. A 2xx whose local
-  completion is paused is not exercised natively; the host test
-  `lost_response_retains_uncertainty` covers `complete_failed`.
+- Uploads: lost response; a held request then 503; a 2xx with the
+  completion paused (writer held); a 2xx whose completion fails (synthetic
+  trigger). The completion pause cannot separate the transport drain from
+  the SDK's own wait at integration level (see above).
 - Everything is synthetic. Installed-device, signed-upgrade and Android
   rows stay **UNRUN**/unsupported. `cutover_ready` is false everywhere.
 
