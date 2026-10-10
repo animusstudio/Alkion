@@ -165,5 +165,11 @@ mTLS. Abort Unfreeze advances the epoch without reopening a retired account.
 Its OLD_ACTIVE peer proof is available only while the exact advanced current gate
 is still active, allowing the Hub to authenticate abort completion.
 
+The fence's schema is migrations `00023`–`00026`. The server applies every
+pending embedded migration at startup, before serving requests. `00025` and
+`00026` give every account a committed gate row, so a later upload always
+queues behind Freeze. They must be applied on the old server before any account
+is frozen. No deployed old server has them yet.
+
 See [the writer inventory and remaining readiness gates](docs/account-writer-fence.md).
 This implementation has not been deployed or certified for a migration cutover.
