@@ -24,6 +24,39 @@ ownership and record separate consent. Surrender and Unfreeze fetch current Hub
 READY/ABORTED proofs through pinned mTLS outside the transaction, then recheck the
 exact locked gate and snapshot. Hub activation remains a separate implementation.
 
+## Owner ordering obligation and the transition-mismatch trap
+
+The handover order starts with the Hub's durable PREPARED barrier and only then
+the old Freeze. This server does not enforce that first step. Freeze checks only
+its own gate: the exact old instance and account, `OLD_ACTIVE`, epoch = gate epoch
++ 1, and the request hash. The Hub's PREPARED barrier is deliberately not
+peer-visible before the old freeze, so Freeze neither fetches nor authenticates
+it. Every later step is authenticated: Surrender needs the Hub's READY receipt
+and Unfreeze needs the Hub's ABORTED receipt, each for the same transition,
+epoch and frozen snapshot.
+
+The owner must therefore:
+
+1. Prepare the transition on the Hub. A first transition is epoch 1; after an
+   authenticated abort completion, it is the advanced `OLD_ACTIVE` epoch + 1.
+   The Hub accepts no other epoch.
+2. Confirm that the Hub reports that transition as PREPARED.
+3. Only then freeze this account with the same transition ID and the same
+   epoch.
+
+The trap: suppose the account is frozen with transition t1 while the Hub
+prepared t2. No authenticated step can then match:
+
+- the Hub's READY for t2 needs a FROZEN receipt for t2;
+- Unfreeze of t1 needs a Hub ABORTED receipt for t1, and the Hub's t2
+  reservation prevents it from preparing t1;
+- the Hub's abort completion for t2 needs an `OLD_ACTIVE` proof for t2.
+
+The account stays FROZEN and the Hub source stays reserved. A Freeze with no
+Hub transition at all leaves the account frozen with no tested way back. No
+procedure in this branch leaves either state. Recovery from a mismatched or
+orphaned freeze is an H6 requirement, and no peer protocol is added for it.
+
 Snapshot format `reps-account-snapshot-v1` contains the pinned old account/instance
 and seven families in alphabetical order. Each family contains every column of
 its rows ordered by UUID. User-owned rows and shared exercise/day templates are
