@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import '../capture/capture_transport.dart';
+import '../capture/source_write_gate.dart';
+
 /// Base URL of the Go API server. On Linux desktop (the foundations validation
 /// target) the host can reach the container directly on localhost.
 /// Set from SettingsService at startup before openDatabase/connectSync.
@@ -65,8 +68,11 @@ class AuthStore {
     return _refreshToken != null;
   }
 
-  /// POST /auth/login. Throws on bad credentials.
+  /// POST /auth/login. Throws on bad credentials, and refuses
+  /// (`admission_closed`) while a data capture holds the source: no account
+  /// switch during capture.
   Future<void> login(String email, String password) async {
+    TransportAdmission.instance.ensureOpen('account.login');
     final res = await _http.post(
       Uri.parse('$apiBaseUrl/auth/login'),
       headers: {'content-type': 'application/json'},
@@ -84,6 +90,7 @@ class AuthStore {
   /// POST /auth/register. On 200 behaves like login (tokens + email persisted).
   /// Throws on failure (e.g. 409 email already registered).
   Future<void> register(String email, String password) async {
+    TransportAdmission.instance.ensureOpen('account.register');
     final res = await _http.post(
       Uri.parse('$apiBaseUrl/auth/register'),
       headers: {'content-type': 'application/json'},
@@ -107,9 +114,16 @@ class AuthStore {
   /// both hit a 401 when the access token expires) share one request. Sending
   /// the same refresh token twice trips the server's reuse detection, which
   /// revokes the whole token family and silently ends sync.
+  ///
+  /// Refused (`admission_closed`, nothing sent) while a data capture has
+  /// transport admission closed.
   Future<String?> refresh() {
     // A dead token stays dead: don't keep presenting it.
     if (sessionExpired.value) return Future.value(null);
+    if (!TransportAdmission.instance.isOpen) {
+      return Future.error(
+          const SourceGateException('admission_closed', 'auth.refresh'));
+    }
     return _refreshing ??= _refresh().whenComplete(() {
       _refreshing = null;
     });

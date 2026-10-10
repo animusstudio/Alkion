@@ -5,6 +5,10 @@ import 'package:powersync/powersync.dart';
 
 import '../auth/auth_store.dart';
 import '../capture/capture_profile.dart';
+import '../capture/capture_transport.dart';
+import '../capture/native_sync_quiescence.dart'
+    show nativeSyncConnectionWillChange;
+import '../capture/source_write_gate.dart';
 import 'connector.dart';
 import 'schema.dart';
 
@@ -64,15 +68,45 @@ Future<PowerSyncDatabase> openCaptureDatabase({
   return database;
 }
 
-/// Connect the open database to the sync service using [auth]'s credentials.
-Future<void> connectSync(AuthStore auth) async {
-  await db.connect(connector: WorkoutConnector(auth));
+/// Changes the sync connection of [database] (default [db]) as one admitted
+/// operation named [operation] ([parent] when it is part of a larger one).
+///
+/// Refused (`admission_closed`, before anything changes) while a data
+/// capture has transport or source admission closed. Once admitted, the
+/// change is reported to the native sync quiescence evidence first
+/// ([nativeSyncConnectionWillChange]), so no capture evidence observed
+/// before it stays current, and only then [change] runs.
+Future<void> changeSyncConnection(
+  String operation,
+  Future<void> Function(PowerSyncDatabase database) change, {
+  SourceTicket? parent,
+  PowerSyncDatabase? database,
+}) async {
+  TransportAdmission.instance.ensureOpen(operation);
+  final target = database ?? db;
+  await runSourceWrite(operation, (_) async {
+    TransportAdmission.instance.ensureOpen(operation);
+    nativeSyncConnectionWillChange(target);
+    await change(target);
+  }, parent: parent);
 }
 
+/// Connect the open database to the sync service using [auth]'s credentials:
+/// boot resume, login/registration attach, signing in again, and restoring
+/// a capture's prior policy all connect through here.
+Future<void> connectSync(AuthStore auth) => changeSyncConnection(
+    'sync.connect', (d) => d.connect(connector: WorkoutConnector(auth)));
+
+/// Stop syncing without clearing anything (signing in again stops the old
+/// loop first).
+Future<void> disconnectSync() =>
+    changeSyncConnection('sync.disconnect', (d) => d.disconnect());
+
 /// Stop syncing and wipe ALL local data (used on logout).
-Future<void> disconnectAndClear() async {
-  await db.disconnectAndClear();
-}
+Future<void> disconnectAndClear({SourceTicket? parent}) =>
+    changeSyncConnection('sync.disconnect_and_clear',
+        (d) => d.disconnectAndClear(),
+        parent: parent);
 
 /// How many local changes are still waiting to upload. They exist only on
 /// this device until they sync, so anything that wipes local data loses them.

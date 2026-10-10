@@ -3,9 +3,14 @@ import 'dart:ui'; // PlatformDispatcher
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
+
+import '../capture/capture_startup.dart' show CaptureLocations;
+import '../capture/session_capture_hooks.dart' show SessionWriteLedger;
+import '../capture/source_write_gate.dart';
 
 /// Notification id and channel id. Top-level so both the instance and the
 /// background isolate (which constructs a fresh plugin) agree on them.
@@ -133,6 +138,41 @@ Future<void> workoutNotificationBackground(NotificationResponse resp) async {
   if (resp.actionId != 'add_30s') return;
   WidgetsFlutterBinding.ensureInitialized();
   tzdata.initializeTimeZones();
+  // This engine's own instance of the shared source gate: every engine's
+  // admission goes through the one native ticket table and lock.
+  final appSupport = await getApplicationSupportDirectory();
+  await extendRestInBackground(
+      gate: SourceWriteGate(stateDirectory: CaptureLocations(appSupport).gate));
+}
+
+/// The background +30s, as one admitted source operation of [gate] (this
+/// engine's instance; null runs ungated, as on a build without the capture
+/// plugin, where [SourceWriteGate.run] also runs ungated).
+///
+/// The ticket is taken BEFORE preferences are loaded or reloaded and is held
+/// through every preference write and plugin call, so a data capture either
+/// waits for the whole extension or refuses it before anything is read.
+/// While a capture has admission closed the tap changes nothing: the rest
+/// keeps its earlier end (the extension is unavailable during capture).
+Future<void> extendRestInBackground({
+  required SourceWriteGate? gate,
+  FlutterLocalNotificationsPlugin? plugin,
+}) async {
+  Future<void> body(SourceTicket _) =>
+      _extendRest(plugin ?? FlutterLocalNotificationsPlugin());
+  try {
+    if (gate == null) {
+      await body(SourceTicket.ungated);
+    } else {
+      await gate.run('notification.background_add30', body);
+    }
+  } on SourceGateException {
+    // Refused while a capture holds the source, or the gate failed: nothing
+    // was read or written.
+  }
+}
+
+Future<void> _extendRest(FlutterLocalNotificationsPlugin plugin) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.reload(); // refresh in case the isolate/engine is reused across taps
   final startMs = prefs.getInt(restBlobStartMs);
@@ -151,7 +191,6 @@ Future<void> workoutNotificationBackground(NotificationResponse resp) async {
   final startedAt = DateTime.parse(startedAtIso);
   final end = restStart.add(Duration(seconds: newTotal));
 
-  final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(
     settings: const InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -189,16 +228,27 @@ Future<void> workoutNotificationBackground(NotificationResponse resp) async {
 
 /// Thin Android-only wrapper around flutter_local_notifications. All methods
 /// are no-ops off-Android (Linux dev builds never initialize the plugin).
+///
+/// Writing the rest blob and updating the notification is one admitted
+/// source operation per call. While a data capture holds the source the
+/// call changes nothing and remembers nothing as shown, so the next call
+/// after the capture (see [SessionManager.resumeCallbacks]) writes it.
 class WorkoutNotification {
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  WorkoutNotification({
+    @visibleForTesting FlutterLocalNotificationsPlugin? plugin,
+    @visibleForTesting bool? isAndroid,
+  })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
+        _isAndroid = isAndroid ?? Platform.isAndroid;
+
+  final FlutterLocalNotificationsPlugin _plugin;
+  final bool _isAndroid;
   bool _ready = false;
   bool _permissionAsked = false;
   ({String title, bool countdown, DateTime when})? _lastShown;
   DateTime? _lastScheduledEnd;
 
   Future<void> init({void Function()? onTap, void Function()? onAdd30}) async {
-    if (!Platform.isAndroid) return;
+    if (!_isAndroid) return;
     final prefs = await SharedPreferences.getInstance();
     await _plugin.initialize(
       settings: const InitializationSettings(
@@ -264,20 +314,36 @@ class WorkoutNotification {
     final key = (title: p.title, countdown: p.countdown, when: p.when);
     if (key == _lastShown) return; // unchanged → skip the re-show
     _lastShown = key;
+    try {
+      await runSourceWrite('notification.show',
+          (_) => _show(p, name, startedAt, restStart, restTotal));
+    } on SourceGateException {
+      // Refused (a data capture holds the source): nothing was written or
+      // shown; forget the key so the next call shows it.
+      if (_lastShown == key) _lastShown = null;
+    }
+  }
+
+  Future<void> _show(
+    ({String title, String body, bool countdown, DateTime when}) p,
+    String name,
+    DateTime startedAt,
+    DateTime? restStart,
+    int restTotal,
+  ) async {
     // Persist/clear the rest blob (read by the background +30s handler and the
     // foreground reconciliation). The blob mirrors the live rest state.
     final prefs = await SharedPreferences.getInstance();
-    if (restStart != null) {
-      await prefs.setString(restBlobName, name);
-      await prefs.setString(restBlobStartedAt, startedAt.toIso8601String());
-      await prefs.setInt(restBlobStartMs, restStart.millisecondsSinceEpoch);
-      await prefs.setInt(restBlobTotal, restTotal);
-    } else {
-      await prefs.remove(restBlobName);
-      await prefs.remove(restBlobStartedAt);
-      await prefs.remove(restBlobStartMs);
-      await prefs.remove(restBlobTotal);
-    }
+    await SessionWriteLedger.instance.write('prefs.rest_blob', () async {
+      if (restStart != null) {
+        await prefs.setString(restBlobName, name);
+        await prefs.setString(restBlobStartedAt, startedAt.toIso8601String());
+        await prefs.setInt(restBlobStartMs, restStart.millisecondsSinceEpoch);
+        await prefs.setInt(restBlobTotal, restTotal);
+      } else {
+        await _removeRestBlob(prefs);
+      }
+    });
     // The "+30s" action chip belongs only on the live rest countdown
     // (p.countdown true). Elapsed mode and the scheduled revert omit it.
     await _plugin.show(
@@ -318,15 +384,34 @@ class WorkoutNotification {
     }
   }
 
+  /// Whether the last [cancel] was refused (a data capture held the source)
+  /// and still has to run.
+  bool get cancelOwed => _cancelOwed;
+  bool _cancelOwed = false;
+
   Future<void> cancel() async {
     if (!_ready) return;
     _lastShown = null;
     _lastScheduledEnd = null;
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      await runSourceWrite('notification.cancel', (_) async {
+        final prefs = await SharedPreferences.getInstance();
+        await SessionWriteLedger.instance
+            .write('prefs.rest_blob', () => _removeRestBlob(prefs));
+        await _plugin.cancel(id: _kNotifId); // cancels the shown notification AND the pending alarm
+      });
+      _cancelOwed = false;
+    } on SourceGateException {
+      // Refused while a data capture holds the source: the blob and the
+      // notification stay until the cancel runs after the capture.
+      _cancelOwed = true;
+    }
+  }
+
+  static Future<void> _removeRestBlob(SharedPreferences prefs) async {
     await prefs.remove(restBlobName);
     await prefs.remove(restBlobStartedAt);
     await prefs.remove(restBlobStartMs);
     await prefs.remove(restBlobTotal);
-    await _plugin.cancel(id: _kNotifId); // cancels the shown notification AND the pending alarm
   }
 }

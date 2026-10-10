@@ -726,8 +726,9 @@ Limits:
 Every SQL, workout-file and session-callback writer of the running app is one
 admitted logical operation (`runSourceWrite` over the app gate that `main`
 installs before any ordinary startup step). Read-only queries and watch
-streams are not wrapped. Preferences, notifications and PowerSync transport
-are not yet wrapped; until they are, attested capture stays **unsupported**.
+streams are not wrapped. Preferences, notifications, account and PowerSync
+transport writers are covered in "Preferences, notifications and transport"
+below.
 
 | Operation | Ticket scope |
 | --- | --- |
@@ -823,6 +824,174 @@ Limits:
 - The real `main()` with the Linux plugin was not run end to end with these
   writers; native admission is covered by the capture integration tests.
 
+## Preferences, notifications and transport
+
+Every `SharedPreferences` writer of the running app is one admitted source
+operation through `writePreferences(operation, write, {parent})`
+(`app/lib/capture/preference_writes.dart`). It loads the preferences only
+after admission, under the ticket, and is tracked by `SessionWriteLedger`, so
+`SessionCaptureHooks.drainAndFlush` awaits it. Its outcome is recorded under
+its operation name: a failed write blocks the boundary (`persistence_failed`)
+until a later write of the same operation succeeds. A write refused because
+admission is closed changes nothing, and the service shows the stored value
+again.
+
+### Writer inventory (file:line at this commit)
+
+| Writer | Location | Operation | Ticket scope |
+| --- | --- | --- | --- |
+| Unit change (`setUnit` stays `void`) | `app/lib/units/unit_service.dart:36` | `prefs.unit` | the write, chained after earlier unit writes; `flushPersistence()` (`:62`) awaits it and rethrows a failure; a refused change is undone |
+| Theme mode, accent, profile name, server URL, sync toggle, both rest defaults, language, auto-check, bodyweight goal, update-check time | `app/lib/settings/settings_service.dart:108,118,129,140,152,163,175,188,202,213,226` (`_persist` `:241`) | `prefs.settings.<key>` | the write; a refused value is undone and the refusal rethrown; `setSyncEnabled` nests under sign-out (`parent:`) |
+| Identity generation/adoption | `app/lib/identity/identity_service.dart:44` | `prefs.identity` | both keys in one write |
+| Onboarding complete | `app/lib/identity/identity_service.dart:52`, from `app/lib/main.dart:259` | `prefs.identity.onboarding` nested in `onboarding.complete` | starter seed (`onboarding.seed`, with the target seed) and the flag are one operation |
+| Template absorb tombstones | `app/lib/data/template_absorb.dart:356` | inside `boot.absorb_templates` | reads, transaction and tombstones; outcome recorded as `prefs.absorb_tombstones` |
+| Sync-health last-sync time | `app/lib/sync/sync_health.dart:112` | `prefs.sync_health.last_synced` | the write; refused while held, remembered only once written, rewritten by the next recompute |
+| Sync-health clear | `app/lib/sync/sync_health.dart:92` | `prefs.sync_health.clear` | nested under sign-out and the discard-local choice |
+| Update ETag | `app/lib/update/update_service.dart:91` | `prefs.update_etag` | the write; not cached while refused |
+| Rest blob, foreground show | `app/lib/session/workout_notification.dart:318` (blob `:337`) | `notification.show` | blob write, notification show and revert alarm; refused: nothing written or remembered as shown |
+| Rest blob, foreground cancel | `app/lib/session/workout_notification.dart:397` | `notification.cancel` | blob removal and notification cancel; refused: `cancelOwed` until it runs |
+| Rest blob, background +30s | `app/lib/session/workout_notification.dart:157` (entry point `:137`) | `notification.background_add30` on that engine's own `SourceWriteGate` | ticket taken BEFORE `SharedPreferences.getInstance`/`reload`, held through the write, `initialize`, `show` and `zonedSchedule`; refused: nothing read or written |
+| Notifier calls from `SessionManager` (previously ignored futures) | `app/lib/session/session_manager.dart:173,183,199` | tracked by `SessionWriteLedger.detach` | `resumeCallbacks` re-syncs the notification after a capture |
+| Connector upload | `app/lib/sync/connector.dart:73` | `sync.upload` (transport admission + gate) | `getNextCrudTransaction` through the POST and `transaction.complete()` or the failure |
+| Credential fetch / refresh | `app/lib/sync/connector.dart:41,50`; `app/lib/auth/auth_store.dart:120` | transport admission | refused while closed; an admitted upload never refreshes while closed |
+| Login / registration (account switch) | `app/lib/auth/auth_store.dart:74,92` | transport admission | refused while closed |
+| Connect / reconnect (boot resume, login attach, sign in again, back-out restore, capture policy restore) | `app/lib/sync/db.dart:97`, called from `app/lib/main.dart:199`, `app/lib/ui/sign_in_again.dart:71,82,138` | `sync.connect` | admission checked, then `nativeSyncConnectionWillChange(db)`, then `db.connect` |
+| Disconnect before signing in again | `app/lib/sync/db.dart:102`, from `app/lib/ui/sign_in_again.dart:60` | `sync.disconnect` | same order |
+| Disconnect and clear (sign-out, discard-local) | `app/lib/sync/db.dart:106`, from `app/lib/main.dart:216`, `app/lib/ui/sign_in_again.dart:131` | `sync.disconnect_and_clear` | same order |
+| Sign-out (`logOutAndForget`) | `app/lib/main.dart:208` | `account.logout` | clear, token revoke/forget, sync off and last-sync clear nested (`parent:`) |
+| Server switch | `app/lib/ui/profile_screen.dart:501` | transport admission, then the URL write and sign-out | refused up front |
+| OTA install | `app/lib/update/update_installer.dart:40` | `update.install` (transport admission + gate) | the whole download and installer launch |
+
+`changeSyncConnection` (`app/lib/sync/db.dart:79`) is the single way the app
+changes the sync connection. It refuses (`admission_closed`) before anything
+changes while transport admission is closed. Otherwise it is admitted through
+the gate and calls `nativeSyncConnectionWillChange(database)` (the
+connection-epoch bump `NativeSyncQuiescence.connectionWillChange` delegates
+to) before the SDK call, so no earlier capture evidence stays current.
+
+Refusals are visible where they start:
+
+- sign-out and the server switch, sign in again, the onboarding choice, and
+  every Profile setting (chips, steppers, toggle, language and goal sheets,
+  via `showWriteFailures`) show the "Couldn't save" dialog;
+- login/registration and the keep/discard reconnect show the login screen's
+  error line;
+- an OTA install fails its progress dialog;
+- the unit chip and the settings snap back to the stored value.
+
+Writers that do not take a gate ticket, and why:
+
+- PowerSync's own native work: download apply, and the write checkpoint
+  (`updateLocalTarget`) that the SDK's upload loop runs after the queue
+  empties. Neither is covered by an application ticket. Only native
+  quiescence covers them: `disconnect()` awaits the active upload loop and
+  the sync isolate, and the writer barrier fences what it left. This is the
+  method the Linux qualification proves; without it the profile is
+  **unsupported**.
+- Secure storage (tokens and email in `AuthStore`). It is the
+  `credentials`-excluded store and is never captured. Its writers (login,
+  registration and refresh) are refused by transport admission, and logout
+  runs inside `account.logout`.
+- The export service's output files. They are not a source store.
+- On Android the capture plugin is not built (Ruling R9), so every writer
+  above, including the background +30s, runs ungated (Ruling R15). The Dart
+  ordering is pinned by host tests only. The Android background proof is
+  **UNRUN**, and Android capture stays **unsupported**.
+
+### `CaptureTransport` (`app/lib/capture/capture_transport.dart`)
+
+`closeAdmission(preparation)` closes transport admission without draining
+anything; the coordinator calls it right after the source gate closes, so
+account changes are held from the first step.
+
+`pauseAndDrain(preparation, timeout:)` does the following, in order, within
+one bounded timeout:
+
+1. Closes transport admission. This refuses new uploads, credential fetches
+   and refreshes, logins, connects, disconnects, clears, sign-out and OTA
+   installs.
+2. Awaits every admitted upload through its `transaction.complete()` or its
+   failure.
+3. Calls `NativeSyncQuiescence.disconnectAndObserve(database, profile,
+   captureId:, gateGeneration:, timeout: remaining)` with the registered
+   qualification for the profile (`CaptureTransport.forProfile`).
+4. Reloads this engine's preference cache.
+
+It never clears, completes or dequeues queued work. It never reads the SDK
+status, `pendingUploadCount` or the gate as evidence.
+
+The returned `TransportPauseEvidence` has these fields:
+
+- `uploadPaused`.
+- `downloadPaused`: true only if the evidence has both completions and
+  passes `isCurrent(...)` for this database, epoch, profile, capture and
+  generation. `nativeSync` is set exactly then.
+- `uncertainUploads`.
+- `previouslyConnected`.
+- `blockedCode`, one of:
+  - `upload_drain_timeout`
+  - `native_sync_unqualified`
+  - `native_sync_timeout`
+  - `native_sync_failed`
+  - `native_sync_connection_changed`
+  - `native_sync_stale`
+  - `preferences_reload_failed`
+  - the adapter's own `UnsupportedCaptureProfile` code.
+
+A blocked or timed-out drain returns evidence with false flags, never
+success. `isCurrent(evidence, preparation)` is the recheck the coordinator
+runs before it reads.
+
+Upload outcomes:
+
+- A request that went out and got no answer is `uncertain`. This covers a
+  lost response, a cancellation, and a request still out when the bounded
+  drain ended (`in_flight`).
+- A 2xx answer whose local completion failed is `uncertain` with code
+  `complete_failed`.
+- A non-2xx answer is "not accepted": the batch stays queued, and any
+  earlier uncertainty about it is kept.
+- Only a later completed upload of the same batch drops its uncertainty.
+- Entries carry `ps_crud.tx_id`, the `ps_crud.id`s and a type-name code, and
+  nothing else.
+
+`resumePriorPolicy(previouslyConnected)` reopens transport admission and
+reconnects through `connectSync` only if sync was connected before. It never
+enables sync for a capture. The coordinator calls it after releasing the
+source gate, and also after an aborted capture.
+
+### Host tests (Dart model of the admission protocol; no native claim), all **PASS**
+
+| Test | What it pins |
+| --- | --- |
+| `pending_unit_failure_blocks_capture` (`app/test/capture/preference_gate_test.dart`) | a pending unit write holds its ticket and `flushPersistence` waits for it; the reloaded unit is exactly `lb`; a failing write propagates and makes `drainAndFlush` throw `persistence_failed` (`prefs.unit`) until a later write succeeds; a change refused while closed writes nothing and is undone |
+| `settings_writers_are_admitted_and_refused_visibly` | settings writes are admitted; while closed they throw `admission_closed`, write nothing and restore the shown value |
+| `background_plus30_and_notifier_block_under_hold` | the background +30s takes its ticket before any preference load/reload, holds it through the plugin calls, and is drained before the hold; under the hold neither engine's notification writes anything (`backgroundWritesWhileHeld == 0`); a refused foreground update is written after release |
+| `upload_ticket_includes_complete` (`app/test/capture/capture_transport_test.dart`) | with the server's answer in and `transaction.complete()` blocked on the writer, neither the gate nor the transport drain is idle (`idleBeforeQueueCompletion == false`) and the disconnect has not started; afterwards exactly that batch left the queue; new uploads are refused and send nothing |
+| `lost_response_retains_uncertainty` | a lost response leaves the batch queued and reports it `uncertain` with safe ids/code only; a 503 is not uncertain; a request still out at the bounded timeout gives `uploadPaused == false`, `upload_drain_timeout` and an `in_flight` entry |
+| `native_apply_not_idle_blocks_attestation` | an undrained native apply gives `downloadPaused == false` (`native_sync_timeout`); no registered qualification gives `native_sync_unqualified` although the SDK reports disconnected |
+| `stale_native_evidence_blocks_attestation` | evidence for another capture, generation, database or adapter kind, or after a connection change, is not current; a connection change during the observation yields `native_sync_connection_changed` |
+| `logout_reconnect_install_rejected_during_capture` | connect, disconnect, disconnect-and-clear, sign-out, credential fetch/refresh, login and OTA install are refused while closed; nothing is cleared, signed out, refreshed or installed and the evidence stays current; after release a connection change invalidates the evidence before it runs |
+
+Mutation checks:
+
+| Mutation | Result |
+| --- | --- |
+| upload drain skipped | **FAIL** (`upload_ticket_includes_complete`, `lost_response_retains_uncertainty`) |
+| `flushPersistence` returns at once | **FAIL** (`pending_unit_failure_blocks_capture`) |
+| background +30s loads preferences before its ticket | **FAIL** (`background_plus30_and_notifier_block_under_hold`) |
+
+Limits:
+
+- The Android background engine has no capture plugin, so the background
+  ordering is a Dart contract only. This is **UNRUN** on a device.
+- A foreground +30s tap during a hold changes only the in-memory rest. Its
+  autosave and rest-blob update are refused and redone after release. Showing
+  the extension as unavailable is a UI concern for the capture screen.
+- `previouslyConnected` is read when `pauseAndDrain` starts. A retried drain
+  for the same capture sees the earlier disconnect, so the coordinator keeps
+  the first value.
+
 ## Native qualification command
 
 `make -C app capture-integration CAPTURE_DEVICE=<device id>` runs
@@ -839,5 +1008,6 @@ assertions and the recovery test (eight tests), then once with nine tests
 after the startup test was added, then once with all ten after review
 round 1, then once more after the session-operation work (with
 `missing_plugin_runs_ordinary_writes_ungated`), and once after its review
-round 1. It has never run on Android. Host unit tests never establish
+round 1, then twice after the preference, notification and transport
+writers were wrapped (unchanged ten tests). It has never run on Android. Host unit tests never establish
 Android support.

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/auth_store.dart';
+import '../capture/source_write_gate.dart' show SourceGateException;
 import '../data/day_template_repository.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
@@ -86,7 +87,12 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     final info = await UpdateService().checkForUpdate(); // force:false, silent
-    await settings.markUpdateChecked(now);
+    try {
+      await settings.markUpdateChecked(now);
+    } on SourceGateException {
+      // Not recorded while a data capture holds the source: the check simply
+      // runs again on a later launch.
+    }
     if (info == null) return;
     final ctx = appNavigatorKey.currentContext;
     if (ctx != null && ctx.mounted) await showUpdateDialog(ctx, info);

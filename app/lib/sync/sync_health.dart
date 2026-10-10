@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:powersync/powersync.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../capture/preference_writes.dart';
+import '../capture/source_write_gate.dart';
 import 'sync_status_ui.dart';
 
 /// App-wide sync health for Today's data-at-risk card and Profile's
@@ -84,12 +86,16 @@ class SyncHealth extends ChangeNotifier {
 
   /// Forgets the remembered last sync, for a logout or a discard of local
   /// data: the next account must not show the previous one's time.
-  Future<void> clear() async {
+  ///
+  /// One admitted source operation ([parent] when it is part of sign-out);
+  /// refused, changing nothing, while a data capture holds the source.
+  Future<void> clear({SourceTicket? parent}) async {
+    await writePreferences(
+        'prefs.sync_health.clear', (prefs) => prefs.remove(_prefsKey),
+        parent: parent);
     final forgotten = lastSyncedAt;
     if (forgotten != null) _clearedUpTo = forgotten;
     _saved = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsKey);
     if (_disposed) return;
     // recompute() publishes the now-empty time and notifies if it or the
     // at-risk flag changed.
@@ -99,9 +105,16 @@ class SyncHealth extends ChangeNotifier {
   Future<void> recompute() async {
     final live = _live;
     if (live != null && (_saved == null || live.isAfter(_saved!))) {
-      _saved = live;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_prefsKey, live.millisecondsSinceEpoch);
+      // Remembered once written. While a data capture holds the source the
+      // write is refused and nothing is remembered: the next recompute after
+      // the capture writes it (PowerSync's own time is shown meanwhile).
+      try {
+        await writePreferences('prefs.sync_health.last_synced',
+            (prefs) => prefs.setInt(_prefsKey, live.millisecondsSinceEpoch));
+        if (_saved == null || live.isAfter(_saved!)) _saved = live;
+      } catch (e) {
+        if (!isAdmissionRefusal(e)) rethrow;
+      }
     }
     final pending = await _pendingChanges();
     if (_disposed) return;

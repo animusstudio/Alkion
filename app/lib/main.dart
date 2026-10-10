@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'auth/auth_store.dart';
 import 'capture/capture_journal.dart';
 import 'capture/capture_startup.dart';
+import 'capture/capture_transport.dart';
 import 'capture/session_capture_hooks.dart';
 import 'capture/source_write_gate.dart';
 import 'capture/startup_inventory.dart';
@@ -35,6 +36,7 @@ import 'ui/capture_recovery_screen.dart';
 import 'ui/onboarding_screen.dart';
 import 'units/unit_service.dart';
 import 'util/error_surface.dart';
+import 'widgets/w_dialog.dart';
 
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -199,6 +201,26 @@ class _AppBoot implements OrdinaryStartupSteps {
   }
 }
 
+/// Signs out and wipes the local data, as one admitted operation: stops
+/// sync and clears the database, revokes and forgets the tokens, turns sync
+/// off and forgets the last sync time. Refused whole (`admission_closed`,
+/// nothing changed) while a data capture prepares or holds the source.
+Future<void> logOutAndForget({
+  required AuthStore auth,
+  required SettingsService settings,
+  required SyncHealth syncHealth,
+}) async {
+  TransportAdmission.instance.ensureOpen('account.logout');
+  await runSourceWrite('account.logout', (ticket) async {
+    TransportAdmission.instance.ensureOpen('account.logout');
+    await disconnectAndClear(parent: ticket);
+    await auth.logout();
+    await settings.setSyncEnabled(false, parent: ticket);
+    // Forget this account's last sync (clear() also recomputes).
+    await syncHealth.clear(parent: ticket);
+  });
+}
+
 class App extends StatefulWidget {
   const App({
     super.key,
@@ -223,28 +245,36 @@ class App extends StatefulWidget {
 
 class _AppState extends State<App> {
   Future<void> _onLogout() async {
-    await disconnectAndClear();
-    await widget.auth.logout();
-    await widget.settingsService.setSyncEnabled(false);
-    // Forget this account's last sync (clear() also recomputes).
-    await widget.syncHealth.clear();
+    await logOutAndForget(
+      auth: widget.auth,
+      settings: widget.settingsService,
+      syncHealth: widget.syncHealth,
+    );
     setState(() {}); // returns to the local app shell, not a login wall
   }
 
   Future<void> _onOnboardingChosen(
       BuildContext ctx, OnboardingChoice choice) async {
-    if (choice == OnboardingChoice.starter) {
-      await runSourceWrite('onboarding.seed', (ticket) async {
-        await db.writeTransaction(
-          (tx) => seedStarterCatalog(
-              PowerSyncTxExecutor(tx), widget.identity.currentUserId),
-        );
-        await MuscleTargetRepository(db).seedDefaultsIfEmpty(
-            widget.identity.currentUserId,
-            parent: ticket);
+    try {
+      await runSourceWrite('onboarding.complete', (ticket) async {
+        if (choice == OnboardingChoice.starter) {
+          await runSourceWrite('onboarding.seed', (ticket) async {
+            await db.writeTransaction(
+              (tx) => seedStarterCatalog(
+                  PowerSyncTxExecutor(tx), widget.identity.currentUserId),
+            );
+            await MuscleTargetRepository(db).seedDefaultsIfEmpty(
+                widget.identity.currentUserId,
+                parent: ticket);
+          }, parent: ticket);
+        }
+        // Notifies → re-route to shell.
+        await widget.identity.completeOnboarding(parent: ticket);
       });
+    } on SourceGateException catch (e) {
+      // Refused while a data capture holds the source: nothing was seeded.
+      if (ctx.mounted) await showWriteFailed(ctx, e);
     }
-    await widget.identity.completeOnboarding(); // notifies → re-route to shell
   }
 
   @override

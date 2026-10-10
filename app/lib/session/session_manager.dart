@@ -102,6 +102,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     _frozenGeneration = null;
     _callbackEpoch++;
     _active?.resumeCallbacks(now);
+    _resyncNotification();
     if (_resumedWhileFrozen) {
       _resumedWhileFrozen = false;
       unawaited(_reconcileRestFromBlob());
@@ -149,12 +150,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     c.addListener(_onControllerChange);
     final frozen = _frozenGeneration;
     if (frozen != null) c.freezeCallbacks(frozen);
-    notifier?.showFor(
-      name: c.draft.name,
-      startedAt: c.draft.startedAt,
-      restStart: c.restStart,
-      restTotal: c.restTotal,
-    );
+    _showNotification(c);
     notifyListeners();
   }
 
@@ -166,20 +162,42 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       clear();
       return;
     }
-    notifier?.showFor(
-      name: c.draft.name,
-      startedAt: c.draft.startedAt,
-      restStart: c.restStart,
-      restTotal: c.restTotal,
-    );
+    _showNotification(c);
     notifyListeners(); // mini-bar rest-mode swap
   }
 
   void clear() {
     _active?.removeListener(_onControllerChange);
     _active = null;
-    notifier?.cancel();
+    final n = notifier;
+    if (n != null) _ledger.detach(n.cancel());
     notifyListeners();
+  }
+
+  /// Mirrors [c] into the ongoing notification and its rest blob. The update
+  /// is a tracked operation: a capture awaits it. One refused while a
+  /// capture holds the source is redone by [resumeCallbacks].
+  void _showNotification(ActiveSessionController c) {
+    final n = notifier;
+    if (n == null) return;
+    _ledger.detach(n.showFor(
+      name: c.draft.name,
+      startedAt: c.draft.startedAt,
+      restStart: c.restStart,
+      restTotal: c.restTotal,
+    ));
+  }
+
+  /// After a capture released the source: the notification and rest blob
+  /// show the live state again (an update refused meanwhile is redone; one
+  /// already shown is skipped by the notifier).
+  void _resyncNotification() {
+    final c = _active;
+    if (c != null && c.hasSession) {
+      _showNotification(c);
+    } else if (notifier?.cancelOwed ?? false) {
+      _ledger.detach(notifier!.cancel());
+    }
   }
 
   /// Boot path: restore a persisted draft (crash / process-death recovery).

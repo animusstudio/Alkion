@@ -232,6 +232,16 @@ String _instanceId(PowerSyncDatabase database) =>
 
 _Epoch _epoch(PowerSyncDatabase database) => _epochs[database] ??= _Epoch();
 
+/// Reports that [database]'s sync connection is about to change (a connect,
+/// reconnect, disconnect or clear by the app). Every such path calls this
+/// BEFORE it changes the SDK connection: it advances the connection epoch,
+/// so no evidence observed earlier is current afterwards, whichever adapter
+/// produced it. Same as [NativeSyncQuiescence.connectionWillChange], for
+/// callers that hold no adapter.
+void nativeSyncConnectionWillChange(PowerSyncDatabase database) {
+  _epoch(database).value++;
+}
+
 /// Observes native sync quiescence for one exact qualification.
 ///
 /// Evidence is valid only for the database instance, connection epoch,
@@ -334,9 +344,8 @@ class NativeSyncQuiescence {
 
   /// Must be called before every connect or reconnect of [database]: it
   /// advances the connection epoch, invalidating all earlier evidence.
-  void connectionWillChange(PowerSyncDatabase database) {
-    _epoch(database).value++;
-  }
+  void connectionWillChange(PowerSyncDatabase database) =>
+      nativeSyncConnectionWillChange(database);
 
   /// Whether [evidence] still proves quiescence for exactly this database,
   /// profile, capture and gate generation under this adapter's qualification.

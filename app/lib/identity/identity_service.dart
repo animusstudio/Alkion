@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:powersync/powersync.dart' show uuid; // shared uuid singleton (project convention)
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../capture/preference_writes.dart';
+import '../capture/source_write_gate.dart';
+
 /// Owns the device-local identity for the standalone (server-optional) app.
 ///
 /// `currentUserId` is the owner id used for local writes that need one (the
@@ -36,14 +39,21 @@ class IdentityService extends ChangeNotifier {
       _currentUserId = uuid.v4();
       _onboardingComplete = false;
     }
-    await prefs.setString(_kUserId, _currentUserId);
-    await prefs.setBool(_kOnboarded, _onboardingComplete);
+    final userId = _currentUserId;
+    final onboarded = _onboardingComplete;
+    await writePreferences('prefs.identity', (prefs) async {
+      final stored = await prefs.setString(_kUserId, userId);
+      return await prefs.setBool(_kOnboarded, onboarded) && stored;
+    });
   }
 
-  Future<void> completeOnboarding() async {
+  /// Marks onboarding complete and persists it; [parent] when it is part of
+  /// the onboarding operation that seeded the catalog.
+  Future<void> completeOnboarding({SourceTicket? parent}) async {
+    await writePreferences(
+        'prefs.identity.onboarding', (prefs) => prefs.setBool(_kOnboarded, true),
+        parent: parent);
     _onboardingComplete = true;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kOnboarded, true);
     notifyListeners();
   }
 }

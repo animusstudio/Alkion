@@ -87,6 +87,16 @@ Future<void> showWriteFailed(BuildContext context, Object error) async {
   );
 }
 
+/// For a write a tap starts without awaiting it (a settings chip, stepper
+/// or toggle): its failure, for example a write refused while a data capture
+/// holds the source, is shown with [showWriteFailed] instead of being lost
+/// as an unhandled error.
+void showWriteFailures(BuildContext context, Future<void> write) {
+  write.then((_) {}, onError: (Object e) {
+    if (context.mounted) showWriteFailed(context, e);
+  });
+}
+
 class _WDialogBody<T> extends StatelessWidget {
   const _WDialogBody({
     required this.title,
