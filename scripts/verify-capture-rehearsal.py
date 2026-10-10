@@ -17,12 +17,15 @@ and the expected rehearsal result.
 It requires every producer test of that run to have passed. For every
 fixture capture it then checks:
 
-* the rehearsal exits as expected: 0 for a valid capture, 2 for a blocked
-  one, and every summary and report says `cutover_ready: false`;
-* expected findings and item dispositions are visible (review, unavailable,
-  blocking);
-* the staged raw draft digest and every queue entry (client id, transaction
-  id, SHA-256 of the exact `data` text) equal the producer's digests;
+* the rehearsal exits as the fixture's kind requires: 0 for a certified
+  capture, 2 for an exploratory (producer-refused) one, and every summary
+  and report says `cutover_ready: false`; these expectations, and the
+  findings and item dispositions that must be visible (review, unavailable,
+  blocking), are owned by this script, not read from the producer;
+* the staged raw draft digest and every staged queue entry (client id,
+  transaction id, SHA-256 of the exact `data` text) equal the producer's
+  digests; for the blocked fixture, every queue entry Go blames is one the
+  producer recorded;
 * staging and report bytes are identical across a rerun of the same work
   directory and a run into a separate work directory (deterministic);
 * the capture directory is byte-for-byte what the producer wrote, before and
@@ -37,6 +40,7 @@ passed.
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -52,6 +56,27 @@ REQUIRED_RESULTS = (
     "full_disk_permission_unreadable_and_limit_faults",
     "go_rehearsal_raw_digests_and_dispositions",
 )
+
+# What the rehearsal must do with each fixture. Owned here, never taken from
+# the producer: a certified capture must be accepted (exit 0) and an
+# exploratory (producer-refused) one must be blocked (exit 2).
+EXIT_FOR_KIND = {"certified": 0, "exploratory": 2}
+FIXTURES = {
+    "synthetic-capture": {
+        "kind": "certified",
+        "findings_include": ["unknown_column_preserved"],
+        "items": {"column:exercises.legacy_note": "preserved_unavailable"},
+    },
+    "review-malformed-draft": {
+        "kind": "certified",
+        "findings_include": ["draft_malformed"],
+        "items": {"store:active_draft": "preserved_for_recovery_review"},
+    },
+    "exploratory-queue-blocked": {
+        "kind": "exploratory",
+        "blocking_include": ["queue_entry_invalid"],
+    },
+}
 
 
 def sha256_bytes(data):
@@ -146,9 +171,16 @@ def queue_from_capture(capture):
 def verify_capture(binary, output, work_root, entry, checks):
     name = entry["name"]
     capture = os.path.join(output, entry["path"])
-    expected = entry["expected"]
-    result = {"name": name, "kind": entry["kind"],
-              "manifest_sha256": entry["manifest_sha256"]}
+    fixture = FIXTURES[name]
+    exit_code = EXIT_FOR_KIND[fixture["kind"]]
+    result = {"name": name, "kind": fixture["kind"],
+              "manifest_sha256": entry["manifest_sha256"],
+              "expected_exit": exit_code}
+    checks.check(entry["kind"] == fixture["kind"],
+                 f"{name}: producer says kind {entry['kind']}, expected {fixture['kind']}")
+    producer_exit = entry.get("expected", {}).get("exit")
+    checks.check(producer_exit in (None, exit_code),
+                 f"{name}: producer expects exit {producer_exit}, the kind requires {exit_code}")
 
     checks.check(entry.get("cutover_ready") is False,
                  f"{name}: acceptance entry must say cutover_ready false")
@@ -166,18 +198,17 @@ def verify_capture(binary, output, work_root, entry, checks):
     for label, work in runs:
         code, summary, out, stderr = run_rehearsal(binary, capture, work)
         exits.append(code)
-        checks.check(code == expected["exit"],
-                     f"{name} {label}: exit {code}, expected {expected['exit']} ({stderr})")
+        checks.check(code == exit_code,
+                     f"{name} {label}: exit {code}, expected {exit_code} ({stderr})")
         checks.check(summary is not None and summary.get("cutover_ready") is False,
                      f"{name} {label}: summary must say cutover_ready false")
         if summary is not None:
-            checks.check(summary.get("staging_valid") == expected.get("staging_valid"),
+            checks.check(summary.get("staging_valid") == (exit_code == 0),
                          f"{name} {label}: staging_valid {summary.get('staging_valid')}")
-            if "exploratory" in expected:
-                checks.check(summary.get("exploratory") == expected["exploratory"],
+            if exit_code == 0:
+                checks.check(summary.get("exploratory") is False,
                              f"{name} {label}: exploratory {summary.get('exploratory')}")
-            if "blocking" in expected:
-                checks.check(summary["findings"].get("blocking") == expected["blocking"],
+                checks.check(summary["findings"].get("blocking") == 0,
                              f"{name} {label}: blocking findings {summary['findings']}")
         outputs.append(out)
         checks.check(tree_state(capture) == before,
@@ -197,20 +228,20 @@ def verify_capture(binary, output, work_root, entry, checks):
         severities = {}
         for f in report["findings"]:
             severities.setdefault(f["severity"], set()).add(f["code"])
-        for code in expected.get("findings_include", []):
+        for code in fixture.get("findings_include", []):
             checks.check(code in codes, f"{name}: finding {code} not reported")
-        for code in expected.get("blocking_include", []):
+        for code in fixture.get("blocking_include", []):
             checks.check(code in severities.get("blocking", set()),
                          f"{name}: blocking finding {code} not reported")
         items = {i["name"]: i["disposition"] for i in report["items"]}
-        for item, disposition in expected.get("items", {}).items():
+        for item, disposition in fixture.get("items", {}).items():
             checks.check(items.get(item) == disposition,
                          f"{name}: item {item} is {items.get(item)}, expected {disposition}")
         result["report_sha256"] = sha256_bytes(first["report.json"])
         result["findings"] = report["summary"]
         result["finding_codes"] = codes
 
-    if expected["exit"] == 0:
+    if exit_code == 0:
         checks.check("staging.json" in first, f"{name}: no staging.json")
         if "staging.json" in first:
             staging = json.loads(first["staging.json"])
@@ -229,9 +260,19 @@ def verify_capture(binary, output, work_root, entry, checks):
     else:
         checks.check("staging.json" not in first,
                      f"{name}: a blocked capture must not be staged")
-        checks.check(queue_from_capture(capture) == entry["queue"],
-                     f"{name}: captured queue differs from the producer's queue digests")
-        result["queue_matches"] = queue_from_capture(capture) == entry["queue"]
+        # Nothing is staged, so the only queue facts from Go are the entries
+        # its blocking findings name: each must be one the producer recorded.
+        blamed = [int(m) for f in (report or {}).get("findings", [])
+                  if f["severity"] == "blocking" and f["item"] == "store:upload_queue"
+                  for m in re.findall(r"client_id (\d+)", f["detail"])]
+        producer_ids = {e["client_id"] for e in entry["queue"]}
+        checks.check(len(blamed) > 0 and all(b in producer_ids for b in blamed),
+                     f"{name}: Go blames queue entries {blamed}, not among the producer's")
+        result["blamed_queue_entries"] = blamed
+        # The captured queue file equals the producer's digests too, but that
+        # is not Go output: reported, not counted.
+        result["captured_queue_matches_producer_uncounted"] = (
+            queue_from_capture(capture) == entry["queue"])
 
     result["exits"] = exits
     result["capture_unchanged"] = tree_state(capture) == before
@@ -259,14 +300,14 @@ def main(argv):
         checks.check(results.get(test) == "pass",
                      f"acceptance result {test}: {results.get(test, 'missing')}")
     captures = acceptance.get("captures", [])
-    checks.check(len(captures) > 0, "acceptance.json lists no captures")
-    checks.check(any(c["expected"]["exit"] == 0 for c in captures),
-                 "no valid fixture")
-    checks.check(any(c["expected"]["exit"] == 2 for c in captures),
-                 "no blocked fixture")
+    names = sorted(c["name"] for c in captures)
+    if not checks.check(names == sorted(FIXTURES),
+                        f"acceptance.json lists {names}, expected {sorted(FIXTURES)}"):
+        captures = [c for c in captures if c["name"] in FIXTURES]
     for c in captures:
-        if c["kind"] != "certified":
-            checks.check(c["kind"] == "exploratory" and c["path"].startswith("exploratory-"),
+        checks.check(c["path"] == c["name"], f"{c['name']}: path {c['path']}")
+        if FIXTURES[c["name"]]["kind"] == "exploratory":
+            checks.check(c["name"].startswith("exploratory-"),
                          f"{c['name']}: a non-certified capture must be named exploratory")
 
     work_root = os.path.join(output, "rehearsal-verify")
