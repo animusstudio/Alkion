@@ -800,7 +800,7 @@ void main() {
     // The debounce fires while admission is closed: refused, and shown.
     await tester.pump(const Duration(milliseconds: 500));
     await settle();
-    expect(find.text("Couldn't save"), findsOneWidget);
+    expect(find.text('Paused for data capture'), findsOneWidget);
     expect(repo.updates, isEmpty);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -819,7 +819,7 @@ void main() {
     // keeps blocking capture although no card is open and no timer runs.
     await tester.tap(find.byKey(const Key('set-line-s1')));
     await settle();
-    expect(find.text("Couldn't save"), findsOneWidget);
+    expect(find.text('Paused for data capture'), findsOneWidget);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     expect(h.unsavedEditors(), ['history_sets']);

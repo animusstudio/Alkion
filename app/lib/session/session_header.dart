@@ -44,6 +44,7 @@ class SessionHeader extends StatelessWidget {
     required this.onMenu,
     required this.onAdd30s,
     required this.onSkip,
+    this.restExtensionAvailable = true,
   });
 
   final SessionDraft draft;
@@ -64,6 +65,10 @@ class SessionHeader extends StatelessWidget {
   final VoidCallback onMenu;
   final VoidCallback onAdd30s;
   final VoidCallback onSkip;
+
+  /// False while a data capture holds the source: +30s is shown as
+  /// unavailable, does nothing, and the line under the row says why.
+  final bool restExtensionAvailable;
 
   /// Threshold (inclusive) for the final-seconds accent.
   static const _finalThreshold = 5;
@@ -272,7 +277,8 @@ class SessionHeader extends StatelessWidget {
                                   label: l.restAdd30s,
                                   filled: false,
                                   tokens: tokens,
-                                  onTap: onAdd30s,
+                                  onTap: restExtensionAvailable ? onAdd30s : null,
+                                  unavailableLabel: l.captureRestUnavailable,
                                 ),
                                 const SizedBox(width: 6),
                                 Flexible(
@@ -292,7 +298,10 @@ class SessionHeader extends StatelessWidget {
                     );
                   }),
                   const SizedBox(height: 4),
-                  Text(nextLabel,
+                  Text(
+                      resting && !restExtensionAvailable
+                          ? l.captureRestUnavailable
+                          : nextLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: WorkoutType.mono(size: 11, color: tokens.dim)),
@@ -332,16 +341,24 @@ class _RestChip extends StatelessWidget {
     required this.filled,
     required this.tokens,
     required this.onTap,
+    this.unavailableLabel,
   });
 
   final String label;
   final bool filled;
   final WorkoutTokens tokens;
-  final VoidCallback onTap;
+
+  /// Null: unavailable, drawn faint and announced with [unavailableLabel].
+  final VoidCallback? onTap;
+  final String? unavailableLabel;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final enabled = onTap != null;
+    return Semantics(
+      enabled: enabled,
+      hint: enabled ? null : unavailableLabel,
+      child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
@@ -352,7 +369,9 @@ class _RestChip extends StatelessWidget {
         // a quiet filled chip, not an accent one.
         decoration: BoxDecoration(
           color: filled ? tokens.surface3 : null,
-          border: filled ? null : Border.all(color: tokens.lineStrong),
+          border: filled
+              ? null
+              : Border.all(color: enabled ? tokens.lineStrong : tokens.line),
           borderRadius: BorderRadius.circular(AppRadius.radius * 0.5),
         ),
         // widthFactor 1 sizes the chip to its label; a Container `alignment`
@@ -367,8 +386,13 @@ class _RestChip extends StatelessWidget {
               style: WorkoutType.mono(
                   size: 12,
                   weight: FontWeight.w700,
-                  color: filled ? tokens.text : tokens.dim)),
+                  color: !enabled
+                      ? tokens.faint
+                      : filled
+                          ? tokens.text
+                          : tokens.dim)),
         ),
+      ),
       ),
     );
   }

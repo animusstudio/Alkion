@@ -357,6 +357,12 @@ class ActiveSessionController extends ChangeNotifier {
   /// Whether a capture froze autosave and rest auto-stop.
   bool get callbacksFrozen => _frozenGeneration != null;
 
+  /// [callbacksFrozen] as a listenable, for what the screen shows as
+  /// unavailable while a capture holds the source (the +30s rest chip).
+  /// Kept apart from [notifyListeners], which schedules an autosave.
+  ValueListenable<bool> get captureFrozen => _captureFrozen;
+  final _captureFrozen = ValueNotifier<bool>(false);
+
   @override
   void notifyListeners() {
     _scheduleSave();
@@ -423,6 +429,7 @@ class ActiveSessionController extends ChangeNotifier {
     _saveDebounce = null;
     _saveEpoch++;
     _frozenGeneration = generation;
+    _captureFrozen.value = true;
   }
 
   /// The capture's flush of the draft as it was at [epoch] landed: nothing
@@ -437,6 +444,7 @@ class ActiveSessionController extends ChangeNotifier {
   /// mutation made while frozen is autosaved.
   void resumeCallbacks(DateTime now) {
     _frozenGeneration = null;
+    _captureFrozen.value = false;
     final start = restStart;
     var changed = false;
     if (start != null) {
@@ -458,6 +466,7 @@ class ActiveSessionController extends ChangeNotifier {
   void dispose() {
     _saveDebounce?.cancel();
     _saveEpoch++;
+    _captureFrozen.dispose();
     super.dispose();
   }
 
@@ -555,8 +564,10 @@ class ActiveSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Extends the running rest. Refused while a capture froze the callbacks:
+  /// the extension is shown as unavailable then, never applied silently.
   void addRestTime(int seconds) {
-    if (restStart == null) return;
+    if (restStart == null || callbacksFrozen) return;
     restTotal += seconds;
     notifyListeners();
   }

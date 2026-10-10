@@ -8,6 +8,7 @@ import 'package:powersync/powersync.dart' show SyncStatus;
 import 'package:provider/provider.dart';
 
 import '../auth/auth_store.dart';
+import '../capture/capture_service.dart';
 import '../capture/capture_transport.dart';
 import '../capture/source_write_gate.dart';
 import '../data/bodyweight_repository.dart';
@@ -37,6 +38,7 @@ import '../widgets/plan_form.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
+import 'capture_screen.dart';
 import 'login_screen.dart';
 import 'sign_in_again.dart';
 
@@ -581,6 +583,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     widget.onClose();
   }
 
+  /// Profile → Data capture. The service lives above the app, so a capture
+  /// started here keeps its state while the screen is closed.
+  void _openCapture() {
+    final service = context.read<CaptureService>();
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CaptureScreen(service: service),
+    ));
+  }
+
   Future<void> _exportFull() async {
     setState(() => _exportingFull = true);
     try {
@@ -973,6 +984,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       sub: AppLocalizations.of(context).exportHistorySub,
                       right: _exportingHistory ? const _RowSpinner() : null,
                       onTap: _exportingHistory ? null : _exportHistory,
+                    ),
+                    _Row(
+                      icon: WIcons.capture,
+                      title: l.captureRowTitle,
+                      sub: l.captureRowSub,
+                      right: Icon(WIcons.chevron,
+                          size: 18, color: tokens.faint),
+                      onTap: _openCapture,
                     ),
                   ],
                 ),

@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'auth/auth_store.dart';
 import 'capture/capture_coordinator.dart';
 import 'capture/capture_journal.dart';
+import 'capture/capture_service.dart';
 import 'capture/capture_startup.dart';
 import 'capture/capture_transport.dart';
 import 'capture/session_capture_hooks.dart';
@@ -62,6 +63,13 @@ Future<void> main() async {
   // month names for every supported locale (it/de/es), not just en.
   await initializeDateFormatting();
 
+  await _start();
+}
+
+/// Capture-first startup, then the app. Runs again from the startup
+/// recovery screen once an explicit capture decision released the source;
+/// a startup that is still held shows that screen again.
+Future<void> _start() async {
   // Capture first: before settings, the database, identity, boot migrations,
   // the stored-workout loaders or sync touch anything, check whether a data
   // capture holds the source and keep any stored bytes a loader would delete.
@@ -91,7 +99,13 @@ Future<void> main() async {
   // could not be preserved is simply not loaded and stays on disk as it is;
   // see StartupAllowed.skippedLoaders.
   if (outcome case CaptureRecoveryRequired(:final recovery)) {
-    runApp(CaptureRecoveryApp(recovery: recovery));
+    runApp(CaptureRecoveryApp(
+      recovery: recovery,
+      // The explicit decisions (resume original use, release a local hold)
+      // and the copy of a held capture; no capture can start here.
+      service: CaptureService(CoordinatorCaptureBackend(coordinator)),
+      onResolved: _start,
+    ));
     return;
   }
 
@@ -107,6 +121,25 @@ Future<void> main() async {
   );
   await syncHealth.start();
 
+  // Profile → Data capture: the running app's sources, the registered
+  // native sync adapter for a qualified profile, and the old sync policy
+  // restored through the ordinary connect path.
+  final captureService = CaptureService(CoordinatorCaptureBackend(
+    CaptureCoordinator(
+      locations: capture,
+      gate: gate,
+      sources: CaptureSourceBindings(
+        database: db,
+        hooks: boot.captureHooks,
+        transportFor: (profile) => CaptureTransport.forProfile(
+          database: db,
+          profile: profile,
+          reconnect: () => connectSync(auth),
+        ),
+      ),
+    ),
+  ));
+
   runApp(App(
     syncHealth: syncHealth,
     auth: auth,
@@ -114,6 +147,7 @@ Future<void> main() async {
     unitService: boot.unitService,
     identity: boot.identity,
     sessionManager: boot.sessionManager,
+    captureService: captureService,
   ));
 }
 
@@ -235,6 +269,7 @@ class App extends StatefulWidget {
     required this.identity,
     required this.sessionManager,
     required this.syncHealth,
+    required this.captureService,
   });
 
   final AuthStore auth;
@@ -243,6 +278,7 @@ class App extends StatefulWidget {
   final IdentityService identity;
   final SessionManager sessionManager;
   final SyncHealth syncHealth;
+  final CaptureService captureService;
 
   @override
   State<App> createState() => _AppState();
@@ -291,6 +327,7 @@ class _AppState extends State<App> {
         ChangeNotifierProvider.value(value: widget.identity),
         ChangeNotifierProvider.value(value: widget.sessionManager),
         ChangeNotifierProvider.value(value: widget.syncHealth),
+        ChangeNotifierProvider.value(value: widget.captureService),
       ],
       // Builder is required so that ctx.watch<SettingsService>() is a
       // descendant of the MultiProvider (calling watch in _AppState.build()

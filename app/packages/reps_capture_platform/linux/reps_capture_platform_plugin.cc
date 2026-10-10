@@ -893,6 +893,13 @@ void HandleMethodCall(FlMethodCall* call) {
     }
     return;
   }
+  if (method == "writeArchive") {
+    // The ZIP transport is Android's (explicit share intent). Linux exports a
+    // capture by copying its directory next to a destination the person
+    // chose and publishing it with publishNoReplace.
+    Respond(call, Code("unsupported"));
+    return;
+  }
   if (method == "injectFault") {
 #ifndef NDEBUG
     const std::string fault = StringArg(args, "fault");

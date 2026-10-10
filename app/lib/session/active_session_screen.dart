@@ -367,24 +367,29 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     return Scaffold(
       body: Column(
         children: [
-          SessionHeader(
-            draft: draft,
-            elapsed: controller.elapsed,
-            doneWork: controller.doneWork,
-            totalWork: controller.totalWork,
-            prCount: controller.prCount,
-            restStart: controller.restStart,
-            restTotal: controller.restTotal,
-            restEndedAt: controller.restEndedAt,
-            showRestRow: controller.hasLoggedSet,
-            nextLabel: restNextLabel(l, unit, controller.nextPendingSet),
-            onMinimize: () => Navigator.of(context).pop(),
-            onMenu: () => _openWorkoutMenu(controller),
-            onAdd30s: () {
-              HapticFeedback.lightImpact();
-              controller.addRestTime(30);
-            },
-            onSkip: controller.stopRest,
+          // +30s is unavailable while a data capture holds the source.
+          ValueListenableBuilder<bool>(
+            valueListenable: controller.captureFrozen,
+            builder: (context, frozen, _) => SessionHeader(
+              draft: draft,
+              elapsed: controller.elapsed,
+              doneWork: controller.doneWork,
+              totalWork: controller.totalWork,
+              prCount: controller.prCount,
+              restStart: controller.restStart,
+              restTotal: controller.restTotal,
+              restEndedAt: controller.restEndedAt,
+              showRestRow: controller.hasLoggedSet,
+              nextLabel: restNextLabel(l, unit, controller.nextPendingSet),
+              onMinimize: () => Navigator.of(context).pop(),
+              onMenu: () => _openWorkoutMenu(controller),
+              onAdd30s: () {
+                HapticFeedback.lightImpact();
+                controller.addRestTime(30);
+              },
+              onSkip: controller.stopRest,
+              restExtensionAvailable: !frozen,
+            ),
           ),
           Expanded(
             child: ListView(

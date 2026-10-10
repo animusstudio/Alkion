@@ -155,8 +155,9 @@ void main() {
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 
-    expect(find.text("Couldn't save"), findsOneWidget);
-    expect(find.textContaining('admission_closed'), findsOneWidget);
+    // A capture hold refusal says so in words, not as a raw error.
+    expect(find.text('Paused for data capture'), findsOneWidget);
+    expect(find.textContaining("this change wasn't saved"), findsOneWidget);
     expect(repo.deleted, isEmpty);
     expect(deletedCalls, 0);
     await tester.tap(find.text('OK'));

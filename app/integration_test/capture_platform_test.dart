@@ -17,6 +17,7 @@ import 'package:crypto/crypto.dart';
 import 'package:workout_tracker/capture/capture_artifact.dart'
     show verifyCaptureDirectory;
 import 'package:workout_tracker/capture/capture_coordinator.dart';
+import 'package:workout_tracker/capture/capture_export.dart';
 import 'package:workout_tracker/capture/capture_journal.dart';
 import 'package:workout_tracker/capture/capture_profile.dart';
 import 'package:workout_tracker/capture/capture_startup.dart';
@@ -1231,6 +1232,84 @@ void main() {
         CaptureStage.resumed);
     await gate.run('test.write', (_) async {});
     expect(TransportAdmission.instance.isOpen, isTrue);
+  });
+
+  test('export_copies_through_native_no_replace_publication', () async {
+    // The Linux export path end to end: a certified capture from the real
+    // gate and adapter, copied next to a destination outside the private
+    // capture area, published with the native renameat2(RENAME_NOREPLACE)
+    // and re-verified there; a second export never replaces the first.
+    final source = await Directory.systemTemp.createTemp('reps-capture-export');
+    final destination = await Directory.systemTemp.createTemp('reps-export-dest');
+    cleanup.add(() => source.delete(recursive: true));
+    cleanup.add(() => destination.delete(recursive: true));
+    SharedPreferences.setMockInitialValues({'unit': 'kg'});
+    TransportAdmission.instance.resetForTesting();
+    final locations = CaptureLocations(source);
+    final gate = SourceWriteGate(stateDirectory: locations.gate);
+    const files = CaptureFiles();
+    await files.ensureDirectory(locations.gate, base: source);
+    appSourceGate = gate;
+    cleanup.add(() async => appSourceGate = null);
+    final database = PowerSyncDatabase(
+        schema: schema, path: p.join(source.path, 'workout-tracker.db'));
+    await database.initialize();
+    cleanup.add(database.close);
+    final manager = SessionManager(finishedStore: _NoFinished());
+    cleanup.add(() async => manager.dispose());
+    final certified = await CaptureCoordinator(
+      locations: locations,
+      gate: gate,
+      sources: CaptureSourceBindings(
+        database: database,
+        hooks: SessionCaptureHooks(
+          manager: manager,
+          preservation: RawPreservation(locations.preparation, base: source),
+        ),
+        transportFor: (profile) => CaptureTransport.forProfile(
+          database: database,
+          profile: profile,
+          reconnect: () async {},
+        ),
+      ),
+    ).capture(mode: CaptureMode.rehearsal);
+    Map<String, String> tree(Directory d) => {
+          for (final e in d.listSync(recursive: true, followLinks: false))
+            p.relative(e.path, from: d.path): e is File
+                ? sha256.convert(e.readAsBytesSync()).toString()
+                : 'dir',
+        };
+    final sealed = tree(certified.directory);
+
+    final attempt = await exportCapture(certified,
+        destination: ExportDestination.directory(destination));
+    expect(attempt.transportStatus, ExportTransportStatus.sent);
+    expect(attempt.receiptVerified, isTrue);
+    final copy = Directory(
+        p.join(destination.path, 'reps-capture-${certified.captureId}'));
+    expect(attempt.location!.path, copy.path);
+    expect((await verifyReceivedCapture(copy)).manifestSha256,
+        certified.manifestSha256);
+    expect(tree(copy), sealed);
+    expect(tree(certified.directory), sealed);
+
+    final again = await exportCapture(certified,
+        destination: ExportDestination.directory(destination));
+    expect(again.transportStatus, ExportTransportStatus.failed);
+    expect(again.code, 'destination_exists');
+    expect(tree(copy), sealed);
+    expect([for (final e in destination.listSync()) p.basename(e.path)],
+        ['reps-capture-${certified.captureId}']);
+
+    // Never into the private capture area, and no ZIP transport on Linux.
+    final private = await exportCapture(certified,
+        destination: ExportDestination.directory(locations.captures));
+    expect(private.code, 'destination_private');
+    final shared = await exportCapture(certified,
+        destination: const ExportDestination.androidShare());
+    expect(shared.transportStatus, ExportTransportStatus.failed);
+    expect(shared.code, 'unsupported');
+    expect(tree(certified.directory), sealed);
   });
 }
 

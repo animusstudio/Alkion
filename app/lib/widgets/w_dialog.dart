@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../capture/source_write_gate.dart' show SourceGateException;
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
@@ -73,19 +74,27 @@ Future<bool?> showWConfirm(
 }
 
 /// The editors' write-failure feedback: a "Couldn't save" dialog naming
-/// [error] (for example a write refused while a data capture holds the
-/// source). Does nothing if [context] is no longer mounted.
+/// [error]. A write refused because a data capture holds the source says
+/// so in words instead (saving is unavailable during the hold, nothing
+/// changed). Does nothing if [context] is no longer mounted.
 Future<void> showWriteFailed(BuildContext context, Object error) async {
   debugPrint('write failed: $error');
   if (!context.mounted) return;
   final l = AppLocalizations.of(context);
+  final held = isCaptureHoldRefusal(error);
   await showWDialog<void>(
     context,
-    title: l.editorSaveFailed,
-    message: '$error',
+    title: held ? l.captureWritesPausedTitle : l.editorSaveFailed,
+    message: held ? l.captureWritesPausedBody : '$error',
     actions: [WDialogAction(label: l.commonOk, value: null)],
   );
 }
+
+/// Whether [error] is a write refused because a data capture holds the
+/// source (its admission is closed while it prepares, holds or keeps a
+/// local hold).
+bool isCaptureHoldRefusal(Object error) =>
+    error is SourceGateException && error.code == 'admission_closed';
 
 /// For a write a tap starts without awaiting it (a settings chip, stepper
 /// or toggle): its failure, for example a write refused while a data capture

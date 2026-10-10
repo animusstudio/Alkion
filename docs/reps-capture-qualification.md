@@ -1561,25 +1561,165 @@ Limits:
   Only a `preparing`/`held`/`recorded` answer for exactly this id and
   generation counts. `open` or any gate error ends the search, and nothing
   found means `gate_generation_unknown` with nothing released.
-- The startup recovery screen is still the minimal one: it shows the code
-  and stage but offers no decision button. The honest decision UI is the
-  next work package.
+- The startup recovery screen now offers the explicit decisions (see
+  "Capture screen, decisions and explicit export").
 - Android: `availableBytes` and everything else are uncompiled and
   **UNRUN**, and capture there is **unsupported** (`platform_unavailable`,
   Ruling R9).
+
+## Capture screen, decisions and explicit export
+
+Profile → Data → **Data capture** (`app/lib/ui/capture_screen.dart`) and the
+startup recovery screen (`app/lib/ui/capture_recovery_screen.dart`) share one
+panel over `CaptureService` (`app/lib/capture/capture_service.dart`). A
+`CoordinatorCaptureBackend` turns `CaptureCoordinator.recover()`,
+`capture(mode:)` and `resumeOriginal(...)` into a view of safe codes. The
+running app's coordinator gets the open database, the session hooks and
+`CaptureTransport.forProfile` (reconnect = the ordinary `connectSync`). The
+startup coordinator has no sources and offers decisions only.
+
+What the person sees and decides (every action behind `showWConfirm`):
+
+| State (coordinator code) | Shown | Decisions |
+| --- | --- | --- |
+| `platform_unavailable` / `unsupported` | "Not available on this device" (Android builds today) | none; no capture or export button |
+| `none` | no capture yet | Capture now (rehearsal), Capture and hold (local hold) |
+| `resumed` + verified capture | saved, what it holds, copy to a folder | new capture, copy |
+| `local_hold` | local hold: saving, sync and +30s paused | Release hold (`resumeOriginal`), copy |
+| `awaiting_resume_decision` | saved, still paused | Resume original use, copy |
+| `capture_interrupted` | not a usable capture, partial files kept | Resume original use; Resume and capture again (running app: `resumeOriginal`, then a new capture with a new id) |
+| other `resume_original` codes (`sealed_divergence`, `hold_lost`, ...) | needs a decision, everything kept | Resume original use |
+| `owner_review` codes (`journal_*`, `gate_without_journal`) | needs a closer look, status shown | none (Check again only) |
+
+- Decisions pass a decision digest: SHA-256 of `{capture_id, decided_at,
+  decided_by: owner_on_device, decision}` (`captureDecisionDigest`). On
+  the startup screen, a released decision re-runs capture-first startup
+  (`main.dart` `_start`). A startup that is still held shows the screen
+  again. Nothing is released by opening, refreshing or restarting.
+- A blocked attempt shows "Capture not made" with its code, the
+  remediation (`save_or_cancel_forms`: save or cancel open Plan or History
+  edits first, never auto-saved; `free_space`; `retry_after_resume`), and,
+  for an exploratory capture, its blocker codes and that the private copy
+  is not usable. It shows no success text and no export.
+- Coverage lists every manifest store as captured, captured for later
+  review (raw draft, finished and opaque preserved bytes, malformed ones
+  included), not present, left out with its exclusion reason, or couldn't
+  be read or unavailable with its safe detail. It shows the capture time
+  and a digest prefix. It never shows contents, values, keys, tokens or
+  the capture id. The copy never claims migration, backup, upload or
+  receipt.
+- During a capture and a local hold the live workout's +30s chip is drawn
+  unavailable, does nothing, and the rest line reads "+30s unavailable
+  during data capture" (`ActiveSessionController.captureFrozen`,
+  `addRestTime` refused while frozen). A write refused with
+  `admission_closed` shows "Paused for data capture ... this change wasn't
+  saved" instead of the raw error (`showWriteFailed`).
+
+### Export and receiving verification (`app/lib/capture/capture_export.dart`)
+
+`exportCapture(CertifiedCapture, destination:)` returns `ExportAttempt
+{manifestSha256, transportStatus (prepared|cancelled|sent|failed),
+receiptVerified = false, code, location}`. It first re-verifies the
+private capture in full and requires the certified digest and id
+(`capture_changed` otherwise). The private capture is only ever read.
+
+- **Linux, a directory the person typed** (no picker dependency; Ruling
+  R23). The path must be absolute, an existing directory, and outside
+  `<appSupport>/capture/` (`destination_invalid`, `destination_private`).
+  A `reps-capture-<id>` already there fails `destination_exists` before
+  anything is written. Every declared file is copied into a new
+  `.reps-capture-<id>.partial-<nonce>` directory beside the destination
+  (exclusive creates; bytes and SHA-256 checked while streaming). That copy
+  is verified in full against the original's file map, published with the
+  native `publishNoReplace` (fsync of the tree, `renameat2(RENAME_NOREPLACE)`;
+  a destination that appeared meanwhile is never replaced), and verified
+  again where it now is (`verifyReceivedCapture`). Only then is it `sent`
+  with `receiptVerified: true`. That flag means the copy's integrity was
+  re-checked from disk, nothing about who reads it. Cancellation (checked
+  per 1 MiB chunk) or any failure before publication removes only that
+  partial directory.
+- **Android, ZIP for an explicit share intent.** The native
+  `CaptureFiles.writeArchive` (Kotlin) writes exactly the declared
+  entries, `manifest.json` first, from strict `stores/<file>` paths, into an
+  exclusively created private archive. Every capture file must be listed,
+  sources are opened with `O_NOFOLLOW` and must be regular, and byte counts
+  are checked against the declared sizes (1 MiB / 64 MiB) while streaming.
+  The archive is removed on failure. A share sheet's result maps to
+  `sent`/`cancelled`/`prepared`, never `receiptVerified`. **UNRUN and
+  unsupported**: the plugin is not built for Android (R9), so the screen
+  shows capture and export as unavailable there. On Linux the native method
+  answers `unsupported`, and the Dart side returns `unsupported` before
+  touching anything.
+- **Receiving.** `verifyReceivedCapture(Directory)` re-runs the strict
+  verifier and returns `VerifiedReceivedCapture {captureId,
+  manifestSha256, directory}` (library-private constructor). It proves
+  receiving integrity only: it is not a `CertifiedCapture`, carries no
+  boundary attestation and infers nothing about source exclusion.
+  `expandCaptureArchive(File, Directory)` accepts only a plain ZIP: no
+  comment, ZIP64 or encryption; stored or deflated; central directory at
+  most 16 MiB. Its entries must be exactly `manifest.json` plus each
+  declared captured path, each a regular-file entry, once (case-folded),
+  at the manifest's size. Sizes are enforced while inflating and CRCs are
+  checked. It is staged, verified, published without replacing anything
+  and verified again.
+
+Tests, all **PASS** (2026-10-10):
+
+- `test/capture/capture_export_test.dart` (real `CertifiedCapture` from
+  the coordinator over a synthetic account-free source with a malformed
+  draft; gate and file primitives are the Dart models):
+  - `no_login_or_network_needed`: capture, export and receiving
+    verification inside an `HttpOverrides` zone count 0 HTTP clients, and
+    the feature's sources contain no network API. An `IOOverrides` socket
+    zone is not usable here: it changes how `FileSystemEntity.type`
+    answers inside the zone.
+  - `cancelled_truncated_export_keeps_private_original`: cancelled before
+    and midway, and truncated in flight. Each leaves `receiptVerified
+    false`, nothing at the destination and the private tree digest
+    unchanged. The Android transport fails here.
+  - `existing_destination_never_replaced`, `export_requires_the_sealed_verified_capture`.
+  - `archive_paths_sizes_and_digest_rechecked`: traversal, absolute,
+    backslash, nested, `./` and directory names, symbolic-link entries,
+    truncation, lying or exceeded sizes, CRC mismatch, extra, missing and
+    duplicate entries are all refused with nothing left behind. The genuine
+    archive (stored and deflated) expands to the same tree and digest, and
+    once only.
+- `test/ui/capture_screen_test.dart`: `no_login_or_network_needed`,
+  `blocked_capture_has_no_success_or_export`,
+  `hold_shows_unavailable_rest_and_writes`, interrupted resume (and resume
+  then capture), export confirmation and honest results, and the startup
+  decision. Each decision is cancellable and reaches the backend only
+  after confirmation.
+- `test/layout/capture_layout_test.dart`: seven screen states, plus three
+  startup states, at {320, 412}dp × {1.0, 2.0}× × {en, de, it} and 320dp
+  2.0× es. No overflow and no split word.
+- Native (`make -C app capture-integration CAPTURE_DEVICE=linux`):
+  `export_copies_through_native_no_replace_publication` exports a
+  coordinator capture through the real `publishNoReplace`, re-verifies it,
+  refuses a second export (`destination_exists`), the private area
+  (`destination_private`) and the ZIP transport (`unsupported`), and leaves
+  the private tree unchanged: **PASS**.
+
+Limits: the hold is shown on the live rest row, in write refusals and on
+the capture screen; there is no app-wide banner. A live workout's set
+edits during a local hold stay in memory, with their autosave owed until
+release, as before. No receiving UI exists for the ZIP transport
+(`expandCaptureArchive` is the API and is host-tested only).
 
 ## Native qualification command
 
 `make -C app capture-integration CAPTURE_DEVICE=<device id>` runs
 `integration_test/capture_platform_test.dart` on one explicitly chosen device.
-It fails with a message if `CAPTURE_DEVICE` is unset. It contains eleven
+It fails with a message if `CAPTURE_DEVICE` is unset. It contains twelve
 native tests: the eight in "Source-write gate and durable files" and
 "Native sync quiescence: Linux qualification",
 `startup_preserves_through_native_files_and_gate` and
 `ensure_directory_flushes_chain_and_fails_closed` in "Capture-first startup
 and raw-file preservation", and
 `coordinator_publishes_and_recovers_through_native_primitives` in
-"Coordinator, publication and recovery". On 2026-10-10 it passed with
+"Coordinator, publication and recovery", and
+`export_copies_through_native_no_replace_publication` in "Capture screen,
+decisions and explicit export". On 2026-10-10 it passed with
 `CAPTURE_DEVICE=linux` (debug bundle): first in four consecutive runs, then
 in three consecutive runs after review round 1, with the stricter
 assertions and the recovery test (eight tests), then once with nine tests
@@ -1588,5 +1728,6 @@ round 1, then once more after the session-operation work (with
 `missing_plugin_runs_ordinary_writes_ungated`), and once after its review
 round 1, then twice after the preference, notification and transport
 writers were wrapped (unchanged ten tests), then with all eleven after the
-coordinator was added. It has never run on Android. Host unit tests never establish
+coordinator was added, then with all twelve after explicit export was
+added. It has never run on Android. Host unit tests never establish
 Android support.

@@ -4,9 +4,13 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import java.io.File
+import java.io.FileDescriptor
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Durable file primitives: flushed temporary file plus rename for single
@@ -208,5 +212,131 @@ object CaptureFiles {
             ok = syncDir(stagingParent) && ok
         }
         return if (ok) "ok" else "io_error"
+    }
+
+    /** Largest manifest and largest captured file the v1 reader accepts. */
+    private const val MANIFEST_LIMIT = 1L shl 20
+    private const val STORE_LIMIT = 64L shl 20
+    private const val ENTRY_LIMIT = 1 shl 16
+    private val segment = Regex("^[A-Za-z0-9_.-]{1,128}$")
+
+    private class ArchiveRefused(val code: String) : Exception(code)
+
+    /** Whether [path] is `manifest.json` or `stores/<one plain segment>`. */
+    private fun archivePathValid(path: String): Boolean {
+        if (path == "manifest.json") return true
+        val parts = path.split('/')
+        return parts.size == 2 && parts[0] == "stores" && segment.matches(parts[1]) &&
+            parts[1] != "." && parts[1] != ".."
+    }
+
+    /**
+     * Writes the published capture at [capturePath] as a ZIP into the new
+     * file [archivePath] for an explicit share intent. Exactly [entries]
+     * (`path`, declared `bytes`; `manifest.json` first) are written: every
+     * path must be `manifest.json` or `stores/<file>`, unique, and every file
+     * in the capture directory must be listed. Each source is opened without
+     * following links and must be a regular file of exactly the declared
+     * size (at most 1 MiB for the manifest, 64 MiB per store), checked while
+     * streaming. The archive is created exclusively, flushed, and removed
+     * again on any failure; the capture is only read. Uncompiled until an
+     * Android SDK host builds it; the receiving end re-verifies everything.
+     */
+    fun writeArchive(capturePath: String, archivePath: String, entries: List<Map<String, Any?>>): String {
+        if (capturePath.isEmpty() || archivePath.isEmpty()) return "invalid_argument"
+        if (entries.isEmpty() || entries.size > ENTRY_LIMIT) return "invalid_argument"
+        val capture = File(capturePath)
+        val captureMode = try {
+            Os.lstat(capture.path).st_mode
+        } catch (e: ErrnoException) {
+            return "invalid_argument"
+        }
+        if (!OsConstants.S_ISDIR(captureMode)) return "invalid_argument"
+
+        // The declared inventory: strict paths, sizes within the v1 limits.
+        val declared = LinkedHashMap<String, Long>()
+        for (entry in entries) {
+            val path = entry["path"] as? String ?: return "invalid_argument"
+            val bytes = (entry["bytes"] as? Number)?.toLong() ?: return "invalid_argument"
+            if (!archivePathValid(path)) return "invalid_argument"
+            val limit = if (path == "manifest.json") MANIFEST_LIMIT else STORE_LIMIT
+            if (bytes < 0 || bytes > limit) return "invalid_argument"
+            if (declared.put(path, bytes) != null) return "invalid_argument"
+        }
+        if (declared.keys.first() != "manifest.json") return "invalid_argument"
+
+        // Nothing in the capture directory beyond the declared files.
+        val listed = HashSet<String>()
+        val top = capture.list() ?: return "io_error"
+        for (name in top) {
+            if (name == "stores") {
+                val stores = File(capture, "stores")
+                val storesMode = try {
+                    Os.lstat(stores.path).st_mode
+                } catch (e: ErrnoException) {
+                    return "io_error"
+                }
+                if (!OsConstants.S_ISDIR(storesMode)) return "unlisted_file"
+                for (child in stores.list() ?: return "io_error") listed.add("stores/$child")
+            } else {
+                listed.add(name)
+            }
+        }
+        if (listed != declared.keys) return "unlisted_file"
+
+        val archive = File(archivePath)
+        val fd: FileDescriptor = try {
+            Os.open(
+                archive.path,
+                OsConstants.O_WRONLY or OsConstants.O_CREAT or OsConstants.O_EXCL,
+                0x180, // 0600
+            )
+        } catch (e: ErrnoException) {
+            return if (e.errno == OsConstants.EEXIST) "destination_exists" else "io_error"
+        }
+        var ok = false
+        try {
+            FileOutputStream(fd).use { raw ->
+                ZipOutputStream(raw).use { zip ->
+                    zip.setLevel(9)
+                    val buffer = ByteArray(1 shl 16)
+                    for ((path, bytes) in declared) {
+                        val source = File(capture, path)
+                        val input = try {
+                            Os.open(source.path, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
+                        } catch (e: ErrnoException) {
+                            throw ArchiveRefused(if (e.errno == OsConstants.ELOOP) "not_regular" else "io_error")
+                        }
+                        // The stream owns the descriptor from here on and closes
+                        // it exactly once.
+                        FileInputStream(input).use { stream ->
+                            if (!OsConstants.S_ISREG(Os.fstat(input).st_mode)) throw ArchiveRefused("not_regular")
+                            zip.putNextEntry(ZipEntry(path))
+                            var total = 0L
+                            while (true) {
+                                val n = stream.read(buffer)
+                                if (n < 0) break
+                                total += n
+                                if (total > bytes) throw ArchiveRefused("capture_changed")
+                                zip.write(buffer, 0, n)
+                            }
+                            if (total != bytes) throw ArchiveRefused("capture_changed")
+                            zip.closeEntry()
+                        }
+                    }
+                    zip.finish()
+                    raw.flush()
+                    Os.fsync(fd)
+                }
+            }
+            ok = archive.parentFile?.let { syncDir(it) } ?: false
+            return if (ok) "ok" else "io_error"
+        } catch (e: ArchiveRefused) {
+            return e.code
+        } catch (e: Exception) {
+            return "io_error"
+        } finally {
+            if (!ok) archive.delete()
+        }
     }
 }

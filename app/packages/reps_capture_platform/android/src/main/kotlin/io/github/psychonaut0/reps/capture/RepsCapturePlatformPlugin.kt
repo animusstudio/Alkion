@@ -72,6 +72,13 @@ class RepsCapturePlatformPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 ),
             )
             "availableBytes" -> CaptureFiles.availableBytes(call.argument<String>("path") ?: "")
+            "writeArchive" -> GateResult(
+                CaptureFiles.writeArchive(
+                    call.argument<String>("capture") ?: "",
+                    call.argument<String>("archive") ?: "",
+                    call.argument<List<Map<String, Any?>>>("entries") ?: return GateResult("invalid_argument"),
+                ),
+            )
             "injectFault" -> GateResult(CaptureFiles.injectFault(call.argument<String>("fault") ?: ""))
             else -> GateResult("unsupported")
         }

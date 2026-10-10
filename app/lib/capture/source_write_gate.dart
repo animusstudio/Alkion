@@ -310,6 +310,16 @@ T withDefaultParent<T>(SourceTicket ticket, T Function() body) {
   }
 }
 
+/// One file of a capture archive: its path inside the capture and its
+/// declared size.
+@immutable
+class CaptureArchiveEntry {
+  const CaptureArchiveEntry(this.path, this.bytes);
+
+  final String path;
+  final int bytes;
+}
+
 /// Durable file primitives for capture state and publication. Each call
 /// returns only after the bytes and the containing directories were flushed
 /// by the native side; any failure throws and is never reported as success.
@@ -361,6 +371,27 @@ class CaptureFiles {
     }
     return bytes;
   }
+
+  /// Writes the published capture [capture] as a ZIP into the new file
+  /// [archive] (refused if it exists), for an explicit export transport.
+  /// Exactly [entries] are written, in order, from their declared paths
+  /// (`manifest.json` and `stores/<file>`); each source must be a regular
+  /// file of exactly the declared size, checked while streaming, and the
+  /// capture directory must hold nothing else. On failure the partial
+  /// archive is removed. Implemented on Android only; Linux exports by
+  /// directory copy and answers `unsupported`.
+  Future<void> writeArchive(
+    Directory capture,
+    File archive,
+    List<CaptureArchiveEntry> entries,
+  ) =>
+      _ok('writeArchive', {
+        'capture': capture.path,
+        'archive': archive.path,
+        'entries': [
+          for (final e in entries) {'path': e.path, 'bytes': e.bytes},
+        ],
+      });
 
   /// Debug builds only: makes the next native file (`file_sync`) or
   /// directory (`dir_sync`) flush fail, to prove failures propagate.
