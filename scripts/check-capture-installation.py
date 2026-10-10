@@ -13,7 +13,8 @@ build, the exact SDK/core/schema profile, the bridge APK digest and source
 revision, and references to the upgrade, storage, capture, rollback and
 receiving evidence. `--acceptance` names the sanitized `acceptance.json` that
 `make -C app capture-recovery` wrote; on Linux it supplies the evidence
-entries that run supports (see `evidence_from_acceptance`).
+entries that run supports (see `evidence_from_acceptance`). A row entry
+never replaces an entry that run failed (see `merge_row_evidence`).
 
 Prints one JSON result and exits 0 for `qualified`, 3 for `pending` and 4
 for `unsupported`; 2 means the input could not be read.
@@ -478,6 +479,23 @@ def evidence_from_acceptance(acceptance, source="acceptance.json"):
     return evidence
 
 
+def merge_row_evidence(derived, evidence):
+    """Row evidence over acceptance-derived evidence, without masking a failure.
+
+    A row entry may add an entry the run does not supply, or replace a
+    derived `pass` (for example with a narrower or failed result). It never
+    replaces a derived `fail`: a hand-written entry cannot turn a producer
+    test that did not pass into passing evidence. Neither input is mutated.
+    """
+    merged = dict(derived)
+    for key, entry in evidence.items():
+        derived_entry = derived.get(key)
+        if isinstance(derived_entry, dict) and derived_entry.get("result") == "fail":
+            continue
+        merged[key] = entry
+    return merged
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--acceptance", help="sanitized acceptance.json from capture-recovery")
@@ -497,7 +515,7 @@ def main(argv=None):
                 json.loads(raw.decode("utf-8")), source="acceptance.json@sha256:" + digest
             )
             if isinstance(evidence, dict):
-                evidence = dict(derived, **evidence)
+                evidence = merge_row_evidence(derived, evidence)
     except (OSError, ValueError) as error:
         print("check-capture-installation: %s" % error, file=sys.stderr)
         return 2

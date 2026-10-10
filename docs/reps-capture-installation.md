@@ -150,6 +150,12 @@ A test that did not pass turns its entries into `fail`. An acceptance file
 with `cutover_ready` other than false, or of another format, is refused. It
 never yields `upgrade` or `rollback`, and a non-Linux run yields nothing.
 
+With `--acceptance`, the row's own `evidence` entries are merged over the
+derived ones (`merge_row_evidence`): a row entry may add an entry the run
+does not supply or replace a derived `pass`, but a derived `fail` always
+stays, so a hand-written `pass` can never mask a producer test that did not
+pass.
+
 ## Signing guard
 
 `app/android/app/build.gradle.kts` reads the Gradle property

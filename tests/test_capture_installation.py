@@ -26,6 +26,7 @@ checker = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(checker)
 check_capture_installation = checker.check_capture_installation
 evidence_from_acceptance = checker.evidence_from_acceptance
+merge_row_evidence = checker.merge_row_evidence
 
 PACKAGE = "io.github.psychonaut0.reps"
 OLDER_PACKAGE = "org.example.older_workout_tracker"
@@ -527,6 +528,28 @@ class LinuxDevelopmentLoop(unittest.TestCase):
         doc = acceptance(runtime={"platform": "android"})
         self.assertEqual(evidence_from_acceptance(doc), {})
 
+    def test_row_entry_cannot_mask_a_derived_failure(self):
+        results = dict(acceptance()["results"], kill_each_boundary_and_restart_twice="fail")
+        derived = evidence_from_acceptance(acceptance(results=results))
+        row = {
+            "recovery": {"result": "pass", "reference": "hand-written claim"},
+            "storage": {"result": "pass", "reference": "hand-written claim", "retained": list(RETAINED)},
+        }
+        merged = merge_row_evidence(derived, row)
+        self.assertEqual(merged["recovery"]["result"], "fail")
+        self.assertEqual(merged["storage"]["result"], "fail")
+        result = check_capture_installation(linux_row(), linux_bridge(), merged)
+        self.assertEqual(result["status"], "unsupported")
+        self.assertIn("recovery_failed", result["reasons"])
+        # A row entry still supplies what the run did not derive, and may
+        # replace a derived pass.
+        passing = evidence_from_acceptance(acceptance())
+        extra = {"rollback": {"result": "pass", "reference": "row"}}
+        self.assertEqual(merge_row_evidence(passing, extra)["rollback"], extra["rollback"])
+        override = {"capture": {"result": "fail", "reference": "row"}}
+        self.assertEqual(merge_row_evidence(passing, override)["capture"]["result"], "fail")
+        self.assertEqual(row["recovery"]["result"], "pass", "inputs are not mutated")
+
     def test_no_certified_capture_means_no_capture_evidence(self):
         doc = acceptance(captures=[acceptance()["captures"][1]])
         evidence = evidence_from_acceptance(doc)
@@ -575,6 +598,33 @@ class CommandLine(unittest.TestCase):
             out = json.loads(proc.stdout)
             self.assertEqual(out["status"], "qualified")
             self.assertEqual(out["access_path"], "development_loop")
+
+    def test_row_evidence_cannot_mask_a_failed_acceptance(self):
+        results = dict(acceptance()["results"], kill_each_boundary_and_restart_twice="fail")
+        row = {
+            "original": linux_row(),
+            "bridge": linux_bridge(),
+            "evidence": {
+                "recovery": {"result": "pass", "reference": "hand-written claim"},
+                "storage": {
+                    "result": "pass",
+                    "reference": "hand-written claim",
+                    "retained": list(RETAINED),
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            row_path = os.path.join(tmp, "row.json")
+            acc_path = os.path.join(tmp, "acceptance.json")
+            with open(row_path, "w", encoding="utf-8") as f:
+                json.dump(row, f)
+            with open(acc_path, "w", encoding="utf-8") as f:
+                json.dump(acceptance(results=results), f)
+            proc = self.run_cli("--acceptance", acc_path, row_path)
+            self.assertEqual(proc.returncode, 4, proc.stdout + proc.stderr)
+            out = json.loads(proc.stdout)
+            self.assertEqual(out["status"], "unsupported")
+            self.assertIn("recovery_failed", out["reasons"])
 
     def test_unreadable_input_is_a_usage_error(self):
         proc = self.run_cli(os.path.join(ROOT, "does-not-exist.json"))
