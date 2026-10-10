@@ -13,6 +13,17 @@ handler sets the HTTP read deadline and closes a canceled request body. The HTTP
 server uses the same read timeout. A queue larger than this bound remains pending;
 its client must submit a smaller batch before normal uploads can resume.
 
+**Pre-deployment gate: legacy transaction size.** The bound can strand an
+installed client. The `0.18.1+37` client uploads each PowerSync CRUD transaction
+as one request and cannot split it. Suppose one transaction's body exceeds
+1 MiB, or cannot be sent within 10 seconds. Every retry then gets the same 503,
+and that client's queue loops on 503 indefinitely. Its later local writes never
+reach the server. Before this fence is deployed anywhere, measure the maximum
+single-transaction upload size and duration that the `0.18.1+37` client can
+produce, with synthetic data at realistic history sizes. Then confirm both stay
+inside the bound with margin, or raise the bound first. The measurement has not
+been made, so deploying the fence is blocked on it.
+
 `internal/migration.LockAccountWriter(ctx, tx, accountID)` initializes under the
 unique account key before `SELECT ... FOR UPDATE`; it never invents active state
 on a database failure. `Store.Freeze(ctx, command)` uses the same row lock, verifies

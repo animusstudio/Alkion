@@ -155,7 +155,10 @@ must match `PS_REPLICATION_PASSWORD` in `infra/.env`.
 The legacy upload route now checks a durable account writer gate inside its
 transaction before reading the request body. Frozen/retired accounts and gate
 failures return queue-preserving 503; expired authentication remains 401. Uploads
-are bounded to 1 MiB and 10 seconds. The internal freeze primitive records an
+are bounded to 1 MiB and 10 seconds. A `0.18.1+37` client cannot split one
+CRUD transaction, so a transaction over that bound would retry on 503
+indefinitely. Measuring that client's maximum transaction size and upload time
+is a gate before any deployment of the fence. The internal freeze primitive records an
 immutable snapshot and receipt. Explicitly configured migration controls require
 verified old JWT ownership and separate recorded consent; peer status uses pinned
 mTLS. Abort Unfreeze advances the epoch without reopening a retired account.
