@@ -134,15 +134,26 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
 /// a brand-new plugin instance before scheduling. Compiles on all platforms
 /// (referenced by name in [WorkoutNotification.init]) but only fires on Android.
 @pragma('vm:entry-point')
-Future<void> workoutNotificationBackground(NotificationResponse resp) async {
+Future<void> workoutNotificationBackground(
+  NotificationResponse resp, {
+  @visibleForTesting FlutterLocalNotificationsPlugin? plugin,
+}) async {
   if (resp.actionId != 'add_30s') return;
   WidgetsFlutterBinding.ensureInitialized();
   tzdata.initializeTimeZones();
   // This engine's own instance of the shared source gate: every engine's
-  // admission goes through the one native ticket table and lock.
-  final appSupport = await getApplicationSupportDirectory();
-  await extendRestInBackground(
-      gate: SourceWriteGate(stateDirectory: CaptureLocations(appSupport).gate));
+  // admission goes through the one native ticket table and lock. If the
+  // app-support directory cannot be resolved here, the +30s runs ungated,
+  // exactly as on a build without the capture plugin (Android, where this
+  // handler fires and that gate is `platform_unavailable` anyway).
+  SourceWriteGate? gate;
+  try {
+    final appSupport = await getApplicationSupportDirectory();
+    gate = SourceWriteGate(stateDirectory: CaptureLocations(appSupport).gate);
+  } catch (_) {
+    gate = null;
+  }
+  await extendRestInBackground(gate: gate, plugin: plugin);
 }
 
 /// The background +30s, as one admitted source operation of [gate] (this

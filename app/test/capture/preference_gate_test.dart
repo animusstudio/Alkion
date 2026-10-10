@@ -413,4 +413,42 @@ void main() {
     expect(store.value(restBlobStartMs), restAgain.millisecondsSinceEpoch);
     expect(model.idle, true);
   });
+
+  test('background_plus30_runs_ungated_when_app_support_is_unavailable',
+      () async {
+    final restStart = DateTime.now();
+    useStore({
+      restBlobName: 'Push',
+      restBlobStartedAt: restStart.subtract(const Duration(minutes: 20))
+          .toIso8601String(),
+      restBlobStartMs: restStart.millisecondsSinceEpoch,
+      restBlobTotal: 90,
+    });
+    // path_provider fails in this engine.
+    const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    var pathCalls = 0;
+    messenger.setMockMethodCallHandler(pathProvider, (call) async {
+      pathCalls++;
+      throw PlatformException(code: 'synthetic_unavailable');
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(pathProvider, null));
+    final plugin = _FakePlugin();
+
+    await workoutNotificationBackground(
+      const NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: 'add_30s',
+      ),
+      plugin: plugin,
+    );
+
+    // Exactly the ungated extension: +30s written, notification updated.
+    expect(pathCalls, greaterThan(0));
+    expect(store.value(restBlobTotal), 120);
+    expect(plugin.shows, 1);
+    expect(plugin.schedules, 1);
+  });
 }
