@@ -1414,11 +1414,15 @@ Boundary order, as pinned by `prepare_drain_hold_read_publish_in_order`:
    the gate drain.
 5. **Read.** Immediately before and after the single
    `readCapturePayload`, the coordinator requires `verifyHold == held` and
-   current evidence: `CaptureTransport.isCurrent`, plus its own check of
-   database identity, capture id, gate generation, profile digest, method
-   and qualification digest against the registered qualification. Any
-   change stops the attempt (`native_sync_stale`, `hold_lost`). `copying`
-   is persisted before the read.
+   current evidence. The coordinator does not consult the transport here,
+   because the transport is caller-supplied and could override its own
+   `isCurrent`. Instead it builds a production
+   `NativeSyncQuiescence(qualification:)` for the registered qualification
+   and calls its `isCurrent`. Its production origin rejects any test-seam
+   evidence, and the call checks the database instance, connection epoch,
+   capture id, gate generation, profile digest, method and qualification
+   digest. Any change stops the attempt (`native_sync_stale`, `hold_lost`).
+   `copying` is persisted before the read.
 6. **Seal and publish.** The planned artifact size plus 8 MiB must fit
    the native `availableBytes` (statvfs `f_bavail × f_frsize`; Android
    `StatFs`, uncompiled), otherwise `insufficient_space`, with nothing
@@ -1462,7 +1466,7 @@ Failures:
 | `preparing`/`held`/`copying` | `capture_interrupted`, decision `resume_original`. Acknowledgements were lost, so the attempt is never certified, and a new capture gets a new UUID. |
 | `sealed` | If the final directory exists, it is adopted only if it verifies in full against the journal; otherwise `destination_conflict`, never overwritten. If it does not exist, the staging bytes must match every recorded hash (else `sealed_divergence`, with everything kept and the journal unchanged). The hold must still be `held` or `recorded` (else `hold_lost`). Only then is it published and recorded `published`. |
 | `published` | Re-verified. Then `awaiting_resume_decision` for a rehearsal, or `local_hold` is persisted for a local hold. The hold is never released. |
-| `resume_allowed` | The recorded resumption is completed (release, `resumed`). |
+| `resume_allowed` | The recorded resumption is completed (release, `resumed`). With the gate already open, startup is not held. The next `capture()` then completes the recorded resumption itself before starting, instead of refusing with `capture_active`. |
 | `local_hold` | Re-verified, and the hold is kept. Decision `resume_original`. |
 | none / unreadable | `none`, `gate_without_journal` or `journal_*` (`owner_review`). |
 
@@ -1476,8 +1480,8 @@ are kept.
 
 | Test (`app/test/capture/capture_coordinator_test.dart`, host, 2026-10-10) | Result |
 | --- | --- |
-| `prepare_drain_hold_read_publish_in_order`: the journal `preparing` precedes `gate:prepare`. The pre-capture draft blob is written before the editor commit and before the flush. The flush precedes the native disconnect and apply drain, which precede `held`, `gate:drain` and the preference reload. Current evidence precedes the read. Then `sealed`, the no-replace rename, `published`, final verification, `resume_allowed`, release and `resumed`, in that order. `captured_at` ends `Z`, there are exactly eight manifest keys, five true flags and one `prepare`. The journal digests equal the verified files. The pre-flush bytes are captured unchanged. Only the requested flush changed the source (rows, queue, sequence and preferences are identical). Afterwards: gate open, callbacks resumed, admission open, no reconnect (prior policy off). | **PASS** |
-| `stale_native_evidence_prevents_read`: each of these gives `native_sync_*`, zero reads, nothing staged or published, a recorded release and an unchanged source: a connection-epoch change after the drain, evidence for another capture, for another gate generation or from another database instance, a transport bound to another profile, and no registered method. An epoch change or a released hold *during* the read gives one read and no publication (`native_sync_stale`, `hold_lost`). | **PASS** |
+| `prepare_drain_hold_read_publish_in_order`: the journal `preparing` precedes `gate:prepare`. The pre-capture draft blob is written before the editor commit and before the flush. The flush precedes the transport's network drain (the production adapter's disconnect and apply drain), which precedes `held`, `gate:drain` and the preference reload. Current evidence precedes the read. Then `sealed`, the no-replace rename, `published`, final verification, `resume_allowed`, release and `resumed`, in that order. `captured_at` ends `Z`, there are exactly eight manifest keys, five true flags and one `prepare`. The journal digests equal the verified files. The pre-flush bytes are captured unchanged. Only the requested flush changed the source (rows, queue, sequence and preferences are identical). Afterwards: gate open, callbacks resumed, admission open, no reconnect (prior policy off). | **PASS** |
+| `stale_native_evidence_prevents_read`: each of these gives `native_sync_*`, zero reads, nothing staged or published, a recorded release and an unchanged source: a connection-epoch change after the drain, evidence for another capture, for another gate generation or from another database instance, a transport bound to another profile, test-seam evidence (registered qualification, real method) behind a transport whose `isCurrent` always answers true, and no registered method. The other host tests get certified captures only from the registered production adapter, through a transport that only logs. An epoch change or a released hold *during* the read gives one read and no publication (`native_sync_stale`, `hold_lost`). | **PASS** |
 | `second_capture_rejected`: a second capture through the same coordinator or another one is `capture_in_progress`, with no second `prepare`, unchanged tickets and the journal still naming the first. A capture recorded by another process blocks before the journal is touched. | **PASS** |
 | `sealed_match_adopted_divergence_refused`: crash after the rename, then restart: the final directory is adopted (`finalCaptureDigest == sealedDigest`), a retry returns the same digest and the hold stays. A tampered staging byte gives `sealed_divergence` twice, with staging tree, journal bytes and recorded hashes unchanged and no final directory. A foreign destination gives `destination_conflict`, with both trees unchanged. Intact staging is published at restart. A released hold gives `hold_lost`. | **PASS** |
 | `published_waits_for_resume_decision`: crash after `published`, then two restarts: startup is held with zero ordinary steps and `awaiting_resume_decision`/`resume_original`, writes are refused, and the digest is unchanged. A decision for another capture changes nothing. `resumeOriginal` releases, and startup then runs all six steps. Final tree and source are unchanged. | **PASS** |
@@ -1485,6 +1489,10 @@ are kept.
 | `local_hold_survives_two_restarts`: `local_hold` keeps the gate held, transport closed and callbacks frozen. After each of two restarts, startup is held (`local_hold`, zero steps), recovery returns the same digest, and writes are refused (`admissionsAfterTwoHeldRestarts == 0`). The source is unchanged. Only `resumeOriginal` releases it. | **PASS** |
 | `timeout_or_cancel_preserves_source`: a drain timeout gives `drain_timeout` (`successAfterDrainTimeout == false`), no read, a recorded release, completed tickets and an unchanged source apart from the flush. `recovery_required` is never acknowledged or released until `resumeOriginal` (from another coordinator of the process, which also unfreezes). Crash while copying: `capture_interrupted` twice, with the source unchanged, startup held, and, after the decision, a fresh capture with a new id while the old staging is untouched. | **PASS** |
 | `blocked_boundaries_never_certify`: unsaved forms are refused before any journal or `prepare`. `persistence_failed` is released with a remediation. `insufficient_space` stages nothing. `flush_before_mismatch` blocks. An unknown source entry gives `capture_unusable` with a verified, retained, unpublished `ExploratoryCapture`. A refused no-replace publication blocks at `sealed` with the hold kept. | **PASS** |
+| `interrupted_preparing_and_held_recover_with_new_id`: crash right after `preparing` (gate still open, no generation), and crash right after `held` (gate `preparing`, ticket lost). Each gives two held startups (`capture_interrupted`, zero steps, source unchanged), then `resumeOriginal` opens the gate and records `resumed` with no manifest, startup boots, and a fresh capture gets a new id. | **PASS** |
+| `null_generation_release_matches_only_its_capture`: the journal write that records the generation fails (`journal_write_failed`, hold kept). After a restart, `resumeOriginal` finds generation > 1 by search and releases exactly that record. In the same gap with the gate holding another capture, no generation matches: `gate_generation_unknown`, no release call, and the other capture is still recorded. The source is unchanged. | **PASS** |
+| `recorded_resumption_completes_before_next_capture`: crash after the release, before `resumed`. Startup boots (gate open), and the next capture completes the recorded resumption and succeeds with a new id. The earlier capture still verifies. | **PASS** |
+| `refused_attempt_never_rolls_back_another_journal`: another process closes admission between our `preparing` and our `prepare`, which restores our journal byte for byte. If it has also written its own journal, that journal is left as it is. | **PASS** |
 | `platform_without_plugin_is_unsupported`: no plugin gives `CaptureUnsupported(platform_unavailable)`, with no journal; recovery reports the same. | **PASS** |
 | `rehearsal_accepts_certified_capture` (via `make -C app capture-go-compat`): the Go rehearsal over a coordinator-published capture. | **PASS** (below) |
 
@@ -1508,6 +1516,10 @@ Mutation checks (2026-10-10, each restored). Each one made the named test
 | no flush cross-check | `blocked_boundaries_never_certify` |
 | no free-space check | `blocked_boundaries_never_certify` |
 | `preparing` persisted after admission closes | `prepare_drain_hold_read_publish_in_order` |
+| evidence judged by the transport's `isCurrent` | `stale_native_evidence_prevents_read` |
+| a recorded `resume_allowed` not completed by `capture()` | `recorded_resumption_completes_before_next_capture` |
+| journal restored without checking its capture id | `refused_attempt_never_rolls_back_another_journal` |
+| generation search never matches | `null_generation_release_matches_only_its_capture` |
 
 `app/integration_test/capture_platform_test.dart`
 `coordinator_publishes_and_recovers_through_native_primitives` (real
@@ -1541,11 +1553,14 @@ Limits:
 - The coordinator runs in one foreground engine. Two processes that both
   run a coordinator can race between the journal read and `preparing`. The
   gate's `prepare` refuses the second, which restores the journal it read,
-  but no native lock covers the journal itself.
+  but only while the journal still names its own attempt. No native lock
+  covers the journal itself.
 - A process killed after the native `prepare` but before the generation
   reached the journal leaves `preparing` without a generation. The
-  explicit decision then searches generations 1–4096 for this capture id
-  (`gate_generation_unknown` beyond that).
+  explicit decision then searches generations 1–4096 for this capture id.
+  Only a `preparing`/`held`/`recorded` answer for exactly this id and
+  generation counts. `open` or any gate error ends the search, and nothing
+  found means `gate_generation_unknown` with nothing released.
 - The startup recovery screen is still the minimal one: it shows the code
   and stage but offers no decision button. The honest decision UI is the
   next work package.

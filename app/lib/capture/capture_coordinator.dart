@@ -409,11 +409,26 @@ class CaptureCoordinator {
     }
     if (probe == 'mismatch') throw const CaptureBlocked('capture_in_progress');
     if (probe != 'open') throw CaptureBlocked('gate_$probe');
-    final CaptureJournalState? previous;
+    CaptureJournalState? previous;
     try {
       previous = await _journal.read();
     } on CaptureJournalException catch (e) {
       throw CaptureBlocked(e.code, decision: CaptureDecision.ownerReview);
+    }
+    if (previous != null && previous.stage == CaptureStage.resumeAllowed) {
+      // A recorded decision whose release (or whose `resumed` record) did
+      // not complete: finish it idempotently. Ordinary startup does not
+      // hold for `resume_allowed` once the gate is open, so nothing else
+      // would.
+      final code =
+          await _completeResume(previous, _decision(previous, 'recorded_resume'));
+      if (code != null) {
+        throw CaptureBlocked(code,
+            captureId: previous.captureId,
+            stage: CaptureStage.resumeAllowed,
+            decision: CaptureDecision.resumeOriginal);
+      }
+      previous = previous.copyWith(stage: CaptureStage.resumed);
     }
     if (previous != null && previous.stage != CaptureStage.resumed) {
       throw CaptureBlocked('capture_active',
@@ -527,10 +542,14 @@ class CaptureCoordinator {
   }
 
   /// Admission never closed: put back what the journal said before, so a
-  /// refused attempt leaves no claim behind.
+  /// refused attempt leaves no claim behind. Only while the journal still
+  /// names this attempt: another attempt that wrote it meanwhile (a racing
+  /// process) is never rolled back.
   Future<void> _restoreJournal(
       CaptureJournalState? previous, CaptureJournalState refused) async {
     try {
+      final current = await _journal.read();
+      if (current == null || current.captureId != refused.captureId) return;
       await _journal.write(previous ?? refused.copyWith(stage: CaptureStage.resumed));
     } catch (_) {
       // The journal then names an attempt that holds nothing; recovery sees
@@ -913,7 +932,10 @@ class CaptureCoordinator {
 
   /// Whether [evidence] is native evidence current for exactly this
   /// database, connection epoch, capture, gate generation, qualified profile
-  /// and registered method.
+  /// and registered method, as a production adapter the coordinator builds
+  /// itself judges it. The transport's own [CaptureTransport.isCurrent] is
+  /// not consulted: a transport is supplied by the caller and could
+  /// override it.
   bool _evidenceCurrent(
     CaptureSourceBindings sources,
     CaptureTransport transport,
@@ -935,7 +957,17 @@ class CaptureCoordinator {
         native.methodId == qualification.methodId &&
         native.qualificationEvidenceDigest ==
             qualification.qualificationEvidenceDigest &&
-        transport.isCurrent(evidence, preparation);
+        // Verified here, not by the (overridable) transport: a production
+        // adapter for the registered qualification accepts only evidence
+        // a production adapter observed, for this database instance and
+        // its current connection epoch. Test-seam evidence never passes.
+        NativeSyncQuiescence(qualification: qualification).isCurrent(
+          native,
+          sources.database,
+          profile,
+          captureId: preparation.captureId,
+          gateGeneration: preparation.generation,
+        );
   }
 
   static CapturePayload _withCoordinatorEvidence(
@@ -1237,8 +1269,13 @@ class CaptureCoordinator {
   Future<int?> _findGeneration(String captureId) async {
     for (var gen = 1; gen <= 4096; gen++) {
       final status = await _holdStatus(SourceHold(captureId, gen));
-      if (status == 'open') return null;
-      if (status != 'mismatch') return gen;
+      // Only a record naming exactly this capture and generation answers
+      // one of these; `open` means nothing is recorded, and any gate error
+      // ends the search rather than being taken for a match.
+      if (status == 'preparing' || status == 'held' || status == 'recorded') {
+        return gen;
+      }
+      if (status != 'mismatch') return null;
     }
     return null;
   }

@@ -41,6 +41,10 @@ class FakeCaptureFiles {
   /// What `availableBytes` answers.
   int availableBytes = 1 << 40;
 
+  /// When it returns a code for a `durableReplace` of a path, that write
+  /// fails with it and nothing is written.
+  String? Function(String path)? failWrite;
+
   /// Called with `files:<method>:<path>` for every successful call.
   void Function(String event)? log;
 
@@ -71,6 +75,8 @@ class FakeCaptureFiles {
         return {'code': 'ok'};
       case 'durableReplace':
         final path = args['path']! as String;
+        final injected = failWrite?.call(path);
+        if (injected != null) return {'code': injected};
         final parent = File(path).parent;
         if (!parent.existsSync()) return {'code': 'invalid_argument'};
         final tmp = File('$path.capture-tmp-fake');

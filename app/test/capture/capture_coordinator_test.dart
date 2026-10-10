@@ -93,6 +93,43 @@ class _SpySync implements NativeSyncMethod {
   }
 }
 
+/// The production transport (registered adapter, production evidence),
+/// logging when its network drain starts and ends.
+class _LoggingTransport extends CaptureTransport {
+  _LoggingTransport({
+    required super.database,
+    required super.profile,
+    required super.quiescence,
+    required super.reconnect,
+    required this.log,
+  });
+
+  final void Function(String) log;
+
+  @override
+  Future<TransportPauseEvidence> pauseAndDrain(
+    SourcePreparation preparation, {
+    required Duration timeout,
+  }) async {
+    log('sync:pause_start');
+    final evidence = await super.pauseAndDrain(preparation, timeout: timeout);
+    log('sync:pause_done');
+    return evidence;
+  }
+}
+
+/// A transport that claims every evidence is current.
+class _TrustMeTransport extends CaptureTransport {
+  _TrustMeTransport({
+    required super.database,
+    required super.profile,
+    required super.quiescence,
+  }) : super(reconnect: () async {});
+
+  @override
+  bool isCurrent(TransportPauseEvidence evidence, SourcePreparation p) => true;
+}
+
 /// A file-backed draft store that logs its saves.
 class _LoggingDraftStore extends DraftStore {
   _LoggingDraftStore(Directory dir, this.log)
@@ -306,14 +343,13 @@ class _Installation {
   CaptureJournal get journal =>
       CaptureJournal(locations.journal, base: source, files: fakeFiles.files);
 
-  CaptureTransport transport(QualifiedProfile profile) => CaptureTransport(
+  CaptureTransport transport(QualifiedProfile profile) => _LoggingTransport(
         database: database,
         profile: profile,
-        quiescence: NativeSyncQuiescence.withMethodForTesting(
-          qualification: nativeSyncQualificationFor(profile)!,
-          method: _SpySync(events.add),
-        ),
+        quiescence:
+            NativeSyncQuiescence(qualification: nativeSyncQualificationFor(profile)!),
         reconnect: () async => reconnects++,
+        log: events.add,
       );
 
   CaptureCoordinator coordinator({
@@ -477,8 +513,8 @@ void main() {
     expect(preserved, lessThan(at('draft:save')));
     // 2-4. Local drain (the one flush), then network/background drain, then
     // the exclusive hold, then preferences reload after the gate drain.
-    expect(at('draft:save'), lessThan(at('sync:disconnect')));
-    expect(at('sync:apply_drained'), lessThan(at('step:journal:held')));
+    expect(at('draft:save'), lessThan(at('sync:pause_start')));
+    expect(at('sync:pause_done'), lessThan(at('step:journal:held')));
     expect(at('step:journal:held'), lessThan(at('gate:drain')));
     expect(at('gate:drain'), lessThan(at('step:preferences_reloaded')));
     // 5. Current native evidence and the live hold precede and follow the
@@ -693,6 +729,20 @@ void main() {
         reconnect: () async {},
       );
     }));
+
+    // Test-seam evidence (the registered qualification and the real method,
+    // bound through the seam) behind a transport that vouches for any
+    // evidence: the coordinator verifies with its own production adapter,
+    // so a seam never reads, let alone certifies.
+    await expectNoRead(i.coordinator(
+        transportFor: (profile) => _TrustMeTransport(
+              database: i.database,
+              profile: profile,
+              quiescence: NativeSyncQuiescence.withMethodForTesting(
+                qualification: nativeSyncQualificationFor(profile)!,
+                method: _SpySync(i.events.add),
+              ),
+            )));
 
     // No registered method at all: nothing attests the pause, nothing reads.
     await expectNoRead(i.coordinator(
@@ -1112,6 +1162,212 @@ void main() {
         _blocked('publish_failed'));
     expect((await i.readJournal())!.stage, CaptureStage.sealed);
     expect(i.model.state, 'held');
+  });
+
+  test('interrupted_preparing_and_held_recover_with_new_id', () async {
+    await install();
+    final before = await i.sourceState();
+    final ids = <String>{};
+
+    for (final crashStep in ['journal:preparing', 'journal:held']) {
+      await expectLater(
+          i.coordinator(onStep: (step) {
+            if (step == crashStep) throw _Crash(step);
+          }).capture(mode: CaptureMode.rehearsal),
+          throwsA(isA<_Crash>()));
+      i.restart();
+      final lost = (await i.readJournal())!;
+      ids.add(lost.captureId);
+      if (crashStep == 'journal:preparing') {
+        // Persisted before admission closed: nothing is recorded yet.
+        expect(lost.stage, CaptureStage.preparing);
+        expect(lost.gateGeneration, isNull);
+        expect(i.model.state, 'open');
+      } else {
+        // Admission closed, hold never taken, the ticket died with the
+        // process.
+        expect(lost.stage, CaptureStage.held);
+        expect(i.model.state, 'preparing');
+        expect(i.model.idle, true);
+      }
+      final crashed = await i.sourceState();
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final (outcome, steps) = await i.startup();
+        expect(steps.ran, isEmpty);
+        final held = (outcome as CaptureRecoveryRequired).recovery;
+        expect(held.code, 'capture_interrupted');
+        expect(held.stage, lost.stage.wire);
+        expect(held.decision, 'resume_original');
+        expect(await i.sourceState(), crashed);
+      }
+      await i.coordinator().resumeOriginal(
+          captureId: lost.captureId, decisionDigest: '6' * 64);
+      expect(i.model.state, 'open');
+      expect((await i.readJournal())!.stage, CaptureStage.resumed);
+      expect((await i.readJournal())!.manifestSha256, isNull);
+      expect(await i.sourceState(), crashed);
+      final (outcome, steps) = await i.startup();
+      expect(outcome, isA<StartupAllowed>());
+      expect(steps.ran, hasLength(6));
+      i.restart(liveDraft: true);
+    }
+
+    final fresh = await i.coordinator().capture(mode: CaptureMode.rehearsal);
+    expect(ids, isNot(contains(fresh.captureId)));
+    final after = await i.sourceState();
+    expect({...after}..remove('draft'), {...before}..remove('draft'));
+  });
+
+  test('null_generation_release_matches_only_its_capture', () async {
+    await install();
+    // An earlier capture, so the attempt below is not at generation 1.
+    await i.coordinator().capture(mode: CaptureMode.rehearsal);
+    i.restart(liveDraft: true);
+    final before = await i.sourceState();
+
+    // The journal write that records the generation fails: the attempt is
+    // `preparing` without one while the gate records it.
+    Future<CaptureJournalState> failGenerationWrite() async {
+      var journalWrites = 0;
+      i.fakeFiles.failWrite = (path) =>
+          path == i.locations.journal.path && ++journalWrites == 2
+              ? 'io_error'
+              : null;
+      await expectLater(i.coordinator().capture(mode: CaptureMode.rehearsal),
+          throwsA(isA<CaptureBlocked>()
+              .having((e) => e.code, 'code', 'journal_write_failed')
+              .having((e) => e.decision, 'decision',
+                  CaptureDecision.resumeOriginal)));
+      i.fakeFiles.failWrite = null;
+      i.restart(liveDraft: true);
+      final j = (await i.readJournal())!;
+      expect(j.stage, CaptureStage.preparing);
+      expect(j.gateGeneration, isNull);
+      expect(i.model.capture, j.captureId);
+      return j;
+    }
+
+    final ours = await failGenerationWrite();
+    final generation = i.model.generation;
+    expect(generation, greaterThan(1));
+    final scanned = i.model.calls.where((c) => c == 'verifyHold').length;
+    await i.coordinator()
+        .resumeOriginal(captureId: ours.captureId, decisionDigest: '8' * 64);
+    expect(i.model.calls.where((c) => c == 'verifyHold').length - scanned,
+        greaterThanOrEqualTo(generation),
+        reason: 'the generation was found by searching');
+    expect(i.model.state, 'open');
+    expect(i.model.decisions.last, '8' * 64);
+    expect((await i.readJournal())!.stage, CaptureStage.resumed);
+    expect(await i.sourceState(), {...before, 'draft': (await i.sourceState())['draft']});
+
+    // The same gap while the gate records ANOTHER capture: nothing matches
+    // this capture id at any generation, so nothing is released.
+    final orphan = await failGenerationWrite();
+    await i.gate.release(SourceHold(orphan.captureId, i.model.generation),
+        decisionDigest: 'a' * 64);
+    const foreign = '00000000-0000-4000-8000-00000000f00d';
+    await i.gate.closeAdmission(foreign);
+    final foreignGeneration = i.model.generation;
+    final releases = i.model.calls.where((c) => c == 'release').length;
+    await expectLater(
+        i.coordinator().resumeOriginal(
+            captureId: orphan.captureId, decisionDigest: '9' * 64),
+        throwsA(isA<CaptureBlocked>()
+            .having((e) => e.code, 'code', 'gate_generation_unknown')));
+    expect(i.model.capture, foreign);
+    expect(i.model.state, 'preparing');
+    expect(i.model.generation, foreignGeneration);
+    expect(i.model.calls.where((c) => c == 'release').length, releases,
+        reason: 'no release was attempted for another capture');
+    final after = await i.sourceState();
+    expect({...after}..remove('draft'), {...before}..remove('draft'));
+  });
+
+  test('recorded_resumption_completes_before_next_capture', () async {
+    await install();
+    final before = await i.sourceState();
+    // Released, but `resumed` was never recorded.
+    await expectLater(
+        i.coordinator(onStep: (step) {
+          if (step == 'released') throw const _Crash('released');
+        }).capture(mode: CaptureMode.rehearsal),
+        throwsA(isA<_Crash>()));
+    i.restart(liveDraft: true);
+    final recorded = (await i.readJournal())!;
+    expect(recorded.stage, CaptureStage.resumeAllowed);
+    expect(i.model.state, 'open');
+    // Startup is not held by it...
+    final (outcome, steps) = await i.startup();
+    expect(outcome, isA<StartupAllowed>());
+    expect(steps.ran, hasLength(6));
+    expect((await i.readJournal())!.stage, CaptureStage.resumeAllowed);
+    // ...and the next capture completes it instead of refusing.
+    final next = await i.coordinator().capture(mode: CaptureMode.rehearsal);
+    expect(next.captureId, isNot(recorded.captureId));
+    expect((await i.readJournal())!.captureId, next.captureId);
+    // The earlier capture is still there and still verifies.
+    final earlier = Directory(p.join(i.locations.captures.path, recorded.captureId));
+    expect((await verifyCaptureDirectory(earlier)).manifestSha256,
+        recorded.manifestSha256);
+    final after = await i.sourceState();
+    expect({...after}..remove('draft'), {...before}..remove('draft'));
+  });
+
+  test('refused_attempt_never_rolls_back_another_journal', () async {
+    await install();
+    await i.coordinator().capture(mode: CaptureMode.rehearsal);
+    final settled = i.locations.journal.readAsBytesSync();
+    const foreign = '00000000-0000-4000-8000-00000000f00d';
+
+    // Another process closes admission between our `preparing` write and
+    // our `prepare`: refused, and our claim is withdrawn exactly.
+    var hooked = false;
+    await expectLater(
+        i.coordinator(onStep: (step) async {
+          if (step == 'journal:preparing' && !hooked) {
+            hooked = true;
+            await i.gate.closeAdmission(foreign);
+          }
+        }).capture(mode: CaptureMode.rehearsal),
+        _blocked('capture_in_progress'));
+    expect(i.locations.journal.readAsBytesSync(), settled);
+    await i.gate.release(SourceHold(foreign, i.model.generation),
+        decisionDigest: 'a' * 64);
+
+    // The other process also wrote its own journal meanwhile: ours is not
+    // restored over it.
+    hooked = false;
+    late CaptureJournalState theirs;
+    await expectLater(
+        i.coordinator(onStep: (step) async {
+          if (step == 'journal:preparing' && !hooked) {
+            hooked = true;
+            final mine = (await i.readJournal())!;
+            await i.gate.closeAdmission(foreign);
+            theirs = CaptureJournalState(
+              captureId: foreign,
+              installation: mine.installation,
+              producerVersion: mine.producerVersion,
+              runtimeVersions: mine.runtimeVersions,
+              storeVersions: mine.storeVersions,
+              mode: CaptureMode.rehearsal,
+              stage: CaptureStage.preparing,
+              gateGeneration: i.model.generation,
+              priorSyncIntent: PriorSyncIntent.unknown,
+              inventory: const [],
+              files: const {},
+              manifestSha256: null,
+            );
+            await i.journal.write(theirs);
+          }
+        }).capture(mode: CaptureMode.rehearsal),
+        _blocked('capture_in_progress'));
+    final now = (await i.readJournal())!;
+    expect(now.captureId, foreign);
+    expect(now.stage, CaptureStage.preparing);
+    expect(now.gateGeneration, theirs.gateGeneration);
+    expect(i.model.capture, foreign);
   });
 
   test('platform_without_plugin_is_unsupported', () async {
