@@ -270,6 +270,57 @@ void main() {
         decisionDigest: 'test');
   });
 
+  test('refused_undo_shows_last_stored_value', () async {
+    useStore({'unit': 'kg', 'mode': 'dark'});
+    final model = GateModel('undo');
+    addTearDown(model.detach);
+    final gate = model.gate(dir);
+    appSourceGate = gate;
+    final units = UnitService();
+    await units.load();
+    final settings = SettingsService();
+    await settings.load();
+    final preparation = await gate.closeAdmission('capture-undo');
+
+    // Stored kg; two refused changes in a row. The undo of the second must
+    // not show the first refused value.
+    units.setUnit(Unit.lb);
+    units.setUnit(Unit.kg);
+    await units.flushPersistence();
+    expect(units.unit, Unit.kg);
+    units.setUnit(Unit.lb);
+    await units.flushPersistence();
+    expect(units.unit, Unit.kg);
+    expect(store.value('unit'), 'kg');
+
+    // Stored dark; the same for a setting.
+    final light = settings.setMode('light');
+    final dark = settings.setMode('dark');
+    await expectLater(light, throwsA(isA<SourceGateException>()));
+    await expectLater(dark, throwsA(isA<SourceGateException>()));
+    expect(settings.mode, 'dark');
+    await expectLater(
+        settings.setMode('light'), throwsA(isA<SourceGateException>()));
+    expect(settings.mode, 'dark');
+    expect(store.value('mode'), 'dark');
+
+    // After release a successful write becomes the stored value.
+    await gate.release(SourceHold(preparation.captureId, preparation.generation),
+        decisionDigest: 'test');
+    await settings.setMode('light');
+    units.setUnit(Unit.lb);
+    await units.flushPersistence();
+    final again = await gate.closeAdmission('capture-undo-2');
+    await expectLater(
+        settings.setMode('dark'), throwsA(isA<SourceGateException>()));
+    expect(settings.mode, 'light');
+    units.setUnit(Unit.kg);
+    await units.flushPersistence();
+    expect(units.unit, Unit.lb);
+    await gate.release(SourceHold(again.captureId, again.generation),
+        decisionDigest: 'test');
+  });
+
   test('background_plus30_and_notifier_block_under_hold', () async {
     final restStart = DateTime.now();
     useStore({

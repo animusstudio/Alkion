@@ -23,6 +23,7 @@ class UnitService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString('unit');
     _unit = stored == Unit.lb.name ? Unit.lb : Unit.kg;
+    _stored = _unit;
     notifyListeners();
   }
 
@@ -31,22 +32,24 @@ class UnitService extends ChangeNotifier {
   /// The write runs in the background, after any earlier unit write, as one
   /// admitted source operation; [flushPersistence] awaits it and reports its
   /// failure. A write refused because a data capture holds the source
-  /// changes nothing on disk, and the shown unit goes back to the stored one.
+  /// changes nothing on disk, and the shown unit goes back to the last unit
+  /// durably stored (loaded, or written successfully), not merely the one
+  /// shown before this call.
   /// Choosing the shown unit again after its write failed retries the write.
   void setUnit(Unit u) {
     if (u == _unit && _lastError == null) return;
-    final previous = _unit;
     _unit = u;
     final write = _persisted.then((_) => writePreferences(
         'prefs.unit', (prefs) => prefs.setString('unit', u.name)));
     _persisted = write.then((_) {
       _lastError = null;
+      _stored = u;
     }, onError: (Object e, StackTrace st) {
       if (isAdmissionRefusal(e)) {
         // Nothing was written: show the stored unit again.
         _lastError = null;
-        if (_unit == u) {
-          _unit = previous;
+        if (_unit == u && _unit != _stored) {
+          _unit = _stored;
           notifyListeners();
         }
         return;
@@ -72,6 +75,9 @@ class UnitService extends ChangeNotifier {
   }
 
   Future<void> _persisted = Future.value();
+
+  /// The unit last loaded from, or successfully written to, preferences.
+  Unit _stored = Unit.kg;
   (Object, StackTrace)? _lastError;
 
   /// Convert a kg value to the given [unit].

@@ -100,6 +100,7 @@ class SettingsService extends ChangeNotifier {
     } else {
       _accent = accents[0];
     }
+    _stored = _storedSnapshot();
 
     notifyListeners();
   }
@@ -107,149 +108,168 @@ class SettingsService extends ChangeNotifier {
   /// Set the theme mode ('dark' or 'light') and persist.
   Future<void> setMode(String mode) async {
     if (mode == _mode) return;
-    final previous = _mode;
     _mode = mode;
-    await _persist('prefs.settings.mode', (p) => p.setString(_kMode, mode),
-        undo: () => _mode == mode ? _mode = previous : null);
+    await _persist<String>('prefs.settings.mode', mode,
+        current: () => _mode,
+        restore: (v) => _mode = v,
+        write: (p) => p.setString(_kMode, mode),);
     notifyListeners();
   }
 
   /// Set the accent colour and persist.
   Future<void> setAccent(Color accent) async {
     if (accent == _accent) return;
-    final previous = _accent;
     _accent = accent;
-    await _persist(
-        'prefs.settings.accent', (p) => p.setInt(_kAccent, accent.toARGB32()),
-        undo: () => _accent == accent ? _accent = previous : null);
+    await _persist<Color>('prefs.settings.accent', accent,
+        current: () => _accent,
+        restore: (v) => _accent = v,
+        write: (p) => p.setInt(_kAccent, accent.toARGB32()),);
     notifyListeners();
   }
 
   /// Set the profile display name and persist.
   Future<void> setProfileName(String name) async {
     if (name == _profileName) return;
-    final previous = _profileName;
     _profileName = name;
-    await _persist(
-        'prefs.settings.profile_name', (p) => p.setString(_kProfileName, name),
-        undo: () => _profileName == name ? _profileName = previous : null);
+    await _persist<String>('prefs.settings.profile_name', name,
+        current: () => _profileName,
+        restore: (v) => _profileName = v,
+        write: (p) => p.setString(_kProfileName, name),);
     notifyListeners();
   }
 
   /// Set the backend server URL and persist.
   Future<void> setServerUrl(String url) async {
     if (url == _serverUrl) return;
-    final previous = _serverUrl;
     _serverUrl = url;
-    await _persist(
-        'prefs.settings.server_url', (p) => p.setString(_kServerUrl, url),
-        undo: () => _serverUrl == url ? _serverUrl = previous : null);
+    await _persist<String>('prefs.settings.server_url', url,
+        current: () => _serverUrl,
+        restore: (v) => _serverUrl = v,
+        write: (p) => p.setString(_kServerUrl, url),);
     notifyListeners();
   }
 
   /// Enable or disable background sync and persist. [parent] when it is part
   /// of a larger admitted operation (sign-out).
   Future<void> setSyncEnabled(bool value, {SourceTicket? parent}) async {
-    final previous = _syncEnabled;
     _syncEnabled = value;
-    await _persist('prefs.settings.sync_enabled',
-        (p) => p.setBool('settings.sync_enabled', value),
-        undo: () => _syncEnabled == value ? _syncEnabled = previous : null,
-        parent: parent);
+    await _persist<bool>('prefs.settings.sync_enabled', value,
+        current: () => _syncEnabled,
+        restore: (v) => _syncEnabled = v,
+        write: (p) => p.setBool('settings.sync_enabled', value),
+        parent: parent,);
     notifyListeners();
   }
 
   /// Set the global default rest for compound exercises (seconds) and persist.
   Future<void> setRestCompoundSeconds(int v) async {
-    final previous = _restCompoundSeconds;
     _restCompoundSeconds = v;
-    await _persist('prefs.settings.rest_compound_seconds',
-        (p) => p.setInt('settings.rest_compound_seconds', v),
-        undo: () => _restCompoundSeconds == v
-            ? _restCompoundSeconds = previous
-            : null);
+    await _persist<int>('prefs.settings.rest_compound_seconds', v,
+        current: () => _restCompoundSeconds,
+        restore: (v) => _restCompoundSeconds = v,
+        write: (p) => p.setInt('settings.rest_compound_seconds', v),);
     notifyListeners();
   }
 
   /// Set the global default rest for isolation exercises (seconds) and persist.
   Future<void> setRestIsolationSeconds(int v) async {
-    final previous = _restIsolationSeconds;
     _restIsolationSeconds = v;
-    await _persist('prefs.settings.rest_isolation_seconds',
-        (p) => p.setInt('settings.rest_isolation_seconds', v),
-        undo: () => _restIsolationSeconds == v
-            ? _restIsolationSeconds = previous
-            : null);
+    await _persist<int>('prefs.settings.rest_isolation_seconds', v,
+        current: () => _restIsolationSeconds,
+        restore: (v) => _restIsolationSeconds = v,
+        write: (p) => p.setInt('settings.rest_isolation_seconds', v),);
     notifyListeners();
   }
 
   /// Set the language override (a code like 'it') or null to follow the system
   /// locale, and persist.
   Future<void> setLocaleOverride(String? code) async {
-    final previous = _localeOverride;
     _localeOverride = code;
-    await _persist(
-        'prefs.settings.locale',
-        (p) => code == null
+    await _persist<String?>('prefs.settings.locale', code,
+        current: () => _localeOverride,
+        restore: (v) => _localeOverride = v,
+        write: (p) => code == null
             ? p.remove('settings.locale')
-            : p.setString('settings.locale', code),
-        undo: () =>
-            _localeOverride == code ? _localeOverride = previous : null);
+            : p.setString('settings.locale', code),);
     notifyListeners();
   }
 
   /// Enable or disable the daily auto-check for app updates and persist.
   Future<void> setAutoCheckUpdates(bool value) async {
-    final previous = _autoCheckUpdates;
     _autoCheckUpdates = value;
-    await _persist('prefs.settings.auto_check_updates',
-        (p) => p.setBool('settings.auto_check_updates', value),
-        undo: () =>
-            _autoCheckUpdates == value ? _autoCheckUpdates = previous : null);
+    await _persist<bool>('prefs.settings.auto_check_updates', value,
+        current: () => _autoCheckUpdates,
+        restore: (v) => _autoCheckUpdates = v,
+        write: (p) => p.setBool('settings.auto_check_updates', value),);
     notifyListeners();
   }
 
   /// Set the bodyweight goal and persist.
   Future<void> setBodyweightGoal(BodyweightGoal goal) async {
     if (goal == _bodyweightGoal) return;
-    final previous = _bodyweightGoal;
     _bodyweightGoal = goal;
-    await _persist('prefs.settings.bodyweight_goal',
-        (p) => p.setString('settings.bodyweight_goal', goal.name),
-        undo: () =>
-            _bodyweightGoal == goal ? _bodyweightGoal = previous : null);
+    await _persist<BodyweightGoal>('prefs.settings.bodyweight_goal', goal,
+        current: () => _bodyweightGoal,
+        restore: (v) => _bodyweightGoal = v,
+        write: (p) => p.setString('settings.bodyweight_goal', goal.name),);
     notifyListeners();
   }
 
   /// Record the timestamp (epoch millis) of the most recent update check and
   /// persist, gating the once/day auto-check throttle.
   Future<void> markUpdateChecked(int nowMs) async {
-    final previous = _lastUpdateCheckMs;
     _lastUpdateCheckMs = nowMs;
-    await _persist('prefs.settings.last_update_check_ms',
-        (p) => p.setInt('settings.last_update_check_ms', nowMs),
-        undo: () => _lastUpdateCheckMs == nowMs
-            ? _lastUpdateCheckMs = previous
-            : null);
+    await _persist<int>('prefs.settings.last_update_check_ms', nowMs,
+        current: () => _lastUpdateCheckMs,
+        restore: (v) => _lastUpdateCheckMs = v,
+        write: (p) => p.setInt('settings.last_update_check_ms', nowMs),);
     notifyListeners();
   }
 
-  /// Persists one setting as an admitted source operation (see
-  /// [writePreferences]). A write refused because a data capture holds the
-  /// source changed nothing on disk: [undo] restores the shown value, the
-  /// listeners hear it, and the refusal is rethrown for the caller to show.
-  Future<void> _persist(
+  /// Values last loaded from, or successfully written to, preferences, by
+  /// write operation: what a refused write shows again.
+  late Map<String, Object?> _stored = _storedSnapshot();
+
+  Map<String, Object?> _storedSnapshot() => {
+        'prefs.settings.mode': _mode,
+        'prefs.settings.accent': _accent,
+        'prefs.settings.profile_name': _profileName,
+        'prefs.settings.server_url': _serverUrl,
+        'prefs.settings.sync_enabled': _syncEnabled,
+        'prefs.settings.rest_compound_seconds': _restCompoundSeconds,
+        'prefs.settings.rest_isolation_seconds': _restIsolationSeconds,
+        'prefs.settings.locale': _localeOverride,
+        'prefs.settings.auto_check_updates': _autoCheckUpdates,
+        'prefs.settings.bodyweight_goal': _bodyweightGoal,
+        'prefs.settings.last_update_check_ms': _lastUpdateCheckMs,
+      };
+
+  /// Persists [value] (already shown) as one admitted source operation (see
+  /// [writePreferences]). On success it becomes the stored value. A write
+  /// refused because a data capture holds the source changed nothing on
+  /// disk: if [value] is still shown, the last durably stored value is shown
+  /// again (not merely the value shown before this call, which an earlier
+  /// refused change may have set), the listeners hear it, and the refusal is
+  /// rethrown for the caller to show.
+  Future<void> _persist<T>(
     String operation,
-    Future<bool> Function(SharedPreferences prefs) write, {
-    required void Function() undo,
+    T value, {
+    required T Function() current,
+    required void Function(T stored) restore,
+    required Future<bool> Function(SharedPreferences prefs) write,
     SourceTicket? parent,
   }) async {
+    final stored = _stored;
     try {
       await writePreferences(operation, write, parent: parent);
+      stored[operation] = value;
     } catch (e) {
       if (isAdmissionRefusal(e)) {
-        undo();
-        notifyListeners();
+        final last = stored[operation] as T;
+        if (current() == value && value != last) {
+          restore(last);
+          notifyListeners();
+        }
       }
       rethrow;
     }
