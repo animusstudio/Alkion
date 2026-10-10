@@ -459,6 +459,28 @@ void main() {
             s['sha256'] = sha256.convert(bytes).toString();
           });
         });
+    // A \u escape is exactly four hex digits, in the manifest and in every
+    // interpreted store.
+    for (final bad in [r'\u+041', r'\u 41 ', r'\u-041', r'\u12']) {
+      expect(() => decodeStrictJson(utf8.encode('{"a":"$bad"}'), foldKeys: true),
+          throwsA(isA<CaptureArtifactException>()
+              .having((e) => e.code, 'code', 'json_invalid')), reason: bad);
+      expect(() => decodeJsonObjectLiterals('{"a":"$bad"}'),
+          throwsA(isA<CaptureArtifactException>()
+              .having((e) => e.code, 'code', 'json_invalid')), reason: bad);
+      expect(() => JsonLiteral('"$bad"'), throwsA(isA<CaptureArtifactException>()),
+          reason: bad);
+      await rejects('json_invalid', (c) {
+        final file = File(p.join(c.path, 'manifest.json'));
+        file.writeAsStringSync(file.readAsStringSync().replaceFirst(
+            '"app_version":"0.18.1+37"', '"app_version":"$bad"'));
+      });
+      // The otherwise valid SQL store with one escaped value.
+      await rejectsContent('store_invalid', 'sql',
+          sqlText.replaceFirst('"2026-10-01"', '"$bad"'));
+    }
+    expect(decodeStrictJson(utf8.encode(r'{"a":"\u00E9\u0041"}'), foldKeys: true),
+        {'a': 'éA'});
     await rejectsContent('credential_in_capture', 'preferences',
         '{"entries":[{"key":"access_token","type":"string","value":"t"}]}');
     await rejectsContent('store_invalid', 'preferences',

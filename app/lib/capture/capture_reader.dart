@@ -680,9 +680,10 @@ Future<QueueStoreCapture> _readQueue(SqliteReadContext tx) async {
 /// The queue entries the v1 reader would refuse, as safe codes. They are
 /// still copied exactly, but block a usable capture: a `tx_id` or `data`
 /// that is NULL, a `client_id` below 1 or not strictly increasing, a
-/// transaction id that reappears after another one (not contiguous), and
-/// ids beyond the reader's 18-character integer literals. (`data` that is
-/// not text is refused while reading.)
+/// transaction id that reappears after another one (not contiguous), ids
+/// beyond the reader's 18-character integer literals, and `data` its
+/// `parseCrud` refuses (see [_crudBlockers]). (`data` that is not text is
+/// refused while reading.)
 List<String> queueEntryBlockers(List<QueueEntryCapture> entries) {
   final out = <String>{};
   int? last;
@@ -704,9 +705,48 @@ List<String> queueEntryBlockers(List<QueueEntryCapture> entries) {
       }
     }
     previousTx = tx;
-    if (e.data == null) out.add('upload_queue_data_missing');
+    final data = e.data;
+    if (data == null) {
+      out.add('upload_queue_data_missing');
+    } else {
+      out.addAll(_crudBlockers(data));
+    }
   }
   return out.toList()..sort();
+}
+
+const _crudOps = {'PUT', 'PATCH', 'DELETE'};
+
+/// What the v1 reader's `parseCrud` refuses in one `ps_crud.data` text: not
+/// one strict JSON object (also duplicate keys under case folding), an op
+/// other than PUT/PATCH/DELETE, a missing table name or one outside the
+/// seven tables, a row id that is not a UUID, and a `data` member that is
+/// not an object or is missing from a PUT/PATCH.
+List<String> _crudBlockers(String text) {
+  final Object? json;
+  try {
+    json = decodeStrictJson(utf8.encode(text), foldKeys: true);
+  } on CaptureArtifactException {
+    return const ['upload_queue_data_invalid'];
+  }
+  if (json is! Map<String, Object?>) return const ['upload_queue_data_invalid'];
+  final out = <String>[];
+  final op = json['op'];
+  if (op is! String || !_crudOps.contains(op)) out.add('upload_queue_op_unsupported');
+  final table = json['type'];
+  if (table is! String || table.isEmpty) {
+    out.add('upload_queue_data_invalid');
+  } else if (!captureTables.contains(table)) {
+    out.add('upload_queue_table_unsupported');
+  }
+  final id = json['id'];
+  if (id is! String || !isCaptureUuid(id)) out.add('upload_queue_row_id_invalid');
+  if (json.containsKey('data')) {
+    if (json['data'] is! Map) out.add('upload_queue_data_invalid');
+  } else if (op != 'DELETE') {
+    out.add('upload_queue_data_invalid');
+  }
+  return out;
 }
 
 bool _sameBytes(List<int> a, List<int> b) {

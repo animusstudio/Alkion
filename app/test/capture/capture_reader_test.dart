@@ -415,7 +415,8 @@ void main() {
     final replacements = payload.evidence['replacements']! as List;
     expect(replacements.single,
         containsPair('relation', 'replaced_by'));
-    expect(payload.blockers, isEmpty);
+    expect(payload.blockers, ['upload_queue_row_id_invalid'],
+        reason: 'only the fixture queue, whose row ids are not UUIDs');
 
     // Credentials, caches and replica bookkeeping are declared, not copied.
     expect(
@@ -509,7 +510,8 @@ void main() {
       'settings.sync_enabled': 'installation_wiring',
       'unit': 'data_setting',
     });
-    expect(payload.blockers, isEmpty);
+    expect(payload.blockers, ['upload_queue_row_id_invalid'],
+        reason: 'only the fixture queue, whose row ids are not UUIDs');
 
     final sealed = await seal(payload);
     final text = File(p.join(sealed.directory.path, 'stores',
@@ -701,6 +703,11 @@ void main() {
       ('{"reps":1,"Reps":2}', 'column_case_collision'),
       ('{"meta":{"a":1,"A":2}}', 'stored_duplicate_key'),
       ('{"id":"other"}', 'stored_id_key'),
+      // A \u escape is exactly four hex digits: no sign, space or short form.
+      (r'{"note":"\u+041"}', 'stored_data_invalid'),
+      (r'{"note":"\u 41 "}', 'stored_data_invalid'),
+      (r'{"note":"\u-041"}', 'stored_data_invalid'),
+      (r'{"note":"\u12"}', 'stored_data_invalid'),
     ]) {
       await database.execute(
           "UPDATE ps_data__muscle_targets SET data = ? "
@@ -724,7 +731,8 @@ void main() {
       return read(f, database, profile);
     }
 
-    const ok = '{"op":"DELETE","type":"sets","id":"x"}';
+    const ok = '{"op":"DELETE","type":"sets",'
+        '"id":"e1000000-0000-4000-8000-0000000000ff"}';
     final clean = await withQueue([(1, 1, ok), (2, 1, ok), (3, 2, ok)]);
     expect(queueEntryBlockers(clean.queue.entries), isEmpty);
     expect(clean.blockers, isEmpty);
@@ -745,6 +753,48 @@ void main() {
       expect(sealed.usable, isFalse, reason: code);
       expect(sealed.blockers, contains(code));
     }
+    // Operation text the v1 reader's parseCrud refuses blocks too.
+    const row = '"id":"e1000000-0000-4000-8000-0000000000ff"';
+    for (final (data, code) in [
+      ('{"op":"DELETE",', 'upload_queue_data_invalid'),
+      ('[1]', 'upload_queue_data_invalid'),
+      ('{"op":"DELETE","type":"sets",$row,"op":"PUT"}',
+        'upload_queue_data_invalid'),
+      ('{"op":"DELETE","type":"sets",$row,"Op":"PUT"}',
+        'upload_queue_data_invalid'),
+      ('{"op":"DELETE","type":"sets",$row,"x":"\\u+041"}',
+        'upload_queue_data_invalid'),
+      ('{"op":"UPSERT","type":"sets",$row,"data":{}}',
+        'upload_queue_op_unsupported'),
+      ('{"type":"sets",$row}', 'upload_queue_op_unsupported'),
+      ('{"op":"DELETE","type":"sets","id":"set-1"}',
+        'upload_queue_row_id_invalid'),
+      ('{"op":"DELETE","type":"ps_oplog",$row}',
+        'upload_queue_table_unsupported'),
+      ('{"op":"DELETE",$row}', 'upload_queue_data_invalid'),
+      ('{"op":"PUT","type":"sets",$row}', 'upload_queue_data_invalid'),
+      ('{"op":"PATCH","type":"sets",$row,"data":null}',
+        'upload_queue_data_invalid'),
+    ]) {
+      expect(queueEntryBlockers(
+              [QueueEntryCapture(clientId: 1, txId: 1, data: data)]),
+          contains(code), reason: data);
+    }
+    expect(
+        queueEntryBlockers([
+          QueueEntryCapture(
+              clientId: 1,
+              txId: 1,
+              data: '{"op":"PATCH","type":"sets",$row,"data":{"rir":null},'
+                  '"metadata":"m"}'),
+        ]),
+        isEmpty,
+        reason: 'unknown members are preserved, not refused');
+    final refusedOp = await withQueue(
+        [(1, 1, '{"op":"UPSERT","type":"sets",$row,"data":{}}')]);
+    expect(refusedOp.blockers, contains('upload_queue_op_unsupported'));
+    expect((await seal(refusedOp)).usable, isFalse);
+
     // Data stored as a blob is not the ps_crud text: refused while reading.
     final blob = await withQueue([(1, 1, null)]);
     expect(blob.queue.status, CaptureStatus.captured);

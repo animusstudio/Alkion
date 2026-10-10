@@ -1048,6 +1048,9 @@ One `db.readTransaction` runs, in order:
    - `SELECT id, data, ... FROM "ps_data__<table>" ORDER BY id`. `data` is
      also read as a blob, so the text is proven byte-exact UTF-8. It is then
      parsed by a literal-preserving strict parser (`decodeJsonObjectLiterals`).
+     The strict parsers accept a `\u` escape only as exactly four hex
+     digits, as Go and SQLite `json_valid` do: no sign, space or short
+     form.
 
    Each row is written as its row id, then every stored member in stored
    order, each value as its exact JSON literal (`JsonLiteral`). That covers
@@ -1097,7 +1100,14 @@ also applied by `writeAndVerifyCapture`), so such a capture is never
   increasing;
 - `upload_queue_tx_not_contiguous`;
 - `upload_queue_id_beyond_reader` for ids over its 18-character integer
-  literals.
+  literals;
+- what its `parseCrud` refuses in the `data` text:
+  - `upload_queue_data_invalid`: not one strict JSON object (duplicate
+    keys, also under case folding, included), no table name, or a `data`
+    member that is not an object or is missing from a PUT/PATCH;
+  - `upload_queue_op_unsupported`: an op other than PUT/PATCH/DELETE;
+  - `upload_queue_row_id_invalid`: a row id that is not a UUID;
+  - `upload_queue_table_unsupported`: a table outside the seven.
 
 `data` stored as anything but text makes the queue `unsupported`
 (`queue_data_not_text`). An integer preference of 10^18 or more makes the
@@ -1278,13 +1288,13 @@ it is current before and after the read.
 | --- | --- |
 | `tables_queue_and_bookkeeping_share_snapshot` (`app/test/capture/capture_reader_test.dart`) | A second connection commits a session (queue entry, sequence +1) while the read transaction is open: the payload has none of the three, and a later read has all three. It also pins the seven ordered arrays with stored literals; unknown stored members kept (structured ones as exact text), and case-colliding ones `unsupported`; an empty queue as `entries: []` with `no_row`; a renamed `ps_buckets` as `inspection_failed`/`bookkeeping_unreadable`; an unknown table reading nothing (`schema_unqualified`). |
 | `queue_text_and_large_ids_unchanged` | It covers exact `ps_crud` text with whitespace and unknown fields under id 2^53+1, and the literal `"client_id":9007199254740993` in the written bytes. Transaction runs are contiguous and the queued DELETE of an absent row is kept. No banned SDK API appears. An id of 10^18 is copied but blocks (`upload_queue_id_beyond_reader`). |
-| `stored_literals_are_copied_exactly` | Stored `"weight_kg":62.50` and `"reps":"abc"` are read by the view as `'62.5'` and `0`, but captured as `62.50` and `"abc"`; `"reps":"8"` stays a string. An unknown member keeps `62.50`, `1E+2`, a 30-digit integer, string escapes and a structure. A missing `updated_at` stays absent and is counted. Rows are the id, then stored order, and the written bytes match. Malformed stored JSON, a non-object, exact, nested and case-folded duplicate members, and an `id` member make the store `unsupported`. |
-| `queue_entries_the_reader_refuses_block` | A clean queue has no blockers. NULL `tx_id`, NULL `data`, `client_id` −1, a non-contiguous transaction and a 19-digit `tx_id` are each copied exactly but block, and the sealed capture is not usable. Blob `data` is `unsupported`. |
+| `stored_literals_are_copied_exactly` | Stored `"weight_kg":62.50` and `"reps":"abc"` are read by the view as `'62.5'` and `0`, but captured as `62.50` and `"abc"`; `"reps":"8"` stays a string. An unknown member keeps `62.50`, `1E+2`, a 30-digit integer, string escapes and a structure. A missing `updated_at` stays absent and is counted. Rows are the id, then stored order, and the written bytes match. Malformed stored JSON, a non-object, exact, nested and case-folded duplicate members, an `id` member, and `\u+041`, `\u 41 `, `\u-041` or `\u12` escapes make the store `unsupported`. Fixture-based payloads carry only `upload_queue_row_id_invalid`, because the fixture's row ids are not UUIDs. |
+| `queue_entries_the_reader_refuses_block` | A clean queue (UUID row ids) has no blockers. Each `parseCrud` refusal blocks: malformed or non-object text, exact or folded duplicate keys, a bad `\u` escape, an unknown or missing op, a non-UUID id, an unknown or missing table, and a missing or non-object `data` on PUT/PATCH. An unknown member such as `metadata` does not block. NULL `tx_id`, NULL `data`, `client_id` −1, a non-contiguous transaction and a 19-digit `tx_id` are each copied exactly but block, and the sealed capture is not usable. Blob `data` is `unsupported`. |
 | `malformed_files_are_raw_roles` | Malformed draft and expired finished bytes are captured unchanged under their roles. The orphan `.tmp`, pre-flush and startup-preserved versions are opaque. The replacement relation is in the evidence, and the five exclusions are declared (including `notification_plugin_cache`/`volatile_runtime`). Source bytes and names are unchanged. A draft changed after its flush blocks. Verified absence gives `absent`, and a link is `unsupported` and never followed. |
 | `typed_safe_unknown_preferences_preserved` | It covers exact types, values and list order without `flutter.`; only stored keys; the explicit dispositions; a reviewed unknown `double` `2.0` written as `2.0`. |
 | `unsafe_unknown_or_url_blocks` | Credential keys, five credential-bearing or non-http(s) `server_url`s, unknown and unprefixed keys, and untyped or out-of-range values give `unsupported` preferences, no entries and a blocker. The secret appears in no written file, and the source is unchanged. An unknown file beside the stores blocks without its name being recorded. |
 | `sync_history_needs_positive_evidence` | It covers `unknown` without evidence, and `connected` from `sync.last_synced_at_ms`. |
-| `strict_v1_integrity_and_limits` (`app/test/capture/capture_artifact_test.dart`) | It covers the exact eight manifest fields, values and store entries; the inventory equal to the declarations; sizes and digests; immutable digests; exploratory boundaries unusable; and 1 MiB/64 MiB equality accepted and +1 refused. A 64 MiB draft is written and a 64 MiB+1 draft is declared `unsupported`, with no file. An oversized manifest, a non-empty staging directory and a mismatched manifest are refused before writing. Rejected tampering, never mutated: an unlisted or case-variant file, a symlink, a flipped byte, a missing file, extra manifest, boundary or store fields, path escapes, duplicate or case-folded names, case-colliding paths, a duplicated or missing required role, an unknown exclusion reason, a path on an absent store, a count mismatch, an unknown count key, duplicate or case-folded JSON keys, an oversized manifest, a credential or malformed preference store, a queue without `entries` or with a non-integer `tx_id` or non-string `data`, and SQL without tables. A payload whose queue the reader would refuse seals unusable. |
+| `strict_v1_integrity_and_limits` (`app/test/capture/capture_artifact_test.dart`) | It covers the exact eight manifest fields, values and store entries; the inventory equal to the declarations; sizes and digests; immutable digests; exploratory boundaries unusable; and 1 MiB/64 MiB equality accepted and +1 refused. A 64 MiB draft is written and a 64 MiB+1 draft is declared `unsupported`, with no file. An oversized manifest, a non-empty staging directory and a mismatched manifest are refused before writing. Rejected tampering, never mutated: an unlisted or case-variant file, a symlink, a flipped byte, a missing file, extra manifest, boundary or store fields, path escapes, duplicate or case-folded names, case-colliding paths, a duplicated or missing required role, an unknown exclusion reason, a path on an absent store, a count mismatch, an unknown count key, duplicate or case-folded JSON keys, an oversized manifest, `\u+041`, `\u 41 `, `\u-041` and `\u12` in the manifest (`json_invalid`) and in the SQL store (`store_invalid`), a credential or malformed preference store, a queue without `entries` or with a non-integer `tx_id` or non-string `data`, and SQL without tables. A payload whose queue the reader would refuse seals unusable. |
 | `rehearsal_accepts_produced_capture` | See below. |
 
 Mutation checks:
@@ -1293,6 +1303,7 @@ Mutation checks:
 | --- | --- |
 | queue and bookkeeping read in a second transaction | **FAIL** (`tables_queue_and_bookkeeping_share_snapshot`) |
 | `client_id` written through a double | **FAIL** (`queue_text_and_large_ids_unchanged`, and the verifier refuses the store) |
+| `\u` digits parsed with `int.tryParse` alone (sign/space accepted) | **FAIL** (`stored_literals_are_copied_exactly`, `queue_entries_the_reader_refuses_block`, `strict_v1_integrity_and_limits`) |
 
 ### Go rehearsal over a produced capture: **PASS**
 

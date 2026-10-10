@@ -746,6 +746,7 @@ class _StrictJson {
   int position = 0;
 
   static const _maxDepth = 256;
+  static final _hex4 = RegExp(r'^[0-9a-fA-F]{4}$');
 
   Never fail(String why) => throw CaptureArtifactException('json_invalid', why);
 
@@ -903,10 +904,12 @@ class _StrictJson {
         case 0x74:
           out.writeCharCode(0x09);
         case 0x75:
+          // Exactly four hex digits: no sign, no whitespace, no short form
+          // (int.tryParse alone would accept "+041" or " 41 ").
           if (position + 4 > text.length) fail('escape');
-          final hex = int.tryParse(text.substring(position, position + 4), radix: 16);
-          if (hex == null) fail('escape');
-          out.writeCharCode(hex);
+          final digits = text.substring(position, position + 4);
+          if (!_hex4.hasMatch(digits)) fail('escape');
+          out.writeCharCode(int.parse(digits, radix: 16));
           position += 4;
         default:
           fail('escape');
