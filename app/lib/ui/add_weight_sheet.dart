@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../capture/session_capture_hooks.dart';
 import '../l10n/app_localizations.dart';
 import '../data/bodyweight_repository.dart';
 import '../sync/db.dart';
@@ -12,6 +13,7 @@ import '../units/unit_service.dart';
 import '../util/dates.dart';
 import '../util/number_input.dart';
 import '../widgets/stepper.dart';
+import '../widgets/w_dialog.dart';
 
 /// Shows the "Log bodyweight" modal bottom sheet.
 ///
@@ -61,6 +63,11 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
   /// stays inert on desktop and in widget tests where insets are always zero.
   bool _sawKeyboard = false;
 
+  /// The open sheet is an unsaved form: a data capture waits for Save or
+  /// dismissal, and never saves it.
+  final Object _unsavedForm =
+      UnsavedEditors.instance.register('bodyweight', () => true);
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +90,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
 
   @override
   void dispose() {
+    UnsavedEditors.instance.unregister(_unsavedForm);
     WidgetsBinding.instance.removeObserver(this);
     _focusNode
       ..removeListener(_onFocusChange)
@@ -237,10 +245,17 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     final nav = Navigator.of(context);
     final unitService = context.read<UnitService>();
     final kg = UnitService.toKg(_val, unitService.unit);
-    await BodyweightRepository(db).logBodyweight(
-      dateIso: isoDate(DateTime.now()),
-      kg: kg,
-    );
+    try {
+      await BodyweightRepository(db).logBodyweight(
+        dateIso: isoDate(DateTime.now()),
+        kg: kg,
+      );
+    } catch (e) {
+      // E.g. refused while a data capture holds the source: the sheet stays
+      // open with its value, and the failure is shown.
+      if (mounted) await showWriteFailed(context, e);
+      return;
+    }
     nav.pop();
   }
 

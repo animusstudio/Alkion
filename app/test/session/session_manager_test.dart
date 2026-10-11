@@ -36,13 +36,13 @@ void main() {
     expect(notifies, 2);
   });
 
-  test('controller discard auto-clears the manager', () {
+  test('controller discard auto-clears the manager', () async {
     final m = SessionManager();
     final c = ActiveSessionController();
     c.seedEmpty(name: 'Custom', focus: '');
     m.register(c);
 
-    c.discard(); // draft → null → manager clears itself
+    await c.discard(); // draft → null → manager clears itself
     expect(m.hasActive, isFalse);
   });
 

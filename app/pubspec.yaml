@@ -46,14 +46,27 @@ dependencies:
   timezone: ^0.11.0
   # Deterministic v5 ids for the template-absorb migration.
   uuid: ^4.5.0
+  # SHA-256 for capture profile and schema evidence digests. Transitive via
+  # powersync; declared direct because lib/capture imports it.
+  crypto: ^3.0.7
   # Runtime app version (footer + OTA update checks); Linux returns bundle info.
   package_info_plus: ^8.0.0
   # Android OTA: downloads the release APK with progress and launches the OS
   # installer (in-app updates). Android-only; no-op on Linux desktop.
   ota_update: ^7.1.0
+  # Raw typed preference entries (every prefix) for capture, and the
+  # counting/failing preference store of the capture tests. Transitive via
+  # shared_preferences; declared to satisfy depend_on_referenced_packages.
+  shared_preferences_platform_interface: ^2.4.2
+  # Native source-write gate and durable capture publication (local plugin).
+  reps_capture_platform:
+    path: packages/reps_capture_platform
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  # On-device native capture qualification (make -C app capture-integration).
+  integration_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   # Generates the Android launcher icon (incl. adaptive) from assets/icon/.

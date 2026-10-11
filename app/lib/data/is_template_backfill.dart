@@ -1,5 +1,7 @@
 import 'package:powersync/powersync.dart';
 
+import '../capture/source_write_gate.dart';
+
 /// One-time, idempotent backfill of `is_template` for owned rows.
 ///
 /// Builds before the create-exercise/day fix omitted `is_template` on INSERT,
@@ -24,7 +26,13 @@ import 'package:powersync/powersync.dart';
 /// the row mappers MUST tolerate whatever those rows contain — see the
 /// `double.tryParse` rule in CLAUDE.md (an empty-string base weight in exactly
 /// such a row once blanked the whole catalog).
-Future<void> backfillIsTemplate(PowerSyncDatabase db) async {
+///
+/// One source operation (check and write); [parent] when part of a larger one.
+Future<void> backfillIsTemplate(PowerSyncDatabase db, {SourceTicket? parent}) =>
+    runSourceWrite('boot.backfill_is_template', (_) => _backfillIsTemplate(db),
+        parent: parent);
+
+Future<void> _backfillIsTemplate(PowerSyncDatabase db) async {
   final row = await db.get(
     'SELECT '
     '(SELECT COUNT(*) FROM exercises WHERE is_template IS NULL) + '

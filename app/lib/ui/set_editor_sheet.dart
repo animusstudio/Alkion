@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../capture/session_capture_hooks.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
@@ -58,9 +59,23 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   // One debounce timer per set with a pending, unpersisted edit.
   final Map<String, Timer> _timers = {};
 
+  /// While a set's editing card is open, or an edit is not yet persisted,
+  /// a data capture waits for the sheet to be closed normally.
+  late final Object _unsavedForm = UnsavedEditors.instance.register(
+      'history_sets', () => _openId != null || _timers.isNotEmpty);
+
+  /// Sets whose latest write was refused (a data capture held the source)
+  /// or failed. Their edit stays owed — and keeps blocking capture through
+  /// [UnsavedEditors.owe], even after the sheet closes — and is written
+  /// again on the next collapse, switch, close or capture release.
+  final Set<String> _owed = {};
+
+  Set<String> get _unpersisted => {..._timers.keys, ..._owed};
+
   @override
   void initState() {
     super.initState();
+    _unsavedForm; // registered while the sheet is open
     _sets = widget.block.sets
         .map(
           (s) => _EditableSet(
@@ -76,21 +91,53 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
 
   @override
   void dispose() {
+    UnsavedEditors.instance.unregister(_unsavedForm);
     // Fire-and-forget: the sheet is going away, nothing left to await into.
-    for (final entry in _timers.entries) {
-      entry.value.cancel();
-      final idx = _sets.indexWhere((e) => e.id == entry.key);
+    // A write refused now stays owed (see [_owed]) and is retried when the
+    // capture releases the source.
+    for (final id in _unpersisted) {
+      _timers.remove(id)?.cancel();
+      final idx = _sets.indexWhere((e) => e.id == id);
       if (idx != -1) _persist(_sets[idx]);
     }
     super.dispose();
   }
 
-  Future<void> _persist(_EditableSet s) => widget.sessionRepo.updateSet(
-    s.id,
-    weightKg: s.weightKg.toStringAsFixed(2),
-    reps: s.reps,
-    rir: s.rir,
-  );
+  /// Writes [s]'s current values. The `updateSet` call is issued
+  /// synchronously. The edit is owed until the write lands; a refused or
+  /// failed write is shown (while the sheet is open) and stays owed.
+  /// Completes with whether it landed; never throws.
+  Future<bool> _persist(_EditableSet s) {
+    final repo = widget.sessionRepo;
+    final id = s.id;
+    final key = 'history_set:$id';
+    final weightKg = s.weightKg.toStringAsFixed(2);
+    final reps = s.reps;
+    final rir = s.rir;
+    Future<void> write() =>
+        repo.updateSet(id, weightKg: weightKg, reps: reps, rir: rir);
+    UnsavedEditors.instance.owe(key, 'history_sets', write);
+    return write().then((_) {
+      UnsavedEditors.instance.paid(key, write);
+      if (!UnsavedEditors.instance.isOwed(key)) _owed.remove(id);
+      return true;
+    }, onError: (Object e) {
+      _owed.add(id);
+      _showFailure(e);
+      return false;
+    });
+  }
+
+  bool _showingFailure = false;
+
+  /// One failure dialog at a time: a gliding ruler can trigger several
+  /// refused writes in a row.
+  void _showFailure(Object error) {
+    if (!mounted || _showingFailure) return;
+    _showingFailure = true;
+    unawaited(showWriteFailed(context, error)
+        .whenComplete(() => _showingFailure = false));
+  }
 
   /// Mutates [s] in place, rebuilds so the editor reflects the new value
   /// (its typed-entry unchanged-value guard compares against the value it
@@ -108,17 +155,18 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     });
   }
 
-  /// Cancels [id]'s pending debounce timer, if any, and awaits its persist.
-  /// Used only where the caller must not race the delete against a stale
-  /// value — everywhere else the write only needs to be *issued*
-  /// synchronously (see [_flushSync]), not awaited.
-  Future<void> _flush(String id) async {
+  /// Cancels [id]'s pending debounce timer, if any, and awaits its persist
+  /// (also of an owed edit). False if that write did not land. Used only
+  /// where the caller must not race the delete against a stale value —
+  /// everywhere else the write only needs to be *issued* synchronously (see
+  /// [_flushSync]), not awaited.
+  Future<bool> _flush(String id) async {
     final timer = _timers.remove(id);
-    if (timer == null) return;
-    timer.cancel();
+    timer?.cancel();
+    if (timer == null && !_owed.contains(id)) return true;
     final idx = _sets.indexWhere((e) => e.id == id);
-    if (idx == -1) return;
-    await _persist(_sets[idx]);
+    if (idx == -1) return true;
+    return _persist(_sets[idx]);
   }
 
   /// Cancels [id]'s pending debounce timer, if any, and starts persisting its
@@ -128,8 +176,8 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// pop handler) does next, such as History's post-close reload.
   void _flushSync(String id) {
     final timer = _timers.remove(id);
-    if (timer == null) return;
-    timer.cancel();
+    timer?.cancel();
+    if (timer == null && !_owed.contains(id)) return;
     final idx = _sets.indexWhere((e) => e.id == id);
     if (idx == -1) return;
     unawaited(_persist(_sets[idx]));
@@ -141,7 +189,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// races an unfired debounce timer (`showModalBottomSheet`'s future
   /// completes at pop, well before `dispose`).
   void _flushAllSync() {
-    for (final id in _timers.keys.toList()) {
+    for (final id in _unpersisted) {
       _flushSync(id);
     }
   }
@@ -158,7 +206,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
 
   Future<void> _deleteSet(_EditableSet s) async {
     commitPendingInput();
-    await _flush(s.id);
+    if (!await _flush(s.id)) return; // its failure is already shown
     if (!mounted) return;
     final l = AppLocalizations.of(context);
     final confirmed = await showWConfirm(
@@ -169,7 +217,13 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
       destructive: true,
     );
     if (confirmed != true) return;
-    await widget.sessionRepo.deleteSet(s.id);
+    try {
+      await widget.sessionRepo.deleteSet(s.id);
+    } catch (e) {
+      // E.g. refused while a data capture holds the source: nothing deleted.
+      if (mounted) await showWriteFailed(context, e);
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _sets.removeWhere((e) => e.id == s.id);
@@ -202,14 +256,21 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     final int r = last?.reps ?? (widget.exercise.defaultRepLow ?? 8);
     final int? rir = working.isNotEmpty ? working.last.rir : null;
 
-    final newId = await widget.sessionRepo.addSet(
-      widget.sessionId,
-      widget.exercise.id,
-      weightKg: w.toStringAsFixed(2),
-      reps: r,
-      rir: rir,
-      isWarmup: false,
-    );
+    final String newId;
+    try {
+      newId = await widget.sessionRepo.addSet(
+        widget.sessionId,
+        widget.exercise.id,
+        weightKg: w.toStringAsFixed(2),
+        reps: r,
+        rir: rir,
+        isWarmup: false,
+      );
+    } catch (e) {
+      // E.g. refused while a data capture holds the source: nothing added.
+      if (mounted) await showWriteFailed(context, e);
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _sets.add(

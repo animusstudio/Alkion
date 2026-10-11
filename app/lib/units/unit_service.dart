@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../capture/preference_writes.dart';
 import 'unit_format.dart';
 
 /// Weight unit the user has selected. Everything is stored internally in kg;
@@ -22,18 +23,62 @@ class UnitService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString('unit');
     _unit = stored == Unit.lb.name ? Unit.lb : Unit.kg;
+    _stored = _unit;
     notifyListeners();
   }
 
   /// Switch the active unit and persist. Notifies listeners only when changed.
+  ///
+  /// The write runs in the background, after any earlier unit write, as one
+  /// admitted source operation; [flushPersistence] awaits it and reports its
+  /// failure. A write refused because a data capture holds the source
+  /// changes nothing on disk, and the shown unit goes back to the last unit
+  /// durably stored (loaded, or written successfully), not merely the one
+  /// shown before this call.
+  /// Choosing the shown unit again after its write failed retries the write.
   void setUnit(Unit u) {
-    if (u == _unit) return;
+    if (u == _unit && _lastError == null) return;
     _unit = u;
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setString('unit', u.name))
-        .ignore(); // best-effort; callers should await load() for the next read
+    final write = _persisted.then((_) => writePreferences(
+        'prefs.unit', (prefs) => prefs.setString('unit', u.name)));
+    _persisted = write.then((_) {
+      _lastError = null;
+      _stored = u;
+    }, onError: (Object e, StackTrace st) {
+      if (isAdmissionRefusal(e)) {
+        // Nothing was written: show the stored unit again.
+        _lastError = null;
+        if (_unit == u && _unit != _stored) {
+          _unit = _stored;
+          notifyListeners();
+        }
+        return;
+      }
+      _lastError = (e, st);
+    });
     notifyListeners();
   }
+
+  /// Completes once every unit write started so far has finished. Throws
+  /// the error of the latest write if it failed (a refused write that was
+  /// undone is not an error); never completes before that write is durable.
+  Future<void> flushPersistence() async {
+    var pending = _persisted;
+    while (true) {
+      await pending;
+      // A change made while waiting is part of this flush.
+      if (identical(pending, _persisted)) break;
+      pending = _persisted;
+    }
+    final error = _lastError;
+    if (error != null) Error.throwWithStackTrace(error.$1, error.$2);
+  }
+
+  Future<void> _persisted = Future.value();
+
+  /// The unit last loaded from, or successfully written to, preferences.
+  Unit _stored = Unit.kg;
+  (Object, StackTrace)? _lastError;
 
   /// Convert a kg value to the given [unit].
   static double fromKg(double kg, Unit unit) =>

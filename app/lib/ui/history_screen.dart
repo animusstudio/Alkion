@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../capture/source_write_gate.dart';
 import '../l10n/app_localizations.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
@@ -206,8 +207,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   now: now,
                 ),
                 onResume: () => _onResume(session.id),
-                onDeleted: () =>
-                    context.read<SessionManager>().forgetFinished(session.id),
+                onDeleted: (ticket) => context
+                    .read<SessionManager>()
+                    .forgetFinished(session.id, parent: ticket),
               ),
             ),
           const SizedBox(height: 8),
@@ -443,6 +445,23 @@ class _WeekHeader extends StatelessWidget {
 
 // ── SessionCard ───────────────────────────────────────────────────────────────
 
+/// Follow-up of a History delete, run under the delete's ticket (History
+/// forgets the session's finished snapshot here).
+typedef HistoryDeleted = Future<void> Function(SourceTicket ticket);
+
+/// Deletes [sessionId] and runs [onDeleted] as ONE source operation: the
+/// ticket lives until the snapshot forget (and its file clear) finished, so a
+/// capture cannot take its boundary between the delete and the forget.
+Future<void> deleteHistorySession(
+  SessionRepository repo,
+  String sessionId, {
+  HistoryDeleted? onDeleted,
+}) =>
+    runSourceWrite('history.delete_session', (ticket) async {
+      await repo.deleteSession(sessionId, parent: ticket);
+      await onDeleted?.call(ticket);
+    });
+
 class SessionCard extends StatefulWidget {
   const SessionCard({
     super.key,
@@ -464,8 +483,9 @@ class SessionCard extends StatefulWidget {
   final SessionResumeState resumeState;
   final VoidCallback? onResume;
 
-  /// Called after the session was deleted from this card.
-  final VoidCallback? onDeleted;
+  /// Called after the session was deleted from this card, under the
+  /// delete's [SourceTicket] (see [deleteHistorySession]).
+  final HistoryDeleted? onDeleted;
 
   @override
   State<SessionCard> createState() => _SessionCardState();
@@ -699,7 +719,7 @@ class _ExerciseBlocks extends StatefulWidget {
   final UnitService units;
   final SessionResumeState resumeState;
   final VoidCallback? onResume;
-  final VoidCallback? onDeleted;
+  final HistoryDeleted? onDeleted;
 
   @override
   State<_ExerciseBlocks> createState() => _ExerciseBlocksState();
@@ -763,14 +783,20 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     );
     if (exId == null || exId == kBodyweightSentinel) return;
     final ex = widget.catalogMap[exId];
-    await widget.sessionRepo.addSet(
-      widget.session.id,
-      exId,
-      weightKg: '0.00',
-      reps: ex?.defaultRepLow ?? 8,
-      rir: null,
-      isWarmup: false,
-    );
+    try {
+      await widget.sessionRepo.addSet(
+        widget.session.id,
+        exId,
+        weightKg: '0.00',
+        reps: ex?.defaultRepLow ?? 8,
+        rir: null,
+        isWarmup: false,
+      );
+    } catch (e) {
+      // E.g. refused while a data capture holds the source.
+      if (mounted) await showWriteFailed(context, e);
+      return;
+    }
     if (mounted) _reload();
   }
 
@@ -785,8 +811,13 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     );
     if (confirmed != true) return;
     // The watchSessionStats stream updates the list automatically afterwards.
-    await widget.sessionRepo.deleteSession(widget.session.id);
-    widget.onDeleted?.call();
+    try {
+      await deleteHistorySession(widget.sessionRepo, widget.session.id,
+          onDeleted: widget.onDeleted);
+    } catch (e) {
+      // E.g. refused while a data capture holds the source: nothing deleted.
+      if (mounted) await showWriteFailed(context, e);
+    }
   }
 
   @override

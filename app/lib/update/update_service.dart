@@ -5,6 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../capture/preference_writes.dart';
+import '../capture/source_write_gate.dart';
+
 /// Parsed available update.
 class UpdateInfo {
   const UpdateInfo({
@@ -83,7 +86,15 @@ class UpdateService {
       if (res.statusCode == 304) return null;
       if (res.statusCode != 200) return null;
       final newEtag = res.headers['etag'];
-      if (newEtag != null) await prefs.setString(_etagKey, newEtag);
+      if (newEtag != null) {
+        try {
+          await writePreferences(
+              'prefs.update_etag', (p) => p.setString(_etagKey, newEtag));
+        } on SourceGateException {
+          // Not cached while a data capture holds the source; the next
+          // check simply sends no If-None-Match.
+        }
+      }
 
       final json = jsonDecode(res.body) as Map<String, dynamic>;
       final tag = json['tag_name'] as String?;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/auth_store.dart';
+import '../capture/source_write_gate.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/settings_service.dart';
@@ -37,6 +38,10 @@ Future<void> signInAgain(
   _signInAgainInFlight = true;
   try {
     await _signInAgainOnce(context, auth: auth, settings: settings);
+  } on SourceGateException catch (e) {
+    // Refused while a data capture holds the source: nothing reconnected or
+    // changed; say so instead of failing silently.
+    if (context.mounted) await showWriteFailed(context, e);
   } finally {
     _signInAgainInFlight = false;
   }
@@ -52,7 +57,7 @@ Future<void> _signInAgainOnce(
   final previousEmail = auth.email;
   final navigator = Navigator.of(context);
   final wasSyncing = settings.syncEnabled;
-  await db.disconnect();
+  await disconnectSync();
   await settings.setSyncEnabled(false);
   var loggedIn = false;
   await navigator.push(MaterialPageRoute(

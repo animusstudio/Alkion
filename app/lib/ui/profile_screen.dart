@@ -8,6 +8,9 @@ import 'package:powersync/powersync.dart' show SyncStatus;
 import 'package:provider/provider.dart';
 
 import '../auth/auth_store.dart';
+import '../capture/capture_service.dart';
+import '../capture/capture_transport.dart';
+import '../capture/source_write_gate.dart';
 import '../data/bodyweight_repository.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
@@ -35,6 +38,7 @@ import '../widgets/plan_form.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
+import 'capture_screen.dart';
 import 'login_screen.dart';
 import 'sign_in_again.dart';
 
@@ -425,7 +429,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _submitName(SettingsService settings) {
     final trimmed = _nameCtrl.text.trim();
     if (trimmed.isNotEmpty) {
-      settings.setProfileName(trimmed);
+      showWriteFailures(context, settings.setProfileName(trimmed));
     }
     setState(() => _editingName = false);
   }
@@ -446,7 +450,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final choice =
         await showLanguageSheet(context, current: settings.localeOverride);
     if (choice == null) return; // dismissed
-    await settings.setLocaleOverride(choice == 'system' ? null : choice);
+    if (!context.mounted) return;
+    showWriteFailures(context,
+        settings.setLocaleOverride(choice == 'system' ? null : choice));
   }
 
   // ── Bodyweight goal picker ──────────────────────────────────────────────
@@ -470,7 +476,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               selected: g == settings.bodyweightGoal,
             ),
         ]);
-    if (picked != null) await settings.setBodyweightGoal(picked);
+    if (picked != null && context.mounted) {
+      showWriteFailures(context, settings.setBodyweightGoal(picked));
+    }
   }
 
   // ── Server-switch flow ────────────────────────────────────────────────────
@@ -490,14 +498,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed != true) return;
 
-    // Persist new URL and update the global apiBaseUrl.
-    await settings.setServerUrl(url);
-    apiBaseUrl = url;
+    try {
+      // An account switch is refused up front while a data capture runs.
+      TransportAdmission.instance.ensureOpen('account.switch_server');
 
-    // onLogout first (flips _loggedIn → swaps AppShell for LoginScreen while
-    // AppShell is still live), then onClose (pops overlay — harmless no-op
-    // once the parent route is gone).
-    await widget.onLogout();
+      // Persist new URL and update the global apiBaseUrl.
+      await settings.setServerUrl(url);
+      apiBaseUrl = url;
+
+      // onLogout first (flips _loggedIn → swaps AppShell for LoginScreen
+      // while AppShell is still live), then onClose (pops overlay — harmless
+      // no-op once the parent route is gone).
+      await widget.onLogout();
+    } on SourceGateException catch (e) {
+      if (mounted) await showWriteFailed(context, e);
+      return;
+    }
     widget.onClose();
   }
 
@@ -556,8 +572,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed != true) return;
 
-    await widget.onLogout();
+    try {
+      await widget.onLogout();
+    } on SourceGateException catch (e) {
+      // Refused while a data capture holds the source: still signed in,
+      // nothing cleared.
+      if (mounted) await showWriteFailed(context, e);
+      return;
+    }
     widget.onClose();
+  }
+
+  /// Profile → Data capture. The service lives above the app, so a capture
+  /// started here keeps its state while the screen is closed.
+  void _openCapture() {
+    final service = context.read<CaptureService>();
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CaptureScreen(service: service),
+    ));
   }
 
   Future<void> _exportFull() async {
@@ -649,7 +681,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } finally {
       if (mounted) setState(() => _checking = false);
     }
-    await settings.markUpdateChecked(DateTime.now().millisecondsSinceEpoch);
+    try {
+      await settings.markUpdateChecked(DateTime.now().millisecondsSinceEpoch);
+    } on SourceGateException {
+      // Not recorded while a data capture holds the source; the result below
+      // is still shown.
+    }
     if (!mounted) return;
     if (errored) {
       messenger.showSnackBar(SnackBar(content: Text(l.updatesError)));
@@ -806,7 +843,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         selected: settings.mode,
                         labelOf: (m) =>
                             m == 'dark' ? l.profileThemeDark : l.profileThemeLight,
-                        onSelect: settings.setMode,
+                        onSelect: (m) =>
+                            showWriteFailures(context, settings.setMode(m)),
                       ),
                     ),
                     Column(
@@ -848,8 +886,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           value: settings.restCompoundSeconds.toDouble(),
                           step: 15,
                           format: (v) => '${v.round()}s',
-                          onChanged: (v) =>
-                              settings.setRestCompoundSeconds(v.round()),
+                          onChanged: (v) => showWriteFailures(context,
+                              settings.setRestCompoundSeconds(v.round())),
                           editable: true,
                           allowDecimal: false,
                           min: 0,
@@ -868,8 +906,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           value: settings.restIsolationSeconds.toDouble(),
                           step: 15,
                           format: (v) => '${v.round()}s',
-                          onChanged: (v) =>
-                              settings.setRestIsolationSeconds(v.round()),
+                          onChanged: (v) => showWriteFailures(context,
+                              settings.setRestIsolationSeconds(v.round())),
                           editable: true,
                           allowDecimal: false,
                           min: 0,
@@ -947,6 +985,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       right: _exportingHistory ? const _RowSpinner() : null,
                       onTap: _exportingHistory ? null : _exportHistory,
                     ),
+                    _Row(
+                      icon: WIcons.capture,
+                      title: l.captureRowTitle,
+                      sub: l.captureRowSub,
+                      right: Icon(WIcons.chevron,
+                          size: 18, color: tokens.faint),
+                      onTap: _openCapture,
+                    ),
                   ],
                 ),
 
@@ -972,9 +1018,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         right: Toggle(
                           value: settings.autoCheckUpdates,
                           semanticLabel: l.updatesAutoCheck,
-                          onChanged: (v) => context
-                              .read<SettingsService>()
-                              .setAutoCheckUpdates(v),
+                          onChanged: (v) => showWriteFailures(
+                              context,
+                              context
+                                  .read<SettingsService>()
+                                  .setAutoCheckUpdates(v)),
                         ),
                       ),
                     ],
@@ -1154,9 +1202,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           selected: isSelected,
           label: l.profileAccentOption(n),
           excludeSemantics: true,
-          onTap: () => settings.setAccent(color),
+          onTap: () => showWriteFailures(context, settings.setAccent(color)),
           child: GestureDetector(
-            onTap: () => settings.setAccent(color),
+            onTap: () => showWriteFailures(context, settings.setAccent(color)),
             child: SizedBox(
               width: 48,
               height: 48,

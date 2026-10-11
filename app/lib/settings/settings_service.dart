@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../capture/preference_writes.dart';
+import '../capture/source_write_gate.dart';
 import '../theme/tokens.dart';
 import 'bodyweight_goal.dart';
 
@@ -98,6 +100,7 @@ class SettingsService extends ChangeNotifier {
     } else {
       _accent = accents[0];
     }
+    _stored = _storedSnapshot();
 
     notifyListeners();
   }
@@ -106,8 +109,10 @@ class SettingsService extends ChangeNotifier {
   Future<void> setMode(String mode) async {
     if (mode == _mode) return;
     _mode = mode;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kMode, mode);
+    await _persist<String>('prefs.settings.mode', mode,
+        current: () => _mode,
+        restore: (v) => _mode = v,
+        write: (p) => p.setString(_kMode, mode),);
     notifyListeners();
   }
 
@@ -115,8 +120,10 @@ class SettingsService extends ChangeNotifier {
   Future<void> setAccent(Color accent) async {
     if (accent == _accent) return;
     _accent = accent;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_kAccent, accent.toARGB32());
+    await _persist<Color>('prefs.settings.accent', accent,
+        current: () => _accent,
+        restore: (v) => _accent = v,
+        write: (p) => p.setInt(_kAccent, accent.toARGB32()),);
     notifyListeners();
   }
 
@@ -124,8 +131,10 @@ class SettingsService extends ChangeNotifier {
   Future<void> setProfileName(String name) async {
     if (name == _profileName) return;
     _profileName = name;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kProfileName, name);
+    await _persist<String>('prefs.settings.profile_name', name,
+        current: () => _profileName,
+        restore: (v) => _profileName = v,
+        write: (p) => p.setString(_kProfileName, name),);
     notifyListeners();
   }
 
@@ -133,32 +142,42 @@ class SettingsService extends ChangeNotifier {
   Future<void> setServerUrl(String url) async {
     if (url == _serverUrl) return;
     _serverUrl = url;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kServerUrl, url);
+    await _persist<String>('prefs.settings.server_url', url,
+        current: () => _serverUrl,
+        restore: (v) => _serverUrl = v,
+        write: (p) => p.setString(_kServerUrl, url),);
     notifyListeners();
   }
 
-  /// Enable or disable background sync and persist.
-  Future<void> setSyncEnabled(bool value) async {
+  /// Enable or disable background sync and persist. [parent] when it is part
+  /// of a larger admitted operation (sign-out).
+  Future<void> setSyncEnabled(bool value, {SourceTicket? parent}) async {
     _syncEnabled = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('settings.sync_enabled', value);
+    await _persist<bool>('prefs.settings.sync_enabled', value,
+        current: () => _syncEnabled,
+        restore: (v) => _syncEnabled = v,
+        write: (p) => p.setBool('settings.sync_enabled', value),
+        parent: parent,);
     notifyListeners();
   }
 
   /// Set the global default rest for compound exercises (seconds) and persist.
   Future<void> setRestCompoundSeconds(int v) async {
     _restCompoundSeconds = v;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('settings.rest_compound_seconds', v);
+    await _persist<int>('prefs.settings.rest_compound_seconds', v,
+        current: () => _restCompoundSeconds,
+        restore: (v) => _restCompoundSeconds = v,
+        write: (p) => p.setInt('settings.rest_compound_seconds', v),);
     notifyListeners();
   }
 
   /// Set the global default rest for isolation exercises (seconds) and persist.
   Future<void> setRestIsolationSeconds(int v) async {
     _restIsolationSeconds = v;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('settings.rest_isolation_seconds', v);
+    await _persist<int>('prefs.settings.rest_isolation_seconds', v,
+        current: () => _restIsolationSeconds,
+        restore: (v) => _restIsolationSeconds = v,
+        write: (p) => p.setInt('settings.rest_isolation_seconds', v),);
     notifyListeners();
   }
 
@@ -166,20 +185,22 @@ class SettingsService extends ChangeNotifier {
   /// locale, and persist.
   Future<void> setLocaleOverride(String? code) async {
     _localeOverride = code;
-    final prefs = await SharedPreferences.getInstance();
-    if (code == null) {
-      await prefs.remove('settings.locale');
-    } else {
-      await prefs.setString('settings.locale', code);
-    }
+    await _persist<String?>('prefs.settings.locale', code,
+        current: () => _localeOverride,
+        restore: (v) => _localeOverride = v,
+        write: (p) => code == null
+            ? p.remove('settings.locale')
+            : p.setString('settings.locale', code),);
     notifyListeners();
   }
 
   /// Enable or disable the daily auto-check for app updates and persist.
   Future<void> setAutoCheckUpdates(bool value) async {
     _autoCheckUpdates = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('settings.auto_check_updates', value);
+    await _persist<bool>('prefs.settings.auto_check_updates', value,
+        current: () => _autoCheckUpdates,
+        restore: (v) => _autoCheckUpdates = v,
+        write: (p) => p.setBool('settings.auto_check_updates', value),);
     notifyListeners();
   }
 
@@ -187,8 +208,10 @@ class SettingsService extends ChangeNotifier {
   Future<void> setBodyweightGoal(BodyweightGoal goal) async {
     if (goal == _bodyweightGoal) return;
     _bodyweightGoal = goal;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('settings.bodyweight_goal', goal.name);
+    await _persist<BodyweightGoal>('prefs.settings.bodyweight_goal', goal,
+        current: () => _bodyweightGoal,
+        restore: (v) => _bodyweightGoal = v,
+        write: (p) => p.setString('settings.bodyweight_goal', goal.name),);
     notifyListeners();
   }
 
@@ -196,8 +219,59 @@ class SettingsService extends ChangeNotifier {
   /// persist, gating the once/day auto-check throttle.
   Future<void> markUpdateChecked(int nowMs) async {
     _lastUpdateCheckMs = nowMs;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('settings.last_update_check_ms', nowMs);
+    await _persist<int>('prefs.settings.last_update_check_ms', nowMs,
+        current: () => _lastUpdateCheckMs,
+        restore: (v) => _lastUpdateCheckMs = v,
+        write: (p) => p.setInt('settings.last_update_check_ms', nowMs),);
     notifyListeners();
+  }
+
+  /// Values last loaded from, or successfully written to, preferences, by
+  /// write operation: what a refused write shows again.
+  late Map<String, Object?> _stored = _storedSnapshot();
+
+  Map<String, Object?> _storedSnapshot() => {
+        'prefs.settings.mode': _mode,
+        'prefs.settings.accent': _accent,
+        'prefs.settings.profile_name': _profileName,
+        'prefs.settings.server_url': _serverUrl,
+        'prefs.settings.sync_enabled': _syncEnabled,
+        'prefs.settings.rest_compound_seconds': _restCompoundSeconds,
+        'prefs.settings.rest_isolation_seconds': _restIsolationSeconds,
+        'prefs.settings.locale': _localeOverride,
+        'prefs.settings.auto_check_updates': _autoCheckUpdates,
+        'prefs.settings.bodyweight_goal': _bodyweightGoal,
+        'prefs.settings.last_update_check_ms': _lastUpdateCheckMs,
+      };
+
+  /// Persists [value] (already shown) as one admitted source operation (see
+  /// [writePreferences]). On success it becomes the stored value. A write
+  /// refused because a data capture holds the source changed nothing on
+  /// disk: if [value] is still shown, the last durably stored value is shown
+  /// again (not merely the value shown before this call, which an earlier
+  /// refused change may have set), the listeners hear it, and the refusal is
+  /// rethrown for the caller to show.
+  Future<void> _persist<T>(
+    String operation,
+    T value, {
+    required T Function() current,
+    required void Function(T stored) restore,
+    required Future<bool> Function(SharedPreferences prefs) write,
+    SourceTicket? parent,
+  }) async {
+    final stored = _stored;
+    try {
+      await writePreferences(operation, write, parent: parent);
+      stored[operation] = value;
+    } catch (e) {
+      if (isAdmissionRefusal(e)) {
+        final last = stored[operation] as T;
+        if (current() == value && value != last) {
+          restore(last);
+          notifyListeners();
+        }
+      }
+      rethrow;
+    }
   }
 }

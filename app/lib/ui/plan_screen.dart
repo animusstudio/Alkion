@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../capture/session_capture_hooks.dart';
 import '../data/day_template_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../sync/db.dart';
@@ -78,6 +79,24 @@ class PlanScreenState extends State<PlanScreen> {
   /// True while [requestClose] runs: a second call is refused rather than
   /// stacking a second prompt.
   bool _closing = false;
+
+  /// An open editor with unsaved edits holds off a data capture: its edits
+  /// are settled only by Save or by discarding them, never automatically.
+  Object? _unsavedForm;
+
+  @override
+  void initState() {
+    super.initState();
+    _unsavedForm =
+        UnsavedEditors.instance.register('plan', () => hasUnsavedEdits);
+  }
+
+  @override
+  void dispose() {
+    final form = _unsavedForm;
+    if (form != null) UnsavedEditors.instance.unregister(form);
+    super.dispose();
+  }
 
   /// Opens an editor. Ignored while one is open: the list can then only be
   /// reached by a tap that fell through to the outgoing list while the new

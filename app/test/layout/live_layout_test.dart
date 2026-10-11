@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:workout_tracker/session/active_session_controller.dart';
@@ -28,6 +29,32 @@ void main() {
       await settleReal(tester, ticks: 10);
       await expectLayoutHoldsWhileScrolling(
           tester, find.byType(ActiveSessionScreen), 'Live $name');
+      await harness.unmount(tester);
+    });
+
+    // While a data capture holds the source: the hold banner under the
+    // header, and +30s drawn unavailable on a running rest row.
+    testWidgets('the live workout held by a capture holds at $name',
+        (tester) async {
+      await harness.open(tester);
+      setPhone(tester, width: c.width, textScale: c.textScale);
+      final controller = ActiveSessionController()..seedForTest(longDraft());
+      controller.logLiveSet();
+      controller.startRest(180);
+      controller.freezeCallbacks(1);
+      await tester.pumpWidget(harness.wrap(
+        const ActiveSessionScreen(),
+        locale: c.locale,
+        extra: [
+          ChangeNotifierProvider<ActiveSessionController>.value(
+              value: controller),
+        ],
+      ));
+      await settleUntilFound(
+          tester, find.byKey(const Key('capture-hold-banner')),
+          where: 'Live held $name');
+      await expectLayoutHoldsWhileScrolling(
+          tester, find.byType(ActiveSessionScreen), 'Live held $name');
       await harness.unmount(tester);
     });
 

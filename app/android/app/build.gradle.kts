@@ -15,6 +15,27 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Capture-bridge distribution builds (`make -C app build-capture-apk-release`)
+// set the Gradle property captureDistribution=true (through the environment
+// variable ORG_GRADLE_PROJECT_captureDistribution). For them the debug-signing
+// fallback below is disabled: without the release signing configuration the
+// build fails here, during configuration, before any task can produce an APK.
+// Only the presence of the signing file is tested; no signing value is read
+// for this check or printed. Without the property every build behaves exactly
+// as before.
+val captureDistribution = when (providers.gradleProperty("captureDistribution").orNull) {
+    null, "false" -> false
+    "true" -> true
+    else -> throw GradleException("captureDistribution must be true or false")
+}
+if (captureDistribution && !keystorePropertiesFile.exists()) {
+    throw GradleException(
+        "Capture distribution requires the release signing configuration " +
+            "(android/key.properties, see android/RELEASE.md); " +
+            "debug signing is not allowed for a capture bridge."
+    )
+}
+
 android {
     namespace = "io.github.psychonaut0.reps"
     compileSdk = flutter.compileSdkVersion
@@ -52,8 +73,11 @@ android {
         release {
             // Sign with our release key when key.properties is present; otherwise
             // fall back to debug signing so `flutter build apk --release` still works.
+            // A capture distribution build never takes the fallback (see above).
             signingConfig = if (keystorePropertiesFile.exists())
                 signingConfigs.getByName("release")
+            else if (captureDistribution)
+                throw GradleException("Capture distribution must use release signing.")
             else
                 signingConfigs.getByName("debug")
         }

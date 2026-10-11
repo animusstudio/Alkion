@@ -34,6 +34,9 @@ bin/
 *.test
 *.out
 
+# Python (scripts/, tests/)
+__pycache__/
+
 # --- Local data ---
 *.sqlite
 *.sqlite-journal

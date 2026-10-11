@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../capture/session_capture_hooks.dart';
+import '../capture/source_write_gate.dart';
 import '../data/active_session_draft.dart';
 import '../data/finished_session_store.dart';
 import 'active_session_controller.dart';
@@ -49,9 +51,64 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (callbacksFrozen) {
+        // Reconciled when the capture releases the source.
+        _resumedWhileFrozen = true;
+        return;
+      }
       _reconcileRestFromBlob();
       _recheckFinished(DateTime.now());
     }
+  }
+
+  // ── Capture freeze ──────────────────────────────────────────────────────
+
+  /// Generation of the capture that froze the callbacks, or null.
+  int? _frozenGeneration;
+
+  /// Moves on at every freeze/resume; a timer armed under an older epoch
+  /// never acts.
+  int _callbackEpoch = 0;
+  bool _resumedWhileFrozen = false;
+
+  /// Whether a capture froze autosave, rest auto-stop, lifecycle reconcile
+  /// and finished-snapshot expiry.
+  bool get callbacksFrozen => _frozenGeneration != null;
+
+  /// Freezes the session callbacks for capture [generation]: the active
+  /// controller's autosave and rest auto-stop, lifecycle reconcile, and the
+  /// finished-snapshot expiry (already scheduled callbacks are fenced). An
+  /// expiry that already started is a running operation the capture awaits.
+  void freezeCallbacks(int generation) {
+    _frozenGeneration = generation;
+    _callbackEpoch++;
+    _expiry?.cancel();
+    _expiry = null;
+    _active?.freezeCallbacks(generation);
+  }
+
+  /// Ends the freeze of capture [generation] at [now], once the source is
+  /// released: the controller reconciles its rest and owed autosave, a
+  /// lifecycle resume seen meanwhile is reconciled, and the finished
+  /// snapshot is re-checked against [now] (expiring it if its window closed
+  /// meanwhile) and its expiry re-armed. Unfrozen (a capture aborted before
+  /// it froze), the same reconcile settles what refused writes still owe.
+  ///
+  /// A call naming another generation than the frozen one is a stale resume
+  /// of an earlier capture: nothing changes and it returns false.
+  bool resumeCallbacks(DateTime now, {required int generation}) {
+    final frozen = _frozenGeneration;
+    if (frozen != null && frozen != generation) return false;
+    _frozenGeneration = null;
+    _callbackEpoch++;
+    _active?.resumeCallbacks(now);
+    _resyncNotification();
+    if (_resumedWhileFrozen) {
+      _resumedWhileFrozen = false;
+      unawaited(_reconcileRestFromBlob());
+    }
+    _recheckFinished(now);
+    return true;
   }
 
   Future<void> _reconcileRestFromBlob() async {
@@ -91,12 +148,9 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     _active?.removeListener(_onControllerChange);
     _active = c;
     c.addListener(_onControllerChange);
-    notifier?.showFor(
-      name: c.draft.name,
-      startedAt: c.draft.startedAt,
-      restStart: c.restStart,
-      restTotal: c.restTotal,
-    );
+    final frozen = _frozenGeneration;
+    if (frozen != null) c.freezeCallbacks(frozen);
+    _showNotification(c);
     notifyListeners();
   }
 
@@ -108,30 +162,57 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       clear();
       return;
     }
-    notifier?.showFor(
-      name: c.draft.name,
-      startedAt: c.draft.startedAt,
-      restStart: c.restStart,
-      restTotal: c.restTotal,
-    );
+    _showNotification(c);
     notifyListeners(); // mini-bar rest-mode swap
   }
 
   void clear() {
     _active?.removeListener(_onControllerChange);
     _active = null;
-    notifier?.cancel();
+    final n = notifier;
+    if (n != null) _ledger.detach(n.cancel());
     notifyListeners();
   }
 
-  /// Boot path: restore a persisted draft (crash / process-death recovery).
-  Future<bool> resumeFromDraft({DraftStore? store}) async {
-    final s = store ?? DraftStore();
-    final draft = await s.load();
-    if (draft == null) return false;
-    register(ActiveSessionController.fromDraft(draft, draftStore: s));
-    return true;
+  /// Mirrors [c] into the ongoing notification and its rest blob. The update
+  /// is a tracked operation: a capture awaits it. One refused while a
+  /// capture holds the source is redone by [resumeCallbacks].
+  void _showNotification(ActiveSessionController c) {
+    final n = notifier;
+    if (n == null) return;
+    _ledger.detach(n.showFor(
+      name: c.draft.name,
+      startedAt: c.draft.startedAt,
+      restStart: c.restStart,
+      restTotal: c.restTotal,
+    ));
   }
+
+  /// After a capture released the source: the notification and rest blob
+  /// show the live state again (an update refused meanwhile is redone; one
+  /// already shown is skipped by the notifier).
+  void _resyncNotification() {
+    final c = _active;
+    if (c != null && c.hasSession) {
+      _showNotification(c);
+    } else if (notifier?.cancelOwed ?? false) {
+      _ledger.detach(notifier!.cancel());
+    }
+  }
+
+  /// Boot path: restore a persisted draft (crash / process-death recovery).
+  /// One source operation: loading clears a draft file that does not decode.
+  Future<bool> resumeFromDraft({DraftStore? store}) =>
+      SessionWriteLedger.instance.track(runSourceWrite(
+        'boot.resume_draft',
+        (_) async {
+          final s = store ?? DraftStore();
+          final draft = await s.load();
+          if (draft == null) return false;
+          register(ActiveSessionController.fromDraft(draft, draftStore: s));
+          return true;
+        },
+      ));
 
   // ── Launch guard ────────────────────────────────────────────────────────
 
@@ -168,45 +249,75 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   /// runs and notifies inside the transaction, before the commit, and
   /// adopting then would let a failed commit replace a good snapshot with one
   /// describing writes that never happened. A failed save clears the file, so
-  /// an older snapshot of the same session cannot be resumed after a restart.
-  Future<void> recordFinished(FinishedSession f, {DateTime? now}) async {
+  /// an older snapshot of the same session cannot be resumed after a restart;
+  /// the failure is not thrown (the finish itself succeeded) but stays
+  /// observable to capture. Pass the finish's ticket as [parent]: the save
+  /// and its error continuation are part of that operation.
+  Future<void> recordFinished(
+    FinishedSession f, {
+    DateTime? now,
+    SourceTicket? parent,
+  }) {
     _adopt(f, now ?? DateTime.now());
     notifyListeners();
-    try {
-      await _finishedStore.save(f);
-    } catch (_) {
-      await _clearFinishedStore();
-    }
+    return _ledger.track(runSourceWrite(
+      'session.record_finished',
+      (_) async {
+        try {
+          await _ledger.write('finished', () => _finishedStore.save(f));
+        } catch (e) {
+          await _clearFinishedStore();
+          _ledger.recordFailure('finished', e);
+        }
+      },
+      parent: parent,
+    ).then((_) {}, onError: (Object e) {
+      // Not admitted: the adopted snapshot never reached the file.
+      _ledger.recordFailure('finished', e);
+    }));
   }
 
   /// Boot path: restores the persisted snapshot if it is still resumable, and
-  /// deletes it otherwise (or if it cannot be read).
-  Future<void> loadLastFinished({DateTime? now}) async {
-    final t = now ?? DateTime.now();
-    final FinishedSession? f;
-    try {
-      f = await _finishedStore.load();
-    } catch (_) {
-      return;
-    }
-    if (f == null) return;
-    if (!isResumable(f, f.sessionId, t)) {
-      await _clearFinishedStore();
-      return;
-    }
-    _adopt(f, t);
-    notifyListeners();
-  }
+  /// deletes it otherwise (or if it cannot be read). One source operation.
+  Future<void> loadLastFinished({DateTime? now}) =>
+      _ledger.track(runSourceWrite(
+        'boot.load_finished',
+        (_) async {
+          final t = now ?? DateTime.now();
+          final FinishedSession? f;
+          try {
+            f = await _finishedStore.load();
+          } catch (_) {
+            return;
+          }
+          if (f == null) return;
+          if (!isResumable(f, f.sessionId, t)) {
+            await _clearFinishedStore();
+            return;
+          }
+          _adopt(f, t);
+          notifyListeners();
+        },
+      ));
 
   /// Drops the snapshot if it belongs to [sessionId] — the session was
-  /// deleted, or its resume window closed.
-  void forgetFinished(String sessionId) {
-    if (_lastFinished?.sessionId != sessionId) return;
-    _expiry?.cancel();
-    _expiry = null;
-    _lastFinished = null;
-    notifyListeners();
-    unawaited(_clearFinishedStore());
+  /// deleted, or its resume window closed — and deletes its file, as one
+  /// source operation (refused, with nothing dropped, while a capture holds
+  /// the source). Completes once the file clear finished; never throws.
+  Future<void> forgetFinished(String sessionId, {SourceTicket? parent}) {
+    if (_lastFinished?.sessionId != sessionId) return Future.value();
+    return _ledger.track(runSourceWrite(
+      'session.forget_finished',
+      (_) async {
+        if (_lastFinished?.sessionId != sessionId) return;
+        _expiry?.cancel();
+        _expiry = null;
+        _lastFinished = null;
+        notifyListeners();
+        await _clearFinishedStore();
+      },
+      parent: parent,
+    ).then((_) {}, onError: (Object _) {}));
   }
 
   /// The expiry timer runs on the monotonic clock, which does not advance
@@ -227,16 +338,25 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   void _adopt(FinishedSession f, DateTime now) {
     _lastFinished = f;
     _expiry?.cancel();
+    _expiry = null;
+    // While frozen the expiry is re-armed (or run) by resumeCallbacks.
+    if (callbacksFrozen) return;
     final wait = resumableUntil(f).difference(now);
-    _expiry = Timer(wait.isNegative ? Duration.zero : wait,
-        () => forgetFinished(f.sessionId));
+    final epoch = _callbackEpoch;
+    _expiry = Timer(wait.isNegative ? Duration.zero : wait, () {
+      if (epoch != _callbackEpoch || callbacksFrozen) return;
+      forgetFinished(f.sessionId);
+    });
   }
+
+  SessionWriteLedger get _ledger => SessionWriteLedger.instance;
 
   Future<void> _clearFinishedStore() async {
     try {
-      await _finishedStore.clear();
+      await _ledger.write('finished', _finishedStore.clear);
     } catch (_) {
       // Best effort: an undeletable stale file is dropped again at next boot.
+      // The failure stays recorded for capture.
     }
   }
 

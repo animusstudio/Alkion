@@ -1,5 +1,6 @@
 import 'package:powersync/powersync.dart' show PowerSyncDatabase, uuid;
 
+import '../capture/source_write_gate.dart';
 import 'models.dart';
 import 're_listenable.dart';
 
@@ -70,23 +71,27 @@ class MuscleTargetRepository {
   /// when count=0 prevents duplicates on re-open without needing INSERT OR IGNORE.
   /// If no sessions exist yet (userId is null), seeding is skipped; the
   /// dashboard handles empty targets gracefully.
-  Future<void> seedDefaultsIfEmpty(String userId) async {
-    final count =
-        (await db.get('SELECT COUNT(*) AS n FROM muscle_targets'))['n'] as int?
-            ?? 0;
-    if (count > 0) return;
+  ///
+  /// One source operation, the count check included; [parent] when it is
+  /// part of a larger one (onboarding).
+  Future<void> seedDefaultsIfEmpty(String userId, {SourceTicket? parent}) =>
+      runSourceWrite('targets.seed', (_) async {
+        final count = (await db.get(
+                'SELECT COUNT(*) AS n FROM muscle_targets'))['n'] as int? ??
+            0;
+        if (count > 0) return;
 
-    final nowIso = DateTime.now().toUtc().toIso8601String();
-    await db.writeTransaction((tx) async {
-      for (final (muscle, targetSets) in _defaults) {
-        await tx.execute(
-          'INSERT INTO muscle_targets (id, user_id, muscle, target_sets, created_at) '
-          'VALUES (?, ?, ?, ?, ?)',
-          [uuid.v4(), userId, muscle, targetSets, nowIso],
-        );
-      }
-    });
-  }
+        final nowIso = DateTime.now().toUtc().toIso8601String();
+        await db.writeTransaction((tx) async {
+          for (final (muscle, targetSets) in _defaults) {
+            await tx.execute(
+              'INSERT INTO muscle_targets (id, user_id, muscle, target_sets, created_at) '
+              'VALUES (?, ?, ?, ?, ?)',
+              [uuid.v4(), userId, muscle, targetSets, nowIso],
+            );
+          }
+        });
+      }, parent: parent);
 
   /// Live-persists [muscle]'s weekly target to [sets]. 0 = no goal (deletes).
   Future<void> setTarget({
@@ -104,6 +109,7 @@ class MuscleTargetRepository {
       nowIso: DateTime.now().toUtc().toIso8601String(),
     );
     if (op == null) return;
-    await db.writeTransaction((tx) => tx.execute(op.sql, op.args));
+    await runSourceWrite('targets.set',
+        (_) => db.writeTransaction((tx) => tx.execute(op.sql, op.args)));
   }
 }

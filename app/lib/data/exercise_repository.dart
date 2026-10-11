@@ -1,5 +1,6 @@
 import 'package:powersync/powersync.dart';
 
+import '../capture/source_write_gate.dart';
 import 'models.dart';
 import 're_listenable.dart';
 
@@ -171,10 +172,13 @@ class ExerciseRepository {
   Future<String> createExercise(ExerciseDraft draft) async {
     final id = uuid.v4();
     final slug = uniqueSlug(draft.name, id);
-    await db.writeTransaction((tx) async {
-      final op = exerciseUpsertOp(null, id, draft, slug);
-      await tx.execute(op.sql, op.args);
-    });
+    await runSourceWrite(
+      'exercise.create',
+      (_) => db.writeTransaction((tx) async {
+        final op = exerciseUpsertOp(null, id, draft, slug);
+        await tx.execute(op.sql, op.args);
+      }),
+    );
     return id;
   }
 
@@ -182,10 +186,13 @@ class ExerciseRepository {
   ///
   /// Slug is not changed on update (server does not accept slug changes).
   Future<void> updateExercise(String id, ExerciseDraft draft) async {
-    await db.writeTransaction((tx) async {
-      final op = exerciseUpsertOp(id, id, draft, '');
-      await tx.execute(op.sql, op.args);
-    });
+    await runSourceWrite(
+      'exercise.update',
+      (_) => db.writeTransaction((tx) async {
+        final op = exerciseUpsertOp(id, id, draft, '');
+        await tx.execute(op.sql, op.args);
+      }),
+    );
   }
 
   /// Reference counts gating delete: logged sets + distinct split days.
@@ -205,12 +212,15 @@ class ExerciseRepository {
   /// Deletes an owned exercise; when [removeFromDays], clears its split-day
   /// slots first (same transaction). Caller must have run the decide gate.
   Future<void> deleteExercise(String id, {required bool removeFromDays}) async {
-    await db.writeTransaction((tx) async {
-      if (removeFromDays) {
-        await tx.execute(
-            'DELETE FROM day_template_items WHERE exercise_id = ?', [id]);
-      }
-      await tx.execute('DELETE FROM exercises WHERE id = ?', [id]);
-    });
+    await runSourceWrite(
+      'exercise.delete',
+      (_) => db.writeTransaction((tx) async {
+        if (removeFromDays) {
+          await tx.execute(
+              'DELETE FROM day_template_items WHERE exercise_id = ?', [id]);
+        }
+        await tx.execute('DELETE FROM exercises WHERE id = ?', [id]);
+      }),
+    );
   }
 }

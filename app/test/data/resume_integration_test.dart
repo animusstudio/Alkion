@@ -546,7 +546,7 @@ void main() {
       final c = (await resume(f))!;
       final bench = c.draft.blocks[1];
       c.toggleDone(bench, bench.workingSets.last);
-      c.discard();
+      await c.discard();
 
       expect(await rows(), before);
       expect(m.hasActive, isFalse);
@@ -570,7 +570,7 @@ void main() {
       final other = ActiveSessionController()..seedEmpty(name: 'Custom', focus: '');
       m.register(other);
       expect(await resume(f), isNull);
-      other.discard();
+      await other.discard();
 
       await SessionRepository(db).deleteSession(f.sessionId);
       expect(await resume(f), isNull);
