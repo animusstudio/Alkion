@@ -189,6 +189,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /migration/transitions/{id}/{action}:
+    post:
+      summary: Independently consent to an old account writer decision
+      description: >
+        Registered only with explicit REPS_MIGRATION_PEER_CONFIG. Requires the
+        old API JWT subject to equal the exact old account and explicit recorded
+        owner consent. Surrender and unfreeze read authenticated Hub status;
+        uploaded peer receipts cannot authorize decisions. Failure stays closed.
+      operationId: controlMigrationTransition
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [freeze, surrender, unfreeze]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../server/internal/migration/testdata/reps-migration-peer.schema.json#/$defs/owner_control"
+      responses:
+        "200":
+          description: Immutable decision; exact retries return the same result
+          content:
+            application/json:
+              schema:
+                $ref: "../server/internal/migration/testdata/reps-migration-peer.schema.json#/$defs/receipt"
+        "400":
+          description: Malformed or noncanonical control request
+        "401":
+          description: Old account JWT verification failed
+        "403":
+          description: Independent old owner consent or account binding missing
+        "404":
+          description: Controls unconfigured or action unknown
+        "415":
+          description: application/json required
+        "503":
+          description: Unavailable, unknown or conflicting authority; writer remains closed
 components:
   securitySchemes:
     bearerAuth:

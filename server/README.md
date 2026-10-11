@@ -149,3 +149,27 @@ secret in git). Grant it `LOGIN` + a password out-of-band, reading the value fro
 
 The PowerSync service connects to the source database as this role; its password
 must match `PS_REPLICATION_PASSWORD` in `infra/.env`.
+
+## Account writer authority
+
+The legacy upload route now checks a durable account writer gate inside its
+transaction before reading the request body. Frozen/retired accounts and gate
+failures return queue-preserving 503; expired authentication remains 401. Uploads
+are bounded to 1 MiB and 10 seconds. A `0.18.1+37` client cannot split one
+CRUD transaction, so a transaction over that bound would retry on 503
+indefinitely. Measuring that client's maximum transaction size and upload time
+is a gate before any deployment of the fence. The internal freeze primitive records an
+immutable snapshot and receipt. Explicitly configured migration controls require
+verified old JWT ownership and separate recorded consent; peer status uses pinned
+mTLS. Abort Unfreeze advances the epoch without reopening a retired account.
+Its OLD_ACTIVE peer proof is available only while the exact advanced current gate
+is still active, allowing the Hub to authenticate abort completion.
+
+The fence's schema is migrations `00023`–`00026`. The server applies every
+pending embedded migration at startup, before serving requests. `00025` and
+`00026` give every account a committed gate row, so a later upload always
+queues behind Freeze. They must be applied on the old server before any account
+is frozen. No deployed old server has them yet.
+
+See [the writer inventory and remaining readiness gates](docs/account-writer-fence.md).
+This implementation has not been deployed or certified for a migration cutover.

@@ -1,17 +1,28 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"workout-tracker/server/internal/migration"
 )
+
+// MaxUploadBytes bounds buffering while the account lock is held.
+const MaxUploadBytes int64 = 1 << 20
+
+// UploadTimeout bounds account lock waiting and body reads.
+const UploadTimeout = 10 * time.Second
 
 // UploadHandler applies PowerSync client write batches to Postgres. It is the
 // target of the Flutter client's uploadData connector (the PowerSync write path).
@@ -51,22 +62,50 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dec := json.NewDecoder(r.Body)
-	dec.UseNumber() // keep weight_kg exact (json.Number, not float64)
-	var req uploadRequest
-	if err := dec.Decode(&req); err != nil {
-		slog.Warn("upload: malformed body, accepting as no-op", "err", err)
-		writeJSON(w, http.StatusOK, map[string]int{"applied": 0})
-		return
-	}
-
-	ctx := r.Context()
+	// Bound both SQL lock waiting and real HTTP body reads. The server also
+	// has a whole-request ReadTimeout; closing the body covers other transports.
+	ctx, cancel := context.WithTimeout(r.Context(), UploadTimeout)
+	defer cancel()
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(UploadTimeout))
+	r.Body = http.MaxBytesReader(w, r.Body, MaxUploadBytes)
+	stopClose := context.AfterFunc(ctx, func() { _ = r.Body.Close() })
+	defer stopClose()
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
 		writeJSONError(w, http.StatusServiceUnavailable, "db unavailable")
 		return
 	}
+	// An expired rollback context makes pgx close the connection; cleanup
+	// cannot introduce a fresh unbounded wait after the request deadline.
 	defer func() { _ = tx.Rollback(ctx) }()
+	gate, err := migration.LockAccountWriter(ctx, tx, userID)
+	if err != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "writer authority unavailable")
+		return
+	}
+	if gate.State != migration.OldActive {
+		w.Header().Set("Retry-After", "30")
+		writeJSONError(w, http.StatusServiceUnavailable, "account writer frozen or retired")
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil || ctx.Err() != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "upload body unavailable or too large")
+		return
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	var req uploadRequest
+	if err := dec.Decode(&req); err != nil {
+		slog.Warn("upload: malformed body, accepting as no-op", "err", err)
+		// Persist the gate initialization before any successful queue response.
+		if err := tx.Commit(ctx); err != nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "commit failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]int{"applied": 0})
+		return
+	}
 
 	applied := 0
 	topGroups := map[[2]string]struct{}{} // {sessionID, exerciseID}

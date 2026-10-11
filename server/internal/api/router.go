@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -23,6 +24,7 @@ type Deps struct {
 	Verifier    *auth.Verifier
 	APIAudience string
 	Upload      *UploadHandler
+	Migration   *MigrationControl
 }
 
 // NewRouter builds the chi router. Auth is nil-safe for the health-only tests:
@@ -44,11 +46,32 @@ func NewRouter(d Deps) *chi.Mux {
 			r.Group(func(pr chi.Router) {
 				pr.Use(RequireAuth(d.Verifier, d.APIAudience))
 				pr.Post("/auth/powersync-token", d.Auth.PowerSyncToken)
+				// Authentication must run before Upload; Upload locks current
+				// authority inside its SQL transaction before reading the body.
 				if d.Upload != nil {
 					pr.Post("/sync/upload", d.Upload.Upload)
 				}
 			})
 		}
 	}
+	if d.Migration != nil && d.Verifier != nil {
+		r.Group(func(pr chi.Router) {
+			pr.Use(RequireAuth(d.Verifier, d.APIAudience))
+			pr.Post("/migration/transitions/{id}/{action}", d.Migration.Control)
+		})
+	}
 	return r
+}
+
+// NewServer is the public API server with its production timeouts: the read
+// timeout bounds held upload bodies (UploadTimeout).
+func NewServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       UploadTimeout,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 }
