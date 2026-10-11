@@ -79,5 +79,12 @@ func DecodeOldOwnerControl(payload []byte) (OldOwnerControl, error) {
 	if json.Unmarshal(payload, &control) != nil {
 		return OldOwnerControl{}, ErrInvalidPeer
 	}
+	// Canonical spelling is part of the wire: a noncanonical identity, hash or
+	// epoch is a malformed control. Whether well-formed values match the
+	// account's authority state is decided later, by the service.
+	c := control.Command
+	if ValidateKey(c.Key) != nil || !ValidUUID(c.OperationID) || !ValidHash(c.RequestHash) || (c.Digest != "" && !ValidHash(c.Digest)) {
+		return OldOwnerControl{}, ErrInvalidPeer
+	}
 	return control, nil
 }

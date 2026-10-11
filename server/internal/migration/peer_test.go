@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net"
 	"net/http"
@@ -34,7 +35,7 @@ func testReceipt() Receipt {
 }
 
 func TestOldOwnerFreezeDigestMustBeString(t *testing.T) {
-	command := TransitionCommand{Key: testKey(), OperationID: "00000000-0000-4000-8000-000000000007"}
+	command := TransitionCommand{Key: testKey(), OperationID: "00000000-0000-4000-8000-000000000007", RequestHash: strings.Repeat("b", 64)}
 	raw, err := json.Marshal(OldOwnerControl{Command: command, OwnerConsent: true})
 	if err != nil {
 		t.Fatal(err)
@@ -45,6 +46,44 @@ func TestOldOwnerFreezeDigestMustBeString(t *testing.T) {
 	withNull := strings.Replace(string(raw), `"digest":""`, `"digest":null`, 1)
 	if _, err := DecodeOldOwnerControl([]byte(withNull)); err == nil {
 		t.Fatal("null freeze digest accepted")
+	}
+	assertNoncanonicalOwnerControlRejected(t, command)
+}
+
+// assertNoncanonicalOwnerControlRejected: a noncanonical identity, hash or
+// epoch is a malformed control (400 at the owner-control route), decided
+// before the service; well-formed values that do not match the account's
+// authority state stay a closed decision (503).
+func assertNoncanonicalOwnerControlRejected(t *testing.T, valid TransitionCommand) {
+	t.Helper()
+	const upperUUID = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+	for name, change := range map[string]func(*TransitionCommand){
+		"upper-case operation":  func(c *TransitionCommand) { c.OperationID = upperUUID },
+		"upper-case transition": func(c *TransitionCommand) { c.Key.TransitionID = upperUUID },
+		"upper-case account":    func(c *TransitionCommand) { c.Key.Scope.OldAccountID = upperUUID },
+		"zero epoch":            func(c *TransitionCommand) { c.Key.Epoch = 0 },
+		"short request hash":    func(c *TransitionCommand) { c.RequestHash = c.RequestHash[:63] },
+		"upper-case digest":     func(c *TransitionCommand) { c.Digest = strings.Repeat("A", 64) },
+		"missing request hash":  func(c *TransitionCommand) { c.RequestHash = "" },
+	} {
+		c := valid
+		change(&c)
+		raw, err := json.Marshal(OldOwnerControl{Command: c, OwnerConsent: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := DecodeOldOwnerControl(raw); !errors.Is(err, ErrInvalidPeer) {
+			t.Fatalf("%s accepted: %v", name, err)
+		}
+	}
+	decision := valid
+	decision.Digest = strings.Repeat("e", 64)
+	raw, err := json.Marshal(OldOwnerControl{Command: decision, OwnerConsent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeOldOwnerControl(raw); err != nil {
+		t.Fatalf("canonical decision digest rejected: %v", err)
 	}
 }
 
