@@ -1,14 +1,16 @@
 # Alkion development boundary
 
-This is a private, local, no-remote successor development checkout. Development
-identity is `dev.animusstudio.alkion.dev`; package/binary `alkion`, display
-`Alkion Dev`, endorsement `Alkion, by Animus`. Publication, license, signing,
-release identity and transport remain separate gates. Inherited root/release
-instructions below are historical Reps guidance, not permission to publish,
-tag, run a backend, connect legacy sync, or launch the current app.
+This is the Alkion application, developed before 1.0 on `main` of this public
+repository (see the root `AGENTS.md`). Development identity is
+`dev.animusstudio.alkion.dev`; package/binary `alkion`, display `Alkion Dev`,
+endorsement `Alkion, by Animus`. Final application ID, signing, release
+identity and transport remain open. Inherited root/release instructions below
+are historical Reps guidance, not permission to tag, release, run a backend or
+connect legacy sync.
 
 All Flutter/Dart commands go through `make -C app` and FVM 3.44.0. Normal
-startup remains closed until standalone repositories are integrated. Use only
+startup opens the integrated account-free app over the selected store
+generation (see `docs/alkion/development.md`). Use only
 explicit disposable storage for qualification; never discover/read legacy
 profiles, settings, credentials, queues or real artifacts. Signing out or
 transport denial cannot clear a local profile. No account/sender/OTA is enabled.
@@ -21,7 +23,8 @@ Preserve inherited notices and the immutable source baseline. Exact additional
 180-file package-prefix ownership permits only the literal URI prefix change;
 no formatting or semantic changes there. Capture/PowerSync dependencies remain
 inventoried until their reviewed removal; do not delete transition code early.
-Every actual change needs independent review. No app Git delivery is authorized.
+Every actual change needs independent review. App commits follow the root
+`AGENTS.md` (Conventional Commits; no tag or release before 1.0).
 
 The retained behavior rules below guide later adapters, with this boundary
 and the assigned task taking precedence.
