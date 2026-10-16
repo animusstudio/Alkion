@@ -22,7 +22,7 @@ Built for one lifter's actual training (and used at the gym every week), open-so
 
 ## Install
 
-**Android:** grab the latest `reps-vX.Y.Z.apk` from [Releases](../../releases) and install it. That's the whole setup — open the app, optionally seed the starter exercise catalog, train.
+**Android:** grab the latest `reps-vX.Y.Z.apk` from [Releases](https://github.com/animusstudio/Alkion/releases) and install it. That's the whole setup — open the app, optionally seed the starter exercise catalog, train.
 
 **Build from source** (requires [fvm](https://fvm.app/)):
 
