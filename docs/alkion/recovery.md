@@ -1,10 +1,9 @@
 # Alkion restore and forward recovery
 
 T6 implementation of spec R7 restore, generation selection and newer-work
-reconciliation. Linux/synthetic development evidence only. T6 was accepted on
-2026-10-15 after independent review and a fix-1 re-review; integrated
-acceptance and final compliance passed under T7 ([acceptance](acceptance.md)). No rollback silently
-discards work, no recovery is invented, and nothing is purged.
+reconciliation. Linux/synthetic development evidence only. Status:
+[integrated acceptance](acceptance.md). No rollback silently discards work, no
+recovery is invented, and nothing is purged.
 
 Code: `app/lib/recovery/restore.dart`, `app/lib/store/generation_selection.dart`,
 the profile-storage additions in `app/lib/identity/alkion_profile.dart`, the

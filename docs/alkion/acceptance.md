@@ -1,13 +1,22 @@
+---
+app: alkion
+stage: development
+observed: 2026-10-16
+---
+
 # Alkion integrated acceptance (T7)
 
-T7 author evidence for spec AC-1–AC-20 and the maintained R2 conformance IDs,
-on Linux with synthetic data and disposable storage. T7 was accepted on
-2026-10-15 after independent review and a fix-1 re-review, and independent
-final compliance of the integrated change **passed** with the AC statuses
-below. This page claims no Android, owner-device,
-live-transfer, transport, READY or release result. The remaining gates are in
-[owner gates](owner-gates.md), and the future Animus seam is in
-[animus-follow-on](animus-follow-on.md).
+Canonical Alkion status, observed 2026-10-16: pre-1.0 development on `main` of
+this public repository. T1–T7 app work is accepted; T5, T6 and T7 were each
+accepted on 2026-10-15 after independent review and a fix-1 re-review, and
+independent final compliance of the integrated change **passed** with the AC
+statuses below. The evidence is T7 author evidence for spec AC-1–AC-20 and the
+maintained R2 conformance IDs, on Linux with synthetic data and disposable
+storage. This page claims no Android, owner-device, live-transfer, transport,
+READY or release result; final application ID, signing and release remain
+open. The remaining gates are in [owner gates](owner-gates.md), and the future
+Animus seam is in [animus-follow-on](animus-follow-on.md). Other Alkion pages
+link here for status instead of restating it.
 
 Route: the planned `gpt-6.1-sol xhigh` route was unavailable. The user
 authorized Opus 5.5 to implement T7 and Sonnet 5.5 to review it.

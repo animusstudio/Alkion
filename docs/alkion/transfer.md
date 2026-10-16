@@ -3,9 +3,7 @@
 T5 implementation of spec R5/R6 transfer behavior over the accepted T2 store
 boundary and T3/T4 repositories. It is Linux/synthetic development evidence, not
 complete legacy capture, a live transfer, an authority switch or device
-qualification. T5 was accepted on 2026-10-15 after independent review and a
-fix-1 re-review; integrated full-suite/Linux-bundle acceptance and final
-compliance passed under T7 ([acceptance](acceptance.md)).
+qualification. Status: [integrated acceptance](acceptance.md).
 
 The only input is an explicitly supplied file or byte array plus an explicit
 source namespace (`[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`). Nothing discovers a legacy

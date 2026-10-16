@@ -3,9 +3,8 @@
 T6 implementation of the spec R7 manual Alkion backup over the accepted T1
 coherent-backup primitive and the T2 store boundary. It is Linux/synthetic
 development evidence, not a complete legacy backup, an off-device copy, a
-scheduled job or device qualification. T6 was accepted on 2026-10-15 after
-independent review and a fix-1 re-review; integrated full-suite/Linux-bundle
-acceptance and final compliance passed under T7 ([acceptance](acceptance.md)).
+scheduled job or device qualification. Status:
+[integrated acceptance](acceptance.md).
 
 Code: `app/lib/recovery/backup.dart` (format, covered inventory, writer,
 receiving verification), `app/lib/recovery/recovery_host.dart` and the screen
