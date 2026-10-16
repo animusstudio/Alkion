@@ -32,15 +32,33 @@
   },
   "todayResumeWorkout": "Resume workout",
   "todayNext": "Next: {name}",
-  "@todayNext": {"placeholders": {"name": {"type": "String"}}},
+  "@todayNext": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "todayWorkoutInProgress": "Workout in progress",
   "todaySetsThisWeek": "Sets this week",
   "todayPrsThisWeek": "PRs this week",
   "todayVsLastWeek": "{delta} vs last wk",
-  "@todayVsLastWeek": {"placeholders": {"delta": {"type": "String"}}},
+  "@todayVsLastWeek": {
+    "placeholders": {
+      "delta": {
+        "type": "String"
+      }
+    }
+  },
   "todaySameAsLastWeek": "same as last wk",
   "todayLastPrDate": "last {date}",
-  "@todayLastPrDate": {"placeholders": {"date": {"type": "String"}}},
+  "@todayLastPrDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "todayNoPrsShort": "none yet",
   "weekStripCustom": "Custom",
   "splitNextInRotation": "NEXT IN ROTATION",
@@ -154,60 +172,106 @@
   "sessionLogSet": "Log set {index} · {weight} × {reps}",
   "@sessionLogSet": {
     "placeholders": {
-      "index": {"type": "int"},
-      "weight": {"type": "String"},
-      "reps": {"type": "int"}
+      "index": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      }
     }
   },
   "sessionLogWarmup": "Log warm-up · {weight} × {reps}",
   "@sessionLogWarmup": {
     "placeholders": {
-      "weight": {"type": "String"},
-      "reps": {"type": "int"}
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      }
     }
   },
   "sessionUpdateSet": "Update set {index}",
   "@sessionUpdateSet": {
-    "placeholders": {"index": {"type": "int"}}
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
   },
   "sessionUpdateWarmup": "Update warm-up",
   "sessionLiveSet": "SET {index}",
   "@sessionLiveSet": {
-    "placeholders": {"index": {"type": "int"}}
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
   },
   "sessionLiveWarmup": "WARM-UP",
   "sessionLiveLogged": "{label} · LOGGED",
   "@sessionLiveLogged": {
-    "placeholders": {"label": {"type": "String"}}
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
   },
   "sessionLastRef": "last {weight} × {reps} · {ago}",
   "@sessionLastRef": {
     "placeholders": {
-      "weight": {"type": "String"},
-      "reps": {"type": "int"},
-      "ago": {"type": "String"}
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      },
+      "ago": {
+        "type": "String"
+      }
     }
   },
   "sessionMarkNotDone": "Mark as not done",
   "sessionRestNext": "Next · {what}",
   "@sessionRestNext": {
-    "placeholders": {"what": {"type": "String"}}
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
   },
   "sessionNextSet": "{exercise} · set {index} · {weight} × {reps}",
   "@sessionNextSet": {
     "placeholders": {
-      "exercise": {"type": "String"},
-      "index": {"type": "int"},
-      "weight": {"type": "String"},
-      "reps": {"type": "int"}
+      "exercise": {
+        "type": "String"
+      },
+      "index": {
+        "type": "int"
+      },
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      }
     }
   },
   "sessionNextWarmup": "{exercise} · warm-up · {weight} × {reps}",
   "@sessionNextWarmup": {
     "placeholders": {
-      "exercise": {"type": "String"},
-      "weight": {"type": "String"},
-      "reps": {"type": "int"}
+      "exercise": {
+        "type": "String"
+      },
+      "weight": {
+        "type": "String"
+      },
+      "reps": {
+        "type": "int"
+      }
     }
   },
   "sessionWorkoutOptions": "Workout options",
@@ -570,7 +634,7 @@
       }
     }
   },
-  "profileSplitDays": "{count, plural, =1{1-\u2060day split} other{{count}-\u2060day split}}",
+  "profileSplitDays": "{count, plural, =1{1-⁠day split} other{{count}-⁠day split}}",
   "@profileSplitDays": {
     "placeholders": {
       "count": {
@@ -627,9 +691,21 @@
   "profileSignOutTitle": "Sign out?",
   "profileSignOutMessage": "You will need to sign in again to access your data.",
   "profileReconcileUnsyncedWarning": "{count} workout changes on this device haven't synced yet and would be deleted.",
-  "@profileReconcileUnsyncedWarning": {"placeholders": {"count": {"type": "int"}}},
+  "@profileReconcileUnsyncedWarning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "profileSignOutUnsyncedMessage": "{count} changes on this device haven't synced. Signing out deletes them. Use \"Sign in again\" instead to keep them.",
-  "@profileSignOutUnsyncedMessage": {"placeholders": {"count": {"type": "int"}}},
+  "@profileSignOutUnsyncedMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "onboardingWelcome": "Welcome",
   "onboardingIntro": "How would you like to start? You can change everything later.",
   "onboardingAddStarter": "Add starter exercises",
@@ -646,7 +722,13 @@
   "syncSessionExpired": "Session expired",
   "todaySyncPaused": "Sync paused · Sign in again",
   "todaySyncAtRisk": "Not synced since {date} · changes are on this phone only",
-  "@todaySyncAtRisk": {"placeholders": {"date": {"type": "String"}}},
+  "@todaySyncAtRisk": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "todaySyncAtRiskNever": "Not synced yet · changes are on this phone only",
   "profileSessionExpiredSub": "Sign in again to resume sync. Your data stays on this device.",
   "syncOffline": "Offline",
@@ -803,7 +885,13 @@
   "captureBlockedRetry": "Try again in a moment.",
   "captureBlockedKept": "A diagnostic copy was kept privately on this device, but it is not a usable capture and can't be copied out.",
   "captureBlockedReasons": "Reasons: {codes}",
-  "@captureBlockedReasons": {"placeholders": {"codes": {"type": "String"}}},
+  "@captureBlockedReasons": {
+    "placeholders": {
+      "codes": {
+        "type": "String"
+      }
+    }
+  },
   "captureResumeFailedTitle": "Not resumed",
   "captureResumeFailedBody": "Nothing was released; saving and sync stay paused.",
   "captureCoverageTitle": "What the capture holds",
@@ -812,13 +900,40 @@
   "captureStoreReview": "captured for later review",
   "captureStoreAbsent": "not present",
   "captureStoreExcluded": "left out · {reason}",
-  "@captureStoreExcluded": {"placeholders": {"reason": {"type": "String"}}},
+  "@captureStoreExcluded": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "captureStoreUnreadable": "couldn't be read · {detail}",
-  "@captureStoreUnreadable": {"placeholders": {"detail": {"type": "String"}}},
+  "@captureStoreUnreadable": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "captureStoreUnavailable": "unavailable · {detail}",
-  "@captureStoreUnavailable": {"placeholders": {"detail": {"type": "String"}}},
+  "@captureStoreUnavailable": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "captureDetails": "Captured {time} · digest {digest}",
-  "@captureDetails": {"placeholders": {"time": {"type": "String"}, "digest": {"type": "String"}}},
+  "@captureDetails": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "digest": {
+        "type": "String"
+      }
+    }
+  },
   "captureResume": "Resume original use",
   "captureResumeTitle": "Resume original use?",
   "captureResumeInterruptedBody": "The interrupted capture stays unusable and its partial files stay kept. Saving and sync start again as before. You can start a new capture afterwards.",
@@ -839,17 +954,38 @@
   "captureExportAction": "Copy capture",
   "captureExportConfirmTitle": "Copy the capture here?",
   "captureExportConfirmBody": "Reps creates the new folder {folder} inside {path}. If it already exists, nothing is copied. The capture on this device stays as it is.",
-  "@captureExportConfirmBody": {"placeholders": {"folder": {"type": "String"}, "path": {"type": "String"}}},
+  "@captureExportConfirmBody": {
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      },
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "captureExportConfirm": "Copy",
   "captureExportCopying": "Copying…",
   "captureExportCancel": "Stop copying",
   "captureExportDone": "Copy checked: it matches the capture on this device.",
   "captureExportDoneAt": "In {path}",
-  "@captureExportDoneAt": {"placeholders": {"path": {"type": "String"}}},
+  "@captureExportDoneAt": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "captureExportDoneNote": "This is only a local copy. It doesn't show that anything else has read or imported it.",
   "captureExportCancelled": "Copy cancelled. Nothing was finished at the destination, and the capture on this device is unchanged.",
   "captureExportFailed": "Copy not finished ({code}). The capture on this device is unchanged.",
-  "@captureExportFailed": {"placeholders": {"code": {"type": "String"}}},
+  "@captureExportFailed": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
   "captureExportUnavailable": "Copying a capture out isn't available on this device.",
   "captureWritesPausedTitle": "Paused for data capture",
   "captureWritesPausedBody": "A data capture is holding your data, so this change wasn't saved. Nothing else changed. Release or resume it in Profile → Data capture.",
@@ -859,9 +995,203 @@
   "captureDivergedBody": "The saved capture no longer matches what was checked when it was written, so Reps won't show or copy it. Its files stay privately on this device.",
   "captureExportChanged": "The capture on this device no longer matches what was checked when it was saved, so nothing was copied. Don't rely on it.",
   "captureExportUnverified": "A folder was created at {path}, but it did not pass the check there. Don't rely on it. The capture on this device was only read.",
-  "@captureExportUnverified": {"placeholders": {"path": {"type": "String"}}},
+  "@captureExportUnverified": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "captureExportExists": "That folder already exists there. Nothing was copied or replaced, and the capture on this device was only read.",
   "captureHoldWorkoutBanner": "Data capture is holding your data: changes to this workout aren't being saved. They are lost if the app closes before the hold ends.",
   "captureHoldWorkoutWarning": "A workout is open. While the hold lasts, its changes aren't saved and are lost if the app closes. Finish or discard it first if you want to keep them.",
-  "captureNewWorkoutRefused": "A data capture is holding your data, so a new workout can't start now. Release or resume it in Profile → Data capture."
+  "captureNewWorkoutRefused": "A data capture is holding your data, so a new workout can't start now. Release or resume it in Profile → Data capture.",
+  "bodyweightChooseEntry": "Choose the measurement to edit",
+  "targetsKeepEmpty": "Keep goals empty",
+  "bodyweightUnavailable": "Measurement unavailable",
+  "alkionLocalOnly": "Local profile",
+  "alkionAccountUnavailable": "Account connection is unavailable in this development build.",
+  "alkionExportUnavailable": "Versioned export is being prepared. Export is currently unavailable.",
+  "alkionOrderChoiceTitle": "Choose a baseline",
+  "alkionOrderChoiceBody": "History has an uncertain order. Choose which workout to use for this action. This records a preference, not a historical fact.",
+  "alkionUnavailableOn": "Unavailable · {date}",
+  "alkionOlderKnownOn": "Older known · {date}",
+  "alkionOrderUncertain": "Order uncertain",
+  "@alkionUnavailableOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "@alkionOlderKnownOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionStoreRecoveryTitle": "Local storage needs recovery",
+  "alkionStoreRecoveryBody": "This change has not been saved. Recover local storage, then retry the same change. Your draft and prior recovery are preserved.",
+  "alkionCompatibility": "Legacy compatibility · reps-compat/1",
+  "alkionKnownSubtotal": "Known subtotal · {known}/{total} working sets",
+  "@alkionKnownSubtotal": {
+    "placeholders": {
+      "known": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionLegacyFallback": "Unavailable evidence · legacy display fallback",
+  "alkionRetry": "Retry local save",
+  "alkionDateUnavailable": "Date unavailable · {raw}",
+  "@alkionDateUnavailable": {
+    "placeholders": {
+      "raw": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionDateWindowUnavailable": "{count} workouts have no qualified day; time-window totals cover dated workouts only.",
+  "@alkionDateWindowUnavailable": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionBodyweightDateCoverage": "{known}/{total} dated entries · current and time-window values unavailable; numeric history retained.",
+  "@alkionBodyweightDateCoverage": {
+    "placeholders": {
+      "known": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionBaselineUnavailable": "Previous reference unavailable",
+  "alkionValuesUnavailable": "Values unavailable",
+  "alkionDomainExportSub": "Versioned Alkion domain export · JSON",
+  "alkionImportTransfer": "Import & transfer",
+  "alkionImportTransferSub": "Full export import, reviews, original bytes",
+  "alkionTransferTitle": "Import & transfer",
+  "alkionTransferImportSection": "Import a full export",
+  "alkionTransferPathLabel": "Export file path",
+  "alkionTransferNamespaceLabel": "Source namespace",
+  "alkionTransferImportAction": "Import",
+  "alkionTransferImportSelected": "Import selected",
+  "alkionTransferImportAlreadySelected": "Already imported",
+  "alkionTransferImportRejected": "Import rejected",
+  "alkionTransferImportIncompatible": "Import needs review",
+  "alkionTransferImportRefused": "Import not staged",
+  "alkionTransferGenerations": "Imports",
+  "alkionTransferExportOriginal": "Export original bytes",
+  "alkionTransferApplySettings": "Apply imported settings",
+  "alkionTransferReviews": "Reviews",
+  "alkionTransferNoReviews": "No pending reviews",
+  "alkionTransferAbsence": "Missing from the latest import",
+  "alkionTransferOverlay": "Source changed under your edit",
+  "alkionTransferTombstone": "Source changed under a deletion",
+  "alkionTransferKeep": "Keep",
+  "alkionTransferDelete": "Delete",
+  "alkionTransferRestore": "Restore",
+  "alkionTransferDeleteTitle": "Delete this record?",
+  "alkionTransferDeleteMessage": "Missing from an export does not prove the record was deleted. This records your own deletion, which can be restored.",
+  "alkionTransferMeasurements": "Measurements without a date",
+  "alkionTransferExportCompat": "Export transfer file",
+  "alkionTransferExportCompatSub": "Reps-compatible full export with stated limits; not a backup.",
+  "alkionTransferFailed": "Transfer action failed",
+  "alkionTransferOutcomeMessage": "Reason: {category}. The original file and staged bytes are kept.",
+  "@alkionTransferOutcomeMessage": {
+    "placeholders": {
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionTransferSettingsApplied": "{applied} applied, {skipped} not applied (missing or invalid values never replace current settings).",
+  "@alkionTransferSettingsApplied": {
+    "placeholders": {
+      "applied": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionBackupRestore": "Backup & restore",
+  "alkionBackupRestoreSub": "Manual verified backup, check and restore",
+  "alkionBackupTitle": "Backup & restore",
+  "alkionBackupSection": "Manual backup",
+  "alkionBackupExplain": "A backup counts only once it is verified. Copy the file off this device and check it there; sharing or copying alone is not proof. Alkion never schedules or reminds, so work after your last verified backup can be lost.",
+  "alkionBackupCreate": "Create backup",
+  "alkionBackupCreated": "Backup saved and verified",
+  "alkionBackupCreatedMessage": "{path}\nSHA-256 {digest}…\nCopy it off this device, then check the copy with “Check backup”.",
+  "@alkionBackupCreatedMessage": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      },
+      "digest": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionBackupFileSection": "Backup file",
+  "alkionBackupPathLabel": "Backup file path",
+  "alkionBackupCheck": "Check backup",
+  "alkionBackupCheckOk": "Backup verified",
+  "alkionBackupCheckOkMessage": "Created {created}. All {rows} covered rows match the manifest; schema and integrity checks passed.",
+  "@alkionBackupCheckOkMessage": {
+    "placeholders": {
+      "created": {
+        "type": "String"
+      },
+      "rows": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionBackupForeignProfile": "This verified backup belongs to another Alkion profile. It is never merged here; it can only be restored onto separate, empty storage.",
+  "alkionBackupFailed": "Backup action failed",
+  "alkionBackupFailedMessage": "Reason: {category}. Your current data, the backup file and any staging copy are kept.",
+  "@alkionBackupFailedMessage": {
+    "placeholders": {
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionRestoreAction": "Restore from this backup",
+  "alkionRestoreConfirmTitle": "Restore this backup?",
+  "alkionRestoreConfirmMessage": "The backup becomes the selected local state. The current state is kept and fenced, never deleted, and work newer than the backup is listed for review. Alkion closes and must be reopened.",
+  "alkionRestoreConfirm": "Restore",
+  "alkionRestoreHistory": "Restores",
+  "alkionRestoreReviewsSection": "Work newer than a restored backup",
+  "alkionRestoreNoReviews": "Nothing to review",
+  "alkionRestoreKeep": "Keep as evidence",
+  "alkionRestoreDoneTitle": "Restore selected",
+  "alkionRestoreDoneBody": "The backup is now the selected local state. The previous state is preserved and fenced; newer work is listed for review. Reopen Alkion to continue.",
+  "alkionRestoreReopen": "Reopen Alkion",
+  "alkionRestoreFailedTitle": "Restore not completed",
+  "alkionRestoreFailedBody": "Reason: {category}. The backup file, the staging copy and the current state are kept.",
+  "@alkionRestoreFailedBody": {
+    "placeholders": {
+      "category": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionRestoreInterruptedTitle": "A restore was interrupted",
+  "alkionRestoreInterruptedBody": "Local storage stays closed until you choose. Completing selects the verified staged backup; keeping the current state leaves the staged copy in place.",
+  "alkionRestoreComplete": "Complete restore",
+  "alkionRestoreKeepCurrent": "Keep current state",
+  "alkionRestoreRunning": "Restoring the verified backup. Local storage stays closed until the restore is selected.",
+  "alkionRestoreUnknownNewerWork": "Newer work unknown: the previous local state could not be read. Its bytes are kept unchanged."
 }

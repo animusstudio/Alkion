@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/auth/auth_store.dart';
-import 'package:workout_tracker/ui/profile_screen.dart';
+import 'package:alkion/ui/profile_screen.dart';
 
 import '../support/screen_harness.dart';
 
@@ -21,15 +20,16 @@ void main() {
         .first;
     final rowRect = tester.getRect(row);
     final y = rowRect.center.dy;
-    final painted = <Rect>[
-      for (final f in [
-        find.descendant(of: row, matching: find.byType(Text)),
-        find.descendant(of: row, matching: find.byType(Icon)),
-      ])
-        for (final e in f.evaluate())
-          tester.getRect(find.byWidget(e.widget).first),
-    ].where((r) => r.top <= y && y <= r.bottom).toList()
-      ..sort((a, b) => a.left.compareTo(b.left));
+    final painted =
+        <Rect>[
+            for (final f in [
+              find.descendant(of: row, matching: find.byType(Text)),
+              find.descendant(of: row, matching: find.byType(Icon)),
+            ])
+              for (final e in f.evaluate())
+                tester.getRect(find.byWidget(e.widget).first),
+          ].where((r) => r.top <= y && y <= r.bottom).toList()
+          ..sort((a, b) => a.left.compareTo(b.left));
     var bestLeft = rowRect.left;
     var bestWidth = 0.0;
     var cursor = rowRect.left;
@@ -38,9 +38,15 @@ void main() {
         bestWidth = r.left - cursor;
         bestLeft = cursor;
       }
-      if (r.right > cursor) cursor = r.right;
+      if (r.right > cursor) {
+        cursor = r.right;
+      }
     }
-    expect(bestWidth, greaterThan(24), reason: '$label row has an empty stretch');
+    expect(
+      bestWidth,
+      greaterThan(24),
+      reason: '$label row has an empty stretch',
+    );
     final point = Offset(bestLeft + bestWidth / 2, y);
     expect(painted.any((r) => r.contains(point)), isFalse);
     await tester.tapAt(point);
@@ -48,14 +54,18 @@ void main() {
 
   Future<void> pumpProfile(WidgetTester tester) async {
     setPhone(tester, width: 412);
-    await tester.pumpWidget(harness.wrap(
-        ProfileScreen(onClose: () {}, onLogout: () async {}, auth: AuthStore()),
-        locale: const Locale('en')));
+    await tester.pumpWidget(
+      harness.wrap(
+        ProfileScreen(onClose: () {}, onLogout: () async {}, auth: Object()),
+        locale: const Locale('en'),
+      ),
+    );
     await settleReal(tester);
   }
 
-  testWidgets('tapping the empty middle of the Goal row opens the goal sheet',
-      (tester) async {
+  testWidgets('tapping the empty middle of the Goal row opens the goal sheet', (
+    tester,
+  ) async {
     await harness.open(tester);
     await pumpProfile(tester);
     await tapEmptyMiddle(tester, 'Goal');

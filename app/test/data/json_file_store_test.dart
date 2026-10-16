@@ -2,24 +2,24 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/json_file_store.dart';
+import 'package:alkion/data/json_file_store.dart';
+import 'package:alkion/store/local_store.dart';
 
-/// [JsonFileStore] holds the atomic-save/tolerant-load/clear shape that
-/// [DraftStore] and [FinishedSessionStore] each build on; this pins that
-/// shared logic directly instead of only through its two callers.
+/// Incoming compatibility JSON is read-only evidence. These retained six
+/// cases pin valid reads, refused overwrites/deletion and malformed preservation.
 JsonFileStore<String> _store(Directory dir) => JsonFileStore<String>(
-      filename: 'value.json',
-      directory: () async => dir,
-      encode: (v) => {'v': v},
-      tryDecode: (raw) {
-        try {
-          final json = jsonDecode(raw) as Map<String, dynamic>;
-          return json['v'] as String;
-        } catch (_) {
-          return null;
-        }
-      },
-    );
+  filename: 'value.json',
+  directory: () async => dir,
+  encode: (v) => {'v': v},
+  tryDecode: (raw) {
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      return json['v'] as String;
+    } catch (_) {
+      return null;
+    }
+  },
+);
 
 void main() {
   group('JsonFileStore', () {
@@ -37,40 +37,76 @@ void main() {
       expect(await _store(tmp).load(), isNull);
     });
 
-    test('save then load round-trips the value', () async {
-      final store = _store(tmp);
-      await store.save('hello');
-      expect(await store.load(), 'hello');
-    });
+    test(
+      'incoming valid value loads and refused save preserves original bytes',
+      () async {
+        final store = _store(tmp);
+        final file = File('${tmp.path}/value.json');
+        final bytes = utf8.encode('{"v":"hello","unknown":7}');
+        await file.writeAsBytes(bytes);
+        expect(await store.load(), 'hello');
+        await expectLater(
+          store.save('changed'),
+          throwsA(
+            isA<StoreException>().having(
+              (e) => e.category,
+              'read-only',
+              'incoming_evidence_read_only',
+            ),
+          ),
+        );
+        expect(await file.readAsBytes(), bytes);
+      },
+    );
 
-    test('save writes atomically, leaving no temp file behind', () async {
-      await _store(tmp).save('hello');
-      expect(File('${tmp.path}/value.json.tmp').existsSync(), isFalse);
-      expect(File('${tmp.path}/value.json').existsSync(), isTrue);
-    });
+    test(
+      'refused save preserves original and orphan temporary bytes',
+      () async {
+        final file = File('${tmp.path}/value.json'),
+            orphan = File('${tmp.path}/value.json.tmp');
+        await file.writeAsBytes([0, 255, 1, 2]);
+        await orphan.writeAsBytes([255, 0, 4]);
+        await expectLater(
+          _store(tmp).save('hello'),
+          throwsA(isA<StoreException>()),
+        );
+        expect(await file.readAsBytes(), [0, 255, 1, 2]);
+        expect(await orphan.readAsBytes(), [255, 0, 4]);
+        expect(await _store(tmp).load(), isNull);
+        expect(await file.readAsBytes(), [0, 255, 1, 2]);
+      },
+    );
 
-    test('load clears and returns null for a malformed file', () async {
+    test('load preserves and returns null for a malformed file', () async {
       final file = File('${tmp.path}/value.json');
       await file.writeAsString('not json');
       expect(await _store(tmp).load(), isNull);
-      expect(file.existsSync(), isFalse);
+      expect(file.existsSync(), isTrue);
+      expect(await file.readAsString(), contains('not json'));
     });
 
-    test('load clears and returns null for a mistyped file', () async {
+    test('load preserves and returns null for a mistyped file', () async {
       // A cast failure inside tryDecode is a TypeError, not an Exception;
-      // this pins that load() still clears it rather than rethrowing.
+      // this pins that load() preserves evidence rather than rethrowing.
       final file = File('${tmp.path}/value.json');
       await file.writeAsString(jsonEncode({'v': 3}));
       expect(await _store(tmp).load(), isNull);
-      expect(file.existsSync(), isFalse);
+      expect(file.existsSync(), isTrue);
+      expect(await file.readAsString(), jsonEncode({'v': 3}));
     });
 
-    test('clear deletes the file and is a no-op when absent', () async {
-      final store = _store(tmp);
-      await store.save('hello');
-      await store.clear();
-      expect(File('${tmp.path}/value.json').existsSync(), isFalse);
-      await store.clear();
-    });
+    test(
+      'clear refuses deletion both with existing and absent evidence',
+      () async {
+        final store = _store(tmp);
+        final file = File('${tmp.path}/value.json');
+        await file.writeAsString('{"v":"hello"}');
+        await expectLater(store.clear(), throwsA(isA<StoreException>()));
+        expect(await file.readAsString(), '{"v":"hello"}');
+        await file.delete();
+        await expectLater(store.clear(), throwsA(isA<StoreException>()));
+        expect(await file.exists(), isFalse);
+      },
+    );
   });
 }

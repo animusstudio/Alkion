@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/util/error_surface.dart';
+import 'package:alkion/util/error_surface.dart';
 
 void main() {
   // The suite shares a process across test files, so leaking a mutated
@@ -13,11 +13,12 @@ void main() {
   });
   tearDown(() => ErrorWidget.builder = original);
 
-  testWidgets('a build exception renders a readable card, not a blank box',
-      (tester) async {
-    await tester.pumpWidget(Builder(
-      builder: (_) => throw StateError('kaboom-marker'),
-    ));
+  testWidgets('a build exception renders a readable card, not a blank box', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      Builder(builder: (_) => throw StateError('kaboom-marker')),
+    );
 
     // The framework still reports the error...
     expect(tester.takeException(), isStateError);
@@ -25,8 +26,9 @@ void main() {
     expect(find.textContaining('kaboom-marker'), findsOneWidget);
   });
 
-  testWidgets('tapping the card copies the details to the clipboard',
-      (tester) async {
+  testWidgets('tapping the card copies the details to the clipboard', (
+    tester,
+  ) async {
     final calls = <MethodCall>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -35,12 +37,16 @@ void main() {
         return null;
       },
     );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
-    await tester.pumpWidget(Builder(
-      builder: (_) => throw StateError('copy-me-marker'),
-    ));
+    await tester.pumpWidget(
+      Builder(builder: (_) => throw StateError('copy-me-marker')),
+    );
     expect(tester.takeException(), isStateError);
 
     await tester.tap(find.textContaining('copy-me-marker'));

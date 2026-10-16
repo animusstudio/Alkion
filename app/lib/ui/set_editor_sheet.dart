@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import '../data/exercise_repository.dart';
+import '../store/local_store.dart';
+import '../domain/local_action.dart';
 
 import 'package:flutter/material.dart';
 
-import '../capture/session_capture_hooks.dart';
+import '../data/session_writer.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
@@ -55,6 +59,52 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
 
   // The one set whose editing card is open, if any.
   String? _openId;
+  int? _workoutRevision;
+  int _writes = 0;
+  bool _disposing = false;
+  void _busy(int delta) {
+    _writes += delta;
+    if (mounted && !_disposing) {
+      setState(() {});
+    }
+  }
+
+  Future<LocalActionResult> _commitOwedAction(
+    PreparedDomainAction intent,
+    void Function() clear,
+  ) async {
+    final repo = widget.sessionRepo,
+        key =
+            'history_action:${intent.token.profileId}:${intent.action.operationId}';
+    late LocalActionResult outcome;
+    late Future<void> Function() write;
+    write = () async {
+      _busy(1);
+      try {
+        outcome = await repo.commitPrepared(intent);
+        _adoptResult(jsonDecode(utf8.decode(outcome.bytes)) as Map);
+        clear();
+        UnsavedEditors.instance.paid(key, write);
+      } finally {
+        _busy(-1);
+      }
+    };
+    UnsavedEditors.instance.owe(key, 'history_sets', write);
+    await write();
+    return outcome;
+  }
+
+  final _pendingIntents = <String, PreparedDomainAction>{};
+  PreparedDomainAction? _pendingAdd, _pendingDelete;
+  void _adoptResult(Map result) {
+    _workoutRevision = result['revision'] as int;
+    final revisions = Map<String, dynamic>.from(result['sets'] as Map? ?? {});
+    for (final s in _sets) {
+      if (revisions[s.id] is int) {
+        s.revision = revisions[s.id] as int;
+      }
+    }
+  }
 
   // One debounce timer per set with a pending, unpersisted edit.
   final Map<String, Timer> _timers = {};
@@ -62,7 +112,9 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// While a set's editing card is open, or an edit is not yet persisted,
   /// a data capture waits for the sheet to be closed normally.
   late final Object _unsavedForm = UnsavedEditors.instance.register(
-      'history_sets', () => _openId != null || _timers.isNotEmpty);
+    'history_sets',
+    () => _openId != null || _timers.isNotEmpty,
+  );
 
   /// Sets whose latest write was refused (a data capture held the source)
   /// or failed. Their edit stays owed — and keeps blocking capture through
@@ -76,13 +128,22 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   void initState() {
     super.initState();
     _unsavedForm; // registered while the sheet is open
+    _workoutRevision = widget.block.sets.isEmpty
+        ? null
+        : widget.block.sets.first.workoutRevision;
     _sets = widget.block.sets
         .map(
           (s) => _EditableSet(
             id: s.id,
+            revision: s.localRevision,
             weightKg: s.weightKg,
             reps: s.reps,
             rir: s.rir,
+            weightKnown:
+                s.weightEvidence == null ||
+                s.weightEvidence!.state.name == 'valid',
+            repsKnown: s.repsEvidence == null || s.repsEvidence!.raw is int,
+            orderKnown: s.qualifiedSetNumber != null,
             isWarmup: s.isWarmup,
           ),
         )
@@ -91,6 +152,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
 
   @override
   void dispose() {
+    _disposing = true;
     UnsavedEditors.instance.unregister(_unsavedForm);
     // Fire-and-forget: the sheet is going away, nothing left to await into.
     // A write refused now stays owed (see [_owed]) and is retried when the
@@ -98,7 +160,9 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     for (final id in _unpersisted) {
       _timers.remove(id)?.cancel();
       final idx = _sets.indexWhere((e) => e.id == id);
-      if (idx != -1) _persist(_sets[idx]);
+      if (idx != -1) {
+        _persist(_sets[idx]);
+      }
     }
     super.dispose();
   }
@@ -108,24 +172,60 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// failed write is shown (while the sheet is open) and stays owed.
   /// Completes with whether it landed; never throws.
   Future<bool> _persist(_EditableSet s) {
-    final repo = widget.sessionRepo;
-    final id = s.id;
-    final key = 'history_set:$id';
-    final weightKg = s.weightKg.toStringAsFixed(2);
-    final reps = s.reps;
-    final rir = s.rir;
-    Future<void> write() =>
-        repo.updateSet(id, weightKg: weightKg, reps: reps, rir: rir);
+    final repo = widget.sessionRepo, id = s.id;
+    if (_workoutRevision == null || s.revision == null) {
+      _showFailure(const StoreException('observed_revision_required'));
+      return Future.value(false);
+    }
+    // The editor owns its observed bases. A watch/re-read on another caller
+    // cannot rebase these values onto a newer record.
+    final intent = _pendingIntents[id] ??= repo.prepareHistoryEdit(
+      widget.sessionId,
+      _workoutRevision!,
+      {
+        'mode': 'edit',
+        'set': {
+          'id': id,
+          'base': s.revision,
+          'fields': {
+            if (s.changed.contains('weight_kg'))
+              'weight_kg': s.weightKg.toStringAsFixed(2),
+            if (s.changed.contains('reps')) 'reps': s.reps,
+            if (s.changed.contains('rir')) 'rir': s.rir,
+          },
+        },
+      },
+    );
+    final key = 'history_set:${intent.token.profileId}:$id';
+    Future<void> write() async {
+      _busy(1);
+      try {
+        final outcome = await repo.commitPrepared(intent);
+        _adoptResult(jsonDecode(utf8.decode(outcome.bytes)) as Map);
+        if (identical(_pendingIntents[id], intent)) {
+          _pendingIntents.remove(id);
+        }
+        s.changed.clear();
+      } finally {
+        _busy(-1);
+      }
+    }
+
     UnsavedEditors.instance.owe(key, 'history_sets', write);
-    return write().then((_) {
-      UnsavedEditors.instance.paid(key, write);
-      if (!UnsavedEditors.instance.isOwed(key)) _owed.remove(id);
-      return true;
-    }, onError: (Object e) {
-      _owed.add(id);
-      _showFailure(e);
-      return false;
-    });
+    return write().then(
+      (_) {
+        UnsavedEditors.instance.paid(key, write);
+        if (!UnsavedEditors.instance.isOwed(key)) {
+          _owed.remove(id);
+        }
+        return true;
+      },
+      onError: (Object e) {
+        _owed.add(id);
+        _showFailure(e);
+        return false;
+      },
+    );
   }
 
   bool _showingFailure = false;
@@ -133,20 +233,40 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// One failure dialog at a time: a gliding ruler can trigger several
   /// refused writes in a row.
   void _showFailure(Object error) {
-    if (!mounted || _showingFailure) return;
+    if (!mounted || _disposing || _showingFailure) {
+      return;
+    }
     _showingFailure = true;
-    unawaited(showWriteFailed(context, error)
-        .whenComplete(() => _showingFailure = false));
+    unawaited(
+      showWriteFailed(
+        context,
+        error,
+      ).whenComplete(() => _showingFailure = false),
+    );
   }
 
   /// Mutates [s] in place, rebuilds so the editor reflects the new value
   /// (its typed-entry unchanged-value guard compares against the value it
   /// was built with), and (re)starts that set's 400 ms persist debounce.
   void _edit(_EditableSet s, {double? weight, int? reps, int? rir}) {
+    if (_writes > 0 || _pendingIntents.containsKey(s.id)) {
+      return;
+    }
     setState(() {
-      if (weight != null) s.weightKg = weight;
-      if (reps != null) s.reps = reps;
-      if (rir != null) s.rir = rir;
+      if (weight != null) {
+        s.weightKg = weight;
+        s.weightKnown = true;
+        s.changed.add('weight_kg');
+      }
+      if (reps != null) {
+        s.reps = reps;
+        s.repsKnown = true;
+        s.changed.add('reps');
+      }
+      if (rir != null) {
+        s.rir = rir;
+        s.changed.add('rir');
+      }
     });
     _timers[s.id]?.cancel();
     _timers[s.id] = Timer(const Duration(milliseconds: 400), () {
@@ -163,9 +283,13 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   Future<bool> _flush(String id) async {
     final timer = _timers.remove(id);
     timer?.cancel();
-    if (timer == null && !_owed.contains(id)) return true;
+    if (timer == null && !_owed.contains(id)) {
+      return true;
+    }
     final idx = _sets.indexWhere((e) => e.id == id);
-    if (idx == -1) return true;
+    if (idx == -1) {
+      return true;
+    }
     return _persist(_sets[idx]);
   }
 
@@ -177,9 +301,13 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   void _flushSync(String id) {
     final timer = _timers.remove(id);
     timer?.cancel();
-    if (timer == null && !_owed.contains(id)) return;
+    if (timer == null && !_owed.contains(id)) {
+      return;
+    }
     final idx = _sets.indexWhere((e) => e.id == id);
-    if (idx == -1) return;
+    if (idx == -1) {
+      return;
+    }
     unawaited(_persist(_sets[idx]));
   }
 
@@ -198,16 +326,31 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// whichever card was open before (itself, if collapsing) without waiting
   /// on the write to land.
   void _toggle(String id) {
+    if (_writes > 0) {
+      return;
+    }
     commitPendingInput();
     final previous = _openId;
-    if (previous != null) _flushSync(previous);
+    if (previous != null) {
+      _flushSync(previous);
+    }
     setState(() => _openId = previous == id ? null : id);
   }
 
   Future<void> _deleteSet(_EditableSet s) async {
+    if (_writes > 0 ||
+        _pendingAdd != null ||
+        (_pendingDelete != null &&
+            _pendingDelete!.input['set']['id'] != s.id)) {
+      return;
+    }
     commitPendingInput();
-    if (!await _flush(s.id)) return; // its failure is already shown
-    if (!mounted) return;
+    if (!await _flush(s.id)) {
+      return;
+    } // its failure is already shown
+    if (!mounted) {
+      return;
+    }
     final l = AppLocalizations.of(context);
     final confirmed = await showWConfirm(
       context,
@@ -216,18 +359,47 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
       confirmLabel: l.commonDelete,
       destructive: true,
     );
-    if (confirmed != true) return;
-    try {
-      await widget.sessionRepo.deleteSet(s.id);
-    } catch (e) {
-      // E.g. refused while a data capture holds the source: nothing deleted.
-      if (mounted) await showWriteFailed(context, e);
+    if (confirmed != true) {
       return;
     }
-    if (!mounted) return;
+    try {
+      if (_workoutRevision == null || s.revision == null) {
+        throw const StoreException('observed_revision_required');
+      }
+      final intent = _pendingDelete ??= widget.sessionRepo.prepareHistoryEdit(
+        widget.sessionId,
+        _workoutRevision!,
+        {
+          'mode': 'delete',
+          'set': {'id': s.id, 'base': s.revision},
+        },
+      );
+      await _commitOwedAction(intent, () {
+        _pendingDelete = null;
+        if (mounted && !_disposing) {
+          setState(() {
+            _sets.removeWhere((set) => set.id == intent.input['set']['id']);
+            if (_openId == intent.input['set']['id']) {
+              _openId = null;
+            }
+          });
+        }
+      });
+    } catch (e) {
+      // E.g. refused while a data capture holds the source: nothing deleted.
+      if (mounted) {
+        await showWriteFailed(context, e);
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _sets.removeWhere((e) => e.id == s.id);
-      if (_openId == s.id) _openId = null;
+      if (_openId == s.id) {
+        _openId = null;
+      }
     });
   }
 
@@ -235,13 +407,23 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// heaviest existing set) so the user usually only needs minor tweaks, then
   /// opens its card.
   Future<void> _addSet() async {
+    if (_writes > 0 ||
+        _pendingDelete != null ||
+        (_pendingIntents.isNotEmpty && !_pendingIntents.containsKey(_openId))) {
+      return;
+    }
     // Flush BEFORE `_sets`/`working` are read below. The seed itself only
     // needs the LOCAL `_sets` values (already current — `_edit` mutates in
     // place synchronously), so this doesn't need to await the write landing;
     // it only needs to be issued before whatever runs next.
     commitPendingInput();
     final open = _openId;
-    if (open != null) _flushSync(open);
+    if (open != null && !await _flush(open)) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
 
     final working = _sets.where((s) => !s.isWarmup).toList();
     final last = working.isNotEmpty
@@ -258,27 +440,76 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
 
     final String newId;
     try {
-      newId = await widget.sessionRepo.addSet(
+      if (_workoutRevision == null) {
+        throw const StoreException('observed_revision_required');
+      }
+      final id = _pendingAdd?.input['set']['id'] as String? ?? domainUuid.v4();
+      final intent = _pendingAdd ??= widget.sessionRepo.prepareHistoryEdit(
         widget.sessionId,
-        widget.exercise.id,
-        weightKg: w.toStringAsFixed(2),
-        reps: r,
-        rir: rir,
-        isWarmup: false,
+        _workoutRevision!,
+        {
+          'mode': 'add',
+          'set': {
+            'id': id,
+            'base': 0,
+            'exercise_id': widget.exercise.id,
+            'is_warmup': 0,
+            'fields': {
+              'weight_kg': last?.weightKnown == false
+                  ? null
+                  : w.toStringAsFixed(2),
+              'reps': last?.repsKnown == false ? null : r,
+              'rir': rir,
+            },
+          },
+        },
       );
+      await _commitOwedAction(intent, () {
+        _pendingAdd = null;
+        final frozen = Map<String, dynamic>.from(
+              intent.input['set']['fields'] as Map,
+            ),
+            id = intent.input['set']['id'] as String;
+        if (mounted && !_disposing && !_sets.any((set) => set.id == id)) {
+          setState(() {
+            _sets.add(
+              _EditableSet(
+                id: id,
+                revision: 1,
+                weightKg:
+                    double.tryParse(frozen['weight_kg']?.toString() ?? '') ?? 0,
+                reps: frozen['reps'] is int ? frozen['reps'] as int : 0,
+                rir: frozen['rir'] is int ? frozen['rir'] as int : null,
+                weightKnown: frozen['weight_kg'] != null,
+                repsKnown: frozen['reps'] is int,
+                isWarmup: false,
+              ),
+            );
+            _openId = id;
+          });
+        }
+      });
+      newId = intent.input['set']['id'] as String;
     } catch (e) {
       // E.g. refused while a data capture holds the source: nothing added.
-      if (mounted) await showWriteFailed(context, e);
+      if (mounted) {
+        await showWriteFailed(context, e);
+      }
       return;
     }
-    if (!mounted) return;
+    if (!mounted || _sets.any((set) => set.id == newId)) {
+      return;
+    }
     setState(() {
       _sets.add(
         _EditableSet(
           id: newId,
+          revision: 1,
           weightKg: w,
           reps: r,
           rir: rir,
+          weightKnown: last?.weightKnown ?? true,
+          repsKnown: last?.repsKnown ?? true,
           isWarmup: false,
         ),
       );
@@ -288,10 +519,14 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
 
   /// The 1-based working-set index for the set at [i], or -1 for warm-ups.
   int _workIndexOf(int i) {
-    if (_sets[i].isWarmup) return -1;
+    if (_sets[i].isWarmup) {
+      return -1;
+    }
     var n = 0;
     for (var j = 0; j <= i; j++) {
-      if (!_sets[j].isWarmup) n++;
+      if (!_sets[j].isWarmup) {
+        n++;
+      }
     }
     return n;
   }
@@ -310,7 +545,9 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     // flush as a backstop (idempotent — the timers are already gone).
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) return;
+        if (!didPop) {
+          return;
+        }
         commitPendingInput();
         _flushAllSync();
       },
@@ -374,6 +611,11 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
                             workIndex: _workIndexOf(i),
                             units: widget.units,
                             open: _openId == _sets[i].id,
+                            locked:
+                                _writes > 0 ||
+                                _pendingIntents.isNotEmpty ||
+                                _pendingAdd != null ||
+                                _pendingDelete != null,
                             onTap: () => _toggle(_sets[i].id),
                             onWeight: (v) => _edit(_sets[i], weight: v),
                             onReps: (v) => _edit(_sets[i], reps: v),
@@ -429,16 +671,24 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
 class _EditableSet {
   _EditableSet({
     required this.id,
+    this.revision,
     required this.weightKg,
     required this.reps,
     required this.rir,
+    this.weightKnown = true,
+    this.repsKnown = true,
+    this.orderKnown = true,
     required this.isWarmup,
   });
 
   final String id;
+  int? revision;
+  final changed = <String>{};
   double weightKg;
   int reps;
   int? rir;
+  bool weightKnown, repsKnown;
+  final bool orderKnown;
   final bool isWarmup;
 }
 
@@ -451,6 +701,7 @@ class _SetEntry extends StatelessWidget {
     required this.workIndex,
     required this.units,
     required this.open,
+    required this.locked,
     required this.onTap,
     required this.onWeight,
     required this.onReps,
@@ -461,7 +712,7 @@ class _SetEntry extends StatelessWidget {
   final _EditableSet set;
   final int workIndex;
   final UnitService units;
-  final bool open;
+  final bool open, locked;
   final VoidCallback onTap;
   final ValueChanged<double> onWeight;
   final ValueChanged<int> onReps;
@@ -479,13 +730,16 @@ class _SetEntry extends StatelessWidget {
           curve: Motion.curve,
           alignment: Alignment.topCenter,
           child: open
-              ? _SetEditingCard(
-                  set: set,
-                  units: units,
-                  onWeight: onWeight,
-                  onReps: onReps,
-                  onRir: onRir,
-                  onDelete: onDelete,
+              ? AbsorbPointer(
+                  absorbing: locked,
+                  child: _SetEditingCard(
+                    set: set,
+                    units: units,
+                    onWeight: onWeight,
+                    onReps: onReps,
+                    onRir: onRir,
+                    onDelete: onDelete,
+                  ),
                 )
               : const SizedBox(width: double.infinity),
         ),
@@ -529,7 +783,11 @@ class _SetLineRow extends StatelessWidget {
               SizedBox(
                 width: 26,
                 child: Text(
-                  set.isWarmup ? l.sessionWarmupShort : '$workIndex',
+                  set.isWarmup
+                      ? l.sessionWarmupShort
+                      : set.orderKnown
+                      ? '$workIndex'
+                      : '—',
                   textAlign: TextAlign.center,
                   style: WorkoutType.mono(
                     size: 13,
@@ -547,7 +805,9 @@ class _SetLineRow extends StatelessWidget {
                         TextSpan(
                           children: [
                             TextSpan(
-                              text: units.fmtWt(set.weightKg),
+                              text: set.weightKnown
+                                  ? units.fmtWt(set.weightKg)
+                                  : '—',
                               style: WorkoutType.mono(
                                 size: 15,
                                 weight: FontWeight.w700,
@@ -569,7 +829,7 @@ class _SetLineRow extends StatelessWidget {
                               ),
                             ),
                             TextSpan(
-                              text: '${set.reps}',
+                              text: set.repsKnown ? '${set.reps}' : '—',
                               style: WorkoutType.mono(
                                 size: 15,
                                 weight: FontWeight.w700,
@@ -650,6 +910,8 @@ class _SetEditingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!set.weightKnown || !set.repsKnown || !set.orderKnown)
+            inset(Text(l.alkionLegacyFallback, style: caption())),
           SetValuesEditor(
             weightKg: set.weightKg,
             reps: set.reps,

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/theme/app_theme.dart';
-import 'package:workout_tracker/widgets/rir_picker.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/widgets/rir_picker.dart';
 
 import '../support/l10n_harness.dart';
 
@@ -23,14 +23,17 @@ Color? _digit(WidgetTester tester, int n) => tester
     ?.color;
 
 void main() {
-  Widget picker(int? value, {double width = 320, List<int>? reports}) => wrapL10n(
+  Widget picker(int? value, {double width = 320, List<int>? reports}) =>
+      wrapL10n(
         SizedBox(
           width: width,
           child: RirPicker(value: value, onChanged: (v) => reports?.add(v)),
         ),
       );
 
-  testWidgets('renders one chip per RIR value, rirMin to rirMax', (tester) async {
+  testWidgets('renders one chip per RIR value, rirMin to rirMax', (
+    tester,
+  ) async {
     await tester.pumpWidget(picker(1));
     for (var n = rirMin; n <= rirMax; n++) {
       expect(_chip(n), findsOneWidget, reason: 'rir-$n');
@@ -63,7 +66,9 @@ void main() {
     });
   }
 
-  testWidgets('at 288dp the six chips sit in one row of 48dp slots', (tester) async {
+  testWidgets('at 288dp the six chips sit in one row of 48dp slots', (
+    tester,
+  ) async {
     await tester.pumpWidget(picker(1, width: 288));
     final first = tester.getRect(_chip(rirMin));
     for (var n = rirMin; n <= rirMax; n++) {
@@ -77,7 +82,9 @@ void main() {
     expect(tester.getRect(_face(rirMax)).width, 48);
   });
 
-  testWidgets('at 287dp the chips split into two rows of three', (tester) async {
+  testWidgets('at 287dp the chips split into two rows of three', (
+    tester,
+  ) async {
     await tester.pumpWidget(picker(1, width: 287));
     final top = tester.getRect(_chip(0));
     final bottom = tester.getRect(_chip(3));
@@ -102,25 +109,27 @@ void main() {
 
   // The picker's own tap absorber stays out of the semantics tree: only the
   // chips are tap targets for a screen reader.
-  testWidgets('the picker exposes one tap node per chip, labelled with its value',
-      (tester) async {
-    final semantics = tester.ensureSemantics();
-    await tester.pumpWidget(picker(1));
-    final taps = <String>[];
-    void walk(SemanticsNode node) {
-      final d = node.getSemanticsData();
-      if (d.hasAction(SemanticsAction.tap)) taps.add(d.label);
-      node.visitChildren((child) {
-        walk(child);
-        return true;
-      });
-    }
+  testWidgets(
+    'the picker exposes one tap node per chip, labelled with its value',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(picker(1));
+      final taps = <String>[];
+      void walk(SemanticsNode node) {
+        final d = node.getSemanticsData();
+        if (d.hasAction(SemanticsAction.tap)) taps.add(d.label);
+        node.visitChildren((child) {
+          walk(child);
+          return true;
+        });
+      }
 
-    walk(tester.getSemantics(find.byType(RirPicker)));
-    expect(taps, hasLength(rirMax - rirMin + 1));
-    expect(taps, [for (var n = rirMin; n <= rirMax; n++) '$n']);
-    semantics.dispose();
-  });
+      walk(tester.getSemantics(find.byType(RirPicker)));
+      expect(taps, hasLength(rirMax - rirMin + 1));
+      expect(taps, [for (var n = rirMin; n <= rirMax; n++) '$n']);
+      semantics.dispose();
+    },
+  );
 
   testWidgets('chips default to 48dp tall', (tester) async {
     await tester.pumpWidget(picker(1));
@@ -128,8 +137,14 @@ void main() {
   });
 
   testWidgets('RirPicker honours its height', (tester) async {
-    await tester.pumpWidget(wrapL10n(
-        SizedBox(width: 320, child: RirPicker(value: 1, height: 56, onChanged: (_) {}))));
+    await tester.pumpWidget(
+      wrapL10n(
+        SizedBox(
+          width: 320,
+          child: RirPicker(value: 1, height: 56, onChanged: (_) {}),
+        ),
+      ),
+    );
     expect(tester.getSize(_chip(2)).height, 56);
   });
 }

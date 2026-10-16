@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:workout_tracker/data/active_session_draft.dart';
-import 'package:workout_tracker/data/finished_session_store.dart';
-import 'package:workout_tracker/session/active_session_controller.dart';
+import 'package:alkion/data/active_session_draft.dart';
+import 'package:alkion/data/finished_session_store.dart';
+import 'package:alkion/session/active_session_controller.dart';
 
 /// In-memory [DraftStore] that keeps the last saved draft.
 class FakeDraftStore extends DraftStore {
@@ -28,7 +28,11 @@ class FakeDraftStore extends DraftStore {
 
 /// In-memory [FinishedSessionStore] that can be told to fail.
 class FakeFinishedSessionStore extends FinishedSessionStore {
-  FakeFinishedSessionStore({this.stored, this.failSave = false, this.failLoad = false});
+  FakeFinishedSessionStore({
+    this.stored,
+    this.failSave = false,
+    this.failLoad = false,
+  });
 
   FinishedSession? stored;
   bool failSave;
@@ -45,6 +49,13 @@ class FakeFinishedSessionStore extends FinishedSessionStore {
   Future<FinishedSession?> load() async {
     if (failLoad) throw const FileSystemException('unreadable');
     return stored;
+  }
+
+  @override
+  Future<void> clearForSession(String id) async {
+    if (stored?.sessionId == id) {
+      await clear();
+    }
   }
 
   @override

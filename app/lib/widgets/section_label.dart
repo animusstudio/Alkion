@@ -7,11 +7,7 @@ import 'fit_label.dart';
 ///
 /// Visual spec: `docs/design_handoff_workout_tracker/design/app/ui.jsx`.
 class SectionLabel extends StatelessWidget {
-  const SectionLabel({
-    super.key,
-    required this.label,
-    this.action,
-  });
+  const SectionLabel({super.key, required this.label, this.action});
 
   final String label;
 
@@ -38,10 +34,7 @@ class SectionLabel extends StatelessWidget {
             ),
           ),
         ),
-        if (action != null) ...[
-          const SizedBox(width: 8),
-          action!,
-        ],
+        if (action != null) ...[const SizedBox(width: 8), action!],
       ],
     );
   }

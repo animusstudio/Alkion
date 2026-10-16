@@ -1,9 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:workout_tracker/data/active_session_draft.dart';
-import 'package:workout_tracker/session/active_session_controller.dart';
-import 'package:workout_tracker/session/session_manager.dart';
-import 'package:workout_tracker/session/workout_notification.dart';
+import 'package:alkion/data/active_session_draft.dart';
+import 'package:alkion/session/active_session_controller.dart';
+import 'package:alkion/session/session_manager.dart';
 
 class FakeDraftStore extends DraftStore {
   FakeDraftStore({this.draft});
@@ -20,12 +18,15 @@ class FakeDraftStore extends DraftStore {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('register/clear lifecycle notifies', () {
     final m = SessionManager();
+    addTearDown(m.dispose);
     var notifies = 0;
     m.addListener(() => notifies++);
 
     final c = ActiveSessionController();
+    addTearDown(c.dispose);
     c.seedEmpty(name: 'Custom', focus: '');
     m.register(c);
     expect(m.hasActive, isTrue);
@@ -38,7 +39,9 @@ void main() {
 
   test('controller discard auto-clears the manager', () async {
     final m = SessionManager();
+    addTearDown(m.dispose);
     final c = ActiveSessionController();
+    addTearDown(c.dispose);
     c.seedEmpty(name: 'Custom', focus: '');
     m.register(c);
 
@@ -57,6 +60,7 @@ void main() {
       ),
     );
     final m = SessionManager();
+    addTearDown(m.dispose);
     final resumed = await m.resumeFromDraft(store: store);
     expect(resumed, isTrue);
     expect(m.hasActive, isTrue);
@@ -66,37 +70,36 @@ void main() {
 
   test('resumeFromDraft without a draft is a no-op', () async {
     final m = SessionManager();
+    addTearDown(m.dispose);
     final resumed = await m.resumeFromDraft(store: FakeDraftStore());
     expect(resumed, isFalse);
     expect(m.hasActive, isFalse);
   });
 
-  test('reconcile applies a background +30s from the prefs blob', () async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    final c = ActiveSessionController();
-    c.seedEmpty(name: 'Custom', focus: '');
-    c.startRest(90);
-    final startMs = c.restStart!.millisecondsSinceEpoch;
+  test(
+    'foreground notification +30s extends the current rest without a preference mirror',
+    () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final c = ActiveSessionController();
+      addTearDown(c.dispose);
+      c.seedEmpty(name: 'Custom', focus: '');
+      c.startRest(90);
+      final startMs = c.restStart!.millisecondsSinceEpoch;
 
-    // The background isolate already wrote +30s (90 → 120) to disk; the live
-    // controller is still at 90 (its in-memory total never saw the change).
-    SharedPreferences.setMockInitialValues({
-      restBlobName: 'Custom',
-      restBlobStartedAt: DateTime.now().toIso8601String(),
-      restBlobStartMs: startMs,
-      restBlobTotal: 120,
-    });
+      final m = SessionManager();
+      addTearDown(m.dispose);
+      m.register(c);
+      m.add30FromNotification();
+      await m.reconcileForTest();
 
-    final m = SessionManager();
-    m.register(c);
-    await m.reconcileForTest();
-
-    expect(m.active!.restTotal, 120);
-    expect(m.active!.restStart!.millisecondsSinceEpoch, startMs);
-  });
+      expect(m.active!.restTotal, 120);
+      expect(m.active!.restStart!.millisecondsSinceEpoch, startMs);
+    },
+  );
 
   test('screenOpen flag notifies on change only', () {
     final m = SessionManager();
+    addTearDown(m.dispose);
     var notifies = 0;
     m.addListener(() => notifies++);
     m.screenOpen = true;

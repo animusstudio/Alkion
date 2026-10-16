@@ -6,7 +6,11 @@ import '../theme/motion.dart';
 /// child's own gestures: it observes raw pointer events via [Listener]
 /// (no gesture-arena participation).
 class PressableScale extends StatefulWidget {
-  const PressableScale({super.key, required this.child, this.pressedScale = 0.97});
+  const PressableScale({
+    super.key,
+    required this.child,
+    this.pressedScale = 0.97,
+  });
 
   final Widget child;
   final double pressedScale;

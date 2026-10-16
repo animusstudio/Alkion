@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/units/unit_service.dart';
+import 'package:alkion/units/unit_service.dart';
 
 void main() {
   test('kg formatting strips trailing .0; lb converts + rounds whole', () {

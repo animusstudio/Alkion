@@ -2,16 +2,18 @@ import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/l10n/app_localizations.dart';
-import 'package:workout_tracker/settings/app_languages.dart';
-import 'package:workout_tracker/theme/icons.dart';
+import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/settings/app_languages.dart';
+import 'package:alkion/theme/icons.dart';
 
 import '../support/l10n_harness.dart';
 
 void main() {
   test('the language table covers exactly the supported locales', () {
-    expect(appLanguages.map((lang) => lang.code).toSet(),
-        AppLocalizations.supportedLocales.map((l) => l.languageCode).toSet());
+    expect(
+      appLanguages.map((lang) => lang.code).toSet(),
+      AppLocalizations.supportedLocales.map((l) => l.languageCode).toSet(),
+    );
   });
 
   late String? result;
@@ -53,15 +55,18 @@ void main() {
   };
 
   for (final MapEntry(key: code, value: system) in systemLabels.entries) {
-    testWidgets('in a $code UI each language is named in its own language',
-        (tester) async {
+    testWidgets('in a $code UI each language is named in its own language', (
+      tester,
+    ) async {
       await tester.pumpWidget(host(current: code, locale: Locale(code)));
       await open(tester);
       final labels = [system, 'English', 'Italiano', 'Deutsch', 'Español'];
       for (var i = 0; i < labels.length; i++) {
-        expect(find.descendant(of: row(i), matching: find.text(labels[i])),
-            findsOneWidget,
-            reason: 'row $i');
+        expect(
+          find.descendant(of: row(i), matching: find.text(labels[i])),
+          findsOneWidget,
+          reason: 'row $i',
+        );
       }
       expect(row(labels.length), findsNothing);
       for (final translated in ['Tedesco', 'Englisch', 'Inglés']) {
@@ -69,8 +74,11 @@ void main() {
       }
       final current = 1 + appLanguages.indexWhere((lang) => lang.code == code);
       expect(find.byIcon(WIcons.check), findsOneWidget);
-      expect(checkIn(row(current)), findsOneWidget,
-          reason: 'the current language should be checked');
+      expect(
+        checkIn(row(current)),
+        findsOneWidget,
+        reason: 'the current language should be checked',
+      );
     });
   }
 
@@ -88,8 +96,9 @@ void main() {
     expect(find.byIcon(WIcons.check), findsNothing);
   });
 
-  testWidgets('each language row tells a screen reader its language',
-      (tester) async {
+  testWidgets('each language row tells a screen reader its language', (
+    tester,
+  ) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(host(current: 'de', locale: const Locale('it')));
     await open(tester);
@@ -98,28 +107,32 @@ void main() {
       final code = codes[i];
       final d = tester.getSemantics(row(i)).getSemanticsData();
       expect(d.locale, code == null ? isNull : Locale(code), reason: 'row $i');
-      expect(d.flagsCollection.isSelected,
-          code == 'de' ? Tristate.isTrue : Tristate.none,
-          reason: 'row $i');
+      expect(
+        d.flagsCollection.isSelected,
+        code == 'de' ? Tristate.isTrue : Tristate.none,
+        reason: 'row $i',
+      );
     }
     semantics.dispose();
   });
 
-  testWidgets('a tap returns the language code, and "system" for the system row',
-      (tester) async {
-    await tester.pumpWidget(host(current: null));
-    await open(tester);
-    await tester.tap(row(3));
-    await tester.pumpAndSettle();
-    expect(closed, isTrue);
-    expect(result, 'de');
-    closed = false;
-    await open(tester);
-    await tester.tap(row(0));
-    await tester.pumpAndSettle();
-    expect(closed, isTrue);
-    expect(result, 'system');
-  });
+  testWidgets(
+    'a tap returns the language code, and "system" for the system row',
+    (tester) async {
+      await tester.pumpWidget(host(current: null));
+      await open(tester);
+      await tester.tap(row(3));
+      await tester.pumpAndSettle();
+      expect(closed, isTrue);
+      expect(result, 'de');
+      closed = false;
+      await open(tester);
+      await tester.tap(row(0));
+      await tester.pumpAndSettle();
+      expect(closed, isTrue);
+      expect(result, 'system');
+    },
+  );
 
   testWidgets('a tap on the barrier returns null', (tester) async {
     await tester.pumpWidget(host(current: 'it'));

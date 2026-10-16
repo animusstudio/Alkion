@@ -70,9 +70,11 @@ class _ExerciseSheetState extends State<_ExerciseSheet> {
     if (_query.isEmpty) return widget.exercises;
     final q = _query.trim().toLowerCase();
     return widget.exercises
-        .where((e) =>
-            e.name.toLowerCase().contains(q) ||
-            muscleLabel(e.muscleGroup).toLowerCase().contains(q))
+        .where(
+          (e) =>
+              e.name.toLowerCase().contains(q) ||
+              muscleLabel(e.muscleGroup).toLowerCase().contains(q),
+        )
         .toList();
   }
 
@@ -98,7 +100,10 @@ class _ExerciseSheetState extends State<_ExerciseSheet> {
     final showBodyweight = widget.showBodyweight && _showBodyweight;
 
     // Count matching exercise rows (not bodyweight).
-    final exerciseCount = muscles.fold<int>(0, (n, m) => n + grouped[m]!.length);
+    final exerciseCount = muscles.fold<int>(
+      0,
+      (n, m) => n + grouped[m]!.length,
+    );
     final hasResults = exerciseCount > 0 || showBodyweight;
 
     return DraggableScrollableSheet(
@@ -113,9 +118,7 @@ class _ExerciseSheetState extends State<_ExerciseSheet> {
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(AppRadius.radius * 1.5),
             ),
-            border: Border(
-              top: BorderSide(color: tokens.lineStrong, width: 1),
-            ),
+            border: Border(top: BorderSide(color: tokens.lineStrong, width: 1)),
           ),
           clipBehavior: Clip.hardEdge,
           child: Column(
@@ -141,7 +144,10 @@ class _ExerciseSheetState extends State<_ExerciseSheet> {
 
                     // Bodyweight pinned row
                     if (showBodyweight) ...[
-                      _SectionLabel(label: l.exerciseSheetTracking, tokens: tokens),
+                      _SectionLabel(
+                        label: l.exerciseSheetTracking,
+                        tokens: tokens,
+                      ),
                       _BodyweightRow(
                         selected: widget.current == kBodyweightSentinel,
                         tokens: tokens,
@@ -249,8 +255,7 @@ class _SheetHeader extends StatelessWidget {
             height: 42,
             decoration: BoxDecoration(
               color: tokens.surface3,
-              borderRadius:
-                  BorderRadius.circular(AppRadius.radius * 0.7),
+              borderRadius: BorderRadius.circular(AppRadius.radius * 0.7),
             ),
             child: Row(
               children: [
@@ -263,12 +268,13 @@ class _SheetHeader extends StatelessWidget {
                     style: WorkoutType.body(size: 15, color: tokens.text),
                     decoration: InputDecoration(
                       hintText: l.exerciseSheetSearchHint,
-                      hintStyle:
-                          WorkoutType.body(size: 15, color: tokens.faint),
+                      hintStyle: WorkoutType.body(
+                        size: 15,
+                        color: tokens.faint,
+                      ),
                       border: InputBorder.none,
                       isDense: true,
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     onChanged: onQueryChanged,
                   ),
@@ -280,8 +286,7 @@ class _SheetHeader extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: Text(
                         '×',
-                        style: WorkoutType.mono(
-                            size: 16, color: tokens.faint),
+                        style: WorkoutType.mono(size: 16, color: tokens.faint),
                       ),
                     ),
                   )
@@ -411,8 +416,8 @@ class _ExerciseRow extends StatelessWidget {
     final equip = exercise.equip ?? '';
     final subtitle = exercise.compound
         ? (equip.isNotEmpty
-            ? '$equip · ${l.exerciseCompound}'
-            : l.exerciseCompound)
+              ? '$equip · ${l.exerciseCompound}'
+              : l.exerciseCompound)
         : equip;
 
     final row = GestureDetector(

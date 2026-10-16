@@ -1,0 +1,48 @@
+{
+  "format": "reps-export",
+  "version": 1,
+  "kind": "full",
+  "exported_at": "2026-10-01T08:30:00",
+  "settings": {
+    "unit": "lb",
+    "mode": "light",
+    "accent": "#FF5CE6A4",
+    "profile_name": "Synthetic Lifter",
+    "rest_compound_seconds": 150,
+    "rest_isolation_seconds": 75,
+    "locale": null,
+    "future_setting": {"nested": 1.50e-3}
+  },
+  "data": {
+    "exercises": [
+      {"id": "e1", "name": "Synthetic Press", "slug": "synthetic-press", "muscle_group": "chest", "equip": "barbell", "compound": 1, "base_weight_kg": "20.000", "plate_step_kg": "1.25", "default_rep_low": 5, "default_rep_high": 8, "default_warmup_sets": 2, "default_working_sets": 3, "default_rir_low": 1, "default_rir_high": 2, "default_rest_seconds": 180, "is_template": 0, "created_at": "2026-01-02T03:04:05.123456", "future_field": "keep"},
+      {"id": "e2", "name": "Synthetic Row", "slug": "synthetic-row", "muscle_group": "back", "equip": null, "compound": 0, "base_weight_kg": null, "plate_step_kg": "2.5", "default_rep_low": null, "default_rep_high": null, "default_warmup_sets": null, "default_working_sets": null, "default_rir_low": null, "default_rir_high": null, "default_rest_seconds": null, "is_template": 0, "created_at": "2026-01-02T03:04:05Z"}
+    ],
+    "day_templates": [
+      {"id": "d1", "slug": "synthetic-day", "name": "Synthetic Day", "notes": "Original day note A", "position": 1, "is_template": 0, "created_at": "2026-01-03T00:00:00+02:00", "focus": "push", "scheduled_weekday": 2}
+    ],
+    "day_template_items": [
+      {"id": "slot1", "day_template_id": "d1", "exercise_id": "e1", "position": 1, "target_warmup_sets": null, "target_working_sets": 3, "target_rep_low": 5, "target_rep_high": 8, "target_rir_low": null, "target_rir_high": null, "is_template": 0, "created_at": "2026-01-03T00:00:00+02:00"}
+    ],
+    "sessions": [
+      {"id": "s1", "date": "2026-02-28", "split_label": "Synthetic Day", "notes": "Session note A", "day_template_id": "d1", "created_at": "2026-02-28T10:00:00", "duration_min": 61},
+      {"id": "s2", "date": "2026-03-01", "split_label": null, "notes": null, "day_template_id": null, "created_at": "2026-03-01T10:00:00Z", "duration_min": null}
+    ],
+    "sets": [
+      {"id": "set1", "session_id": "s1", "exercise_id": "e1", "set_number": 1, "weight_kg": "80.125000000000000001", "reps": 5, "rir": null, "is_warmup": 0, "is_top_set": 1, "is_pr": 1, "created_at": "2026-02-28T10:05:00", "updated_at": null},
+      {"id": "set2", "session_id": "s1", "exercise_id": "e1", "set_number": 2, "weight_kg": 82.5000, "reps": 5, "rir": 9, "is_warmup": 0, "is_top_set": 0, "is_pr": 0, "created_at": "2026-02-28T10:09:00", "updated_at": null},
+      {"id": "set3", "session_id": "s1", "exercise_id": "e2", "set_number": 3, "weight_kg": 4.050e1, "reps": 10, "rir": 2, "is_warmup": 0, "is_top_set": 1, "is_pr": 0, "created_at": "2026-02-28T10:20:00", "updated_at": null},
+      {"id": "set4", "session_id": "s2", "exercise_id": "e2", "set_number": 1, "weight_kg": "", "reps": 8, "rir": -1, "is_warmup": 0, "is_top_set": 1, "is_pr": 0, "created_at": "2026-03-01T10:05:00Z", "updated_at": null},
+      {"id": "set5", "session_id": "s2", "exercise_id": "e1", "set_number": 2, "weight_kg": "-0.00", "reps": 0, "rir": 0, "is_warmup": 1, "is_top_set": 0, "is_pr": 0, "created_at": "2026-03-01T10:09:00Z", "updated_at": null}
+    ],
+    "bodyweight_logs": [
+      {"id": "bw1", "date": "2026-02-28", "weight_kg": "82.450000000000000001", "created_at": "2026-02-28T07:00:00"},
+      {"id": "bw2", "date": "2026-02-28", "weight_kg": "82.40", "created_at": "2026-02-28T19:00:00"}
+    ],
+    "muscle_targets": [
+      {"id": "t1", "muscle": "chest", "target_sets": 0, "created_at": "2026-01-01T00:00:00Z"},
+      {"id": "t2", "muscle": "back", "target_sets": 12}
+    ],
+    "future_dataset": [{"x": 1e400, "y": -0}]
+  }
+}

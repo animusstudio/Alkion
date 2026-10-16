@@ -44,19 +44,25 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
   String _query = '';
 
   List<Exercise> get _filtered {
-    if (_query.isEmpty) return widget.exercises;
+    if (_query.isEmpty) {
+      return widget.exercises;
+    }
     final q = _query.toLowerCase();
     return widget.exercises
-        .where((e) =>
-            e.name.toLowerCase().contains(q) ||
-            e.muscleGroup.toLowerCase().contains(q))
+        .where(
+          (e) =>
+              e.name.toLowerCase().contains(q) ||
+              e.muscleGroup.toLowerCase().contains(q),
+        )
         .toList();
   }
 
   /// Group exercises by muscle group, preserving insertion order.
   /// Exercises with no muscle group fall under [otherLabel].
   Map<String, List<Exercise>> _group(
-      List<Exercise> exercises, String otherLabel) {
+    List<Exercise> exercises,
+    String otherLabel,
+  ) {
     final result = <String, List<Exercise>>{};
     for (final ex in exercises) {
       final key = ex.muscleGroup.isEmpty ? otherLabel : ex.muscleGroup;
@@ -103,8 +109,10 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
 
               // ── Title ────────────────────────────────────────────────
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 child: Row(
                   children: [
                     Text(
@@ -118,8 +126,7 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                     const Spacer(),
                     GestureDetector(
                       onTap: () => Navigator.of(context).pop(),
-                      child: Icon(Icons.close,
-                          size: 20, color: tokens.faint),
+                      child: Icon(Icons.close, size: 20, color: tokens.faint),
                     ),
                   ],
                 ),
@@ -132,8 +139,7 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                 child: Container(
                   decoration: BoxDecoration(
                     color: tokens.surface2,
-                    borderRadius:
-                        BorderRadius.circular(AppRadius.radius * 0.7),
+                    borderRadius: BorderRadius.circular(AppRadius.radius * 0.7),
                     border: Border.all(color: tokens.line),
                   ),
                   child: Row(
@@ -144,16 +150,18 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                       Expanded(
                         child: TextField(
                           autofocus: false,
-                          style: WorkoutType.body(
-                              size: 14, color: tokens.text),
+                          style: WorkoutType.body(size: 14, color: tokens.text),
                           decoration: InputDecoration(
                             hintText: l.sessionSearchExercises,
                             hintStyle: WorkoutType.body(
-                                size: 14, color: tokens.faint),
+                              size: 14,
+                              color: tokens.faint,
+                            ),
                             border: InputBorder.none,
                             isDense: true,
-                            contentPadding:
-                                const EdgeInsets.symmetric(vertical: 12),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                            ),
                           ),
                           onChanged: (v) => setState(() => _query = v),
                         ),
@@ -161,8 +169,11 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                       if (_query.isNotEmpty)
                         GestureDetector(
                           onTap: () => setState(() => _query = ''),
-                          child:
-                              Icon(Icons.close, size: 16, color: tokens.faint),
+                          child: Icon(
+                            Icons.close,
+                            size: 16,
+                            color: tokens.faint,
+                          ),
                         ),
                       const SizedBox(width: 12),
                     ],
@@ -188,7 +199,9 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                           for (final muscle in muscles) {
                             if (idx == pos) {
                               return _MuscleHeader(
-                                  label: muscle, tokens: tokens);
+                                label: muscle,
+                                tokens: tokens,
+                              );
                             }
                             pos++;
                             final items = grouped[muscle]!;
@@ -197,8 +210,7 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                               return _ExerciseRow(
                                 exercise: ex,
                                 tokens: tokens,
-                                onTap: () =>
-                                    Navigator.of(context).pop(ex),
+                                onTap: () => Navigator.of(context).pop(ex),
                               );
                             }
                             pos += items.length;
@@ -257,8 +269,7 @@ class _ExerciseRow extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
             // Compound indicator dot
@@ -288,8 +299,7 @@ class _ExerciseRow extends StatelessWidget {
             if (exercise.equip != null)
               Text(
                 exercise.equip!,
-                style:
-                    WorkoutType.mono(size: 10.5, color: tokens.faint),
+                style: WorkoutType.mono(size: 10.5, color: tokens.faint),
               ),
           ],
         ),
@@ -316,7 +326,10 @@ class _EmptyState extends StatelessWidget {
             Text(
               AppLocalizations.of(context).sessionNoExercisesFound,
               style: WorkoutType.body(
-                  size: 15, weight: FontWeight.w600, color: tokens.dim),
+                size: 15,
+                weight: FontWeight.w600,
+                color: tokens.dim,
+              ),
             ),
           ],
         ),

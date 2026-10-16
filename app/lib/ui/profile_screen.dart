@@ -1,46 +1,36 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:powersync/powersync.dart' show SyncStatus;
 import 'package:provider/provider.dart';
 
-import '../auth/auth_store.dart';
-import '../capture/capture_service.dart';
-import '../capture/capture_transport.dart';
-import '../capture/source_write_gate.dart';
 import '../data/bodyweight_repository.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
+import '../data/session_writer.dart';
 import '../data/stats_repository.dart';
 import '../export/export_service.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/app_languages.dart';
 import '../settings/bodyweight_goal.dart';
 import '../settings/settings_service.dart';
-import '../sync/db.dart';
-import '../sync/sync_health.dart';
-import '../sync/sync_status_label.dart';
-import '../sync/sync_status_ui.dart';
+import '../store/local_store.dart';
+import '../session/session_manager.dart';
+import '../widgets/pending_input.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
-import '../update/update_service.dart';
-import '../update/update_ui.dart';
 import '../util/dates.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
-import 'capture_screen.dart';
-import 'login_screen.dart';
-import 'sign_in_again.dart';
+import 'alkion_recovery/recovery_screen.dart';
+import 'alkion_transfer/transfer_screen.dart';
 
 // ── Group + Row helpers (mirror screen-profile.jsx) ──────────────────────────
 
@@ -106,7 +96,6 @@ class _Row extends StatelessWidget {
     this.right,
     this.below,
     this.onTap,
-    this.danger = false,
   });
 
   final IconData icon;
@@ -117,7 +106,6 @@ class _Row extends StatelessWidget {
   /// A line under the title and sub, for a value too long for [right].
   final Widget? below;
   final VoidCallback? onTap;
-  final bool danger;
 
   @override
   Widget build(BuildContext context) {
@@ -126,69 +114,68 @@ class _Row extends StatelessWidget {
 
     Widget row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: _hPad, vertical: 13),
-      child: LayoutBuilder(builder: (context, constraints) => Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: tokens.surface3,
-              borderRadius: BorderRadius.circular(r),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: tokens.surface3,
+                borderRadius: BorderRadius.circular(r),
+              ),
+              child: Icon(icon, size: 18, color: tokens.accentText),
             ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: danger ? tokens.danger : tokens.accentText,
-            ),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FitLabel(
-                  title,
-                  maxLines: 2,
-                  style: WorkoutType.body(
-                    size: 14.5,
-                    weight: FontWeight.w600,
-                    color: danger ? tokens.danger : tokens.text,
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FitLabel(
+                    title,
+                    maxLines: 2,
+                    style: WorkoutType.body(
+                      size: 14.5,
+                      weight: FontWeight.w600,
+                      color: tokens.text,
+                    ),
                   ),
+                  if (sub != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      sub!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                    ),
+                  ],
+                  if (below != null) ...[const SizedBox(height: 6), below!],
+                ],
+              ),
+            ),
+            if (right != null) ...[
+              const SizedBox(width: 8),
+              // Capped so a wide control (chips, a long sync status at large
+              // text) wraps inside its slot instead of squeezing the title to
+              // nothing or overflowing the row.
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth * _rightShare,
                 ),
-                if (sub != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    sub!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: WorkoutType.mono(size: 10.5, color: tokens.faint),
-                  ),
-                ],
-                if (below != null) ...[
-                  const SizedBox(height: 6),
-                  below!,
-                ],
-              ],
-            ),
-          ),
-          if (right != null) ...[
-            const SizedBox(width: 8),
-            // Capped so a wide control (chips, a long sync status at large
-            // text) wraps inside its slot instead of squeezing the title to
-            // nothing or overflowing the row.
-            ConstrainedBox(
-              constraints:
-                  BoxConstraints(maxWidth: constraints.maxWidth * _rightShare),
-              child: right!,
-            ),
+                child: right!,
+              ),
+            ],
           ],
-        ],
-      )),
+        ),
+      ),
     );
 
     if (onTap != null) {
       row = GestureDetector(
-          behavior: HitTestBehavior.opaque, onTap: onTap, child: row);
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: row,
+      );
     }
 
     return row;
@@ -220,9 +207,13 @@ class _QuickStats extends StatefulWidget {
 
 class _QuickStatsState extends State<_QuickStats> {
   late final Stream<List<HistorySessionRow>> _sessions =
-      SessionRepository(db).watchSessionStats();
+      SessionRepository.local(
+        context.read<LocalDatabase>(),
+      ).watchSessionStats();
   late final Stream<List<BodyweightEntry>> _bodyweight =
-      BodyweightRepository(db).watchSeriesAsc();
+      BodyweightRepository.local(
+        context.read<LocalDatabase>(),
+      ).watchSeriesAsc();
 
   @override
   Widget build(BuildContext context) {
@@ -234,25 +225,36 @@ class _QuickStatsState extends State<_QuickStats> {
       builder: (context, sessionSnap) {
         final sessions = sessionSnap.data ?? [];
         final sessionCount = sessions.length.toString();
-        final prCount =
-            sessions.fold<int>(0, (sum, s) => sum + s.prCount).toString();
+        final prCount = sessions
+            .fold<int>(0, (sum, s) => sum + s.prCount)
+            .toString();
 
         return StreamBuilder<List<BodyweightEntry>>(
           stream: _bodyweight,
           builder: (context, bwSnap) {
             final bwEntries = bwSnap.data ?? [];
-            final bwText = bwEntries.isEmpty
+            final uncertainDay = bwEntries
+                .where((e) => !e.dateAvailable)
+                .firstOrNull;
+            final current = bwEntries.isEmpty || uncertainDay != null
+                ? null
+                : bwEntries.last.weightKg;
+            final bwText = current == null || !current.isFinite
                 ? '–'
-                : '${unitService.fmtBw(bwEntries.last.weightKg)}${unitService.uLabel}';
+                : '${unitService.fmtBw(current)}${unitService.uLabel}';
 
             return Row(
               children: [
                 Expanded(
-                    child: _StatCard(
-                        label: l.profileStatSessions, value: sessionCount)),
+                  child: _StatCard(
+                    label: l.profileStatSessions,
+                    value: sessionCount,
+                  ),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                    child: _StatCard(label: l.profileStatPrs, value: prCount)),
+                  child: _StatCard(label: l.profileStatPrs, value: prCount),
+                ),
                 const SizedBox(width: 8),
                 // Expanded must stay the direct Row child; UnitSwap's
                 // AnimatedSwitcher cannot host a flex ParentDataWidget.
@@ -260,7 +262,18 @@ class _QuickStatsState extends State<_QuickStats> {
                   child: UnitSwap(
                     unitKey: unitService.unit,
                     child: _StatCard(
-                        label: l.profileStatBodyweight, value: bwText),
+                      label: l.profileStatBodyweight,
+                      value: bwText,
+                      detail: current == null && bwEntries.isNotEmpty
+                          ? uncertainDay != null
+                                ? l.alkionDateUnavailable(
+                                    uncertainDay.date.isEmpty
+                                        ? '—'
+                                        : uncertainDay.date,
+                                  )
+                                : l.alkionUnavailableOn(bwEntries.last.date)
+                          : null,
+                    ),
                   ),
                 ),
               ],
@@ -273,10 +286,11 @@ class _QuickStatsState extends State<_QuickStats> {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value});
+  const _StatCard({required this.label, required this.value, this.detail});
 
   final String label;
   final String value;
+  final String? detail;
 
   @override
   Widget build(BuildContext context) {
@@ -306,6 +320,15 @@ class _StatCard extends StatelessWidget {
               ),
             ),
           ),
+          if (detail != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: FitLabel(
+                detail!,
+                style: WorkoutType.mono(size: 9, color: tokens.dim),
+                maxLines: 3,
+              ),
+            ),
           const SizedBox(height: 6),
           FitLabel(
             label.toUpperCase(),
@@ -328,8 +351,12 @@ class _StatCard extends StatelessWidget {
 /// "Since" is the month of the first logged workout, dropped when
 /// [firstSessionDate] is null or doesn't parse; the split is the number of
 /// the user's own training days, dropped when [dayCount] is null or 0.
-String? profileTrainingLine(AppLocalizations l, String localeName,
-    {String? firstSessionDate, int? dayCount}) {
+String? profileTrainingLine(
+  AppLocalizations l,
+  String localeName, {
+  String? firstSessionDate,
+  int? dayCount,
+}) {
   final month = fmtMonthYear(firstSessionDate, localeName);
   final parts = [
     if (month != null) l.profileTrainingSince(month),
@@ -355,13 +382,13 @@ class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
     required this.onClose,
-    required this.onLogout,
-    required this.auth,
+    this.onLogout,
+    this.auth,
   });
 
   final VoidCallback onClose;
-  final Future<void> Function() onLogout;
-  final AuthStore auth;
+  final Future<void> Function()? onLogout;
+  final Object? auth;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -372,16 +399,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _editingName = false;
   late final TextEditingController _nameCtrl;
 
-  // Server URL field
-  late final TextEditingController _serverCtrl;
-  String _currentServerUrl = '';
-
   // Data export state
   bool _exportingFull = false;
   bool _exportingHistory = false;
 
   // Update-check state (Android only).
-  bool _checking = false;
 
   // Runtime app version (footer; reused by the Updates group).
   String _version = '';
@@ -398,26 +420,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     final settings = context.read<SettingsService>();
     _nameCtrl = TextEditingController(text: settings.profileName);
-    _serverCtrl = TextEditingController(text: settings.serverUrl);
-    _currentServerUrl = settings.serverUrl;
     PackageInfo.fromPlatform().then((i) {
-      if (mounted) setState(() => _version = i.version);
+      if (mounted) {
+        setState(() => _version = i.version);
+      }
     });
     // onError hides the line rather than leaving it stale; the subscription
     // stays open, so the next emission brings it back.
-    _trainingSub = StatsRepository(db).watchTrainingSummary().listen((t) {
-      if (mounted) setState(() => _training = t);
-    }, onError: (Object e, StackTrace st) {
-      debugPrint('profile: training summary stream error: $e');
-      if (mounted) setState(() => _training = null);
-    });
+    _trainingSub = StatsRepository.local(context.read<LocalDatabase>())
+        .watchTrainingSummary()
+        .listen(
+          (t) {
+            if (mounted) {
+              setState(() => _training = t);
+            }
+          },
+          onError: (Object e, StackTrace st) {
+            debugPrint('profile: training summary stream error: $e');
+            if (mounted) {
+              setState(() => _training = null);
+            }
+          },
+        );
   }
 
   @override
   void dispose() {
     _trainingSub?.cancel();
     _nameCtrl.dispose();
-    _serverCtrl.dispose();
     super.dispose();
   }
 
@@ -440,181 +470,119 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // UI can't write, reads as the system default.
   String _languageLabel(BuildContext context, String? code) {
     for (final lang in appLanguages) {
-      if (lang.code == code) return lang.name;
+      if (lang.code == code) {
+        return lang.name;
+      }
     }
     return AppLocalizations.of(context).languageSystem;
   }
 
   Future<void> _pickLanguage(
-      BuildContext context, SettingsService settings) async {
-    final choice =
-        await showLanguageSheet(context, current: settings.localeOverride);
-    if (choice == null) return; // dismissed
-    if (!context.mounted) return;
-    showWriteFailures(context,
-        settings.setLocaleOverride(choice == 'system' ? null : choice));
+    BuildContext context,
+    SettingsService settings,
+  ) async {
+    final choice = await showLanguageSheet(
+      context,
+      current: settings.localeOverride,
+    );
+    if (choice == null) {
+      return;
+    } // dismissed
+    if (!context.mounted) {
+      return;
+    }
+    showWriteFailures(
+      context,
+      settings.setLocaleOverride(choice == 'system' ? null : choice),
+    );
   }
 
   // ── Bodyweight goal picker ──────────────────────────────────────────────
 
   String _goalLabel(AppLocalizations l, BodyweightGoal g) => switch (g) {
-        BodyweightGoal.cut => l.goalCut,
-        BodyweightGoal.bulk => l.goalBulk,
-        BodyweightGoal.maintain => l.goalMaintain,
-      };
+    BodyweightGoal.cut => l.goalCut,
+    BodyweightGoal.bulk => l.goalBulk,
+    BodyweightGoal.maintain => l.goalMaintain,
+  };
 
   Future<void> _pickGoal(BuildContext context, SettingsService settings) async {
     final l = AppLocalizations.of(context);
-    final picked = await showWActionSheet<BodyweightGoal>(context,
-        title: l.profileGoal,
-        actions: [
-          for (final g in BodyweightGoal.values)
-            WSheetAction(
-              label: _goalLabel(l, g),
-              value: g,
-              icon: WIcons.target,
-              selected: g == settings.bodyweightGoal,
-            ),
-        ]);
+    final picked = await showWActionSheet<BodyweightGoal>(
+      context,
+      title: l.profileGoal,
+      actions: [
+        for (final g in BodyweightGoal.values)
+          WSheetAction(
+            label: _goalLabel(l, g),
+            value: g,
+            icon: WIcons.target,
+            selected: g == settings.bodyweightGoal,
+          ),
+      ],
+    );
     if (picked != null && context.mounted) {
       showWriteFailures(context, settings.setBodyweightGoal(picked));
     }
   }
 
-  // ── Server-switch flow ────────────────────────────────────────────────────
-
-  Future<void> _applyServer(SettingsService settings) async {
-    final url = _serverCtrl.text.trim();
-    if (url.isEmpty || !url.startsWith('http')) return;
-
-    final l = AppLocalizations.of(context);
-    final confirmed = await showWConfirm(
-      context,
-      title: l.profileSwitchServerTitle,
-      message: l.profileSwitchServerMessage,
-      confirmLabel: l.profileSwitchServerConfirm,
-      destructive: true,
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      // An account switch is refused up front while a data capture runs.
-      TransportAdmission.instance.ensureOpen('account.switch_server');
-
-      // Persist new URL and update the global apiBaseUrl.
-      await settings.setServerUrl(url);
-      apiBaseUrl = url;
-
-      // onLogout first (flips _loggedIn → swaps AppShell for LoginScreen
-      // while AppShell is still live), then onClose (pops overlay — harmless
-      // no-op once the parent route is gone).
-      await widget.onLogout();
-    } on SourceGateException catch (e) {
-      if (mounted) await showWriteFailed(context, e);
-      return;
+  Future<void> _flushBoundary() async {
+    commitPendingInput();
+    await UnsavedEditors.instance.drainOrThrow();
+    if (!mounted) {
+      throw const StoreException('boundary_unmounted');
     }
-    widget.onClose();
-  }
-
-  // ── Sign-in flow (when signed out) ─────────────────────────────────────────
-
-  Future<void> _signIn(SettingsService settings) async {
-    final url = _serverCtrl.text.trim();
-    // Login (auth_store) hits the global apiBaseUrl, so it must point at the
-    // entered URL before we push LoginScreen. We do NOT persist it yet —
-    // settings.setServerUrl is deferred into onLoggedIn so abandoning login
-    // leaves no persisted change.
-    apiBaseUrl = url;
-    if (!mounted) return;
-
-    final navigator = Navigator.of(context);
-    await navigator.push(MaterialPageRoute(
-      builder: (_) => LoginScreen(
-        auth: widget.auth,
-        onLoggedIn: () async {
-          // Persist the URL only now that login succeeded.
-          await settings.setServerUrl(url);
-          apiBaseUrl = url;
-          await reconcileAndConnect(navigator, settings, auth: widget.auth);
-        },
-      ),
-    ));
-
-    if (mounted) setState(() {});
-  }
-
-  /// Signing in again after the server ended the session; the flow itself
-  /// is shared with the Today banner (see [signInAgain]).
-  Future<void> _signInAgain(SettingsService settings) async {
-    await signInAgain(context, auth: widget.auth, settings: settings);
-    if (mounted) setState(() {});
-  }
-
-  // ── Sign-out flow ─────────────────────────────────────────────────────────
-
-  Future<void> _signOut() async {
-    // Signing out wipes local data, so changes that never uploaded (or can't,
-    // with the session expired) would be lost.
-    final pending = await pendingUploadCount();
-    if (!mounted) return;
-    final l = AppLocalizations.of(context);
-    final confirmed = await showWConfirm(
-      context,
-      title: l.profileSignOutTitle,
-      // Only unsynced changes are lost by signing out; with none pending,
-      // even an expired session signs out harmlessly.
-      message: pending > 0
-          ? l.profileSignOutUnsyncedMessage(pending)
-          : l.profileSignOutMessage,
-      confirmLabel: l.profileSignOut,
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      await widget.onLogout();
-    } on SourceGateException catch (e) {
-      // Refused while a data capture holds the source: still signed in,
-      // nothing cleared.
-      if (mounted) await showWriteFailed(context, e);
-      return;
+    await context.read<SessionManager>().flushPersistence();
+    if (!mounted) {
+      throw const StoreException('boundary_unmounted');
     }
-    widget.onClose();
-  }
-
-  /// Profile → Data capture. The service lives above the app, so a capture
-  /// started here keeps its state while the screen is closed.
-  void _openCapture() {
-    final service = context.read<CaptureService>();
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => CaptureScreen(service: service),
-    ));
+    await context.read<SettingsService>().flushPersistence();
+    if (!mounted) {
+      throw const StoreException('boundary_unmounted');
+    }
+    await context.read<UnitService>().flushPersistence();
   }
 
   Future<void> _exportFull() async {
     setState(() => _exportingFull = true);
     try {
-      final result = await ExportService(db).exportFull(
-        settings: context.read<SettingsService>(),
-        units: context.read<UnitService>(),
-      );
-      if (mounted) await _reportExport(result);
+      await _flushBoundary();
+      if (!mounted) {
+        return;
+      }
+      final result = await ExportService(context.read<LocalDatabase>())
+          .exportFull(
+            settings: context.read<SettingsService>(),
+            units: context.read<UnitService>(),
+          );
+      if (mounted) {
+        await _reportExport(result);
+      }
     } catch (e) {
-      if (mounted) await _exportError(e);
+      if (mounted) {
+        await _exportError(e);
+      }
     } finally {
-      if (mounted) setState(() => _exportingFull = false);
+      if (mounted) {
+        setState(() => _exportingFull = false);
+      }
     }
   }
 
   Future<void> _exportHistory() async {
     // Earliest session date bounds the picker; fall back to one year back.
-    final row = await db.getOptional('SELECT MIN(date) AS d FROM sessions');
+    final row = await context.read<LocalDatabase>().getOptional(
+      'SELECT MIN(date) AS d FROM sessions',
+    );
     final now = DateTime.now();
-    var first = DateTime.tryParse((row?['d'] as String?) ?? '') ??
+    var first =
+        DateTime.tryParse((row?['d'] as String?) ?? '') ??
         now.subtract(const Duration(days: 365));
-    if (first.isAfter(now)) first = now;
-    if (!mounted) return;
+    if (first.isAfter(now)) {
+      first = now;
+    }
+    if (!mounted) {
+      return;
+    }
 
     final range = await showDateRangePicker(
       context: context,
@@ -622,17 +590,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       lastDate: now,
       initialDateRange: DateTimeRange(start: first, end: now),
     );
-    if (range == null || !mounted) return;
+    if (range == null || !mounted) {
+      return;
+    }
 
     setState(() => _exportingHistory = true);
     try {
-      final result =
-          await ExportService(db).exportHistory(from: range.start, to: range.end);
-      if (mounted) await _reportExport(result);
+      await _flushBoundary();
+      if (!mounted) {
+        return;
+      }
+      final result = await ExportService(
+        context.read<LocalDatabase>(),
+      ).exportHistory(from: range.start, to: range.end);
+      if (mounted) {
+        await _reportExport(result);
+      }
     } catch (e) {
-      if (mounted) await _exportError(e);
+      if (mounted) {
+        await _exportError(e);
+      }
     } finally {
-      if (mounted) setState(() => _exportingHistory = false);
+      if (mounted) {
+        setState(() => _exportingHistory = false);
+      }
     }
   }
 
@@ -649,9 +630,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           actions: [WDialogAction(label: l.commonOk, value: true)],
         );
       case ExportOutcome.empty:
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l.exportNoSessionsInRange)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l.exportNoSessionsInRange)));
     }
   }
 
@@ -665,38 +646,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Update check (manual button) ────────────────────────────────────────────
-
-  Future<void> _checkUpdates() async {
-    final l = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    final settings = context.read<SettingsService>();
-    setState(() => _checking = true);
-    UpdateInfo? info;
-    var errored = false;
-    try {
-      info = await UpdateService().checkForUpdate(force: true);
-    } catch (_) {
-      errored = true;
-    } finally {
-      if (mounted) setState(() => _checking = false);
-    }
-    try {
-      await settings.markUpdateChecked(DateTime.now().millisecondsSinceEpoch);
-    } on SourceGateException {
-      // Not recorded while a data capture holds the source; the result below
-      // is still shown.
-    }
-    if (!mounted) return;
-    if (errored) {
-      messenger.showSnackBar(SnackBar(content: Text(l.updatesError)));
-    } else if (info == null) {
-      messenger.showSnackBar(SnackBar(content: Text(l.updatesUpToDate)));
-    } else {
-      await showUpdateDialog(context, info);
-    }
-  }
-
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -706,373 +655,294 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
 
-    // Keep _currentServerUrl in sync when settings change externally.
-    if (_currentServerUrl != settings.serverUrl &&
-        _serverCtrl.text == _currentServerUrl) {
-      _serverCtrl.text = settings.serverUrl;
-      _currentServerUrl = settings.serverUrl;
-    }
-
-    final trimmedServerUrl = _serverCtrl.text.trim();
-    final serverChanged = trimmedServerUrl != settings.serverUrl &&
-        trimmedServerUrl.startsWith('http');
-
-    final signedIn = widget.auth.email != null;
-
     return Scaffold(
       body: ColoredBox(
         color: tokens.bg,
         child: Column(
           children: [
             // ── Header ────────────────────────────────────────────────────────
-          Container(
-            decoration: BoxDecoration(
-              color: tokens.bg,
-              border: Border(bottom: BorderSide(color: tokens.line)),
-            ),
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: Row(
-                  children: [
-                    Semantics(
-                      button: true,
-                      label: l.commonBack,
-                      excludeSemantics: true,
-                      onTap: widget.onClose,
-                      child: GestureDetector(
+            Container(
+              decoration: BoxDecoration(
+                color: tokens.bg,
+                border: Border(bottom: BorderSide(color: tokens.line)),
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  child: Row(
+                    children: [
+                      Semantics(
+                        button: true,
+                        label: l.commonBack,
+                        excludeSemantics: true,
                         onTap: widget.onClose,
-                        child: SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Center(
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                border: Border.all(color: tokens.line),
-                                borderRadius:
-                                    BorderRadius.circular(AppRadius.pill),
-                                color: tokens.surface,
-                              ),
-                              child: Icon(
-                                WIcons.back,
-                                size: 18,
-                                color: tokens.dim,
+                        child: GestureDetector(
+                          onTap: widget.onClose,
+                          child: SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: Center(
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: tokens.line),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.pill,
+                                  ),
+                                  color: tokens.surface,
+                                ),
+                                child: Icon(
+                                  WIcons.back,
+                                  size: 18,
+                                  color: tokens.dim,
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      l.profileTitle,
-                      style: WorkoutType.display(
-                        size: 19,
-                        weight: FontWeight.w700,
-                        color: tokens.text,
+                      const SizedBox(width: 12),
+                      Text(
+                        l.profileTitle,
+                        style: WorkoutType.display(
+                          size: 19,
+                          weight: FontWeight.w700,
+                          color: tokens.text,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // ── Scrollable body ───────────────────────────────────────────────
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 104),
-              children: [
-                // ── Profile header ──────────────────────────────────────────
-                _buildProfileHeader(settings, tokens),
+            // ── Scrollable body ───────────────────────────────────────────────
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 104),
+                children: [
+                  // ── Profile header ──────────────────────────────────────────
+                  _buildProfileHeader(settings, tokens),
 
-                const SizedBox(height: 22),
+                  const SizedBox(height: 22),
 
-                // ── Quick stats ─────────────────────────────────────────────
-                const _QuickStats(),
+                  // ── Quick stats ─────────────────────────────────────────────
+                  const _QuickStats(),
 
-                const SizedBox(height: 22),
+                  const SizedBox(height: 22),
 
-                // ── Units ───────────────────────────────────────────────────
-                _Group(
-                  label: l.profileGroupUnits,
-                  children: [
-                    _Row(
-                      icon: WIcons.scale,
-                      title: l.profileWeightUnit,
-                      sub: l.profileWeightUnitSub,
-                      right: ChipSelect<Unit>(
-                        items: Unit.values,
-                        selected: unitService.unit,
-                        labelOf: (u) => u == Unit.kg ? 'kg' : 'lb',
-                        onSelect: unitService.setUnit,
-                      ),
-                    ),
-                  ],
-                ),
-
-                // ── Bodyweight ──────────────────────────────────────────────
-                _Group(
-                  label: l.profileGroupBodyweight,
-                  children: [
-                    _Row(
-                      icon: WIcons.scale,
-                      title: l.profileGoal,
-                      sub: _goalLabel(l, settings.bodyweightGoal),
-                      right: Icon(WIcons.chevron, size: 16, color: tokens.faint),
-                      onTap: () => _pickGoal(context, settings),
-                    ),
-                  ],
-                ),
-
-                // ── Appearance ──────────────────────────────────────────────
-                _Group(
-                  label: l.profileGroupAppearance,
-                  children: [
-                    _Row(
-                      icon: settings.mode == 'dark'
-                          ? WIcons.flame
-                          : WIcons.bolt,
-                      title: l.profileTheme,
-                      right: ChipSelect<String>(
-                        items: const ['dark', 'light'],
-                        selected: settings.mode,
-                        labelOf: (m) =>
-                            m == 'dark' ? l.profileThemeDark : l.profileThemeLight,
-                        onSelect: (m) =>
-                            showWriteFailures(context, settings.setMode(m)),
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _Row(
-                          icon: WIcons.target,
-                          title: l.profileAccent,
-                          sub: l.profileAccentSub,
-                          right: null,
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                          child: _buildAccentSwatches(settings, tokens),
-                        ),
-                      ],
-                    ),
-                    _Row(
-                      icon: WIcons.globe,
-                      title: l.settingsLanguage,
-                      sub: _languageLabel(context, settings.localeOverride),
-                      right: Icon(WIcons.chevron, size: 16, color: tokens.faint),
-                      onTap: () => _pickLanguage(context, settings),
-                    ),
-                  ],
-                ),
-
-                // ── Rest ────────────────────────────────────────────────────
-                _Group(
-                  label: l.profileGroupRest,
-                  children: [
-                    _Row(
-                      icon: WIcons.timer,
-                      title: l.profileCompoundRest,
-                      sub: l.profileCompoundRestSub,
-                      right: SizedBox(
-                        width: 144,
-                        child: WStepper(
-                          value: settings.restCompoundSeconds.toDouble(),
-                          step: 15,
-                          format: (v) => '${v.round()}s',
-                          onChanged: (v) => showWriteFailures(context,
-                              settings.setRestCompoundSeconds(v.round())),
-                          editable: true,
-                          allowDecimal: false,
-                          min: 0,
-                          formatForEdit: (v) => v.round().toString(),
-                          semanticLabel: l.profileCompoundRest,
+                  // ── Units ───────────────────────────────────────────────────
+                  _Group(
+                    label: l.profileGroupUnits,
+                    children: [
+                      _Row(
+                        icon: WIcons.scale,
+                        title: l.profileWeightUnit,
+                        sub: l.profileWeightUnitSub,
+                        right: ChipSelect<Unit>(
+                          items: Unit.values,
+                          selected: unitService.unit,
+                          labelOf: (u) => u == Unit.kg ? 'kg' : 'lb',
+                          onSelect: unitService.setUnit,
                         ),
                       ),
-                    ),
-                    _Row(
-                      icon: WIcons.timer,
-                      title: l.profileIsolationRest,
-                      sub: l.profileIsolationRestSub,
-                      right: SizedBox(
-                        width: 144,
-                        child: WStepper(
-                          value: settings.restIsolationSeconds.toDouble(),
-                          step: 15,
-                          format: (v) => '${v.round()}s',
-                          onChanged: (v) => showWriteFailures(context,
-                              settings.setRestIsolationSeconds(v.round())),
-                          editable: true,
-                          allowDecimal: false,
-                          min: 0,
-                          formatForEdit: (v) => v.round().toString(),
-                          semanticLabel: l.profileIsolationRest,
+                    ],
+                  ),
+
+                  // ── Bodyweight ──────────────────────────────────────────────
+                  _Group(
+                    label: l.profileGroupBodyweight,
+                    children: [
+                      _Row(
+                        icon: WIcons.scale,
+                        title: l.profileGoal,
+                        sub: _goalLabel(l, settings.bodyweightGoal),
+                        right: Icon(
+                          WIcons.chevron,
+                          size: 16,
+                          color: tokens.faint,
+                        ),
+                        onTap: () => _pickGoal(context, settings),
+                      ),
+                    ],
+                  ),
+
+                  // ── Appearance ──────────────────────────────────────────────
+                  _Group(
+                    label: l.profileGroupAppearance,
+                    children: [
+                      _Row(
+                        icon: settings.mode == 'dark'
+                            ? WIcons.flame
+                            : WIcons.bolt,
+                        title: l.profileTheme,
+                        right: ChipSelect<String>(
+                          items: const ['dark', 'light'],
+                          selected: settings.mode,
+                          labelOf: (m) => m == 'dark'
+                              ? l.profileThemeDark
+                              : l.profileThemeLight,
+                          onSelect: (m) =>
+                              showWriteFailures(context, settings.setMode(m)),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-
-                // ── Sync & Backend ──────────────────────────────────────────
-                _Group(
-                  label: l.profileGroupSync,
-                  children: [
-                    _SyncRow(
-                      live: signedIn && settings.syncEnabled,
-                      expired: widget.auth.sessionExpired,
-                      title: l.profileSyncServer,
-                      sub: settings.serverUrl,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 13),
-                      child: Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          TextInput(
-                            controller: _serverCtrl,
-                            placeholder: l.profileServerPlaceholder,
-                            onChanged: (_) => setState(() {}),
+                          _Row(
+                            icon: WIcons.target,
+                            title: l.profileAccent,
+                            sub: l.profileAccentSub,
+                            right: null,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            l.profileLocalFirstHint,
-                            style: WorkoutType.mono(
-                              size: 10.5,
-                              color: tokens.faint,
-                            ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                            child: _buildAccentSwatches(settings, tokens),
                           ),
-                          const SizedBox(height: 10),
-                          if (signedIn)
-                            PrimaryBtn(
-                              l.profileApplyServer,
-                              enabled: serverChanged,
-                              secondary: true,
-                              onTap: () => _applyServer(settings),
-                            )
-                          else
-                            PrimaryBtn(
-                              l.profileSignInToSync,
-                              enabled: true,
-                              onTap: () => _signIn(settings),
-                            ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-
-                // ── Data ────────────────────────────────────────────────────
-                _Group(
-                  label: l.profileGroupData,
-                  children: [
-                    _Row(
-                      icon: WIcons.export,
-                      title: AppLocalizations.of(context).exportAllData,
-                      sub: AppLocalizations.of(context).exportFullBackup,
-                      right: _exportingFull ? const _RowSpinner() : null,
-                      onTap: _exportingFull ? null : _exportFull,
-                    ),
-                    _Row(
-                      icon: WIcons.history,
-                      title: AppLocalizations.of(context).exportHistory,
-                      sub: AppLocalizations.of(context).exportHistorySub,
-                      right: _exportingHistory ? const _RowSpinner() : null,
-                      onTap: _exportingHistory ? null : _exportHistory,
-                    ),
-                    _Row(
-                      icon: WIcons.capture,
-                      title: l.captureRowTitle,
-                      sub: l.captureRowSub,
-                      right: Icon(WIcons.chevron,
-                          size: 18, color: tokens.faint),
-                      onTap: _openCapture,
-                    ),
-                  ],
-                ),
-
-                // ── Updates ─────────────────────────────────────────────────
-                _Group(
-                  label: l.updatesGroup,
-                  children: [
-                    _Row(
-                      icon: WIcons.update,
-                      title: l.updatesVersion(
-                          _version.isEmpty ? '–' : _version),
-                    ),
-                    if (Platform.isAndroid) ...[
                       _Row(
-                        icon: WIcons.refresh,
-                        title: _checking ? l.updatesChecking : l.updatesCheck,
-                        right: _checking ? const _RowSpinner() : null,
-                        onTap: _checking ? null : _checkUpdates,
+                        icon: WIcons.globe,
+                        title: l.settingsLanguage,
+                        sub: _languageLabel(context, settings.localeOverride),
+                        right: Icon(
+                          WIcons.chevron,
+                          size: 16,
+                          color: tokens.faint,
+                        ),
+                        onTap: () => _pickLanguage(context, settings),
+                      ),
+                    ],
+                  ),
+
+                  // ── Rest ────────────────────────────────────────────────────
+                  _Group(
+                    label: l.profileGroupRest,
+                    children: [
+                      _Row(
+                        icon: WIcons.timer,
+                        title: l.profileCompoundRest,
+                        sub: l.profileCompoundRestSub,
+                        right: SizedBox(
+                          width: 144,
+                          child: WStepper(
+                            value: settings.restCompoundSeconds.toDouble(),
+                            step: 15,
+                            format: (v) => '${v.round()}s',
+                            onChanged: (v) => showWriteFailures(
+                              context,
+                              settings.setRestCompoundSeconds(v.round()),
+                            ),
+                            editable: true,
+                            allowDecimal: false,
+                            min: 0,
+                            formatForEdit: (v) => v.round().toString(),
+                            semanticLabel: l.profileCompoundRest,
+                          ),
+                        ),
                       ),
                       _Row(
-                        icon: WIcons.bolt,
-                        title: l.updatesAutoCheck,
-                        right: Toggle(
-                          value: settings.autoCheckUpdates,
-                          semanticLabel: l.updatesAutoCheck,
-                          onChanged: (v) => showWriteFailures(
+                        icon: WIcons.timer,
+                        title: l.profileIsolationRest,
+                        sub: l.profileIsolationRestSub,
+                        right: SizedBox(
+                          width: 144,
+                          child: WStepper(
+                            value: settings.restIsolationSeconds.toDouble(),
+                            step: 15,
+                            format: (v) => '${v.round()}s',
+                            onChanged: (v) => showWriteFailures(
                               context,
-                              context
-                                  .read<SettingsService>()
-                                  .setAutoCheckUpdates(v)),
+                              settings.setRestIsolationSeconds(v.round()),
+                            ),
+                            editable: true,
+                            allowDecimal: false,
+                            min: 0,
+                            formatForEdit: (v) => v.round().toString(),
+                            semanticLabel: l.profileIsolationRest,
+                          ),
                         ),
                       ),
                     ],
-                  ],
-                ),
+                  ),
 
-                // ── Account ─────────────────────────────────────────────────
-                if (signedIn)
                   _Group(
-                    label: l.profileGroupAccount,
+                    label: l.profileGroupSync,
                     children: [
-                      ValueListenableBuilder<bool>(
-                        valueListenable: widget.auth.sessionExpired,
-                        builder: (context, expired, _) => expired
-                            ? _Row(
-                                icon: WIcons.user,
-                                title: l.syncSessionExpired,
-                                sub: l.profileSessionExpiredSub,
-                                right: Icon(WIcons.chevron,
-                                    size: 16, color: tokens.faint),
-                                onTap: () => _signInAgain(settings),
-                              )
-                            : _Row(
-                                icon: WIcons.user,
-                                title: l.profileSignedIn,
-                                sub: widget.auth.email ?? '–',
-                              ),
-                      ),
                       _Row(
-                        icon: WIcons.logout,
-                        title: l.profileSignOut,
-                        danger: true,
-                        onTap: _signOut,
+                        icon: WIcons.user,
+                        title: l.alkionLocalOnly,
+                        below: Text(
+                          l.alkionAccountUnavailable,
+                          style: WorkoutType.mono(
+                            size: 10.5,
+                            color: tokens.faint,
+                          ),
+                        ),
                       ),
                     ],
                   ),
 
-                // ── Version footer ───────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    _version.isEmpty ? 'Reps' : 'Reps · v$_version',
-                    textAlign: TextAlign.center,
-                    style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                  // ── Data ────────────────────────────────────────────────────
+                  _Group(
+                    label: l.profileGroupData,
+                    children: [
+                      _Row(
+                        icon: WIcons.export,
+                        title: AppLocalizations.of(context).exportAllData,
+                        sub: l.alkionDomainExportSub,
+                        right: _exportingFull ? const _RowSpinner() : null,
+                        onTap: _exportingFull ? null : _exportFull,
+                      ),
+                      _Row(
+                        icon: WIcons.history,
+                        title: AppLocalizations.of(context).exportHistory,
+                        sub: AppLocalizations.of(context).exportHistorySub,
+                        right: _exportingHistory ? const _RowSpinner() : null,
+                        onTap: _exportingHistory ? null : _exportHistory,
+                      ),
+                      _Row(
+                        icon: WIcons.capture,
+                        title: l.alkionImportTransfer,
+                        sub: l.alkionImportTransferSub,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                AlkionTransferScreen(flush: _flushBoundary),
+                          ),
+                        ),
+                      ),
+                      _Row(
+                        icon: WIcons.refresh,
+                        title: l.alkionBackupRestore,
+                        sub: l.alkionBackupRestoreSub,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                AlkionRecoveryScreen(flush: _flushBoundary),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+
+                  // ── Version footer ───────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      _version.isEmpty
+                          ? 'Alkion Dev'
+                          : 'Alkion Dev · v$_version',
+                      textAlign: TextAlign.center,
+                      style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
@@ -1187,7 +1057,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-
   Widget _buildAccentSwatches(SettingsService settings, WorkoutTokens tokens) {
     final l = AppLocalizations.of(context);
     return Wrap(
@@ -1235,178 +1104,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       }).toList(),
-    );
-  }
-}
-
-/// The sync server row. Signed in with sync on, its status (dot + label)
-/// follows the PowerSync status stream; otherwise it reads "Not connected".
-///
-/// The status sits in the row's right slot when it fits there on one line.
-/// Otherwise ("Offline · synchronisiert vor 3 Std" at large text) it moves to
-/// its own line under the title, where it wraps at spaces rather than
-/// ellipsizing away the last sync time.
-class _SyncRow extends StatelessWidget {
-  const _SyncRow({
-    required this.live,
-    required this.expired,
-    required this.title,
-    required this.sub,
-  });
-
-  final bool live;
-
-  /// The session ended server-side: say so rather than a generic error.
-  final ValueListenable<bool> expired;
-  final String title;
-  final String sub;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    final l = AppLocalizations.of(context);
-    if (!live) {
-      return _layout(context, l.syncNotConnected, tokens.faint, false);
-    }
-    return ValueListenableBuilder<bool>(
-      valueListenable: expired,
-      builder: (context, isExpired, _) => StreamBuilder<SyncStatus>(
-        stream: db.statusStream,
-        initialData: db.currentStatus,
-        builder: (context, snap) {
-          final s = snap.data;
-          final state = syncDotStateFor(
-            connected: s?.connected ?? false,
-            syncing: (s?.uploading ?? false) || (s?.downloading ?? false),
-            hasError: s?.uploadError != null || s?.downloadError != null,
-          );
-          if (isExpired) {
-            return _layout(context, l.syncSessionExpired, tokens.danger, false);
-          }
-          final color = switch (state) {
-            SyncDotState.syncing || SyncDotState.synced => tokens.accentText,
-            SyncDotState.offline => tokens.faint,
-            SyncDotState.error => tokens.danger,
-          };
-          final label = syncStatusLabel(
-              l,
-              state,
-              s?.lastSyncedAt ?? context.read<SyncHealth>().lastSyncedAt,
-              DateTime.now());
-          return _layout(
-              context, label, color, state == SyncDotState.syncing);
-        },
-      ),
-    );
-  }
-
-  Widget _layout(
-      BuildContext context, String label, Color color, bool pulsing) {
-    final tokens = context.tokens;
-    final style =
-        WorkoutType.mono(size: 11, weight: FontWeight.w600, color: tokens.dim);
-    return LayoutBuilder(builder: (context, constraints) {
-      final painter = TextPainter(
-        text: TextSpan(text: label, style: style),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-        maxLines: 1,
-      )..layout();
-      final needed = _dot + _gap + painter.width;
-      final lineHeight = painter.preferredLineHeight;
-      painter.dispose();
-      final slot = (constraints.maxWidth - 2 * _Row._hPad) * _Row._rightShare;
-      final fits = needed <= slot;
-      final status = Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment:
-            fits ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: fits ? null : lineHeight,
-            child: Center(
-              widthFactor: 1,
-              child: _SyncDot(color: color, pulsing: pulsing),
-            ),
-          ),
-          const SizedBox(width: _gap),
-          Flexible(
-            child: fits
-                ? Text(label, maxLines: 1, style: style)
-                : FitLabel(label, maxLines: 3, style: style),
-          ),
-        ],
-      );
-      return _Row(
-        icon: WIcons.cloud,
-        title: title,
-        sub: sub,
-        right: fits ? status : null,
-        below: fits ? null : status,
-      );
-    });
-  }
-
-  static const _dot = 7.0;
-  static const _gap = 6.0;
-}
-
-/// 7px dot; pulses (opacity loop) while [pulsing], skipped under reduced motion.
-class _SyncDot extends StatefulWidget {
-  const _SyncDot({required this.color, required this.pulsing});
-  final Color color;
-  final bool pulsing;
-
-  @override
-  State<_SyncDot> createState() => _SyncDotState();
-}
-
-class _SyncDotState extends State<_SyncDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 700),
-    lowerBound: 0.35,
-    upperBound: 1.0,
-  );
-
-  void _sync() {
-    final reduced = MediaQuery.of(context).disableAnimations;
-    if (widget.pulsing && !reduced) {
-      if (!_c.isAnimating) _c.repeat(reverse: true);
-    } else {
-      _c.stop();
-      _c.value = 1.0;
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _SyncDot old) {
-    super.didUpdateWidget(old);
-    _sync();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync();
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _c,
-      child: Container(
-        width: 7,
-        height: 7,
-        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
-      ),
     );
   }
 }

@@ -19,11 +19,7 @@ enum TagTone {
 ///
 /// Visual spec: `docs/design_handoff_workout_tracker/design/app/ui.jsx` `Tag`.
 class Tag extends StatelessWidget {
-  const Tag({
-    super.key,
-    required this.label,
-    this.tone = TagTone.mute,
-  });
+  const Tag({super.key, required this.label, this.tone = TagTone.mute});
 
   final String label;
   final TagTone tone;

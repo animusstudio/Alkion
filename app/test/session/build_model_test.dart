@@ -1,53 +1,78 @@
+import 'dart:io';
+import 'dart:convert';
+import 'package:alkion/data/active_session_draft.dart';
+import '../support/screen_harness.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/data/session_writer.dart';
-import 'package:workout_tracker/session/active_session_controller.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/data/session_writer.dart';
+import 'package:alkion/session/active_session_controller.dart';
 
-// ── FakeExec (reusable in finish tests) ────────────────────────────────────
+Future<FixtureDatabase> _open() async {
+  final dir = await Directory.systemTemp.createTemp('alkion-model-');
+  final db = await FixtureDatabase.open(dir);
+  addTearDown(() async {
+    await db.close();
+    await dir.delete(recursive: true);
+  });
+  return db;
+}
 
-class FakeExec implements SqlExecutor {
-  final calls = <(String, List<Object?>)>[];
-  @override
-  Future<void> execute(String sql, [List<Object?> params = const []]) async {
-    calls.add((sql, params));
+Future<String> _finish(ActiveSessionController c, FixtureDatabase db) async {
+  for (final b in c.draft.blocks) {
+    await db.execute(
+      'INSERT INTO exercises (id,name,is_template) VALUES (?,?,0)',
+      [b.exercise.id, b.exercise.name],
+    );
   }
+  await c.flushPersistence();
+  return c.commitFinish(WorkoutRepository.local(db));
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   // ── D1: build-model tests ────────────────────────────────────────────────
 
-  test('compound block: suggested = roundTo(base + step, step); warm-up ramp', () {
-    final ex = Exercise.fromRow({
-      'id': 'e',
-      'name': 'X',
-      'slug': 'x',
-      'muscle_group': 'back',
-      'compound': 1,
-      'plate_step_kg': '2.5',
-      'base_weight_kg': '75',
-    });
-    // no history -> base seed; compound bumps one plate
-    final block = buildBlock(
-      resolved: ResolvedSlot(
-        exercise: ex,
-        workSets: 4,
-        warmupSets: 2,
-        repLow: 6,
-        repHigh: 8,
-        rirLow: 0,
-        rirHigh: 1,
-      ),
-      lastTopKg: null,
-    );
-    expect(block.workingSets.length, 4);
-    expect(block.warmupSets.length, 2);
-    // suggested = roundTo(75 + 2.5, 2.5) = 77.5
-    expect(block.workingSets.first.weightKg, 77.5);
-    expect(block.warmupSets.first.isWarmup, true);
-    // Lock down the warm-up ramp roundTo(suggested*(0.5+0.18*i), step):
-    expect(block.warmupSets[0].weightKg, 40.0); // roundTo(77.5*0.50, 2.5) = 38.75 -> 40.0
-    expect(block.warmupSets[1].weightKg, 52.5); // roundTo(77.5*0.68, 2.5) = 52.7 -> 52.5
-  });
+  test(
+    'compound block: suggested = roundTo(base + step, step); warm-up ramp',
+    () {
+      final ex = Exercise.fromRow({
+        'id': 'e',
+        'name': 'X',
+        'slug': 'x',
+        'muscle_group': 'back',
+        'compound': 1,
+        'plate_step_kg': '2.5',
+        'base_weight_kg': '75',
+      });
+      // no history -> base seed; compound bumps one plate
+      final block = buildBlock(
+        resolved: ResolvedSlot(
+          exercise: ex,
+          workSets: 4,
+          warmupSets: 2,
+          repLow: 6,
+          repHigh: 8,
+          rirLow: 0,
+          rirHigh: 1,
+        ),
+        lastTopKg: null,
+      );
+      expect(block.workingSets.length, 4);
+      expect(block.warmupSets.length, 2);
+      // suggested = roundTo(75 + 2.5, 2.5) = 77.5
+      expect(block.workingSets.first.weightKg, 77.5);
+      expect(block.warmupSets.first.isWarmup, true);
+      // Lock down the warm-up ramp roundTo(suggested*(0.5+0.18*i), step):
+      expect(
+        block.warmupSets[0].weightKg,
+        40.0,
+      ); // roundTo(77.5*0.50, 2.5) = 38.75 -> 40.0
+      expect(
+        block.warmupSets[1].weightKg,
+        52.5,
+      ); // roundTo(77.5*0.68, 2.5) = 52.7 -> 52.5
+    },
+  );
 
   test('isolation block: no bump, lastTopKg seeds instead of base', () {
     final ex = Exercise.fromRow({
@@ -142,127 +167,161 @@ void main() {
 
   // ── D7: finish() tests ───────────────────────────────────────────────────
 
-  test('finish() produces correct SessionWrite: splitLabel, warm-ups, no computed flags', () async {
-    final ex = Exercise.fromRow({
-      'id': 'ex1',
-      'name': 'Bench',
-      'slug': 'bench',
-      'muscle_group': 'chest',
-      'compound': 1,
-      'plate_step_kg': '2.5',
-      'base_weight_kg': '80',
-    });
+  test(
+    'finish persists split label and warm-ups with separate compatibility flags',
+    () async {
+      final ex = Exercise.fromRow({
+        'id': 'ex1',
+        'name': 'Bench',
+        'slug': 'bench',
+        'muscle_group': 'chest',
+        'compound': 1,
+        'plate_step_kg': '2.5',
+        'base_weight_kg': '80',
+      });
 
-    final controller = ActiveSessionController();
-    // Manually seed the draft for the test (bypassing buildFromTemplate which
-    // requires a live DB; we test finish() logic directly).
-    final resolved = ResolvedSlot(
-      exercise: ex,
-      workSets: 2,
-      warmupSets: 1,
-      repLow: 6,
-      repHigh: 8,
-      rirLow: 0,
-      rirHigh: 1,
-    );
-    final block = buildBlock(resolved: resolved, lastTopKg: null);
-    for (final s in block.allSets) {
-      s.done = true;
-    }
-    controller.seedForTest(
-      SessionDraft(
-        templateId: 'day1',
-        name: 'Upper A',
-        focus: 'Push',
-        startedAt: DateTime.now().subtract(const Duration(minutes: 45)),
-        blocks: [block],
-      ),
-    );
+      final db = await _open();
+      final drafts = DraftStore.local(db);
+      await drafts.load();
+      final controller = ActiveSessionController(draftStore: drafts);
+      addTearDown(controller.dispose);
+      // Manually seed the draft for the test (bypassing buildFromTemplate which
+      // requires a live DB; we test finish() logic directly).
+      final resolved = ResolvedSlot(
+        exercise: ex,
+        workSets: 2,
+        warmupSets: 1,
+        repLow: 6,
+        repHigh: 8,
+        rirLow: 0,
+        rirHigh: 1,
+      );
+      final block = buildBlock(resolved: resolved, lastTopKg: null);
+      for (final s in block.allSets) {
+        s.done = true;
+      }
+      controller.seedForTest(
+        SessionDraft(
+          templateId: 'day1',
+          name: 'Upper A',
+          focus: 'Push',
+          startedAt: DateTime.now().subtract(const Duration(minutes: 45)),
+          blocks: [block],
+        ),
+      );
 
-    final exec = FakeExec();
-    final sessionId = await controller.finish(exec);
+      final sessionId = await _finish(controller, db);
+      expect(sessionId, isNotEmpty);
+      final session = await db.get('SELECT * FROM sessions WHERE id=?', [
+        sessionId,
+      ]);
+      expect(session['split_label'], 'Upper A · Push');
+      final sets = await db.getAll(
+        'SELECT * FROM reps_compat1_legacy_local WHERE session_id=? ORDER BY set_number',
+        [sessionId],
+      );
+      expect(sets, hasLength(3));
+      final working = sets.where((r) => r['is_warmup'] == 0);
+      expect(working.where((r) => r['legacy_local_top'] == 1), hasLength(1));
+      expect(sets.every((r) => r['legacy_local_pr'] == 0), isTrue);
+      expect(sets.first['is_warmup'], 1);
+      // Captured source flags stay separate from compatibility derivations.
+      expect(
+        sets.every((r) => r['is_top_set'] == 0 && r['is_pr'] == 0),
+        isTrue,
+      );
+      final operation = await db.get(
+        'SELECT * FROM operations WHERE target_id=?',
+        [sessionId],
+      );
+      final envelope =
+          jsonDecode(
+                utf8.decode((operation['input_bytes'] as List).cast<int>()),
+              )
+              as Map;
+      final input = envelope['input'] as Map;
+      expect((input['session'] as Map).containsKey('user_id'), isFalse);
+      expect(
+        (input['sets'] as List).every(
+          (r) => !(r as Map).containsKey('user_id'),
+        ),
+        isTrue,
+      );
+    },
+  );
 
-    // Basic structure
-    expect(sessionId, isNotEmpty);
-    expect(exec.calls.length, greaterThan(1));
+  test(
+    'finish() numbers sets continuously across exercises, in workout order',
+    () async {
+      final ex1 = Exercise.fromRow({
+        'id': 'ex1',
+        'name': 'Squat',
+        'slug': 'squat',
+        'muscle_group': 'legs',
+        'compound': 1,
+        'plate_step_kg': '5.0',
+        'base_weight_kg': '100',
+      });
+      final ex2 = Exercise.fromRow({
+        'id': 'ex2',
+        'name': 'Curl',
+        'slug': 'curl',
+        'muscle_group': 'arms',
+        'compound': 0,
+        'plate_step_kg': '2.5',
+        'base_weight_kg': '20',
+      });
 
-    // 1 session INSERT
-    final sessionInserts =
-        exec.calls.where((c) => c.$1.contains('INSERT INTO sessions')).toList();
-    expect(sessionInserts.length, 1);
+      final db = await _open();
+      final drafts = DraftStore.local(db);
+      await drafts.load();
+      final controller = ActiveSessionController(draftStore: drafts);
+      addTearDown(controller.dispose);
+      final block1 = buildBlock(
+        resolved: ResolvedSlot(
+          exercise: ex1,
+          workSets: 2,
+          warmupSets: 0,
+          repLow: 5,
+          repHigh: 6,
+          rirLow: 1,
+          rirHigh: 1,
+        ),
+        lastTopKg: null,
+      );
+      final block2 = buildBlock(
+        resolved: ResolvedSlot(
+          exercise: ex2,
+          workSets: 2,
+          warmupSets: 0,
+          repLow: 10,
+          repHigh: 12,
+          rirLow: 1,
+          rirHigh: 1,
+        ),
+        lastTopKg: null,
+      );
+      for (final s in [...block1.allSets, ...block2.allSets]) {
+        s.done = true;
+      }
+      controller.seedForTest(
+        SessionDraft(
+          templateId: null,
+          name: 'Custom',
+          focus: 'Legs+Arms',
+          startedAt: DateTime.now().subtract(const Duration(minutes: 30)),
+          blocks: [block1, block2],
+        ),
+      );
 
-    // splitLabel uses middot ' · '
-    final sessionParams = sessionInserts.first.$2;
-    final splitLabel = sessionParams.firstWhere((p) => p is String && p.toString().contains('·')) as String;
-    expect(splitLabel, contains(' · '));
-    expect(splitLabel, 'Upper A · Push');
-
-    // All set INSERTs
-    final setInserts =
-        exec.calls.where((c) => c.$1.contains('INSERT INTO sets')).toList();
-    // 1 warmup + 2 working = 3 sets
-    expect(setInserts.length, 3);
-
-    // Client flags ARE stamped: the heaviest working set is the top set.
-    // No prior best (lastTopKg null → bestKg null) so is_pr stays false.
-    final workingInserts = setInserts.where((c) => c.$2[7] == 0).toList();
-    expect(workingInserts.any((c) => c.$2[8] == 1), isTrue); // exactly one top set
-    for (final c in setInserts) {
-      expect(c.$2[9], 0); // is_pr false (no bestKg)
-    }
-
-    // Warm-up set: is_warmup = 1 (true)
-    final warmupInsert = setInserts.first;
-    final warmupParams = warmupInsert.$2;
-    // is_warmup is the last param (index 7)
-    expect(warmupParams[7], 1); // is_warmup = 1
-
-    // No user_id column in any SQL
-    for (final c in exec.calls) {
-      expect(c.$1.contains('user_id'), isFalse);
-    }
-  });
-
-  test('finish() numbers sets continuously across exercises, in workout order', () async {
-    final ex1 = Exercise.fromRow({
-      'id': 'ex1', 'name': 'Squat', 'slug': 'squat', 'muscle_group': 'legs',
-      'compound': 1, 'plate_step_kg': '5.0', 'base_weight_kg': '100',
-    });
-    final ex2 = Exercise.fromRow({
-      'id': 'ex2', 'name': 'Curl', 'slug': 'curl', 'muscle_group': 'arms',
-      'compound': 0, 'plate_step_kg': '2.5', 'base_weight_kg': '20',
-    });
-
-    final controller = ActiveSessionController();
-    final block1 = buildBlock(
-      resolved: ResolvedSlot(exercise: ex1, workSets: 2, warmupSets: 0, repLow: 5, repHigh: 6, rirLow: 1, rirHigh: 1),
-      lastTopKg: null,
-    );
-    final block2 = buildBlock(
-      resolved: ResolvedSlot(exercise: ex2, workSets: 2, warmupSets: 0, repLow: 10, repHigh: 12, rirLow: 1, rirHigh: 1),
-      lastTopKg: null,
-    );
-    for (final s in [...block1.allSets, ...block2.allSets]) {
-      s.done = true;
-    }
-    controller.seedForTest(SessionDraft(
-      templateId: null,
-      name: 'Custom',
-      focus: 'Legs+Arms',
-      startedAt: DateTime.now().subtract(const Duration(minutes: 30)),
-      blocks: [block1, block2],
-    ));
-
-    final exec = FakeExec();
-    await controller.finish(exec);
-
-    final setInserts = exec.calls.where((c) => c.$1.contains('INSERT INTO sets')).toList();
-    expect(setInserts.length, 4); // 2 + 2
-
-    // set_number is at param index 3. It runs across the whole workout so the
-    // exercise order survives in the DB (History orders exercises by their
-    // first set_number).
-    expect(setInserts.map((c) => c.$2[2]), ['ex1', 'ex1', 'ex2', 'ex2']);
-    expect(setInserts.map((c) => c.$2[3]), [1, 2, 3, 4]);
-  });
+      final id = await _finish(controller, db);
+      final sets = await db.getAll(
+        'SELECT * FROM sets WHERE session_id=? AND deleted=0 ORDER BY set_number',
+        [id],
+      );
+      expect(sets, hasLength(4));
+      expect(sets.map((r) => r['exercise_id']), ['ex1', 'ex1', 'ex2', 'ex2']);
+      expect(sets.map((r) => r['set_number']), [1, 2, 3, 4]);
+    },
+  );
 }

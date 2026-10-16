@@ -1,9 +1,10 @@
+import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 
 import '../data/day_template_repository.dart';
 import '../data/models.dart';
 import '../l10n/app_localizations.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/tokens.dart';
@@ -16,10 +17,7 @@ import '../widgets/fit_label.dart';
 ///
 /// [onOpenEditor] is called with the day id to edit (null = new day).
 class SplitTab extends StatefulWidget {
-  const SplitTab({
-    super.key,
-    required this.onOpenEditor,
-  });
+  const SplitTab({super.key, required this.onOpenEditor});
 
   /// Called with the day id to edit (null = new day).
   final void Function(String? id) onOpenEditor;
@@ -29,7 +27,9 @@ class SplitTab extends StatefulWidget {
 }
 
 class _SplitTabState extends State<SplitTab> {
-  late final DayTemplateRepository _repo = DayTemplateRepository(db);
+  late final DayTemplateRepository _repo = DayTemplateRepository.local(
+    context.read<LocalDatabase>(),
+  );
   late final Stream<List<DayTemplate>> _daysStream = _repo.watchDays();
 
   @override
@@ -45,16 +45,18 @@ class _SplitTabState extends State<SplitTab> {
           padding: EdgeInsets.fromLTRB(16, 8, 16, bottomNavInset(context)),
           children: [
             // Day cards
-            ...days.map((day) => Padding(
-                  padding: const EdgeInsets.only(bottom: 9),
-                  child: SplitDayCard(
-                    weekday: day.scheduledWeekday,
-                    name: day.name,
-                    focus: day.focus,
-                    exerciseCount: day.slots.length,
-                    onTap: () => widget.onOpenEditor(day.id),
-                  ),
-                )),
+            ...days.map(
+              (day) => Padding(
+                padding: const EdgeInsets.only(bottom: 9),
+                child: SplitDayCard(
+                  weekday: day.scheduledWeekday,
+                  name: day.name,
+                  focus: day.focus,
+                  exerciseCount: day.slots.length,
+                  onTap: () => widget.onOpenEditor(day.id),
+                ),
+              ),
+            ),
 
             if (days.isNotEmpty) const SizedBox(height: 14),
 
@@ -102,7 +104,9 @@ class SplitDayCard extends StatelessWidget {
     // unguarded array.
     final weekBadge = (weekday != null && weekday! >= 0 && weekday! <= 6)
         ? weekdayShort(
-            weekday!, Localizations.localeOf(context).toLanguageTag())
+            weekday!,
+            Localizations.localeOf(context).toLanguageTag(),
+          )
         : '–';
 
     final focusText = focus?.trim() ?? '';
@@ -183,12 +187,11 @@ class SplitDayCard extends StatelessWidget {
                             ),
                           ),
                         ConstrainedBox(
-                          constraints:
-                              BoxConstraints(maxWidth: constraints.maxWidth),
+                          constraints: BoxConstraints(
+                            maxWidth: constraints.maxWidth,
+                          ),
                           child: FitLabel(
-                            focusText.isNotEmpty
-                                ? ' · $countText'
-                                : countText,
+                            focusText.isNotEmpty ? ' · $countText' : countText,
                             style: metaStyle,
                           ),
                         ),
@@ -233,7 +236,9 @@ class _NewDayButton extends StatelessWidget {
         ),
         child: CustomPaint(
           painter: DashedBorderPainter(
-              color: tokens.lineStrong, radius: AppRadius.radius),
+            color: tokens.lineStrong,
+            radius: AppRadius.radius,
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -256,4 +261,3 @@ class _NewDayButton extends StatelessWidget {
     );
   }
 }
-

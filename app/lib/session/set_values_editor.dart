@@ -39,16 +39,26 @@ class SetValuesEditor extends StatelessWidget {
     final l = AppLocalizations.of(context);
 
     TextStyle caption() => WorkoutType.mono(
-        size: 10, color: tokens.faint, letterSpacing: 0.08 * 10);
+      size: 10,
+      color: tokens.faint,
+      letterSpacing: 0.08 * 10,
+    );
     // Text keeps the card's inset; the rulers run the card's full width so
     // their ruled edge reads as part of the card, fading into its sides.
-    Widget inset(Widget child) =>
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: child);
+    Widget inset(Widget child) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: child,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        inset(Text('${l.sessionColWeight} · ${unit.uLabel.toUpperCase()}', style: caption())),
+        inset(
+          Text(
+            '${l.sessionColWeight} · ${unit.uLabel.toUpperCase()}',
+            style: caption(),
+          ),
+        ),
         RulerPicker(
           key: const Key('live-weight'),
           value: UnitService.fromKg(weightKg, unit.unit),
@@ -57,7 +67,8 @@ class SetValuesEditor extends StatelessWidget {
           max: UnitService.fromKg(500, unit.unit),
           format: (v) => UnitService.fmtDisplay(v, unit.unit),
           semanticLabel: '${l.sessionWeight}, ${unit.uLabel}',
-          onChanged: (v) => onWeight(clampRound2(UnitService.toKg(v, unit.unit))),
+          onChanged: (v) =>
+              onWeight(clampRound2(UnitService.toKg(v, unit.unit))),
           onTapValue: () => _typeWeight(context, l),
         ),
         const SizedBox(height: 12),
@@ -83,8 +94,11 @@ class SetValuesEditor extends StatelessWidget {
       title: '${l.sessionColWeight} · ${unit.uLabel.toUpperCase()}',
       initialText: unit.fmtWt(weightKg),
       allowDecimal: true,
-      parse: (text) => parseNumberInput(text,
-          min: 0, parseDisplay: (d) => UnitService.toKg(d, unit.unit)),
+      parse: (text) => parseNumberInput(
+        text,
+        min: 0,
+        parseDisplay: (d) => UnitService.toKg(d, unit.unit),
+      ),
     );
     if (v == null || v == weightKg) return;
     onWeight(v);

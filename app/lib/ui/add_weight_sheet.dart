@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../capture/session_capture_hooks.dart';
+import '../data/models.dart';
+import '../data/exercise_repository.dart';
+import '../domain/evidence.dart';
+import '../store/local_store.dart';
+import '../widgets/w_action_sheet.dart';
 import '../l10n/app_localizations.dart';
 import '../data/bodyweight_repository.dart';
-import '../sync/db.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -25,20 +28,49 @@ import '../widgets/w_dialog.dart';
 /// Saves via [BodyweightRepository.logBodyweight] and pops the sheet.
 /// Captures [Navigator.of] BEFORE the async save to avoid BuildContext-across-
 /// async-gap lint issues.
-Future<void> showAddWeightSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
+Future<void> showAddWeightSheet(
+  BuildContext context, {
+  BodyweightEntry? selected,
+}) async {
+  final repo = BodyweightRepository.local(context.read<LocalDatabase>());
+  final date = selected?.date ?? isoDate(DateTime.now());
+  final entries = await repo.onDate(date);
+  if (!context.mounted) return;
+  var chosen = selected;
+  if (chosen == null && entries.length == 1) chosen = entries.single;
+  if (chosen == null && entries.length > 1) {
+    final units = context.read<UnitService>();
+    final l = AppLocalizations.of(context);
+    chosen = await showWActionSheet<BodyweightEntry>(
+      context,
+      title: l.bodyweightChooseEntry,
+      actions: [
+        for (final entry in entries)
+          WSheetAction(
+            label:
+                '${entry.weightKg == null ? l.bodyweightUnavailable : '${units.fmtBw(entry.weightKg!)} ${units.uLabel}'} · ${entry.id}',
+            value: entry,
+          ),
+      ],
+    );
+    if (chosen == null) return;
+  }
+  if (!context.mounted) return;
+  await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.55),
-    builder: (_) => const _AddWeightSheet(),
+    builder: (_) => _AddWeightSheet(selected: chosen, date: date),
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AddWeightSheet extends StatefulWidget {
-  const _AddWeightSheet();
+  const _AddWeightSheet({this.selected, required this.date});
+  final BodyweightEntry? selected;
+  final String date;
 
   @override
   State<_AddWeightSheet> createState() => _AddWeightSheetState();
@@ -46,7 +78,7 @@ class _AddWeightSheet extends StatefulWidget {
 
 class _AddWeightSheetState extends State<_AddWeightSheet>
     with WidgetsBindingObserver {
-  late double _val;
+  late double? _val;
   bool _seeded = false;
 
   bool _editing = false;
@@ -63,18 +95,18 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
   /// stays inert on desktop and in widget tests where insets are always zero.
   bool _sawKeyboard = false;
 
-  /// The open sheet is an unsaved form: a data capture waits for Save or
-  /// dismissal, and never saves it.
-  final Object _unsavedForm =
-      UnsavedEditors.instance.register('bodyweight', () => true);
+  PreparedDomainAction? _pending;
+  bool _changed = false;
+  bool _saving = false;
+  late final BodyweightRepository _repo = BodyweightRepository.local(
+    context.read<LocalDatabase>(),
+  );
 
   @override
   void initState() {
     super.initState();
-    // Start with a 70 kg default until we read the last entry.
-    _val = double.tryParse(
-            UnitService.fromKg(70.0, Unit.kg).toStringAsFixed(1)) ??
-        70.0;
+    // Only a new entry has a suggestion. Selected unavailable evidence has none.
+    _val = widget.selected == null ? 70.0 : null;
     WidgetsBinding.instance.addObserver(this);
     _focusNode.addListener(_onFocusChange);
   }
@@ -90,7 +122,6 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
 
   @override
   void dispose() {
-    UnsavedEditors.instance.unregister(_unsavedForm);
     WidgetsBinding.instance.removeObserver(this);
     _focusNode
       ..removeListener(_onFocusChange)
@@ -133,47 +164,55 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
   }
 
   Future<void> _seedFromLastEntry() async {
-    try {
-      final rows = await db.getAll(
-        'SELECT CAST(weight_kg AS REAL) AS weight '
-        'FROM bodyweight_logs ORDER BY date DESC LIMIT 1',
-      );
-      if (!mounted) return;
-      final unitService = context.read<UnitService>();
-      // Seed from the last entry, else a unit-aware 70 kg-equivalent default
-      // (a lb user should see ~154, not a raw 70 in the kg slot).
-      final kg =
-          rows.isNotEmpty ? (rows.first['weight'] as num).toDouble() : 70.0;
-      final display = UnitService.fromKg(kg, unitService.unit);
-      setState(() {
-        _val = double.tryParse(display.toStringAsFixed(1)) ?? display;
-      });
-    } catch (_) {
-      // Keep the initState default on error.
-    }
+    final selected = widget.selected;
+    final entries = await _repo.watchSeriesAsc().first;
+    // Initial IO may complete after a focused edit, committed change or Save.
+    // Only an untouched form may adopt this suggestion.
+    if (!mounted || _editing || _changed || _saving || _pending != null) return;
+    final unit = context.read<UnitService>().unit;
+    final known = entries.map((e) => e.weightKg).whereType<double>().toList();
+    final kg = selected == null
+        ? (known.isEmpty ? 70.0 : known.last)
+        : selected.weightKg;
+    final display = kg == null ? null : UnitService.fromKg(kg, unit);
+    setState(
+      () => _val = display == null || !display.isFinite
+          ? null
+          : double.tryParse(display.toStringAsFixed(1)),
+    );
   }
 
   void _bump(int dir) {
+    if (_pending != null) return;
     // An open field must not be silently overridden: commit whatever was
     // typed FIRST, so the bump builds on it — mirrors WStepper._step. The
     // ± buttons stay visible while editing, so without this the bump would
     // apply to the stale pre-edit _val and then be discarded when the
     // untouched-looking edit later commits over it.
     if (_editing) _commitEdit();
+    final value = _val;
+    if (value == null) {
+      _beginEdit();
+      return;
+    }
+    _changed = true;
     final unitService = context.read<UnitService>();
     final step = unitService.unit == Unit.lb ? 0.2 : 0.1;
     setState(() {
-      final next = (_val + dir * step).clamp(0, double.infinity).toDouble();
+      final next = (value + dir * step).clamp(0, double.infinity).toDouble();
       _val = double.tryParse(next.toStringAsFixed(2)) ?? next;
     });
     HapticFeedback.lightImpact();
   }
 
   void _beginEdit() {
-    final initial = _val.toStringAsFixed(1);
+    if (_pending != null) return;
+    final initial = _val?.toStringAsFixed(1) ?? '';
     _editCtrl = TextEditingController(text: initial);
-    _editCtrl!.selection =
-        TextSelection(baseOffset: 0, extentOffset: _editCtrl!.text.length);
+    _editCtrl!.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _editCtrl!.text.length,
+    );
     _seedText = initial;
     // Initialise from the CURRENT inset, not false: moving focus straight
     // from another already-open field produces no didChangeMetrics event, so
@@ -206,7 +245,9 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
       final unchanged = _editCtrl;
       _editCtrl = null;
       if (unchanged != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => unchanged.dispose());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => unchanged.dispose(),
+        );
       }
       return;
     }
@@ -214,7 +255,10 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     final committed = parseNumberInput(_editCtrl?.text ?? '', min: 0);
     void apply() {
       _editing = false;
-      if (committed != null) _val = committed;
+      if (committed != null) {
+        _val = committed;
+        _changed = true;
+      }
     }
 
     if (rebuild) {
@@ -236,27 +280,36 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
   }
 
   Future<void> _save() async {
-    // Flush any in-flight edit BEFORE _val is read below — nothing else
-    // unfocuses the field on Android (tap-outside only unfocuses for touch
-    // on web, and Save's own InkWell/TextButton never requests focus), so
-    // without this the pre-edit _val would be the one that gets logged.
-    if (_editing) _commitEdit();
-    // Capture navigator BEFORE the await (BuildContext-across-async-gap lint).
-    final nav = Navigator.of(context);
-    final unitService = context.read<UnitService>();
-    final kg = UnitService.toKg(_val, unitService.unit);
-    try {
-      await BodyweightRepository(db).logBodyweight(
-        dateIso: isoDate(DateTime.now()),
-        kg: kg,
+    if (_saving) return;
+    // A retry owns its original bytes, regardless of later display state.
+    if (_pending == null) {
+      if (_editing) _commitEdit();
+      final unit = context.read<UnitService>().unit;
+      final preserved = !_changed ? widget.selected?.weightEvidence : null;
+      final value = _val;
+      if (preserved == null && (value == null || !value.isFinite)) return;
+      _pending = _repo.prepareMeasurement(
+        dateIso: widget.date,
+        selected: widget.selected,
+        kg:
+            preserved ??
+            DecimalEvidence(
+              ValueState.valid,
+              UnitService.toKg(value!, unit).toStringAsFixed(2),
+            ),
       );
-    } catch (e) {
-      // E.g. refused while a data capture holds the source: the sheet stays
-      // open with its value, and the failure is shown.
-      if (mounted) await showWriteFailed(context, e);
-      return;
     }
-    nav.pop();
+    final nav = Navigator.of(context);
+    _saving = true;
+    try {
+      await context.read<DomainRecovery?>()?.recover();
+      await _repo.commitPrepared(_pending!);
+      if (mounted) nav.pop();
+    } catch (e) {
+      if (mounted) await showWriteFailed(context, e);
+    } finally {
+      _saving = false;
+    }
   }
 
   @override
@@ -265,7 +318,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
     final unit = unitService.uLabel;
-    final today = isoDate(DateTime.now());
+    final today = widget.date;
 
     return Container(
       decoration: BoxDecoration(
@@ -273,9 +326,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(AppRadius.radius * 1.5),
         ),
-        border: Border(
-          top: BorderSide(color: tokens.lineStrong, width: 1),
-        ),
+        border: Border(top: BorderSide(color: tokens.lineStrong, width: 1)),
       ),
       padding: EdgeInsets.fromLTRB(
         16,
@@ -358,7 +409,8 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
                                 textInputAction: TextInputAction.done,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
-                                        decimal: true),
+                                      decimal: true,
+                                    ),
                                 inputFormatters: [
                                   // A whole-string predicate, NOT
                                   // FilteringTextInputFormatter.allow with an
@@ -366,10 +418,13 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
                                   // non-matching text as entirely banned and
                                   // WIPES the field instead of rejecting the
                                   // edit.
-                                  TextInputFormatter.withFunction(
-                                      (oldValue, newValue) {
-                                    final ok = RegExp(r'^-?\d*[.,]?\d*$')
-                                        .hasMatch(newValue.text);
+                                  TextInputFormatter.withFunction((
+                                    oldValue,
+                                    newValue,
+                                  ) {
+                                    final ok = RegExp(
+                                      r'^-?\d*[.,]?\d*$',
+                                    ).hasMatch(newValue.text);
                                     return ok ? newValue : oldValue;
                                   }),
                                 ],
@@ -397,7 +452,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
                                 child: FittedBox(
                                   fit: BoxFit.scaleDown,
                                   child: Text(
-                                    _val.toStringAsFixed(1),
+                                    _val?.toStringAsFixed(1) ?? '—',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: WorkoutType.display(

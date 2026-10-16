@@ -1,11 +1,11 @@
+import 'package:provider/provider.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../capture/session_capture_hooks.dart';
 import '../data/day_template_repository.dart';
 import '../l10n/app_localizations.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
@@ -72,31 +72,16 @@ class PlanScreenState extends State<PlanScreen> {
   // active, so it watches the same repository stream SplitTab does rather
   // than being fed one by SplitTab (which isn't even mounted on Exercises or
   // Targets). Cached once here, not created in build.
-  late final DayTemplateRepository _dayRepo = DayTemplateRepository(db);
-  late final Stream<int> _dayCountStream =
-      _dayRepo.watchDays().map((days) => days.length);
+  late final DayTemplateRepository _dayRepo = DayTemplateRepository.local(
+    context.read<LocalDatabase>(),
+  );
+  late final Stream<int> _dayCountStream = _dayRepo.watchDays().map(
+    (days) => days.length,
+  );
 
   /// True while [requestClose] runs: a second call is refused rather than
   /// stacking a second prompt.
   bool _closing = false;
-
-  /// An open editor with unsaved edits holds off a data capture: its edits
-  /// are settled only by Save or by discarding them, never automatically.
-  Object? _unsavedForm;
-
-  @override
-  void initState() {
-    super.initState();
-    _unsavedForm =
-        UnsavedEditors.instance.register('plan', () => hasUnsavedEdits);
-  }
-
-  @override
-  void dispose() {
-    final form = _unsavedForm;
-    if (form != null) UnsavedEditors.instance.unregister(form);
-    super.dispose();
-  }
 
   /// Opens an editor. Ignored while one is open: the list can then only be
   /// reached by a tap that fell through to the outgoing list while the new
@@ -283,13 +268,18 @@ class PlanScreenState extends State<PlanScreen> {
       transitionBuilder: (child, anim) => FadeTransition(
         opacity: anim,
         child: SlideTransition(
-          position: Tween(begin: const Offset(0, 0.04), end: Offset.zero).animate(anim),
+          position: Tween(
+            begin: const Offset(0, 0.04),
+            end: Offset.zero,
+          ).animate(anim),
           child: child,
         ),
       ),
       child: KeyedSubtree(
         key: ValueKey(
-          _editor == null ? 'list-$_activeTab' : 'editor-${_editor!.kind}-${_editor!.id}',
+          _editor == null
+              ? 'list-$_activeTab'
+              : 'editor-${_editor!.kind}-${_editor!.id}',
         ),
         child: body,
       ),
@@ -429,7 +419,8 @@ class _SegBtn extends StatelessWidget {
                   borderRadius: BorderRadius.circular(36 * 0.6),
                   color: active ? tokens.surface3 : Colors.transparent,
                   border: Border.all(
-                      color: active ? tokens.lineStrong : tokens.line),
+                    color: active ? tokens.lineStrong : tokens.line,
+                  ),
                   boxShadow: active
                       ? [
                           BoxShadow(

@@ -1,4 +1,6 @@
-// Domain models for the workout tracker data layer.
+import '../domain/evidence.dart';
+
+// Retained display models. Exact evidence is the source of untouched writes.
 //
 // PowerSync rows arrive as `Map<String, dynamic>` with:
 // - NUMERIC columns → TEXT, and may be '' or NULL. Parse via `double.tryParse`,
@@ -6,6 +8,19 @@
 //   whole list stream's map() (this crashed the catalog in v0.12.10).
 // - boolean columns → int 0/1 (compare with `!= 0`)
 // - dates/timestamps → TEXT (ISO-8601)
+
+/// Retained source calendars may be unavailable; never normalize a rollover.
+bool hasQualifiedCalendarDay(String? value) {
+  if (value == null) {
+    return false;
+  }
+  try {
+    CalendarDay(value);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 // ── RIR adapter ──────────────────────────────────────────────────────────────
 
@@ -76,6 +91,10 @@ class Exercise {
   final int? defaultRirHigh;
   final int? defaultRestSeconds;
   final bool isTemplate;
+  final DecimalEvidence? baseWeightEvidence;
+  final DecimalEvidence? plateStepEvidence;
+  final int? localRevision;
+  final Map<String, Object?> rawFields;
 
   const Exercise({
     required this.id,
@@ -94,6 +113,10 @@ class Exercise {
     this.defaultRirHigh,
     this.defaultRestSeconds,
     required this.isTemplate,
+    this.baseWeightEvidence,
+    this.plateStepEvidence,
+    this.localRevision,
+    this.rawFields = const {},
   });
 
   factory Exercise.fromRow(Map<String, dynamic> row) {
@@ -119,6 +142,10 @@ class Exercise {
       defaultRirHigh: row['default_rir_high'] as int?,
       defaultRestSeconds: row['default_rest_seconds'] as int?,
       isTemplate: (row['is_template'] as int? ?? 0) != 0,
+      baseWeightEvidence: DecimalEvidence.fromRow(row, 'base_weight_kg'),
+      plateStepEvidence: DecimalEvidence.fromRow(row, 'plate_step_kg'),
+      localRevision: row['revision'] as int?,
+      rawFields: Map.unmodifiable(row),
     );
   }
 }
@@ -136,6 +163,8 @@ class Slot {
   final int? repHigh;
   final int? rirLow;
   final int? rirHigh;
+  final int? localRevision;
+  final Map<String, Object?> rawFields;
 
   const Slot({
     this.id,
@@ -147,6 +176,8 @@ class Slot {
     this.repHigh,
     this.rirLow,
     this.rirHigh,
+    this.localRevision,
+    this.rawFields = const {},
   });
 
   factory Slot.fromRow(Map<String, dynamic> row) {
@@ -160,6 +191,8 @@ class Slot {
       repHigh: row['target_rep_high'] as int?,
       rirLow: row['target_rir_low'] as int?,
       rirHigh: row['target_rir_high'] as int?,
+      localRevision: row['revision'] as int?,
+      rawFields: Map.unmodifiable(row),
     );
   }
 }
@@ -198,6 +231,9 @@ class DayTemplate {
   final int position;
   final List<Slot> slots;
   final bool isTemplate;
+  final int? localRevision;
+  final String? notes;
+  final Map<String, Object?> rawFields;
 
   const DayTemplate({
     required this.id,
@@ -208,6 +244,9 @@ class DayTemplate {
     required this.position,
     required this.slots,
     this.isTemplate = false,
+    this.localRevision,
+    this.notes,
+    this.rawFields = const {},
   });
 }
 
@@ -224,6 +263,9 @@ class SlotDraft {
   int? repHigh;
   int? rirLow;
   int? rirHigh;
+  int? localRevision;
+  Map<String, Object?> rawFields;
+  Set<String>? changedFields;
 
   SlotDraft({
     this.itemId,
@@ -234,6 +276,9 @@ class SlotDraft {
     this.repHigh,
     this.rirLow,
     this.rirHigh,
+    this.localRevision,
+    this.rawFields = const {},
+    this.changedFields,
   });
 }
 
@@ -243,12 +288,20 @@ class DayDraft {
   String? focus;
   int? weekday;
   List<SlotDraft> slots;
+  int? localRevision;
+  String? notes;
+  Map<String, Object?> rawFields;
+  Set<String>? changedFields;
 
   DayDraft({
     required this.name,
     this.focus,
     this.weekday,
     required this.slots,
+    this.localRevision,
+    this.notes,
+    this.rawFields = const {},
+    this.changedFields,
   });
 }
 
@@ -268,6 +321,9 @@ class ExerciseDraft {
   int? defaultRirLow;
   int? defaultRirHigh;
   int? defaultRestSeconds;
+  DecimalEvidence? originalBaseWeightEvidence;
+  DecimalEvidence? originalPlateStepEvidence;
+  int? localRevision;
 
   ExerciseDraft({
     this.id,
@@ -284,7 +340,14 @@ class ExerciseDraft {
     this.defaultRirLow,
     this.defaultRirHigh,
     this.defaultRestSeconds,
+    this.originalBaseWeightEvidence,
+    this.originalPlateStepEvidence,
+    this.localRevision,
+    this.rawFields = const {},
+    this.changedFields,
   });
+  Map<String, Object?> rawFields;
+  Set<String>? changedFields;
 }
 
 // ── LoggedSet ────────────────────────────────────────────────────────────────
@@ -300,6 +363,25 @@ class LoggedSet {
   final bool isTopSet;
   final bool isPr;
 
+  /// weightKg may show the named legacy zero fallback; this evidence never does.
+  final DecimalEvidence? weightEvidence;
+  final Map<String, Object?> rawFields;
+  final int? localRevision;
+  final int? workoutRevision;
+  final bool? capturedTop, capturedPr;
+  final FieldEvidence? repsEvidence;
+  final FieldEvidence? setNumberEvidence;
+  int? get qualifiedSetNumber => setNumberEvidence == null
+      ? setNumber
+      : setNumberEvidence!.raw is int
+      ? setNumberEvidence!.raw as int
+      : null;
+  bool get repsAvailable => repsEvidence == null || repsEvidence!.raw is int;
+  bool get weightAvailable =>
+      weightEvidence == null ||
+      weightEvidence!.state == ValueState.valid &&
+          weightEvidence!.exact?.displayDouble?.isFinite == true;
+
   const LoggedSet({
     required this.id,
     required this.exerciseId,
@@ -310,6 +392,14 @@ class LoggedSet {
     required this.isWarmup,
     required this.isTopSet,
     required this.isPr,
+    this.weightEvidence,
+    this.rawFields = const {},
+    this.localRevision,
+    this.workoutRevision,
+    this.capturedTop,
+    this.capturedPr,
+    this.repsEvidence,
+    this.setNumberEvidence,
   });
 
   factory LoggedSet.fromRow(Map<String, dynamic> row) {
@@ -317,13 +407,65 @@ class LoggedSet {
     return LoggedSet(
       id: row['id'] as String,
       exerciseId: row['exercise_id'] as String,
-      setNumber: row['set_number'] as int? ?? 0,
+      setNumber: row['set_number'] is int ? row['set_number'] as int : 0,
       weightKg: double.tryParse(wt?.toString() ?? '') ?? 0.0,
-      reps: row['reps'] as int? ?? 0,
-      rir: row['rir'] as int?,
-      isWarmup: (row['is_warmup'] as int? ?? 0) != 0,
-      isTopSet: (row['is_top_set'] as int? ?? 0) != 0,
-      isPr: (row['is_pr'] as int? ?? 0) != 0,
+      reps: row['reps'] is int ? row['reps'] as int : 0,
+      rir: row['rir'] is int ? row['rir'] as int : null,
+      isWarmup: row['is_warmup'] is int && row['is_warmup'] != 0,
+      isTopSet:
+          (row['legacy_local_top'] ?? row['is_top_set']) is int &&
+          (row['legacy_local_top'] ?? row['is_top_set']) != 0,
+      isPr:
+          (row['legacy_local_pr'] ?? row['is_pr']) is int &&
+          (row['legacy_local_pr'] ?? row['is_pr']) != 0,
+      rawFields: Map.unmodifiable(row),
+      localRevision: row['revision'] as int?,
+      workoutRevision: row['workout_revision'] as int?,
+      capturedTop: row['is_top_set'] is int ? row['is_top_set'] != 0 : null,
+      capturedPr: row['is_pr'] is int ? row['is_pr'] != 0 : null,
+      weightEvidence: DecimalEvidence.fromRow(row, 'weight_kg'),
+      repsEvidence: _integerEvidence(row, 'reps'),
+      setNumberEvidence: _integerEvidence(row, 'set_number'),
+    );
+  }
+}
+
+/// Coverage for the named reps-compat/1 numeric view. The old formatter may
+/// display zero; only [knownSubtotal] describes values supported by evidence.
+class CompatibilityCoverage {
+  const CompatibilityCoverage({
+    required this.total,
+    required this.known,
+    required this.knownSubtotal,
+  });
+  final int total, known;
+  final double knownSubtotal;
+  bool get complete => known == total;
+  bool get unavailable => total > 0 && known == 0;
+  factory CompatibilityCoverage.sets(Iterable<LoggedSet> sets) {
+    var total = 0, known = 0;
+    var subtotal = 0.0;
+    for (final set in sets.where((s) => !s.isWarmup)) {
+      total++;
+      final weight = set.weightEvidence;
+      final reps = set.repsEvidence;
+      final validWeight =
+          weight == null ||
+          (weight.state == ValueState.valid &&
+              weight.exact?.displayDouble?.isFinite == true);
+      final validReps =
+          reps == null || (reps.state == ValueState.valid && reps.raw is int);
+      final validWarmup =
+          set.rawFields.isEmpty || set.rawFields['is_warmup'] is int;
+      if (validWeight && validReps && validWarmup) {
+        known++;
+        subtotal += set.weightKg * set.reps;
+      }
+    }
+    return CompatibilityCoverage(
+      total: total,
+      known: known,
+      knownSubtotal: subtotal,
     );
   }
 }
@@ -337,6 +479,7 @@ class ExerciseBlockData {
   final double topWeight;
   final int topReps;
   final bool isPr;
+  CompatibilityCoverage get coverage => CompatibilityCoverage.sets(sets);
 
   const ExerciseBlockData({
     required this.exerciseId,
@@ -351,26 +494,41 @@ class ExerciseBlockData {
 
 class SessionSummaryRow {
   final String id;
+  final int? localRevision;
   final String date;
   final String? splitLabel;
   final String? dayTemplateId;
   final int? durationMin;
+  final FieldEvidence? durationEvidence;
+  final Map<String, Object?> rawFields;
 
+  final FieldEvidence? dateEvidence;
+  bool get dateAvailable => hasQualifiedCalendarDay(date);
   const SessionSummaryRow({
     required this.id,
+    this.localRevision,
     required this.date,
+    this.dateEvidence,
     this.splitLabel,
     this.dayTemplateId,
     this.durationMin,
+    this.durationEvidence,
+    this.rawFields = const {},
   });
 
   factory SessionSummaryRow.fromRow(Map<String, dynamic> row) {
     return SessionSummaryRow(
       id: row['id'] as String,
-      date: row['date'] as String? ?? '',
+      localRevision: row['revision'] as int?,
+      date: row['date']?.toString() ?? '',
+      dateEvidence: FieldEvidence.fromRow(row, 'date'),
       splitLabel: row['split_label'] as String?,
       dayTemplateId: row['day_template_id'] as String?,
-      durationMin: row['duration_min'] as int?,
+      durationMin: row['duration_min'] is int
+          ? row['duration_min'] as int
+          : null,
+      durationEvidence: _integerEvidence(row, 'duration_min'),
+      rawFields: Map.unmodifiable(row),
     );
   }
 }
@@ -379,14 +537,36 @@ class SessionSummaryRow {
 
 class BodyweightEntry {
   final String date;
-  final double weightKg;
 
-  const BodyweightEntry({required this.date, required this.weightKg});
+  /// Compatibility display value only. Unavailable evidence has no number.
+  final double? weightKg;
+  final String? id;
+  final int? localRevision;
+  final DecimalEvidence? weightEvidence;
+
+  final FieldEvidence? dateEvidence;
+  bool get dateAvailable => hasQualifiedCalendarDay(date);
+  const BodyweightEntry({
+    required this.date,
+    this.dateEvidence,
+    required this.weightKg,
+    this.id,
+    this.localRevision,
+    this.weightEvidence,
+  });
 
   factory BodyweightEntry.fromRow(Map<String, dynamic> row) {
+    final evidence = DecimalEvidence.fromRow(row, 'weight_kg');
+    final numeric = evidence.state == ValueState.valid
+        ? evidence.exact?.displayDouble
+        : null;
     return BodyweightEntry(
-      date: row['date'] as String,
-      weightKg: (row['weight'] as num).toDouble(),
+      date: row['date']?.toString() ?? '',
+      dateEvidence: FieldEvidence.fromRow(row, 'date'),
+      weightKg: numeric != null && numeric.isFinite ? numeric : null,
+      id: row['id'] as String?,
+      localRevision: row['revision'] as int?,
+      weightEvidence: evidence,
     );
   }
 }
@@ -395,17 +575,44 @@ class BodyweightEntry {
 
 class HistorySessionRow {
   final String id, date;
+  final int? localRevision;
+  final bool orderUncertain;
   final String? splitLabel;
   final int? durationMin;
+  final FieldEvidence? durationEvidence;
+  final Map<String, Object?> rawFields;
   final int exerciseCount;
   final int prCount;
-  final double tonnageKg; // sum of non-warmup weight*reps
-  HistorySessionRow({required this.id, required this.date, this.splitLabel, this.durationMin, required this.exerciseCount, required this.prCount, required this.tonnageKg});
-  factory HistorySessionRow.fromRow(Map<String, dynamic> r) => HistorySessionRow(
+  final double tonnageKg; // named legacy compatibility numeric display
+  final CompatibilityCoverage? coverage;
+  final FieldEvidence? dateEvidence;
+  bool get dateAvailable => hasQualifiedCalendarDay(date);
+  HistorySessionRow({
+    required this.id,
+    this.localRevision,
+    this.orderUncertain = false,
+    required this.date,
+    this.dateEvidence,
+    this.splitLabel,
+    this.durationMin,
+    this.durationEvidence,
+    this.rawFields = const {},
+    required this.exerciseCount,
+    required this.prCount,
+    required this.tonnageKg,
+    this.coverage,
+  });
+  factory HistorySessionRow.fromRow(Map<String, dynamic> r) =>
+      HistorySessionRow(
         id: r['id'] as String,
-        date: r['date'] as String,
+        localRevision: r['revision'] as int?,
+        orderUncertain: r['order_uncertain'] == 1,
+        date: r['date']?.toString() ?? '',
+        dateEvidence: FieldEvidence.fromRow(r, 'date'),
         splitLabel: r['split_label'] as String?,
-        durationMin: (r['duration_min'] as num?)?.toInt(),
+        durationMin: r['duration_min'] is int ? r['duration_min'] as int : null,
+        durationEvidence: _integerEvidence(r, 'duration_min'),
+        rawFields: Map.unmodifiable(r),
         exerciseCount: (r['ex_count'] as num?)?.toInt() ?? 0,
         prCount: (r['pr_count'] as num?)?.toInt() ?? 0,
         tonnageKg: (r['tonnage'] as num?)?.toDouble() ?? 0,
@@ -420,27 +627,34 @@ class ProgressPoint {
   final int topReps;
   final bool isPr;
   final double volumeKg;
+  final CompatibilityCoverage? coverage;
+  final bool topAvailable;
 
+  final FieldEvidence? dateEvidence;
+  bool get dateAvailable => hasQualifiedCalendarDay(date);
   const ProgressPoint({
     required this.date,
+    this.dateEvidence,
     required this.topWeightKg,
     required this.topReps,
     required this.isPr,
     required this.volumeKg,
+    this.coverage,
+    this.topAvailable = true,
   });
 
   factory ProgressPoint.fromRow(Map<String, dynamic> r) => ProgressPoint(
-        date: r['date'] as String,
-        topWeightKg: (r['top_weight'] as num?)?.toDouble() ?? 0,
-        topReps: (r['top_reps'] as num?)?.toInt() ?? 0,
-        isPr: ((r['is_pr'] as num?) ?? 0) != 0,
-        volumeKg: (r['volume'] as num?)?.toDouble() ?? 0,
-      );
+    date: r['date']?.toString() ?? '',
+    dateEvidence: FieldEvidence.fromRow(r, 'date'),
+    topWeightKg: (r['top_weight'] as num?)?.toDouble() ?? 0,
+    topReps: (r['top_reps'] as num?)?.toInt() ?? 0,
+    isPr: ((r['is_pr'] as num?) ?? 0) != 0,
+    volumeKg: (r['volume'] as num?)?.toDouble() ?? 0,
+  );
 }
 
 /// Epley formula: estimated 1-rep max in kg (rounded to nearest kg).
-int est1rm(double weightKg, int reps) =>
-    (weightKg * (1 + reps / 30)).round();
+int est1rm(double weightKg, int reps) => (weightKg * (1 + reps / 30)).round();
 
 // ── MuscleTarget ──────────────────────────────────────────────────────────────
 
@@ -448,11 +662,13 @@ class MuscleTarget {
   final String id;
   final String muscle;
   final int targetSets;
+  final int? localRevision;
 
   const MuscleTarget({
     required this.id,
     required this.muscle,
     required this.targetSets,
+    this.localRevision,
   });
 
   factory MuscleTarget.fromRow(Map<String, dynamic> row) {
@@ -460,6 +676,14 @@ class MuscleTarget {
       id: row['id'] as String,
       muscle: row['muscle'] as String,
       targetSets: row['target_sets'] as int? ?? 0,
+      localRevision: row['revision'] as int?,
     );
   }
+}
+
+FieldEvidence _integerEvidence(Map<String, dynamic> row, String key) {
+  final evidence = FieldEvidence.fromRow(row, key);
+  return evidence.state == ValueState.valid && evidence.raw is! int
+      ? FieldEvidence(ValueState.invalid, raw: evidence.raw)
+      : evidence;
 }

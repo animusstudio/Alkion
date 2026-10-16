@@ -51,9 +51,7 @@ class WTabBar extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: tokens.bg.withValues(alpha: 0.88),
-            border: Border(
-              top: BorderSide(color: tokens.line, width: 1),
-            ),
+            border: Border(top: BorderSide(color: tokens.line, width: 1)),
           ),
           padding: EdgeInsets.only(bottom: bottomPad, top: 4),
           child: Row(
@@ -136,27 +134,27 @@ class _TabButton extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         child: PressableScale(
           child: SizedBox(
-          height: 64,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 23, color: color),
-              const SizedBox(height: 3),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: FitLabel(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: WorkoutType.mono(
-                    size: 9.5,
-                    weight: FontWeight.w600,
-                    color: color,
+            height: 64,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 23, color: color),
+                const SizedBox(height: 3),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: FitLabel(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: WorkoutType.mono(
+                      size: 9.5,
+                      weight: FontWeight.w600,
+                      color: color,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -166,9 +164,7 @@ class _TabButton extends StatelessWidget {
 // ── Center FAB ────────────────────────────────────────────────────────────────
 
 class _FabButton extends StatelessWidget {
-  const _FabButton({
-    required this.onStart,
-  });
+  const _FabButton({required this.onStart});
 
   final VoidCallback onStart;
 

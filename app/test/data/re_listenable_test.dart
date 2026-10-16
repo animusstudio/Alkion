@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/re_listenable.dart';
+import 'package:alkion/data/re_listenable.dart';
 
 void main() {
   // A single-subscription source, which is what PowerSync's db.watch() returns.
@@ -14,12 +14,14 @@ void main() {
     return ctrl.stream;
   }
 
-  test('a naked single-subscription stream throws on re-listen (control)',
-      () async {
-    final naked = singleSub(1);
-    expect(await naked.first, 1);
-    expect(() => naked.listen((_) {}), throwsStateError);
-  });
+  test(
+    'a naked single-subscription stream throws on re-listen (control)',
+    () async {
+      final naked = singleSub(1);
+      expect(await naked.first, 1);
+      expect(() => naked.listen((_) {}), throwsStateError);
+    },
+  );
 
   test('reListenable can be listened to again after a cancel', () async {
     var creations = 0;
@@ -52,22 +54,23 @@ void main() {
   });
 
   test('reListenable forwards errors', () async {
-    final s = reListenable<int>(
-        () => Stream<int>.error(StateError('boom')));
+    final s = reListenable<int>(() => Stream<int>.error(StateError('boom')));
     expect(s.first, throwsStateError);
   });
 
-  test('reListenable cancels the upstream when the last listener leaves',
-      () async {
-    var cancels = 0;
-    final s = reListenable<int>(() {
-      final ctrl = StreamController<int>(onCancel: () => cancels++);
-      return ctrl.stream;
-    });
+  test(
+    'reListenable cancels the upstream when the last listener leaves',
+    () async {
+      var cancels = 0;
+      final s = reListenable<int>(() {
+        final ctrl = StreamController<int>(onCancel: () => cancels++);
+        return ctrl.stream;
+      });
 
-    final sub = s.listen((_) {});
-    await Future<void>.delayed(Duration.zero);
-    await sub.cancel();
-    expect(cancels, 1);
-  });
+      final sub = s.listen((_) {});
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
+      expect(cancels, 1);
+    },
+  );
 }

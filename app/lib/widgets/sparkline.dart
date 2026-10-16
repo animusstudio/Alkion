@@ -104,17 +104,11 @@ class _SparklinePainter extends CustomPainter {
         ..color = stroke
         ..style = PaintingStyle.fill;
 
-      canvas.drawCircle(
-        Offset(xOf(n - 1), yOf(values[n - 1])),
-        2.0,
-        dotPaint,
-      );
+      canvas.drawCircle(Offset(xOf(n - 1), yOf(values[n - 1])), 2.0, dotPaint);
     }
   }
 
   @override
   bool shouldRepaint(_SparklinePainter old) =>
-      old.progress != progress ||
-      old.values != values ||
-      old.stroke != stroke;
+      old.progress != progress || old.values != values || old.stroke != stroke;
 }

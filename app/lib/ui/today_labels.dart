@@ -33,17 +33,19 @@ List<({String muscle, int sets, int target})> weeklyVolumeRows(
   Map<String, int> targets,
 ) {
   final trained = {for (final v in volume) v.muscle};
-  final sortedVolume = [...volume]..sort((a, b) {
+  final sortedVolume = [...volume]
+    ..sort((a, b) {
       final c = b.sets.compareTo(a.sets);
       return c != 0 ? c : a.muscle.compareTo(b.muscle);
     });
-  final untrained = targets.entries
-      .where((t) => t.value > 0 && !trained.contains(t.key))
-      .toList()
-    ..sort((a, b) {
-      final c = b.value.compareTo(a.value);
-      return c != 0 ? c : a.key.compareTo(b.key);
-    });
+  final untrained =
+      targets.entries
+          .where((t) => t.value > 0 && !trained.contains(t.key))
+          .toList()
+        ..sort((a, b) {
+          final c = b.value.compareTo(a.value);
+          return c != 0 ? c : a.key.compareTo(b.key);
+        });
   return [
     for (final v in sortedVolume)
       (muscle: v.muscle, sets: v.sets, target: targets[v.muscle] ?? v.sets),

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
+import 'package:alkion/data/models.dart';
 
 void main() {
   group('est1rm', () {

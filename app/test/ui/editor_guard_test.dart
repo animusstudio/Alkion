@@ -1,48 +1,50 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/ui/editor_guard.dart';
-import 'package:workout_tracker/units/unit_service.dart';
-import 'package:workout_tracker/util/number_input.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/ui/editor_guard.dart';
+import 'package:alkion/units/unit_service.dart';
+import 'package:alkion/util/number_input.dart';
 
 SlotDraft _slot(String exerciseId, {String? itemId}) => SlotDraft(
-      itemId: itemId,
-      exerciseId: exerciseId,
-      workSets: 3,
-      warmupSets: 1,
-      repLow: 6,
-      repHigh: 10,
-      rirLow: 1,
-      rirHigh: 2,
-    );
+  itemId: itemId,
+  exerciseId: exerciseId,
+  workSets: 3,
+  warmupSets: 1,
+  repLow: 6,
+  repHigh: 10,
+  rirLow: 1,
+  rirHigh: 2,
+);
 
 DayDraft _day({String name = 'Push', String? focus = 'Chest'}) => DayDraft(
-      name: name,
-      focus: focus,
-      weekday: 0,
-      slots: [_slot('ex1', itemId: 'i1'), _slot('ex2', itemId: 'i2')],
-    );
+  name: name,
+  focus: focus,
+  weekday: 0,
+  slots: [
+    _slot('ex1', itemId: 'i1'),
+    _slot('ex2', itemId: 'i2'),
+  ],
+);
 
 ExerciseDraft _exercise({
   String name = 'Bench Press',
   String? equip = 'barbell',
   double? baseWeightKg = 20,
   int? restSeconds,
-}) =>
-    ExerciseDraft(
-      name: name,
-      muscleGroup: 'chest',
-      equip: equip,
-      compound: true,
-      baseWeightKg: baseWeightKg,
-      plateStepKg: 2.5,
-      defaultRepLow: 6,
-      defaultRepHigh: 10,
-      defaultWarmupSets: 1,
-      defaultWorkingSets: 3,
-      defaultRirLow: 1,
-      defaultRirHigh: 2,
-      defaultRestSeconds: restSeconds,
-    );
+}) => ExerciseDraft(
+  name: name,
+  muscleGroup: 'chest',
+  equip: equip,
+  compound: true,
+  baseWeightKg: baseWeightKg,
+  plateStepKg: 2.5,
+  defaultRepLow: 6,
+  defaultRepHigh: 10,
+  defaultWarmupSets: 1,
+  defaultWorkingSets: 3,
+  defaultRirLow: 1,
+  defaultRirHigh: 2,
+  defaultRestSeconds: restSeconds,
+);
 
 void main() {
   group('daySnapshot', () {
@@ -73,8 +75,10 @@ void main() {
     });
 
     test('surrounding whitespace is ignored and a blank focus is none', () {
-      expect(daySnapshot(_day(name: '  Push ', focus: 'Chest  ')),
-          daySnapshot(_day()));
+      expect(
+        daySnapshot(_day(name: '  Push ', focus: 'Chest  ')),
+        daySnapshot(_day()),
+      );
       expect(daySnapshot(_day(focus: '   ')), daySnapshot(_day(focus: null)));
     });
 
@@ -114,17 +118,24 @@ void main() {
 
     test('surrounding whitespace is ignored and blank equipment is none', () {
       expect(
-          exerciseSnapshot(_exercise(name: ' Bench Press  ', equip: ' barbell')),
-          exerciseSnapshot(_exercise()));
-      expect(exerciseSnapshot(_exercise(equip: '  ')),
-          exerciseSnapshot(_exercise(equip: null)));
+        exerciseSnapshot(_exercise(name: ' Bench Press  ', equip: ' barbell')),
+        exerciseSnapshot(_exercise()),
+      );
+      expect(
+        exerciseSnapshot(_exercise(equip: '  ')),
+        exerciseSnapshot(_exercise(equip: null)),
+      );
     });
 
     test('a rest of 0 equals the default', () {
-      expect(exerciseSnapshot(_exercise(restSeconds: 0)),
-          exerciseSnapshot(_exercise()));
-      expect(exerciseSnapshot(_exercise(restSeconds: 90)),
-          isNot(exerciseSnapshot(_exercise())));
+      expect(
+        exerciseSnapshot(_exercise(restSeconds: 0)),
+        exerciseSnapshot(_exercise()),
+      );
+      expect(
+        exerciseSnapshot(_exercise(restSeconds: 90)),
+        isNot(exerciseSnapshot(_exercise())),
+      );
     });
 
     test('a start weight stepped up and back down in lb is not a change', () {
@@ -134,21 +145,28 @@ void main() {
           // step rounded to two decimals; Save converts the result to kg.
           final s = UnitService.fromKg(plateKg, Unit.lb);
           final shown = clampRound2(
-              clampRound2(UnitService.fromKg(kg, Unit.lb) + s) - s);
+            clampRound2(UnitService.fromKg(kg, Unit.lb) + s) - s,
+          );
           expect(
-              exerciseSnapshot(
-                  _exercise(baseWeightKg: UnitService.toKg(shown, Unit.lb))),
-              exerciseSnapshot(_exercise(baseWeightKg: kg)),
-              reason: '$kg kg ± a $plateKg kg plate in lb');
+            exerciseSnapshot(
+              _exercise(baseWeightKg: UnitService.toKg(shown, Unit.lb)),
+            ),
+            exerciseSnapshot(_exercise(baseWeightKg: kg)),
+            reason: '$kg kg ± a $plateKg kg plate in lb',
+          );
         }
       }
     });
 
     test('a different start weight is a change, and none stays none', () {
-      expect(exerciseSnapshot(_exercise(baseWeightKg: 22.5)),
-          isNot(exerciseSnapshot(_exercise())));
-      expect(exerciseSnapshot(_exercise(baseWeightKg: null)).baseWeightKg,
-          isNull);
+      expect(
+        exerciseSnapshot(_exercise(baseWeightKg: 22.5)),
+        isNot(exerciseSnapshot(_exercise())),
+      );
+      expect(
+        exerciseSnapshot(_exercise(baseWeightKg: null)).baseWeightKg,
+        isNull,
+      );
     });
 
     // Every field the exercise saves must reach the snapshot, or a change to

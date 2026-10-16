@@ -23,12 +23,7 @@ class Metric {
   final bool reps;
   final bool pr;
 
-  const Metric(
-    this.id, {
-    this.wt = false,
-    this.reps = false,
-    this.pr = false,
-  });
+  const Metric(this.id, {this.wt = false, this.reps = false, this.pr = false});
 }
 
 /// The four progress metrics in display order. Display names are localized via
@@ -133,10 +128,7 @@ class BigStat extends StatelessWidget {
                 const SizedBox(width: 3),
                 Text(
                   unit!,
-                  style: WorkoutType.mono(
-                    size: 11,
-                    color: tokens.dim,
-                  ),
+                  style: WorkoutType.mono(size: 11, color: tokens.dim),
                 ),
               ],
             ],
@@ -267,11 +259,7 @@ class ProgressSelectorRow extends StatelessWidget {
 ///
 /// Visual spec: `docs/design_handoff_workout_tracker/design/app/screen-progress.jsx`.
 class MetricTabs extends StatelessWidget {
-  const MetricTabs({
-    super.key,
-    required this.selected,
-    required this.onSelect,
-  });
+  const MetricTabs({super.key, required this.selected, required this.onSelect});
 
   final String selected;
   final ValueChanged<String> onSelect;
@@ -284,12 +272,14 @@ class MetricTabs extends StatelessWidget {
       children: [
         for (var i = 0; i < kMetrics.length; i++) ...[
           if (i > 0) const SizedBox(width: 6),
-          Expanded(child: _MetricSegment(
-            metric: kMetrics[i],
-            isSelected: kMetrics[i].id == selected,
-            tokens: tokens,
-            onTap: () => onSelect(kMetrics[i].id),
-          )),
+          Expanded(
+            child: _MetricSegment(
+              metric: kMetrics[i],
+              isSelected: kMetrics[i].id == selected,
+              tokens: tokens,
+              onTap: () => onSelect(kMetrics[i].id),
+            ),
+          ),
         ],
       ],
     );

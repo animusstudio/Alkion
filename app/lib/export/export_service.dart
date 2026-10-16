@@ -1,139 +1,170 @@
-import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:powersync/powersync.dart' show PowerSyncDatabase;
 import 'package:share_plus/share_plus.dart';
 
+import '../domain/evidence.dart';
+import '../identity/directory_durability.dart';
+import '../store/local_store.dart';
 import '../settings/settings_service.dart';
+import '../transfer/transfer_service.dart';
 import '../units/unit_service.dart';
-import '../util/dates.dart';
-import 'export_builder.dart';
+import 'alkion_exports.dart';
+import 'exclusive_publish.dart';
 
 enum ExportOutcome { shared, saved, empty }
 
 class ExportResult {
   const ExportResult(this.outcome, [this.path]);
   final ExportOutcome outcome;
-  final String? path; // set only for [ExportOutcome.saved] (Linux fallback)
+  final String? path;
 }
 
-/// Queries the local DB, builds the export JSON, writes it to a temp file and
-/// opens the share sheet. On Linux (dev) shares are unsupported → saves into
-/// the Documents dir instead and reports the path.
+/// Where finished export bytes go. Delivery never alters the bytes.
+abstract interface class ExportDelivery {
+  Future<ExportResult> deliver(Uint8List bytes, String filename);
+}
+
+/// Publishes flushed temporary bytes into an explicit directory with an
+/// exclusive hard link (which cannot replace an existing name, unlike rename),
+/// removes the temporary name, fsyncs the directory and re-reads the hash.
+final class DirectoryExportDelivery implements ExportDelivery {
+  DirectoryExportDelivery(this.directory);
+  final Directory directory;
+  @override
+  Future<ExportResult> deliver(Uint8List bytes, String filename) async {
+    if (filename.contains('/') || filename.startsWith('.')) {
+      throw const StoreException('export_filename_invalid');
+    }
+    final target = File(p.join(directory.path, filename));
+    final temp = File(
+      p.join(
+        directory.path,
+        '.$filename.partial-${Random.secure().nextInt(1 << 32)}',
+      ),
+    );
+    try {
+      final handle = await temp.open(mode: FileMode.writeOnly);
+      try {
+        await handle.writeFrom(bytes);
+        await handle.flush();
+      } finally {
+        await handle.close();
+      }
+      if (!linkExclusive(temp.path, target.path)) {
+        throw const StoreException('export_destination_exists');
+      }
+    } finally {
+      if (await temp.exists()) await temp.delete();
+    }
+    flushDirectory(directory.path);
+    final written = await target.readAsBytes();
+    if (sha256.convert(written) != sha256.convert(bytes)) {
+      throw const StoreException('export_verification_failed');
+    }
+    return ExportResult(ExportOutcome.saved, target.path);
+  }
+}
+
+/// Linux saves into the documents directory; other platforms share a file.
+final class PlatformExportDelivery implements ExportDelivery {
+  const PlatformExportDelivery();
+  @override
+  Future<ExportResult> deliver(Uint8List bytes, String filename) async {
+    if (Platform.isLinux) {
+      return DirectoryExportDelivery(
+        await getApplicationDocumentsDirectory(),
+      ).deliver(bytes, filename);
+    }
+    final directory = await getTemporaryDirectory();
+    await DirectoryExportDelivery(directory).deliver(bytes, filename);
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile(p.join(directory.path, filename), mimeType: 'application/json'),
+        ],
+      ),
+    );
+    return const ExportResult(ExportOutcome.shared);
+  }
+}
+
+String _stamp(String instant) =>
+    instant.substring(0, 19).replaceAll(RegExp('[-:]'), '');
+
+/// Coherent versioned exports. Callers flush owed durable input first (the
+/// profile screen's lifecycle barrier); each document is read in one snapshot.
 class ExportService {
-  ExportService(this.db);
-  final PowerSyncDatabase db;
+  ExportService(this.database, {ExportDelivery? delivery})
+    : delivery = delivery ?? const PlatformExportDelivery();
+  final LocalDatabase database;
+  final ExportDelivery delivery;
 
-  static const _tableNames = [
-    'exercises',
-    'day_templates',
-    'day_template_items',
-    'sessions',
-    'sets',
-    'bodyweight_logs',
-    'muscle_targets',
-  ];
+  Future<Uint8List> domainBytes() {
+    final at = OperationInstant.now().text;
+    return database.readTransaction(
+      (tx) async => exportBytes(await buildDomainExport(tx, exportedAt: at)),
+    );
+  }
 
+  Future<Uint8List?> historyBytes({required String from, required String to}) {
+    final at = OperationInstant.now().text;
+    return database.readTransaction((tx) async {
+      final document = await buildHistoryExport(
+        tx,
+        from: from,
+        to: to,
+        exportedAt: at,
+      );
+      return document == null ? null : exportBytes(document);
+    });
+  }
+
+  Future<Uint8List> transferBytes() {
+    final at = OperationInstant.now().text;
+    return database.readTransaction(
+      (tx) async =>
+          exportBytes(await buildCompatTransferExport(tx, exportedAt: at)),
+    );
+  }
+
+  /// Settings live in SQLite; the services are only flushed by the caller.
   Future<ExportResult> exportFull({
     required SettingsService settings,
     required UnitService units,
-  }) async {
-    final tables = <String, List<Map<String, Object?>>>{};
-    for (final t in _tableNames) {
-      final rows = await db.getAll('SELECT * FROM $t ORDER BY id');
-      tables[t] = [for (final r in rows) Map<String, Object?>.from(r)];
-    }
-    final accent = settings.accent.toARGB32()
-        .toRadixString(16)
-        .padLeft(8, '0')
-        .toUpperCase();
-    final json = buildFullExport(
-      tables: tables,
-      settings: {
-        'unit': units.unit == Unit.kg ? 'kg' : 'lb',
-        'mode': settings.mode,
-        'accent': '#$accent',
-        'profile_name': settings.profileName,
-        'rest_compound_seconds': settings.restCompoundSeconds,
-        'rest_isolation_seconds': settings.restIsolationSeconds,
-        'locale': settings.localeOverride,
-      },
-      exportedAt: DateTime.now(),
-    );
-    return _deliver(json, 'reps-full-${isoDate(DateTime.now())}.json');
-  }
+  }) async => delivery.deliver(
+    await domainBytes(),
+    'alkion-domain-${_stamp(OperationInstant.now().text)}Z.json',
+  );
 
   Future<ExportResult> exportHistory({
     required DateTime from,
     required DateTime to,
   }) async {
-    final fromS = isoDate(from);
-    final toS = isoDate(to);
-
-    // sessions.date is date-only YYYY-MM-DD → inclusive string compare is exact.
-    final sessionRows = await db.getAll(
-      'SELECT * FROM sessions WHERE date >= ? AND date <= ? '
-      'ORDER BY date ASC, created_at ASC',
-      [fromS, toS],
+    String day(DateTime t) =>
+        '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+    final bytes = await historyBytes(from: day(from), to: day(to));
+    if (bytes == null) return const ExportResult(ExportOutcome.empty);
+    return delivery.deliver(
+      bytes,
+      'alkion-history-${day(from)}_${day(to)}-${_stamp(OperationInstant.now().text)}Z.json',
     );
-    if (sessionRows.isEmpty) return const ExportResult(ExportOutcome.empty);
-
-    final setRows = await db.getAll(
-      'SELECT s.* FROM sets s JOIN sessions se ON se.id = s.session_id '
-      'WHERE se.date >= ? AND se.date <= ? '
-      // Workout order (see SessionRepository.setsForSession); the key is only
-      // sorted on, never selected, so exported rows stay verbatim.
-      'ORDER BY s.session_id, (SELECT MIN(f.set_number) FROM sets f '
-      'WHERE f.session_id = s.session_id AND f.exercise_id = s.exercise_id), '
-      's.exercise_id, s.set_number',
-      [fromS, toS],
-    );
-    final setsBySession = <String, List<Map<String, Object?>>>{};
-    for (final r in setRows) {
-      (setsBySession[r['session_id'] as String] ??= [])
-          .add(Map<String, Object?>.from(r));
-    }
-
-    final exRows =
-        await db.getAll('SELECT id, name, muscle_group FROM exercises');
-    final exerciseById = {
-      for (final r in exRows)
-        r['id'] as String: (
-          name: r['name'] as String? ?? r['id'] as String,
-          muscleGroup: r['muscle_group'] as String? ?? '',
-        ),
-    };
-
-    final json = buildHistoryExport(
-      sessions: [for (final r in sessionRows) Map<String, Object?>.from(r)],
-      setsBySession: setsBySession,
-      exerciseById: exerciseById,
-      from: from,
-      to: to,
-    );
-    return _deliver(json, 'reps-history-${fromS}_$toS.json');
   }
 
-  Future<ExportResult> _deliver(
-      Map<String, dynamic> data, String filename) async {
-    final text = const JsonEncoder.withIndent('  ').convert(data);
+  Future<ExportResult> exportTransfer() async => delivery.deliver(
+    await transferBytes(),
+    'alkion-transfer-reps-compat-${_stamp(OperationInstant.now().text)}Z.json',
+  );
 
-    if (Platform.isLinux) {
-      // share_plus cannot share files on Linux — save where the user can find it.
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File(p.join(dir.path, filename));
-      await file.writeAsString(text);
-      return ExportResult(ExportOutcome.saved, file.path);
-    }
-
-    final dir = await getTemporaryDirectory();
-    final file = File(p.join(dir.path, filename));
-    await file.writeAsString(text);
-    // share_plus 11.x: statics (Share.shareXFiles) are deprecated.
-    await SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path, mimeType: 'application/json')]));
-    return const ExportResult(ExportOutcome.shared);
+  Future<ExportResult> exportOriginal(String artifactId) async {
+    final bytes = await TransferService(database).originalBytes(artifactId);
+    return delivery.deliver(
+      bytes,
+      'alkion-original-${artifactId.replaceFirst('art-', '').substring(0, 16)}.bin',
+    );
   }
 }

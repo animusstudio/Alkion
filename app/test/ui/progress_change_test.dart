@@ -1,48 +1,84 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/l10n/app_localizations_en.dart';
-import 'package:workout_tracker/ui/progress_change.dart';
-import 'package:workout_tracker/units/unit_format.dart';
-import 'package:workout_tracker/units/unit_service.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/l10n/app_localizations_en.dart';
+import 'package:alkion/ui/progress_change.dart';
+import 'package:alkion/units/unit_format.dart';
+import 'package:alkion/units/unit_service.dart';
 
 Exercise _exercise(String id) => Exercise(
-      id: id,
-      name: id,
-      slug: id,
-      muscleGroup: 'chest',
-      compound: false,
-      plateStepKg: 2.5,
-      isTemplate: false,
-    );
+  id: id,
+  name: id,
+  slug: id,
+  muscleGroup: 'chest',
+  compound: false,
+  plateStepKg: 2.5,
+  isTemplate: false,
+);
 
 void main() {
   final l = AppLocalizationsEn();
   String f(double v) => v == v.roundToDouble() ? '${v.toInt()}' : '$v';
 
   test('weight change wins when the weight moved', () {
-    final c = topSetChange(prevWeight: 100, prevReps: 6, curWeight: 102.5, curReps: 4);
+    final c = topSetChange(
+      prevWeight: 100,
+      prevReps: 6,
+      curWeight: 102.5,
+      curReps: 4,
+    );
     expect(changeLabel(l, c, fmtVal: f), '+2.5');
   });
   test('equal weight reports the rep change', () {
-    final c = topSetChange(prevWeight: 100, prevReps: 6, curWeight: 100, curReps: 7);
+    final c = topSetChange(
+      prevWeight: 100,
+      prevReps: 6,
+      curWeight: 100,
+      curReps: 7,
+    );
     expect(changeLabel(l, c, fmtVal: f), '+1 rep');
-    final d = topSetChange(prevWeight: 100, prevReps: 8, curWeight: 100, curReps: 6);
+    final d = topSetChange(
+      prevWeight: 100,
+      prevReps: 8,
+      curWeight: 100,
+      curReps: 6,
+    );
     expect(changeLabel(l, d, fmtVal: f), '−2 reps');
   });
   test('nothing moved reads "same"', () {
-    final c = topSetChange(prevWeight: 100, prevReps: 6, curWeight: 100, curReps: 6);
+    final c = topSetChange(
+      prevWeight: 100,
+      prevReps: 6,
+      curWeight: 100,
+      curReps: 6,
+    );
     expect(changeLabel(l, c, fmtVal: f), 'same');
-    final n = topSetChange(prevWeight: 100, prevReps: null, curWeight: 100, curReps: null);
+    final n = topSetChange(
+      prevWeight: 100,
+      prevReps: null,
+      curWeight: 100,
+      curReps: null,
+    );
     expect(changeLabel(l, n, fmtVal: f), 'same');
   });
   test('negatives use the real minus sign', () {
-    final c = topSetChange(prevWeight: 100, prevReps: 6, curWeight: 97.5, curReps: 6);
+    final c = topSetChange(
+      prevWeight: 100,
+      prevReps: 6,
+      curWeight: 97.5,
+      curReps: 6,
+    );
     expect(changeLabel(l, c, fmtVal: f), '−2.5');
   });
 
   test('a weight change the formatter rounds away reads "same"', () {
-    expect(changeLabel(l, const WeightChange(0.2), fmtVal: (v) => v.round().toString()),
-        'same');
+    expect(
+      changeLabel(
+        l,
+        const WeightChange(0.2),
+        fmtVal: (v) => v.round().toString(),
+      ),
+      'same',
+    );
   });
 
   group('defaultProgressExercise', () {
@@ -86,22 +122,31 @@ void main() {
   });
 
   group('progressDeltaStat', () {
-    ({String value, String? unit}) stat(List<double> series,
-            {bool reps = false, int first = 5, int last = 5, String unit = 'kg'}) =>
-        progressDeltaStat(l,
-            series: series,
-            reps: reps,
-            firstTopReps: first,
-            topReps: last,
-            unit: unit,
-            fmtVal: f);
+    ({String value, String? unit}) stat(
+      List<double> series, {
+      bool reps = false,
+      int first = 5,
+      int last = 5,
+      String unit = 'kg',
+    }) => progressDeltaStat(
+      l,
+      series: series,
+      reps: reps,
+      firstTopReps: first,
+      topReps: last,
+      unit: unit,
+      fmtVal: f,
+    );
 
     test('a weight change keeps the unit in its slot', () {
       expect(stat([100, 102.5], reps: true), (value: '+2.5', unit: 'kg'));
       expect(stat([100, 97.5]), (value: '−2.5', unit: 'kg'));
     });
     test('a rep change has no weight unit', () {
-      expect(stat([100, 100], reps: true, first: 5, last: 6), (value: '+1 rep', unit: null));
+      expect(stat([100, 100], reps: true, first: 5, last: 6), (
+        value: '+1 rep',
+        unit: null,
+      ));
     });
     test('"same" never carries a unit', () {
       expect(stat([100, 100], reps: true), (value: 'same', unit: null));
@@ -109,14 +154,17 @@ void main() {
     });
     test('a weight change that formats as "same" carries no unit either', () {
       expect(
-          progressDeltaStat(l,
-              series: [100, 100.2],
-              reps: true,
-              firstTopReps: 5,
-              topReps: 5,
-              unit: 'lb',
-              fmtVal: (v) => v.round().toString()),
-          (value: 'same', unit: null));
+        progressDeltaStat(
+          l,
+          series: [100, 100.2],
+          reps: true,
+          firstTopReps: 5,
+          topReps: 5,
+          unit: 'lb',
+          fmtVal: (v) => v.round().toString(),
+        ),
+        (value: 'same', unit: null),
+      );
     });
     test('fewer than two points shows a dash with the unit', () {
       expect(stat([100]), (value: '—', unit: 'kg'));
@@ -128,16 +176,22 @@ void main() {
   // pairs read differently from raw subtraction. Pure-function pins: the
   // Progress screen tests pin that the screen feeds them rounded values.
   group('deltas between displayed lb values', () {
-    double shown(double kg) => roundLoad(UnitService.fromKg(kg, Unit.lb), Unit.lb);
+    double shown(double kg) =>
+        roundLoad(UnitService.fromKg(kg, Unit.lb), Unit.lb);
     String fmtLb(double v) => fmtLoad(v, Unit.lb);
-    ({String value, String? unit}) stat(double fromKg, double toKg, {bool reps = false}) =>
-        progressDeltaStat(l,
-            series: [shown(fromKg), shown(toKg)],
-            reps: reps,
-            firstTopReps: 5,
-            topReps: 5,
-            unit: 'lb',
-            fmtVal: fmtLb);
+    ({String value, String? unit}) stat(
+      double fromKg,
+      double toKg, {
+      bool reps = false,
+    }) => progressDeltaStat(
+      l,
+      series: [shown(fromKg), shown(toKg)],
+      reps: reps,
+      firstTopReps: 5,
+      topReps: 5,
+      unit: 'lb',
+      fmtVal: fmtLb,
+    );
 
     test('99.75 to 100 kg both show 220 lb and read "same"', () {
       expect((shown(99.75), shown(100)), (220.0, 220.0));
@@ -155,15 +209,24 @@ void main() {
 
     test('a top set from 99.75 kg x6 to 100 kg x8 reads the rep change', () {
       final c = topSetChange(
-          prevWeight: shown(99.75), prevReps: 6, curWeight: shown(100), curReps: 8);
+        prevWeight: shown(99.75),
+        prevReps: 6,
+        curWeight: shown(100),
+        curReps: 8,
+      );
       expect(changeLabel(l, c, fmtVal: fmtLb), '+2 reps');
     });
   });
 
   group('shownProgressTarget', () {
     final catalog = [_exercise('aa'), _exercise('bb')];
-    String? shown({String? pick, String? last, List<Exercise>? cat}) => shownProgressTarget(
-        pick: pick, lastTrainedId: last, catalog: cat ?? catalog, bodyweightId: 'BW');
+    String? shown({String? pick, String? last, List<Exercise>? cat}) =>
+        shownProgressTarget(
+          pick: pick,
+          lastTrainedId: last,
+          catalog: cat ?? catalog,
+          bodyweightId: 'BW',
+        );
 
     test('no pick: the last-trained exercise is what is shown', () {
       expect(shown(last: 'bb'), 'bb');

@@ -4,14 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../data/active_session_draft.dart';
 import '../data/exercise_repository.dart';
 import '../data/session_repository.dart';
 import '../data/session_writer.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/settings_service.dart';
 import '../shell/session_launcher.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
@@ -73,7 +72,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     super.initState();
     // 1-second ticker that forces a rebuild for the elapsed counter and rest timer.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       _handleRestHaptics();
       // Screen-open rest revert: when remaining hits 0 while the screen is
       // open, stop the rest here (the OS alarm covers the backgrounded case;
@@ -86,12 +87,16 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       if (c != null && start != null && !c.callbacksFrozen) {
         final remaining =
             c.restTotal - DateTime.now().difference(start).inSeconds;
-        if (remaining <= 0) c.stopRest();
+        if (remaining <= 0) {
+          c.stopRest();
+        }
       }
       setState(() {});
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<SessionManager>().screenOpen = true;
+      if (mounted) {
+        context.read<SessionManager>().screenOpen = true;
+      }
     });
   }
 
@@ -107,13 +112,19 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   void _handleRestHaptics() {
     final c = _controller;
     final start = c?.restStart;
-    if (c == null || start == null) return;
+    if (c == null || start == null) {
+      return;
+    }
     final elapsed = DateTime.now().difference(start).inSeconds;
     final remaining = c.restTotal - elapsed;
 
     // Re-arm guards when +30s pushes remaining back above the thresholds.
-    if (remaining > 3) _tickHapticFired = false;
-    if (remaining > 0) _buzzHapticFired = false;
+    if (remaining > 3) {
+      _tickHapticFired = false;
+    }
+    if (remaining > 0) {
+      _buzzHapticFired = false;
+    }
 
     if (remaining <= 3 && remaining > 0 && !_tickHapticFired) {
       _tickHapticFired = true;
@@ -135,14 +146,21 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   // ── Back / close handling ─────────────────────────────────────────────────
 
   Future<void> _handleClose(
-      BuildContext context, ActiveSessionController controller) async {
-    final hasDone = controller.draft.blocks
-        .any((b) => b.allSets.any((s) => s.done));
+    BuildContext context,
+    ActiveSessionController controller,
+  ) async {
+    final hasDone = controller.draft.blocks.any(
+      (b) => b.allSets.any((s) => s.done),
+    );
 
     if (!hasDone) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      if (!await _discard(context, controller)) return;
-      if (context.mounted) Navigator.of(context).pop();
+      if (!await _discard(context, controller)) {
+        return;
+      }
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
       return;
     }
 
@@ -158,9 +176,15 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     );
 
     if (confirmed == true) {
-      if (context.mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      if (!context.mounted || !await _discard(context, controller)) return;
-      if (context.mounted) Navigator.of(context).pop();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+      if (!context.mounted || !await _discard(context, controller)) {
+        return;
+      }
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
     }
   }
 
@@ -168,7 +192,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   /// shown, the workout left running when nothing was discarded) if that
   /// failed — e.g. while a capture holds the source.
   Future<bool> _discard(
-      BuildContext context, ActiveSessionController controller) async {
+    BuildContext context,
+    ActiveSessionController controller,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final l = AppLocalizations.of(context);
     final danger = context.tokens.danger;
@@ -176,10 +202,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       await controller.discard();
       return true;
     } catch (_) {
-      messenger.showSnackBar(SnackBar(
-        content: Text(l.editorSaveFailed),
-        backgroundColor: danger,
-      ));
+      messenger.showSnackBar(
+        SnackBar(content: Text(l.editorSaveFailed), backgroundColor: danger),
+      );
       // Discarded in memory but its file survived: leave the empty screen.
       return !controller.hasSession;
     }
@@ -188,17 +213,16 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   // ── Finish handling ───────────────────────────────────────────────────────
 
   Future<void> _handleFinish(
-      BuildContext context, ActiveSessionController controller) async {
+    BuildContext context,
+    ActiveSessionController controller,
+  ) async {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    final draftStore = DraftStore();
     try {
       // Adopts the finish snapshot only after the transaction commits.
       final sessionId = await finishWorkout(
         controller,
         _manager,
-        transact: (body) =>
-            db.writeTransaction((tx) => body(PowerSyncTxExecutor(tx))),
-        draftStore: draftStore,
+        repository: WorkoutRepository.local(context.read<LocalDatabase>()),
       );
       if (context.mounted) {
         Navigator.of(context).pushReplacement(
@@ -211,8 +235,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text(AppLocalizations.of(context).sessionSaveFailed('$e')),
+            content: Text(AppLocalizations.of(context).sessionSaveFailed('$e')),
             backgroundColor: context.tokens.danger,
           ),
         );
@@ -235,22 +258,30 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   /// and scrolls the next live set into view.
   void _logLive(ActiveSessionController c) {
     final r = c.logLiveSet();
-    if (r == null) return;
+    if (r == null) {
+      return;
+    }
     if (r.newlyDone) {
       final top = liveTopOf(r.block);
       final isPr = !r.set.isWarmup && top.isPr && r.set.weightKg == top.topKg;
       isPr ? HapticFeedback.heavyImpact() : HapticFeedback.mediumImpact();
-      if (!r.set.isWarmup) c.startRest(_restSecondsFor(r.block));
+      if (!r.set.isWarmup) {
+        c.startRest(_restSecondsFor(r.block));
+      }
     } else {
       HapticFeedback.selectionClick();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _liveCardKey.currentContext;
-      if (ctx == null || !mounted) return;
-      Scrollable.ensureVisible(ctx,
-          duration: Motion.of(context, Motion.base),
-          curve: Motion.curve,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+      if (ctx == null || !mounted) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        ctx,
+        duration: Motion.of(context, Motion.base),
+        curve: Motion.curve,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
     });
   }
 
@@ -259,66 +290,90 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final l = AppLocalizations.of(context);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(l.sessionSetRemoved),
-        action: SnackBarAction(
-          label: l.commonUndo,
-          onPressed: () => c.restoreSet(b, s, index),
+      ..showSnackBar(
+        SnackBar(
+          content: Text(l.sessionSetRemoved),
+          action: SnackBarAction(
+            label: l.commonUndo,
+            onPressed: () => c.restoreSet(b, s, index),
+          ),
         ),
-      ));
+      );
   }
 
   Future<void> _openWorkoutMenu(ActiveSessionController c) async {
     final l = AppLocalizations.of(context);
-    final picked = await showWActionSheet<String>(context,
-        title: l.sessionWorkoutOptions,
-        actions: [
-          WSheetAction(
-              label: l.sessionFinishWorkout,
-              value: 'finish',
-              icon: WIcons.check,
-              enabled: c.canFinish),
-          WSheetAction(
-              label: l.sessionDiscardWorkout,
-              value: 'discard',
-              icon: WIcons.trash,
-              destructive: true),
-        ]);
-    if (!mounted || picked == null) return;
-    if (picked == 'finish') await _handleFinish(context, c);
-    if (picked == 'discard' && mounted) await _handleClose(context, c);
+    final picked = await showWActionSheet<String>(
+      context,
+      title: l.sessionWorkoutOptions,
+      actions: [
+        WSheetAction(
+          label: l.sessionFinishWorkout,
+          value: 'finish',
+          icon: WIcons.check,
+          enabled: c.canFinish,
+        ),
+        WSheetAction(
+          label: l.sessionDiscardWorkout,
+          value: 'discard',
+          icon: WIcons.trash,
+          destructive: true,
+        ),
+      ],
+    );
+    if (!mounted || picked == null) {
+      return;
+    }
+    if (picked == 'finish') {
+      await _handleFinish(context, c);
+    }
+    if (picked == 'discard' && mounted) {
+      await _handleClose(context, c);
+    }
   }
 
   Future<void> _openBlockMenu(ActiveSessionController c, BlockState b) async {
     final l = AppLocalizations.of(context);
     final blocks = c.draft.blocks;
-    final picked = await showWActionSheet<String>(context,
-        title: b.exercise.name,
-        actions: [
-          WSheetAction(label: l.sessionAddSet, value: 'set', icon: WIcons.plus),
-          WSheetAction(label: l.sessionAddWarmupSet, value: 'warmup', icon: WIcons.flame),
-          WSheetAction(
-              label: l.sessionMoveUp,
-              value: 'up',
-              icon: Icons.keyboard_arrow_up,
-              enabled: !identical(b, blocks.first)),
-          WSheetAction(
-              label: l.sessionMoveDown,
-              value: 'down',
-              icon: Icons.keyboard_arrow_down,
-              enabled: !identical(b, blocks.last)),
-          WSheetAction(
-              label: l.sessionReorderExercises,
-              value: 'reorder',
-              icon: Icons.drag_handle,
-              enabled: blocks.length > 1),
-          WSheetAction(
-              label: l.sessionRemoveExercise,
-              value: 'remove',
-              icon: WIcons.trash,
-              destructive: true),
-        ]);
-    if (!mounted || picked == null) return;
+    final picked = await showWActionSheet<String>(
+      context,
+      title: b.exercise.name,
+      actions: [
+        WSheetAction(label: l.sessionAddSet, value: 'set', icon: WIcons.plus),
+        WSheetAction(
+          label: l.sessionAddWarmupSet,
+          value: 'warmup',
+          icon: WIcons.flame,
+        ),
+        WSheetAction(
+          label: l.sessionMoveUp,
+          value: 'up',
+          icon: Icons.keyboard_arrow_up,
+          enabled: !identical(b, blocks.first),
+        ),
+        WSheetAction(
+          label: l.sessionMoveDown,
+          value: 'down',
+          icon: Icons.keyboard_arrow_down,
+          enabled: !identical(b, blocks.last),
+        ),
+        WSheetAction(
+          label: l.sessionReorderExercises,
+          value: 'reorder',
+          icon: Icons.drag_handle,
+          enabled: blocks.length > 1,
+        ),
+        WSheetAction(
+          label: l.sessionRemoveExercise,
+          value: 'remove',
+          icon: WIcons.trash,
+          destructive: true,
+        ),
+      ],
+    );
+    if (!mounted || picked == null) {
+      return;
+    }
     switch (picked) {
       case 'set':
         c.addSet(b);
@@ -339,7 +394,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
             confirmLabel: l.commonRemove,
             destructive: true,
           );
-          if (confirmed == true) c.removeBlock(b);
+          if (confirmed == true) {
+            c.removeBlock(b);
+          }
         } else {
           c.removeBlock(b);
         }
@@ -386,7 +443,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                   showRestRow: controller.hasLoggedSet,
                   nextLabel: restNextLabel(l, unit, controller.nextPendingSet),
                   onMinimize: () => Navigator.of(context).pop(),
-                  onMenu: () => _openWorkoutMenu(controller),
+                  onMenu: () {
+                    if (!controller.finishPending) {
+                      _openWorkoutMenu(controller);
+                    }
+                  },
                   onAdd30s: () {
                     HapticFeedback.lightImpact();
                     controller.addRestTime(30);
@@ -401,72 +462,91 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
             ),
           ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-              children: [
-                if (draft.blocks.isEmpty) ...[
-                  const SizedBox(height: 40),
-                  _EmptySessionPlaceholder(tokens: tokens, l: l),
-                  const SizedBox(height: 20),
-                ],
-                for (final block in draft.blocks)
-                  Reveal(
-                    key: ValueKey(block.exercise.id),
-                    child: ExerciseBlock(
-                      block: block,
-                      unit: unit,
-                      liveSetId: live?.set.id,
-                      rirPromptSetId: controller.rirPromptSetId,
-                      liveCardKey: _liveCardKey,
-                      onLongPressHeader: draft.blocks.length < 2
-                          ? null
-                          : () {
-                              HapticFeedback.mediumImpact();
-                              showReorderExercisesSheet(context, controller: controller);
-                            },
-                      onFocusSet: (_, s) {
-                        // Settle in-flight edits first (same rule as the log
-                        // bar): a gliding ruler would otherwise keep writing
-                        // into the set being left.
-                        commitPendingInput();
-                        controller.focusSet(s);
-                      },
-                      onSetChanged: (_, __) => controller.markChanged(),
-                      onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
-                      onMarkNotDone: (_, s) => controller.markNotDone(s),
-                      onRemoveSet: (b, s) => _removeSet(controller, b, s),
-                      onMenu: (b) => _openBlockMenu(controller, b),
+            child: AbsorbPointer(
+              absorbing: controller.finishPending,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                children: [
+                  if (draft.blocks.isEmpty) ...[
+                    const SizedBox(height: 40),
+                    _EmptySessionPlaceholder(tokens: tokens, l: l),
+                    const SizedBox(height: 20),
+                  ],
+                  for (final block in draft.blocks)
+                    Reveal(
+                      key: ValueKey(block.exercise.id),
+                      child: ExerciseBlock(
+                        block: block,
+                        unit: unit,
+                        liveSetId: live?.set.id,
+                        rirPromptSetId: controller.rirPromptSetId,
+                        liveCardKey: _liveCardKey,
+                        onLongPressHeader: draft.blocks.length < 2
+                            ? null
+                            : () {
+                                HapticFeedback.mediumImpact();
+                                showReorderExercisesSheet(
+                                  context,
+                                  controller: controller,
+                                );
+                              },
+                        onFocusSet: (_, s) {
+                          // Settle in-flight edits first (same rule as the log
+                          // bar): a gliding ruler would otherwise keep writing
+                          // into the set being left.
+                          commitPendingInput();
+                          controller.focusSet(s);
+                        },
+                        onSetChanged: (_, __) => controller.markChanged(),
+                        onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
+                        onMarkNotDone: (_, s) => controller.markNotDone(s),
+                        onRemoveSet: (b, s) => _removeSet(controller, b, s),
+                        onMenu: (b) => _openBlockMenu(controller, b),
+                      ),
                     ),
+                  const SizedBox(height: 10),
+                  _DashedButton(
+                    height: 48,
+                    icon: WIcons.plus,
+                    label: l.sessionAddExercise,
+                    tokens: tokens,
+                    onTap: () async {
+                      final repo = ExerciseRepository.local(
+                        context.read<LocalDatabase>(),
+                      );
+                      final sessionRepo = SessionRepository.local(
+                        context.read<LocalDatabase>(),
+                      );
+                      // Exercises already in the workout aren't offered again.
+                      final all = [
+                        for (final e in await repo.all())
+                          if (!controller.hasExercise(e.id)) e,
+                      ];
+                      if (!context.mounted) {
+                        return;
+                      }
+                      final picked = await showExercisePicker(
+                        context,
+                        exercises: all,
+                      );
+                      if (picked != null) {
+                        await controller.addBlock(
+                          picked,
+                          sessionRepo: sessionRepo,
+                        );
+                      }
+                    },
                   ),
-                const SizedBox(height: 10),
-                _DashedButton(
-                  height: 48,
-                  icon: WIcons.plus,
-                  label: l.sessionAddExercise,
-                  tokens: tokens,
-                  onTap: () async {
-                    final repo = ExerciseRepository(db);
-                    // Exercises already in the workout aren't offered again.
-                    final all = [
-                      for (final e in await repo.all())
-                        if (!controller.hasExercise(e.id)) e,
-                    ];
-                    if (!context.mounted) return;
-                    final picked = await showExercisePicker(context, exercises: all);
-                    if (picked != null) {
-                      await controller.addBlock(picked, sessionRepo: SessionRepository(db));
-                    }
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
       ),
       // In bottomNavigationBar (not the body) so the undo snackbar floats above it.
       bottomNavigationBar: LogSetBar(
-        live: live,
-        canFinish: controller.canFinish,
+        live: controller.finishPending ? null : live,
+        canFinish: controller.canFinish || controller.finishPending,
         unit: unit,
         onLog: () => _logLive(controller),
         onFinish: () => _handleFinish(context, controller),
@@ -502,7 +582,10 @@ class _EmptySessionPlaceholder extends StatelessWidget {
         Text(
           l.sessionEmptyTitle,
           style: WorkoutType.display(
-              size: 18, weight: FontWeight.w700, color: tokens.text),
+            size: 18,
+            weight: FontWeight.w700,
+            color: tokens.text,
+          ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -553,9 +636,10 @@ class _DashedButton extends StatelessWidget {
               child: FitLabel(
                 label,
                 style: WorkoutType.mono(
-                    size: 13,
-                    weight: FontWeight.w600,
-                    color: tokens.dim),
+                  size: 13,
+                  weight: FontWeight.w600,
+                  color: tokens.dim,
+                ),
               ),
             ),
           ],
@@ -584,7 +668,7 @@ class CaptureHoldBanner extends StatelessWidget {
       child: Semantics(
         liveRegion: true,
         child: Text(
-          AppLocalizations.of(context).captureHoldWorkoutBanner,
+          AppLocalizations.of(context).alkionStoreRecoveryBody,
           style: WorkoutType.body(size: 13, color: tokens.text),
         ),
       ),

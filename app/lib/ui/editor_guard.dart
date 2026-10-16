@@ -33,12 +33,14 @@ class DaySnapshot {
     required this.name,
     required this.focus,
     required this.weekday,
+    this.notes,
     required this.slots,
   });
 
   final String name;
   final String? focus;
   final int? weekday;
+  final String? notes;
   final List<SlotValues> slots;
 
   // Element-wise: a record or class holding a List compares it by identity,
@@ -49,10 +51,12 @@ class DaySnapshot {
       other.name == name &&
       other.focus == focus &&
       other.weekday == weekday &&
+      other.notes == notes &&
       listEquals(other.slots, slots);
 
   @override
-  int get hashCode => Object.hash(name, focus, weekday, Object.hashAll(slots));
+  int get hashCode =>
+      Object.hash(name, focus, weekday, notes, Object.hashAll(slots));
 
   @override
   String toString() =>
@@ -67,6 +71,7 @@ DaySnapshot daySnapshot(DayDraft d) {
     name: d.name.trim(),
     focus: focus == null || focus.isEmpty ? null : focus,
     weekday: d.weekday,
+    notes: d.notes,
     slots: List.unmodifiable([
       for (final s in d.slots)
         (
@@ -138,23 +143,24 @@ class ExerciseSnapshot {
 
   @override
   int get hashCode => Object.hash(
-        name,
-        muscleGroup,
-        equip,
-        compound,
-        baseWeightKg,
-        plateStepKg,
-        repLow,
-        repHigh,
-        workingSets,
-        warmupSets,
-        rirLow,
-        rirHigh,
-        restSeconds,
-      );
+    name,
+    muscleGroup,
+    equip,
+    compound,
+    baseWeightKg,
+    plateStepKg,
+    repLow,
+    repHigh,
+    workingSets,
+    warmupSets,
+    rirLow,
+    rirHigh,
+    restSeconds,
+  );
 
   @override
-  String toString() => 'ExerciseSnapshot($name, $muscleGroup, equip: $equip, '
+  String toString() =>
+      'ExerciseSnapshot($name, $muscleGroup, equip: $equip, '
       'compound: $compound, base: $baseWeightKg, step: $plateStepKg, '
       'reps: $repLow-$repHigh, sets: $workingSets+$warmupSets, '
       'rir: $rirLow-$rirHigh, rest: $restSeconds)';
@@ -172,8 +178,13 @@ ExerciseSnapshot exerciseSnapshot(ExerciseDraft d) {
     muscleGroup: d.muscleGroup,
     equip: equip == null || equip.isEmpty ? null : equip,
     compound: d.compound,
-    baseWeightKg: d.baseWeightKg?.toStringAsFixed(2),
-    plateStepKg: d.plateStepKg.toStringAsFixed(2),
+    baseWeightKg: d.changedFields?.contains('base_weight_kg') == true
+        ? d.baseWeightKg?.toStringAsFixed(2)
+        : d.originalBaseWeightEvidence?.raw ??
+              d.baseWeightKg?.toStringAsFixed(2),
+    plateStepKg: d.changedFields?.contains('plate_step_kg') == true
+        ? d.plateStepKg.toStringAsFixed(2)
+        : d.originalPlateStepEvidence?.raw ?? d.plateStepKg.toStringAsFixed(2),
     repLow: d.defaultRepLow,
     repHigh: d.defaultRepHigh,
     workingSets: d.defaultWorkingSets,

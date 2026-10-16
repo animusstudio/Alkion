@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/active_session_draft.dart';
-import 'package:workout_tracker/session/active_session_controller.dart';
+import 'package:alkion/data/active_session_draft.dart';
+import 'package:alkion/session/active_session_controller.dart';
 
 /// In-memory DraftStore double (DraftStore methods are non-final).
 class FakeDraftStore extends DraftStore {
@@ -80,7 +80,9 @@ void main() {
       c.markChanged();
       expect(store.saveCount, 0); // not yet — debounced
       await Future<void>.delayed(
-          ActiveSessionController.saveDebounce + const Duration(milliseconds: 200));
+        ActiveSessionController.saveDebounce +
+            const Duration(milliseconds: 200),
+      );
       expect(store.saveCount, 1);
       expect(store.saved, 'Custom');
     });
@@ -92,7 +94,9 @@ void main() {
       c.markChanged();
       await c.discard();
       await Future<void>.delayed(
-          ActiveSessionController.saveDebounce + const Duration(milliseconds: 200));
+        ActiveSessionController.saveDebounce +
+            const Duration(milliseconds: 200),
+      );
       expect(store.saveCount, 0); // pending save cancelled
       expect(store.clearCount, 1);
       expect(c.hasSession, isFalse);
@@ -103,7 +107,9 @@ void main() {
       c.seedEmpty(name: 'Custom', focus: '');
       c.markChanged();
       await Future<void>.delayed(
-          ActiveSessionController.saveDebounce + const Duration(milliseconds: 200));
+        ActiveSessionController.saveDebounce +
+            const Duration(milliseconds: 200),
+      );
       expect(c.hasSession, isTrue);
     });
   });

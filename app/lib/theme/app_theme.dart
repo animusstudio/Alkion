@@ -28,11 +28,14 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: tokens.accentText),
     ),
-    progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.accentText),
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: tokens.accentText,
+    ),
     inputDecorationTheme: InputDecorationTheme(
       floatingLabelStyle: WidgetStateTextStyle.resolveWith(
         (states) => TextStyle(
-          color: states.contains(WidgetState.focused) &&
+          color:
+              states.contains(WidgetState.focused) &&
                   !states.contains(WidgetState.error)
               ? tokens.accentText
               : null,
@@ -43,7 +46,8 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
       border: WidgetStateInputBorder.resolveWith(
         (states) => OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.radius),
-          borderSide: states.contains(WidgetState.focused) &&
+          borderSide:
+              states.contains(WidgetState.focused) &&
                   !states.contains(WidgetState.error)
               ? BorderSide(color: tokens.accentText, width: 2)
               : BorderSide(color: tokens.lineStrong),

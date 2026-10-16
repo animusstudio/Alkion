@@ -1,0 +1,29 @@
+{
+  "format": "reps-export",
+  "version": 1,
+  "kind": "full",
+  "exported_at": "2026-10-02T09:00:00Z",
+  "settings": {"unit": "kg", "mode": "dark", "accent": "#FFC2F53A", "profile_name": "Template Lifter", "rest_compound_seconds": 180, "rest_isolation_seconds": 90, "locale": "it"},
+  "data": {
+    "exercises": [
+      {"id": "tmpl-ex", "name": "Shared Squat", "slug": "shared-squat", "muscle_group": "legs", "equip": "barbell", "compound": 1, "base_weight_kg": "20", "plate_step_kg": "2.5", "default_rep_low": 5, "default_rep_high": 5, "default_warmup_sets": 2, "default_working_sets": 5, "default_rir_low": 1, "default_rir_high": 1, "default_rest_seconds": 180, "is_template": 1, "created_by": null, "created_at": "2025-12-01T00:00:00Z"},
+      {"id": "owned-ex", "name": "Shared Squat", "slug": "shared-squat", "muscle_group": "legs", "equip": "barbell", "compound": 1, "base_weight_kg": "20", "plate_step_kg": "2.5", "default_rep_low": 5, "default_rep_high": 5, "default_warmup_sets": 2, "default_working_sets": 5, "default_rir_low": 1, "default_rir_high": 1, "default_rest_seconds": 180, "is_template": 0, "created_at": "2025-12-01T00:00:00Z"}
+    ],
+    "day_templates": [
+      {"id": "tmpl-day", "slug": "legs", "name": "Legs", "notes": null, "position": 1, "is_template": 1, "created_by": null, "created_at": "2025-12-01T00:00:00Z", "focus": "legs", "scheduled_weekday": null},
+      {"id": "owned-day", "slug": "legs", "name": "Legs", "notes": "Owned copy", "position": 1, "is_template": 0, "created_at": "2025-12-01T00:00:00Z", "focus": "legs", "scheduled_weekday": 4}
+    ],
+    "day_template_items": [
+      {"id": "tmpl-slot", "day_template_id": "tmpl-day", "exercise_id": "tmpl-ex", "position": 1, "target_warmup_sets": null, "target_working_sets": null, "target_rep_low": null, "target_rep_high": null, "target_rir_low": null, "target_rir_high": null, "is_template": 1, "created_by": null, "created_at": "2025-12-01T00:00:00Z"},
+      {"id": "owned-slot", "day_template_id": "owned-day", "exercise_id": "owned-ex", "position": 1, "target_warmup_sets": 1, "target_working_sets": 4, "target_rep_low": 5, "target_rep_high": 6, "target_rir_low": 1, "target_rir_high": 2, "is_template": 0, "created_at": "2025-12-01T00:00:00Z"}
+    ],
+    "sessions": [
+      {"id": "tmpl-session", "date": "2026-01-10", "split_label": "Legs", "notes": null, "day_template_id": "owned-day", "created_at": "2026-01-10T18:00:00+01:00", "duration_min": 45}
+    ],
+    "sets": [
+      {"id": "tmpl-set", "session_id": "tmpl-session", "exercise_id": "owned-ex", "set_number": 1, "weight_kg": "100.00", "reps": 5, "rir": 1, "is_warmup": 0, "is_top_set": 1, "is_pr": 0, "created_at": "2026-01-10T18:10:00+01:00", "updated_at": null}
+    ],
+    "bodyweight_logs": [],
+    "muscle_targets": []
+  }
+}

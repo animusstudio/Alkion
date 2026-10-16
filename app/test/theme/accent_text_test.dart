@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/theme/tokens.dart';
+import 'package:alkion/theme/tokens.dart';
 
 void main() {
-  List<Color> surfaces(WorkoutTokens t) => [t.bg, t.surface, t.surface2, t.surface3];
+  List<Color> surfaces(WorkoutTokens t) => [
+    t.bg,
+    t.surface,
+    t.surface2,
+    t.surface3,
+  ];
 
   test('contrastRatio matches WCAG for black on white', () {
     expect(contrastRatio(Colors.black, Colors.white), closeTo(21, 0.01));
@@ -13,7 +18,11 @@ void main() {
     test('light: accentText ≥ 4.5:1 on every surface for $accent', () {
       final t = WorkoutTokens.light(accent);
       for (final s in surfaces(t)) {
-        expect(contrastRatio(t.accentText, s), greaterThanOrEqualTo(4.5), reason: '$s');
+        expect(
+          contrastRatio(t.accentText, s),
+          greaterThanOrEqualTo(4.5),
+          reason: '$s',
+        );
       }
       expect(t.accent, accent, reason: 'fills keep the true accent');
     });
@@ -22,7 +31,11 @@ void main() {
       final t = WorkoutTokens.dark(accent);
       expect(t.accentText, accent);
       for (final s in surfaces(t)) {
-        expect(contrastRatio(t.accentText, s), greaterThanOrEqualTo(4.5), reason: '$s');
+        expect(
+          contrastRatio(t.accentText, s),
+          greaterThanOrEqualTo(4.5),
+          reason: '$s',
+        );
       }
     });
   }

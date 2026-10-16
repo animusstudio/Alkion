@@ -1,6 +1,5 @@
-import 'package:powersync/powersync.dart';
-
-import '../capture/source_write_gate.dart';
+import '../store/local_store.dart';
+import 'session_writer.dart';
 
 /// The id of the heaviest non-warmup set among [groupRows] (all from ONE
 /// (session,exercise) group), tie-break weight DESC (numeric), reps DESC,
@@ -10,12 +9,19 @@ import '../capture/source_write_gate.dart';
 String? heaviestNonWarmupId(List<Map<String, Object?>> groupRows) {
   Map<String, Object?>? best;
   for (final r in groupRows) {
-    if ((r['is_warmup'] as int? ?? 0) != 0) continue;
-    if (best == null) { best = r; continue; }
+    if ((r['is_warmup'] as int? ?? 0) != 0) {
+      continue;
+    }
+    if (best == null) {
+      best = r;
+      continue;
+    }
     final rw = double.tryParse(r['weight_kg']?.toString() ?? '') ?? 0;
     final bw = double.tryParse(best['weight_kg']?.toString() ?? '') ?? 0;
-    final rr = r['reps'] as int? ?? 0, br = best['reps'] as int? ?? 0;
-    final rn = r['set_number'] as int? ?? 0, bn = best['set_number'] as int? ?? 0;
+    final rr = r['reps'] is int ? r['reps'] as int : 0,
+        br = best['reps'] is int ? best['reps'] as int : 0;
+    final rn = r['set_number'] as int? ?? 0,
+        bn = best['set_number'] as int? ?? 0;
     final rid = r['id'] as String, bid = best['id'] as String;
     if (rw > bw ||
         (rw == bw && rr > br) ||
@@ -40,10 +46,16 @@ Set<String> topSetIdsToStamp(List<Map<String, Object?>> rows) {
   final out = <String>{};
   for (final g in groups.values) {
     final working = g.where((r) => (r['is_warmup'] as int? ?? 0) == 0).toList();
-    if (working.isEmpty) continue;
-    if (working.any((r) => (r['is_top_set'] as int? ?? 0) == 1)) continue;
+    if (working.isEmpty) {
+      continue;
+    }
+    if (working.any((r) => (r['is_top_set'] as int? ?? 0) == 1)) {
+      continue;
+    }
     final id = heaviestNonWarmupId(working);
-    if (id != null) out.add(id);
+    if (id != null) {
+      out.add(id);
+    }
   }
   return out;
 }
@@ -51,15 +63,28 @@ Set<String> topSetIdsToStamp(List<Map<String, Object?>> rows) {
 /// One-time, idempotent backfill of is_top_set for existing local sessions
 /// (no-op once every group already has a top set). Safe to run every launch.
 /// One source operation (read and write); [parent] when part of a larger one.
-Future<void> backfillTopSets(PowerSyncDatabase db, {SourceTicket? parent}) =>
-    runSourceWrite('boot.backfill_top_sets', (_) async {
-      final rows = await db.getAll(
-        'SELECT id, session_id, exercise_id, weight_kg, reps, set_number, is_warmup, is_top_set FROM sets');
-      final ids = topSetIdsToStamp(rows.map((r) => Map<String, Object?>.from(r)).toList());
-      if (ids.isEmpty) return;
-      await db.writeTransaction((tx) async {
-        for (final id in ids) {
-          await tx.execute('UPDATE sets SET is_top_set = 1 WHERE id = ?', [id]);
-        }
-      });
-    }, parent: parent);
+Future<void> backfillTopSets(LocalDatabase db) => db.writeTransaction((
+  tx,
+) async {
+  final rows = await tx.getAll(
+    'SELECT * FROM reps_compat1_legacy_local WHERE deleted=0',
+  );
+  final ids = topSetIdsToStamp(
+    rows.map((r) => Map<String, Object?>.from(r)).toList(),
+  );
+  for (final row in rows.where((r) => ids.contains(r['id']))) {
+    final derived = await tx.getOptional(
+      'SELECT result_id FROM derived_results WHERE profile_id=? AND result_id=?',
+      [tx.profileId, 'workout-set:${row['id']}:${row['revision']}'],
+    );
+    if (derived == null) {
+      await writeCompatibleSet(
+        tx,
+        row['id'] as String,
+        row['revision'] as int,
+        top: 1,
+        pr: row['is_pr'] as int? ?? 0,
+      );
+    }
+  }
+});

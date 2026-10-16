@@ -25,8 +25,7 @@ class PRBadge extends StatefulWidget {
   State<PRBadge> createState() => _PRBadgeState();
 }
 
-class _PRBadgeState extends State<PRBadge>
-    with TickerProviderStateMixin {
+class _PRBadgeState extends State<PRBadge> with TickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 400),
@@ -37,8 +36,10 @@ class _PRBadgeState extends State<PRBadge>
     vsync: this,
     duration: const Duration(milliseconds: 600),
   );
-  late final Animation<double> _sweep =
-      CurvedAnimation(parent: _sweepC, curve: Motion.curve);
+  late final Animation<double> _sweep = CurvedAnimation(
+    parent: _sweepC,
+    curve: Motion.curve,
+  );
 
   late final Animation<double> _scale = TweenSequence<double>([
     TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.12), weight: 1),
@@ -84,10 +85,7 @@ class _PRBadgeState extends State<PRBadge>
         horizontal: widget.small ? 5 : 7,
         vertical: widget.small ? 2 : 3,
       ),
-      decoration: BoxDecoration(
-        color: tokens.accent,
-        borderRadius: radius,
-      ),
+      decoration: BoxDecoration(color: tokens.accent, borderRadius: radius),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

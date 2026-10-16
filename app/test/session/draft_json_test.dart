@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/active_session_draft.dart';
-import 'package:workout_tracker/data/finished_session_store.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/session/active_session_controller.dart';
+import 'package:alkion/data/active_session_draft.dart';
+import 'package:alkion/data/finished_session_store.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/session/active_session_controller.dart';
 
 BlockState _block({int? restSeconds}) {
   final ex = Exercise(
@@ -29,11 +29,32 @@ BlockState _block({int? restSeconds}) {
       rirHigh: 2,
     ),
     warmupSets: [
-      SetState(id: 'w1', weightKg: 40, reps: 8, rir: null, isWarmup: true, done: true),
+      SetState(
+        id: 'w1',
+        weightKg: 40,
+        reps: 8,
+        rir: null,
+        isWarmup: true,
+        done: true,
+      ),
     ],
     workingSets: [
-      SetState(id: 's1', weightKg: 60, reps: 5, rir: 1, isWarmup: false, done: true),
-      SetState(id: 's2', weightKg: 60, reps: 5, rir: 1, isWarmup: false, done: false),
+      SetState(
+        id: 's1',
+        weightKg: 60,
+        reps: 5,
+        rir: 1,
+        isWarmup: false,
+        done: true,
+      ),
+      SetState(
+        id: 's2',
+        weightKg: 60,
+        reps: 5,
+        rir: 1,
+        isWarmup: false,
+        done: false,
+      ),
     ],
     expanded: true,
     bestKg: 57.5,
@@ -42,20 +63,24 @@ BlockState _block({int? restSeconds}) {
 }
 
 SessionDraft _draft({String? sessionId, String? sessionDate}) => SessionDraft(
-      templateId: 'd1',
-      name: 'Upper A',
-      focus: 'Push',
-      startedAt: DateTime(2026, 9, 23, 9, 0),
-      blocks: [_block(restSeconds: 150)],
-      sessionId: sessionId,
-      sessionDate: sessionDate,
-    );
+  templateId: 'd1',
+  name: 'Upper A',
+  focus: 'Push',
+  startedAt: DateTime(2026, 9, 23, 9, 0),
+  blocks: [_block(restSeconds: 150)],
+  sessionId: sessionId,
+  sessionDate: sessionDate,
+);
 
 void main() {
   group('SessionDraft JSON', () {
     test('sessionId and sessionDate round-trip', () {
       final back = SessionDraft.fromJson(
-        jsonDecode(jsonEncode(_draft(sessionId: 'S', sessionDate: '2026-09-22').toJson()))
+        jsonDecode(
+              jsonEncode(
+                _draft(sessionId: 'S', sessionDate: '2026-09-22').toJson(),
+              ),
+            )
             as Map<String, dynamic>,
       );
       expect(back.sessionId, 'S');
@@ -101,7 +126,9 @@ void main() {
     });
 
     test('decodes a valid draft', () {
-      final d = DraftStore.tryDecode(jsonEncode(_draft(sessionId: 'S').toJson()));
+      final d = DraftStore.tryDecode(
+        jsonEncode(_draft(sessionId: 'S').toJson()),
+      );
       expect(d?.name, 'Upper A');
       expect(d?.sessionId, 'S');
     });
@@ -109,12 +136,12 @@ void main() {
 
   group('FinishedSession JSON', () {
     FinishedSession snapshot() => FinishedSession(
-          sessionId: 'S',
-          sessionDate: '2026-09-23',
-          finishedAt: DateTime(2026, 9, 23, 10, 5),
-          elapsedSeconds: 3900,
-          draft: _draft(),
-        );
+      sessionId: 'S',
+      sessionDate: '2026-09-23',
+      finishedAt: DateTime(2026, 9, 23, 10, 5),
+      elapsedSeconds: 3900,
+      draft: _draft(),
+    );
 
     test('round-trips', () {
       final back = FinishedSession.tryDecode(jsonEncode(snapshot().toJson()))!;
@@ -130,7 +157,9 @@ void main() {
       expect(FinishedSession.tryDecode('[]'), isNull);
       expect(FinishedSession.tryDecode('x'), isNull);
       expect(
-        FinishedSession.tryDecode(jsonEncode({...snapshot().toJson(), 'draft': 3})),
+        FinishedSession.tryDecode(
+          jsonEncode({...snapshot().toJson(), 'draft': 3}),
+        ),
         isNull,
       );
     });

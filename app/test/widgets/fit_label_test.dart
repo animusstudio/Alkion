@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/theme/typography.dart';
-import 'package:workout_tracker/widgets/fit_label.dart';
+import 'package:alkion/theme/typography.dart';
+import 'package:alkion/widgets/fit_label.dart';
 
 import '../support/app_fonts.dart';
 import '../support/layout_expect.dart';
@@ -411,37 +411,41 @@ void main() {
   });
 
   group('paint', () {
-    testWidgets('a box shorter than one line clips the text to itself',
-        (tester) async {
+    testWidgets('a box shorter than one line clips the text to itself', (
+      tester,
+    ) async {
       final frame = GlobalKey();
-      await tester.pumpWidget(MediaQuery(
-        data: const MediaQueryData(),
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: RepaintBoundary(
-              key: frame,
-              child: Container(
-                color: Colors.black,
-                width: 200,
-                height: 100,
-                alignment: Alignment.topLeft,
-                child: const SizedBox(
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(),
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: RepaintBoundary(
+                key: frame,
+                child: Container(
+                  color: Colors.black,
                   width: 200,
-                  height: 5,
-                  child: FitLabel(
-                    'WWWW',
-                    style: TextStyle(fontSize: 40, color: Colors.white),
+                  height: 100,
+                  alignment: Alignment.topLeft,
+                  child: const SizedBox(
+                    width: 200,
+                    height: 5,
+                    child: FitLabel(
+                      'WWWW',
+                      style: TextStyle(fontSize: 40, color: Colors.white),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ),
-      ));
-      final boundary =
-          tester.renderObject<RenderRepaintBoundary>(find.byKey(frame));
+      );
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(frame),
+      );
       final image = (await tester.runAsync(() => boundary.toImage()))!;
       final bytes = (await tester.runAsync(() => image.toByteData()))!;
       var inside = 0;
@@ -449,7 +453,8 @@ void main() {
       for (var y = 0; y < image.height; y++) {
         for (var x = 0; x < image.width; x++) {
           final o = (y * image.width + x) * 4;
-          final lit = bytes.getUint8(o) +
+          final lit =
+              bytes.getUint8(o) +
                   bytes.getUint8(o + 1) +
                   bytes.getUint8(o + 2) >
               0;

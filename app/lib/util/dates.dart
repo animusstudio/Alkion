@@ -3,26 +3,33 @@
 // Dart's DateTime.weekday: 1=Mon, 2=Tue, ..., 7=Sun  (ISO-8601).
 
 import 'package:intl/intl.dart';
+import 'package:flutter/widgets.dart' show Locale;
+import '../domain/evidence.dart' show CalendarDay;
 
 import '../l10n/app_localizations.dart';
 
-/// Returns the Monday 00:00 of the ISO week containing [d].
-///
-/// Dart weekday: 1=Mon .. 7=Sun → subtract (weekday-1) days.
-DateTime weekStart(DateTime d) {
-  final daysFromMonday = d.weekday - 1; // 0 for Mon, 6 for Sun
-  return DateTime(d.year, d.month, d.day - daysFromMonday);
+export 'calendar_keys.dart';
+
+/// Strict calendar qualification for retained date views. This local midnight
+/// is a formatting/calendar value, never an inferred historical instant.
+DateTime? qualifiedCalendarDate(String? iso) {
+  if (iso == null) {
+    return null;
+  }
+  try {
+    CalendarDay(iso);
+    return DateTime.parse('${iso}T00:00:00');
+  } catch (_) {
+    return null;
+  }
 }
 
-/// Formats [d] as a zero-padded ISO-8601 date string (`yyyy-MM-dd`).
-///
-/// MACHINE format — storage keys and inclusive string-compare range queries
-/// depend on this exact shape. Never localize it.
-String isoDate(DateTime d) {
-  final y = d.year.toString().padLeft(4, '0');
-  final m = d.month.toString().padLeft(2, '0');
-  final day = d.day.toString().padLeft(2, '0');
-  return '$y-$m-$day';
+String _unavailableDate(String iso, String localeName) {
+  final code = localeName.split(RegExp('[-_]')).first;
+  final l = lookupAppLocalizations(
+    Locale({'en', 'de', 'it', 'es'}.contains(code) ? code : 'en'),
+  );
+  return l.alkionDateUnavailable(iso.isEmpty ? '—' : iso);
 }
 
 /// A locale-independent bucket describing how long ago a date was.
@@ -43,7 +50,10 @@ typedef RelativeDay = ({String kind, int count});
 RelativeDay daysAgo(String iso, {DateTime? now}) {
   final today = now ?? DateTime.now();
   final todayDate = DateTime(today.year, today.month, today.day);
-  final d = DateTime.parse('${iso}T00:00:00');
+  final d = qualifiedCalendarDate(iso);
+  if (d == null) {
+    return (kind: 'unavailable', count: 0);
+  }
   final pastDate = DateTime(d.year, d.month, d.day);
   final diff = todayDate.difference(pastDate).inDays;
   if (diff <= 0) return (kind: 'today', count: 0);
@@ -61,6 +71,8 @@ String localizedDaysAgo(AppLocalizations l, String iso, {DateTime? now}) {
       return l.sessionToday;
     case 'yesterday':
       return l.sessionYesterday;
+    case 'unavailable':
+      return l.alkionDateUnavailable(iso.isEmpty ? '—' : iso);
     case 'weeks':
       return l.sessionWeeksAgo(r.count);
     default:
@@ -89,7 +101,10 @@ String weekdayShort(int mon0, String localeName) {
 /// hand-rolled formatter); only the weekday and month NAMES are localized via
 /// [localeName] (`'en'` / `'it'` / `'de'` / `'es'`).
 String fmtDate(String iso, String localeName, {bool weekday = false}) {
-  final d = DateTime.parse('${iso}T00:00:00');
+  final d = qualifiedCalendarDate(iso);
+  if (d == null) {
+    return _unavailableDate(iso, localeName);
+  }
   final pattern = weekday ? 'E d MMM' : 'd MMM';
   return DateFormat(pattern, localeName).format(d);
 }
@@ -103,7 +118,7 @@ String fmtDate(String iso, String localeName, {bool weekday = false}) {
 /// runs during build, where a throw renders the gray ErrorWidget.
 String? fmtMonthYear(String? iso, String localeName) {
   if (iso == null || iso.isEmpty) return null;
-  final d = DateTime.tryParse('${iso}T00:00:00');
+  final d = qualifiedCalendarDate(iso);
   if (d == null) return null;
   return DateFormat.yMMM(localeName).format(d);
 }

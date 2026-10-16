@@ -92,20 +92,22 @@ class WorkoutTokens extends ThemeExtension<WorkoutTokens> {
 
   // ── dark palette ────────────────────────────────────────────────────────────
   factory WorkoutTokens.dark(Color accent) => WorkoutTokens(
-        bg: const Color(0xFF0b0b0c),
-        surface: const Color(0xFF131316),
-        surface2: const Color(0xFF191920),
-        surface3: const Color(0xFF262630),
-        line: const Color(0x12ffffff), // rgba(255,255,255,0.07) ≈ 0x12 (18/255)
-        lineStrong: const Color(0x24ffffff), // rgba(255,255,255,0.14) ≈ 0x24 (36/255)
-        text: const Color(0xFFf3f3f1),
-        dim: const Color(0x9Effffff), // rgba(255,255,255,0.62) ≈ 0x9E (158/255)
-        faint: const Color(0x61ffffff), // rgba(255,255,255,0.38) ≈ 0x61 (97/255)
-        accent: accent,
-        accentText: accent,
-        accentInk: _accentInk,
-        danger: const Color(0xFFff6b5e),
-      );
+    bg: const Color(0xFF0b0b0c),
+    surface: const Color(0xFF131316),
+    surface2: const Color(0xFF191920),
+    surface3: const Color(0xFF262630),
+    line: const Color(0x12ffffff), // rgba(255,255,255,0.07) ≈ 0x12 (18/255)
+    lineStrong: const Color(
+      0x24ffffff,
+    ), // rgba(255,255,255,0.14) ≈ 0x24 (36/255)
+    text: const Color(0xFFf3f3f1),
+    dim: const Color(0x9Effffff), // rgba(255,255,255,0.62) ≈ 0x9E (158/255)
+    faint: const Color(0x61ffffff), // rgba(255,255,255,0.38) ≈ 0x61 (97/255)
+    accent: accent,
+    accentText: accent,
+    accentInk: _accentInk,
+    danger: const Color(0xFFff6b5e),
+  );
 
   // ── light palette ───────────────────────────────────────────────────────────
   factory WorkoutTokens.light(Color accent) {

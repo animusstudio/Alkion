@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/bodyweight_repository.dart';
+import 'package:alkion/data/bodyweight_repository.dart';
 
 // We test bodyweightUpsertOp directly: it is a pure top-level function and
 // does not need a real db.  FakeExec only has `execute` (no `getOptional`),

@@ -62,10 +62,7 @@ class StatTile extends StatelessWidget {
     )..layout();
     final labelLineHeight = labelPainter.height;
     labelPainter.dispose();
-    final subStyle = WorkoutType.mono(
-      size: 10.5,
-      color: tokens.dim,
-    );
+    final subStyle = WorkoutType.mono(size: 10.5, color: tokens.dim);
 
     Widget content = Container(
       decoration: BoxDecoration(
@@ -73,10 +70,7 @@ class StatTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.radius),
         border: Border.all(color: tokens.line),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 13,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -101,31 +95,28 @@ class StatTile extends StatelessWidget {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: WorkoutType.display(
-                  size: 27,
-                  weight: FontWeight.w700,
-                  color: tokens.text,
-                  letterSpacing: 27 * -0.02,
-                ),
-              ),
-              if (unit != null) ...[
-                const SizedBox(width: 3),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
                 Text(
-                  unit!,
-                  style: WorkoutType.mono(
-                    size: 12,
-                    color: tokens.dim,
+                  value,
+                  style: WorkoutType.display(
+                    size: 27,
+                    weight: FontWeight.w700,
+                    color: tokens.text,
+                    letterSpacing: 27 * -0.02,
                   ),
                 ),
+                if (unit != null) ...[
+                  const SizedBox(width: 3),
+                  Text(
+                    unit!,
+                    style: WorkoutType.mono(size: 12, color: tokens.dim),
+                  ),
+                ],
               ],
-            ],
-          ),
+            ),
           ),
           // Spark or sub label
           if (spark != null) ...[

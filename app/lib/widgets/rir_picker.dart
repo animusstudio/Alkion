@@ -84,11 +84,11 @@ class RirPicker extends StatelessWidget {
     }
 
     Widget row(int first, int last) => Row(
-          children: [
-            for (var r = first; r <= last; r++)
-              Expanded(child: chip(r, lastInRow: r == last)),
-          ],
-        );
+      children: [
+        for (var r = first; r <= last; r++)
+          Expanded(child: chip(r, lastInRow: r == last)),
+      ],
+    );
 
     // The absorber must stay out of the semantics tree: no extra tap node.
     return GestureDetector(

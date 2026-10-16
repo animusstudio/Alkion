@@ -1,3 +1,4 @@
+import '../util/dates.dart' show qualifiedCalendarDate;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -20,7 +21,7 @@ List<double> dateFractions(List<String> isoDates) {
   // Calendar days in UTC, so a daylight-saving change can't make a day 23 or
   // 25 hours long.
   final days = isoDates.map((d) {
-    final p = DateTime.tryParse(d);
+    final p = qualifiedCalendarDate(d);
     return p == null ? null : DateTime.utc(p.year, p.month, p.day);
   }).toList();
   final valid = days.whereType<DateTime>().toList();
@@ -47,7 +48,8 @@ List<({int month, double fraction})> monthLabelPositions(
   final fractions = dateFractions(isoDates);
   final days = [
     for (final d in isoDates)
-      if (DateTime.tryParse(d) case final p?) DateTime.utc(p.year, p.month, p.day)
+      if (qualifiedCalendarDate(d) case final p?)
+        DateTime.utc(p.year, p.month, p.day),
   ];
   final out = <({int month, double fraction})>[];
   void add(int month, double f) {
@@ -58,7 +60,7 @@ List<({int month, double fraction})> monthLabelPositions(
   if (days.length != isoDates.length || days.length < 2) {
     var last = -1;
     for (var i = 0; i < isoDates.length; i++) {
-      final m = isoDates[i].length >= 7 ? int.tryParse(isoDates[i].substring(5, 7)) : null;
+      final m = qualifiedCalendarDate(isoDates[i])?.month;
       if (m != null && m != last) {
         last = m;
         add(m, fractions[i]);
@@ -105,13 +107,20 @@ List<({int month, double fraction})> monthLabelPositions(
   }
   final raw = (hi - lo) / target;
   final mag = math.pow(10, (math.log(raw) / math.ln10).floor()).toDouble();
-  final nice = [1.0, 2.0, 2.5, 5.0, 10.0].firstWhere((m) => m * mag >= raw - 1e-12);
+  final nice = [
+    1.0,
+    2.0,
+    2.5,
+    5.0,
+    10.0,
+  ].firstWhere((m) => m * mag >= raw - 1e-12);
   final step = nice * mag;
   final start = (lo / step + 1e-9).floor();
   final end = (hi / step - 1e-9).ceil();
   // A 2.5 step needs one digit more than its magnitude (77.5, 0.25); the
   // label trims the ones it doesn't use (250.0 reads 250).
-  final decimals = math.max(0, -(math.log(step) / math.ln10).floor()) +
+  final decimals =
+      math.max(0, -(math.log(step) / math.ln10).floor()) +
       (nice == 2.5 ? 1 : 0);
   double snap(int k) => double.parse((k * step).toStringAsFixed(decimals + 2));
   return (
@@ -337,10 +346,7 @@ class _LineChartPainter extends CustomPainter {
       Offset(0, _padT),
       Offset(0, _padT + ih),
       // Fade the fill in with progress so it never pops; identical at t=1.
-      [
-        accent.withValues(alpha: 0.22 * progress),
-        accent.withValues(alpha: 0),
-      ],
+      [accent.withValues(alpha: 0.22 * progress), accent.withValues(alpha: 0)],
     );
     canvas.drawPath(areaPath, Paint()..shader = areaGradient);
 
@@ -442,7 +448,10 @@ class _LineChartPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
     const chipPad = EdgeInsets.symmetric(horizontal: 6, vertical: 3);
-    final chipSize = Size(tp.width + chipPad.horizontal, tp.height + chipPad.vertical);
+    final chipSize = Size(
+      tp.width + chipPad.horizontal,
+      tp.height + chipPad.vertical,
+    );
     final prevX = xAt(n - 2);
     final prevY = yAt(series[n - 2].value);
     final origin = valueLabelOrigin(

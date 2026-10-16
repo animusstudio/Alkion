@@ -14,8 +14,16 @@ void main() {
     final en = keysOf('$dir/app_en.arb');
     for (final loc in ['it', 'de', 'es']) {
       final k = keysOf('$dir/app_$loc.arb');
-      expect(k.difference(en), isEmpty, reason: '$loc extra: ${k.difference(en)}');
-      expect(en.difference(k), isEmpty, reason: '$loc missing: ${en.difference(k)}');
+      expect(
+        k.difference(en),
+        isEmpty,
+        reason: '$loc extra: ${k.difference(en)}',
+      );
+      expect(
+        en.difference(k),
+        isEmpty,
+        reason: '$loc missing: ${en.difference(k)}',
+      );
     }
   });
 }

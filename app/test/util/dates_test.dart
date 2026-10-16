@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:workout_tracker/util/dates.dart';
+import 'package:alkion/util/dates.dart';
 
 void main() {
   setUpAll(() async {

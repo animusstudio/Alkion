@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/theme/app_theme.dart';
-import 'package:workout_tracker/theme/tokens.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/tokens.dart';
 
 import '../support/text_theme_slots.dart';
 
@@ -42,20 +42,25 @@ void main() {
   });
 
   for (final b in Brightness.values) {
-    test('${b.name} theme text keeps the token colour and the Hanken scale',
-        () {
-      final theme = buildTheme(b, accents[0]);
-      final tokens = theme.extension<WorkoutTokens>()!;
-      expect(theme.textTheme.bodyMedium!.color, tokens.text);
-      final slots = textThemeSlots(theme.textTheme);
-      for (final MapEntry(key: name, value: (size, weight))
-          in _hankenScale.entries) {
-        expect(slots[name]!.fontSize, size, reason: name);
-        expect(slots[name]!.fontWeight, weight, reason: name);
-        // google_fonts registers one family per weight (HankenGrotesk_600).
-        expect(slots[name]!.fontFamily, startsWith('HankenGrotesk_'),
-            reason: name);
-      }
-    });
+    test(
+      '${b.name} theme text keeps the token colour and the Hanken scale',
+      () {
+        final theme = buildTheme(b, accents[0]);
+        final tokens = theme.extension<WorkoutTokens>()!;
+        expect(theme.textTheme.bodyMedium!.color, tokens.text);
+        final slots = textThemeSlots(theme.textTheme);
+        for (final MapEntry(key: name, value: (size, weight))
+            in _hankenScale.entries) {
+          expect(slots[name]!.fontSize, size, reason: name);
+          expect(slots[name]!.fontWeight, weight, reason: name);
+          // google_fonts registers one family per weight (HankenGrotesk_600).
+          expect(
+            slots[name]!.fontFamily,
+            startsWith('HankenGrotesk_'),
+            reason: name,
+          );
+        }
+      },
+    );
   }
 }

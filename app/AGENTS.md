@@ -1,3 +1,31 @@
+# Alkion development boundary
+
+This is a private, local, no-remote successor development checkout. Development
+identity is `dev.animusstudio.alkion.dev`; package/binary `alkion`, display
+`Alkion Dev`, endorsement `Alkion, by Animus`. Publication, license, signing,
+release identity and transport remain separate gates. Inherited root/release
+instructions below are historical Reps guidance, not permission to publish,
+tag, run a backend, connect legacy sync, or launch the current app.
+
+All Flutter/Dart commands go through `make -C app` and FVM 3.44.0. Normal
+startup remains closed until standalone repositories are integrated. Use only
+explicit disposable storage for qualification; never discover/read legacy
+profiles, settings, credentials, queues or real artifacts. Signing out or
+transport denial cannot clear a local profile. No account/sender/OTA is enabled.
+Keep original bytes, corrections and derived results separate. Essential actions
+must later commit data and immutable outbox together. Replicas are not backups.
+Do not claim Android/device, full legacy recovery, production transfer or
+synchronization qualification from Linux synthetic driver tests.
+
+Preserve inherited notices and the immutable source baseline. Exact additional
+180-file package-prefix ownership permits only the literal URI prefix change;
+no formatting or semantic changes there. Capture/PowerSync dependencies remain
+inventoried until their reviewed removal; do not delete transition code early.
+Every actual change needs independent review. No app Git delivery is authorized.
+
+The retained behavior rules below guide later adapters, with this boundary
+and the assigned task taking precedence.
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

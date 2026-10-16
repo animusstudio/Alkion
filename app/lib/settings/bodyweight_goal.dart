@@ -7,7 +7,8 @@ enum DeltaTone { good, neutral }
 
 /// A loss is progress on [BodyweightGoal.cut], a gain on [BodyweightGoal.bulk];
 /// nothing is on [BodyweightGoal.maintain], and no change never is.
-DeltaTone bodyweightDeltaTone(double delta, BodyweightGoal goal) => switch (goal) {
+DeltaTone bodyweightDeltaTone(double delta, BodyweightGoal goal) =>
+    switch (goal) {
       BodyweightGoal.cut when delta < 0 => DeltaTone.good,
       BodyweightGoal.bulk when delta > 0 => DeltaTone.good,
       _ => DeltaTone.neutral,

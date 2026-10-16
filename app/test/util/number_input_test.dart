@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/util/number_input.dart';
+import 'package:alkion/util/number_input.dart';
 
 void main() {
   group('clampRound2', () {
@@ -15,9 +15,12 @@ void main() {
       expect(clampRound2(150, max: 99), 99);
       expect(clampRound2(40, min: 0, max: 40), 40);
     });
-    test('rounds a negative value toward the correct decimal (nudge is signed)', () {
-      expect(clampRound2(-1.005, min: -10), -1.01);
-    });
+    test(
+      'rounds a negative value toward the correct decimal (nudge is signed)',
+      () {
+        expect(clampRound2(-1.005, min: -10), -1.01);
+      },
+    );
   });
 
   group('parseNumberInput', () {

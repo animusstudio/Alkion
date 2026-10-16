@@ -1,3 +1,4 @@
+import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' hide TextInput;
 
@@ -5,7 +6,7 @@ import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../l10n/app_localizations.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
@@ -85,17 +86,23 @@ class _DayEditorState extends State<DayEditor> {
   String? _expandedExId; // keyed by exerciseId (NOT index)
 
   List<Exercise> _catalog = [];
+  DayTemplate? _original;
+  PreparedDomainAction? _pendingSave;
+  PreparedDomainAction? _pendingDelete;
   bool _saving = false;
 
   // From the delete confirm until the delete lands: leaving then loses
   // nothing, because the day is going away.
   bool _deleting = false;
+  bool _confirmingDelete = false;
 
   // What Save would have written right after loading; null until loaded.
   DaySnapshot? _baseline;
 
-  DayTemplateRepository get _dayRepo => DayTemplateRepository(db);
-  ExerciseRepository get _exRepo => ExerciseRepository(db);
+  DayTemplateRepository get _dayRepo =>
+      DayTemplateRepository.local(context.read<LocalDatabase>());
+  ExerciseRepository get _exRepo =>
+      ExerciseRepository.local(context.read<LocalDatabase>());
 
   @override
   void initState() {
@@ -141,14 +148,15 @@ class _DayEditorState extends State<DayEditor> {
     if (!mounted) return;
 
     if (day == null) {
-      // Day not found (edge case) — treat as new.
+      throw const StoreException('deleted_or_unavailable_day');
+      /* Day not found: preserve observed target.
       setState(() {
         _catalog = catalog;
         _editId = null;
         _baseline = daySnapshot(_currentDraft());
         _loaded = true;
       });
-      return;
+      return; */
     }
 
     // Build exercise lookup.
@@ -158,13 +166,29 @@ class _DayEditorState extends State<DayEditor> {
     final slots = <DaySlotState>[];
     for (final slot in day.slots) {
       final ex = exById[slot.exerciseId];
-      if (ex == null) continue; // skip orphaned slots
-      final resolved = resolveSlot(slot, ex);
-      slots.add(daySlotStateFromResolved(resolved, slot.id));
+      if (ex == null) throw const StoreException('unavailable_definition');
+      slots.add(
+        DaySlotState(
+          draft: SlotDraft(
+            itemId: slot.id,
+            exerciseId: slot.exerciseId,
+            workSets: slot.workSets,
+            warmupSets: slot.warmupSets,
+            repLow: slot.repLow,
+            repHigh: slot.repHigh,
+            rirLow: slot.rirLow,
+            rirHigh: slot.rirHigh,
+            localRevision: slot.localRevision,
+            rawFields: slot.rawFields,
+            changedFields: {},
+          ),
+        ),
+      );
     }
 
     setState(() {
       _catalog = catalog;
+      _original = day;
       _editId = day.id;
       _nameCtrl.text = day.name;
       _focusCtrl.text = day.focus ?? '';
@@ -179,29 +203,47 @@ class _DayEditorState extends State<DayEditor> {
 
   /// What Save would write now.
   DayDraft _currentDraft() => DayDraft(
-        name: _nameCtrl.text.trim(),
-        focus: _focusCtrl.text.trim().isEmpty ? null : _focusCtrl.text.trim(),
-        weekday: _weekday,
-        slots: _slots.map((s) => s.draft).toList(),
-      );
+    name: _nameCtrl.text.trim(),
+    focus: _focusCtrl.text.trim().isEmpty ? null : _focusCtrl.text.trim(),
+    weekday: _weekday,
+    slots: _slots.map((s) => s.draft).toList(),
+    localRevision: _original?.localRevision,
+    notes: _original?.notes,
+    rawFields: _original?.rawFields ?? const {},
+    changedFields: _original == null
+        ? null
+        : {
+            if (_nameCtrl.text.trim() != _original!.name) 'name',
+            if ((_focusCtrl.text.trim().isEmpty
+                    ? null
+                    : _focusCtrl.text.trim()) !=
+                _original!.focus)
+              'focus',
+            if (_weekday != _original!.scheduledWeekday) 'scheduled_weekday',
+          },
+  );
 
   /// Whether leaving now would lose edits. Never while loading, saving or
   /// deleting: back then closes as before and the write still lands.
   bool _isDirty() {
     final baseline = _baseline;
     if (baseline == null || _saving || _deleting) return false;
-    return daySnapshot(_currentDraft()) != baseline;
+    return _pendingSave != null ||
+        _pendingDelete != null ||
+        daySnapshot(_currentDraft()) != baseline;
   }
 
   // ── slot actions ──────────────────────────────────────────────────────────
 
   void _toggleSlot(String exId) {
+    if (_controlsLocked) return;
     setState(() {
       _expandedExId = _expandedExId == exId ? null : exId;
     });
   }
 
   void _removeSlot(int index) {
+    if (_controlsLocked) return;
     final exId = _slots[index].exerciseId;
     setState(() {
       _slots.removeAt(index);
@@ -210,13 +252,16 @@ class _DayEditorState extends State<DayEditor> {
   }
 
   Future<void> _addExercise() async {
+    if (_controlsLocked) return;
     final r = await showExerciseSheet(
       context,
       exercises: _catalog,
       current: null,
       showBodyweight: false,
     );
-    if (r == null || r == kBodyweightSentinel) return;
+    if (!mounted || _controlsLocked || r == null || r == kBodyweightSentinel) {
+      return;
+    }
 
     // Dedupe by exerciseId.
     if (_slots.any((s) => s.exerciseId == r)) return;
@@ -237,7 +282,13 @@ class _DayEditorState extends State<DayEditor> {
   // ── save / delete ─────────────────────────────────────────────────────────
 
   Future<void> _save() async {
-    if (_nameCtrl.text.trim().isEmpty) return;
+    if (_saving ||
+        _deleting ||
+        _confirmingDelete ||
+        _pendingDelete != null ||
+        _nameCtrl.text.trim().isEmpty) {
+      return;
+    }
     // This screen does not own any of its steppers, so nothing else unfocuses
     // an open one on Android (tap-outside only unfocuses for touch on web,
     // and this button's own tap handler never requests focus). Flush focus
@@ -249,8 +300,12 @@ class _DayEditorState extends State<DayEditor> {
 
     final draft = _currentDraft();
 
+    final repository = _dayRepo;
+    final recovery = context.read<DomainRecovery?>();
     try {
-      await _dayRepo.saveDay(id: _editId, draft: draft);
+      _pendingSave ??= repository.prepareDay(draft, id: _editId);
+      await recovery?.recover();
+      await repository.commitPrepared(_pendingSave!);
       if (mounted) widget.onBack();
     } catch (e, st) {
       // Surface the failure instead of silently leaving the button disabled.
@@ -270,24 +325,63 @@ class _DayEditorState extends State<DayEditor> {
   }
 
   Future<void> _delete() async {
-    if (_editId == null) return;
-    final l = AppLocalizations.of(context);
-    final confirmed = await showWConfirm(
-      context,
-      title: l.dayEditorDeleteTitle,
-      message: l.dayEditorDeleteMessage,
-      confirmLabel: l.commonDelete,
-      destructive: true,
-    );
-    if (confirmed != true) return;
-    _deleting = true;
-    try {
-      await _dayRepo.deleteDay(_editId!);
-    } finally {
-      _deleting = false;
+    if (_editId == null ||
+        _saving ||
+        _deleting ||
+        _confirmingDelete ||
+        _pendingSave != null) {
+      return;
     }
-    if (mounted) widget.onBack();
+    FocusManager.instance.primaryFocus?.unfocus();
+    FocusManager.instance.applyFocusChangesIfNeeded();
+    setState(() => _confirmingDelete = true);
+    final repository = _dayRepo;
+    final recovery = context.read<DomainRecovery?>();
+    try {
+      if (_pendingDelete == null) {
+        final l = AppLocalizations.of(context);
+        final confirmed = await showWConfirm(
+          context,
+          title: l.dayEditorDeleteTitle,
+          message: l.dayEditorDeleteMessage,
+          confirmLabel: l.commonDelete,
+          destructive: true,
+        );
+        if (confirmed != true || !mounted) return;
+        setState(() {
+          _confirmingDelete = false;
+          _deleting = true;
+        });
+        _pendingDelete = repository.prepareDelete(
+          _editId!,
+          _original!.localRevision!,
+        );
+      }
+      setState(() {
+        _confirmingDelete = false;
+        _deleting = true;
+      });
+      await recovery?.recover();
+      await repository.commitPrepared(_pendingDelete!);
+      if (mounted) widget.onBack();
+    } catch (e) {
+      if (mounted) await showWriteFailed(context, e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deleting = false;
+          _confirmingDelete = false;
+        });
+      }
+    }
   }
+
+  bool get _controlsLocked =>
+      _saving ||
+      _deleting ||
+      _confirmingDelete ||
+      _pendingSave != null ||
+      _pendingDelete != null;
 
   // ── build ─────────────────────────────────────────────────────────────────
 
@@ -307,106 +401,131 @@ class _DayEditorState extends State<DayEditor> {
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 8, 16, bottomNavInset(context)),
       children: [
-        // ── Day name ──────────────────────────────────────────────────────
-        Field(
-          label: l.dayEditorName,
-          child: TextInput(
-            controller: _nameCtrl,
-            placeholder: l.dayEditorNamePlaceholder,
-            onChanged: (_) => setState(() {}),
-          ),
-        ),
-
-        // ── Focus ─────────────────────────────────────────────────────────
-        Field(
-          label: l.dayEditorFocus,
-          child: TextInput(
-            controller: _focusCtrl,
-            placeholder: l.dayEditorFocusPlaceholder,
-          ),
-        ),
-
-        // ── Scheduled weekday ─────────────────────────────────────────────
-        Field(
-          label: l.dayEditorScheduledDay,
-          child: ChipSelect<int>(
-            items: List.generate(7, (i) => i),
-            selected: _weekday,
-            onSelect: (v) => setState(() => _weekday = v),
-            labelOf: (i) => weekdayShort(i, localeName),
-          ),
-        ),
-
-        // ── Slots section ─────────────────────────────────────────────────
-        PlanSection(
-          l.dayEditorExercisesCount(_slots.length),
-          hint: l.dayEditorSlotHint,
-        ),
-
-        // Slot rows (reorderable by drag handle)
-        ReorderableListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          buildDefaultDragHandles: false,
-          itemCount: _slots.length,
-          onReorderStart: (_) {
-            HapticFeedback.mediumImpact();
-            setState(() => _expandedExId = null);
-          },
-          onReorderItem: (from, to) =>
-              setState(() => _slots.insert(to, _slots.removeAt(from))),
-          proxyDecorator: (child, index, animation) => Material(
-            color: Colors.transparent,
-            elevation: 6,
-            shadowColor: Colors.black,
-            child: child,
-          ),
-          itemBuilder: (context, i) {
-            final slot = _slots[i];
-            final ex = _catalog.firstWhere(
-              (e) => e.id == slot.exerciseId,
-              orElse: () => Exercise(
-                id: slot.exerciseId,
-                name: slot.exerciseId,
-                slug: '',
-                muscleGroup: '',
-                compound: false,
-                plateStepKg: 2.5,
-                isTemplate: true,
-              ),
-            );
-            return Reveal(
-              key: ValueKey(slot.exerciseId),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: DaySlotRow(
-                  index: i,
-                  reorderIndex: i,
-                  total: _slots.length,
-                  slot: slot,
-                  exercise: ex,
-                  tokens: tokens,
-                  expanded: _expandedExId == slot.exerciseId,
-                  onToggle: () => _toggleSlot(slot.exerciseId),
-                  onRemove: () => _removeSlot(i),
-                  onChanged: () => setState(() {}),
+        ExcludeFocus(
+          excluding: _controlsLocked,
+          child: AbsorbPointer(
+            absorbing: _controlsLocked,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Day name ──────────────────────────────────────────────────────
+                Field(
+                  label: l.dayEditorName,
+                  child: AbsorbPointer(
+                    absorbing: _controlsLocked,
+                    child: TextInput(
+                      controller: _nameCtrl,
+                      placeholder: l.dayEditorNamePlaceholder,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
                 ),
-              ),
-            );
-          },
+
+                // ── Focus ─────────────────────────────────────────────────────────
+                Field(
+                  label: l.dayEditorFocus,
+                  child: AbsorbPointer(
+                    absorbing: _controlsLocked,
+                    child: TextInput(
+                      controller: _focusCtrl,
+                      placeholder: l.dayEditorFocusPlaceholder,
+                    ),
+                  ),
+                ),
+
+                // ── Scheduled weekday ─────────────────────────────────────────────
+                Field(
+                  label: l.dayEditorScheduledDay,
+                  child: ChipSelect<int>(
+                    items: List.generate(7, (i) => i),
+                    selected: _weekday,
+                    onSelect: (v) {
+                      if (_controlsLocked) return;
+                      setState(() => _weekday = v);
+                    },
+                    labelOf: (i) => weekdayShort(i, localeName),
+                  ),
+                ),
+
+                // ── Slots section ─────────────────────────────────────────────────
+                PlanSection(
+                  l.dayEditorExercisesCount(_slots.length),
+                  hint: l.dayEditorSlotHint,
+                ),
+
+                // Slot rows (reorderable by drag handle)
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  itemCount: _slots.length,
+                  onReorderStart: (_) {
+                    if (_controlsLocked) return;
+                    HapticFeedback.mediumImpact();
+                    setState(() => _expandedExId = null);
+                  },
+                  onReorderItem: (from, to) {
+                    if (_controlsLocked) return;
+                    setState(() => _slots.insert(to, _slots.removeAt(from)));
+                  },
+                  proxyDecorator: (child, index, animation) => Material(
+                    color: Colors.transparent,
+                    elevation: 6,
+                    shadowColor: Colors.black,
+                    child: child,
+                  ),
+                  itemBuilder: (context, i) {
+                    final slot = _slots[i];
+                    final ex = _catalog.firstWhere(
+                      (e) => e.id == slot.exerciseId,
+                      orElse: () => Exercise(
+                        id: slot.exerciseId,
+                        name: slot.exerciseId,
+                        slug: '',
+                        muscleGroup: '',
+                        compound: false,
+                        plateStepKg: 2.5,
+                        isTemplate: true,
+                      ),
+                    );
+                    return Reveal(
+                      key: ValueKey(slot.exerciseId),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 7),
+                        child: DaySlotRow(
+                          readOnly: _controlsLocked,
+                          index: i,
+                          reorderIndex: i,
+                          total: _slots.length,
+                          slot: slot,
+                          exercise: ex,
+                          tokens: tokens,
+                          expanded: _expandedExId == slot.exerciseId,
+                          onToggle: () => _toggleSlot(slot.exerciseId),
+                          onRemove: () => _removeSlot(i),
+                          onChanged: () {
+                            if (!_controlsLocked) setState(() {});
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 3),
+
+                // ── Add exercise button ───────────────────────────────────────────
+                _AddExerciseButton(tokens: tokens, onTap: _addExercise),
+
+                const SizedBox(height: 22),
+              ],
+            ),
+          ),
         ),
-
-        const SizedBox(height: 3),
-
-        // ── Add exercise button ───────────────────────────────────────────
-        _AddExerciseButton(tokens: tokens, onTap: _addExercise),
-
-        const SizedBox(height: 22),
-
         // ── Save button ───────────────────────────────────────────────────
         PrimaryBtn(
           isOwned ? l.dayEditorSaveChanges : l.dayEditorCreateDay,
-          enabled: canSave && !_saving,
+          enabled: canSave && !_saving && !_deleting && _pendingDelete == null,
           onTap: _save,
         ),
 
@@ -439,6 +558,7 @@ class DaySlotRow extends StatefulWidget {
     required this.onToggle,
     required this.onRemove,
     required this.onChanged,
+    this.readOnly = false,
   });
 
   final int index;
@@ -451,6 +571,7 @@ class DaySlotRow extends StatefulWidget {
   final VoidCallback onToggle;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
+  final bool readOnly;
 
   @override
   State<DaySlotRow> createState() => _DaySlotRowState();
@@ -458,6 +579,8 @@ class DaySlotRow extends StatefulWidget {
 
 class _DaySlotRowState extends State<DaySlotRow> {
   void _updateWork(double v) {
+    if (widget.readOnly) return;
+    widget.slot.draft.changedFields?.addAll(['target_working_sets']);
     setState(() {
       widget.slot.draft.workSets = v.round().clamp(1, 99);
     });
@@ -465,6 +588,8 @@ class _DaySlotRowState extends State<DaySlotRow> {
   }
 
   void _updateWarmup(double v) {
+    if (widget.readOnly) return;
+    widget.slot.draft.changedFields?.addAll(['target_warmup_sets']);
     setState(() {
       widget.slot.draft.warmupSets = v.round().clamp(0, 99);
     });
@@ -472,6 +597,11 @@ class _DaySlotRowState extends State<DaySlotRow> {
   }
 
   void _updateRepLow(double v) {
+    if (widget.readOnly) return;
+    widget.slot.draft.changedFields?.addAll([
+      'target_rep_low',
+      'target_rep_high',
+    ]);
     final low = v.round().clamp(1, 99);
     final high = (widget.slot.draft.repHigh ?? low);
     setState(() {
@@ -483,6 +613,8 @@ class _DaySlotRowState extends State<DaySlotRow> {
   }
 
   void _updateRepHigh(double v) {
+    if (widget.readOnly) return;
+    widget.slot.draft.changedFields?.addAll(['target_rep_high']);
     final low = widget.slot.draft.repLow ?? 1;
     final high = v.round().clamp(low, 99);
     setState(() {
@@ -495,6 +627,11 @@ class _DaySlotRowState extends State<DaySlotRow> {
   // stepper is floored at low): stepping either one past the other drags it
   // along. A null bound displays as 1, so touching either stepper writes both.
   void _updateRirLow(double v) {
+    if (widget.readOnly) return;
+    widget.slot.draft.changedFields?.addAll([
+      'target_rir_low',
+      'target_rir_high',
+    ]);
     final d = widget.slot.draft;
     final r = rirWithLow(d.rirLow ?? 1, d.rirHigh ?? 1, v.round());
     setState(() {
@@ -505,6 +642,11 @@ class _DaySlotRowState extends State<DaySlotRow> {
   }
 
   void _updateRirHigh(double v) {
+    if (widget.readOnly) return;
+    widget.slot.draft.changedFields?.addAll([
+      'target_rir_low',
+      'target_rir_high',
+    ]);
     final d = widget.slot.draft;
     final r = rirWithHigh(d.rirLow ?? 1, d.rirHigh ?? 1, v.round());
     setState(() {
@@ -688,7 +830,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                             value: (d.workSets ?? 3).toDouble(),
                             step: 1,
                             format: (v) => v.round().toString(),
-                            onChanged: _updateWork,
+                            onChanged: widget.readOnly ? (_) {} : _updateWork,
                             editable: true,
                             allowDecimal: false,
                             min: 1,
@@ -705,7 +847,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                             value: (d.warmupSets ?? 0).toDouble(),
                             step: 1,
                             format: (v) => v.round().toString(),
-                            onChanged: _updateWarmup,
+                            onChanged: widget.readOnly ? (_) {} : _updateWarmup,
                             editable: true,
                             allowDecimal: false,
                             min: 0,
@@ -727,7 +869,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                             value: (d.repLow ?? 8).toDouble(),
                             step: 1,
                             format: (v) => v.round().toString(),
-                            onChanged: _updateRepLow,
+                            onChanged: widget.readOnly ? (_) {} : _updateRepLow,
                             editable: true,
                             allowDecimal: false,
                             min: 1,
@@ -744,7 +886,9 @@ class _DaySlotRowState extends State<DaySlotRow> {
                             value: (d.repHigh ?? 12).toDouble(),
                             step: 1,
                             format: (v) => v.round().toString(),
-                            onChanged: _updateRepHigh,
+                            onChanged: widget.readOnly
+                                ? (_) {}
+                                : _updateRepHigh,
                             editable: true,
                             allowDecimal: false,
                             min: (d.repLow ?? 1).toDouble(),
@@ -766,7 +910,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                             value: (d.rirLow ?? 1).toDouble(),
                             step: 1,
                             format: (v) => v.round().toString(),
-                            onChanged: _updateRirLow,
+                            onChanged: widget.readOnly ? (_) {} : _updateRirLow,
                             editable: true,
                             allowDecimal: false,
                             min: rirMin.toDouble(),
@@ -783,7 +927,9 @@ class _DaySlotRowState extends State<DaySlotRow> {
                             value: (d.rirHigh ?? 1).toDouble(),
                             step: 1,
                             format: (v) => v.round().toString(),
-                            onChanged: _updateRirHigh,
+                            onChanged: widget.readOnly
+                                ? (_) {}
+                                : _updateRirHigh,
                             editable: true,
                             allowDecimal: false,
                             min: rirMin.toDouble(),

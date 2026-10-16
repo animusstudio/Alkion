@@ -54,7 +54,11 @@ TopSetChange topSetChange({
 ///
 /// [delta] is the difference of two displayed (rounded) values, so it is the
 /// change the user can read off the screen.
-String signedChange(double delta, String Function(double) fmtVal, AppLocalizations l) {
+String signedChange(
+  double delta,
+  String Function(double) fmtVal,
+  AppLocalizations l,
+) {
   final abs = fmtVal(delta.abs());
   if (abs == fmtVal(0)) return l.progressSame;
   return delta > 0 ? '+$abs' : '−$abs';

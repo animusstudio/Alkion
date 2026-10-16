@@ -1,6 +1,6 @@
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/widgets/line_chart.dart';
+import 'package:alkion/widgets/line_chart.dart';
 
 void main() {
   group('dateFractions', () {
@@ -12,13 +12,22 @@ void main() {
     });
 
     test('points on the same date share an x', () {
-      final f = dateFractions(['2026-06-01', '2026-06-05', '2026-06-05', '2026-06-09']);
+      final f = dateFractions([
+        '2026-06-01',
+        '2026-06-05',
+        '2026-06-05',
+        '2026-06-09',
+      ]);
       expect(f[1], f[2]);
       expect(f[1], closeTo(0.5, 1e-9));
     });
 
     test('all dates equal falls back to even spacing by index', () {
-      expect(dateFractions(['2026-06-01', '2026-06-01', '2026-06-01']), [0, 0.5, 1]);
+      expect(dateFractions(['2026-06-01', '2026-06-01', '2026-06-01']), [
+        0,
+        0.5,
+        1,
+      ]);
     });
 
     test('an unparseable date falls back to its index fraction', () {
@@ -36,23 +45,39 @@ void main() {
     const label = Size(60, 20);
 
     test('prefers above-right of the point', () {
-      final o = valueLabelOrigin(point: const Offset(100, 100), label: label, canvas: canvas);
+      final o = valueLabelOrigin(
+        point: const Offset(100, 100),
+        label: label,
+        canvas: canvas,
+      );
       expect(o, const Offset(108, 72));
     });
 
     test('flips to the left when it would overflow the right edge', () {
-      final o = valueLabelOrigin(point: const Offset(290, 100), label: label, canvas: canvas);
+      final o = valueLabelOrigin(
+        point: const Offset(290, 100),
+        label: label,
+        canvas: canvas,
+      );
       expect(o.dx, 290 - 8 - 60);
       expect(o.dy, 72);
     });
 
     test('drops below the point when it would overflow the top', () {
-      final o = valueLabelOrigin(point: const Offset(100, 10), label: label, canvas: canvas);
+      final o = valueLabelOrigin(
+        point: const Offset(100, 10),
+        label: label,
+        canvas: canvas,
+      );
       expect(o.dy, 10 + 8);
     });
 
     test('never leaves the canvas', () {
-      final o = valueLabelOrigin(point: const Offset(295, 5), label: label, canvas: canvas);
+      final o = valueLabelOrigin(
+        point: const Offset(295, 5),
+        label: label,
+        canvas: canvas,
+      );
       expect(o.dx, inInclusiveRange(0, canvas.width - label.width));
       expect(o.dy, inInclusiveRange(0, canvas.height - label.height));
     });
@@ -109,13 +134,18 @@ void main() {
         // Sample 50 points along the segment from previous to point (excluding endpoints).
         for (var t = 1; t < 50; t++) {
           final frac = t / 50.0;
-          final x = testCase.previous.dx + frac * (testCase.point.dx - testCase.previous.dx);
-          final y = testCase.previous.dy + frac * (testCase.point.dy - testCase.previous.dy);
+          final x =
+              testCase.previous.dx +
+              frac * (testCase.point.dx - testCase.previous.dx);
+          final y =
+              testCase.previous.dy +
+              frac * (testCase.point.dy - testCase.previous.dy);
           final samplePoint = Offset(x, y);
 
           // Check that the sample point is NOT strictly inside the rect interior
           // (touching the boundary is acceptable).
-          final strictlyInside = samplePoint.dx > chipRect.left &&
+          final strictlyInside =
+              samplePoint.dx > chipRect.left &&
               samplePoint.dx < chipRect.right &&
               samplePoint.dy > chipRect.top &&
               samplePoint.dy < chipRect.bottom;
@@ -123,7 +153,8 @@ void main() {
           expect(
             strictlyInside,
             false,
-            reason: 'Segment point $samplePoint at t=$frac is strictly inside chip rect '
+            reason:
+                'Segment point $samplePoint at t=$frac is strictly inside chip rect '
                 '$chipRect for testCase: point=${testCase.point}, previous=${testCase.previous}',
           );
         }
@@ -154,13 +185,25 @@ void main() {
 
     test('a 2.5 step labels its half values', () {
       final t = yAxisTicks(76.88, 85.63);
-      expect(t.values.map(t.label).toList(),
-          ['75', '77.5', '80', '82.5', '85', '87.5']);
+      expect(t.values.map(t.label).toList(), [
+        '75',
+        '77.5',
+        '80',
+        '82.5',
+        '85',
+        '87.5',
+      ]);
     });
 
     test('a 25 step keeps whole-number labels', () {
       final t = yAxisTicks(210, 300);
-      expect(t.values.map(t.label).toList(), ['200', '225', '250', '275', '300']);
+      expect(t.values.map(t.label).toList(), [
+        '200',
+        '225',
+        '250',
+        '275',
+        '300',
+      ]);
     });
 
     test('a 0.25 step shows two decimals where needed', () {
@@ -189,7 +232,12 @@ void main() {
 
   group('monthLabelPositions', () {
     test('later months sit at their 1st on the time axis', () {
-      final m = monthLabelPositions(['2026-06-01', '2026-08-28', '2026-09-03', '2026-09-30']);
+      final m = monthLabelPositions([
+        '2026-06-01',
+        '2026-08-28',
+        '2026-09-03',
+        '2026-09-30',
+      ]);
       expect(m.map((e) => e.month).toList(), [6, 7, 8, 9]);
       expect(m.first.fraction, 0);
       // Sep 1 is 92 of 121 days in.

@@ -1,35 +1,40 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/catalog_seed.dart';
-import 'package:workout_tracker/data/session_writer.dart';
-
-class _FakeExec implements SqlExecutor {
-  final List<(String, List<Object?>)> calls = [];
-  @override
-  Future<void> execute(String sql, [List<Object?> params = const []]) async {
-    calls.add((sql, params));
-  }
-}
+import 'package:alkion/data/catalog_seed.dart';
+import 'package:alkion/data/exercise_repository.dart';
+import '../alkion/domains/local_screen_harness.dart';
 
 void main() {
   test('starterExercises holds the full catalog', () {
-    expect(starterExercises.length, 24);
-    for (final e in starterExercises) {
-      expect(e.slug, isNotEmpty);
-      expect(e.name, isNotEmpty);
-      expect(e.muscleGroup, isNotEmpty);
-    }
-    expect(starterExercises.map((e) => e.slug).toSet().length, 24);
+    expect(starterExercises, hasLength(24));
+    expect(starterExercises.map((e) => e.slug).toSet(), hasLength(24));
   });
-
-  test('seedStarterCatalog inserts one INSERT per exercise, owned by the user', () async {
-    final exec = _FakeExec();
-    await seedStarterCatalog(exec, 'user-1');
-    expect(exec.calls.length, 24);
-    final (sql, args) = exec.calls.first;
-    expect(sql, contains('INSERT INTO exercises'));
-    expect(sql, contains('created_by'));
-    expect(sql, contains('is_template'));
-    expect(args, contains('user-1'));
-    expect(args, contains(0));
-  });
+  test(
+    'explicit starter catalog commits all rich definitions and one immutable operation with no goals',
+    () async {
+      final root = await Directory.systemTemp.createTemp('alkion-seed');
+      final store = await openDomainStore(root);
+      try {
+        final intent = prepareStarterCatalog(store);
+        final repo = ExerciseRepository.local(store);
+        await repo.commitPrepared(intent);
+        await repo.commitPrepared(intent);
+        final rows = await store.getAll('SELECT * FROM exercises');
+        expect(rows, hasLength(24));
+        for (var i = 0; i < rows.length; i++) {
+          final e = starterExercises[i], r = rows[i];
+          expect(r['equip'], e.equip);
+          expect(r['compound'], e.compound ? 1 : 0);
+          expect(r['default_rir_low'], e.defaultRirLow);
+          expect(r['default_working_sets'], e.defaultWorkingSets);
+          expect(r['is_template'], 0);
+        }
+        expect(await store.getAll('SELECT * FROM operations'), hasLength(1));
+        expect(await store.getAll('SELECT * FROM muscle_targets'), isEmpty);
+      } finally {
+        await store.close();
+        await root.delete(recursive: true);
+      }
+    },
+  );
 }
