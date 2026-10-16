@@ -1,20 +1,28 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/l10n/app_localizations.dart';
-import 'package:workout_tracker/ui/today_labels.dart';
+import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/ui/today_labels.dart';
 
 void main() {
   final l = lookupAppLocalizations(const Locale('en'));
 
   group('todayHeaderLine', () {
     test('names the next day in rotation', () {
-      expect(todayHeaderLine(l, date: 'Thu 24 Sep', nextName: 'Lower B'),
-          'Thu 24 Sep · Next: Lower B');
+      expect(
+        todayHeaderLine(l, date: 'Thu 24 Sep', nextName: 'Lower B'),
+        'Thu 24 Sep · Next: Lower B',
+      );
     });
     test('an active workout wins over the rotation', () {
       expect(
-          todayHeaderLine(l, date: 'Thu 24 Sep', nextName: 'Lower B', activeName: 'Upper B'),
-          'Thu 24 Sep · Upper B');
+        todayHeaderLine(
+          l,
+          date: 'Thu 24 Sep',
+          nextName: 'Lower B',
+          activeName: 'Upper B',
+        ),
+        'Thu 24 Sep · Upper B',
+      );
     });
     test('no training days: the date alone', () {
       expect(todayHeaderLine(l, date: 'Thu 24 Sep'), 'Thu 24 Sep');
@@ -52,19 +60,32 @@ void main() {
 
     test('ties order by muscle name, whatever order they arrive in', () {
       final rows = weeklyVolumeRows(
-        [(muscle: 'quads', sets: 6), (muscle: 'back', sets: 6), (muscle: 'abs', sets: 9)],
+        [
+          (muscle: 'quads', sets: 6),
+          (muscle: 'back', sets: 6),
+          (muscle: 'abs', sets: 9),
+        ],
         {'triceps': 8, 'calves': 8, 'biceps': 10},
       );
-      expect(rows.map((r) => r.muscle).toList(),
-          ['abs', 'back', 'quads', 'biceps', 'calves', 'triceps']);
+      expect(rows.map((r) => r.muscle).toList(), [
+        'abs',
+        'back',
+        'quads',
+        'biceps',
+        'calves',
+        'triceps',
+      ]);
     });
 
-    test('a trained muscle without a target counts as on target; zero targets are skipped', () {
-      final rows = weeklyVolumeRows(
-        [(muscle: 'forearms', sets: 4)],
-        {'calves': 0},
-      );
-      expect(rows, [(muscle: 'forearms', sets: 4, target: 4)]);
-    });
+    test(
+      'a trained muscle without a target counts as on target; zero targets are skipped',
+      () {
+        final rows = weeklyVolumeRows(
+          [(muscle: 'forearms', sets: 4)],
+          {'calves': 0},
+        );
+        expect(rows, [(muscle: 'forearms', sets: 4, target: 4)]);
+      },
+    );
   });
 }

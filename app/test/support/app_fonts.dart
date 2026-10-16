@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:workout_tracker/theme/typography.dart';
+import 'package:alkion/theme/typography.dart';
 
 /// The weights the app draws each family in (see `WorkoutType`).
 const displayWeights = [

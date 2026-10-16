@@ -6,7 +6,7 @@ import '../theme/motion.dart';
 enum OnboardingChoice { empty, starter }
 
 /// First-launch screen: lets the user start with an empty library or seed a
-/// starter set of exercises (+ default muscle targets). Everything seeded is
+/// starter set of exercises; muscle targets require a separate explicit choice. Everything seeded is
 /// editable/deletable later. [onChosen] performs the seeding + marks onboarding
 /// complete; this widget only collects the choice.
 class OnboardingScreen extends StatefulWidget {
@@ -46,22 +46,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               StaggeredEntrance(
-                  index: 0,
-                  child: Text(l.onboardingWelcome, style: t.headlineMedium)),
+                index: 0,
+                child: Text(l.onboardingWelcome, style: t.headlineMedium),
+              ),
               const SizedBox(height: 12),
               StaggeredEntrance(
                 index: 1,
-                child: Text(
-                  l.onboardingIntro,
-                  style: t.bodyMedium,
-                ),
+                child: Text(l.onboardingIntro, style: t.bodyMedium),
               ),
               const SizedBox(height: 32),
               StaggeredEntrance(
                 index: 2,
                 child: FilledButton(
-                  onPressed:
-                      _busy ? null : () => _choose(OnboardingChoice.starter),
+                  onPressed: _busy
+                      ? null
+                      : () => _choose(OnboardingChoice.starter),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     child: Text(l.onboardingAddStarter),
@@ -72,8 +71,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               StaggeredEntrance(
                 index: 3,
                 child: OutlinedButton(
-                  onPressed:
-                      _busy ? null : () => _choose(OnboardingChoice.empty),
+                  onPressed: _busy
+                      ? null
+                      : () => _choose(OnboardingChoice.empty),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     child: Text(l.onboardingStartEmpty),

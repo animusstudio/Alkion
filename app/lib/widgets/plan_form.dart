@@ -10,12 +10,7 @@ import 'pressable.dart';
 /// A labelled form row: mono uppercase label above [child], with an optional
 /// mono hint below.
 class Field extends StatelessWidget {
-  const Field({
-    super.key,
-    required this.label,
-    required this.child,
-    this.hint,
-  });
+  const Field({super.key, required this.label, required this.child, this.hint});
 
   final String label;
   final Widget child;
@@ -143,8 +138,10 @@ class ChipSelect<T> extends StatelessWidget {
               widthFactor: 1,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(AppRadius.pill),
                   color: on ? tokens.accent : tokens.surface,
@@ -270,9 +267,11 @@ class PrimaryBtn extends StatelessWidget {
             color: !enabled
                 ? tokens.surface3
                 : secondary
-                    ? tokens.surface2
-                    : tokens.accent,
-            border: enabled && secondary ? Border.all(color: tokens.line) : null,
+                ? tokens.surface2
+                : tokens.accent,
+            border: enabled && secondary
+                ? Border.all(color: tokens.line)
+                : null,
           ),
           alignment: Alignment.center,
           child: Text(
@@ -283,8 +282,8 @@ class PrimaryBtn extends StatelessWidget {
               color: !enabled
                   ? tokens.faint
                   : secondary
-                      ? tokens.text
-                      : tokens.accentInk,
+                  ? tokens.text
+                  : tokens.accentInk,
             ),
           ),
         ),
@@ -301,11 +300,7 @@ class PrimaryBtn extends StatelessWidget {
 /// Distinct from [SectionLabel] (which has a trailing action slot and different
 /// margin rhythm). PlanSection matches the JSX `PlanSection` exactly.
 class PlanSection extends StatelessWidget {
-  const PlanSection(
-    this.label, {
-    super.key,
-    this.hint,
-  });
+  const PlanSection(this.label, {super.key, this.hint});
 
   final String label;
   final String? hint;

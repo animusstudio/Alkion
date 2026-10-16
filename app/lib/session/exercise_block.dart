@@ -106,7 +106,8 @@ class _ExerciseBlockState extends State<ExerciseBlock>
     final allDone = working.isNotEmpty && doneWorking == working.length;
     final top = liveTopOf(block);
     final containsLive =
-        widget.liveSetId != null && block.allSets.any((s) => s.id == widget.liveSetId);
+        widget.liveSetId != null &&
+        block.allSets.any((s) => s.id == widget.liveSetId);
     final showSets = block.expanded || containsLive;
 
     final rirStr = resolved.rirLow == resolved.rirHigh
@@ -142,12 +143,16 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                   // "2/3" stays whole at large text.
                   Container(
                     key: ValueKey('block-badge-${ex.id}'),
-                    constraints:
-                        const BoxConstraints(minWidth: 40, minHeight: 40),
+                    constraints: const BoxConstraints(
+                      minWidth: 40,
+                      minHeight: 40,
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     decoration: BoxDecoration(
                       color: allDone ? tokens.accent : tokens.surface3,
-                      borderRadius: BorderRadius.circular(AppRadius.radius * 0.5),
+                      borderRadius: BorderRadius.circular(
+                        AppRadius.radius * 0.5,
+                      ),
                     ),
                     alignment: Alignment.center,
                     child: allDone
@@ -157,7 +162,10 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                             maxLines: 1,
                             softWrap: false,
                             style: WorkoutType.mono(
-                                size: 13, weight: FontWeight.w700, color: tokens.dim),
+                              size: 13,
+                              weight: FontWeight.w700,
+                              color: tokens.dim,
+                            ),
                           ),
                   ),
                   const SizedBox(width: 12),
@@ -168,7 +176,10 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                         Text(
                           ex.name,
                           style: WorkoutType.body(
-                              size: 15, weight: FontWeight.w600, color: tokens.text),
+                            size: 15,
+                            weight: FontWeight.w600,
+                            color: tokens.text,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -177,7 +188,10 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                           subLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                          style: WorkoutType.mono(
+                            size: 10.5,
+                            color: tokens.faint,
+                          ),
                         ),
                       ],
                     ),
@@ -187,17 +201,27 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text.rich(TextSpan(children: [
+                        Text.rich(
                           TextSpan(
-                            text: unit.fmtWt(top.topKg),
-                            style: WorkoutType.mono(
-                                size: 14, weight: FontWeight.w700, color: tokens.text),
+                            children: [
+                              TextSpan(
+                                text: unit.fmtWt(top.topKg),
+                                style: WorkoutType.mono(
+                                  size: 14,
+                                  weight: FontWeight.w700,
+                                  color: tokens.text,
+                                ),
+                              ),
+                              TextSpan(
+                                text: unit.uLabel,
+                                style: WorkoutType.mono(
+                                  size: 10,
+                                  color: tokens.faint,
+                                ),
+                              ),
+                            ],
                           ),
-                          TextSpan(
-                            text: unit.uLabel,
-                            style: WorkoutType.mono(size: 10, color: tokens.faint),
-                          ),
-                        ])),
+                        ),
                         if (top.isPr) ...[
                           const SizedBox(height: 2),
                           const PRBadge(small: true),
@@ -237,7 +261,13 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (final s in block.allSets)
-                      _setWidget(block, s, top, topSetIdOf(block, top.topKg), tokens),
+                      _setWidget(
+                        block,
+                        s,
+                        top,
+                        topSetIdOf(block, top.topKg),
+                        tokens,
+                      ),
                   ],
                 ),
               ),
@@ -247,8 +277,13 @@ class _ExerciseBlockState extends State<ExerciseBlock>
     );
   }
 
-  Widget _setWidget(BlockState block, SetState s,
-      ({double topKg, bool isPr}) top, String? topSetId, WorkoutTokens tokens) {
+  Widget _setWidget(
+    BlockState block,
+    SetState s,
+    ({double topKg, bool isPr}) top,
+    String? topSetId,
+    WorkoutTokens tokens,
+  ) {
     final workIdx = s.isWarmup ? -1 : block.workingSets.indexOf(s) + 1;
     final Widget child;
     if (s.id == widget.liveSetId) {
@@ -258,6 +293,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         exercise: block.exercise,
         workIndex: workIdx,
         lastTop: block.lastTop,
+        lastTopUnavailable: block.lastTopUnavailable,
         unit: widget.unit,
         onChanged: () => widget.onSetChanged(block, s),
         onMarkNotDone: () => widget.onMarkNotDone(block, s),

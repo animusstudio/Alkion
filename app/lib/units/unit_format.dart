@@ -72,8 +72,7 @@ double roundLoad(double display, Unit unit) =>
     double.parse(fmtLoad(display, unit));
 
 /// [display] rounded the way [fmtBodyweight] shows it.
-double roundBodyweight(double display) =>
-    double.parse(fmtBodyweight(display));
+double roundBodyweight(double display) => double.parse(fmtBodyweight(display));
 
 /// [v] rounded the way [fmtCount] shows it. Never parse [fmtCount]'s grouped
 /// string.

@@ -47,11 +47,15 @@ class DaySlide extends StatelessWidget {
     final isNext = index == nextIndex;
     final eyebrow = isNext
         ? l.splitNextInRotation
-        : l.splitSwitchTo((day.scheduledWeekday != null
-                ? weekdayShort(day.scheduledWeekday!,
-                    Localizations.localeOf(context).toLanguageTag())
-                : day.name)
-            .toUpperCase());
+        : l.splitSwitchTo(
+            (day.scheduledWeekday != null
+                    ? weekdayShort(
+                        day.scheduledWeekday!,
+                        Localizations.localeOf(context).toLanguageTag(),
+                      )
+                    : day.name)
+                .toUpperCase(),
+          );
 
     // Estimated time: max(20, (exerciseCount * 9 + 10).round())m
     final est = max(20, exerciseCount * 9 + 10);
@@ -320,7 +324,10 @@ class _SplitCardState extends State<SplitCard> {
   @override
   void initState() {
     super.initState();
-    _currentPage = (widget.selectedIndex ?? widget.nextIndex).clamp(0, widget.days.length);
+    _currentPage = (widget.selectedIndex ?? widget.nextIndex).clamp(
+      0,
+      widget.days.length,
+    );
     _pageController = PageController(initialPage: _currentPage);
   }
 
@@ -366,8 +373,8 @@ class _SplitCardState extends State<SplitCard> {
     _pageController
         .animateToPage(target, duration: duration, curve: Motion.curve)
         .then((_) {
-      if (_driveTarget == target) _driveTarget = null;
-    });
+          if (_driveTarget == target) _driveTarget = null;
+        });
   }
 
   void _onStart() {
@@ -438,8 +445,7 @@ class _SplitCardState extends State<SplitCard> {
                             // page the animation crosses — swallow those so
                             // the strip/parent only ever hear about the
                             // final target.
-                            if (_driveTarget != null &&
-                                page != _driveTarget) {
+                            if (_driveTarget != null && page != _driveTarget) {
                               return;
                             }
                             widget.onSelectedChanged?.call(page);
@@ -464,43 +470,43 @@ class _SplitCardState extends State<SplitCard> {
                     // ── Start button ─────────────────────────────────────────
                     PressableScale(
                       child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.ease,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: btnBg,
-                        borderRadius: BorderRadius.circular(
-                          AppRadius.radius * 0.8,
-                        ),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _onStart,
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.ease,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: btnBg,
                           borderRadius: BorderRadius.circular(
                             AppRadius.radius * 0.8,
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(btnIcon, size: 18, color: btnInk),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: FitLabel(
-                                  btnLabel,
-                                  style: WorkoutType.display(
-                                    size: 17,
-                                    weight: FontWeight.w700,
-                                    color: btnInk,
-                                    letterSpacing: 17 * 0.01,
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _onStart,
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.radius * 0.8,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(btnIcon, size: 18, color: btnInk),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: FitLabel(
+                                    btnLabel,
+                                    style: WorkoutType.display(
+                                      size: 17,
+                                      weight: FontWeight.w700,
+                                      color: btnInk,
+                                      letterSpacing: 17 * 0.01,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
                     ),
                   ],
                 ),

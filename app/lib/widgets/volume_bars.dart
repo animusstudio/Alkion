@@ -22,10 +22,7 @@ import 'fit_label.dart';
 ///
 /// Visual spec: `screen-today.jsx` → `VolumeBars`.
 class VolumeBars extends StatelessWidget {
-  const VolumeBars({
-    super.key,
-    required this.rows,
-  });
+  const VolumeBars({super.key, required this.rows});
 
   /// Each entry describes one muscle row.
   ///
@@ -49,7 +46,9 @@ class VolumeBars extends StatelessWidget {
     for (final row in rows) {
       final painter = TextPainter(
         text: TextSpan(
-            text: '${row.sets}/${row.target}', style: _countStyle(tokens.text)),
+          text: '${row.sets}/${row.target}',
+          style: _countStyle(tokens.text),
+        ),
         textDirection: direction,
         textScaler: scaler,
         maxLines: 1,
@@ -114,8 +113,9 @@ class _VolumeRow extends StatelessWidget {
     final valueColor = underTarget ? tokens.dim : tokens.text;
 
     // Normalize against THIS muscle's own target (0% = none, 100% = target).
-    final fillFraction =
-        row.target > 0 ? (row.sets / row.target).clamp(0.0, 1.0) : 0.0;
+    final fillFraction = row.target > 0
+        ? (row.sets / row.target).clamp(0.0, 1.0)
+        : 0.0;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,

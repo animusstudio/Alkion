@@ -10,22 +10,24 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:powersync/powersync.dart';
+import 'package:alkion/store/local_store.dart';
+import '../alkion/domains/local_screen_harness.dart'
+    show openDomainStore, seedDay;
+import 'package:alkion/domain/local_action.dart';
+import 'package:alkion/domain/evidence.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:workout_tracker/data/day_template_repository.dart';
-import 'package:workout_tracker/sync/schema.dart';
+import 'package:alkion/data/day_template_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory dir;
-  late PowerSyncDatabase db;
+  late LocalStore db;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     dir = await Directory.systemTemp.createTemp('reps-day-template-bad-row');
-    db = PowerSyncDatabase(schema: schema, path: '${dir.path}/t.db');
-    await db.initialize();
+    db = await openDomainStore(dir);
   });
 
   tearDown(() async {
@@ -33,43 +35,73 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  test('watchDays throws on a day_template_items row with a NULL exercise_id',
-      () async {
-    await db.execute(
-      "INSERT INTO day_templates (id, name, is_template) "
-      "VALUES ('d1', 'Lower A', 0)",
-    );
-    await db.execute(
-      "INSERT INTO day_template_items (id, day_template_id, exercise_id, position) "
-      "VALUES ('i1', 'd1', NULL, 0)",
-    );
+  test(
+    'watchDays throws on a day_template_items row with a NULL exercise_id',
+    () async {
+      await seedDay(db, 'd1', 'Lower A', position: 1);
+      final action = LocalAction(
+        operationId: 'bad-slot',
+        target: LocalRef(db.profileId, RecordKind.trainingSlot, 'i1'),
+        action: LocalActionKind.slotAdd,
+        baseLocalRevision: 0,
+        createdAt: OperationInstant.now(),
+        input: {},
+      );
+      await db.apply(action, (tx) async {
+        final r = await tx.writeRevision(
+          action.target,
+          localBytes({'exercise_id': null}),
+        );
+        await tx.putRecord(action.target, r, {
+          'day_template_id': 'd1',
+          'exercise_id': null,
+          'position': 0,
+        });
+        return null;
+      });
 
-    await expectLater(
-      DayTemplateRepository(db).watchDays().first,
-      throwsA(isA<TypeError>()),
-    );
-  });
+      await expectLater(
+        DayTemplateRepository.local(db).watchDays().first,
+        throwsA(isA<TypeError>()),
+      );
+    },
+  );
 
-  test('a listener with onError receives the error instead of it escaping',
-      () async {
-    await db.execute(
-      "INSERT INTO day_templates (id, name, is_template) "
-      "VALUES ('d1', 'Lower A', 0)",
-    );
-    await db.execute(
-      "INSERT INTO day_template_items (id, day_template_id, exercise_id, position) "
-      "VALUES ('i1', 'd1', NULL, 0)",
-    );
+  test(
+    'a listener with onError receives the error instead of it escaping',
+    () async {
+      await seedDay(db, 'd1', 'Lower A', position: 1);
+      final action = LocalAction(
+        operationId: 'bad-slot',
+        target: LocalRef(db.profileId, RecordKind.trainingSlot, 'i1'),
+        action: LocalActionKind.slotAdd,
+        baseLocalRevision: 0,
+        createdAt: OperationInstant.now(),
+        input: {},
+      );
+      await db.apply(action, (tx) async {
+        final r = await tx.writeRevision(
+          action.target,
+          localBytes({'exercise_id': null}),
+        );
+        await tx.putRecord(action.target, r, {
+          'day_template_id': 'd1',
+          'exercise_id': null,
+          'position': 0,
+        });
+        return null;
+      });
 
-    final completer = Completer<Object>();
-    final sub = DayTemplateRepository(db).watchDays().listen(
-      (_) {},
-      onError: (Object e, StackTrace st) {
-        if (!completer.isCompleted) completer.complete(e);
-      },
-    );
-    final err = await completer.future;
-    expect(err, isA<TypeError>());
-    await sub.cancel();
-  });
+      final completer = Completer<Object>();
+      final sub = DayTemplateRepository.local(db).watchDays().listen(
+        (_) {},
+        onError: (Object e, StackTrace st) {
+          if (!completer.isCompleted) completer.complete(e);
+        },
+      );
+      final err = await completer.future;
+      expect(err, isA<TypeError>());
+      await sub.cancel();
+    },
+  );
 }

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/export/export_builder.dart';
+import 'package:alkion/export/export_builder.dart';
 
 void main() {
   group('buildFullExport', () {
@@ -22,8 +22,11 @@ void main() {
       expect(out['exported_at'], DateTime(2026, 6, 3, 18, 0).toIso8601String());
       expect(out['settings'], {'unit': 'kg', 'mode': 'dark'});
       final data = out['data'] as Map<String, dynamic>;
-      expect((data['exercises'] as List).single,
-          {'id': 'e1', 'name': 'Bench', 'slug': 'bench'});
+      expect((data['exercises'] as List).single, {
+        'id': 'e1',
+        'name': 'Bench',
+        'slug': 'bench',
+      });
     });
 
     test('strips user_id and created_by from every row of every table', () {
@@ -58,7 +61,9 @@ void main() {
     test('does not mutate the input rows', () {
       final row = {'id': 's1', 'user_id': 'u1'};
       buildFullExport(
-        tables: {'sessions': [row]},
+        tables: {
+          'sessions': [row],
+        },
         settings: const {},
         exportedAt: DateTime(2026, 6, 3),
       );
@@ -76,19 +81,18 @@ void main() {
       int warmup = 0,
       int top = 0,
       int pr = 0,
-    }) =>
-        {
-          'id': '$ex-$n',
-          'session_id': 's1',
-          'exercise_id': ex,
-          'set_number': n,
-          'weight_kg': w,
-          'reps': reps,
-          'rir': rir,
-          'is_warmup': warmup,
-          'is_top_set': top,
-          'is_pr': pr,
-        };
+    }) => {
+      'id': '$ex-$n',
+      'session_id': 's1',
+      'exercise_id': ex,
+      'set_number': n,
+      'weight_kg': w,
+      'reps': reps,
+      'rir': rir,
+      'is_warmup': warmup,
+      'is_top_set': top,
+      'is_pr': pr,
+    };
 
     final exercises = {
       'bench': (name: 'Bench Press', muscleGroup: 'chest'),
@@ -136,16 +140,33 @@ void main() {
       expect(bench['muscle_group'], 'chest');
       final benchSets = bench['sets'] as List;
       expect(benchSets, hasLength(2));
-      expect(benchSets[0],
-          {'weight_kg': 40.0, 'reps': 8, 'rir': null, 'warmup': true, 'top_set': false, 'pr': false});
-      expect(benchSets[1],
-          {'weight_kg': 80.0, 'reps': 8, 'rir': 1, 'warmup': false, 'top_set': true, 'pr': true});
+      expect(benchSets[0], {
+        'weight_kg': 40.0,
+        'reps': 8,
+        'rir': null,
+        'warmup': true,
+        'top_set': false,
+        'pr': false,
+      });
+      expect(benchSets[1], {
+        'weight_kg': 80.0,
+        'reps': 8,
+        'rir': 1,
+        'warmup': false,
+        'top_set': true,
+        'pr': true,
+      });
     });
 
     test('unknown exercise falls back to its id, null label to Workout', () {
       final out = buildHistoryExport(
         sessions: [
-          {'id': 's1', 'date': '2026-06-01', 'split_label': null, 'duration_min': null},
+          {
+            'id': 's1',
+            'date': '2026-06-01',
+            'split_label': null,
+            'duration_min': null,
+          },
         ],
         setsBySession: {
           's1': [set_(ex: 'ghost', n: 1)],
@@ -165,7 +186,12 @@ void main() {
     test('session with no sets yields empty exercises, none crash', () {
       final out = buildHistoryExport(
         sessions: [
-          {'id': 's1', 'date': '2026-06-01', 'split_label': 'X', 'duration_min': 1},
+          {
+            'id': 's1',
+            'date': '2026-06-01',
+            'split_label': 'X',
+            'duration_min': 1,
+          },
         ],
         setsBySession: const {},
         exerciseById: const {},

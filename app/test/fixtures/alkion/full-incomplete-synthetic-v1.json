@@ -1,0 +1,8 @@
+{"format":"reps-export","version":1,"kind":"full","settings":{},"data":{
+"exercises":[{"id":"inc-ex","name":"Incomplete Curl","compound":0,"is_template":0}],
+"day_templates":[{"id":"inc-day","position":3,"is_template":0}],
+"day_template_items":[{"id":"inc-slot","day_template_id":"inc-day","exercise_id":"inc-ex","position":1,"is_template":0}],
+"sessions":[{"id":"inc-session","date":"2026-04-04"},{"id":"inc-session-empty-day","date":"2026-04-05","day_template_id":""}],
+"sets":[{"id":"inc-set","session_id":"inc-session","exercise_id":"inc-ex","weight_kg":"12.5","reps":12}],
+"bodyweight_logs":[{"id":"inc-bw"}],
+"muscle_targets":[]}}

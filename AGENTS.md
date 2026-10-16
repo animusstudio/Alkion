@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Current state:** `main` is pre-1.0 development of Alkion, the successor app (see `docs/alkion/`). v0.18.1 is the final legacy Reps release. Before Alkion 1.0, create no `v*` tag or GitHub release and do not use the `release` skill; the Releases section below describes the legacy process.
+
 ## What this is
 
 "Reps" (`io.github.psychonaut0.reps`) — a personal, local-first gym-logging app. Flutter client (Android phone + Linux desktop for dev) over a PowerSync-synced SQLite, with an optional self-hosted Go backend + Postgres for multi-device sync. Works fully offline with no account; sync is opt-in. The root README.md is the original capture document (training split, seed data) — it predates the build and its "status" line is stale; this file and the per-directory CLAUDE.md files are the operative truth.

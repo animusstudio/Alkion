@@ -54,16 +54,22 @@ class _ReorderExercisesSheet extends StatelessWidget {
         child: ListenableBuilder(
           listenable: controller,
           builder: (context, _) {
-            final blocks = controller.draftOrNull?.blocks ?? const <BlockState>[];
+            final blocks =
+                controller.draftOrNull?.blocks ?? const <BlockState>[];
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
-                  child: Text(l.sessionReorderExercises,
-                      style: WorkoutType.mono(
-                          size: 10.5, color: tokens.faint, letterSpacing: 0.08 * 10.5)),
+                  child: Text(
+                    l.sessionReorderExercises,
+                    style: WorkoutType.mono(
+                      size: 10.5,
+                      color: tokens.faint,
+                      letterSpacing: 0.08 * 10.5,
+                    ),
+                  ),
                 ),
                 Flexible(
                   child: ReorderableListView.builder(
@@ -124,17 +130,28 @@ class _Row extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Text(block.exercise.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: WorkoutType.body(size: 15, weight: FontWeight.w600, color: tokens.text)),
+              child: Text(
+                block.exercise.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: WorkoutType.body(
+                  size: 15,
+                  weight: FontWeight.w600,
+                  color: tokens.text,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
-            Text('$done/$total',
-                style: WorkoutType.mono(
-                    size: 12,
-                    weight: FontWeight.w700,
-                    color: done == total && total > 0 ? tokens.accentText : tokens.dim)),
+            Text(
+              '$done/$total',
+              style: WorkoutType.mono(
+                size: 12,
+                weight: FontWeight.w700,
+                color: done == total && total > 0
+                    ? tokens.accentText
+                    : tokens.dim,
+              ),
+            ),
             Semantics(
               // No tap action: the list supplies the move actions.
               label: '${l.sessionReorderExercises}: ${block.exercise.name}',

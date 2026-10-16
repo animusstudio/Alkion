@@ -1,21 +1,51 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/session/active_session_controller.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/session/active_session_controller.dart';
 
 Exercise _ex(String id) => Exercise(
-      id: id, name: id, slug: id, muscleGroup: 'chest',
-      compound: true, plateStepKg: 2.5, isTemplate: false,
-    );
+  id: id,
+  name: id,
+  slug: id,
+  muscleGroup: 'chest',
+  compound: true,
+  plateStepKg: 2.5,
+  isTemplate: false,
+);
 
-SetState _s(String id, {bool warmup = false, bool done = false, double w = 100, int reps = 5}) =>
-    SetState(id: id, weightKg: w, reps: reps, rir: warmup ? null : 1, isWarmup: warmup, done: done);
+SetState _s(
+  String id, {
+  bool warmup = false,
+  bool done = false,
+  double w = 100,
+  int reps = 5,
+}) => SetState(
+  id: id,
+  weightKg: w,
+  reps: reps,
+  rir: warmup ? null : 1,
+  isWarmup: warmup,
+  done: done,
+);
 
-BlockState _b(String id, {List<SetState> warm = const [], List<SetState> work = const [], bool expanded = true, double? bestKg}) {
+BlockState _b(
+  String id, {
+  List<SetState> warm = const [],
+  List<SetState> work = const [],
+  bool expanded = true,
+  double? bestKg,
+}) {
   final e = _ex(id);
   return BlockState(
     exercise: e,
-    resolved: ResolvedSlot(exercise: e, workSets: work.length, warmupSets: warm.length,
-        repLow: 5, repHigh: 8, rirLow: 1, rirHigh: 2),
+    resolved: ResolvedSlot(
+      exercise: e,
+      workSets: work.length,
+      warmupSets: warm.length,
+      repLow: 5,
+      repHigh: 8,
+      rirLow: 1,
+      rirHigh: 2,
+    ),
     warmupSets: [...warm],
     workingSets: [...work],
     expanded: expanded,
@@ -23,16 +53,25 @@ BlockState _b(String id, {List<SetState> warm = const [], List<SetState> work = 
   );
 }
 
-ActiveSessionController _c(List<BlockState> blocks) => ActiveSessionController()
-  ..seedForTest(SessionDraft(
-    templateId: null, name: 'W', focus: '',
-    startedAt: DateTime(2026, 9, 24, 10), blocks: blocks,
-  ));
+ActiveSessionController _c(List<BlockState> blocks) =>
+    ActiveSessionController()..seedForTest(
+      SessionDraft(
+        templateId: null,
+        name: 'W',
+        focus: '',
+        startedAt: DateTime(2026, 9, 24, 10),
+        blocks: blocks,
+      ),
+    );
 
 void main() {
   group('liveSet', () {
     test('is the first not-done set in on-screen order, warm-ups first', () {
-      final a = _b('a', warm: [_s('w1', warmup: true, done: true), _s('w2', warmup: true)], work: [_s('a1')]);
+      final a = _b(
+        'a',
+        warm: [_s('w1', warmup: true, done: true), _s('w2', warmup: true)],
+        work: [_s('a1')],
+      );
       final c = _c([a]);
       expect(c.liveSet!.set.id, 'w2');
       expect(identical(c.liveSet!.block, a), isTrue);
@@ -47,7 +86,12 @@ void main() {
     });
 
     test('is null when every set is done or there are no blocks', () {
-      expect(_c([_b('a', work: [_s('a1', done: true)])]).liveSet, isNull);
+      expect(
+        _c([
+          _b('a', work: [_s('a1', done: true)]),
+        ]).liveSet,
+        isNull,
+      );
       expect(_c([]).liveSet, isNull);
     });
 
@@ -77,7 +121,12 @@ void main() {
     });
 
     test('returns null when there is no live set', () {
-      expect(_c([_b('a', work: [_s('a1', done: true)])]).logLiveSet(), isNull);
+      expect(
+        _c([
+          _b('a', work: [_s('a1', done: true)]),
+        ]).logLiveSet(),
+        isNull,
+      );
     });
 
     test('logging a focused done set keeps it done and clears focus', () {
@@ -93,14 +142,17 @@ void main() {
       expect(c.rirPromptSetId, isNull);
     });
 
-    test('moving into the next block collapses the finished block and expands the next', () {
-      final a = _b('a', work: [_s('a1')]);
-      final b = _b('b', work: [_s('b1')], expanded: false);
-      final c = _c([a, b]);
-      c.logLiveSet();
-      expect(a.expanded, isFalse);
-      expect(b.expanded, isTrue);
-    });
+    test(
+      'moving into the next block collapses the finished block and expands the next',
+      () {
+        final a = _b('a', work: [_s('a1')]);
+        final b = _b('b', work: [_s('b1')], expanded: false);
+        final c = _c([a, b]);
+        c.logLiveSet();
+        expect(a.expanded, isFalse);
+        expect(b.expanded, isTrue);
+      },
+    );
 
     test('staying inside the same block keeps its expansion', () {
       final a = _b('a', work: [_s('a1'), _s('a2')]);
@@ -121,16 +173,19 @@ void main() {
   });
 
   group('RIR prompt', () {
-    test('logging a working set opens the prompt and nothing on a clock closes it', () {
-      final a = _b('a', work: [_s('a1'), _s('a2')]);
-      final c = _c([a]);
-      c.logLiveSet();
-      expect(c.rirPromptSetId, 'a1');
-      // Rest starting and ending does not close it.
-      c.startRest(90);
-      c.stopRest();
-      expect(c.rirPromptSetId, 'a1');
-    });
+    test(
+      'logging a working set opens the prompt and nothing on a clock closes it',
+      () {
+        final a = _b('a', work: [_s('a1'), _s('a2')]);
+        final c = _c([a]);
+        c.logLiveSet();
+        expect(c.rirPromptSetId, 'a1');
+        // Rest starting and ending does not close it.
+        c.startRest(90);
+        c.stopRest();
+        expect(c.rirPromptSetId, 'a1');
+      },
+    );
 
     test('picking a value stores it and leaves the prompt open', () {
       final a = _b('a', work: [_s('a1'), _s('a2')]);
@@ -173,20 +228,25 @@ void main() {
     });
 
     test('every change to the set list closes it', () {
-      final cases = <String, void Function(ActiveSessionController, BlockState, BlockState)>{
-        'addSet': (c, a, b) => c.addSet(a),
-        'addWarmupSet': (c, a, b) => c.addWarmupSet(a),
-        'removeSet (another set)': (c, a, b) => c.removeSet(a, a.workingSets[1]),
-        'restoreSet': (c, a, b) {
-          final s = b.workingSets[0];
-          final i = c.removeSet(b, s);
-          c.logLiveSet(); // reopen on a2 (a1 already logged)
-          c.restoreSet(b, s, i);
-        },
-        'moveBlock': (c, a, b) => c.moveBlock(a, 1),
-        'moveBlockTo': (c, a, b) => c.moveBlockTo(0, 1),
-        'removeBlock': (c, a, b) => c.removeBlock(b),
-      };
+      final cases =
+          <
+            String,
+            void Function(ActiveSessionController, BlockState, BlockState)
+          >{
+            'addSet': (c, a, b) => c.addSet(a),
+            'addWarmupSet': (c, a, b) => c.addWarmupSet(a),
+            'removeSet (another set)': (c, a, b) =>
+                c.removeSet(a, a.workingSets[1]),
+            'restoreSet': (c, a, b) {
+              final s = b.workingSets[0];
+              final i = c.removeSet(b, s);
+              c.logLiveSet(); // reopen on a2 (a1 already logged)
+              c.restoreSet(b, s, i);
+            },
+            'moveBlock': (c, a, b) => c.moveBlock(a, 1),
+            'moveBlockTo': (c, a, b) => c.moveBlockTo(0, 1),
+            'removeBlock': (c, a, b) => c.removeBlock(b),
+          };
       cases.forEach((name, act) {
         final a = _b('a', work: [_s('a1'), _s('a2')]);
         final b = _b('b', work: [_s('b1')]);
@@ -199,7 +259,9 @@ void main() {
     });
 
     test('discard resets it', () async {
-      final c = _c([_b('a', work: [_s('a1')])]);
+      final c = _c([
+        _b('a', work: [_s('a1')]),
+      ]);
       c.logLiveSet();
       await c.discard();
       expect(c.rirPromptSetId, isNull);
@@ -303,7 +365,10 @@ void main() {
     });
 
     test('out-of-range or no-op moves change nothing and do not notify', () {
-      final c = _c([_b('a', work: [_s('a1')]), _b('b', work: [_s('b1')])]);
+      final c = _c([
+        _b('a', work: [_s('a1')]),
+        _b('b', work: [_s('b1')]),
+      ]);
       var notifies = 0;
       c.addListener(() => notifies++);
       c.moveBlockTo(1, 1);
@@ -316,14 +381,24 @@ void main() {
 
   group('helpers', () {
     test('liveTopOf reports the heaviest done working set and PR status', () {
-      final a = _b('a', warm: [_s('w', warmup: true, done: true, w: 200)],
-          work: [_s('a1', done: true, w: 100), _s('a2', done: true, w: 105), _s('a3', w: 120)],
-          bestKg: 102.5);
+      final a = _b(
+        'a',
+        warm: [_s('w', warmup: true, done: true, w: 200)],
+        work: [
+          _s('a1', done: true, w: 100),
+          _s('a2', done: true, w: 105),
+          _s('a3', w: 120),
+        ],
+        bestKg: 102.5,
+      );
       expect(liveTopOf(a), (topKg: 105.0, isPr: true));
       a.bestKg = 110;
       expect(liveTopOf(a).isPr, isFalse);
       expect(liveTopOf(_b('b', work: [_s('b1')])), (topKg: 0.0, isPr: false));
-      expect(liveTopOf(_b('c', work: [_s('c1', done: true)])).isPr, isTrue); // no history
+      expect(
+        liveTopOf(_b('c', work: [_s('c1', done: true)])).isPr,
+        isTrue,
+      ); // no history
     });
 
     test('expandOnlyFirst expands the first block and collapses the rest', () {

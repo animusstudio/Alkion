@@ -74,7 +74,9 @@ class SetLine extends StatelessWidget {
                       style: WorkoutType.mono(
                         size: 13,
                         weight: FontWeight.w700,
-                        color: done && !set.isWarmup ? tokens.accentText : tokens.faint,
+                        color: done && !set.isWarmup
+                            ? tokens.accentText
+                            : tokens.faint,
                       ),
                     ),
                   ),
@@ -94,30 +96,50 @@ class SetLine extends StatelessWidget {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: Text.rich(
-                                TextSpan(children: [
-                                  TextSpan(
-                                    text: unit.fmtWt(set.weightKg),
-                                    style: WorkoutType.mono(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text:
+                                          (!set.weightTouched &&
+                                              (set.weightUnavailable ||
+                                                  double.tryParse(
+                                                        set.weightText,
+                                                      ) ==
+                                                      null))
+                                          ? '—'
+                                          : unit.fmtWt(set.weightKg),
+                                      style: WorkoutType.mono(
                                         size: 15,
                                         weight: FontWeight.w700,
-                                        color: done ? tokens.text : tokens.dim),
-                                  ),
-                                  TextSpan(
-                                    text: unit.uLabel,
-                                    style: WorkoutType.mono(size: 11, color: tokens.faint),
-                                  ),
-                                  TextSpan(
-                                    text: '  ×  ',
-                                    style: WorkoutType.mono(size: 12, color: tokens.faint),
-                                  ),
-                                  TextSpan(
-                                    text: '${set.reps}',
-                                    style: WorkoutType.mono(
+                                        color: done ? tokens.text : tokens.dim,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: unit.uLabel,
+                                      style: WorkoutType.mono(
+                                        size: 11,
+                                        color: tokens.faint,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: '  ×  ',
+                                      style: WorkoutType.mono(
+                                        size: 12,
+                                        color: tokens.faint,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: set.repsAvailable
+                                          ? '${set.reps}'
+                                          : '—',
+                                      style: WorkoutType.mono(
                                         size: 15,
                                         weight: FontWeight.w700,
-                                        color: done ? tokens.text : tokens.dim),
-                                  ),
-                                ]),
+                                        color: done ? tokens.text : tokens.dim,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                                 maxLines: 1,
                                 softWrap: false,
                               ),
@@ -129,7 +151,10 @@ class SetLine extends StatelessWidget {
                                 padding: const EdgeInsets.only(left: 10),
                                 child: FitLabel(
                                   l.sessionRir(rir),
-                                  style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                                  style: WorkoutType.mono(
+                                    size: 10.5,
+                                    color: tokens.faint,
+                                  ),
                                 ),
                               ),
                             ),
@@ -171,13 +196,19 @@ class SetLine extends StatelessWidget {
                                 child: Text(
                                   l.sessionColRir,
                                   style: WorkoutType.mono(
-                                      size: 10.5, color: tokens.faint, letterSpacing: 0.08 * 10.5),
+                                    size: 10.5,
+                                    color: tokens.faint,
+                                    letterSpacing: 0.08 * 10.5,
+                                  ),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: RirPicker(value: set.rir, onChanged: onRir),
+                              child: RirPicker(
+                                value: set.rir,
+                                onChanged: onRir,
+                              ),
                             ),
                           ],
                         ),
@@ -211,7 +242,9 @@ class _StatusGlyph extends StatelessWidget {
         border: done ? null : Border.all(color: tokens.lineStrong, width: 1.5),
       ),
       alignment: Alignment.center,
-      child: done ? Icon(WIcons.check, size: 14, color: tokens.accentInk) : null,
+      child: done
+          ? Icon(WIcons.check, size: 14, color: tokens.accentInk)
+          : null,
     );
   }
 }

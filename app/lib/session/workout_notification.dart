@@ -1,28 +1,20 @@
 import 'dart:io';
 import 'dart:ui'; // PlatformDispatcher
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../identity/alkion_profile.dart';
+import '../store/local_store.dart';
+import '../store/schema.dart';
+import '../domain/evidence.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
-import '../capture/capture_startup.dart' show CaptureLocations;
-import '../capture/session_capture_hooks.dart' show SessionWriteLedger;
-import '../capture/source_write_gate.dart';
-
 /// Notification id and channel id. Top-level so both the instance and the
 /// background isolate (which constructs a fresh plugin) agree on them.
-const _kNotifId = 1;
-const _kChannelId = 'workout_session';
-
-// Rest-state blob keys (written on rest, read by the background +30s handler
-// and by SessionManager's foreground reconciliation).
-const restBlobName = 'rest.name';
-const restBlobStartedAt = 'rest.started_at'; // iso8601
-const restBlobStartMs = 'rest.start_ms'; // epoch millis of restStart
-const restBlobTotal = 'rest.total'; // seconds
+const _kNotifId = 4101;
+const _kChannelId = 'alkion.dev.workout_session';
 
 // Notification body strings keyed by locale. The notification is built with no
 // BuildContext (and the +30s revert path runs in a background isolate), so
@@ -53,9 +45,8 @@ const _notifStrings = <String, Map<String, String>>{
 /// Resolves a notification string for the active locale WITHOUT a BuildContext
 /// (works in the background isolate). Order: persisted override → platform
 /// locale → en. [prefs] is the already-loaded SharedPreferences.
-String notifString(SharedPreferences prefs, String key) {
-  final code = prefs.getString('settings.locale') ??
-      PlatformDispatcher.instance.locale.languageCode;
+String notifString(String? locale, String key) {
+  final code = locale ?? PlatformDispatcher.instance.locale.languageCode;
   final table = _notifStrings[code] ?? _notifStrings['en']!;
   return table[key] ?? _notifStrings['en']![key]!;
 }
@@ -64,7 +55,7 @@ String notifString(SharedPreferences prefs, String key) {
 /// plugin types). Elapsed mode: `when` = session start, Android chronometer
 /// counts up. Rest mode: `when` = rest END time, chronometer counts down.
 ({String title, String body, bool countdown, DateTime when})
-    notificationPayloadFor({
+notificationPayloadFor({
   required String sessionName,
   required DateTime startedAt,
   DateTime? restStart,
@@ -119,8 +110,12 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
     category: AndroidNotificationCategory.stopwatch,
     actions: withAction
         ? const <AndroidNotificationAction>[
-            AndroidNotificationAction('add_30s', '+30s',
-                showsUserInterface: false, cancelNotification: false),
+            AndroidNotificationAction(
+              'alkion.dev.add_30s',
+              '+30s',
+              showsUserInterface: true,
+              cancelNotification: false,
+            ),
           ]
         : null,
   );
@@ -135,105 +130,92 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
 /// (referenced by name in [WorkoutNotification.init]) but only fires on Android.
 @pragma('vm:entry-point')
 Future<void> workoutNotificationBackground(
-  NotificationResponse resp, {
-  @visibleForTesting FlutterLocalNotificationsPlugin? plugin,
-}) async {
-  if (resp.actionId != 'add_30s') return;
-  WidgetsFlutterBinding.ensureInitialized();
-  tzdata.initializeTimeZones();
-  // This engine's own instance of the shared source gate: every engine's
-  // admission goes through the one native ticket table and lock. If the
-  // app-support directory cannot be resolved here, the +30s runs ungated,
-  // exactly as on a build without the capture plugin (Android, where this
-  // handler fires and that gate is `platform_unavailable` anyway).
-  SourceWriteGate? gate;
-  try {
-    final appSupport = await getApplicationSupportDirectory();
-    gate = SourceWriteGate(stateDirectory: CaptureLocations(appSupport).gate);
-  } catch (_) {
-    gate = null;
-  }
-  await extendRestInBackground(gate: gate, plugin: plugin);
-}
-
-/// The background +30s, as one admitted source operation of [gate] (this
-/// engine's instance; null runs ungated, as on a build without the capture
-/// plugin, where [SourceWriteGate.run] also runs ungated).
-///
-/// The ticket is taken BEFORE preferences are loaded or reloaded and is held
-/// through every preference write and plugin call, so a data capture either
-/// waits for the whole extension or refuses it before anything is read.
-/// While a capture has admission closed the tap changes nothing: the rest
-/// keeps its earlier end (the extension is unavailable during capture).
-Future<void> extendRestInBackground({
-  required SourceWriteGate? gate,
-  FlutterLocalNotificationsPlugin? plugin,
-}) async {
-  Future<void> body(SourceTicket _) =>
-      _extendRest(plugin ?? FlutterLocalNotificationsPlugin());
-  try {
-    if (gate == null) {
-      await body(SourceTicket.ungated);
-    } else {
-      await gate.run('notification.background_add30', body);
-    }
-  } on SourceGateException {
-    // Refused while a capture holds the source, or the gate failed: nothing
-    // was read or written.
-  }
-}
-
-Future<void> _extendRest(FlutterLocalNotificationsPlugin plugin) async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.reload(); // refresh in case the isolate/engine is reused across taps
-  final startMs = prefs.getInt(restBlobStartMs);
-  final total = prefs.getInt(restBlobTotal);
-  final name = prefs.getString(restBlobName);
-  final startedAtIso = prefs.getString(restBlobStartedAt);
-  if (startMs == null ||
-      total == null ||
-      name == null ||
-      startedAtIso == null) {
+  NotificationResponse response,
+) async {
+  if (response.actionId != 'alkion.dev.add_30s' || response.payload == null) {
     return;
   }
-  final newTotal = total + 30;
-  await prefs.setInt(restBlobTotal, newTotal);
-  final restStart = DateTime.fromMillisecondsSinceEpoch(startMs);
-  final startedAt = DateTime.parse(startedAtIso);
-  final end = restStart.add(Duration(seconds: newTotal));
-
-  await plugin.initialize(
-    settings: const InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    ),
-  );
-  await plugin.show(
-    id: _kNotifId,
-    title: name,
-    body: notifString(prefs, 'rest'),
-    notificationDetails: NotificationDetails(
-      android: buildWorkoutAndroidDetails(
-          countdown: true,
-          when: end,
-          withAction: true,
-          channelName: notifString(prefs, 'channel')),
-    ),
-  );
-  if (end.isAfter(DateTime.now())) {
-    await plugin.zonedSchedule(
-      id: _kNotifId,
-      title: name,
-      body: notifString(prefs, 'inProgress'),
-      scheduledDate: tz.TZDateTime.from(end, tz.UTC),
-      notificationDetails: NotificationDetails(
-        android: buildWorkoutAndroidDetails(
-            countdown: false,
-            when: startedAt,
-            withAction: false,
-            channelName: notifString(prefs, 'channel')),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    final payload = jsonDecode(response.payload!) as Map;
+    await extendRestInBackground(
+      supportRoot: Directory(payload['root'] as String),
+      expectedProfileId: payload['profile'] as String,
+      generation: payload['generation'] as int,
+      draftId: payload['draftId'] as String,
+      restStart: payload['restStart'] as String,
     );
+  } catch (_) {
+    // Missing/stale payload, profile ownership held by foreground, or a failed
+    // store leaves SQL untouched. No alternate preference/gate bypass exists.
+  }
+}
+
+Future<void> extendRestInBackground({
+  required Directory supportRoot,
+  required String expectedProfileId,
+  required int generation,
+  required String draftId,
+  required String restStart,
+}) async {
+  final profile = await AlkionProfile.open(supportRoot: supportRoot);
+  if (profile.profileId != expectedProfileId) {
+    throw const StoreException('foreign_profile');
+  }
+  final db = await LocalStore.open(
+    profile: profile,
+    expectedProfileId: expectedProfileId,
+    schema: workflowSchemaRegistry(),
+  );
+  try {
+    await db.writeTransaction((tx) async {
+      if (tx.token.generation != generation) {
+        throw const StoreException('stale_generation');
+      }
+      final row = await tx.localState(LocalStateKind.draft, 'active');
+      final timer = await tx.localState(LocalStateKind.timer, 'active');
+      if (row == null ||
+          timer == null ||
+          row['status'] != 'active' ||
+          timer['status'] != 'active') {
+        throw const StoreException('stale_local_state');
+      }
+      final draft = Map<String, Object?>.from(
+        jsonDecode(utf8.decode((row['payload_bytes'] as List).cast<int>()))
+            as Map,
+      );
+      final value = Map<String, Object?>.from(
+        jsonDecode(utf8.decode((timer['payload_bytes'] as List).cast<int>()))
+            as Map,
+      );
+      if (draft['draftId'] != draftId ||
+          value['draftId'] != draftId ||
+          value['restStart'] != restStart ||
+          draft['restStart'] != restStart) {
+        throw const StoreException('stale_rest');
+      }
+      final start = DateTime.parse(restStart),
+          total = value['restTotal'] as int;
+      if (!DateTime.now().isBefore(start.add(Duration(seconds: total)))) {
+        throw const StoreException('expired_rest');
+      }
+      value['restTotal'] = total + 30;
+      draft['restTotal'] = total + 30;
+      await tx.putLocalState(
+        LocalStateKind.draft,
+        'active',
+        localBytes(draft),
+        expectedRevision: row['revision'] as int,
+      );
+      await tx.putLocalState(
+        LocalStateKind.timer,
+        'active',
+        localBytes(value),
+        expectedRevision: timer['revision'] as int,
+      );
+    });
+  } finally {
+    await db.close();
   }
 }
 
@@ -248,25 +230,27 @@ class WorkoutNotification {
   WorkoutNotification({
     @visibleForTesting FlutterLocalNotificationsPlugin? plugin,
     @visibleForTesting bool? isAndroid,
-  })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
-        _isAndroid = isAndroid ?? Platform.isAndroid;
+  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
+       _isAndroid = isAndroid ?? Platform.isAndroid;
 
   final FlutterLocalNotificationsPlugin _plugin;
   final bool _isAndroid;
+  String? locale;
   bool _ready = false;
   bool _permissionAsked = false;
   ({String title, bool countdown, DateTime when})? _lastShown;
   DateTime? _lastScheduledEnd;
 
   Future<void> init({void Function()? onTap, void Function()? onAdd30}) async {
-    if (!_isAndroid) return;
-    final prefs = await SharedPreferences.getInstance();
+    if (!_isAndroid) {
+      return;
+    }
     await _plugin.initialize(
       settings: const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
       onDidReceiveNotificationResponse: (resp) {
-        if (resp.actionId == 'add_30s') {
+        if (resp.actionId == 'alkion.dev.add_30s') {
           onAdd30?.call();
         } else {
           onTap?.call();
@@ -276,13 +260,16 @@ class WorkoutNotification {
     );
     await _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(AndroidNotificationChannel(
-          _kChannelId,
-          notifString(prefs, 'channel'),
-          importance: Importance.low,
-          playSound: false,
-        ));
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(
+          AndroidNotificationChannel(
+            _kChannelId,
+            notifString(locale, 'channel'),
+            importance: Importance.low,
+            playSound: false,
+          ),
+        );
     tzdata.initializeTimeZones();
     _ready = true;
   }
@@ -294,12 +281,12 @@ class WorkoutNotification {
     required DateTime when,
     required String channelName,
     bool withAction = false,
-  }) =>
-      buildWorkoutAndroidDetails(
-          countdown: countdown,
-          when: when,
-          withAction: withAction,
-          channelName: channelName);
+  }) => buildWorkoutAndroidDetails(
+    countdown: countdown,
+    when: when,
+    withAction: withAction,
+    channelName: channelName,
+  );
 
   Future<void> showFor({
     required String name,
@@ -307,12 +294,15 @@ class WorkoutNotification {
     DateTime? restStart,
     int restTotal = 0,
   }) async {
-    if (!_ready) return;
+    if (!_ready) {
+      return;
+    }
     if (!_permissionAsked) {
       _permissionAsked = true;
       await _plugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.requestNotificationsPermission(); // result ignored — degrades silently
     }
     final p = notificationPayloadFor(
@@ -323,15 +313,17 @@ class WorkoutNotification {
       now: DateTime.now(),
     );
     final key = (title: p.title, countdown: p.countdown, when: p.when);
-    if (key == _lastShown) return; // unchanged → skip the re-show
+    if (key == _lastShown) {
+      return;
+    } // unchanged → skip the re-show
     _lastShown = key;
     try {
-      await runSourceWrite('notification.show',
-          (_) => _show(p, name, startedAt, restStart, restTotal));
-    } on SourceGateException {
-      // Refused (a data capture holds the source): nothing was written or
-      // shown; forget the key so the next call shows it.
-      if (_lastShown == key) _lastShown = null;
+      await _show(p, name, startedAt, restStart, restTotal);
+    } catch (_) {
+      if (_lastShown == key) {
+        _lastShown = null;
+      }
+      rethrow;
     }
   }
 
@@ -342,31 +334,19 @@ class WorkoutNotification {
     DateTime? restStart,
     int restTotal,
   ) async {
-    // Persist/clear the rest blob (read by the background +30s handler and the
-    // foreground reconciliation). The blob mirrors the live rest state.
-    final prefs = await SharedPreferences.getInstance();
-    await SessionWriteLedger.instance.write('prefs.rest_blob', () async {
-      if (restStart != null) {
-        await prefs.setString(restBlobName, name);
-        await prefs.setString(restBlobStartedAt, startedAt.toIso8601String());
-        await prefs.setInt(restBlobStartMs, restStart.millisecondsSinceEpoch);
-        await prefs.setInt(restBlobTotal, restTotal);
-      } else {
-        await _removeRestBlob(prefs);
-      }
-    });
     // The "+30s" action chip belongs only on the live rest countdown
     // (p.countdown true). Elapsed mode and the scheduled revert omit it.
     await _plugin.show(
       id: _kNotifId,
       title: p.title,
-      body: notifString(prefs, p.countdown ? 'rest' : 'inProgress'),
+      body: notifString(locale, p.countdown ? 'rest' : 'inProgress'),
       notificationDetails: NotificationDetails(
         android: _androidDetails(
-            countdown: p.countdown,
-            when: p.when,
-            withAction: p.countdown,
-            channelName: notifString(prefs, 'channel')),
+          countdown: p.countdown,
+          when: p.when,
+          withAction: p.countdown,
+          channelName: notifString(locale, 'channel'),
+        ),
       ),
     );
     // Schedule the OS alarm that reverts the countdown back to elapsed mode at
@@ -381,13 +361,14 @@ class WorkoutNotification {
         await _plugin.zonedSchedule(
           id: _kNotifId,
           title: name,
-          body: notifString(prefs, 'inProgress'),
+          body: notifString(locale, 'inProgress'),
           scheduledDate: tz.TZDateTime.from(end, tz.UTC),
           notificationDetails: NotificationDetails(
             android: _androidDetails(
-                countdown: false,
-                when: startedAt,
-                channelName: notifString(prefs, 'channel')),
+              countdown: false,
+              when: startedAt,
+              channelName: notifString(locale, 'channel'),
+            ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         );
@@ -401,28 +382,17 @@ class WorkoutNotification {
   bool _cancelOwed = false;
 
   Future<void> cancel() async {
-    if (!_ready) return;
+    if (!_ready) {
+      return;
+    }
     _lastShown = null;
     _lastScheduledEnd = null;
     try {
-      await runSourceWrite('notification.cancel', (_) async {
-        final prefs = await SharedPreferences.getInstance();
-        await SessionWriteLedger.instance
-            .write('prefs.rest_blob', () => _removeRestBlob(prefs));
-        await _plugin.cancel(id: _kNotifId); // cancels the shown notification AND the pending alarm
-      });
+      await _plugin.cancel(id: _kNotifId);
       _cancelOwed = false;
-    } on SourceGateException {
-      // Refused while a data capture holds the source: the blob and the
-      // notification stay until the cancel runs after the capture.
+    } catch (_) {
       _cancelOwed = true;
+      rethrow;
     }
-  }
-
-  static Future<void> _removeRestBlob(SharedPreferences prefs) async {
-    await prefs.remove(restBlobName);
-    await prefs.remove(restBlobStartedAt);
-    await prefs.remove(restBlobStartMs);
-    await prefs.remove(restBlobTotal);
   }
 }

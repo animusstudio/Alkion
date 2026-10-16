@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/session/active_session_controller.dart';
-import 'package:workout_tracker/session/exercise_block.dart';
-import 'package:workout_tracker/session/set_line.dart';
-import 'package:workout_tracker/units/unit_service.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/session/active_session_controller.dart';
+import 'package:alkion/session/exercise_block.dart';
+import 'package:alkion/session/set_line.dart';
+import 'package:alkion/units/unit_service.dart';
 
 import '../support/l10n_harness.dart';
 
@@ -47,26 +47,27 @@ void main() {
   }
 
   Widget host(BlockState b, {required bool showBlock}) => wrapL10n(
-        showBlock
-            ? SingleChildScrollView(
-                child: ExerciseBlock(
-                  key: const ValueKey('e1'),
-                  block: b,
-                  unit: UnitService(),
-                  liveSetId: null,
-                  rirPromptSetId: null,
-                  onFocusSet: (_, __) {},
-                  onSetChanged: (_, __) {},
-                  onRir: (_, __, ___) {},
-                  onMarkNotDone: (_, __) {},
-                  onMenu: (_) {},
-                ),
-              )
-            : const SizedBox.shrink(),
-      );
+    showBlock
+        ? SingleChildScrollView(
+            child: ExerciseBlock(
+              key: const ValueKey('e1'),
+              block: b,
+              unit: UnitService(),
+              liveSetId: null,
+              rirPromptSetId: null,
+              onFocusSet: (_, __) {},
+              onSetChanged: (_, __) {},
+              onRir: (_, __, ___) {},
+              onMarkNotDone: (_, __) {},
+              onMenu: (_) {},
+            ),
+          )
+        : const SizedBox.shrink(),
+  );
 
-  testWidgets('collapse survives State disposal (scroll-out simulation)',
-      (tester) async {
+  testWidgets('collapse survives State disposal (scroll-out simulation)', (
+    tester,
+  ) async {
     final b = makeBlock();
 
     await tester.pumpWidget(host(b, showBlock: true));

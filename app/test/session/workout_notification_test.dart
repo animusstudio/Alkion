@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/session/workout_notification.dart';
+import 'package:alkion/session/workout_notification.dart';
 
 void main() {
   final started = DateTime(2026, 6, 3, 10, 0);
@@ -47,7 +47,9 @@ void main() {
   });
 
   test('restRevertAt = restStart + restTotal', () {
-    expect(restRevertAt(DateTime(2026, 1, 1, 10, 0, 0), 90),
-        DateTime(2026, 1, 1, 10, 1, 30));
+    expect(
+      restRevertAt(DateTime(2026, 1, 1, 10, 0, 0), 90),
+      DateTime(2026, 1, 1, 10, 1, 30),
+    );
   });
 }

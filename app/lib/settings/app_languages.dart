@@ -15,20 +15,27 @@ const appLanguages = [
 /// Asks for the app language, checking [current] (the stored override, null
 /// for the system default). Returns a language code, `'system'` for the
 /// system default (null already means dismissed), or null on dismiss.
-Future<String?> showLanguageSheet(BuildContext context,
-    {required String? current}) {
+Future<String?> showLanguageSheet(
+  BuildContext context, {
+  required String? current,
+}) {
   final l = AppLocalizations.of(context);
-  return showWActionSheet<String>(context,
-      title: l.settingsLanguage,
-      actions: [
+  return showWActionSheet<String>(
+    context,
+    title: l.settingsLanguage,
+    actions: [
+      WSheetAction(
+        label: l.languageSystem,
+        value: 'system',
+        selected: current == null,
+      ),
+      for (final lang in appLanguages)
         WSheetAction(
-            label: l.languageSystem, value: 'system', selected: current == null),
-        for (final lang in appLanguages)
-          WSheetAction(
-            label: lang.name,
-            value: lang.code,
-            labelLocale: Locale(lang.code),
-            selected: lang.code == current,
-          ),
-      ]);
+          label: lang.name,
+          value: lang.code,
+          labelLocale: Locale(lang.code),
+          selected: lang.code == current,
+        ),
+    ],
+  );
 }

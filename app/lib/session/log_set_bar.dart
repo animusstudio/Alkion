@@ -34,11 +34,17 @@ class LogSetBar extends StatelessWidget {
 
   /// The bar's label, or null when the bar is hidden.
   static String? labelFor(
-      AppLocalizations l, UnitService unit, LiveSet? live, bool canFinish) {
+    AppLocalizations l,
+    UnitService unit,
+    LiveSet? live,
+    bool canFinish,
+  ) {
     if (live == null) return canFinish ? l.sessionFinishWorkout : null;
     final s = live.set;
     final index = live.block.workingSets.indexOf(s) + 1;
-    if (s.done) return s.isWarmup ? l.sessionUpdateWarmup : l.sessionUpdateSet(index);
+    if (s.done) {
+      return s.isWarmup ? l.sessionUpdateWarmup : l.sessionUpdateSet(index);
+    }
     final weight = '${unit.fmtWt(s.weightKg)}${unit.uLabel}';
     return s.isWarmup
         ? l.sessionLogWarmup(weight, s.reps)
@@ -101,7 +107,10 @@ class LogSetBar extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: WorkoutType.display(
-                            size: 16, weight: FontWeight.w700, color: tokens.accentInk),
+                          size: 16,
+                          weight: FontWeight.w700,
+                          color: tokens.accentInk,
+                        ),
                       ),
                     ),
                   ],

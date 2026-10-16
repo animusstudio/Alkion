@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/widgets/fit_label.dart';
+import 'package:alkion/widgets/fit_label.dart';
 
 import 'layout_expect.dart';
 

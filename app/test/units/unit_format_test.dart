@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/units/unit_format.dart';
-import 'package:workout_tracker/units/unit_service.dart';
+import 'package:alkion/units/unit_format.dart';
+import 'package:alkion/units/unit_service.dart';
 
 /// A frozen, verbatim copy of the set-weight rule as `UnitService.fmtDisplay`
 /// shipped it before [fmtLoad] existed. Kept here, not read from the service
@@ -140,13 +140,22 @@ void main() {
       for (var i = 0; i <= 20000; i++) {
         final v = i / 1000;
         for (final unit in Unit.values) {
-          same(fmtLoad(roundLoad(v, unit), unit), fmtLoad(v, unit),
-              'load $v $unit');
+          same(
+            fmtLoad(roundLoad(v, unit), unit),
+            fmtLoad(v, unit),
+            'load $v $unit',
+          );
         }
-        same(fmtBodyweight(roundBodyweight(v)), fmtBodyweight(v),
-            'bodyweight $v');
-        same(fmtCount(roundCount(v * 100)), fmtCount(v * 100),
-            'count ${v * 100}');
+        same(
+          fmtBodyweight(roundBodyweight(v)),
+          fmtBodyweight(v),
+          'bodyweight $v',
+        );
+        same(
+          fmtCount(roundCount(v * 100)),
+          fmtCount(v * 100),
+          'count ${v * 100}',
+        );
       }
     });
   });

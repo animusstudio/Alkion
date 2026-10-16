@@ -37,7 +37,11 @@ class CountUp extends StatelessWidget {
 /// (as long as the widget keeps its identity / key). [builder] receives the
 /// curved progress `t`; at `t == 1` it must render identically to a static draw.
 class MountProgress extends StatefulWidget {
-  const MountProgress({super.key, required this.duration, required this.builder});
+  const MountProgress({
+    super.key,
+    required this.duration,
+    required this.builder,
+  });
   final Duration duration;
   final Widget Function(BuildContext context, double t) builder;
 
@@ -47,9 +51,14 @@ class MountProgress extends StatefulWidget {
 
 class _MountProgressState extends State<MountProgress>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: widget.duration);
-  late final CurvedAnimation _a = CurvedAnimation(parent: _c, curve: Motion.curve);
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+  );
+  late final CurvedAnimation _a = CurvedAnimation(
+    parent: _c,
+    curve: Motion.curve,
+  );
 
   @override
   void initState() {
@@ -69,15 +78,24 @@ class _MountProgressState extends State<MountProgress>
 
   @override
   Widget build(BuildContext context) {
-    if (MediaQuery.of(context).disableAnimations) return widget.builder(context, 1.0);
-    return AnimatedBuilder(animation: _a, builder: (ctx, _) => widget.builder(ctx, _a.value));
+    if (MediaQuery.of(context).disableAnimations) {
+      return widget.builder(context, 1.0);
+    }
+    return AnimatedBuilder(
+      animation: _a,
+      builder: (ctx, _) => widget.builder(ctx, _a.value),
+    );
   }
 }
 
 /// One-shot fade + 12px rise on first mount, staggered by [index]. Never
 /// re-plays on rebuilds.
 class StaggeredEntrance extends StatefulWidget {
-  const StaggeredEntrance({super.key, required this.index, required this.child});
+  const StaggeredEntrance({
+    super.key,
+    required this.index,
+    required this.child,
+  });
   final int index;
   final Widget child;
 
@@ -87,9 +105,14 @@ class StaggeredEntrance extends StatefulWidget {
 
 class _StaggeredEntranceState extends State<StaggeredEntrance>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: Motion.base);
-  late final CurvedAnimation _a = CurvedAnimation(parent: _c, curve: Motion.curve);
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: Motion.base,
+  );
+  late final CurvedAnimation _a = CurvedAnimation(
+    parent: _c,
+    curve: Motion.curve,
+  );
 
   @override
   void initState() {
@@ -140,9 +163,14 @@ class Reveal extends StatefulWidget {
 }
 
 class _RevealState extends State<Reveal> with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: Motion.base);
-  late final CurvedAnimation _a = CurvedAnimation(parent: _c, curve: Motion.curve);
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: Motion.base,
+  );
+  late final CurvedAnimation _a = CurvedAnimation(
+    parent: _c,
+    curve: Motion.curve,
+  );
 
   @override
   void initState() {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/settings/settings_service.dart';
+import 'package:alkion/settings/settings_service.dart';
 
 /// [initialsOf] is shared by the Profile avatar and the Today greeting avatar,
 /// so they always show the same letters for a given profile name.

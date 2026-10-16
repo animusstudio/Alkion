@@ -2,26 +2,18 @@
 //
 // The DB-bound [DayTemplateRepository.nextInRotation] delegates its selection
 // to the pure [selectNextDay] function, which is straightforward to test
-// without a live PowerSyncDatabase. Each case builds a minimal [DayTemplate]
+// without a live FixtureDatabase. Each case builds a minimal [DayTemplate]
 // list and asserts the expected result.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/day_template_repository.dart';
-import 'package:workout_tracker/data/models.dart';
+import 'package:alkion/data/day_template_repository.dart';
+import 'package:alkion/data/models.dart';
 
 // Helper: build a minimal DayTemplate with just id + position.
-DayTemplate _day(String id, int position) => DayTemplate(
-      id: id,
-      name: 'Day $id',
-      position: position,
-      slots: const [],
-    );
+DayTemplate _day(String id, int position) =>
+    DayTemplate(id: id, name: 'Day $id', position: position, slots: const []);
 
 void main() {
-  final days = [
-    _day('a', 0),
-    _day('b', 1),
-    _day('c', 2),
-  ];
+  final days = [_day('a', 0), _day('b', 1), _day('c', 2)];
 
   test('no days → null', () {
     expect(selectNextDay([], null), isNull);

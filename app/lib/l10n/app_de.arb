@@ -24,7 +24,13 @@
   "todayVsLastWeek": "{delta} ggü. Vorwoche",
   "todaySameAsLastWeek": "wie Vorwoche",
   "todayLastPrDate": "zuletzt {date}",
-  "@todayLastPrDate": {"placeholders": {"date": {"type": "String"}}},
+  "@todayLastPrDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "todayNoPrsShort": "noch keine",
   "weekStripCustom": "Frei",
   "splitNextInRotation": "NÄCHSTES IN DER ROTATION",
@@ -267,8 +273,14 @@
   "profileSaveName": "Speichern",
   "profileEditName": "Namen bearbeiten",
   "profileTrainingSince": "Training seit {month}",
-  "@profileTrainingSince": {"placeholders": {"month": {"type": "String"}}},
-  "profileSplitDays": "{count, plural, =1{1-\u2060Tag-Split} other{{count}-\u2060Tage-Split}}",
+  "@profileTrainingSince": {
+    "placeholders": {
+      "month": {
+        "type": "String"
+      }
+    }
+  },
+  "profileSplitDays": "{count, plural, =1{1-⁠Tag-Split} other{{count}-⁠Tage-Split}}",
   "profileStatSessions": "Trainings",
   "profileStatPrs": "PRs",
   "profileStatBodyweight": "Körpergewicht",
@@ -473,5 +485,142 @@
   "captureExportExists": "Dieser Ordner existiert dort schon. Nichts wurde kopiert oder ersetzt, und die Erfassung auf diesem Gerät wurde nur gelesen.",
   "captureHoldWorkoutBanner": "Eine Datenerfassung hält deine Daten: Änderungen an diesem Training werden nicht gespeichert. Sie gehen verloren, wenn die App vor dem Ende des Haltens schließt.",
   "captureHoldWorkoutWarning": "Ein Training ist offen. Solange gehalten wird, werden seine Änderungen nicht gespeichert und gehen verloren, wenn die App schließt. Beende oder verwirf es vorher, wenn du sie behalten willst.",
-  "captureNewWorkoutRefused": "Eine Datenerfassung hält deine Daten, deshalb kann jetzt kein neues Training starten. Hebe sie unter Profil → Datenerfassung auf oder setze fort."
+  "captureNewWorkoutRefused": "Eine Datenerfassung hält deine Daten, deshalb kann jetzt kein neues Training starten. Hebe sie unter Profil → Datenerfassung auf oder setze fort.",
+  "bodyweightChooseEntry": "Messung zum Bearbeiten auswählen",
+  "targetsKeepEmpty": "Ziele leer lassen",
+  "bodyweightUnavailable": "Messwert nicht verfügbar",
+  "alkionLocalOnly": "Lokales Profil",
+  "alkionAccountUnavailable": "Konten sind hier noch nicht verfügbar.",
+  "alkionExportUnavailable": "Der versionierte Export wird vorbereitet und ist derzeit nicht verfügbar.",
+  "alkionOrderChoiceTitle": "Bezug auswählen",
+  "alkionOrderChoiceBody": "Die Reihenfolge ist unklar. Wähle ein Training für diese Aktion. Dies ist eine Präferenz, keine historische Tatsache.",
+  "alkionUnavailableOn": "Nicht verfügbar · {date}",
+  "alkionOlderKnownOn": "Älterer Wert · {date}",
+  "alkionOrderUncertain": "Reihenfolge unklar",
+  "@alkionUnavailableOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "@alkionOlderKnownOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionStoreRecoveryTitle": "Lokalen Speicher reparieren",
+  "alkionStoreRecoveryBody": "Die Änderung ist noch offen. Repariere den lokalen Speicher und versuche sie erneut. Entwurf und letzter Stand bleiben erhalten.",
+  "alkionCompatibility": "Legacy-Kompatibilität · reps-compat/1",
+  "alkionKnownSubtotal": "Bekannte Teilsumme · {known}/{total} Arbeitssätze",
+  "@alkionKnownSubtotal": {
+    "placeholders": {
+      "known": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionLegacyFallback": "Daten fehlen · Legacy-Anzeige",
+  "alkionRetry": "Lokal erneut speichern",
+  "alkionDateUnavailable": "Datum unklar · {raw}",
+  "@alkionDateUnavailable": {
+    "placeholders": {
+      "raw": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionDateWindowUnavailable": "{count} Workouts ohne klares Datum; Zeiträume zählen nur datierte Workouts.",
+  "@alkionDateWindowUnavailable": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionBodyweightDateCoverage": "{known}/{total} Einträge mit Datum · Aktuell und Zeitraum unklar; Zahlen bleiben erhalten.",
+  "@alkionBodyweightDateCoverage": {
+    "placeholders": {
+      "known": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionBaselineUnavailable": "Vorherige Referenz nicht verfügbar",
+  "alkionValuesUnavailable": "Werte nicht verfügbar",
+  "alkionDomainExportSub": "Versionierter Alkion-Domänenexport · JSON",
+  "alkionImportTransfer": "Import & Übertragung",
+  "alkionImportTransferSub": "Vollexport-Import, Prüfungen, Originalbytes",
+  "alkionTransferTitle": "Import & Übertragung",
+  "alkionTransferImportSection": "Vollexport importieren",
+  "alkionTransferPathLabel": "Pfad der Exportdatei",
+  "alkionTransferNamespaceLabel": "Quell-Namensraum",
+  "alkionTransferImportAction": "Importieren",
+  "alkionTransferImportSelected": "Import übernommen",
+  "alkionTransferImportAlreadySelected": "Bereits importiert",
+  "alkionTransferImportRejected": "Import abgelehnt",
+  "alkionTransferImportIncompatible": "Import muss geprüft werden",
+  "alkionTransferImportRefused": "Import nicht bereitgestellt",
+  "alkionTransferGenerations": "Importe",
+  "alkionTransferExportOriginal": "Originalbytes exportieren",
+  "alkionTransferApplySettings": "Importierte Einstellungen übernehmen",
+  "alkionTransferReviews": "Prüfungen",
+  "alkionTransferNoReviews": "Keine offenen Prüfungen",
+  "alkionTransferAbsence": "Fehlt im letzten Import",
+  "alkionTransferOverlay": "Quelle unter deiner Änderung geändert",
+  "alkionTransferTombstone": "Quelle unter einer Löschung geändert",
+  "alkionTransferKeep": "Behalten",
+  "alkionTransferDelete": "Löschen",
+  "alkionTransferRestore": "Wiederherstellen",
+  "alkionTransferDeleteTitle": "Diesen Eintrag löschen?",
+  "alkionTransferDeleteMessage": "Das Fehlen in einem Export beweist keine Löschung. Dies erfasst deine eigene Löschung, die wiederhergestellt werden kann.",
+  "alkionTransferMeasurements": "Messungen ohne Datum",
+  "alkionTransferExportCompat": "Übertragungsdatei exportieren",
+  "alkionTransferExportCompatSub": "Reps-kompatibler Vollexport mit genannten Grenzen; kein Backup.",
+  "alkionTransferFailed": "Übertragung fehlgeschlagen",
+  "alkionTransferOutcomeMessage": "Grund: {category}. Originaldatei und bereitgestellte Bytes bleiben erhalten.",
+  "alkionTransferSettingsApplied": "{applied} übernommen, {skipped} nicht übernommen (fehlende oder ungültige Werte ersetzen keine Einstellungen).",
+  "alkionBackupRestore": "Backup & Wiederherstellung",
+  "alkionBackupRestoreSub": "Manuelles geprüftes Backup, Prüfung und Wiederherstellung",
+  "alkionBackupTitle": "Backup & Wiederherstellung",
+  "alkionBackupSection": "Manuelles Backup",
+  "alkionBackupExplain": "Ein Backup zählt erst, wenn es geprüft ist. Kopiere die Datei von diesem Gerät und prüfe sie dort; Teilen oder Kopieren allein ist kein Nachweis. Alkion plant und erinnert nie, daher kann Arbeit nach deinem letzten geprüften Backup verloren gehen.",
+  "alkionBackupCreate": "Backup erstellen",
+  "alkionBackupCreated": "Backup gespeichert und geprüft",
+  "alkionBackupCreatedMessage": "{path}\nSHA-256 {digest}…\nKopiere es von diesem Gerät und prüfe die Kopie mit „Backup prüfen“.",
+  "alkionBackupFileSection": "Backup-Datei",
+  "alkionBackupPathLabel": "Pfad der Backup-Datei",
+  "alkionBackupCheck": "Backup prüfen",
+  "alkionBackupCheckOk": "Backup geprüft",
+  "alkionBackupCheckOkMessage": "Erstellt {created}. Alle {rows} erfassten Zeilen stimmen mit dem Manifest überein; Schema- und Integritätsprüfung bestanden.",
+  "alkionBackupForeignProfile": "Dieses geprüfte Backup gehört zu einem anderen Alkion-Profil. Es wird hier nie zusammengeführt; es kann nur auf separatem, leerem Speicher wiederhergestellt werden.",
+  "alkionBackupFailed": "Backup-Aktion fehlgeschlagen",
+  "alkionBackupFailedMessage": "Grund: {category}. Deine aktuellen Daten, die Backup-Datei und jede Bereitstellungskopie bleiben erhalten.",
+  "alkionRestoreAction": "Aus diesem Backup wiederherstellen",
+  "alkionRestoreConfirmTitle": "Dieses Backup wiederherstellen?",
+  "alkionRestoreConfirmMessage": "Das Backup wird zum ausgewählten lokalen Stand. Der aktuelle Stand bleibt erhalten und gesperrt, wird nie gelöscht, und Arbeit, die neuer als das Backup ist, wird zur Prüfung aufgelistet. Alkion schließt und muss neu geöffnet werden.",
+  "alkionRestoreConfirm": "Wiederherstellen",
+  "alkionRestoreHistory": "Wiederherstellungen",
+  "alkionRestoreReviewsSection": "Arbeit, die neuer als ein wiederhergestelltes Backup ist",
+  "alkionRestoreNoReviews": "Nichts zu prüfen",
+  "alkionRestoreKeep": "Als Nachweis behalten",
+  "alkionRestoreDoneTitle": "Wiederherstellung ausgewählt",
+  "alkionRestoreDoneBody": "Das Backup ist jetzt der ausgewählte lokale Stand. Der vorherige Stand bleibt erhalten und gesperrt; neuere Arbeit ist zur Prüfung aufgelistet. Öffne Alkion erneut, um fortzufahren.",
+  "alkionRestoreReopen": "Alkion erneut öffnen",
+  "alkionRestoreFailedTitle": "Wiederherstellung nicht abgeschlossen",
+  "alkionRestoreFailedBody": "Grund: {category}. Backup-Datei, Bereitstellungskopie und aktueller Stand bleiben erhalten.",
+  "alkionRestoreInterruptedTitle": "Eine Wiederherstellung wurde unterbrochen",
+  "alkionRestoreInterruptedBody": "Der lokale Speicher bleibt geschlossen, bis du wählst. Abschließen wählt das geprüfte bereitgestellte Backup; den aktuellen Stand behalten lässt die bereitgestellte Kopie liegen.",
+  "alkionRestoreComplete": "Wiederherstellung abschließen",
+  "alkionRestoreKeepCurrent": "Aktuellen Stand behalten",
+  "alkionRestoreRunning": "Das geprüfte Backup wird wiederhergestellt. Der lokale Speicher bleibt geschlossen, bis die Wiederherstellung ausgewählt ist.",
+  "alkionRestoreUnknownNewerWork": "Neuere Arbeit unbekannt: Der vorherige lokale Stand war nicht lesbar. Seine Bytes bleiben unverändert erhalten."
 }

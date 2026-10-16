@@ -9,7 +9,7 @@ import '../data/muscles.dart';
 import '../data/progress_repository.dart';
 import '../data/stats_repository.dart';
 import '../session/session_manager.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
@@ -81,9 +81,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
   void initState() {
     super.initState();
     _target = widget.initialTarget;
-    _exerciseRepo = ExerciseRepository(db);
-    _progressRepo = ProgressRepository(db);
-    _statsRepo = StatsRepository(db);
+    _exerciseRepo = ExerciseRepository.local(context.read<LocalDatabase>());
+    _progressRepo = ProgressRepository.local(context.read<LocalDatabase>());
+    _statsRepo = StatsRepository.local(context.read<LocalDatabase>());
     _catalogStream = _exerciseRepo.watchCatalog();
     if (widget.initialTarget == null) {
       _refreshLastTrained();
@@ -105,7 +105,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
   void _refreshLastTrained() {
     _statsRepo.lastTrainedExerciseId().then((id) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() => _lastTrained = id);
     });
   }
@@ -114,7 +116,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
   /// the last-trained exercise. An explicit pick still wins in build.
   void _onSessionsChanged() {
     final f = _sessions?.lastFinished;
-    if (f == null || identical(f, _seenFinished)) return;
+    if (f == null || identical(f, _seenFinished)) {
+      return;
+    }
     _seenFinished = f;
     _refreshLastTrained();
   }
@@ -127,7 +131,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
       exercises: catalog,
       current: shown,
     );
-    if (r != null) setState(() => _target = r);
+    if (r != null) {
+      setState(() => _target = r);
+    }
   }
 
   @override
@@ -143,7 +149,8 @@ class _ProgressScreenState extends State<ProgressScreen> {
         // Determine the effective target. A user pick (_target) always wins;
         // otherwise default to the last-trained exercise, falling back to the
         // first catalog entry when there's no history or it was deleted.
-        String? target = _target ?? defaultProgressExercise(_lastTrained, catalog);
+        String? target =
+            _target ?? defaultProgressExercise(_lastTrained, catalog);
         // What is actually on screen, so the picker can mark it.
         final shown = shownProgressTarget(
           pick: _target,
@@ -170,7 +177,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
           // catalog is genuinely empty": the first is a transient frame, the
           // second must stay recoverable via the picker instead of a dead
           // blank screen.
-          if (!snap.hasData) return const SizedBox.shrink();
+          if (!snap.hasData) {
+            return const SizedBox.shrink();
+          }
           return _EmptyState(onOpenPicker: openPicker);
         }
 
@@ -191,8 +200,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
           builder: (context, seriesSnap) {
             final rawSeries = seriesSnap.data ?? [];
             final unit = context.read<UnitService>();
-            final metric =
-                kMetrics.firstWhere((m) => m.id == _metricId);
+            final metric = kMetrics.firstWhere((m) => m.id == _metricId);
 
             return _LiftView(
               catalog: catalog,
@@ -240,7 +248,9 @@ class _LiftView extends StatelessWidget {
       return UnitService.fromKg(p.topWeightKg, unitService.unit);
     } else if (metricId == 'e1rm') {
       return UnitService.fromKg(
-          est1rm(p.topWeightKg, p.topReps).toDouble(), unitService.unit);
+        est1rm(p.topWeightKg, p.topReps).toDouble(),
+        unitService.unit,
+      );
     } else if (metricId == 'volume') {
       return UnitService.fromKg(p.volumeKg, unitService.unit);
     } else {
@@ -286,11 +296,15 @@ class _LiftView extends StatelessWidget {
     // Subtitle for selector row.
     final muscleStr = localizedMuscle(context, exercise.muscleGroup);
     final equipStr = exercise.equip ?? '';
-    final subtitle =
-        equipStr.isNotEmpty ? '$muscleStr · $equipStr' : muscleStr;
+    final subtitle = equipStr.isNotEmpty ? '$muscleStr · $equipStr' : muscleStr;
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 8 + MediaQuery.paddingOf(context).top, 16, bottomNavInset(context)),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8 + MediaQuery.paddingOf(context).top,
+        16,
+        bottomNavInset(context),
+      ),
       children: [
         // (1) Title block
         Padding(
@@ -326,10 +340,7 @@ class _LiftView extends StatelessWidget {
         const SizedBox(height: 14),
 
         // (3) Metric tabs
-        MetricTabs(
-          selected: metricId,
-          onSelect: onMetricChanged,
-        ),
+        MetricTabs(selected: metricId, onSelect: onMetricChanged),
         const SizedBox(height: 14),
 
         // (4) Chart. Exactly 1 point can't draw a trend, so it gets an
@@ -359,6 +370,25 @@ class _LiftView extends StatelessWidget {
         ),
         const SizedBox(height: 14),
 
+        Text(
+          l.alkionCompatibility,
+          style: WorkoutType.mono(size: 10, color: tokens.faint),
+        ),
+        if (rawSeries.any(
+          (p) => p.coverage?.complete == false || !p.topAvailable,
+        ))
+          Text(
+            l.alkionLegacyFallback,
+            style: WorkoutType.mono(size: 10, color: tokens.faint),
+          ),
+        if (rawSeries.any((p) => p.coverage?.complete == false))
+          Text(
+            l.alkionKnownSubtotal(
+              rawSeries.fold<int>(0, (n, p) => n + (p.coverage?.known ?? 0)),
+              rawSeries.fold<int>(0, (n, p) => n + (p.coverage?.total ?? 0)),
+            ),
+            style: WorkoutType.mono(size: 10, color: tokens.faint),
+          ),
         // (5) BigStat cards
         _BigStatRow(
           series: shownValues,
@@ -428,11 +458,36 @@ class _BigStatRow extends StatelessWidget {
     if (series.isEmpty) {
       return Row(
         children: [
-          Expanded(child: WCard(child: BigStat(label: l.progressStatCurrent, value: '—', unit: unit))),
+          Expanded(
+            child: WCard(
+              child: BigStat(
+                label: l.progressStatCurrent,
+                value: '—',
+                unit: unit,
+              ),
+            ),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: WCard(child: BigStat(label: l.progressStatBest, value: '—', unit: unit, accent: true))),
+          Expanded(
+            child: WCard(
+              child: BigStat(
+                label: l.progressStatBest,
+                value: '—',
+                unit: unit,
+                accent: true,
+              ),
+            ),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: WCard(child: BigStat(label: l.progressStat12wkDelta, value: '—', unit: unit))),
+          Expanded(
+            child: WCard(
+              child: BigStat(
+                label: l.progressStat12wkDelta,
+                value: '—',
+                unit: unit,
+              ),
+            ),
+          ),
         ],
       );
     }
@@ -566,7 +621,8 @@ class _SessionLogCard extends StatelessWidget {
               curReps: p.topReps,
             );
             deltaLabel = changeLabel(l, c, fmtVal: fmtVal);
-            final up = (c is WeightChange && c.delta > 0) ||
+            final up =
+                (c is WeightChange && c.delta > 0) ||
                 (c is RepChange && c.delta > 0);
             deltaColor = up && deltaLabel != l.progressSame
                 ? tokens.accentText
@@ -582,9 +638,7 @@ class _SessionLogCard extends StatelessWidget {
             decoration: BoxDecoration(
               border: isLast
                   ? null
-                  : Border(
-                      bottom: BorderSide(color: tokens.line, width: 1),
-                    ),
+                  : Border(bottom: BorderSide(color: tokens.line, width: 1)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Row(

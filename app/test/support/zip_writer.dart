@@ -114,11 +114,12 @@ Uint8List buildZip(List<ZipTestEntry> entries) {
 /// Every file of the capture directory [dir] as archive entries (manifest
 /// first), the way a sender lays them out.
 List<ZipTestEntry> entriesOf(Directory dir, {bool deflate = false}) {
-  final files = dir
-      .listSync(recursive: true, followLinks: false)
-      .whereType<File>()
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
+  final files =
+      dir
+          .listSync(recursive: true, followLinks: false)
+          .whereType<File>()
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
   String rel(File f) => f.path.substring(dir.path.length + 1);
   final manifest = files.firstWhere((f) => rel(f) == 'manifest.json');
   return [

@@ -53,8 +53,12 @@ class _NumberEntrySheet extends StatefulWidget {
 }
 
 class _NumberEntrySheetState extends State<_NumberEntrySheet> {
-  late final TextEditingController _ctrl = TextEditingController(text: widget.initialText)
-    ..selection = TextSelection(baseOffset: 0, extentOffset: widget.initialText.length);
+  late final TextEditingController _ctrl =
+      TextEditingController(text: widget.initialText)
+        ..selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: widget.initialText.length,
+        );
 
   @override
   void dispose() {
@@ -64,7 +68,9 @@ class _NumberEntrySheetState extends State<_NumberEntrySheet> {
 
   void _submit() {
     final text = _ctrl.text;
-    Navigator.of(context).pop(text == widget.initialText ? null : widget.parse(text));
+    Navigator.of(
+      context,
+    ).pop(text == widget.initialText ? null : widget.parse(text));
   }
 
   @override
@@ -72,7 +78,9 @@ class _NumberEntrySheetState extends State<_NumberEntrySheet> {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SafeArea(
         top: false,
         child: Container(
@@ -87,9 +95,14 @@ class _NumberEntrySheetState extends State<_NumberEntrySheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(widget.title,
-                  style: WorkoutType.mono(
-                      size: 10.5, color: tokens.faint, letterSpacing: 0.08 * 10.5)),
+              Text(
+                widget.title,
+                style: WorkoutType.mono(
+                  size: 10.5,
+                  color: tokens.faint,
+                  letterSpacing: 0.08 * 10.5,
+                ),
+              ),
               const SizedBox(height: 6),
               Row(
                 children: [
@@ -98,56 +111,75 @@ class _NumberEntrySheetState extends State<_NumberEntrySheet> {
                       label: widget.title,
                       textField: true,
                       child: TextField(
-                      key: const Key('number-entry-field'),
-                      controller: _ctrl,
-                      autofocus: true,
-                      textInputAction: TextInputAction.done,
-                      keyboardType: TextInputType.numberWithOptions(decimal: widget.allowDecimal),
-                      // Whole-string predicate, not an anchored
-                      // FilteringTextInputFormatter.allow (that wipes the field
-                      // on non-matching input — see app/AGENTS.md).
-                      inputFormatters: [
-                        TextInputFormatter.withFunction((oldValue, newValue) {
-                          final ok = widget.allowDecimal
-                              ? RegExp(r'^\d*[.,]?\d*$').hasMatch(newValue.text)
-                              : RegExp(r'^\d*$').hasMatch(newValue.text);
-                          return ok ? newValue : oldValue;
-                        }),
-                      ],
-                      onSubmitted: (_) => _submit(),
-                      style: WorkoutType.display(size: 30, weight: FontWeight.w700, color: tokens.text)
-                          .copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 6),
+                        key: const Key('number-entry-field'),
+                        controller: _ctrl,
+                        autofocus: true,
+                        textInputAction: TextInputAction.done,
+                        keyboardType: TextInputType.numberWithOptions(
+                          decimal: widget.allowDecimal,
+                        ),
+                        // Whole-string predicate, not an anchored
+                        // FilteringTextInputFormatter.allow (that wipes the field
+                        // on non-matching input — see app/AGENTS.md).
+                        inputFormatters: [
+                          TextInputFormatter.withFunction((oldValue, newValue) {
+                            final ok = widget.allowDecimal
+                                ? RegExp(
+                                    r'^\d*[.,]?\d*$',
+                                  ).hasMatch(newValue.text)
+                                : RegExp(r'^\d*$').hasMatch(newValue.text);
+                            return ok ? newValue : oldValue;
+                          }),
+                        ],
+                        onSubmitted: (_) => _submit(),
+                        style:
+                            WorkoutType.display(
+                              size: 30,
+                              weight: FontWeight.w700,
+                              color: tokens.text,
+                            ).copyWith(
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 6),
+                        ),
                       ),
-                    ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Semantics(
                     button: true,
                     child: GestureDetector(
-                    key: const Key('number-entry-done'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _submit,
-                    child: Container(
-                      height: 48,
-                      constraints: const BoxConstraints(minWidth: 72),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: tokens.accent,
-                        borderRadius: BorderRadius.circular(AppRadius.radius * 0.6),
-                      ),
-                      child: Center(
-                        widthFactor: 1,
-                        child: Text(l.commonDone,
+                      key: const Key('number-entry-done'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _submit,
+                      child: Container(
+                        height: 48,
+                        constraints: const BoxConstraints(minWidth: 72),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: tokens.accent,
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.radius * 0.6,
+                          ),
+                        ),
+                        child: Center(
+                          widthFactor: 1,
+                          child: Text(
+                            l.commonDone,
                             style: WorkoutType.body(
-                                size: 15, weight: FontWeight.w700, color: tokens.accentInk)),
+                              size: 15,
+                              weight: FontWeight.w700,
+                              color: tokens.accentInk,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
                   ),
                 ],
               ),

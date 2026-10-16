@@ -1,41 +1,30 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../store/local_store.dart';
 import '../session/active_session_controller.dart';
 import 'json_file_store.dart';
+import 'session_writer.dart';
 
-/// Persists the active [SessionDraft] to a local JSON file in the app-support
-/// directory. This store is local-only and is never synced via PowerSync.
-///
-/// File location: `<applicationSupportDirectory>/workout-draft.json`
-///
-/// Usage:
-/// ```dart
-/// final store = DraftStore();
-/// await store.save(controller.draft);     // on every mutation
-/// final draft = await store.load();       // on app resume
-/// await store.clear();                    // after finish() / discard()
-/// ```
+/// Account-free SQLite draft/timer state. A directory constructor is retained
+/// only for explicitly supplied incoming evidence; it never discovers a root.
 class DraftStore {
-  /// [directory] defaults to the application-support directory; tests point
-  /// it at a temporary directory.
   DraftStore({Future<Directory> Function()? directory})
-      : _store = JsonFileStore<SessionDraft>(
-          filename: fileName,
-          encode: (draft) => draft.toJson(),
-          tryDecode: DraftStore.tryDecode,
-          directory: directory,
-        );
-
-  /// The draft's file name in its directory.
+    : database = null,
+      _incoming = directory == null
+          ? null
+          : JsonFileStore<SessionDraft>(
+              filename: fileName,
+              encode: (d) => d.toJson(),
+              tryDecode: tryDecode,
+              directory: directory,
+            );
+  DraftStore.local(this.database) : _incoming = null;
+  final LocalDatabase? database;
+  final JsonFileStore<SessionDraft>? _incoming;
   static const fileName = 'workout-draft.json';
-
-  final JsonFileStore<SessionDraft> _store;
-
-  /// Decodes a draft file's contents, or returns null if it is not a valid
-  /// draft. Catches everything: a missing or mistyped field is a `TypeError`
-  /// (an Error, not an Exception), which would otherwise escape to `main()`
-  /// before `runApp` and stop the app starting.
+  int persistedRevision = 0;
+  PreparedWorkflowState? pending;
   static SessionDraft? tryDecode(String raw) {
     try {
       return SessionDraft.fromJson(jsonDecode(raw) as Map<String, dynamic>);
@@ -44,23 +33,101 @@ class DraftStore {
     }
   }
 
-  /// Serialises [draft] to JSON and writes it atomically via a temp file.
-  Future<void> save(SessionDraft draft) => _store.save(draft);
+  Future<void> save(SessionDraft draft) {
+    final db = database;
+    if (db == null) {
+      return Future.error(const StoreException('local_store_required'));
+    }
+    final intent = pending ??= PreparedWorkflowState(
+      db,
+      draft.toJson(),
+      draft.timerJson,
+      persistedRevision,
+    );
+    return commitWorkflowState(db, intent).then((revision) {
+      persistedRevision = revision;
+      if (identical(pending, intent)) {
+        pending = null;
+      }
+    });
+  }
 
-  /// Reads and deserialises the draft, or returns null if no draft exists or
-  /// the file is corrupt (a corrupt file is cleared).
-  Future<SessionDraft?> load() => _store.load();
+  Future<SessionDraft?> load() async {
+    final db = database;
+    if (db == null) {
+      if (_incoming != null) {
+        return _incoming.load();
+      }
+      throw const StoreException('local_store_required');
+    }
+    return db.readTransaction((tx) async {
+      final row = await tx.localState(
+        LocalStateKind.draft,
+        WorkoutRepository.activeKey,
+      );
+      persistedRevision = row?['revision'] as int? ?? 0;
+      if (row == null || row['status'] != 'active') {
+        return null;
+      }
+      final draft = tryDecode(
+        utf8.decode((row['payload_bytes'] as List).cast<int>()),
+      );
+      if (draft == null) {
+        throw const StoreException('malformed_draft_preserved');
+      }
+      final timer = await tx.localState(
+        LocalStateKind.timer,
+        WorkoutRepository.activeKey,
+      );
+      if (timer == null || timer['status'] != 'active') {
+        throw const StoreException('timer_evidence_unavailable');
+      }
+      final payload =
+          jsonDecode(utf8.decode((timer['payload_bytes'] as List).cast<int>()))
+              as Map;
+      if (payload['draftId'] != draft.draftId) {
+        throw const StoreException('timer_draft_mismatch');
+      }
+      return draft;
+    });
+  }
 
-  /// Deletes the persisted draft file.
-  Future<void> clear() => _store.clear();
+  Future<void> clear() {
+    final db = database;
+    if (db == null) {
+      return Future.error(const StoreException('local_store_required'));
+    }
+    final intent = pending ??= PreparedWorkflowState(
+      db,
+      {'discarded': true},
+      {'restStart': null, 'restTotal': 0},
+      persistedRevision,
+      status: 'discarded',
+    );
+    return commitWorkflowState(db, intent).then((revision) {
+      persistedRevision = revision;
+      if (identical(pending, intent)) {
+        pending = null;
+      }
+    });
+  }
 
-  /// The draft file, read only by capture inspection.
-  Future<File> file() => _store.file();
+  void completed() {
+    persistedRevision++;
+    pending = null;
+  }
 
-  /// The temporary file an interrupted save may leave behind.
-  Future<File> temporaryFile() => _store.temporaryFile();
-
-  /// Decodes raw draft file bytes without touching the file; null exactly
-  /// when [load] would treat them as corrupt and clear them.
-  SessionDraft? decodeBytes(List<int> bytes) => _store.decodeBytes(bytes);
+  Future<File> file() =>
+      _incoming?.file() ??
+      Future.error(const StoreException('incoming_path_required'));
+  Future<File> temporaryFile() =>
+      _incoming?.temporaryFile() ??
+      Future.error(const StoreException('incoming_path_required'));
+  SessionDraft? decodeBytes(List<int> bytes) {
+    try {
+      return tryDecode(utf8.decode(bytes));
+    } catch (_) {
+      return null;
+    }
+  }
 }

@@ -25,6 +25,7 @@ class LiveSetCard extends StatelessWidget {
     required this.exercise,
     required this.workIndex,
     required this.lastTop,
+    this.lastTopUnavailable = false,
     required this.unit,
     required this.onChanged,
     required this.onMarkNotDone,
@@ -36,6 +37,7 @@ class LiveSetCard extends StatelessWidget {
   /// 1-based working-set index; -1 for warm-ups.
   final int workIndex;
   final ({double weight, int reps, String date})? lastTop;
+  final bool lastTopUnavailable;
   final UnitService unit;
 
   /// Called after the card mutates [set] in place.
@@ -46,16 +48,23 @@ class LiveSetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
-    final base = set.isWarmup ? l.sessionLiveWarmup : l.sessionLiveSet(workIndex);
+    final base = set.isWarmup
+        ? l.sessionLiveWarmup
+        : l.sessionLiveSet(workIndex);
     final label = set.done ? l.sessionLiveLogged(base) : base;
     final last = lastTop;
 
     TextStyle caption() => WorkoutType.mono(
-        size: 10, color: tokens.faint, letterSpacing: 0.08 * 10);
+      size: 10,
+      color: tokens.faint,
+      letterSpacing: 0.08 * 10,
+    );
     // Text keeps the card's inset; the rulers run the card's full width so
     // their ruled edge reads as part of the card, fading into its sides.
-    Widget inset(Widget child) =>
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: child);
+    Widget inset(Widget child) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: child,
+    );
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -68,13 +77,20 @@ class LiveSetCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          inset(Text(label,
+          inset(
+            Text(
+              label,
               style: WorkoutType.mono(
-                  size: 10.5,
-                  weight: FontWeight.w700,
-                  color: tokens.accentText,
-                  letterSpacing: 0.08 * 10.5))),
+                size: 10.5,
+                weight: FontWeight.w700,
+                color: tokens.accentText,
+                letterSpacing: 0.08 * 10.5,
+              ),
+            ),
+          ),
           const SizedBox(height: 10),
+          if (!set.weightAvailable || !set.repsAvailable)
+            inset(Text(l.alkionLegacyFallback, style: caption())),
           SetValuesEditor(
             weightKg: set.weightKg,
             reps: set.reps,
@@ -92,36 +108,47 @@ class LiveSetCard extends StatelessWidget {
             const SizedBox(height: 12),
             // When the chips wrap to two rows, the caption stays level with
             // the first.
-            inset(Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  height: 48,
-                  child: Center(child: Text(l.sessionColRir, style: caption())),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: RirPicker(
-                    value: set.rir,
-                    onChanged: (v) {
-                      set.rir = v;
-                      onChanged();
-                    },
+            inset(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height: 48,
+                    child: Center(
+                      child: Text(l.sessionColRir, style: caption()),
+                    ),
                   ),
-                ),
-              ],
-            )),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: RirPicker(
+                      value: set.rir,
+                      onChanged: (v) {
+                        set.rir = v;
+                        onChanged();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           const SizedBox(height: 10),
-          inset(Text(
-            last == null
-                ? l.sessionNoPreviousData
-                : l.sessionLastRef('${unit.fmtWt(last.weight)}${unit.uLabel}',
-                    last.reps, localizedDaysAgo(l, last.date)),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: WorkoutType.mono(size: 11.5, color: tokens.dim),
-          )),
+          inset(
+            Text(
+              lastTopUnavailable
+                  ? l.alkionBaselineUnavailable
+                  : last == null
+                  ? l.sessionNoPreviousData
+                  : l.sessionLastRef(
+                      '${unit.fmtWt(last.weight)}${unit.uLabel}',
+                      last.reps,
+                      localizedDaysAgo(l, last.date),
+                    ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: WorkoutType.mono(size: 11.5, color: tokens.dim),
+            ),
+          ),
           if (set.done)
             GestureDetector(
               key: const Key('live-mark-not-done'),
@@ -132,7 +159,11 @@ class LiveSetCard extends StatelessWidget {
                 child: Center(
                   child: Text(
                     l.sessionMarkNotDone,
-                    style: WorkoutType.body(size: 14, weight: FontWeight.w600, color: tokens.dim),
+                    style: WorkoutType.body(
+                      size: 14,
+                      weight: FontWeight.w600,
+                      color: tokens.dim,
+                    ),
                   ),
                 ),
               ),

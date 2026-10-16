@@ -1,5 +1,8 @@
 import 'dates.dart';
 
+/// Explicit non-date bucket; original values remain on each retained item.
+const unavailableCalendarBucket = 'calendar:unavailable';
+
 /// Groups [items] by ISO week key (the Monday of the week, formatted as an
 /// ISO date string).
 ///
@@ -9,7 +12,10 @@ import 'dates.dart';
 Map<String, List<T>> groupByWeek<T>(List<T> items, String Function(T) dateOf) {
   final result = <String, List<T>>{};
   for (final item in items) {
-    final key = isoDate(weekStart(DateTime.parse(dateOf(item))));
+    final day = qualifiedCalendarDate(dateOf(item));
+    final key = day == null
+        ? unavailableCalendarBucket
+        : isoDate(weekStart(day));
     (result[key] ??= []).add(item);
   }
   return result;

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/theme/app_theme.dart';
-import 'package:workout_tracker/ui/day_editor.dart';
-import 'package:workout_tracker/widgets/plan_form.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/widgets/plan_form.dart';
 
 import '../support/l10n_harness.dart';
 

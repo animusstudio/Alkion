@@ -11,13 +11,27 @@ import 'active_session_controller.dart';
 
 /// "Next · …" for the header rest row: the live set, or finishing.
 String restNextLabel(AppLocalizations l, UnitService unit, LiveSet? live) {
-  if (live == null) return l.sessionRestNext(l.sessionFinishWorkout);
+  if (live == null) {
+    return l.sessionRestNext(l.sessionFinishWorkout);
+  }
   final s = live.set;
+  if (!s.weightAvailable || !s.repsAvailable) {
+    return l.sessionRestNext(
+      '${live.block.exercise.name} · ${l.alkionValuesUnavailable}',
+    );
+  }
   final weight = '${unit.fmtWt(s.weightKg)}${unit.uLabel}';
   final name = live.block.exercise.name;
-  return l.sessionRestNext(s.isWarmup
-      ? l.sessionNextWarmup(name, weight, s.reps)
-      : l.sessionNextSet(name, live.block.workingSets.indexOf(s) + 1, weight, s.reps));
+  return l.sessionRestNext(
+    s.isWarmup
+        ? l.sessionNextWarmup(name, weight, s.reps)
+        : l.sessionNextSet(
+            name,
+            live.block.workingSets.indexOf(s) + 1,
+            weight,
+            s.reps,
+          ),
+  );
 }
 
 /// The live workout's sticky header: minimize, title and set count, the ⋯
@@ -88,50 +102,61 @@ class SessionHeader extends StatelessWidget {
     final start = restStart;
     final remaining = start == null
         ? 0
-        : (restTotal - DateTime.now().difference(start).inSeconds).clamp(0, restTotal);
+        : (restTotal - DateTime.now().difference(start).inSeconds).clamp(
+            0,
+            restTotal,
+          );
     final resting = start != null && remaining > 0;
     final showRow = resting || showRestRow;
     // Rested since the end the controller recorded; in the second before the
     // screen ticker stops a finished countdown, since that countdown's end.
-    final restedFrom = restEndedAt ??
-        (start != null && !resting ? start.add(Duration(seconds: restTotal)) : null);
+    final restedFrom =
+        restEndedAt ??
+        (start != null && !resting
+            ? start.add(Duration(seconds: restTotal))
+            : null);
     final rested = restedFrom == null
         ? null
         : DateTime.now().difference(restedFrom).inSeconds.clamp(0, _restedCap);
     String clock(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
     final progress = totalWork > 0 ? doneWork / totalWork : 0.0;
-    final barFraction =
-        resting ? (restTotal > 0 ? remaining / restTotal : 0.0) : progress.clamp(0.0, 1.0);
+    final barFraction = resting
+        ? (restTotal > 0 ? remaining / restTotal : 0.0)
+        : progress.clamp(0.0, 1.0);
 
-    Widget circleButton({required Key key, required String label, required VoidCallback onTap, required Widget icon}) =>
-        Semantics(
-          button: true,
-          label: label,
-          excludeSemantics: true,
-          onTap: onTap,
-          child: GestureDetector(
-            key: key,
-            behavior: HitTestBehavior.opaque,
-            onTap: onTap,
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: Center(
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: tokens.surface,
-                    border: Border.all(color: tokens.line),
-                  ),
-                  alignment: Alignment.center,
-                  child: icon,
-                ),
+    Widget circleButton({
+      required Key key,
+      required String label,
+      required VoidCallback onTap,
+      required Widget icon,
+    }) => Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      onTap: onTap,
+      child: GestureDetector(
+        key: key,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tokens.surface,
+                border: Border.all(color: tokens.line),
               ),
+              alignment: Alignment.center,
+              child: icon,
             ),
           ),
-        );
+        ),
+      ),
+    );
 
     return Container(
       color: tokens.bg,
@@ -160,14 +185,20 @@ class SessionHeader extends StatelessWidget {
                       Text.rich(
                         TextSpan(
                           style: WorkoutType.display(
-                              size: 18, weight: FontWeight.w700, color: tokens.text),
+                            size: 18,
+                            weight: FontWeight.w700,
+                            color: tokens.text,
+                          ),
                           children: [
                             TextSpan(text: draft.name),
                             if (draft.focus.isNotEmpty)
                               TextSpan(
                                 text: ' · ${draft.focus}',
                                 style: WorkoutType.display(
-                                    size: 18, weight: FontWeight.w600, color: tokens.faint),
+                                  size: 18,
+                                  weight: FontWeight.w600,
+                                  color: tokens.faint,
+                                ),
                               ),
                           ],
                         ),
@@ -175,10 +206,12 @@ class SessionHeader extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text(setsText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: WorkoutType.mono(size: 11, color: tokens.faint)),
+                      Text(
+                        setsText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: WorkoutType.mono(size: 11, color: tokens.faint),
+                      ),
                     ],
                   ),
                 ),
@@ -186,13 +219,23 @@ class SessionHeader extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('$mm:${ss.toString().padLeft(2, '0')}',
-                        style: WorkoutType.mono(
-                            size: 18, weight: FontWeight.w700, color: tokens.accentText)),
+                    Text(
+                      '$mm:${ss.toString().padLeft(2, '0')}',
+                      style: WorkoutType.mono(
+                        size: 18,
+                        weight: FontWeight.w700,
+                        color: tokens.accentText,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(l.sessionElapsed,
-                        style: WorkoutType.mono(
-                            size: 9, color: tokens.faint, letterSpacing: 0.06 * 9)),
+                    Text(
+                      l.sessionElapsed,
+                      style: WorkoutType.mono(
+                        size: 9,
+                        color: tokens.faint,
+                        letterSpacing: 0.06 * 9,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(width: 4),
@@ -211,100 +254,124 @@ class SessionHeader extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  LayoutBuilder(builder: (context, row) {
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // The chips keep their natural width; the label and
-                        // clock take what is left and scale down to fit when
-                        // it runs out, so the widest labels at large text
-                        // scale never overflow the row.
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(resting ? l.restLabel : l.restRestedLabel,
+                  LayoutBuilder(
+                    builder: (context, row) {
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // The chips keep their natural width; the label and
+                          // clock take what is left and scale down to fit when
+                          // it runs out, so the widest labels at large text
+                          // scale never overflow the row.
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    resting ? l.restLabel : l.restRestedLabel,
                                     style: WorkoutType.mono(
-                                        size: 10, color: tokens.faint, letterSpacing: 0.08 * 10)),
-                                const SizedBox(width: 8),
-                                // Always laid out (empty when the rested time is unknown)
-                                // so both states keep one height.
-                                AnimatedDefaultTextStyle(
-                                  duration: Motion.of(context, Motion.base),
-                                  curve: Motion.curve,
-                                  style: WorkoutType.display(
-                                    size: 18,
-                                    weight: FontWeight.w700,
-                                    color: !resting
-                                        ? tokens.dim
-                                        : remaining <= _finalThreshold
-                                            ? tokens.accentText
-                                            : tokens.text,
-                                  ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-                                  child: Text(resting
-                                      ? clock(remaining)
-                                      : rested == null
-                                          ? ''
-                                          : clock(rested)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // The chip pair sits flush right at natural width,
-                        // capped at 60% of the row so the label and clock
-                        // always keep room. Only past that cap (narrow
-                        // screens, large text, long translations) does Skip
-                        // shrink, keeping its ellipsis as a floor; +30s is
-                        // short in every locale.
-                        ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: row.maxWidth * 0.6),
-                          // After rest the chips are gone but keep their
-                          // space, so the row does not change height.
-                          child: Visibility(
-                            visible: resting,
-                            maintainSize: true,
-                            maintainAnimation: true,
-                            maintainState: true,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _RestChip(
-                                  key: const Key('rest-add'),
-                                  label: l.restAdd30s,
-                                  filled: false,
-                                  tokens: tokens,
-                                  onTap: restExtensionAvailable ? onAdd30s : null,
-                                  unavailableLabel: l.captureRestUnavailable,
-                                ),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: _RestChip(
-                                    key: const Key('rest-skip'),
-                                    label: l.commonSkip,
-                                    filled: true,
-                                    tokens: tokens,
-                                    onTap: onSkip,
+                                      size: 10,
+                                      color: tokens.faint,
+                                      letterSpacing: 0.08 * 10,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 8),
+                                  // Always laid out (empty when the rested time is unknown)
+                                  // so both states keep one height.
+                                  AnimatedDefaultTextStyle(
+                                    duration: Motion.of(context, Motion.base),
+                                    curve: Motion.curve,
+                                    style:
+                                        WorkoutType.display(
+                                          size: 18,
+                                          weight: FontWeight.w700,
+                                          color: !resting
+                                              ? tokens.dim
+                                              : remaining <= _finalThreshold
+                                              ? tokens.accentText
+                                              : tokens.text,
+                                        ).copyWith(
+                                          fontFeatures: const [
+                                            FontFeature.tabularFigures(),
+                                          ],
+                                        ),
+                                    child: Text(
+                                      resting
+                                          ? clock(remaining)
+                                          : rested == null
+                                          ? ''
+                                          : clock(rested),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    );
-                  }),
+                          // The chip pair sits flush right at natural width,
+                          // capped at 60% of the row so the label and clock
+                          // always keep room. Only past that cap (narrow
+                          // screens, large text, long translations) does Skip
+                          // shrink, keeping its ellipsis as a floor; +30s is
+                          // short in every locale.
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: row.maxWidth * 0.6,
+                            ),
+                            // After rest the chips are gone but keep their
+                            // space, so the row does not change height.
+                            child: Visibility(
+                              visible: resting,
+                              maintainSize: true,
+                              maintainAnimation: true,
+                              maintainState: true,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _RestChip(
+                                    key: const Key('rest-add'),
+                                    label: l.restAdd30s,
+                                    filled: false,
+                                    tokens: tokens,
+                                    onTap: restExtensionAvailable
+                                        ? onAdd30s
+                                        : null,
+                                    unavailableLabel:
+                                        l.alkionStoreRecoveryTitle,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: _RestChip(
+                                      key: const Key('rest-skip'),
+                                      label: l.commonSkip,
+                                      filled: true,
+                                      tokens: tokens,
+                                      onTap: restExtensionAvailable
+                                          ? onSkip
+                                          : null,
+                                      unavailableLabel:
+                                          l.alkionStoreRecoveryTitle,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                   const SizedBox(height: 4),
                   Text(
-                      resting && !restExtensionAvailable
-                          ? l.captureRestUnavailable
-                          : nextLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: WorkoutType.mono(size: 11, color: tokens.dim)),
+                    resting && !restExtensionAvailable
+                        ? l.captureRestUnavailable
+                        : nextLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: WorkoutType.mono(size: 11, color: tokens.dim),
+                  ),
                 ],
               ),
             ),
@@ -359,40 +426,43 @@ class _RestChip extends StatelessWidget {
       enabled: enabled,
       hint: enabled ? null : unavailableLabel,
       child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        constraints: const BoxConstraints(minWidth: 56),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        // Skip is secondary to the log bar, the screen's one lime action:
-        // a quiet filled chip, not an accent one.
-        decoration: BoxDecoration(
-          color: filled ? tokens.surface3 : null,
-          border: filled
-              ? null
-              : Border.all(color: enabled ? tokens.lineStrong : tokens.line),
-          borderRadius: BorderRadius.circular(AppRadius.radius * 0.5),
-        ),
-        // widthFactor 1 sizes the chip to its label; a Container `alignment`
-        // would instead stretch it across all the width its Flexible offers.
-        // Longer translations (German "Überspringen") ellipsize rather than
-        // overflow at small widths / large text scale.
-        child: Center(
-          widthFactor: 1,
-          child: Text(label,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 48,
+          constraints: const BoxConstraints(minWidth: 56),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          // Skip is secondary to the log bar, the screen's one lime action:
+          // a quiet filled chip, not an accent one.
+          decoration: BoxDecoration(
+            color: filled ? tokens.surface3 : null,
+            border: filled
+                ? null
+                : Border.all(color: enabled ? tokens.lineStrong : tokens.line),
+            borderRadius: BorderRadius.circular(AppRadius.radius * 0.5),
+          ),
+          // widthFactor 1 sizes the chip to its label; a Container `alignment`
+          // would instead stretch it across all the width its Flexible offers.
+          // Longer translations (German "Überspringen") ellipsize rather than
+          // overflow at small widths / large text scale.
+          child: Center(
+            widthFactor: 1,
+            child: Text(
+              label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: WorkoutType.mono(
-                  size: 12,
-                  weight: FontWeight.w700,
-                  color: !enabled
-                      ? tokens.faint
-                      : filled
-                          ? tokens.text
-                          : tokens.dim)),
+                size: 12,
+                weight: FontWeight.w700,
+                color: !enabled
+                    ? tokens.faint
+                    : filled
+                    ? tokens.text
+                    : tokens.dim,
+              ),
+            ),
+          ),
         ),
-      ),
       ),
     );
   }

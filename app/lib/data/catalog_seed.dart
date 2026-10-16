@@ -1,6 +1,6 @@
-import 'package:powersync/powersync.dart' show uuid; // shared uuid singleton (project convention)
-
-import 'session_writer.dart';
+import '../domain/local_action.dart';
+import '../store/local_store.dart';
+import 'exercise_repository.dart';
 
 /// One row of the bundled starter catalog (ported from server migrations
 /// 00005 + 00019, joined on slug). Inserted as the user's OWN exercises
@@ -402,36 +402,40 @@ const List<StarterExercise> starterExercises = [
   ),
 ];
 
-/// Inserts every [starterExercises] row via [exec], owned by [userId]. Stamps
-/// created_by + is_template + created_at LOCALLY (no server in standalone mode).
-Future<void> seedStarterCatalog(SqlExecutor exec, String userId) async {
-  final nowIso = DateTime.now().toUtc().toIso8601String();
-  for (final e in starterExercises) {
-    await exec.execute(
-      'INSERT INTO exercises '
-      '(id, slug, name, muscle_group, equip, compound, base_weight_kg, plate_step_kg, '
-      'default_rep_low, default_rep_high, default_warmup_sets, default_working_sets, '
-      'default_rir_low, default_rir_high, created_by, is_template, created_at) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        uuid.v4(),
-        e.slug,
-        e.name,
-        e.muscleGroup,
-        e.equip,
-        e.compound ? 1 : 0,
-        e.baseWeightKg == null ? '' : e.baseWeightKg!.toStringAsFixed(2),
-        e.plateStepKg.toStringAsFixed(2),
-        e.defaultRepLow,
-        e.defaultRepHigh,
-        e.defaultWarmupSets,
-        e.defaultWorkingSets,
-        e.defaultRirLow,
-        e.defaultRirHigh,
-        userId,
-        0,
-        nowIso,
-      ],
-    );
-  }
+PreparedDomainAction prepareStarterCatalog(
+  LocalDatabase db, {
+  String? operationId,
+}) {
+  final batch = [
+    for (final e in starterExercises)
+      {
+        'id': domainUuid.v4(),
+        'fields': {
+          'name': e.name,
+          'muscle_group': e.muscleGroup,
+          'equip': e.equip,
+          'compound': e.compound ? 1 : 0,
+          'base_weight_kg': e.baseWeightKg?.toString(),
+          'plate_step_kg': e.plateStepKg.toString(),
+          'default_rep_low': e.defaultRepLow,
+          'default_rep_high': e.defaultRepHigh,
+          'default_warmup_sets': e.defaultWarmupSets,
+          'default_working_sets': e.defaultWorkingSets,
+          'default_rir_low': e.defaultRirLow,
+          'default_rir_high': e.defaultRirHigh,
+        },
+      },
+  ];
+  return prepareDomain(
+    db,
+    RecordKind.exercise,
+    LocalActionKind.definitionCreate,
+    batch.first['id'] as String,
+    0,
+    {'batch': batch},
+    operationId: operationId,
+  );
 }
+
+Future<void> seedStarterCatalog(Object legacy, String userId) async =>
+    throw const StoreException('prepared_catalog_required');

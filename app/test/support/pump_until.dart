@@ -20,5 +20,6 @@ Future<void> pumpUntilFound(
     await tester.pump();
   }
   throw TestFailure(
-      'Timed out after ${timeout.inSeconds}s waiting for: $finder');
+    'Timed out after ${timeout.inSeconds}s waiting for: $finder',
+  );
 }

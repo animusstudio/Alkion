@@ -6,12 +6,7 @@ import '../theme/tokens.dart';
 ///
 /// Visual spec: `docs/design_handoff_workout_tracker/design/app/ui.jsx` `Card`.
 class WCard extends StatelessWidget {
-  const WCard({
-    super.key,
-    required this.child,
-    this.padding,
-    this.onTap,
-  });
+  const WCard({super.key, required this.child, this.padding, this.onTap});
 
   final Widget child;
 
@@ -24,8 +19,7 @@ class WCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final effectivePadding =
-        padding ?? const EdgeInsets.all(AppSpacing.pad);
+    final effectivePadding = padding ?? const EdgeInsets.all(AppSpacing.pad);
 
     Widget card = Container(
       decoration: BoxDecoration(

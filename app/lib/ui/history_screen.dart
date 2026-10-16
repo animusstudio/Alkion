@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../capture/source_write_gate.dart';
 import '../l10n/app_localizations.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
-import '../sync/db.dart';
+import '../data/session_writer.dart' show UnsavedEditors;
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
@@ -43,14 +43,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // Catalog loaded once per screen mount (not re-queried on every stats
   // emission — it changes far less often than the session stream).
   late final Future<List<Exercise>> _catalog;
-  late final Stream<List<HistorySessionRow>> _statsStream =
-      _sessionRepo.watchSessionStats();
+  late final Stream<List<HistorySessionRow>> _statsStream = _sessionRepo
+      .watchSessionStats();
 
   @override
   void initState() {
     super.initState();
-    _sessionRepo = SessionRepository(db);
-    _exerciseRepo = ExerciseRepository(db);
+    _sessionRepo = SessionRepository.local(context.read<LocalDatabase>());
+    _exerciseRepo = ExerciseRepository.local(context.read<LocalDatabase>());
     _catalog = _exerciseRepo.all();
   }
 
@@ -62,9 +62,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     // Only what the cards need: the manager also notifies on every set tick
     // and rest change of a running workout.
-    final (activeSessionId, lastFinished) =
-        context.select<SessionManager, (String?, FinishedSession?)>(
-            (m) => (m.active?.draftOrNull?.sessionId, m.lastFinished));
+    final (activeSessionId, lastFinished) = context
+        .select<SessionManager, (String?, FinishedSession?)>(
+          (m) => (m.active?.draftOrNull?.sessionId, m.lastFinished),
+        );
 
     return StreamBuilder<List<HistorySessionRow>>(
       stream: _statsStream,
@@ -78,8 +79,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
             final catalog = catalogSnap.data ?? [];
             final catalogMap = {for (final e in catalog) e.id: e};
 
-            return _buildBody(context, tokens, units, sessions, catalogMap,
-                activeSessionId, lastFinished);
+            return _buildBody(
+              context,
+              tokens,
+              units,
+              sessions,
+              catalogMap,
+              activeSessionId,
+              lastFinished,
+            );
           },
         );
       },
@@ -117,11 +125,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
           await resumeFinishedSession(context, sessionId);
         } catch (e) {
           // A DB or draft-file error must not leave the tap doing nothing.
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(l.historyResumeFailed('$e')),
-            backgroundColor: context.tokens.danger,
-          ));
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(l.historyResumeFailed('$e')),
+              backgroundColor: context.tokens.danger,
+            ),
+          );
         }
     }
   }
@@ -135,21 +147,30 @@ class _HistoryScreenState extends State<HistoryScreen> {
     String? activeSessionId,
     FinishedSession? lastFinished,
   ) {
+    // Capture the app-scoped owner before an owed delete can outlive this view.
+    final manager = context.read<SessionManager>();
     // ── Header data ─────────────────────────────────────────────────────────
     final now = DateTime.now();
-    final cutoff = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 28));
+    final cutoff = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 28));
     final recent = sessions
         .where(
-          (s) => DateTime.parse('${s.date}T00:00:00').isAfter(
-            cutoff.subtract(const Duration(seconds: 1)),
-          ),
+          (s) =>
+              qualifiedCalendarDate(
+                s.date,
+              )?.isAfter(cutoff.subtract(const Duration(seconds: 1))) ??
+              false,
         )
         .toList();
 
     final monthPrs = recent.fold<int>(0, (sum, s) => sum + s.prCount);
-    final monthTonnageKg =
-        recent.fold<double>(0, (sum, s) => sum + s.tonnageKg);
+    final monthTonnageKg = recent.fold<double>(
+      0,
+      (sum, s) => sum + s.tonnageKg,
+    );
     final monthVolDisplay = units.fmtVol(monthTonnageKg);
 
     // ── Week grouping ────────────────────────────────────────────────────────
@@ -159,7 +180,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     // ── Build ────────────────────────────────────────────────────────────────
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 8 + MediaQuery.paddingOf(context).top, 16, bottomNavInset(context)),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8 + MediaQuery.paddingOf(context).top,
+        16,
+        bottomNavInset(context),
+      ),
       children: [
         // Header
         _Header(sessionCount: sessions.length, tokens: tokens),
@@ -172,8 +198,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
           volumeDisplay: monthVolDisplay,
           tokens: tokens,
         ),
+        Text(
+          AppLocalizations.of(context).alkionCompatibility,
+          style: WorkoutType.mono(size: 10, color: tokens.faint),
+        ),
+        if (recent.any((s) => s.coverage?.complete == false))
+          Text(
+            AppLocalizations.of(context).alkionKnownSubtotal(
+              recent.fold<int>(0, (n, s) => n + (s.coverage?.known ?? 0)),
+              recent.fold<int>(0, (n, s) => n + (s.coverage?.total ?? 0)),
+            ),
+            style: WorkoutType.mono(size: 10, color: tokens.faint),
+          ),
         const SizedBox(height: 24),
 
+        if (sessions.any((s) => !s.dateAvailable))
+          Text(
+            AppLocalizations.of(context).alkionDateWindowUnavailable(
+              sessions.where((s) => !s.dateAvailable).length,
+            ),
+            style: WorkoutType.mono(size: 10, color: tokens.faint),
+          ),
         // Empty state
         if (sessions.isEmpty)
           Center(
@@ -185,11 +230,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
         // Week sections
         for (final wk in weekKeys) ...[
-          _WeekHeader(
-            weekKey: wk,
-            sessions: groups[wk]!,
-            tokens: tokens,
-          ),
+          _WeekHeader(weekKey: wk, sessions: groups[wk]!, tokens: tokens),
           const SizedBox(height: 10),
           for (final session in groups[wk]!)
             Padding(
@@ -207,9 +248,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   now: now,
                 ),
                 onResume: () => _onResume(session.id),
-                onDeleted: (ticket) => context
-                    .read<SessionManager>()
-                    .forgetFinished(session.id, parent: ticket),
+                onDeleted: () => manager.forgetFinished(session.id),
               ),
             ),
           const SizedBox(height: 8),
@@ -315,10 +354,7 @@ class _SummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final intValue = this.intValue;
     if (intValue != null) {
-      return CountUp(
-        value: intValue,
-        builder: (v) => _build(context, '$v'),
-      );
+      return CountUp(value: intValue, builder: (v) => _build(context, '$v'));
     }
     return _build(context, value);
   }
@@ -382,12 +418,17 @@ class _WeekHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final prs = sessions.fold<int>(0, (sum, s) => sum + s.prCount);
-    final countLabel = l.historyWeekSessions(sessions.length) +
+    final countLabel =
+        l.historyWeekSessions(sessions.length) +
         (prs > 0 ? l.sessionPrCount(prs) : '');
-    final weekLabel = l.historyWeekOf(fmtDate(
-      weekKey,
-      Localizations.localeOf(context).toLanguageTag(),
-    ).toUpperCase());
+    final weekLabel = weekKey == unavailableCalendarBucket
+        ? l.alkionDateUnavailable('—')
+        : l.historyWeekOf(
+            fmtDate(
+              weekKey,
+              Localizations.localeOf(context).toLanguageTag(),
+            ).toUpperCase(),
+          );
     final weekStyle = WorkoutType.mono(
       size: 11,
       weight: FontWeight.w600,
@@ -416,7 +457,8 @@ class _WeekHeader extends StatelessWidget {
 
           // Side by side when both fit with a 12 dp gap; otherwise the count
           // drops to its own line instead of colliding with the week.
-          final sideBySide = widthOf(weekLabel, weekStyle) +
+          final sideBySide =
+              widthOf(weekLabel, weekStyle) +
                   12 +
                   widthOf(countLabel, countStyle) <=
               constraints.maxWidth;
@@ -447,7 +489,7 @@ class _WeekHeader extends StatelessWidget {
 
 /// Follow-up of a History delete, run under the delete's ticket (History
 /// forgets the session's finished snapshot here).
-typedef HistoryDeleted = Future<void> Function(SourceTicket ticket);
+typedef HistoryDeleted = Future<void> Function();
 
 /// Deletes [sessionId] and runs [onDeleted] as ONE source operation: the
 /// ticket lives until the snapshot forget (and its file clear) finished, so a
@@ -456,11 +498,43 @@ Future<void> deleteHistorySession(
   SessionRepository repo,
   String sessionId, {
   HistoryDeleted? onDeleted,
-}) =>
-    runSourceWrite('history.delete_session', (ticket) async {
-      await repo.deleteSession(sessionId, parent: ticket);
-      await onDeleted?.call(ticket);
-    });
+  required int observedRevision,
+}) async {
+  final key =
+      'history_delete:${identityHashCode(repo)}:$sessionId:$observedRevision';
+  final callback = onDeleted;
+  late Future<void> Function() write;
+  Future<void>? inFlight;
+  var completed = false;
+  write = () {
+    if (completed) {
+      return Future<void>.value();
+    }
+    final current = inFlight;
+    if (current != null) {
+      return current;
+    }
+    late Future<void> attempt;
+    attempt =
+        () async {
+          await repo.deleteSession(
+            sessionId,
+            observedRevision: observedRevision,
+          );
+          await callback?.call();
+          completed = true;
+          UnsavedEditors.instance.paid(key, write);
+        }().whenComplete(() {
+          if (identical(inFlight, attempt)) {
+            inFlight = null;
+          }
+        });
+    inFlight = attempt;
+    return attempt;
+  };
+  UnsavedEditors.instance.owe(key, 'history_delete', write);
+  await write();
+}
 
 class SessionCard extends StatefulWidget {
   const SessionCard({
@@ -500,8 +574,10 @@ class _SessionCardState extends State<SessionCard> {
     final l = AppLocalizations.of(context);
     final localeName = Localizations.localeOf(context).toLanguageTag();
     final session = widget.session;
-    final date = DateTime.parse('${session.date}T00:00:00');
-    final monthLabel = DateFormat.MMM(localeName).format(date);
+    final date = qualifiedCalendarDate(session.date);
+    final monthLabel = date == null
+        ? '?'
+        : DateFormat.MMM(localeName).format(date);
 
     // Parse split_label into name + focus parts.
     final label = session.splitLabel ?? '';
@@ -511,190 +587,227 @@ class _SessionCardState extends State<SessionCard> {
 
     return PressableScale(
       child: WCard(
-      padding: EdgeInsets.zero,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadius.radius),
-        child: Column(
-          children: [
-            // ── Tappable header ──────────────────────────────────────────────
-            GestureDetector(
-              onTap: () => setState(() => _expanded = !_expanded),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 13,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Date block
-                    SizedBox(
-                      width: 44,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Scale down rather than wrap "28" at large text.
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              '${date.day}',
-                              maxLines: 1,
-                              softWrap: false,
-                              style: WorkoutType.display(
-                                size: 20,
-                                weight: FontWeight.w700,
-                                color: tokens.text,
-                                letterSpacing: 0,
+        padding: EdgeInsets.zero,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.radius),
+          child: Column(
+            children: [
+              // ── Tappable header ──────────────────────────────────────────────
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 13,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Date block
+                      SizedBox(
+                        width: 44,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Scale down rather than wrap "28" at large text.
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                date?.day.toString() ?? '—',
+                                maxLines: 1,
+                                softWrap: false,
+                                style: WorkoutType.display(
+                                  size: 20,
+                                  weight: FontWeight.w700,
+                                  color: tokens.text,
+                                  letterSpacing: 0,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              monthLabel.toUpperCase(),
-                              maxLines: 1,
-                              softWrap: false,
-                              style: WorkoutType.mono(
-                                size: 9.5,
-                                color: tokens.faint,
-                                letterSpacing: 0.04 * 9.5,
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                monthLabel.toUpperCase(),
+                                maxLines: 1,
+                                softWrap: false,
+                                style: WorkoutType.mono(
+                                  size: 9.5,
+                                  color: tokens.faint,
+                                  letterSpacing: 0.04 * 9.5,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
 
-                    // Vertical divider
-                    Container(
-                      width: 1,
-                      height: 44,
-                      color: tokens.line,
-                      margin: const EdgeInsets.symmetric(horizontal: 13),
-                    ),
+                      // Vertical divider
+                      Container(
+                        width: 1,
+                        height: 44,
+                        color: tokens.line,
+                        margin: const EdgeInsets.symmetric(horizontal: 13),
+                      ),
 
-                    // Middle: split label + meta row
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Split label
-                          if (label.isEmpty)
-                            Text(
-                              '—',
-                              style: WorkoutType.body(
-                                size: 14.5,
-                                weight: FontWeight.w600,
-                                color: tokens.text,
-                              ),
-                            )
-                          else
-                            FitLabel.rich(
-                              TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: labelName,
-                                    style: WorkoutType.body(
-                                      size: 14.5,
-                                      weight: FontWeight.w600,
-                                      color: tokens.text,
-                                    ),
-                                  ),
-                                  if (labelFocus != null)
+                      // Middle: split label + meta row
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Split label
+                            if (label.isEmpty)
+                              Text(
+                                '—',
+                                style: WorkoutType.body(
+                                  size: 14.5,
+                                  weight: FontWeight.w600,
+                                  color: tokens.text,
+                                ),
+                              )
+                            else
+                              FitLabel.rich(
+                                TextSpan(
+                                  children: [
                                     TextSpan(
-                                      text: ' · $labelFocus',
+                                      text: labelName,
                                       style: WorkoutType.body(
                                         size: 14.5,
-                                        weight: FontWeight.w500,
-                                        color: tokens.faint,
+                                        weight: FontWeight.w600,
+                                        color: tokens.text,
                                       ),
                                     ),
-                                ],
+                                    if (labelFocus != null)
+                                      TextSpan(
+                                        text: ' · $labelFocus',
+                                        style: WorkoutType.body(
+                                          size: 14.5,
+                                          weight: FontWeight.w500,
+                                          color: tokens.faint,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                maxLines: 2,
                               ),
-                              maxLines: 2,
-                            ),
-                          const SizedBox(height: 4),
-                          // Meta — wraps to a second line instead of running
-                          // under the PR badge at large text.
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 2,
-                            children: [
+                            const SizedBox(height: 4),
+                            if (!session.dateAvailable)
                               Text(
-                                AppLocalizations.of(context)
-                                    .historyExerciseCountShort(
-                                        session.exerciseCount),
+                                l.alkionDateUnavailable(
+                                  session.date.isEmpty ? '—' : session.date,
+                                ),
                                 style: WorkoutType.mono(
                                   size: 10.5,
                                   color: tokens.faint,
                                 ),
                               ),
-                              if (session.durationMin != null)
+                            if (session.coverage case final coverage?
+                                when !coverage.complete)
+                              Text(
+                                coverage.unavailable
+                                    ? l.alkionLegacyFallback
+                                    : l.alkionKnownSubtotal(
+                                        coverage.known,
+                                        coverage.total,
+                                      ),
+                                style: WorkoutType.mono(
+                                  size: 10.5,
+                                  color: tokens.faint,
+                                ),
+                              ),
+                            if (session.orderUncertain)
+                              Text(
+                                l.alkionOrderUncertain,
+                                style: WorkoutType.mono(
+                                  size: 10.5,
+                                  color: tokens.faint,
+                                ),
+                              ),
+                            // Meta — wraps to a second line instead of running
+                            // under the PR badge at large text.
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 2,
+                              children: [
                                 Text(
-                                  '${session.durationMin}m',
+                                  AppLocalizations.of(
+                                    context,
+                                  ).historyExerciseCountShort(
+                                    session.exerciseCount,
+                                  ),
                                   style: WorkoutType.mono(
                                     size: 10.5,
                                     color: tokens.faint,
                                   ),
                                 ),
-                              Text(
-                                localizedDaysAgo(l, session.date),
-                                style: WorkoutType.mono(
-                                  size: 10.5,
-                                  color: tokens.faint,
+                                if (session.durationMin != null)
+                                  Text(
+                                    '${session.durationMin}m',
+                                    style: WorkoutType.mono(
+                                      size: 10.5,
+                                      color: tokens.faint,
+                                    ),
+                                  ),
+                                Text(
+                                  localizedDaysAgo(l, session.date),
+                                  style: WorkoutType.mono(
+                                    size: 10.5,
+                                    color: tokens.faint,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
 
-                    // PR badge (if any)
-                    if (session.prCount > 0) ...[
+                      // PR badge (if any)
+                      if (session.prCount > 0) ...[
+                        const SizedBox(width: 8),
+                        const PRBadge(small: true),
+                      ],
+
+                      // Chevron
                       const SizedBox(width: 8),
-                      const PRBadge(small: true),
-                    ],
-
-                    // Chevron
-                    const SizedBox(width: 8),
-                    AnimatedRotation(
-                      turns: _expanded ? 0.25 : 0,
-                      duration: Motion.of(context, const Duration(milliseconds: 150)),
-                      child: Icon(
-                        WIcons.chevron,
-                        size: 16,
-                        color: tokens.faint,
+                      AnimatedRotation(
+                        turns: _expanded ? 0.25 : 0,
+                        duration: Motion.of(
+                          context,
+                          const Duration(milliseconds: 150),
+                        ),
+                        child: Icon(
+                          WIcons.chevron,
+                          size: 16,
+                          color: tokens.faint,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            // ── Expanded exercise blocks ──────────────────────────────────────
-            AnimatedSize(
-              duration: Motion.of(context, Motion.base),
-              curve: Motion.curve,
-              alignment: Alignment.topCenter,
-              child: _expanded
-                  ? _ExerciseBlocks(
-                      session: widget.session,
-                      catalogMap: widget.catalogMap,
-                      sessionRepo: widget.sessionRepo,
-                      units: widget.units,
-                      resumeState: widget.resumeState,
-                      onResume: widget.onResume,
-                      onDeleted: widget.onDeleted,
-                    )
-                  : const SizedBox(width: double.infinity),
-            ),
-          ],
+              // ── Expanded exercise blocks ──────────────────────────────────────
+              AnimatedSize(
+                duration: Motion.of(context, Motion.base),
+                curve: Motion.curve,
+                alignment: Alignment.topCenter,
+                child: _expanded
+                    ? _ExerciseBlocks(
+                        session: widget.session,
+                        catalogMap: widget.catalogMap,
+                        sessionRepo: widget.sessionRepo,
+                        units: widget.units,
+                        resumeState: widget.resumeState,
+                        onResume: widget.onResume,
+                        onDeleted: widget.onDeleted,
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -741,7 +854,9 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     // builds NEW row objects (reListenable does not dedupe), so a new object
     // means this session's sets may have changed — including RIR or warm-up
     // changes no aggregate reflects, like a resumed workout finished again.
-    if (!identical(oldWidget.session, widget.session)) _future = _load();
+    if (!identical(oldWidget.session, widget.session)) {
+      _future = _load();
+    }
   }
 
   Future<List<ExerciseBlockData>> _load() => widget.sessionRepo
@@ -756,7 +871,9 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
   /// Opens the per-exercise set editor, then reloads.
   Future<void> _editExercise(ExerciseBlockData block) async {
     final exercise = widget.catalogMap[block.exerciseId];
-    if (exercise == null) return;
+    if (exercise == null) {
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -769,7 +886,9 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
         units: widget.units,
       ),
     );
-    if (mounted) _reload();
+    if (mounted) {
+      _reload();
+    }
   }
 
   /// Picks an exercise and seeds one working set so it appears in the session.
@@ -781,7 +900,9 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       current: null,
       showBodyweight: false,
     );
-    if (exId == null || exId == kBodyweightSentinel) return;
+    if (exId == null || exId == kBodyweightSentinel) {
+      return;
+    }
     final ex = widget.catalogMap[exId];
     try {
       await widget.sessionRepo.addSet(
@@ -794,13 +915,21 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       );
     } catch (e) {
       // E.g. refused while a data capture holds the source.
-      if (mounted) await showWriteFailed(context, e);
+      if (mounted) {
+        await showWriteFailed(context, e);
+      }
       return;
     }
-    if (mounted) _reload();
+    if (mounted) {
+      _reload();
+    }
   }
 
   Future<void> _deleteSession() async {
+    final repository = widget.sessionRepo;
+    final sessionId = widget.session.id;
+    final revision = widget.session.localRevision;
+    final onDeleted = widget.onDeleted;
     final l = AppLocalizations.of(context);
     final confirmed = await showWConfirm(
       context,
@@ -809,14 +938,25 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       confirmLabel: l.commonDelete,
       destructive: true,
     );
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      return;
+    }
     // The watchSessionStats stream updates the list automatically afterwards.
     try {
-      await deleteHistorySession(widget.sessionRepo, widget.session.id,
-          onDeleted: widget.onDeleted);
+      if (revision == null) {
+        throw const StoreException('observed_revision_required');
+      }
+      await deleteHistorySession(
+        repository,
+        sessionId,
+        onDeleted: onDeleted,
+        observedRevision: revision,
+      );
     } catch (e) {
       // E.g. refused while a data capture holds the source: nothing deleted.
-      if (mounted) await showWriteFailed(context, e);
+      if (mounted) {
+        await showWriteFailed(context, e);
+      }
     }
   }
 
@@ -979,7 +1119,11 @@ class _InlineAction extends StatelessWidget {
                 Flexible(
                   child: FitLabel(
                     label,
-                    style: WorkoutType.mono(size: 11, weight: FontWeight.w600, color: color),
+                    style: WorkoutType.mono(
+                      size: 11,
+                      weight: FontWeight.w600,
+                      color: color,
+                    ),
                   ),
                 ),
               ],
@@ -1018,75 +1162,69 @@ class _BlockRow extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
         child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Compound dot
-            Container(
-              width: 5,
-              height: 5,
-              decoration: BoxDecoration(
-                color: dotColor,
-                borderRadius: BorderRadius.circular(99),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Compound dot
+              Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  borderRadius: BorderRadius.circular(99),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-
-            // Exercise name
-            Expanded(
-              child: Text(
-                name,
-                style: WorkoutType.body(size: 13, color: tokens.dim),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ),
-
-            // PR bolt
-            if (block.isPr) ...[
-              const SizedBox(width: 6),
-              Icon(WIcons.bolt, size: 13, color: tokens.accentText),
-            ],
-
-            // Weight × reps
-            const SizedBox(width: 8),
-            RichText(
-              text: TextSpan(
-                children: [
-                  TextSpan(
-                    text: units.fmtWt(block.topWeight),
-                    style: WorkoutType.mono(
-                      size: 12.5,
-                      weight: FontWeight.w700,
-                      color: tokens.text,
-                    ),
-                  ),
-                  TextSpan(
-                    text: units.uLabel,
-                    style: WorkoutType.mono(
-                      size: 9.5,
-                      color: tokens.faint,
-                    ),
-                  ),
-                  TextSpan(
-                    text: ' ×${block.topReps}',
-                    style: WorkoutType.mono(
-                      size: 12.5,
-                      color: tokens.faint,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Edit chevron affordance
-            if (onTap != null) ...[
               const SizedBox(width: 8),
-              Icon(WIcons.chevron, size: 13, color: tokens.faint),
+
+              // Exercise name
+              Expanded(
+                child: Text(
+                  name,
+                  style: WorkoutType.body(size: 13, color: tokens.dim),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+
+              // PR bolt
+              if (block.isPr) ...[
+                const SizedBox(width: 6),
+                Icon(WIcons.bolt, size: 13, color: tokens.accentText),
+              ],
+
+              // Weight × reps
+              const SizedBox(width: 8),
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: units.fmtWt(block.topWeight),
+                      style: WorkoutType.mono(
+                        size: 12.5,
+                        weight: FontWeight.w700,
+                        color: tokens.text,
+                      ),
+                    ),
+                    TextSpan(
+                      text: units.uLabel,
+                      style: WorkoutType.mono(size: 9.5, color: tokens.faint),
+                    ),
+                    TextSpan(
+                      text: ' ×${block.topReps}',
+                      style: WorkoutType.mono(size: 12.5, color: tokens.faint),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Edit chevron affordance
+              if (onTap != null) ...[
+                const SizedBox(width: 8),
+                Icon(WIcons.chevron, size: 13, color: tokens.faint),
+              ],
             ],
-          ],
-        ),
+          ),
         ),
       ),
     );

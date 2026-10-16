@@ -1,0 +1,41 @@
+{
+  "format": "reps-export",
+  "version": 1.0,
+  "kind": "full",
+  "exported_at": 20261015,
+  "settings": {"unit": "stone", "mode": "dark", "rest_compound_seconds": "150", "locale": "xx"},
+  "data": {
+    "exercises": [
+      {"id": "ex-known", "name": "Known Lift", "compound": 1, "is_template": 0},
+      {"id": "ex-unknown-load", "name": "Unknown Load Lift", "compound": 1, "is_template": 0},
+      {"id": "ex-no-history", "name": "Never Logged", "compound": 0, "is_template": 0},
+      {"id": "ex-other", "name": "Other Lift", "compound": 0, "is_template": 0}
+    ],
+    "day_templates": [],
+    "day_template_items": [],
+    "sessions": [
+      {"id": "w-known", "date": "2026-05-01", "split_label": "Known", "created_at": "2026-05-01T09:00:00Z", "duration_min": 50},
+      {"id": "w-ordinals", "date": "2026-05-02", "split_label": "Ordinals", "created_at": "yesterday", "duration_min": "50"},
+      {"id": "w-unknown-load", "date": "2026-05-03", "split_label": "Unknown load", "created_at": "2026-05-03T09:00:00Z", "duration_min": 40},
+      {"id": "w-rolled", "date": "2026-02-30", "split_label": "Rolled date", "created_at": "2026-05-03T09:00:00", "duration_min": 40}
+    ],
+    "sets": [
+      {"id": "known-top", "session_id": "w-known", "exercise_id": "ex-known", "set_number": 1, "weight_kg": "100.0000", "reps": 3, "rir": 1, "is_warmup": 0, "is_top_set": 1, "is_pr": 1, "created_at": "2026-05-01T09:10:00Z"},
+      {"id": "ord-string", "session_id": "w-ordinals", "exercise_id": "ex-known", "set_number": "x", "weight_kg": "60.0", "reps": 8, "rir": 2, "is_warmup": 0, "is_top_set": 0, "is_pr": 0},
+      {"id": "ord-null", "session_id": "w-ordinals", "exercise_id": "ex-known", "set_number": null, "weight_kg": "62.5", "reps": 8, "rir": null, "is_warmup": 0, "is_top_set": 0, "is_pr": 0},
+      {"id": "ord-missing", "session_id": "w-ordinals", "exercise_id": "ex-known", "weight_kg": "65", "reps": 8, "rir": 2, "is_warmup": 0, "is_top_set": "1", "is_pr": 0},
+      {"id": "ord-fraction", "session_id": "w-ordinals", "exercise_id": "ex-known", "set_number": "1.5", "weight_kg": "67.5", "reps": "10", "rir": false, "is_warmup": true, "is_top_set": 0, "is_pr": 0},
+      {"id": "ord-valid", "session_id": "w-ordinals", "exercise_id": "ex-other", "set_number": 7, "weight_kg": "50.00", "reps": 6, "rir": 2, "is_warmup": 0, "is_top_set": 1, "is_pr": 0},
+      {"id": "unknown-top", "session_id": "w-unknown-load", "exercise_id": "ex-unknown-load", "set_number": 1, "weight_kg": "", "reps": 5, "rir": 1, "is_warmup": 0, "is_top_set": 1, "is_pr": 0}
+    ],
+    "bodyweight_logs": [
+      {"id": "bw-missing-date", "weight_kg": "80.10"},
+      {"id": "bw-null-date", "date": null, "weight_kg": "80.20"},
+      {"id": "bw-empty-date", "date": "", "weight_kg": "80.30"},
+      {"id": "bw-rolled-date", "date": "2026-02-30", "weight_kg": "80.40"},
+      {"id": "bw-number-date", "date": 20261015, "weight_kg": 80.50},
+      {"id": "bw-valid", "date": "2026-05-04", "weight_kg": "80.60"}
+    ],
+    "muscle_targets": []
+  }
+}

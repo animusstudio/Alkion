@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/widgets/sparkline.dart';
+import 'package:alkion/widgets/sparkline.dart';
 
 void main() {
   testWidgets('Sparkline with 3 values renders a CustomPaint', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: Center(
-            child: Sparkline(values: [1, 2, 3]),
-          ),
+          body: Center(child: Sparkline(values: [1, 2, 3])),
         ),
       ),
     );
@@ -26,13 +24,13 @@ void main() {
     );
   });
 
-  testWidgets('Sparkline with 1 value renders zero-size SizedBox', (tester) async {
+  testWidgets('Sparkline with 1 value renders zero-size SizedBox', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: Center(
-            child: Sparkline(values: [1]),
-          ),
+          body: Center(child: Sparkline(values: [1])),
         ),
       ),
     );

@@ -55,8 +55,9 @@ String localizedMuscle(BuildContext context, String key) {
 /// in [kMuscleLabels] insertion order), then unknown muscles sorted
 /// alphabetically.
 List<String> orderedMuscles(Iterable<String> present) {
-  final known =
-      kMuscleLabels.keys.where(present.contains).toList(); // canonical order
+  final known = kMuscleLabels.keys
+      .where(present.contains)
+      .toList(); // canonical order
   final extra = present.where((m) => !kMuscleLabels.containsKey(m)).toList()
     ..sort(); // unknowns last
   return [...known, ...extra];

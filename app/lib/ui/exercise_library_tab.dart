@@ -5,7 +5,7 @@ import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../data/muscles.dart';
 import '../l10n/app_localizations.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/tokens.dart';
@@ -16,10 +16,7 @@ import '../units/unit_service.dart';
 ///
 /// [onOpenEditor] is called with the exercise id to edit (null = new exercise).
 class LibraryTab extends StatefulWidget {
-  const LibraryTab({
-    super.key,
-    required this.onOpenEditor,
-  });
+  const LibraryTab({super.key, required this.onOpenEditor});
 
   /// Called with the exercise id to edit (null = new exercise).
   final void Function(String? id) onOpenEditor;
@@ -39,7 +36,7 @@ class _LibraryTabState extends State<LibraryTab> {
   @override
   void initState() {
     super.initState();
-    _repo = ExerciseRepository(db);
+    _repo = ExerciseRepository.local(context.read<LocalDatabase>());
     // Resolve PRs once — not N watches.
     _repo.prTopSets().then((map) {
       if (mounted) setState(() => _prMap = map);
@@ -179,7 +176,9 @@ class _MuscleSection extends StatelessWidget {
           children: [
             for (int i = 0; i < exercises.length; i++)
               Padding(
-                padding: EdgeInsets.only(bottom: i < exercises.length - 1 ? 6 : 0),
+                padding: EdgeInsets.only(
+                  bottom: i < exercises.length - 1 ? 6 : 0,
+                ),
                 child: _ExerciseRow(
                   exercise: exercises[i],
                   pr: prMap[exercises[i].id] ?? 0,
@@ -241,8 +240,9 @@ class _ExerciseRow extends StatelessWidget {
               height: 6,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color:
-                    exercise.compound ? tokens.accentText : tokens.lineStrong,
+                color: exercise.compound
+                    ? tokens.accentText
+                    : tokens.lineStrong,
               ),
             ),
             const SizedBox(width: 11),
@@ -266,10 +266,7 @@ class _ExerciseRow extends StatelessWidget {
                   Text(
                     subLabel,
                     overflow: TextOverflow.ellipsis,
-                    style: WorkoutType.mono(
-                      size: 10.5,
-                      color: tokens.faint,
-                    ),
+                    style: WorkoutType.mono(size: 10.5, color: tokens.faint),
                   ),
                 ],
               ),
@@ -291,10 +288,7 @@ class _ExerciseRow extends StatelessWidget {
                     ),
                     TextSpan(
                       text: units.uLabel,
-                      style: WorkoutType.mono(
-                        size: 9,
-                        color: tokens.faint,
-                      ),
+                      style: WorkoutType.mono(size: 9, color: tokens.faint),
                     ),
                   ],
                 ),

@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/l10n/app_localizations.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 
 void main() {
   // Flutter falls back to the first supported locale, and gen_l10n sorts
@@ -12,8 +12,10 @@ void main() {
 
   test('a device with no supported language falls back to English', () {
     expect(
-        basicLocaleListResolution(
-            const [Locale('fr', 'FR')], AppLocalizations.supportedLocales),
-        const Locale('en'));
+      basicLocaleListResolution(const [
+        Locale('fr', 'FR'),
+      ], AppLocalizations.supportedLocales),
+      const Locale('en'),
+    );
   });
 }

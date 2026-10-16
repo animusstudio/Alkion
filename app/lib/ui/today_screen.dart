@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../auth/auth_store.dart';
 import '../data/bodyweight_repository.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
@@ -16,8 +15,7 @@ import '../l10n/app_localizations.dart';
 import '../session/active_session_controller.dart';
 import '../session/session_manager.dart';
 import '../settings/settings_service.dart';
-import '../sync/db.dart';
-import '../sync/sync_health.dart';
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
@@ -27,16 +25,14 @@ import '../units/unit_service.dart';
 import '../util/clock_format.dart';
 import '../util/dates.dart';
 import '../widgets/card.dart';
+import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
 import '../widgets/section_label.dart';
 import '../widgets/sparkline.dart';
 import '../widgets/split_card.dart';
 import '../widgets/stat_tile.dart';
-import '../widgets/sync_at_risk_card.dart';
-import '../widgets/sync_paused_banner.dart';
 import '../widgets/volume_bars.dart';
 import '../widgets/week_strip.dart';
-import 'sign_in_again.dart';
 import 'today_labels.dart';
 
 /// Resolves the title shown for the active workout: the live day name when
@@ -49,10 +45,14 @@ String resumeSessionTitle(
   AppLocalizations l,
 ) {
   final draft = controller.draftOrNull;
-  if (draft == null) return l.todayCustomSession;
+  if (draft == null) {
+    return l.todayCustomSession;
+  }
   if (draft.templateId != null) {
     for (final d in dayList) {
-      if (d.id == draft.templateId) return d.name;
+      if (d.id == draft.templateId) {
+        return d.name;
+      }
     }
   }
   return draft.name.isEmpty ? l.todayCustomSession : draft.name;
@@ -79,7 +79,7 @@ class TodayScreen extends StatefulWidget {
     required this.onOpenExercise,
     required this.onOpenProfile,
     required this.onResume,
-    required this.auth,
+    this.auth,
   });
 
   /// Called when the user taps Start on a SplitCard slide.
@@ -97,7 +97,7 @@ class TodayScreen extends StatefulWidget {
 
   /// Its session-expired flag drives the sync-paused banner, and the
   /// banner's sign-in-again flow logs in through it.
-  final AuthStore auth;
+  final Object? auth;
 
   @override
   State<TodayScreen> createState() => _TodayScreenState();
@@ -145,10 +145,13 @@ class _TodayScreenState extends State<TodayScreen> {
   late final DateTime _weekStart;
   late final Stream<List<BodyweightEntry>> _bwStream;
   late final Stream<int> _setsWeekStream;
+  late final Stream<({int known, int total})> _dateCoverageStream;
   late final Stream<int> _setsLastWeekStream;
   late final Stream<int> _prsWeekStream;
-  late final Stream<List<({String exerciseId, double weight, int reps, String date})>>
-      _recentPrsStream;
+  late final Stream<
+    List<({String exerciseId, double? weight, int? reps, String date})>
+  >
+  _recentPrsStream;
   late final Stream<List<Exercise>> _catalogStream;
   late final Stream<List<({String muscle, int sets})>> _volumeStream;
   late final Stream<List<MuscleTarget>> _targetsStream;
@@ -156,18 +159,19 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void initState() {
     super.initState();
-    _stats = StatsRepository(db);
-    _bw = BodyweightRepository(db);
-    _targets = MuscleTargetRepository(db);
-    _days = DayTemplateRepository(db);
-    _sessions = SessionRepository(db);
-    _exercises = ExerciseRepository(db);
+    _stats = StatsRepository.local(context.read<LocalDatabase>());
+    _bw = BodyweightRepository.local(context.read<LocalDatabase>());
+    _targets = MuscleTargetRepository.local(context.read<LocalDatabase>());
+    _days = DayTemplateRepository.local(context.read<LocalDatabase>());
+    _sessions = SessionRepository.local(context.read<LocalDatabase>());
+    _exercises = ExerciseRepository.local(context.read<LocalDatabase>());
 
     // One mount-time week boundary, shared by the stat/volume streams and the
     // week strip so they never disagree (a week rollover with the app open is
     // corrected on the next launch).
     _weekStart = weekStart(DateTime.now());
     _bwStream = _bw.watchSeriesAsc();
+    _dateCoverageStream = _stats.watchDateCoverage();
     _setsWeekStream = _stats.watchSetsThisWeek(weekStart: _weekStart);
     _setsLastWeekStream = _stats.watchSetsLastWeek(weekStart: _weekStart);
     _prsWeekStream = _stats.watchPrsThisWeek(weekStart: _weekStart);
@@ -183,29 +187,43 @@ class _TodayScreenState extends State<TodayScreen> {
     // day_template_id) otherwise becomes an uncaught async error that kills the
     // subscription for good, leaving Home stuck on its placeholder forever.
     // Keep the last good data and let the next emission recover.
-    _sessionsSub = _sessions.watchRecentSessions(limit: 100).listen((rows) {
-      if (!mounted) return;
-      setState(() {
-        _recentSessions = rows;
-        _recomputeRotation();
-      });
-    }, onError: (Object e, StackTrace st) {
-      debugPrint('today: recent-sessions stream error: $e');
-    });
-    _daysSub = _days.watchDays().listen((days) {
-      if (!mounted) return;
-      setState(() {
-        _dayList = days;
-        _rotationLoaded = true;
-        _recomputeRotation();
-      });
-    }, onError: (Object e, StackTrace st) {
-      // Mark the rotation as loaded so the UI shows its real empty state
-      // rather than an indefinite placeholder.
-      if (!mounted) return;
-      setState(() => _rotationLoaded = true);
-      debugPrint('today: days stream error: $e');
-    });
+    _sessionsSub = _sessions
+        .watchRecentSessions(limit: 100)
+        .listen(
+          (rows) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _recentSessions = rows;
+              _recomputeRotation();
+            });
+          },
+          onError: (Object e, StackTrace st) {
+            debugPrint('today: recent-sessions stream error: $e');
+          },
+        );
+    _daysSub = _days.watchDays().listen(
+      (days) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _dayList = days;
+          _rotationLoaded = true;
+          _recomputeRotation();
+        });
+      },
+      onError: (Object e, StackTrace st) {
+        // Mark the rotation as loaded so the UI shows its real empty state
+        // rather than an indefinite placeholder.
+        if (!mounted) {
+          return;
+        }
+        setState(() => _rotationLoaded = true);
+        debugPrint('today: days stream error: $e');
+      },
+    );
   }
 
   /// Recompute the next-in-rotation pick from the current sessions + days.
@@ -215,14 +233,13 @@ class _TodayScreenState extends State<TodayScreen> {
     final lastId = _recentSessions.isEmpty
         ? null
         : _recentSessions
-            .firstWhere(
-              (s) => s.dayTemplateId != null,
-              orElse: () => _recentSessions.first,
-            )
-            .dayTemplateId;
+              .firstWhere(
+                (s) => s.dayTemplateId != null,
+                orElse: () => _recentSessions.first,
+              )
+              .dayTemplateId;
     _nextDay = selectNextDay(_dayList, lastId);
-    final newest =
-        _recentSessions.isEmpty ? null : _recentSessions.first.id;
+    final newest = _recentSessions.isEmpty ? null : _recentSessions.first.id;
     if (_nextDay?.id != previous || newest != _newestSessionId) {
       _selectedIndex = null;
     }
@@ -242,7 +259,9 @@ class _TodayScreenState extends State<TodayScreen> {
   /// [dayTemplateId], or null if that day has never been trained.
   String? _lastDateForDay(String dayId) {
     for (final s in _recentSessions) {
-      if (s.dayTemplateId == dayId) return s.date;
+      if (s.dayTemplateId == dayId) {
+        return s.date;
+      }
     }
     return null;
   }
@@ -263,10 +282,12 @@ class _TodayScreenState extends State<TodayScreen> {
     final activeName = manager.hasActive
         ? resumeSessionTitle(manager.active!, _dayList, l)
         : null;
-    final header = todayHeaderLine(l,
-        date: fmtDate(isoDate(now), localeName, weekday: true),
-        nextName: _nextDay?.name,
-        activeName: activeName);
+    final header = todayHeaderLine(
+      l,
+      date: fmtDate(isoDate(now), localeName, weekday: true),
+      nextName: _nextDay?.name,
+      activeName: activeName,
+    );
 
     return ListView(
       padding: EdgeInsets.only(
@@ -288,30 +309,6 @@ class _TodayScreenState extends State<TodayScreen> {
                 onTapProfile: widget.onOpenProfile,
               ),
               const SizedBox(height: 18),
-              // Sync paused: the first card under the header until a login
-              // clears the flag.
-              ValueListenableBuilder<bool>(
-                valueListenable: widget.auth.sessionExpired,
-                builder: (context, expired, child) => expired
-                    ? Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: child,
-                      )
-                    : child!,
-                child: SyncPausedBanner(
-                  expired: widget.auth.sessionExpired,
-                  onTap: () => signInAgain(
-                    context,
-                    auth: widget.auth,
-                    settings: context.read<SettingsService>(),
-                  ),
-                ),
-              ),
-              SyncAtRiskCard(
-                health: context.read<SyncHealth>(),
-                expired: widget.auth.sessionExpired,
-                onTap: widget.onOpenProfile,
-              ),
             ],
           ),
         ),
@@ -363,6 +360,21 @@ class _TodayScreenState extends State<TodayScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildStatTiles(units, tokens),
+              StreamBuilder<({int known, int total})>(
+                stream: _dateCoverageStream,
+                builder: (context, snapshot) {
+                  final coverage = snapshot.data;
+                  if (coverage == null || coverage.known == coverage.total) {
+                    return const SizedBox.shrink();
+                  }
+                  return Text(
+                    l.alkionDateWindowUnavailable(
+                      coverage.total - coverage.known,
+                    ),
+                    style: WorkoutType.mono(size: 10, color: tokens.faint),
+                  );
+                },
+              ),
               const SizedBox(height: 22),
             ],
           ),
@@ -381,10 +393,7 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
 
         // ── 6. Weekly volume ───────────────────────────────────────────────────
-        StaggeredEntrance(
-          index: 5,
-          child: _buildWeeklyVolume(tokens),
-        ),
+        StaggeredEntrance(index: 5, child: _buildWeeklyVolume(tokens)),
       ],
     );
   }
@@ -393,14 +402,17 @@ class _TodayScreenState extends State<TodayScreen> {
 
   /// Returns the index of [_nextDay] in [_dayList], or 0 if unresolved.
   int _nextIndex() {
-    if (_nextDay == null) return 0;
+    if (_nextDay == null) {
+      return 0;
+    }
     final idx = _dayList.indexWhere((d) => d.id == _nextDay!.id);
     return idx >= 0 ? idx : 0;
   }
 
   /// The hero/strip selection, clamped so a deleted day can't leave it
   /// pointing past the end (`_dayList.length` is the Custom slide).
-  int _heroIndex() => (_selectedIndex ?? _nextIndex()).clamp(0, _dayList.length);
+  int _heroIndex() =>
+      (_selectedIndex ?? _nextIndex()).clamp(0, _dayList.length);
 
   Widget _buildSplitCard() {
     final l = AppLocalizations.of(context);
@@ -408,11 +420,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final entries = _dayList.map((day) {
       final lastDate = _lastDateForDay(day.id);
       final lastAgo = lastDate != null ? localizedDaysAgo(l, lastDate) : '—';
-      return (
-        day: day,
-        exerciseCount: day.slots.length,
-        lastAgo: lastAgo,
-      );
+      return (day: day, exerciseCount: day.slots.length, lastAgo: lastAgo);
     }).toList();
 
     return SplitCard(
@@ -450,102 +458,164 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  Widget _buildStatTiles(
-    UnitService units,
-    WorkoutTokens tokens,
-  ) {
+  Widget _buildStatTiles(UnitService units, WorkoutTokens tokens) {
     return StreamBuilder<List<BodyweightEntry>>(
       stream: _bwStream,
       builder: (context, bwSnap) {
         final l = AppLocalizations.of(context);
         final bwEntries = bwSnap.data ?? [];
-        final lastUpTo18 = bwEntries.length > 18
-            ? bwEntries.sublist(bwEntries.length - 18)
-            : bwEntries;
-        final hasBw = bwEntries.isNotEmpty;
-        final bwValue = hasBw ? units.fmtBw(bwEntries.last.weightKg) : '—';
+        final knownEntries = bwEntries
+            .where(
+              (e) =>
+                  e.dateAvailable && e.weightKg != null && e.weightKg!.isFinite,
+            )
+            .toList();
+        final known = bwEntries
+            .where((e) => e.dateAvailable)
+            .map((e) => e.weightKg)
+            .whereType<double>()
+            .where((kg) => kg.isFinite)
+            .toList();
+        final lastUpTo18 = known.length > 18
+            ? known.sublist(known.length - 18)
+            : known;
+        final uncertainDay = bwEntries
+            .where((e) => !e.dateAvailable)
+            .firstOrNull;
+        final current = bwEntries.isEmpty || uncertainDay != null
+            ? null
+            : bwEntries.last.weightKg;
+        final hasBw = current != null && current.isFinite;
+        final bwValue = current != null && current.isFinite
+            ? units.fmtBw(current)
+            : '—';
         final bwUnit = hasBw ? units.uLabel : null;
-        final sparkValues = lastUpTo18.map((e) => e.weightKg).toList();
+        final sparkValues = lastUpTo18;
 
         return IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-            // Bodyweight tile
-            Expanded(
-              child: UnitSwap(
-                unitKey: bwUnit ?? '',
-                child: StatTile(
-                  label: l.todayBodyweight,
-                  value: bwValue,
-                  unit: bwUnit,
-                  spark: sparkValues.length >= 2
-                      ? Sparkline(
-                          values: sparkValues,
-                          stroke: tokens.dim,
-                        )
-                      : null,
-                  onTap: () => widget.onOpenExercise('__bodyweight__'),
+              // Bodyweight tile
+              Expanded(
+                child: UnitSwap(
+                  unitKey: bwUnit ?? '',
+                  child: StatTile(
+                    label: l.todayBodyweight,
+                    value: bwValue,
+                    unit: bwUnit,
+                    spark: !hasBw && bwEntries.isNotEmpty
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              FitLabel(
+                                uncertainDay != null
+                                    ? l.alkionDateUnavailable(
+                                        uncertainDay.date.isEmpty
+                                            ? '—'
+                                            : uncertainDay.date,
+                                      )
+                                    : l.alkionUnavailableOn(
+                                        bwEntries.last.date,
+                                      ),
+                                style: WorkoutType.mono(
+                                  size: 10,
+                                  color: tokens.dim,
+                                ),
+                                maxLines: 3,
+                              ),
+                              if (sparkValues.length >= 2)
+                                Sparkline(
+                                  values: sparkValues,
+                                  stroke: tokens.dim,
+                                ),
+                              if (knownEntries.isNotEmpty)
+                                FitLabel(
+                                  l.alkionOlderKnownOn(knownEntries.last.date),
+                                  style: WorkoutType.mono(
+                                    size: 10,
+                                    color: tokens.faint,
+                                  ),
+                                  maxLines: 3,
+                                ),
+                            ],
+                          )
+                        : sparkValues.length >= 2
+                        ? Sparkline(values: sparkValues, stroke: tokens.dim)
+                        : null,
+                    onTap: () => widget.onOpenExercise('__bodyweight__'),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            // Sets/wk tile — nested streams
-            Expanded(
-              child: StreamBuilder<int>(
-                stream: _setsWeekStream,
-                builder: (context, setsSnap) {
-                  return StreamBuilder<int>(
-                    stream: _setsLastWeekStream,
-                    builder: (context, lastWeekSnap) {
-                      final sets = setsSnap.data ?? 0;
-                      final lastWeek = lastWeekSnap.data ?? 0;
-                      return CountUp(
-                        value: sets,
-                        builder: (v) => StatTile(
-                          label: l.todaySetsThisWeek,
-                          value: '$v',
-                          sub: setsVsLastWeek(l, sets, lastWeek),
-                        ),
-                      );
-                    },
-                  );
-                },
+              const SizedBox(width: 10),
+              // Sets/wk tile — nested streams
+              Expanded(
+                child: StreamBuilder<int>(
+                  stream: _setsWeekStream,
+                  builder: (context, setsSnap) {
+                    return StreamBuilder<int>(
+                      stream: _setsLastWeekStream,
+                      builder: (context, lastWeekSnap) {
+                        final sets = setsSnap.data ?? 0;
+                        final lastWeek = lastWeekSnap.data ?? 0;
+                        return CountUp(
+                          value: sets,
+                          builder: (v) => StatTile(
+                            label: l.todaySetsThisWeek,
+                            value: '$v',
+                            sub: setsVsLastWeek(l, sets, lastWeek),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            // PRs/wk tile
-            Expanded(
-              child: StreamBuilder<int>(
-                stream: _prsWeekStream,
-                builder: (context, prsSnap) {
-                  final prs = prsSnap.data ?? 0;
-                  return StreamBuilder<
-                      List<({String exerciseId, double weight, int reps, String date})>>(
-                    stream: _recentPrsStream,
-                    builder: (context, recentSnap) {
-                      final recent = recentSnap.data ?? [];
-                      final sub = recent.isEmpty
-                          ? l.todayNoPrsShort
-                          : l.todayLastPrDate(fmtDate(
-                              recent.first.date,
-                              Localizations.localeOf(context).toLanguageTag(),
-                            ));
-                      return CountUp(
-                        value: prs,
-                        builder: (v) => StatTile(
-                          label: l.todayPrsThisWeek,
-                          value: '$v',
-                          sub: sub,
-                          fitSub: true,
-                        ),
-                      );
-                    },
-                  );
-                },
+              const SizedBox(width: 10),
+              // PRs/wk tile
+              Expanded(
+                child: StreamBuilder<int>(
+                  stream: _prsWeekStream,
+                  builder: (context, prsSnap) {
+                    final prs = prsSnap.data ?? 0;
+                    return StreamBuilder<
+                      List<
+                        ({
+                          String exerciseId,
+                          double? weight,
+                          int? reps,
+                          String date,
+                        })
+                      >
+                    >(
+                      stream: _recentPrsStream,
+                      builder: (context, recentSnap) {
+                        final recent = recentSnap.data ?? [];
+                        final sub = recent.isEmpty
+                            ? l.todayNoPrsShort
+                            : l.todayLastPrDate(
+                                fmtDate(
+                                  recent.first.date,
+                                  Localizations.localeOf(
+                                    context,
+                                  ).toLanguageTag(),
+                                ),
+                              );
+                        return CountUp(
+                          value: prs,
+                          builder: (v) => StatTile(
+                            label: l.todayPrsThisWeek,
+                            value: '$v',
+                            sub: sub,
+                            fitSub: true,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
           ),
         );
       },
@@ -554,7 +624,8 @@ class _TodayScreenState extends State<TodayScreen> {
 
   Widget _buildRecentPrs(UnitService units, WorkoutTokens tokens) {
     return StreamBuilder<
-        List<({String exerciseId, double weight, int reps, String date})>>(
+      List<({String exerciseId, double? weight, int? reps, String date})>
+    >(
       stream: _recentPrsStream,
       builder: (context, prsSnap) {
         final l = AppLocalizations.of(context);
@@ -564,9 +635,7 @@ class _TodayScreenState extends State<TodayScreen> {
         return StreamBuilder<List<Exercise>>(
           stream: _catalogStream,
           builder: (context, exSnap) {
-            final exMap = {
-              for (final ex in (exSnap.data ?? [])) ex.id: ex,
-            };
+            final exMap = {for (final ex in (exSnap.data ?? [])) ex.id: ex};
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -587,8 +656,7 @@ class _TodayScreenState extends State<TodayScreen> {
                             exercise: exMap[pr.exerciseId],
                             units: units,
                             tokens: tokens,
-                            onTap: () =>
-                                widget.onOpenExercise(pr.exerciseId),
+                            onTap: () => widget.onOpenExercise(pr.exerciseId),
                           ),
                         ),
                     ],
@@ -631,10 +699,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 SectionLabel(label: l.todayWeeklyVolume),
                 const SizedBox(height: 10),
                 if (rows.isEmpty)
-                  _EmptyState(
-                    tokens: tokens,
-                    message: l.todayNoSetsLogged,
-                  )
+                  _EmptyState(tokens: tokens, message: l.todayNoSetsLogged)
                 else
                   VolumeBars(rows: rows),
               ],
@@ -739,7 +804,7 @@ class _PrRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final ({String exerciseId, double weight, int reps, String date}) pr;
+  final ({String exerciseId, double? weight, int? reps, String date}) pr;
   final Exercise? exercise;
   final UnitService units;
   final WorkoutTokens tokens;
@@ -762,11 +827,7 @@ class _PrRow extends StatelessWidget {
               color: tokens.surface3,
               borderRadius: BorderRadius.circular(AppRadius.radius * 0.55),
             ),
-            child: Icon(
-              WIcons.bolt,
-              size: 18,
-              color: tokens.accentText,
-            ),
+            child: Icon(WIcons.bolt, size: 18, color: tokens.accentText),
           ),
           const SizedBox(width: 12),
           // Exercise name + date
@@ -792,10 +853,7 @@ class _PrRow extends StatelessWidget {
                     Localizations.localeOf(context).toLanguageTag(),
                     weekday: true,
                   ),
-                  style: WorkoutType.mono(
-                    size: 11,
-                    color: tokens.faint,
-                  ),
+                  style: WorkoutType.mono(size: 11, color: tokens.faint),
                 ),
               ],
             ),
@@ -810,7 +868,7 @@ class _PrRow extends StatelessWidget {
                 text: TextSpan(
                   children: [
                     TextSpan(
-                      text: units.fmtWt(pr.weight),
+                      text: pr.weight == null ? '—' : units.fmtWt(pr.weight!),
                       style: WorkoutType.mono(
                         size: 15,
                         weight: FontWeight.w700,
@@ -819,21 +877,15 @@ class _PrRow extends StatelessWidget {
                     ),
                     TextSpan(
                       text: units.uLabel,
-                      style: WorkoutType.mono(
-                        size: 11,
-                        color: tokens.dim,
-                      ),
+                      style: WorkoutType.mono(size: 11, color: tokens.dim),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 1),
               Text(
-                '×${pr.reps}',
-                style: WorkoutType.mono(
-                  size: 10.5,
-                  color: tokens.faint,
-                ),
+                pr.reps == null ? '×—' : '×${pr.reps}',
+                style: WorkoutType.mono(size: 10.5, color: tokens.faint),
               ),
             ],
           ),
@@ -891,7 +943,9 @@ class _ResumeHeroState extends State<_ResumeHero> {
   void initState() {
     super.initState();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     });
   }
 
@@ -906,7 +960,9 @@ class _ResumeHeroState extends State<_ResumeHero> {
     final l = AppLocalizations.of(context);
     final tokens = context.tokens;
     final draft = widget.controller.draftOrNull;
-    if (draft == null) return const SizedBox.shrink();
+    if (draft == null) {
+      return const SizedBox.shrink();
+    }
     DayTemplate? day;
     if (draft.templateId != null) {
       for (final d in widget.dayList) {
@@ -925,7 +981,9 @@ class _ResumeHeroState extends State<_ResumeHero> {
     if (rs != null) {
       restRemaining =
           widget.controller.restTotal - now.difference(rs).inSeconds;
-      if (restRemaining < 0) restRemaining = 0;
+      if (restRemaining < 0) {
+        restRemaining = 0;
+      }
     }
     final resting = restRemaining > 0;
 
@@ -937,16 +995,28 @@ class _ResumeHeroState extends State<_ResumeHero> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(l.todayActiveNow,
-                  style: WorkoutType.mono(
-                      size: 10, color: tokens.accentText, letterSpacing: 1.5)),
+              Text(
+                l.todayActiveNow,
+                style: WorkoutType.mono(
+                  size: 10,
+                  color: tokens.accentText,
+                  letterSpacing: 1.5,
+                ),
+              ),
               const SizedBox(height: 10),
-              Text(title,
-                  style: WorkoutType.display(size: 28, color: tokens.text)),
+              // A long single-word name shrinks, then ellipsizes; the full
+              // name stays the label's text and semantics, never split.
+              FitLabel(
+                title,
+                maxLines: 3,
+                style: WorkoutType.display(size: 28, color: tokens.text),
+              ),
               if (focus.isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(focus,
-                    style: WorkoutType.body(size: 13, color: tokens.dim)),
+                Text(
+                  focus,
+                  style: WorkoutType.body(size: 13, color: tokens.dim),
+                ),
               ],
               const SizedBox(height: 14),
               Row(
@@ -954,21 +1024,31 @@ class _ResumeHeroState extends State<_ResumeHero> {
                   Text(
                     resting
                         ? l.todayRestTimer(
-                            fmtClock(Duration(seconds: restRemaining)))
+                            fmtClock(Duration(seconds: restRemaining)),
+                          )
                         : fmtClock(now.difference(draft.startedAt)),
                     style: WorkoutType.mono(
-                        size: 14,
-                        weight: FontWeight.w700,
-                        color: resting ? tokens.accentText : tokens.text),
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: resting ? tokens.accentText : tokens.text,
+                    ),
                   ),
                   const SizedBox(width: 12),
-                  Text(l.todayExerciseCount(exCount),
-                      style: WorkoutType.mono(size: 11, color: tokens.faint)),
+                  // Narrow phones at large text (es at 320dp/2x) overflowed.
+                  Flexible(
+                    child: FitLabel(
+                      l.todayExerciseCount(exCount),
+                      style: WorkoutType.mono(size: 11, color: tokens.faint),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
-              PrimaryBtn(l.todayResumeWorkout,
-                  enabled: true, onTap: widget.onResume),
+              PrimaryBtn(
+                l.todayResumeWorkout,
+                enabled: true,
+                onTap: widget.onResume,
+              ),
             ],
           ),
         ),

@@ -64,7 +64,10 @@ class RulerScale {
     final lo = math.min(min, anchor);
     // Walk down from the anchor to the lowest grid value still >= lo.
     final below = ((anchor - lo) / this.step + 1e-9).floor();
-    base = clampRound2(anchor - below * this.step, min: double.negativeInfinity);
+    base = clampRound2(
+      anchor - below * this.step,
+      min: double.negativeInfinity,
+    );
     count = ((top - base) / this.step + 1e-9).floor() + 1;
   }
 
@@ -75,8 +78,10 @@ class RulerScale {
   double get first => valueAt(0);
   double get last => valueAt(count - 1);
 
-  double valueAt(int i) =>
-      clampRound2(base + i.clamp(0, count - 1) * step, min: double.negativeInfinity);
+  double valueAt(int i) => clampRound2(
+    base + i.clamp(0, count - 1) * step,
+    min: double.negativeInfinity,
+  );
 
   int indexOf(double v) => ((v - base) / step).round().clamp(0, count - 1);
 
@@ -152,7 +157,8 @@ class RulerPicker extends StatefulWidget {
 }
 
 @visibleForTesting
-class RulerPickerState extends State<RulerPicker> with TickerProviderStateMixin {
+class RulerPickerState extends State<RulerPicker>
+    with TickerProviderStateMixin {
   /// The coarse grid: absolute multiples of [RulerPicker.step] when the
   /// picker can zoom, else anchored on the handed-in value.
   late RulerScale scale;
@@ -281,14 +287,19 @@ class RulerPickerState extends State<RulerPicker> with TickerProviderStateMixin 
     _pos = _restPos(v);
   }
 
-  RulerScale _scaleFor(double anchor) =>
-      RulerScale(anchor: anchor, step: widget.step, min: widget.min, max: widget.max);
+  RulerScale _scaleFor(double anchor) => RulerScale(
+    anchor: anchor,
+    step: widget.step,
+    min: widget.min,
+    max: widget.max,
+  );
 
   RulerScale _fineFor(double v, double fineStep) => RulerScale(
-      anchor: _onGrid(v, fineStep) ? _roundTo(v, fineStep) : v,
-      step: fineStep,
-      min: widget.min,
-      max: widget.max);
+    anchor: _onGrid(v, fineStep) ? _roundTo(v, fineStep) : v,
+    step: fineStep,
+    min: widget.min,
+    max: widget.max,
+  );
 
   static double _roundTo(double v, double step) =>
       clampRound2((v / step).round() * step, min: double.negativeInfinity);
@@ -348,7 +359,8 @@ class RulerPickerState extends State<RulerPicker> with TickerProviderStateMixin 
   @override
   void didUpdateWidget(RulerPicker oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final stepChanged = widget.step != oldWidget.step || widget.fineStep != oldWidget.fineStep;
+    final stepChanged =
+        widget.step != oldWidget.step || widget.fineStep != oldWidget.fineStep;
     if (!stepChanged && _same(widget.value)) return;
     _stopGlide();
     _dragging = false;
@@ -389,13 +401,14 @@ class RulerPickerState extends State<RulerPicker> with TickerProviderStateMixin 
     if (dir != 0 && up != dir > 0) return;
     // Start at the first grid value past the last reported one; that one may
     // sit off this grid (a value from the other zoom, or the parent's).
-    bool behind(double v) => (up ? v <= _current : v >= _current) || _showsAs(v, _current);
+    bool behind(double v) =>
+        (up ? v <= _current : v >= _current) || _showsAs(v, _current);
     var i = grid.indexOf(_current);
     while (i != to && behind(grid.valueAt(i))) {
       i += up ? 1 : -1;
     }
     HapticFeedback.selectionClick();
-    for (;; i += up ? 1 : -1) {
+    for (; ; i += up ? 1 : -1) {
       _current = grid.valueAt(i);
       widget.onChanged(_current);
       if (i == to) break;
@@ -469,7 +482,13 @@ class RulerPickerState extends State<RulerPicker> with TickerProviderStateMixin 
       // that starts the glide at the release speed, so the hand-off is smooth.
       final ms = 3000 * distancePx.abs() / pxPerSecond.abs();
       duration = Duration(
-          milliseconds: ms.clamp(duration.inMilliseconds.toDouble(), kMaxGlide.inMilliseconds.toDouble()).round());
+        milliseconds: ms
+            .clamp(
+              duration.inMilliseconds.toDouble(),
+              kMaxGlide.inMilliseconds.toDouble(),
+            )
+            .round(),
+      );
     }
     _glideGrid = grid;
     _glideDir = distancePx.sign.toInt();
@@ -485,7 +504,11 @@ class RulerPickerState extends State<RulerPicker> with TickerProviderStateMixin 
       final excess = pxPerSecond.sign * (pxPerSecond.abs() - kFlingDeadZone);
       projectedPx = FrictionSimulation(kFlingDrag, 0, excess).finalX;
     }
-    _glideTo(grid.snap(_pos + projectedPx / _pxPerValue), grid, pxPerSecond: pxPerSecond);
+    _glideTo(
+      grid.snap(_pos + projectedPx / _pxPerValue),
+      grid,
+      pxPerSecond: pxPerSecond,
+    );
   }
 
   void _onPointerDown(PointerDownEvent e) {
@@ -515,7 +538,9 @@ class RulerPickerState extends State<RulerPicker> with TickerProviderStateMixin 
   }
 
   void _onHoldTick(Timer t) {
-    if (++_stillTicks * _holdTick.inMilliseconds < kHoldDwell.inMilliseconds) return;
+    if (++_stillTicks * _holdTick.inMilliseconds < kHoldDwell.inMilliseconds) {
+      return;
+    }
     _stillTicks = 0;
     _switchZoom(true);
   }
@@ -624,22 +649,24 @@ class RulerPickerState extends State<RulerPicker> with TickerProviderStateMixin 
     // its own bounds.
     final tape = ClipRect(
       child: RepaintBoundary(
-      child: CustomPaint(
-      painter: _TapePainter(
-        position: _pos,
-        coarse: scale,
-        fine: _fine,
-        zoom: _zoom.value,
-        pxPerValue: _pxPerValue,
-        extent: extent,
-        fineExtent: _fineExtent,
-        format: widget.format,
-        line: tokens.lineStrong,
-        labels: _labels,
-        paints: _paints,
-        centreLabels: _centreLabels,
+        child: CustomPaint(
+          painter: _TapePainter(
+            position: _pos,
+            coarse: scale,
+            fine: _fine,
+            zoom: _zoom.value,
+            pxPerValue: _pxPerValue,
+            extent: extent,
+            fineExtent: _fineExtent,
+            format: widget.format,
+            line: tokens.lineStrong,
+            labels: _labels,
+            paints: _paints,
+            centreLabels: _centreLabels,
+          ),
+        ),
       ),
-    )));
+    );
 
     return Semantics(
       slider: true,
@@ -757,7 +784,11 @@ class _LabelCache {
   static const int _alphaSteps = 50;
   static const int _limit = 400;
 
-  void configure({required Color text, required Color accent, required TextScaler scaler}) {
+  void configure({
+    required Color text,
+    required Color accent,
+    required TextScaler scaler,
+  }) {
     if (text == _text && accent == _accent && scaler == _scaler) return;
     clear();
     _text = text;
@@ -765,13 +796,21 @@ class _LabelCache {
     _scaler = scaler;
   }
 
-  TextPainter get(String label, {required bool centre, required double opacity}) {
+  TextPainter get(
+    String label, {
+    required bool centre,
+    required double opacity,
+  }) {
     final a = (opacity.clamp(0.0, 1.0) * _alphaSteps).round();
     final key = '$label|${centre ? 1 : 0}|$a';
     final hit = _painters.remove(key);
     if (hit != null) return _painters[key] = hit; // now the most recent
-    if (_painters.length >= _limit) _painters.remove(_painters.keys.first)!.dispose();
-    final color = (centre ? _accent! : _text!).withValues(alpha: a / _alphaSteps);
+    if (_painters.length >= _limit) {
+      _painters.remove(_painters.keys.first)!.dispose();
+    }
+    final color = (centre ? _accent! : _text!).withValues(
+      alpha: a / _alphaSteps,
+    );
     return _painters[key] = TextPainter(
       text: TextSpan(
         text: label,
@@ -818,10 +857,10 @@ class _TapePainter extends CustomPainter {
     required this.labels,
     required this.paints,
     required this.centreLabels,
-  })  : generation = labels.generation,
-        // A new closure arrives with every parent build; what matters is
-        // whether it renders differently (a unit switch).
-        formatProbe = format(position);
+  }) : generation = labels.generation,
+       // A new closure arrives with every parent build; what matters is
+       // whether it renders differently (a unit switch).
+       formatProbe = format(position);
 
   final double position;
   final RulerScale coarse;
@@ -841,7 +880,8 @@ class _TapePainter extends CustomPainter {
   /// centre, for tests.
   final List<String> centreLabels;
 
-  double _x(double v, Size size) => size.width / 2 + (v - position) * pxPerValue;
+  double _x(double v, Size size) =>
+      size.width / 2 + (v - position) * pxPerValue;
 
   /// Whether [v] is exactly a value of [grid] (both are rounded to two
   /// decimals, so only float noise is forgiven: 60.01 is not on a 1 grid).
@@ -861,7 +901,9 @@ class _TapePainter extends CustomPainter {
     final fine = this.fine;
     // Fine labels come in over the second part of the zoom, once there is
     // room between them.
-    final fineFade = fine == null ? 0.0 : Curves.easeIn.transform(((zoom - 0.3) / 0.7).clamp(0.0, 1.0));
+    final fineFade = fine == null
+        ? 0.0
+        : Curves.easeIn.transform(((zoom - 0.3) / 0.7).clamp(0.0, 1.0));
     // The spacing of one step of the grid on show, for the label falloff.
     final slot = extent + (fineExtent - extent) * (fine == null ? 0 : zoom);
 
@@ -879,7 +921,10 @@ class _TapePainter extends CustomPainter {
     final minor = paints.minor..color = line.withValues(alpha: minorAlpha);
     final sub = step / 5;
     final k0 = math.max(((lo - coarse.base) / sub).ceil(), -2);
-    final k1 = math.min(((hi - coarse.base) / sub).floor(), (coarse.count - 1) * 5 + 2);
+    final k1 = math.min(
+      ((hi - coarse.base) / sub).floor(),
+      (coarse.count - 1) * 5 + 2,
+    );
     for (var k = k0; k <= k1; k++) {
       final isMajor = k % 5 == 0;
       if (!isMajor && minorAlpha <= 0) continue;
@@ -922,12 +967,24 @@ class _TapePainter extends CustomPainter {
         final v = fine.valueAt(i);
         if (_isOn(v, coarse)) continue;
         final x = _x(v, size);
-        _label(canvas, x, format(v), (x - size.width / 2).abs() / slot, fineFade);
+        _label(
+          canvas,
+          x,
+          format(v),
+          (x - size.width / 2).abs() / slot,
+          fineFade,
+        );
       }
     }
   }
 
-  void _label(Canvas canvas, double x, String text, double distance, double fade) {
+  void _label(
+    Canvas canvas,
+    double x,
+    String text,
+    double distance,
+    double fade,
+  ) {
     final d = distance.clamp(0.0, 3.0);
     final centre = d < 0.5;
     // A gentle falloff: 1.0 at the centre, 0.72 one step away, 0.56 at three.

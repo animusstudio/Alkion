@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:workout_tracker/theme/app_theme.dart';
-import 'package:workout_tracker/theme/tokens.dart';
-import 'package:workout_tracker/theme/typography.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/theme/typography.dart';
 
 import '../support/app_fonts.dart';
 
@@ -20,18 +20,20 @@ double _width(String text, TextStyle style) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('every face the app draws loads from the bundle, with no network',
-      () async {
-    GoogleFonts.config.allowRuntimeFetching = false;
-    addTearDown(() => GoogleFonts.config.allowRuntimeFetching = true);
-    // buildTheme asks google_fonts for the theme's own text weights.
-    for (final b in Brightness.values) {
-      buildTheme(b, accents[0]);
-    }
-    // A face missing from assets/google_fonts/ throws here instead of
-    // falling back to a fetch.
-    await preloadAppFonts();
-  });
+  test(
+    'every face the app draws loads from the bundle, with no network',
+    () async {
+      GoogleFonts.config.allowRuntimeFetching = false;
+      addTearDown(() => GoogleFonts.config.allowRuntimeFetching = true);
+      // buildTheme asks google_fonts for the theme's own text weights.
+      for (final b in Brightness.values) {
+        buildTheme(b, accents[0]);
+      }
+      // A face missing from assets/google_fonts/ throws here instead of
+      // falling back to a fetch.
+      await preloadAppFonts();
+    },
+  );
 
   test('the bundled faces replace the test font', () async {
     await preloadAppFonts();

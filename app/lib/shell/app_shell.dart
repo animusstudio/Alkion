@@ -1,19 +1,15 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../auth/auth_store.dart';
-import '../capture/source_write_gate.dart' show SourceGateException;
 import '../data/day_template_repository.dart';
 import '../data/models.dart';
+import '../widgets/w_dialog.dart';
 import '../data/session_repository.dart';
-import '../main.dart' show appNavigatorKey;
 import '../theme/app_theme.dart';
-import '../settings/settings_service.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../ui/history_screen.dart';
 import '../ui/plan_screen.dart';
 import '../ui/profile_screen.dart';
@@ -21,8 +17,6 @@ import '../ui/progress_screen.dart';
 import '../ui/today_screen.dart';
 import '../session/session_manager.dart';
 import '../theme/motion.dart';
-import '../update/update_service.dart';
-import '../update/update_ui.dart';
 import 'back_dispatch.dart';
 import 'session_launcher.dart' as launcher;
 import 'session_indicator.dart';
@@ -42,13 +36,13 @@ import 'w_tab_bar.dart';
 /// The FAB calls [launcher.startSession] with the next-in-rotation template
 /// (null → custom session) and resets to the Today tab on return.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, required this.onLogout, required this.auth});
+  const AppShell({super.key, this.onLogout, this.auth});
 
   /// Called (awaited) when the user logs out via the Profile screen.
-  final Future<void> Function() onLogout;
+  final Future<void> Function()? onLogout;
 
   /// The authenticated user store — forwarded to ProfileScreen for email display.
-  final AuthStore auth;
+  final Object? auth;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -66,52 +60,48 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    _dayRepo = DayTemplateRepository(db);
-    _sessionRepo = SessionRepository(db);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoCheck());
-  }
-
-  /// Fire-and-forget once/day update check (Android only). Always records the
-  /// check timestamp — even on null/304/error — so the throttle holds for a
-  /// day. On a real update, shows the dialog via the root navigator context.
-  Future<void> _maybeAutoCheck() async {
-    if (!Platform.isAndroid) return;
-    if (!mounted) return;
-    final settings = context.read<SettingsService>();
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (!shouldAutoCheck(
-      enabled: settings.autoCheckUpdates,
-      lastCheckMs: settings.lastUpdateCheckMs,
-      nowMs: now,
-    )) {
-      return;
-    }
-    final info = await UpdateService().checkForUpdate(); // force:false, silent
-    try {
-      await settings.markUpdateChecked(now);
-    } on SourceGateException {
-      // Not recorded while a data capture holds the source: the check simply
-      // runs again on a later launch.
-    }
-    if (info == null) return;
-    final ctx = appNavigatorKey.currentContext;
-    if (ctx != null && ctx.mounted) await showUpdateDialog(ctx, info);
+    _dayRepo = DayTemplateRepository.local(context.read<LocalDatabase>());
+    _sessionRepo = SessionRepository.local(context.read<LocalDatabase>());
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
 
   /// FAB: resolve next-in-rotation and start a session; return to Today.
   Future<void> _fabStart() async {
-    final t = await launcher.nextInRotation(_dayRepo, _sessionRepo);
-    if (!mounted) return;
-    await launcher.startSession(context, template: t);
-    if (mounted) setState(() => _index = 0);
+    try {
+      final t = await launcher.nextInRotation(_dayRepo, _sessionRepo);
+      if (!mounted) {
+        return;
+      }
+      await launcher.startSession(context, template: t);
+      if (mounted) {
+        setState(() => _index = 0);
+      }
+    } on HistoryOrderReview catch (review) {
+      if (!mounted) {
+        return;
+      }
+      final chosen = await launcher.chooseHistoryOrder(context, review);
+      if (chosen == null) {
+        return;
+      }
+      await _sessionRepo.resolveOrder(review, chosen);
+      if (mounted) {
+        await _fabStart();
+      }
+    } catch (error) {
+      if (mounted) {
+        await showWriteFailed(context, error);
+      }
+    }
   }
 
   /// Today hero Start button: start the given (or custom) session; return to Today.
   Future<void> _start(DayTemplate? day) async {
     await launcher.startSession(context, template: day);
-    if (mounted) setState(() => _index = 0);
+    if (mounted) {
+      setState(() => _index = 0);
+    }
   }
 
   /// Switches to the Progress tab with the given exercise or bodyweight target.
@@ -138,8 +128,10 @@ class _AppShellState extends State<AppShell> {
           return FadeTransition(
             opacity: curved,
             child: SlideTransition(
-              position: Tween(begin: const Offset(0, 0.06), end: Offset.zero)
-                  .animate(curved),
+              position: Tween(
+                begin: const Offset(0, 0.06),
+                end: Offset.zero,
+              ).animate(curved),
               child: child,
             ),
           );
@@ -153,8 +145,12 @@ class _AppShellState extends State<AppShell> {
   Future<void> _confirmExit() async {
     setState(() => _index = 3);
     final closed = await _planKey.currentState?.requestClose() ?? false;
-    if (!mounted) return;
-    if (closed) SystemNavigator.pop();
+    if (!mounted) {
+      return;
+    }
+    if (closed) {
+      SystemNavigator.pop();
+    }
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -164,7 +160,9 @@ class _AppShellState extends State<AppShell> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
+        if (didPop) {
+          return;
+        }
         final tabHandled =
             _index == 3 && (_planKey.currentState?.handleBack() ?? false);
         switch (decideBack(
@@ -228,23 +226,25 @@ class _AppShellState extends State<AppShell> {
             ),
             // Workout-in-progress indicator: compact, top-right, on every tab
             // EXCEPT Today (index 0), where the resume hero covers it.
-            Builder(builder: (context) {
-              final manager = context.watch<SessionManager>();
-              final c = manager.active;
-              if (c == null || manager.screenOpen || _index == 0) {
-                return const SizedBox.shrink();
-              }
-              return Positioned(
-                top: MediaQuery.paddingOf(context).top + 8,
-                right: 16,
-                child: SessionIndicator(
-                  startedAt: c.draft.startedAt,
-                  restStart: c.restStart,
-                  restTotal: c.restTotal,
-                  onTap: () => launcher.openActiveSession(context, manager),
-                ),
-              );
-            }),
+            Builder(
+              builder: (context) {
+                final manager = context.watch<SessionManager>();
+                final c = manager.active;
+                if (c == null || manager.screenOpen || _index == 0) {
+                  return const SizedBox.shrink();
+                }
+                return Positioned(
+                  top: MediaQuery.paddingOf(context).top + 8,
+                  right: 16,
+                  child: SessionIndicator(
+                    startedAt: c.draft.startedAt,
+                    restStart: c.restStart,
+                    restTotal: c.restTotal,
+                    onTap: () => launcher.openActiveSession(context, manager),
+                  ),
+                );
+              },
+            ),
             Align(
               alignment: Alignment.bottomCenter,
               child: WTabBar(
@@ -282,13 +282,17 @@ class _TabFadeState extends State<_TabFade>
   @override
   void didUpdateWidget(_TabFade old) {
     super.didUpdateWidget(old);
-    if (old.index != widget.index && !MediaQuery.of(context).disableAnimations) {
+    if (old.index != widget.index &&
+        !MediaQuery.of(context).disableAnimations) {
       _c.forward(from: 0.35);
     }
   }
 
   @override
-  void dispose() { _c.dispose(); super.dispose(); }
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) =>

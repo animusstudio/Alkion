@@ -4,6 +4,7 @@ import '../data/day_template_repository.dart'; // resolveSlot
 import '../data/exercise_repository.dart';
 import '../data/finished_session_store.dart';
 import '../data/models.dart';
+import '../store/local_store.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../util/dates.dart';
@@ -26,17 +27,24 @@ const resumeGrace = Duration(hours: 1);
 /// not stay resumable for the whole next day. A negative difference (the
 /// clock moved back) counts as within the grace period.
 bool isResumable(FinishedSession? f, String sessionId, DateTime now) {
-  if (f == null || f.sessionId != sessionId) return false;
-  if (f.sessionDate == isoDate(now)) return true;
+  if (f == null || f.sessionId != sessionId) {
+    return false;
+  }
+  if (f.sessionDate == isoDate(now)) {
+    return true;
+  }
   return now.difference(f.finishedAt) <= resumeGrace;
 }
 
 /// The moment [f] stops being resumable: the later of the end of its
 /// session's day and its grace period.
 DateTime resumableUntil(FinishedSession f) {
-  final day = DateTime.tryParse('${f.sessionDate}T00:00:00') ?? f.finishedAt;
-  final endOfDay = DateTime(day.year, day.month, day.day + 1);
+  final day = qualifiedCalendarDate(f.sessionDate);
   final endOfGrace = f.finishedAt.add(resumeGrace);
+  if (day == null) {
+    return endOfGrace;
+  }
+  final endOfDay = DateTime(day.year, day.month, day.day + 1);
   return endOfDay.isAfter(endOfGrace) ? endOfDay : endOfGrace;
 }
 
@@ -66,7 +74,9 @@ SessionResumeState resumeStateFor({
   if (activeSessionId != null && activeSessionId == sessionId) {
     return SessionResumeState.inProgress;
   }
-  if (isResumable(lastFinished, sessionId, now)) return SessionResumeState.available;
+  if (isResumable(lastFinished, sessionId, now)) {
+    return SessionResumeState.available;
+  }
   return SessionResumeState.none;
 }
 
@@ -78,26 +88,31 @@ enum ResumeTapAction { openRunning, forgetExpired, blockedByActive, resume }
 ///
 /// `inProgress` reopens the running workout whatever [hasActive] says: that
 /// running workout is the resumed one.
-ResumeTapAction resumeTapAction(SessionResumeState state, {required bool hasActive}) =>
-    switch (state) {
-      SessionResumeState.inProgress => ResumeTapAction.openRunning,
-      SessionResumeState.none => ResumeTapAction.forgetExpired,
-      SessionResumeState.available =>
-        hasActive ? ResumeTapAction.blockedByActive : ResumeTapAction.resume,
-    };
+ResumeTapAction resumeTapAction(
+  SessionResumeState state, {
+  required bool hasActive,
+}) => switch (state) {
+  SessionResumeState.inProgress => ResumeTapAction.openRunning,
+  SessionResumeState.none => ResumeTapAction.forgetExpired,
+  SessionResumeState.available =>
+    hasActive ? ResumeTapAction.blockedByActive : ResumeTapAction.resume,
+};
 
 /// Logged rows no snapshot block could take (their exercise has no block).
 typedef UnmatchedRows = ({String exerciseId, List<LoggedSet> rows});
 
 /// A logged row as a done set of the live workout.
 SetState loggedToSetState(LoggedSet r) => SetState(
-      id: r.id,
-      weightKg: r.weightKg,
-      reps: r.reps,
-      rir: r.isWarmup ? null : r.rir,
-      isWarmup: r.isWarmup,
-      done: true,
-    );
+  id: r.id,
+  weightKg: r.weightKg,
+  reps: r.reps,
+  rir: r.isWarmup ? null : r.rir,
+  isWarmup: r.isWarmup,
+  done: true,
+  originalWeight: r.weightEvidence?.raw,
+  rawFields: Map<String, Object?>.from(r.rawFields),
+  localRevision: r.localRevision,
+)..weightUnavailable = r.weightEvidence?.raw == null;
 
 /// Merges the finish-time [source] draft with the session's logged [rows].
 /// The DB is the truth for what was logged; the snapshot supplies only what
@@ -119,6 +134,9 @@ SetState loggedToSetState(LoggedSet r) => SetState(
   SessionDraft source,
   List<LoggedSet> rows,
 ) {
+  if (rows.any((row) => row.qualifiedSetNumber == null)) {
+    throw const StoreException('set_order_review_required');
+  }
   final copy = source.deepCopy();
   final byId = {for (final r in rows) r.id: r};
   final matched = <String>{};
@@ -131,8 +149,15 @@ SetState loggedToSetState(LoggedSet r) => SetState(
         matched.add(s.id);
         s
           ..weightKg = r.weightKg
+          ..originalWeight = r.weightEvidence?.raw
+          ..weightUnavailable = r.weightEvidence?.raw == null
+          ..weightTouched = false
+          ..localRevision = r.localRevision
           ..reps = r.reps
           ..rir = s.isWarmup ? null : r.rir
+          ..rawFields = Map<String, Object?>.from(r.rawFields)
+          ..repsTouched = false
+          ..rirTouched = false
           ..done = true;
         out.add(s);
       } else if (!s.done) {
@@ -150,12 +175,15 @@ SetState loggedToSetState(LoggedSet r) => SetState(
   // Rows no snapshot set knows, grouped by exercise in first-appearance order.
   final extra = <String, List<LoggedSet>>{};
   for (final r in rows) {
-    if (!matched.contains(r.id)) extra.putIfAbsent(r.exerciseId, () => []).add(r);
+    if (!matched.contains(r.id)) {
+      extra.putIfAbsent(r.exerciseId, () => []).add(r);
+    }
   }
 
   final unmatched = <UnmatchedRows>[];
   for (final entry in extra.entries) {
-    final added = [...entry.value]..sort((a, b) => a.setNumber.compareTo(b.setNumber));
+    final added = [...entry.value]
+      ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
     BlockState? target;
     for (final b in copy.blocks) {
       if (b.exercise.id == entry.key) {
@@ -168,7 +196,9 @@ SetState loggedToSetState(LoggedSet r) => SetState(
       continue;
     }
     for (final r in added) {
-      (r.isWarmup ? target.warmupSets : target.workingSets).add(loggedToSetState(r));
+      (r.isWarmup ? target.warmupSets : target.workingSets).add(
+        loggedToSetState(r),
+      );
     }
   }
 
@@ -181,6 +211,9 @@ SetState loggedToSetState(LoggedSet r) => SetState(
       blocks: copy.blocks.where((b) => b.allSets.isNotEmpty).toList(),
       sessionId: copy.sessionId,
       sessionDate: copy.sessionDate,
+      identity: copy.draftId,
+      localRevision: copy.localRevision,
+      setBases: copy.setBases,
     ),
     unmatched: unmatched,
   );
@@ -212,26 +245,47 @@ Future<SessionDraft> restoreFinishedDraft(
   final blocks = <BlockState>[];
   for (final b in merged.draft.blocks) {
     final hasLogged = b.allSets.any((s) => s.done);
-    if (!hasLogged && await exerciseRepo.byId(b.exercise.id) == null) continue;
+    if (!hasLogged && await exerciseRepo.byId(b.exercise.id) == null) {
+      continue;
+    }
     blocks.add(b);
   }
 
   for (final g in merged.unmatched) {
     final exercise =
-        await exerciseRepo.byId(g.exerciseId) ?? _placeholderExercise(g.exerciseId);
-    final resolved =
-        resolveSlot(Slot(exerciseId: g.exerciseId, position: blocks.length), exercise);
-    final bestKg = await sessionRepo.bestTopSet(g.exerciseId, excludeSessionId: f.sessionId);
-    final lastTop = await sessionRepo.lastTopSet(g.exerciseId, excludeSessionId: f.sessionId);
-    blocks.add(BlockState(
-      exercise: exercise,
-      resolved: resolved,
-      warmupSets: [for (final r in g.rows) if (r.isWarmup) loggedToSetState(r)],
-      workingSets: [for (final r in g.rows) if (!r.isWarmup) loggedToSetState(r)],
-      expanded: true,
-      bestKg: bestKg,
-      lastTop: lastTop,
-    ));
+        await exerciseRepo.byId(g.exerciseId) ??
+        _placeholderExercise(g.exerciseId);
+    final resolved = resolveSlot(
+      Slot(exerciseId: g.exerciseId, position: blocks.length),
+      exercise,
+    );
+    final bestKg = await sessionRepo.bestTopSet(
+      g.exerciseId,
+      excludeSessionId: f.sessionId,
+    );
+    final reference = await sessionRepo.lastTopSetEvidence(
+      g.exerciseId,
+      excludeSessionId: f.sessionId,
+    );
+    final lastTop = reference.value;
+    blocks.add(
+      BlockState(
+        exercise: exercise,
+        resolved: resolved,
+        warmupSets: [
+          for (final r in g.rows)
+            if (r.isWarmup) loggedToSetState(r),
+        ],
+        workingSets: [
+          for (final r in g.rows)
+            if (!r.isWarmup) loggedToSetState(r),
+        ],
+        expanded: true,
+        bestKg: bestKg,
+        lastTop: lastTop,
+        lastTopUnavailable: reference.unavailable,
+      ),
+    );
   }
 
   final elapsed = max(f.elapsedSeconds, (durationMin ?? 0) * 60);
@@ -243,6 +297,9 @@ Future<SessionDraft> restoreFinishedDraft(
     blocks: blocks,
     sessionId: f.sessionId,
     sessionDate: f.sessionDate,
+    identity: merged.draft.draftId,
+    localRevision: merged.draft.localRevision,
+    setBases: {for (final row in rows) row.id: row.localRevision ?? 0},
   );
 }
 
@@ -250,17 +307,21 @@ Future<SessionDraft> restoreFinishedDraft(
 /// not destructive — its finished session stays in History untouched — so it
 /// must not warn that the logged sets will be lost.
 ({String title, String message}) discardDialogCopy(
-        AppLocalizations l, SessionDraft draft) =>
-    draft.sessionId != null
-        ? (title: l.sessionDiscardChangesTitle, message: l.sessionDiscardChangesMessage)
-        : (title: l.sessionDiscardTitle, message: l.sessionDiscardMessage);
+  AppLocalizations l,
+  SessionDraft draft,
+) => draft.sessionId != null
+    ? (
+        title: l.sessionDiscardChangesTitle,
+        message: l.sessionDiscardChangesMessage,
+      )
+    : (title: l.sessionDiscardTitle, message: l.sessionDiscardMessage);
 
 Exercise _placeholderExercise(String id) => Exercise(
-      id: id,
-      name: id,
-      slug: '',
-      muscleGroup: '',
-      compound: false,
-      plateStepKg: 2.5,
-      isTemplate: false,
-    );
+  id: id,
+  name: id,
+  slug: '',
+  muscleGroup: '',
+  compound: false,
+  plateStepKg: 2.5,
+  isTemplate: false,
+);

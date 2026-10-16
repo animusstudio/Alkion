@@ -1,10 +1,10 @@
-import 'package:powersync/powersync.dart';
-
-import '../capture/source_write_gate.dart';
-import '../util/dates.dart';
+import '../domain/local_action.dart';
+import '../domain/evidence.dart';
+import '../store/local_store.dart';
+import '../util/calendar_keys.dart';
+import 'exercise_repository.dart';
 import 'models.dart';
 import 're_listenable.dart';
-import 'session_repository.dart';
 
 // ── dayTemplateUpsertOp ───────────────────────────────────────────────────────
 
@@ -27,14 +27,16 @@ import 'session_repository.dart';
 ) {
   if (existingId == null) {
     return (
-      sql: 'INSERT INTO day_templates '
+      sql:
+          'INSERT INTO day_templates '
           '(id, name, focus, scheduled_weekday, position, is_template) '
           'VALUES (?, ?, ?, ?, ?, 0)',
       args: [newId, name, focus, weekday, position],
     );
   } else {
     return (
-      sql: 'UPDATE day_templates SET name = ?, focus = ?, scheduled_weekday = ? '
+      sql:
+          'UPDATE day_templates SET name = ?, focus = ?, scheduled_weekday = ? '
           'WHERE id = ?',
       args: [name, focus, weekday, existingId],
     );
@@ -66,7 +68,8 @@ import 'session_repository.dart';
 }) {
   if (itemId == null) {
     return (
-      sql: 'INSERT INTO day_template_items '
+      sql:
+          'INSERT INTO day_template_items '
           '(id, day_template_id, exercise_id, position, target_working_sets, '
           'target_warmup_sets, target_rep_low, target_rep_high, target_rir_low, '
           'target_rir_high, is_template) '
@@ -86,7 +89,8 @@ import 'session_repository.dart';
     );
   } else {
     return (
-      sql: 'UPDATE day_template_items SET '
+      sql:
+          'UPDATE day_template_items SET '
           'position = ?, target_working_sets = ?, target_warmup_sets = ?, '
           'target_rep_low = ?, target_rep_high = ?, target_rir_low = ?, target_rir_high = ? '
           'WHERE id = ?',
@@ -144,19 +148,21 @@ List<({String sql, List<Object?> args})> reconcileDay({
     // New day: INSERT all slots in order.
     for (var i = 0; i < draft.slots.length; i++) {
       final s = draft.slots[i];
-      ops.add(slotUpsertOp(
-        null,
-        newSlotId(i),
-        effectiveDayId,
-        s.exerciseId,
-        i + 1,
-        workSets: s.workSets,
-        warmupSets: s.warmupSets,
-        repLow: s.repLow,
-        repHigh: s.repHigh,
-        rirLow: s.rirLow,
-        rirHigh: s.rirHigh,
-      ));
+      ops.add(
+        slotUpsertOp(
+          null,
+          newSlotId(i),
+          effectiveDayId,
+          s.exerciseId,
+          i + 1,
+          workSets: s.workSets,
+          warmupSets: s.warmupSets,
+          repLow: s.repLow,
+          repHigh: s.repHigh,
+          rirLow: s.rirLow,
+          rirHigh: s.rirHigh,
+        ),
+      );
     }
   } else {
     // Edit: reconcile slots.
@@ -179,19 +185,21 @@ List<({String sql, List<Object?> args})> reconcileDay({
     var slotIndex = 0;
     for (final s in draft.slots) {
       slotIndex++;
-      ops.add(slotUpsertOp(
-        s.itemId,
-        newSlotId(slotIndex),
-        effectiveDayId,
-        s.exerciseId,
-        slotIndex,
-        workSets: s.workSets,
-        warmupSets: s.warmupSets,
-        repLow: s.repLow,
-        repHigh: s.repHigh,
-        rirLow: s.rirLow,
-        rirHigh: s.rirHigh,
-      ));
+      ops.add(
+        slotUpsertOp(
+          s.itemId,
+          newSlotId(slotIndex),
+          effectiveDayId,
+          s.exerciseId,
+          slotIndex,
+          workSets: s.workSets,
+          warmupSets: s.warmupSets,
+          repLow: s.repLow,
+          repHigh: s.repHigh,
+          rirLow: s.rirLow,
+          rirHigh: s.rirHigh,
+        ),
+      );
     }
   }
 
@@ -243,8 +251,16 @@ ResolvedSlot resolveSlot(Slot slot, Exercise exercise) {
 
   return ResolvedSlot(
     exercise: exercise,
-    workSets: pick(slot.workSets, exercise.defaultWorkingSets, _defaultWorkSets),
-    warmupSets: pick(slot.warmupSets, exercise.defaultWarmupSets, _defaultWarmupSets),
+    workSets: pick(
+      slot.workSets,
+      exercise.defaultWorkingSets,
+      _defaultWorkSets,
+    ),
+    warmupSets: pick(
+      slot.warmupSets,
+      exercise.defaultWarmupSets,
+      _defaultWarmupSets,
+    ),
     repLow: pick(slot.repLow, exercise.defaultRepLow, _defaultRepLow),
     repHigh: pick(slot.repHigh, exercise.defaultRepHigh, _defaultRepHigh),
     rirLow: pick(slot.rirLow, exercise.defaultRirLow, _defaultRirLow),
@@ -254,193 +270,388 @@ ResolvedSlot resolveSlot(Slot slot, Exercise exercise) {
 
 // ── DayTemplateRepository ────────────────────────────────────────────────────
 
-/// Repository for day_templates and their items (slots).
-///
-/// PowerSync sync-rules cannot JOIN, but local SQLite CAN. The watch methods
-/// use a single query over the two tables, assembling [Slot] lists in Dart.
+Map<String, Object?> slotDraftFields(SlotDraft d) {
+  final values = <String, Object?>{
+    'exercise_id': d.exerciseId,
+    'target_working_sets': d.workSets,
+    'target_warmup_sets': d.warmupSets,
+    'target_rep_low': d.repLow,
+    'target_rep_high': d.repHigh,
+    'target_rir_low': d.rirLow,
+    'target_rir_high': d.rirHigh,
+  };
+  return d.rawFields.isNotEmpty && d.changedFields != null
+      ? {
+          for (final key in d.changedFields!)
+            if (values.containsKey(key)) key: values[key],
+        }
+      : values;
+}
+
 class DayTemplateRepository {
-  final PowerSyncDatabase db;
+  const DayTemplateRepository(Object legacy) : _database = null;
+  const DayTemplateRepository.local(LocalDatabase database)
+    : _database = database;
+  final LocalDatabase? _database;
+  LocalDatabase get db =>
+      _database ??
+      (throw const StoreException('legacy_repository_unavailable'));
+  Future<List<DayTemplate>> _days(LocalRead tx, {String? id}) async {
+    final rows = await tx.getAll(
+      'SELECT * FROM day_templates WHERE profile_id=? AND deleted=0 '
+      '${id == null ? 'AND is_template IS NOT 1' : 'AND id=?'} ORDER BY position,id',
+      [tx.profileId, if (id != null) id],
+    );
+    final items = await tx.getAll(
+      'SELECT * FROM day_template_items WHERE profile_id=? AND deleted=0 ORDER BY position,id',
+      [tx.profileId],
+    );
+    return [
+      for (final r in rows)
+        DayTemplate(
+          id: r['id'] as String,
+          slug: r['slug'] as String?,
+          name: r['name'] as String? ?? '',
+          focus: r['focus'] as String?,
+          notes: r['notes'] as String?,
+          scheduledWeekday: r['scheduled_weekday'] as int?,
+          position: r['position'] as int? ?? 0,
+          isTemplate: r['is_template'] == 1,
+          localRevision: r['revision'] as int,
+          rawFields: Map.unmodifiable(r),
+          slots: items
+              .where((s) => s['day_template_id'] == r['id'])
+              .map(Slot.fromRow)
+              .toList(),
+        ),
+    ];
+  }
 
-  const DayTemplateRepository(this.db);
-
-  /// A live stream of all day templates with their slots, ordered by position.
-  ///
-  /// The items are fetched in a separate query and grouped by template id in
-  /// Dart, which avoids duplicating template columns for each item row.
-  Stream<List<DayTemplate>> watchDays() {
-    // Re-emit on changes to EITHER table. The SQL only names day_templates, so
-    // without an explicit triggerOnTables an items-only change (e.g. absorb
-    // re-pointing a slot) would leave Split/Today stale.
-    return reListenable(() => db
+  Stream<List<DayTemplate>> watchDays() => reListenable(
+    () => db
         .watch(
-          'SELECT dt.id, dt.slug, dt.name, dt.focus, dt.scheduled_weekday, dt.position, dt.is_template '
-          'FROM day_templates dt WHERE dt.is_template IS NOT 1 ORDER BY dt.position',
-          triggerOnTables: const ['day_templates', 'day_template_items'],
+          'SELECT d.id,d.revision,s.id AS slot,s.revision AS slot_revision FROM day_templates d LEFT JOIN day_template_items s ON s.profile_id=d.profile_id AND s.day_template_id=d.id WHERE d.profile_id=?',
+          parameters: [db.profileId],
         )
-        .asyncMap((templateRows) async {
-          // One-shot read of all items; fine — they change far less than live sets.
-          final itemRows = await db.getAll(
-            'SELECT * FROM day_template_items ORDER BY day_template_id, position',
-          );
-
-          // Group items by template id.
-          final slotsByTemplate = <String, List<Slot>>{};
-          for (final row in itemRows) {
-            final tid = row['day_template_id'] as String;
-            slotsByTemplate.putIfAbsent(tid, () => []).add(Slot.fromRow(row));
+        .asyncMap((_) => db.readTransaction((tx) => _days(tx))),
+  );
+  Future<DayTemplate?> byId(String id) => db.readTransaction((tx) async {
+    final rows = await _days(tx, id: id);
+    return rows.isEmpty ? null : rows.single;
+  });
+  PreparedDomainAction prepareDay(
+    DayDraft draft, {
+    String? id,
+    String? cloneId,
+    int? cloneRevision,
+    String? operationId,
+    List<OperationDependency> dependencies = const [],
+  }) {
+    if (draft.name.trim().isEmpty) {
+      throw const StoreException('malformed_value');
+    }
+    if (id != null && draft.localRevision == null) {
+      throw const StoreException('observed_revision_required');
+    }
+    if (cloneId != null && cloneRevision == null) {
+      throw const StoreException('observed_revision_required');
+    }
+    final fields = <String, Object?>{
+      'name': draft.name,
+      'focus': draft.focus,
+      'scheduled_weekday': draft.weekday,
+      'notes': draft.notes,
+    };
+    final patch = draft.rawFields.isNotEmpty && draft.changedFields != null
+        ? {
+            for (final key in draft.changedFields!)
+              if (fields.containsKey(key)) key: fields[key],
           }
-
-          return templateRows.map((row) {
-            final id = row['id'] as String;
-            return DayTemplate(
-              id: id,
-              slug: row['slug'] as String?,
-              name: row['name'] as String? ?? '',
-              focus: row['focus'] as String?,
-              scheduledWeekday: row['scheduled_weekday'] as int?,
-              position: row['position'] as int? ?? 0,
-              slots: slotsByTemplate[id] ?? [],
-              isTemplate: ((row['is_template'] as num?) ?? 0) != 0,
-            );
-          }).toList();
-        }));
+        : fields;
+    final slots = <Object?>[];
+    for (var i = 0; i < draft.slots.length; i++) {
+      final slot = draft.slots[i];
+      slots.add({
+        'id': id == null ? domainUuid.v4() : slot.itemId ?? domainUuid.v4(),
+        'base': id == null ? 0 : slot.localRevision ?? 0,
+        'position': i + 1,
+        'fields': slotDraftFields(slot),
+        'original_id': slot.itemId,
+      });
+    }
+    return prepareDomain(
+      db,
+      RecordKind.trainingDay,
+      cloneId != null
+          ? LocalActionKind.planClone
+          : id == null
+          ? LocalActionKind.planCreate
+          : LocalActionKind.planEdit,
+      id ?? domainUuid.v4(),
+      draft.localRevision ?? 0,
+      {
+        'fields': patch,
+        'slots': slots,
+        'clone_id': cloneId,
+        'clone_revision': cloneRevision,
+      },
+      operationId: operationId,
+      dependencies: dependencies,
+    );
   }
 
-  // ── Rotation helpers ──────────────────────────────────────────────────────
-
-  /// Returns the next day template in position-based rotation.
-  ///
-  /// Algorithm:
-  /// 1. No days → null.
-  /// 2. No session history, or last session had no template (custom), or the
-  ///    last template id is unknown → first day.
-  /// 3. Otherwise → the successor of the most-recent session's day_template_id
-  ///    (wraps around to the first day after the last).
-  ///
-  /// The pure selection logic is exposed via [selectNextDay] so it can be
-  /// unit-tested without a live database.
-  Future<DayTemplate?> nextInRotation(SessionRepository sessionRepo) async {
-    final days = await watchDays().first;
-    if (days.isEmpty) return null;
-    final recent = await sessionRepo.watchRecentSessions(limit: 1).first;
-    final lastId = recent.isEmpty ? null : recent.first.dayTemplateId;
-    return selectNextDay(days, lastId);
+  PreparedDomainAction prepareDelete(
+    String id,
+    int revision, {
+    String? operationId,
+  }) => prepareDomain(
+    db,
+    RecordKind.trainingDay,
+    LocalActionKind.planDelete,
+    id,
+    revision,
+    {},
+    operationId: operationId,
+  );
+  PreparedDomainAction prepareRestore(String id, int revision) => prepareDomain(
+    db,
+    RecordKind.trainingDay,
+    LocalActionKind.planRestore,
+    id,
+    revision,
+    {},
+  );
+  PreparedDomainAction prepareReorder(
+    String target,
+    int revision,
+    List<String> ids,
+    Map<String, int> bases,
+  ) => prepareDomain(
+    db,
+    RecordKind.trainingDay,
+    LocalActionKind.planReorder,
+    target,
+    revision,
+    {'ids': ids, 'bases': bases},
+  );
+  Future<LocalActionResult> commitPrepared(PreparedDomainAction intent) =>
+      db.apply(
+        intent.action,
+        (tx) => executePreparedInTransaction(tx, intent),
+        expected: intent.token,
+      );
+  Future<Object?> executePreparedInTransaction(
+    LocalTransaction tx,
+    PreparedDomainAction intent,
+  ) async {
+    final a = intent.action;
+    if (tx.action?.hash != a.hash) {
+      throw const StoreException('prepared_action_mismatch');
+    }
+    tx.requireRef(a.target, kind: RecordKind.trainingDay);
+    final input = intent.input;
+    if (a.action == LocalActionKind.planReorder) {
+      final ids = (input['ids'] as List).cast<String>(),
+          bases = Map<String, dynamic>.from(input['bases'] as Map);
+      final all = await tx.getAll(
+        'SELECT id FROM day_templates WHERE profile_id=? AND deleted=0',
+        [tx.profileId],
+      );
+      if (ids.toSet().length != ids.length ||
+          ids
+              .toSet()
+              .difference(all.map((r) => r['id'] as String).toSet())
+              .isNotEmpty ||
+          ids.length != all.length) {
+        throw const StoreException('incomplete_aggregate');
+      }
+      for (var i = 0; i < ids.length; i++) {
+        final ref = LocalRef(tx.profileId, RecordKind.trainingDay, ids[i]);
+        final row = await observedRecord(tx, ref, bases[ids[i]] as int);
+        await putDomain(
+          tx,
+          ref,
+          projectionFields(row)..['position'] = i + 1,
+          sourceRevisionId: row['source_revision_id'] as String?,
+        );
+      }
+      return {'ids': ids};
+    }
+    final previous = a.baseLocalRevision == 0
+        ? null
+        : await observedRecord(
+            tx,
+            a.target,
+            a.baseLocalRevision,
+            allowDeleted: a.action == LocalActionKind.planRestore,
+          );
+    final fields = previous == null
+        ? <String, Object?>{}
+        : projectionFields(previous);
+    final existing = await tx.getAll(
+      'SELECT * FROM day_template_items WHERE profile_id=? AND day_template_id=? AND deleted=0',
+      [tx.profileId, a.target.id],
+    );
+    if (a.action == LocalActionKind.planDelete) {
+      for (final slot in existing) {
+        await putDomain(
+          tx,
+          LocalRef(tx.profileId, RecordKind.trainingSlot, slot['id'] as String),
+          projectionFields(slot),
+          deleted: true,
+          sourceRevisionId: slot['source_revision_id'] as String?,
+        );
+      }
+    } else if (a.action == LocalActionKind.planRestore) {
+      if (previous?['deleted'] != 1) throw const StoreException('not_deleted');
+    } else {
+      if (!const {
+        LocalActionKind.planCreate,
+        LocalActionKind.planEdit,
+        LocalActionKind.planClone,
+      }.contains(a.action)) {
+        throw const StoreException('unsupported_action');
+      }
+      if (input['clone_id'] != null) {
+        final origin = await observedRecord(
+          tx,
+          LocalRef(
+            tx.profileId,
+            RecordKind.trainingDay,
+            input['clone_id'] as String,
+          ),
+          input['clone_revision'] as int,
+        );
+        fields.addAll(projectionFields(origin));
+        fields['ancestry_bytes'] = localBytes({
+          'kind': 'trainingDay',
+          'id': origin['id'],
+          'revision': origin['revision'],
+        });
+      }
+      fields.addAll(Map<String, Object?>.from(input['fields'] as Map));
+      if (previous == null) {
+        final next = await tx.get(
+          'SELECT COALESCE(MAX(position),0)+1 AS n FROM day_templates WHERE profile_id=? AND deleted=0',
+          [tx.profileId],
+        );
+        fields.addAll({
+          'position': next['n'],
+          'is_template': 0,
+          'created_at': intent.createdAt,
+        });
+      }
+      final slots = (input['slots'] as List)
+          .map((s) => Map<String, dynamic>.from(s as Map))
+          .toList();
+      if (slots.map((s) => s['id']).toSet().length != slots.length) {
+        throw const StoreException('ambiguous_reference');
+      }
+      for (final slot in slots) {
+        final ref = LocalRef(
+          tx.profileId,
+          RecordKind.trainingSlot,
+          slot['id'] as String,
+        );
+        final old = await tx.record(ref);
+        if (old != null &&
+            (old['day_template_id'] != a.target.id ||
+                old['revision'] != slot['base'] ||
+                old['deleted'] == 1)) {
+          throw const StoreException('revision_conflict');
+        }
+        if (old == null && slot['base'] != 0) {
+          throw const StoreException('revision_conflict');
+        }
+        final values = old == null
+            ? <String, Object?>{}
+            : projectionFields(old);
+        values.addAll(Map<String, Object?>.from(slot['fields'] as Map));
+        values.addAll({
+          'day_template_id': a.target.id,
+          'position': slot['position'],
+          'is_template': 0,
+        });
+        final ex = await tx.record(
+          LocalRef(
+            tx.profileId,
+            RecordKind.exercise,
+            values['exercise_id'] as String,
+          ),
+        );
+        if (ex == null || ex['deleted'] == 1) {
+          throw const StoreException('unavailable_definition');
+        }
+        // In clone, carry the exact original override fields and slot ancestry.
+        if (input['clone_id'] != null && slot['original_id'] != null) {
+          final source = await tx.record(
+            LocalRef(
+              tx.profileId,
+              RecordKind.trainingSlot,
+              slot['original_id'] as String,
+            ),
+          );
+          if (source == null ||
+              source['day_template_id'] != input['clone_id'] ||
+              source['deleted'] == 1) {
+            throw const StoreException('revision_conflict');
+          }
+          values['ancestry_bytes'] = localBytes({
+            'id': source['id'],
+            'revision': source['revision'],
+          });
+        }
+        await putDomain(
+          tx,
+          ref,
+          values,
+          sourceRevisionId: old?['source_revision_id'] as String?,
+        );
+      }
+      final liveIds = slots.map((s) => s['id']).toSet();
+      for (final slot in existing.where((s) => !liveIds.contains(s['id']))) {
+        await putDomain(
+          tx,
+          LocalRef(tx.profileId, RecordKind.trainingSlot, slot['id'] as String),
+          projectionFields(slot),
+          deleted: true,
+          sourceRevisionId: slot['source_revision_id'] as String?,
+        );
+      }
+    }
+    final revision = await putDomain(
+      tx,
+      a.target,
+      fields,
+      deleted: a.action == LocalActionKind.planDelete,
+      sourceRevisionId: previous?['source_revision_id'] as String?,
+    );
+    return {'id': a.target.id, 'revision': revision};
   }
 
-  /// Returns the set of day_template_ids that were trained during the week
-  /// [weekStart, weekStart + 7 days) (Monday 00:00 origin).
-  ///
-  /// Custom sessions (day_template_id IS NULL) are excluded. The upper bound
-  /// keeps any future-dated sessions out of "this week".
+  Future<void> saveDay({String? id, required DayDraft draft}) async =>
+      commitPrepared(prepareDay(draft, id: id));
+  Future<void> deleteDay(String id, {int? observedRevision}) async {
+    if (observedRevision == null) {
+      throw const StoreException('observed_revision_required');
+    }
+    await commitPrepared(prepareDelete(id, observedRevision));
+  }
+
+  /// Retained caller shape only; T4 supplies history ambiguity/rotation admission.
+  Future<DayTemplate?> nextInRotation(Object legacySessionRepository) async =>
+      throw const StoreException('rotation_requires_workout_adapter');
   Future<Set<String>> templateIdsTrainedThisWeek({
     required DateTime weekStart,
   }) async {
     final rows = await db.getAll(
-      'SELECT DISTINCT day_template_id FROM sessions '
-      'WHERE date >= ? AND date < ? AND day_template_id IS NOT NULL',
-      [isoDate(weekStart), isoDate(weekStart.add(const Duration(days: 7)))],
+      'SELECT DISTINCT day_template_id FROM sessions WHERE profile_id=? AND deleted=0 AND date>=? AND date<? AND day_template_id IS NOT NULL',
+      [
+        db.profileId,
+        isoDate(weekStart),
+        isoDate(weekStart.add(const Duration(days: 7))),
+      ],
     );
     return rows.map((r) => r['day_template_id'] as String).toSet();
-  }
-
-  /// Saves a training day (create or update) from [draft].
-  ///
-  /// All ops execute in a single [db.writeTransaction] — the day PUT is always
-  /// FIRST so the server can verify parent ownership before accepting items.
-  ///
-  /// [id] null → new/cloned day (INSERT); non-null → owned day (UPDATE).
-  Future<void> saveDay({String? id, required DayDraft draft}) =>
-      runSourceWrite('day.save', (_) => _saveDay(id, draft));
-
-  Future<void> _saveDay(String? id, DayDraft draft) async {
-    await db.writeTransaction((tx) async {
-      // Determine next position (for INSERT only).
-      int nextPosition = 1;
-      List<SlotDraft> loadedSlots = [];
-
-      if (id == null) {
-        // New day: compute position = MAX(position)+1.
-        final row = await tx.getOptional(
-          'SELECT COALESCE(MAX(position), 0) + 1 AS next_pos FROM day_templates',
-        );
-        nextPosition = (row?['next_pos'] as int?) ?? 1;
-      } else {
-        // Edit: load existing slots for reconcile.
-        final itemRows = await tx.getAll(
-          'SELECT * FROM day_template_items WHERE day_template_id = ? ORDER BY position',
-          [id],
-        );
-        loadedSlots = itemRows.map((r) => SlotDraft(
-          itemId: r['id'] as String?,
-          exerciseId: r['exercise_id'] as String,
-          workSets: r['target_working_sets'] as int?,
-          warmupSets: r['target_warmup_sets'] as int?,
-          repLow: r['target_rep_low'] as int?,
-          repHigh: r['target_rep_high'] as int?,
-          rirLow: r['target_rir_low'] as int?,
-          rirHigh: r['target_rir_high'] as int?,
-        )).toList();
-      }
-
-      final newDayId = id ?? uuid.v4();
-
-      final ops = reconcileDay(
-        existingId: id,
-        newDayId: newDayId,
-        draft: draft,
-        loadedSlots: loadedSlots,
-        nextPosition: nextPosition,
-        newSlotId: (_) => uuid.v4(),
-      );
-
-      for (final op in ops) {
-        await tx.execute(op.sql, op.args);
-      }
-    });
-  }
-
-  /// Deletes an owned training day and all its slots in one writeTransaction.
-  ///
-  /// Local SQLite has no cascade, so items must be deleted before the day row.
-  Future<void> deleteDay(String id) async {
-    await runSourceWrite(
-      'day.delete',
-      (_) => db.writeTransaction((tx) async {
-        await tx.execute(
-          'DELETE FROM day_template_items WHERE day_template_id = ?',
-          [id],
-        );
-        await tx.execute(
-          'DELETE FROM day_templates WHERE id = ?',
-          [id],
-        );
-      }),
-    );
-  }
-
-  /// Fetches a single day template by id, including its slots.
-  Future<DayTemplate?> byId(String id) async {
-    final row = await db.getOptional(
-      'SELECT id, slug, name, focus, scheduled_weekday, position, is_template '
-      'FROM day_templates WHERE id = ?',
-      [id],
-    );
-    if (row == null) return null;
-
-    final itemRows = await db.getAll(
-      'SELECT * FROM day_template_items WHERE day_template_id = ? ORDER BY position',
-      [id],
-    );
-
-    return DayTemplate(
-      id: row['id'] as String,
-      slug: row['slug'] as String?,
-      name: row['name'] as String? ?? '',
-      focus: row['focus'] as String?,
-      scheduledWeekday: row['scheduled_weekday'] as int?,
-      position: row['position'] as int? ?? 0,
-      slots: itemRows.map(Slot.fromRow).toList(),
-      isTemplate: ((row['is_template'] as num?) ?? 0) != 0,
-    );
   }
 }

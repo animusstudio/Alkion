@@ -1,366 +1,392 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:intl/date_symbol_data_local.dart';
+import 'package:path/path.dart' as paths;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-
-import 'auth/auth_store.dart';
-import 'capture/capture_coordinator.dart';
-import 'capture/capture_journal.dart';
-import 'capture/capture_service.dart';
-import 'capture/capture_startup.dart';
-import 'capture/capture_transport.dart';
-import 'capture/session_capture_hooks.dart';
-import 'capture/source_write_gate.dart';
-import 'capture/startup_inventory.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'data/active_session_draft.dart';
 import 'data/finished_session_store.dart';
-import 'data/catalog_seed.dart';
-import 'data/is_template_backfill.dart';
-import 'data/muscle_target_repository.dart';
-import 'data/session_repository.dart';
 import 'data/session_writer.dart';
-import 'data/template_absorb.dart';
-import 'data/top_set_backfill.dart';
+import 'data/exercise_repository.dart';
+import 'data/catalog_seed.dart';
+import 'identity/alkion_identity.dart';
 import 'identity/identity_service.dart';
+import 'identity/alkion_profile.dart';
 import 'l10n/app_localizations.dart';
+import 'recovery/backup.dart' as backup;
+import 'recovery/recovery_host.dart';
+import 'recovery/restore.dart';
 import 'session/session_manager.dart';
-import 'session/workout_notification.dart';
 import 'settings/settings_service.dart';
 import 'shell/app_shell.dart';
-import 'shell/session_launcher.dart';
-import 'sync/db.dart';
-import 'sync/db.dart' as sync_db show openDatabase;
-import 'sync/sync_health.dart';
+import 'store/generation_selection.dart';
+import 'store/local_store.dart';
+import 'store/schema.dart';
 import 'theme/app_theme.dart';
-import 'ui/capture_recovery_screen.dart';
+import 'ui/alkion_recovery/recovery_app.dart';
 import 'ui/onboarding_screen.dart';
 import 'units/unit_service.dart';
-import 'util/error_surface.dart';
-import 'widgets/w_dialog.dart';
+import 'widgets/pending_input.dart';
 
+Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
+  profile: profile,
+  expectedProfileId: profile.profileId,
+  schema: workflowSchemaRegistry(),
+);
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
 enum HomeRoute { onboarding, shell }
 
 HomeRoute homeRouteFor({required bool onboardingComplete}) =>
     onboardingComplete ? HomeRoute.shell : HomeRoute.onboarding;
-
 bool shouldConnectSync({required bool syncEnabled, required bool loggedIn}) =>
-    syncEnabled && loggedIn;
+    false;
+
+/// Explicit root injection lets tests exercise the real production composition.
+class AlkionRuntime with WidgetsBindingObserver {
+  AlkionRuntime._(
+    this.supportRoot,
+    this.store,
+    this.settings,
+    this.units,
+    this.identity,
+    this.sessions,
+  );
+  final Directory supportRoot;
+  final LocalStore store;
+  final SettingsService settings;
+  final UnitService units;
+  final IdentityService identity;
+  final SessionManager sessions;
+  static Future<AlkionRuntime> open(Directory supportRoot) async {
+    GoogleFonts.config.allowRuntimeFetching = false;
+    final profile = await AlkionProfile.open(supportRoot: supportRoot);
+    final store = await openAlkionStore(profile);
+    try {
+      final settings = SettingsService.local(store),
+          units = UnitService.local(store),
+          identity = IdentityService.local(store);
+      await settings.load();
+      await units.load();
+      await identity.load();
+      final drafts = DraftStore.local(store);
+      final sessions = SessionManager(
+        draftStore: drafts,
+        finishedStore: FinishedSessionStore.local(store),
+      );
+      await sessions.resumeFromDraft();
+      await sessions.loadLastFinished();
+      sessions.init();
+      final runtime = AlkionRuntime._(
+        supportRoot,
+        store,
+        settings,
+        units,
+        identity,
+        sessions,
+      );
+      WidgetsBinding.instance.addObserver(runtime);
+      return runtime;
+    } catch (_) {
+      await store.close();
+      rethrow;
+    }
+  }
+
+  PreparedDomainAction? _onboardingIntent;
+  Future<void> completeOnboarding(OnboardingChoice choice) async {
+    if (choice == OnboardingChoice.starter) {
+      final intent = _onboardingIntent ??= prepareStarterCatalog(store);
+      await ExerciseRepository.local(store).commitPrepared(intent);
+    }
+    await identity.completeOnboarding();
+    _onboardingIntent = null;
+  }
+
+  final persistenceFailure = ValueNotifier<Object?>(null);
+  Future<void> _flushTail = Future.value();
+  bool _closing = false;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_closing) {
+      return;
+    }
+    unawaited(
+      flushPersistence().catchError((Object error) {
+        // The barrier retains owed input; the visible failure remains reviewable
+        // on resume. A lifecycle callback is never a successful export boundary.
+      }),
+    );
+  }
+
+  Future<void> flushPersistence() {
+    commitPendingInput();
+    final result = _flushTail.then((_) => _flushNow());
+    _flushTail = result.then<void>((_) {}, onError: (Object error) {});
+    return result;
+  }
+
+  Future<void> _flushNow() async {
+    try {
+      await UnsavedEditors.instance.drainOrThrow();
+      await sessions.flushPersistence();
+      await settings.flushPersistence();
+      await units.flushPersistence();
+      await identity.flushPersistence();
+      persistenceFailure.value = null;
+    } catch (error) {
+      persistenceFailure.value = error;
+      rethrow;
+    }
+  }
+
+  Future<void> retryPersistence() async {
+    try {
+      await store.recover();
+      await flushPersistence();
+    } catch (error) {
+      persistenceFailure.value = error;
+    }
+  }
+
+  Future<void> close() async {
+    _closing = true;
+    try {
+      await flushPersistence();
+    } catch (_) {
+      _closing = false;
+      rethrow;
+    }
+    WidgetsBinding.instance.removeObserver(this);
+    sessions.dispose();
+    await store.close();
+    settings.dispose();
+    units.dispose();
+    identity.dispose();
+    persistenceFailure.dispose();
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Turn an uncaught build exception into a readable, copyable card instead of
-  // Flutter's featureless gray box, whose text only ever reaches the device log.
-  // Skip this in debug builds so Flutter's red error screen — with its fuller
-  // on-screen diagnostics — stays available to developers.
-  if (!kDebugMode) installErrorSurface();
-
-  // Load locale date symbols so DateFormat can render localized weekday and
-  // month names for every supported locale (it/de/es), not just en.
-  await initializeDateFormatting();
-
-  await _start();
+  try {
+    final support = await getApplicationSupportDirectory();
+    final root = paths.basename(support.path) == AlkionIdentity.applicationId
+        ? support
+        : Directory(paths.join(support.path, AlkionIdentity.applicationId));
+    await launchAlkion(root);
+  } catch (error) {
+    runApp(AlkionPreflightApp(error: error));
+  }
 }
 
-/// Capture-first startup, then the app. Runs again from the startup
-/// recovery screen once an explicit capture decision released the source;
-/// a startup that is still held shows that screen again.
-Future<void> _start() async {
-  // Capture first: before settings, the database, identity, boot migrations,
-  // the stored-workout loaders or sync touch anything, check whether a data
-  // capture holds the source and keep any stored bytes a loader would delete.
-  final appSupport = await getApplicationSupportDirectory();
-  final capture = CaptureLocations(appSupport);
-  // Every source writer from here on admits through this one gate.
-  final gate = SourceWriteGate(stateDirectory: capture.gate);
-  appSourceGate = gate;
-  final boot = _AppBoot(RawPreservation(capture.preparation, base: appSupport));
-  // Restart recovery only: it finishes what a durable capture record already
-  // decided and never releases a hold by itself.
-  final coordinator = CaptureCoordinator(locations: capture, gate: gate);
-  final outcome = await runCaptureAwareStartup(
-    journal: CaptureJournal(capture.journal, base: appSupport),
-    probeGate: () => probeSourceGate(gate, base: appSupport),
-    source: appSupport,
-    preservation: RawPreservation(capture.preparation, base: appSupport),
-    files: [
-      await draftStartupFile(boot.draftStore, (_) => boot.loadDraft()),
-      await finishedStartupFile(boot.finishedStore, boot.loadFinished),
-    ],
-    steps: boot,
-    now: DateTime.now(),
-    recover: coordinator.recoverForStartup,
-  );
-  // Without the capture plugin (not capture-capable), a store whose bytes
-  // could not be preserved is simply not loaded and stays on disk as it is;
-  // see StartupAllowed.skippedLoaders.
-  if (outcome case CaptureRecoveryRequired(:final recovery)) {
-    runApp(CaptureRecoveryApp(
-      recovery: recovery,
-      // The explicit decisions (resume original use, release a local hold)
-      // and the copy of a held capture; no capture can start here.
-      service: CaptureService(CoordinatorCaptureBackend(coordinator)),
-      onResolved: _start,
-    ));
-    return;
+/// Opens the selected store generation. An interrupted restore keeps every
+/// store closed and shows its explicit complete/keep-current choice instead.
+Future<void> launchAlkion(
+  Directory root, {
+  void Function(Widget app) present = runApp,
+}) async {
+  Future<void> relaunch() => launchAlkion(root, present: present);
+  try {
+    final runtime = await AlkionRuntime.open(root);
+    present(
+      AlkionApp(
+        runtime: runtime,
+        recovery: RuntimeRecoveryHost(
+          runtime,
+          relaunch: relaunch,
+          present: present,
+        ),
+      ),
+    );
+  } on GenerationSelectionException catch (error) {
+    if (error.category != 'restore_interrupted') {
+      present(AlkionPreflightApp(error: error));
+      return;
+    }
+    final service = RestoreService(root);
+    present(
+      AlkionRecoveryApp.interrupted(
+        relaunch: relaunch,
+        service: service,
+        pending: await service.pending(),
+      ),
+    );
+  } catch (error) {
+    present(AlkionPreflightApp(error: error));
+  }
+}
+
+/// Manual backup/restore for the running runtime. Backup flushes owed input
+/// and snapshots the open store. Restore verifies first, flushes, replaces the
+/// UI, closes the runtime (all owners, timers and watches), and only then
+/// stages and selects; the next runtime opens the selected generation.
+final class RuntimeRecoveryHost implements RecoveryHost {
+  RuntimeRecoveryHost(
+    this.runtime, {
+    required this.relaunch,
+    this.present = runApp,
+    Future<Directory> Function()? backupDirectory,
+  }) : backupDirectory = backupDirectory ?? getApplicationDocumentsDirectory;
+  final AlkionRuntime runtime;
+  final Future<void> Function() relaunch;
+  final void Function(Widget app) present;
+  final Future<Directory> Function() backupDirectory;
+
+  @override
+  String get profileId => runtime.store.profileId;
+
+  @override
+  Future<backup.BackupReceipt> createBackup() async {
+    await runtime.flushPersistence();
+    return backup.createBackup(runtime.store, await backupDirectory());
   }
 
-  final settingsService = boot.settingsService;
-  final auth = boot.auth;
-  final syncHealth = SyncHealth(
-    status: db.statusStream,
-    initial: db.currentStatus,
-    pendingChanges: pendingUploadCount,
-    signedIn: () => auth.email != null,
-    syncEnabled: () => settingsService.syncEnabled,
-    settings: settingsService,
-  );
-  await syncHealth.start();
+  @override
+  Future<backup.VerifiedBackup> verifyBackup(String path) =>
+      backup.verifyBackupFile(File(path), schema: runtime.store.schema);
 
-  // Profile → Data capture: the running app's sources, the registered
-  // native sync adapter for a qualified profile, and the old sync policy
-  // restored through the ordinary connect path.
-  final captureService = CaptureService(
-    CoordinatorCaptureBackend(
-      CaptureCoordinator(
-        locations: capture,
-        gate: gate,
-        sources: CaptureSourceBindings(
-          database: db,
-          hooks: boot.captureHooks,
-          transportFor: (profile) => CaptureTransport.forProfile(
-            database: db,
-            profile: profile,
-            reconnect: () => connectSync(auth),
+  @override
+  Future<void> restoreBackup(String path) async {
+    final verified = await verifyBackup(path);
+    if (verified.profileId != profileId) {
+      throw const StoreException('foreign_profile');
+    }
+    await runtime.flushPersistence();
+    present(const AlkionRestoringApp());
+    try {
+      await runtime.close();
+    } catch (error) {
+      present(AlkionRecoveryApp.failed(relaunch: relaunch, error: error));
+      return;
+    }
+    try {
+      await RestoreService(
+        runtime.supportRoot,
+        schema: runtime.store.schema,
+      ).restore(File(path));
+      present(AlkionRecoveryApp.restored(relaunch: relaunch));
+    } catch (error) {
+      present(AlkionRecoveryApp.failed(relaunch: relaunch, error: error));
+    }
+  }
+}
+
+class AlkionApp extends StatelessWidget {
+  const AlkionApp({super.key, required this.runtime, this.recovery});
+  final AlkionRuntime runtime;
+  final RecoveryHost? recovery;
+  @override
+  Widget build(BuildContext context) => MultiProvider(
+    providers: [
+      Provider<LocalDatabase>.value(value: runtime.store),
+      Provider<RecoveryHost?>.value(value: recovery),
+      Provider<DomainRecovery>.value(
+        value: DomainRecovery(runtime.store.recover),
+      ),
+      ChangeNotifierProvider.value(value: runtime.settings),
+      ChangeNotifierProvider.value(value: runtime.units),
+      ChangeNotifierProvider.value(value: runtime.identity),
+      ChangeNotifierProvider.value(value: runtime.sessions),
+    ],
+    child: Builder(
+      builder: (context) {
+        final settings = context.watch<SettingsService>();
+        final identity = context.watch<IdentityService>();
+        return MaterialApp(
+          navigatorKey: appNavigatorKey,
+          title: AlkionIdentity.displayName,
+          builder: (context, child) => ValueListenableBuilder<Object?>(
+            valueListenable: runtime.persistenceFailure,
+            builder: (context, error, _) => Stack(
+              children: [
+                if (child != null) child,
+                if (error != null)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: Material(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        elevation: 4,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                AppLocalizations.of(
+                                  context,
+                                ).alkionStoreRecoveryTitle,
+                              ),
+                              Text(
+                                AppLocalizations.of(
+                                  context,
+                                ).alkionStoreRecoveryBody,
+                              ),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(48, 48),
+                                ),
+                                onPressed: runtime.retryPersistence,
+                                child: Text(
+                                  AppLocalizations.of(context).alkionRetry,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          theme: buildTheme(settings.brightness, settings.accent),
+          locale: settings.locale,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: identity.onboardingComplete
+              ? const AppShell()
+              : OnboardingScreen(onChosen: runtime.completeOnboarding),
+        );
+      },
+    ),
+  );
+}
+
+class AlkionPreflightApp extends StatelessWidget {
+  const AlkionPreflightApp({super.key, this.error});
+  final Object? error;
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    title: AlkionIdentity.displayName,
+    home: Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              '${AlkionIdentity.displayName}\nLocal storage is unavailable. Your existing files are preserved.\n${error ?? ''}',
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       ),
     ),
-    hasActiveWorkout: () => boot.sessionManager.hasActive,
   );
-
-  runApp(App(
-    syncHealth: syncHealth,
-    auth: auth,
-    settingsService: settingsService,
-    unitService: boot.unitService,
-    identity: boot.identity,
-    sessionManager: boot.sessionManager,
-    captureService: captureService,
-  ));
 }
 
-/// The ordinary boot, step by step in its long-standing order:
-/// settings → openDatabase → identity → backfills → absorb →
-/// SessionManager/notification → resume draft → finished snapshot →
-/// optional connectSync. [runCaptureAwareStartup] decides whether it runs.
-class _AppBoot implements OrdinaryStartupSteps {
-  _AppBoot(this.preservation);
-
-  /// Where a capture keeps the pre-flush draft bytes.
-  final RawPreservation preservation;
-
-  final draftStore = DraftStore();
-  final finishedStore = FinishedSessionStore();
-  final settingsService = SettingsService();
-  final unitService = UnitService();
-  final auth = AuthStore();
-  final identity = IdentityService();
-  late final SessionManager sessionManager;
-
-  /// The session side of a data capture (commit input, drain and flush,
-  /// freeze/resume callbacks).
-  late final SessionCaptureHooks captureHooks;
-
-  @override
-  Future<void> loadSettings() async {
-    // Load client-local settings first so apiBaseUrl is set before
-    // openDatabase/connectSync (PowerSync and the connector read it at
-    // startup).
-    await settingsService.load();
-    await unitService.load();
-    apiBaseUrl = settingsService.serverUrl;
-  }
-
-  @override
-  Future<void> openDatabase() => sync_db.openDatabase();
-
-  @override
-  Future<void> initIdentity() => identity.init(
-        probeExistingUserId: () => SessionRepository(db).anyUserId(),
-      );
-
-  @override
-  Future<void> runBootMigrations() =>
-      runSourceWrite('boot.migrations', (ticket) async {
-        await backfillTopSets(db, parent: ticket);
-
-        // Normalize is_template = NULL → 0 (rows created by pre-fix builds)
-        // BEFORE absorb, so its de-dup queries (exact is_template = 0) can
-        // see owned rows.
-        await backfillIsTemplate(db, parent: ticket);
-
-        // Absorb synced template rows into user-owned rows (nothing is
-        // locked).
-        await absorbTemplates(db, identity.currentUserId, parent: ticket);
-      });
-
-  @override
-  Future<void> prepareSessions() async {
-    sessionManager = SessionManager(finishedStore: finishedStore);
-    sessionManager.init();
-    captureHooks = SessionCaptureHooks(
-      manager: sessionManager,
-      preservation: preservation,
-    );
-    final workoutNotification = WorkoutNotification();
-    await workoutNotification.init(
-      onTap: () {
-        final ctx = appNavigatorKey.currentContext;
-        if (ctx != null) openActiveSession(ctx, sessionManager);
-      },
-      onAdd30: () => sessionManager.add30FromNotification(),
-    );
-    sessionManager.notifier = workoutNotification;
-  }
-
-  Future<void> loadDraft() => sessionManager.resumeFromDraft(store: draftStore);
-
-  Future<void> loadFinished(DateTime now) =>
-      sessionManager.loadLastFinished(now: now);
-
-  @override
-  Future<void> connect() async {
-    final loggedIn = await auth.load();
-    if (shouldConnectSync(
-        syncEnabled: settingsService.syncEnabled, loggedIn: loggedIn)) {
-      await connectSync(auth); // resume sync only for an opted-in remembered session
-    }
-  }
-}
-
-/// Signs out and wipes the local data, as one admitted operation: stops
-/// sync and clears the database, revokes and forgets the tokens, turns sync
-/// off and forgets the last sync time. Refused whole (`admission_closed`,
-/// nothing changed) while a data capture prepares or holds the source.
 Future<void> logOutAndForget({
-  required AuthStore auth,
-  required SettingsService settings,
-  required SyncHealth syncHealth,
-}) async {
-  TransportAdmission.instance.ensureOpen('account.logout');
-  await runSourceWrite('account.logout', (ticket) async {
-    TransportAdmission.instance.ensureOpen('account.logout');
-    await disconnectAndClear(parent: ticket);
-    await auth.logout();
-    await settings.setSyncEnabled(false, parent: ticket);
-    // Forget this account's last sync (clear() also recomputes).
-    await syncHealth.clear(parent: ticket);
-  });
-}
-
-class App extends StatefulWidget {
-  const App({
-    super.key,
-    required this.auth,
-    required this.settingsService,
-    required this.unitService,
-    required this.identity,
-    required this.sessionManager,
-    required this.syncHealth,
-    required this.captureService,
-  });
-
-  final AuthStore auth;
-  final SettingsService settingsService;
-  final UnitService unitService;
-  final IdentityService identity;
-  final SessionManager sessionManager;
-  final SyncHealth syncHealth;
-  final CaptureService captureService;
-
-  @override
-  State<App> createState() => _AppState();
-}
-
-class _AppState extends State<App> {
-  Future<void> _onLogout() async {
-    await logOutAndForget(
-      auth: widget.auth,
-      settings: widget.settingsService,
-      syncHealth: widget.syncHealth,
-    );
-    setState(() {}); // returns to the local app shell, not a login wall
-  }
-
-  Future<void> _onOnboardingChosen(
-      BuildContext ctx, OnboardingChoice choice) async {
-    try {
-      await runSourceWrite('onboarding.complete', (ticket) async {
-        if (choice == OnboardingChoice.starter) {
-          await runSourceWrite('onboarding.seed', (ticket) async {
-            await db.writeTransaction(
-              (tx) => seedStarterCatalog(
-                  PowerSyncTxExecutor(tx), widget.identity.currentUserId),
-            );
-            await MuscleTargetRepository(db).seedDefaultsIfEmpty(
-                widget.identity.currentUserId,
-                parent: ticket);
-          }, parent: ticket);
-        }
-        // Notifies → re-route to shell.
-        await widget.identity.completeOnboarding(parent: ticket);
-      });
-    } on SourceGateException catch (e) {
-      // Refused while a data capture holds the source: nothing was seeded.
-      if (ctx.mounted) await showWriteFailed(ctx, e);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: widget.unitService),
-        ChangeNotifierProvider.value(value: widget.settingsService),
-        ChangeNotifierProvider.value(value: widget.identity),
-        ChangeNotifierProvider.value(value: widget.sessionManager),
-        ChangeNotifierProvider.value(value: widget.syncHealth),
-        ChangeNotifierProvider.value(value: widget.captureService),
-      ],
-      // Builder is required so that ctx.watch<SettingsService>() is a
-      // descendant of the MultiProvider (calling watch in _AppState.build()
-      // would throw ProviderNotFoundException — _AppState is the provider's
-      // parent, not a descendant).
-      child: Builder(
-        builder: (ctx) {
-          final s = ctx.watch<SettingsService>();
-          final identity = ctx.watch<IdentityService>();
-          return MaterialApp(
-            navigatorKey: appNavigatorKey,
-            title: 'workout-tracker',
-            theme: buildTheme(s.brightness, s.accentColor),
-            locale: s.locale,
-            localizationsDelegates: const [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: homeRouteFor(
-                        onboardingComplete: identity.onboardingComplete) ==
-                    HomeRoute.onboarding
-                ? OnboardingScreen(
-                    onChosen: (choice) => _onOnboardingChosen(ctx, choice))
-                : AppShell(onLogout: _onLogout, auth: widget.auth),
-          );
-        },
-      ),
-    );
-  }
-}
+  Object? auth,
+  SettingsService? settings,
+  Object? syncHealth,
+}) async => AlkionIdentity.unavailable('account connection');

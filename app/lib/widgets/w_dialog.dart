@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../capture/source_write_gate.dart' show SourceGateException;
+import '../store/local_store.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
@@ -79,13 +79,15 @@ Future<bool?> showWConfirm(
 /// changed). Does nothing if [context] is no longer mounted.
 Future<void> showWriteFailed(BuildContext context, Object error) async {
   debugPrint('write failed: $error');
-  if (!context.mounted) return;
+  if (!context.mounted) {
+    return;
+  }
   final l = AppLocalizations.of(context);
   final held = isCaptureHoldRefusal(error);
   await showWDialog<void>(
     context,
-    title: held ? l.captureWritesPausedTitle : l.editorSaveFailed,
-    message: held ? l.captureWritesPausedBody : '$error',
+    title: held ? l.alkionStoreRecoveryTitle : l.editorSaveFailed,
+    message: held ? l.alkionStoreRecoveryBody : '$error',
     actions: [WDialogAction(label: l.commonOk, value: null)],
   );
 }
@@ -94,16 +96,26 @@ Future<void> showWriteFailed(BuildContext context, Object error) async {
 /// source (its admission is closed while it prepares, holds or keeps a
 /// local hold).
 bool isCaptureHoldRefusal(Object error) =>
-    error is SourceGateException && error.code == 'admission_closed';
+    error is StoreException &&
+    {
+      'recovery_required',
+      'stale_generation',
+      'profile_fenced',
+    }.contains(error.category);
 
 /// For a write a tap starts without awaiting it (a settings chip, stepper
 /// or toggle): its failure, for example a write refused while a data capture
 /// holds the source, is shown with [showWriteFailed] instead of being lost
 /// as an unhandled error.
 void showWriteFailures(BuildContext context, Future<void> write) {
-  write.then((_) {}, onError: (Object e) {
-    if (context.mounted) showWriteFailed(context, e);
-  });
+  write.then(
+    (_) {},
+    onError: (Object e) {
+      if (context.mounted) {
+        showWriteFailed(context, e);
+      }
+    },
+  );
 }
 
 class _WDialogBody<T> extends StatelessWidget {
@@ -136,13 +148,17 @@ class _WDialogBody<T> extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: WorkoutType.display(size: 18, color: tokens.text)),
+              Text(
+                title,
+                style: WorkoutType.display(size: 18, color: tokens.text),
+              ),
               const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.only(right: 6),
-                child: Text(message,
-                    style: WorkoutType.body(size: 14, color: tokens.dim)),
+                child: Text(
+                  message,
+                  style: WorkoutType.body(size: 14, color: tokens.dim),
+                ),
               ),
               const SizedBox(height: 10),
               Wrap(
@@ -160,8 +176,8 @@ class _WDialogBody<T> extends StatelessWidget {
                           color: actions[i].destructive
                               ? tokens.danger
                               : (i == actions.length - 1
-                                  ? tokens.accentText
-                                  : tokens.dim),
+                                    ? tokens.accentText
+                                    : tokens.dim),
                         ),
                       ),
                     ),

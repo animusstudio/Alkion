@@ -76,8 +76,10 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
       final row = _selectedKey.currentContext;
       if (!mounted || row == null) return;
       // Zero duration: a jump, so reduced motion needs nothing extra.
-      Scrollable.ensureVisible(row,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+      Scrollable.ensureVisible(
+        row,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
     });
   }
 
@@ -105,7 +107,10 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
               child: Text(
                 widget.title,
                 style: WorkoutType.mono(
-                    size: 10.5, color: tokens.faint, letterSpacing: 0.08 * 10.5),
+                  size: 10.5,
+                  color: tokens.faint,
+                  letterSpacing: 0.08 * 10.5,
+                ),
               ),
             ),
             Flexible(
@@ -115,8 +120,13 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (var i = 0; i < actions.length; i++)
-                      _row(context, tokens, i, actions[i],
-                          key: i == selected ? _selectedKey : null),
+                      _row(
+                        context,
+                        tokens,
+                        i,
+                        actions[i],
+                        key: i == selected ? _selectedKey : null,
+                      ),
                   ],
                 ),
               ),
@@ -127,13 +137,18 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
     );
   }
 
-  Widget _row(BuildContext context, WorkoutTokens tokens, int i, WSheetAction<T> a,
-      {Key? key}) {
+  Widget _row(
+    BuildContext context,
+    WorkoutTokens tokens,
+    int i,
+    WSheetAction<T> a, {
+    Key? key,
+  }) {
     final color = !a.enabled
         ? tokens.line
         : a.destructive
-            ? tokens.danger
-            : tokens.text;
+        ? tokens.danger
+        : tokens.text;
     final icon = a.icon;
     final row = Semantics(
       button: true,
@@ -159,7 +174,11 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
                   child: FitLabel(
                     a.label,
                     maxLines: 2,
-                    style: WorkoutType.body(size: 15, weight: FontWeight.w600, color: color),
+                    style: WorkoutType.body(
+                      size: 15,
+                      weight: FontWeight.w600,
+                      color: color,
+                    ),
                   ),
                 ),
                 if (a.selected) ...[
@@ -175,8 +194,9 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
     // A separate outer node only sets the language: on the row's own
     // Semantics it would split the tap off the button.
     final locale = a.labelLocale;
-    final labelled =
-        locale == null ? row : Semantics(localeForSubtree: locale, child: row);
+    final labelled = locale == null
+        ? row
+        : Semantics(localeForSubtree: locale, child: row);
     return key == null ? labelled : KeyedSubtree(key: key, child: labelled);
   }
 }

@@ -1,5 +1,5 @@
-name: workout_tracker
-description: Workout tracker Flutter client (local-first via PowerSync).
+name: alkion
+description: Alkion development client, by Animus. Local foundation qualification.
 publish_to: none
 version: 0.18.1+37
 
@@ -15,19 +15,9 @@ dependencies:
     sdk: flutter
   # Message formatting / Locale support used by generated AppLocalizations.
   intl: any
-  # Local-first sync engine. v2 bundles SQLite via build hooks, so no separate
-  # powersync_flutter_libs is needed (works on Linux desktop out of the box).
-  powersync: ^2.2.0
-  # ResultSet type for db.watch() streams. Transitive via powersync, declared
-  # direct because home_screen imports package:sqlite3/common.dart.
-  sqlite3: ^3.3.2
-  # SqliteWriteContext for PowerSyncTxExecutor in session_writer.dart.
-  # Transitive via powersync; declared direct to satisfy depend_on_referenced_packages.
-  sqlite_async: ^0.14.2
-  # Token storage.
-  flutter_secure_storage: ^9.2.2
-  # HTTP to the Go API (login / refresh / powersync-token / sync upload).
-  http: ^1.2.2
+  # Standalone SQLite; pinned native factory qualified for local workflows.
+  sqlite3: 3.3.2
+  sqlite_async: 0.14.2
   # App-support dir for the local DB file.
   path_provider: ^2.1.4
   path: ^1.9.0
@@ -35,7 +25,7 @@ dependencies:
   google_fonts: ^6.2.1
   # Reactive state management (UnitService, ActiveSessionController).
   provider: ^6.1.2
-  # Client-local settings persistence (unit, theme, accent, serverUrl).
+  # Retained test-only preference fixtures; semantic app state uses SQLite.
   shared_preferences: ^2.3.2
   # Export delivery: opens the Android share sheet with the JSON file.
   share_plus: ^11.0.0
@@ -49,24 +39,11 @@ dependencies:
   # SHA-256 for capture profile and schema evidence digests. Transitive via
   # powersync; declared direct because lib/capture imports it.
   crypto: ^3.0.7
-  # Runtime app version (footer + OTA update checks); Linux returns bundle info.
+  # Runtime app version footer; no update transport.
   package_info_plus: ^8.0.0
-  # Android OTA: downloads the release APK with progress and launches the OS
-  # installer (in-app updates). Android-only; no-op on Linux desktop.
-  ota_update: ^7.1.0
-  # Raw typed preference entries (every prefix) for capture, and the
-  # counting/failing preference store of the capture tests. Transitive via
-  # shared_preferences; declared to satisfy depend_on_referenced_packages.
-  shared_preferences_platform_interface: ^2.4.2
-  # Native source-write gate and durable capture publication (local plugin).
-  reps_capture_platform:
-    path: packages/reps_capture_platform
 
 dev_dependencies:
   flutter_test:
-    sdk: flutter
-  # On-device native capture qualification (make -C app capture-integration).
-  integration_test:
     sdk: flutter
   flutter_lints: ^5.0.0
   # Generates the Android launcher icon (incl. adaptive) from assets/icon/.

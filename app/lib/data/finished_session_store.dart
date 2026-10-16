@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
 
 import '../session/active_session_controller.dart';
+import '../domain/evidence.dart';
+import '../store/local_store.dart';
 import 'json_file_store.dart';
 
 /// Snapshot of the last workout finished on this device, kept so an
@@ -31,14 +34,15 @@ class FinishedSession {
   });
 
   Map<String, dynamic> toJson() => {
-        'sessionId': sessionId,
-        'sessionDate': sessionDate,
-        'finishedAt': finishedAt.toIso8601String(),
-        'elapsedSeconds': elapsedSeconds,
-        'draft': draft.toJson(),
-      };
+    'sessionId': sessionId,
+    'sessionDate': sessionDate,
+    'finishedAt': finishedAt.toIso8601String(),
+    'elapsedSeconds': elapsedSeconds,
+    'draft': draft.toJson(),
+  };
 
-  factory FinishedSession.fromJson(Map<String, dynamic> json) => FinishedSession(
+  factory FinishedSession.fromJson(Map<String, dynamic> json) =>
+      FinishedSession(
         sessionId: json['sessionId'] as String,
         sessionDate: json['sessionDate'] as String,
         finishedAt: DateTime.parse(json['finishedAt'] as String),
@@ -61,37 +65,111 @@ class FinishedSession {
 /// `<applicationSupportDirectory>/workout-last-finished.json`. Never synced.
 /// A later finish overwrites it.
 class FinishedSessionStore {
-  /// [directory] defaults to the application-support directory; tests point
-  /// it at a temporary directory.
   FinishedSessionStore({Future<Directory> Function()? directory})
-      : _store = JsonFileStore<FinishedSession>(
-          filename: fileName,
-          encode: (f) => f.toJson(),
-          tryDecode: FinishedSession.tryDecode,
-          directory: directory,
-        );
-
-  /// The snapshot's file name in its directory.
+    : database = null,
+      _incoming = directory == null
+          ? null
+          : JsonFileStore<FinishedSession>(
+              filename: fileName,
+              encode: (f) => f.toJson(),
+              tryDecode: FinishedSession.tryDecode,
+              directory: directory,
+            );
+  FinishedSessionStore.local(this.database) : _incoming = null;
+  final LocalDatabase? database;
+  final JsonFileStore<FinishedSession>? _incoming;
   static const fileName = 'workout-last-finished.json';
+  Future<void> save(FinishedSession f) async {
+    final db = database;
+    if (db == null) {
+      throw const StoreException('local_store_required');
+    }
+    await db.writeTransaction((tx) async {
+      final old = await tx.localState(LocalStateKind.finishedRecovery, 'last');
+      await tx.putLocalState(
+        LocalStateKind.finishedRecovery,
+        'last',
+        localBytes(f.toJson()),
+        expectedRevision: old?['revision'] as int? ?? 0,
+      );
+    });
+  }
 
-  final JsonFileStore<FinishedSession> _store;
+  Future<FinishedSession?> load() async {
+    final db = database;
+    if (db == null) {
+      if (_incoming != null) {
+        return _incoming.load();
+      }
+      throw const StoreException('local_store_required');
+    }
+    return db.readTransaction((tx) async {
+      final row = await tx.localState(LocalStateKind.finishedRecovery, 'last');
+      if (row == null || row['status'] != 'active') {
+        return null;
+      }
+      final value = FinishedSession.tryDecode(
+        utf8.decode((row['payload_bytes'] as List).cast<int>()),
+      );
+      if (value == null) {
+        throw const StoreException('malformed_recovery_preserved');
+      }
+      return value;
+    });
+  }
 
-  /// Writes [f] atomically via a temp file.
-  Future<void> save(FinishedSession f) => _store.save(f);
+  /// A postcommit delete callback may run after another workout finishes.
+  /// Compare its target in the same transaction as the local clear; unrelated
+  /// or newer recovery bytes/revision must remain exactly unchanged.
+  Future<void> clearForSession(String sessionId) async {
+    final db = database;
+    if (db == null) throw const StoreException('local_store_required');
+    await db.writeTransaction((tx) async {
+      final row = await tx.localState(LocalStateKind.finishedRecovery, 'last');
+      if (row == null || row['status'] == 'expired') return;
+      final value = decodeBytes((row['payload_bytes'] as List).cast<int>());
+      if (value == null) {
+        throw const StoreException('malformed_recovery_preserved');
+      }
+      if (value.sessionId != sessionId) return;
+      await tx.putLocalState(
+        LocalStateKind.finishedRecovery,
+        'last',
+        Uint8List.fromList((row['payload_bytes'] as List).cast<int>()),
+        expectedRevision: row['revision'] as int,
+        status: 'expired',
+      );
+    });
+  }
 
-  /// The stored snapshot, or null if there is none or it is unreadable (an
-  /// unreadable file is cleared).
-  Future<FinishedSession?> load() => _store.load();
+  Future<void> clear() async {
+    final db = database;
+    if (db == null) {
+      throw const StoreException('local_store_required');
+    }
+    await db.writeTransaction((tx) async {
+      final old = await tx.localState(LocalStateKind.finishedRecovery, 'last');
+      await tx.putLocalState(
+        LocalStateKind.finishedRecovery,
+        'last',
+        localBytes({'expired': true}),
+        expectedRevision: old?['revision'] as int? ?? 0,
+        status: 'expired',
+      );
+    });
+  }
 
-  Future<void> clear() => _store.clear();
-
-  /// The snapshot file, read only by capture inspection.
-  Future<File> file() => _store.file();
-
-  /// The temporary file an interrupted save may leave behind.
-  Future<File> temporaryFile() => _store.temporaryFile();
-
-  /// Decodes raw snapshot bytes without touching the file; null exactly
-  /// when [load] would treat them as unreadable and clear them.
-  FinishedSession? decodeBytes(List<int> bytes) => _store.decodeBytes(bytes);
+  Future<File> file() =>
+      _incoming?.file() ??
+      Future.error(const StoreException('incoming_path_required'));
+  Future<File> temporaryFile() =>
+      _incoming?.temporaryFile() ??
+      Future.error(const StoreException('incoming_path_required'));
+  FinishedSession? decodeBytes(List<int> bytes) {
+    try {
+      return FinishedSession.tryDecode(utf8.decode(bytes));
+    } catch (_) {
+      return null;
+    }
+  }
 }

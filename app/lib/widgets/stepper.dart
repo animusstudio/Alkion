@@ -162,8 +162,10 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
     if (!widget.editable) return;
     final initial = (widget.formatForEdit ?? widget.format)(_internalValue);
     _editCtrl = TextEditingController(text: initial);
-    _editCtrl!.selection =
-        TextSelection(baseOffset: 0, extentOffset: _editCtrl!.text.length);
+    _editCtrl!.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _editCtrl!.text.length,
+    );
     _seedText = initial;
     // Initialise from the CURRENT inset, not false: moving focus straight
     // from another already-open field produces no didChangeMetrics event, so
@@ -210,7 +212,9 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
       final unchanged = _editCtrl;
       _editCtrl = null;
       if (unchanged != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => unchanged.dispose());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => unchanged.dispose(),
+        );
       }
       return;
     }
@@ -291,21 +295,17 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
 
-    Widget btn({
-      required Key key,
-      required IconData icon,
-      required int dir,
-    }) {
+    Widget btn({required Key key, required IconData icon, required int dir}) {
       return StepperButton(
         key: key,
         icon: icon,
         semanticLabel: dir < 0
             ? (widget.semanticLabel == null
-                ? l.a11yDecreaseGeneric
-                : l.a11yDecrease(widget.semanticLabel!))
+                  ? l.a11yDecreaseGeneric
+                  : l.a11yDecrease(widget.semanticLabel!))
             : (widget.semanticLabel == null
-                ? l.a11yIncreaseGeneric
-                : l.a11yIncrease(widget.semanticLabel!)),
+                  ? l.a11yIncreaseGeneric
+                  : l.a11yIncrease(widget.semanticLabel!)),
         onTap: () => _step(dir),
       );
     }
@@ -324,7 +324,8 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
                     textAlign: TextAlign.center,
                     textInputAction: TextInputAction.done,
                     keyboardType: TextInputType.numberWithOptions(
-                        decimal: widget.allowDecimal),
+                      decimal: widget.allowDecimal,
+                    ),
                     inputFormatters: [
                       // A whole-string predicate, NOT
                       // FilteringTextInputFormatter.allow with an anchored
@@ -339,8 +340,7 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
                         // clampRound2/parseNumberInput and gets clamped to
                         // [min], instead of being wiped by the formatter.
                         final ok = widget.allowDecimal
-                            ? RegExp(r'^-?\d*[.,]?\d*$')
-                                .hasMatch(newValue.text)
+                            ? RegExp(r'^-?\d*[.,]?\d*$').hasMatch(newValue.text)
                             : RegExp(r'^-?\d*$').hasMatch(newValue.text);
                         return ok ? newValue : oldValue;
                       }),

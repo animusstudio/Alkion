@@ -112,7 +112,9 @@ class _DayChip extends StatelessWidget {
     final borderColor = filled ? Colors.transparent : tokens.line;
     final weekdayLabel = day.weekday != null
         ? weekdayShort(
-            day.weekday!, Localizations.localeOf(context).toLanguageTag())
+            day.weekday!,
+            Localizations.localeOf(context).toLanguageTag(),
+          )
         : '';
 
     return GestureDetector(
@@ -235,11 +237,7 @@ class _StatusIndicator extends StatelessWidget {
           color: tokens.surface3,
           borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
-        child: Icon(
-          WIcons.check,
-          size: 11,
-          color: tokens.accentText,
-        ),
+        child: Icon(WIcons.check, size: 11, color: tokens.accentText),
       );
     }
     // Idle dot
@@ -283,9 +281,15 @@ class _CustomChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: filled ? tokens.accent : tokens.surface,
             borderRadius: BorderRadius.circular(chipRadius),
-            border: Border.all(color: filled ? Colors.transparent : tokens.line),
+            border: Border.all(
+              color: filled ? Colors.transparent : tokens.line,
+            ),
           ),
-          child: Icon(WIcons.plus, size: 20, color: filled ? tokens.accentInk : tokens.dim),
+          child: Icon(
+            WIcons.plus,
+            size: 20,
+            color: filled ? tokens.accentInk : tokens.dim,
+          ),
         ),
       ),
     );

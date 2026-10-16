@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/data/models.dart';
-import 'package:workout_tracker/ui/day_editor.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/ui/day_editor.dart';
 
 const _ex = Exercise(
   id: 'ex',

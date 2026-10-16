@@ -2,9 +2,8 @@ import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:workout_tracker/auth/auth_store.dart';
-import 'package:workout_tracker/theme/icons.dart';
-import 'package:workout_tracker/ui/profile_screen.dart';
+import 'package:alkion/theme/icons.dart';
+import 'package:alkion/ui/profile_screen.dart';
 
 import '../support/screen_harness.dart';
 
@@ -14,9 +13,12 @@ void main() {
 
   Future<void> pumpProfile(WidgetTester tester, Locale locale) async {
     setPhone(tester, width: 412);
-    await tester.pumpWidget(harness.wrap(
-        ProfileScreen(onClose: () {}, onLogout: () async {}, auth: AuthStore()),
-        locale: locale));
+    await tester.pumpWidget(
+      harness.wrap(
+        ProfileScreen(onClose: () {}, onLogout: () async {}, auth: Object()),
+        locale: locale,
+      ),
+    );
     await settleReal(tester);
   }
 
@@ -34,23 +36,37 @@ void main() {
     await settleReal(tester, ticks: 10);
     // Rows follow BodyweightGoal.values: cut, bulk, maintain.
     final check = find.descendant(
-        of: find.byType(BottomSheet), matching: find.byIcon(WIcons.check));
+      of: find.byType(BottomSheet),
+      matching: find.byIcon(WIcons.check),
+    );
     expect(check, findsOneWidget);
     expect(find.descendant(of: sheetRow(1), matching: check), findsOneWidget);
     expect(
-        tester.getRect(check).left,
-        greaterThan(tester
-            .getRect(find.descendant(of: sheetRow(1), matching: find.text('Bulk')))
-            .right),
-        reason: 'the check should trail the label');
+      tester.getRect(check).left,
+      greaterThan(
+        tester
+            .getRect(
+              find.descendant(of: sheetRow(1), matching: find.text('Bulk')),
+            )
+            .right,
+      ),
+      reason: 'the check should trail the label',
+    );
     for (var i = 0; i < 3; i++) {
-      expect(find.descendant(of: sheetRow(i), matching: find.byIcon(WIcons.target)),
-          findsOneWidget,
-          reason: 'row $i');
       expect(
-          tester.getSemantics(sheetRow(i)).getSemanticsData().flagsCollection.isSelected,
-          i == 1 ? Tristate.isTrue : Tristate.none,
-          reason: 'row $i');
+        find.descendant(of: sheetRow(i), matching: find.byIcon(WIcons.target)),
+        findsOneWidget,
+        reason: 'row $i',
+      );
+      expect(
+        tester
+            .getSemantics(sheetRow(i))
+            .getSemanticsData()
+            .flagsCollection
+            .isSelected,
+        i == 1 ? Tristate.isTrue : Tristate.none,
+        reason: 'row $i',
+      );
     }
     semantics.dispose();
     await harness.unmount(tester);
@@ -65,7 +81,11 @@ void main() {
     await scrollIntoView(tester, find.byType(ProfileScreen), languageRow);
     expect(find.text('Predefinita di sistema'), findsOneWidget);
     await tester.tap(languageRow);
-    await settleUntilFound(tester, find.text('Italiano'), where: 'language picker');
+    await settleUntilFound(
+      tester,
+      find.text('Italiano'),
+      where: 'language picker',
+    );
     // Let the sheet finish sliding in, so the tap lands on its row.
     await settleReal(tester, ticks: 10);
     expect(find.text('Tedesco'), findsNothing);
@@ -73,8 +93,11 @@ void main() {
     await settleReal(tester, ticks: 10);
     expect(harness.settings.localeOverride, 'de');
     expect(find.byType(BottomSheet), findsNothing);
-    expect(find.text('Deutsch'), findsOneWidget,
-        reason: 'the Language row should name the choice in its own language');
+    expect(
+      find.text('Deutsch'),
+      findsOneWidget,
+      reason: 'the Language row should name the choice in its own language',
+    );
     expect(find.text('Tedesco'), findsNothing);
 
     // Reopened, the sheet checks the stored choice, not the system row.
@@ -82,10 +105,15 @@ void main() {
     await settleUntilFound(tester, sheetRow(4), where: 'language picker again');
     await settleReal(tester, ticks: 10);
     final check = find.descendant(
-        of: find.byType(BottomSheet), matching: find.byIcon(WIcons.check));
+      of: find.byType(BottomSheet),
+      matching: find.byIcon(WIcons.check),
+    );
     expect(check, findsOneWidget);
-    expect(find.descendant(of: sheetRow(3), matching: check), findsOneWidget,
-        reason: 'the Deutsch row should carry the check');
+    expect(
+      find.descendant(of: sheetRow(3), matching: check),
+      findsOneWidget,
+      reason: 'the Deutsch row should carry the check',
+    );
     await harness.unmount(tester);
   });
 }

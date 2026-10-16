@@ -3,10 +3,8 @@ import 'dart:convert';
 import 'dart:math' show max;
 
 import 'package:flutter/foundation.dart';
-import 'package:powersync/powersync.dart' show uuid;
+import 'package:uuid/uuid.dart';
 
-import '../capture/session_capture_hooks.dart';
-import '../capture/source_write_gate.dart';
 import '../data/active_session_draft.dart';
 import '../data/day_template_repository.dart'; // resolveSlot, DayTemplate
 import '../data/exercise_repository.dart';
@@ -14,7 +12,10 @@ import '../data/finished_session_store.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
 import '../data/session_writer.dart';
-import '../util/dates.dart';
+import '../util/calendar_keys.dart';
+import '../store/local_store.dart';
+
+const uuid = Uuid();
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -32,10 +33,7 @@ double roundTo(double v, double step) => (v / step).round() * step;
 ///   reps_i   = max(1, 8 − 2*i)
 ///
 /// Working sets use [suggested] weight, [repLow] reps, RIR 1.
-BlockState buildBlock({
-  required ResolvedSlot resolved,
-  double? lastTopKg,
-}) {
+BlockState buildBlock({required ResolvedSlot resolved, double? lastTopKg}) {
   final exercise = resolved.exercise;
   final step = exercise.plateStepKg;
 
@@ -45,35 +43,36 @@ BlockState buildBlock({
 
   // Compound exercises bump one plate on top of the seed to encourage
   // progressive overload; isolation exercises stay at the seed.
-  final suggested = roundTo(
-    seed + (exercise.compound ? step : 0),
-    step,
-  );
+  final suggested = roundTo(seed + (exercise.compound ? step : 0), step);
 
   // Warm-up ramp
   final warmups = <SetState>[];
   for (var i = 0; i < resolved.warmupSets; i++) {
-    warmups.add(SetState(
-      id: uuid.v4(),
-      weightKg: roundTo(suggested * (0.5 + 0.18 * i), step),
-      reps: max(1, 8 - 2 * i),
-      rir: null,
-      isWarmup: true,
-      done: false,
-    ));
+    warmups.add(
+      SetState(
+        id: uuid.v4(),
+        weightKg: roundTo(suggested * (0.5 + 0.18 * i), step),
+        reps: max(1, 8 - 2 * i),
+        rir: null,
+        isWarmup: true,
+        done: false,
+      ),
+    );
   }
 
   // Working sets
   final working = <SetState>[];
   for (var i = 0; i < resolved.workSets; i++) {
-    working.add(SetState(
-      id: uuid.v4(),
-      weightKg: suggested,
-      reps: resolved.repLow,
-      rir: 1,
-      isWarmup: false,
-      done: false,
-    ));
+    working.add(
+      SetState(
+        id: uuid.v4(),
+        weightKg: suggested,
+        reps: resolved.repLow,
+        rir: 1,
+        isWarmup: false,
+        done: false,
+      ),
+    );
   }
 
   return BlockState(
@@ -112,38 +111,108 @@ void expandOnlyFirst(List<BlockState> blocks) {
 /// Mutable state for a single set during an active session.
 class SetState {
   final String id;
-  double weightKg;
-  int reps;
-  int? rir;
+  double _weightKg;
+  double get weightKg => _weightKg;
+  set weightKg(double v) {
+    weightTouched = true;
+    _weightKg = v;
+  }
+
+  Object? originalWeight;
+  bool weightUnavailable = false;
+  bool weightTouched;
+  int? localRevision;
+  String get weightText => weightTouched
+      ? _weightKg.toStringAsFixed(2)
+      : originalWeight?.toString() ?? '';
+  Object? get persistedWeight => weightTouched
+      ? _weightKg.toStringAsFixed(2)
+      : (weightUnavailable ? null : originalWeight);
+  int _reps;
+  int get reps => _reps;
+  set reps(int value) {
+    repsTouched = true;
+    _reps = value;
+  }
+
+  int? _rir;
+  int? get rir => _rir;
+  set rir(int? value) {
+    rirTouched = true;
+    _rir = value;
+  }
+
+  Map<String, Object?> rawFields;
+  bool repsTouched, rirTouched;
+  bool get repsAvailable =>
+      repsTouched || !rawFields.containsKey('reps') || rawFields['reps'] is int;
+  bool get weightAvailable =>
+      weightTouched ||
+      !weightUnavailable && double.tryParse(weightText)?.isFinite == true;
+  Map<String, Object?> get rawUntouched => {
+    if (!repsTouched && rawFields.containsKey('reps'))
+      'reps': rawFields['reps'],
+    if (!rirTouched && rawFields.containsKey('rir')) 'rir': rawFields['rir'],
+    if (rawFields.containsKey('is_warmup')) 'is_warmup': rawFields['is_warmup'],
+  };
   final bool isWarmup;
   bool done;
 
   SetState({
     required this.id,
-    required this.weightKg,
-    required this.reps,
-    required this.rir,
+    required double weightKg,
+    this.originalWeight,
+    this.weightTouched = false,
+    this.localRevision,
+    required int reps,
+    required int? rir,
+    this.rawFields = const {},
+    this.repsTouched = false,
+    this.rirTouched = false,
     required this.isWarmup,
     required this.done,
-  });
+  }) : _weightKg = weightKg,
+       _reps = reps,
+       _rir = rir {
+    originalWeight ??= weightKg.toString();
+  }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'weightKg': weightKg,
-        'reps': reps,
-        'rir': rir,
-        'isWarmup': isWarmup,
-        'done': done,
-      };
+    'id': id,
+    'weightKg': weightKg,
+    'originalWeight': persistedWeight,
+    'weightUnavailable': weightUnavailable,
+    'weightTouched': weightTouched,
+    'localRevision': localRevision,
+    'rawFields': rawFields,
+    'repsTouched': repsTouched,
+    'rirTouched': rirTouched,
+    'reps': reps,
+    'rir': rir,
+    'isWarmup': isWarmup,
+    'done': done,
+  };
 
-  factory SetState.fromJson(Map<String, dynamic> json) => SetState(
-        id: json['id'] as String,
-        weightKg: (json['weightKg'] as num).toDouble(),
-        reps: json['reps'] as int,
-        rir: json['rir'] as int?,
-        isWarmup: json['isWarmup'] as bool,
-        done: json['done'] as bool,
-      );
+  factory SetState.fromJson(Map<String, dynamic> json) {
+    final value = SetState(
+      id: json['id'] as String,
+      weightKg: (json['weightKg'] as num).toDouble(),
+      originalWeight: json.containsKey('originalWeight')
+          ? json['originalWeight']
+          : (json['weightKg'] as num).toString(),
+      weightTouched: json['weightTouched'] as bool? ?? false,
+      localRevision: json['localRevision'] as int?,
+      rawFields: Map<String, Object?>.from(json['rawFields'] as Map? ?? {}),
+      repsTouched: json['repsTouched'] == true,
+      rirTouched: json['rirTouched'] == true,
+      reps: json['reps'] as int,
+      rir: json['rir'] as int?,
+      isWarmup: json['isWarmup'] as bool,
+      done: json['done'] as bool,
+    );
+    value.weightUnavailable = json['weightUnavailable'] == true;
+    return value;
+  }
 }
 
 /// State for one exercise block (accordion) in the active session.
@@ -161,6 +230,7 @@ class BlockState {
   /// The most-recent (last-session) top set for this exercise — weight, reps,
   /// and ISO date. Shown as the "Last · {ago}" reference row in the UI.
   ({double weight, int reps, String date})? lastTop;
+  bool lastTopUnavailable;
 
   BlockState({
     required this.exercise,
@@ -170,41 +240,43 @@ class BlockState {
     required this.expanded,
     this.bestKg,
     this.lastTop,
+    this.lastTopUnavailable = false,
   });
 
   /// All sets in display order: warm-ups first, then working.
   List<SetState> get allSets => [...warmupSets, ...workingSets];
 
   Map<String, dynamic> toJson() => {
-        'exerciseId': exercise.id,
-        'exerciseName': exercise.name,
-        'exerciseSlug': exercise.slug,
-        'exerciseMuscleGroup': exercise.muscleGroup,
-        'exerciseEquip': exercise.equip,
-        'exerciseCompound': exercise.compound,
-        'exerciseBaseWeightKg': exercise.baseWeightKg,
-        'exercisePlateStepKg': exercise.plateStepKg,
-        'exerciseDefaultRepLow': exercise.defaultRepLow,
-        'exerciseDefaultRepHigh': exercise.defaultRepHigh,
-        'exerciseDefaultWarmupSets': exercise.defaultWarmupSets,
-        'exerciseDefaultWorkingSets': exercise.defaultWorkingSets,
-        'exerciseDefaultRirLow': exercise.defaultRirLow,
-        'exerciseDefaultRirHigh': exercise.defaultRirHigh,
-        'exerciseDefaultRestSeconds': exercise.defaultRestSeconds,
-        'resolvedWorkSets': resolved.workSets,
-        'resolvedWarmupSets': resolved.warmupSets,
-        'resolvedRepLow': resolved.repLow,
-        'resolvedRepHigh': resolved.repHigh,
-        'resolvedRirLow': resolved.rirLow,
-        'resolvedRirHigh': resolved.rirHigh,
-        'warmupSets': warmupSets.map((s) => s.toJson()).toList(),
-        'workingSets': workingSets.map((s) => s.toJson()).toList(),
-        'expanded': expanded,
-        'bestKg': bestKg,
-        'lastTopWeight': lastTop?.weight,
-        'lastTopReps': lastTop?.reps,
-        'lastTopDate': lastTop?.date,
-      };
+    'exerciseId': exercise.id,
+    'exerciseName': exercise.name,
+    'exerciseSlug': exercise.slug,
+    'exerciseMuscleGroup': exercise.muscleGroup,
+    'exerciseEquip': exercise.equip,
+    'exerciseCompound': exercise.compound,
+    'exerciseBaseWeightKg': exercise.baseWeightKg,
+    'exercisePlateStepKg': exercise.plateStepKg,
+    'exerciseDefaultRepLow': exercise.defaultRepLow,
+    'exerciseDefaultRepHigh': exercise.defaultRepHigh,
+    'exerciseDefaultWarmupSets': exercise.defaultWarmupSets,
+    'exerciseDefaultWorkingSets': exercise.defaultWorkingSets,
+    'exerciseDefaultRirLow': exercise.defaultRirLow,
+    'exerciseDefaultRirHigh': exercise.defaultRirHigh,
+    'exerciseDefaultRestSeconds': exercise.defaultRestSeconds,
+    'resolvedWorkSets': resolved.workSets,
+    'resolvedWarmupSets': resolved.warmupSets,
+    'resolvedRepLow': resolved.repLow,
+    'resolvedRepHigh': resolved.repHigh,
+    'resolvedRirLow': resolved.rirLow,
+    'resolvedRirHigh': resolved.rirHigh,
+    'warmupSets': warmupSets.map((s) => s.toJson()).toList(),
+    'workingSets': workingSets.map((s) => s.toJson()).toList(),
+    'expanded': expanded,
+    'bestKg': bestKg,
+    'lastTopWeight': lastTop?.weight,
+    'lastTopReps': lastTop?.reps,
+    'lastTopDate': lastTop?.date,
+    'lastTopUnavailable': lastTopUnavailable,
+  };
 
   factory BlockState.fromJson(Map<String, dynamic> json) {
     final exercise = Exercise(
@@ -253,6 +325,7 @@ class BlockState {
       expanded: json['expanded'] as bool? ?? true,
       bestKg: (json['bestKg'] as num?)?.toDouble(),
       lastTop: lastTop,
+      lastTopUnavailable: json['lastTopUnavailable'] == true,
     );
   }
 }
@@ -273,6 +346,21 @@ class SessionDraft {
   /// again so the workout stays on the day it was done. Null for a fresh
   /// workout.
   final String? sessionDate;
+  final Map<String, Object?>? sessionDateEvidence;
+  final String? identity;
+  String get draftId => identity ?? 'draft:${startedAt.toIso8601String()}';
+  final int? localRevision;
+  final Map<String, int> setBases;
+  final DateTime? restStart, restEndedAt;
+  final int restTotal;
+  final String? focusedSetId, rirPromptSetId;
+  Map<String, Object?> get timerJson => {
+    'draftId': draftId,
+    'startedAt': startedAt.toIso8601String(),
+    'restStart': restStart?.toIso8601String(),
+    'restTotal': restTotal,
+    'restEndedAt': restEndedAt?.toIso8601String(),
+  };
 
   const SessionDraft({
     required this.templateId,
@@ -282,35 +370,65 @@ class SessionDraft {
     required this.blocks,
     this.sessionId,
     this.sessionDate,
+    this.sessionDateEvidence,
+    this.identity,
+    this.localRevision,
+    this.setBases = const {},
+    this.restStart,
+    this.restTotal = 0,
+    this.restEndedAt,
+    this.focusedSetId,
+    this.rirPromptSetId,
   });
 
   Map<String, dynamic> toJson() => {
-        'templateId': templateId,
-        'name': name,
-        'focus': focus,
-        'startedAt': startedAt.toIso8601String(),
-        'blocks': blocks.map((b) => b.toJson()).toList(),
-        'sessionId': sessionId,
-        'sessionDate': sessionDate,
-      };
+    'templateId': templateId,
+    'name': name,
+    'focus': focus,
+    'startedAt': startedAt.toIso8601String(),
+    'blocks': blocks.map((b) => b.toJson()).toList(),
+    'sessionId': sessionId,
+    'sessionDate': sessionDate,
+    'sessionDateEvidence': sessionDateEvidence,
+    'draftId': draftId,
+    'localRevision': localRevision,
+    'setBases': setBases,
+    'restStart': restStart?.toIso8601String(),
+    'restTotal': restTotal,
+    'restEndedAt': restEndedAt?.toIso8601String(),
+    'focusedSetId': focusedSetId,
+    'rirPromptSetId': rirPromptSetId,
+  };
 
   factory SessionDraft.fromJson(Map<String, dynamic> json) => SessionDraft(
-        templateId: json['templateId'] as String?,
-        name: json['name'] as String,
-        focus: json['focus'] as String,
-        startedAt: DateTime.parse(json['startedAt'] as String),
-        blocks: (json['blocks'] as List)
-            .map((e) => BlockState.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        // Absent in drafts written by older builds → a fresh workout.
-        sessionId: json['sessionId'] as String?,
-        sessionDate: json['sessionDate'] as String?,
-      );
+    templateId: json['templateId'] as String?,
+    name: json['name'] as String,
+    focus: json['focus'] as String,
+    startedAt: DateTime.parse(json['startedAt'] as String),
+    blocks: (json['blocks'] as List)
+        .map((e) => BlockState.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    // Absent in drafts written by older builds → a fresh workout.
+    sessionId: json['sessionId'] as String?,
+    sessionDate: json['sessionDate'] as String?,
+    sessionDateEvidence: json['sessionDateEvidence'] == null
+        ? null
+        : Map<String, Object?>.from(json['sessionDateEvidence'] as Map),
+    identity: json['draftId'] as String?,
+    localRevision: json['localRevision'] as int?,
+    setBases: Map<String, int>.from(json['setBases'] as Map? ?? {}),
+    restStart: DateTime.tryParse(json['restStart'] as String? ?? ''),
+    restTotal: json['restTotal'] as int? ?? 0,
+    restEndedAt: DateTime.tryParse(json['restEndedAt'] as String? ?? ''),
+    focusedSetId: json['focusedSetId'] as String?,
+    rirPromptSetId: json['rirPromptSetId'] as String?,
+  );
 
   /// An independent copy made through the same JSON path the draft files use,
   /// so no [BlockState]/[SetState] is shared with this draft.
   SessionDraft deepCopy() => SessionDraft.fromJson(
-      jsonDecode(jsonEncode(toJson())) as Map<String, dynamic>);
+    jsonDecode(jsonEncode(toJson())) as Map<String, dynamic>,
+  );
 }
 
 // ── ActiveSessionController ──────────────────────────────────────────────────
@@ -328,9 +446,17 @@ class ActiveSessionController extends ChangeNotifier {
   ActiveSessionController({DraftStore? draftStore}) : _draftStore = draftStore;
 
   /// Adopts a previously persisted draft (resume-on-launch / crash recovery).
-  ActiveSessionController.fromDraft(SessionDraft draft, {DraftStore? draftStore})
-      : _draftStore = draftStore,
-        _draft = draft;
+  ActiveSessionController.fromDraft(
+    SessionDraft draft, {
+    DraftStore? draftStore,
+  }) : _draftStore = draftStore,
+       _draft = draft {
+    restStart = draft.restStart;
+    restTotal = draft.restTotal;
+    restEndedAt = draft.restEndedAt;
+    _focusedSetId = draft.focusedSetId;
+    _rirPromptSetId = draft.rirPromptSetId;
+  }
 
   final DraftStore? _draftStore;
   Timer? _saveDebounce;
@@ -355,7 +481,8 @@ class ActiveSessionController extends ChangeNotifier {
   bool _savePending = false;
 
   /// Whether a capture froze autosave and rest auto-stop.
-  bool get callbacksFrozen => _frozenGeneration != null;
+  bool get callbacksFrozen =>
+      _frozenGeneration != null || _pendingFinish != null;
 
   /// [callbacksFrozen] as a listenable, for what the screen shows as
   /// unavailable while a capture holds the source (the +30s rest chip).
@@ -372,7 +499,9 @@ class ActiveSessionController extends ChangeNotifier {
   void _scheduleSave() {
     final store = _draftStore;
     final d = _draft;
-    if (store == null || d == null) return;
+    if (store == null || d == null || finishPending) {
+      return;
+    }
     _saveDebounce?.cancel();
     _saveDebounce = null;
     final epoch = ++_saveEpoch;
@@ -381,39 +510,89 @@ class ActiveSessionController extends ChangeNotifier {
       return;
     }
     // Copied now: the autosave writes the state it was scheduled for.
-    _armSave(store, d.deepCopy(), epoch);
+    _armSave(store, snapshot(), epoch);
+  }
+
+  Object? persistenceError;
+  Future<void> _persistenceTail = Future.value();
+  bool get persistenceOwed => _savePending || _draftStore?.pending != null;
+  SessionDraft snapshot() {
+    final json = draft.toJson()
+      ..addAll({
+        'restStart': restStart?.toIso8601String(),
+        'restTotal': restTotal,
+        'restEndedAt': restEndedAt?.toIso8601String(),
+        'focusedSetId': _focusedSetId,
+        'rirPromptSetId': _rirPromptSetId,
+      });
+    return SessionDraft.fromJson(json);
   }
 
   void _armSave(DraftStore store, SessionDraft copy, int epoch) {
+    _savePending = true;
     _saveDebounce = Timer(saveDebounce, () {
-      if (epoch != _saveEpoch) return;
-      if (callbacksFrozen) {
-        _savePending = true;
+      if (epoch != _saveEpoch || callbacksFrozen || _pendingFinish != null) {
         return;
       }
-      SessionWriteLedger.instance.detach(runSourceWrite(
-        'session.autosave',
-        (_) async {
-          // A finish, discard, newer schedule or capture freeze since the
-          // timer fired supersedes this save.
-          if (epoch != _saveEpoch || callbacksFrozen) return;
-          await SessionWriteLedger.instance.write('draft', () => store.save(copy));
-        },
-      ).catchError((Object e) {
-        // Refused (a capture closed admission) or failed: still owed, unless
-        // the workout ended meanwhile.
-        if (_draft == null) return;
-        _savePending = true;
-        // A refusal is retried after the debounce while nothing newer was
-        // scheduled and no capture froze callbacks (the capture then
-        // flushes the draft itself, or resumeCallbacks saves it).
-        if (e is SourceGateException &&
-            epoch == _saveEpoch &&
-            !callbacksFrozen) {
-          _armSave(store, copy, epoch);
+      _persistenceTail = _persistenceTail.then((_) async {
+        if (epoch != _saveEpoch || callbacksFrozen || _pendingFinish != null) {
+          return;
         }
-      }));
+        try {
+          if (store.pending != null) {
+            await store.save(copy);
+          }
+          if (epoch != _saveEpoch) {
+            return;
+          }
+          await store.save(copy);
+          if (epoch == _saveEpoch) {
+            _savePending = false;
+          }
+          persistenceError = null;
+        } catch (e) {
+          persistenceError = e;
+          _savePending = true;
+        }
+      });
     });
+  }
+
+  /// Lifecycle/transfer/backup/close barrier. Failures leave exact work owed.
+  Future<void> flushPersistence() {
+    _saveDebounce?.cancel();
+    final epoch = ++_saveEpoch;
+    final work = _persistenceTail.then((_) async {
+      final store = _draftStore;
+      if (store == null || _draft == null) return;
+      if (_pendingFinish != null) {
+        throw const StoreException('finish_retry_required');
+      }
+      try {
+        // Settle the already frozen older save. Finish may have prepared while
+        // that write awaited SQL; it owns the next transition from this base.
+        if (store.pending != null) {
+          await store.save(snapshot());
+          if (_pendingFinish != null) {
+            throw const StoreException('finish_retry_required');
+          }
+        }
+        await store.save(snapshot());
+        if (epoch == _saveEpoch) _savePending = false;
+        persistenceError = null;
+      } catch (error) {
+        persistenceError = error;
+        _savePending = true;
+        rethrow;
+      }
+    });
+    // Every explicit flush and autosave shares one tail. Keep the returned
+    // failure visible while allowing recovery/Finish to await a settled tail.
+    _persistenceTail = work.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stack) {},
+    );
+    return work;
   }
 
   /// Moves on whenever the draft's persisted state may become stale; the
@@ -424,7 +603,9 @@ class ActiveSessionController extends ChangeNotifier {
   /// debounce is cancelled and already scheduled callbacks are fenced. Later
   /// mutations stay in memory until [resumeCallbacks].
   void freezeCallbacks(int generation) {
-    if (_saveDebounce?.isActive ?? false) _savePending = true;
+    if (_saveDebounce?.isActive ?? false) {
+      _savePending = true;
+    }
     _saveDebounce?.cancel();
     _saveDebounce = null;
     _saveEpoch++;
@@ -435,7 +616,9 @@ class ActiveSessionController extends ChangeNotifier {
   /// The capture's flush of the draft as it was at [epoch] landed: nothing
   /// is owed unless the draft was scheduled for saving again since.
   void markFlushed(int epoch) {
-    if (epoch == _saveEpoch) _savePending = false;
+    if (epoch == _saveEpoch) {
+      _savePending = false;
+    }
   }
 
   /// Ends a freeze (or, unfrozen, settles what a refused autosave still
@@ -444,7 +627,10 @@ class ActiveSessionController extends ChangeNotifier {
   /// mutation made while frozen is autosaved.
   void resumeCallbacks(DateTime now) {
     _frozenGeneration = null;
-    _captureFrozen.value = false;
+    _captureFrozen.value = _pendingFinish != null;
+    if (_pendingFinish != null) {
+      return;
+    }
     final start = restStart;
     var changed = false;
     if (start != null) {
@@ -497,19 +683,20 @@ class ActiveSessionController extends ChangeNotifier {
 
     for (final slot in template.slots) {
       final exercise = await exerciseRepo.byId(slot.exerciseId);
-      if (exercise == null) continue;
+      if (exercise == null) {
+        continue;
+      }
 
       final resolved = resolveSlot(slot, exercise);
 
-      final lastTop = await sessionRepo.lastTopSet(slot.exerciseId);
+      final reference = await sessionRepo.lastTopSetEvidence(slot.exerciseId);
+      final lastTop = reference.value;
       final bestKg = await sessionRepo.bestTopSet(slot.exerciseId);
 
-      final block = buildBlock(
-        resolved: resolved,
-        lastTopKg: lastTop?.weight,
-      );
+      final block = buildBlock(resolved: resolved, lastTopKg: lastTop?.weight);
       block.bestKg = bestKg;
       block.lastTop = lastTop;
+      block.lastTopUnavailable = reference.unavailable;
       blocks.add(block);
     }
 
@@ -558,6 +745,9 @@ class ActiveSessionController extends ChangeNotifier {
   bool get resting => restStart != null;
 
   void startRest(int seconds) {
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
     restStart = DateTime.now();
     restTotal = seconds;
     restEndedAt = null;
@@ -567,7 +757,12 @@ class ActiveSessionController extends ChangeNotifier {
   /// Extends the running rest. Refused while a capture froze the callbacks:
   /// the extension is shown as unavailable then, never applied silently.
   void addRestTime(int seconds) {
-    if (restStart == null || callbacksFrozen) return;
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
+    if (restStart == null || callbacksFrozen) {
+      return;
+    }
     restTotal += seconds;
     notifyListeners();
   }
@@ -575,8 +770,13 @@ class ActiveSessionController extends ChangeNotifier {
   /// Ends the rest. A late call (the app was backgrounded when it ran out)
   /// dates the end to when the countdown reached zero, not to now.
   void stopRest() {
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
     final start = restStart;
-    if (start == null) return;
+    if (start == null) {
+      return;
+    }
     final due = start.add(Duration(seconds: restTotal));
     final now = DateTime.now();
     restEndedAt = now.isBefore(due) ? now : due;
@@ -588,7 +788,12 @@ class ActiveSessionController extends ChangeNotifier {
   /// Sets rest state directly (used to reconcile after a background +30s tap
   /// that the live controller didn't see). No-op if unchanged.
   void setRestRaw(DateTime? restStart, int restTotal) {
-    if (this.restStart == restStart && this.restTotal == restTotal) return;
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
+    if (this.restStart == restStart && this.restTotal == restTotal) {
+      return;
+    }
     this.restStart = restStart;
     this.restTotal = restTotal;
     notifyListeners();
@@ -610,10 +815,14 @@ class ActiveSessionController extends ChangeNotifier {
 
   LiveSet? _firstPending() {
     final d = _draft;
-    if (d == null) return null;
+    if (d == null) {
+      return null;
+    }
     for (final b in d.blocks) {
       for (final s in b.allSets) {
-        if (!s.done) return (block: b, set: s);
+        if (!s.done) {
+          return (block: b, set: s);
+        }
       }
     }
     return null;
@@ -624,12 +833,16 @@ class ActiveSessionController extends ChangeNotifier {
   /// bottom, warm-ups before working sets). Null when every set is done.
   LiveSet? get liveSet {
     final d = _draft;
-    if (d == null) return null;
+    if (d == null) {
+      return null;
+    }
     final focused = _focusedSetId;
     if (focused != null) {
       for (final b in d.blocks) {
         for (final s in b.allSets) {
-          if (s.id == focused) return (block: b, set: s);
+          if (s.id == focused) {
+            return (block: b, set: s);
+          }
         }
       }
     }
@@ -641,7 +854,9 @@ class ActiveSessionController extends ChangeNotifier {
   /// correction is never "next".
   LiveSet? get nextPendingSet {
     final live = liveSet;
-    if (live != null && !live.set.done) return live;
+    if (live != null && !live.set.done) {
+      return live;
+    }
     return _firstPending();
   }
 
@@ -652,7 +867,12 @@ class ActiveSessionController extends ChangeNotifier {
   /// tap on another set moves on, and a tap on the prompted set turns it
   /// into the live card.
   void focusSet(SetState set) {
-    if (_focusedSetId == set.id && _rirPromptSetId == null) return;
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
+    if (_focusedSetId == set.id && _rirPromptSetId == null) {
+      return;
+    }
     _focusedSetId = set.id;
     _closeRirPrompt();
     notifyListeners();
@@ -666,7 +886,9 @@ class ActiveSessionController extends ChangeNotifier {
   /// Returns null when there is no live set.
   ({BlockState block, SetState set, bool newlyDone})? logLiveSet() {
     final live = liveSet;
-    if (live == null) return null;
+    if (live == null) {
+      return null;
+    }
     final newlyDone = !live.set.done;
     live.set.done = true;
     _focusedSetId = null;
@@ -677,7 +899,9 @@ class ActiveSessionController extends ChangeNotifier {
     }
     final next = liveSet;
     if (next != null && !identical(next.block, live.block)) {
-      if (live.block.allSets.every((s) => s.done)) live.block.expanded = false;
+      if (live.block.allSets.every((s) => s.done)) {
+        live.block.expanded = false;
+      }
       next.block.expanded = true;
     }
     notifyListeners();
@@ -705,14 +929,11 @@ class ActiveSessionController extends ChangeNotifier {
   Duration get elapsed => DateTime.now().difference(draft.startedAt);
 
   /// Number of working sets that have been ticked done.
-  int get doneWork => draft.blocks
-      .expand((b) => b.workingSets)
-      .where((s) => s.done)
-      .length;
+  int get doneWork =>
+      draft.blocks.expand((b) => b.workingSets).where((s) => s.done).length;
 
   /// Total number of working sets (done + not done).
-  int get totalWork =>
-      draft.blocks.fold(0, (n, b) => n + b.workingSets.length);
+  int get totalWork => draft.blocks.fold(0, (n, b) => n + b.workingSets.length);
 
   /// Whether the session can be finished (at least one working set done).
   bool get canFinish => doneWork >= 1;
@@ -727,7 +948,9 @@ class ActiveSessionController extends ChangeNotifier {
           .fold<double>(0, (m, s) => s.weightKg > m ? s.weightKg : m);
       final best = block.bestKg;
       if (best == null || (maxDoneWorking > 0 && maxDoneWorking > best)) {
-        if (maxDoneWorking > 0) count++;
+        if (maxDoneWorking > 0) {
+          count++;
+        }
       }
     }
     return count;
@@ -742,6 +965,9 @@ class ActiveSessionController extends ChangeNotifier {
 
   /// Toggles [set] within [block] between done and not done.
   void toggleDone(BlockState block, SetState set) {
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
     set.done = !set.done;
     notifyListeners();
   }
@@ -756,14 +982,16 @@ class ActiveSessionController extends ChangeNotifier {
       seed + (block.exercise.compound ? step : 0),
       step,
     );
-    block.workingSets.add(SetState(
-      id: uuid.v4(),
-      weightKg: last?.weightKg ?? suggested,
-      reps: last?.reps ?? block.resolved.repLow,
-      rir: last?.rir ?? 1,
-      isWarmup: false,
-      done: false,
-    ));
+    block.workingSets.add(
+      SetState(
+        id: uuid.v4(),
+        weightKg: last?.weightKg ?? suggested,
+        reps: last?.reps ?? block.resolved.repLow,
+        rir: last?.rir ?? 1,
+        isWarmup: false,
+        done: false,
+      ),
+    );
     _closeRirPrompt();
     notifyListeners();
   }
@@ -774,7 +1002,9 @@ class ActiveSessionController extends ChangeNotifier {
     final list = set.isWarmup ? block.warmupSets : block.workingSets;
     final index = list.indexOf(set);
     list.remove(set);
-    if (_focusedSetId == set.id) _focusedSetId = null;
+    if (_focusedSetId == set.id) {
+      _focusedSetId = null;
+    }
     _closeRirPrompt();
     notifyListeners();
     return index;
@@ -785,7 +1015,9 @@ class ActiveSessionController extends ChangeNotifier {
   /// [block] has since left the workout.
   void restoreSet(BlockState block, SetState set, int index) {
     final d = draftOrNull;
-    if (d == null || !d.blocks.contains(block)) return;
+    if (d == null || !d.blocks.contains(block)) {
+      return;
+    }
     final list = set.isWarmup ? block.warmupSets : block.workingSets;
     list.insert(index.clamp(0, list.length), set);
     _closeRirPrompt();
@@ -805,14 +1037,16 @@ class ActiveSessionController extends ChangeNotifier {
         : roundTo(seed + (block.exercise.compound ? step : 0), step);
     final i = block.warmupSets.length;
     final weight = roundTo(reference * (0.5 + 0.18 * i), step);
-    block.warmupSets.add(SetState(
-      id: uuid.v4(),
-      weightKg: weight > reference ? reference : weight,
-      reps: max(1, 8 - 2 * i),
-      rir: null,
-      isWarmup: true,
-      done: false,
-    ));
+    block.warmupSets.add(
+      SetState(
+        id: uuid.v4(),
+        weightKg: weight > reference ? reference : weight,
+        reps: max(1, 8 - 2 * i),
+        rir: null,
+        isWarmup: true,
+        done: false,
+      ),
+    );
     _closeRirPrompt();
     notifyListeners();
   }
@@ -820,10 +1054,15 @@ class ActiveSessionController extends ChangeNotifier {
   /// Moves [block] [delta] positions in the workout (negative = up). A move
   /// past either end is a no-op.
   void moveBlock(BlockState block, int delta) {
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
     final blocks = draft.blocks;
     final from = blocks.indexOf(block);
     final to = from + delta;
-    if (from < 0 || to < 0 || to >= blocks.length || delta == 0) return;
+    if (from < 0 || to < 0 || to >= blocks.length || delta == 0) {
+      return;
+    }
     blocks
       ..removeAt(from)
       ..insert(to, block);
@@ -835,6 +1074,9 @@ class ActiveSessionController extends ChangeNotifier {
   /// current list; [to] is the block's final position). Drag-and-drop uses
   /// this; an out-of-range or no-op move is ignored.
   void moveBlockTo(int from, int to) {
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
     final blocks = draft.blocks;
     if (from == to ||
         from < 0 ||
@@ -850,6 +1092,9 @@ class ActiveSessionController extends ChangeNotifier {
 
   /// Removes [block] from the session.
   void removeBlock(BlockState block) {
+    if (finishPending) {
+      throw const StoreException('finish_retry_required');
+    }
     draft.blocks.remove(block);
     _closeRirPrompt();
     notifyListeners();
@@ -877,17 +1122,25 @@ class ActiveSessionController extends ChangeNotifier {
     // A resumed workout's own finished rows stay in the DB until it is
     // finished again; exclude them so the PR baseline and the "Last" row are
     // the pre-workout ones (a fresh workout has no sessionId: no filter).
-    final lastTop = await sessionRepo.lastTopSet(exercise.id,
-        excludeSessionId: draft.sessionId);
-    final bestKg = await sessionRepo.bestTopSet(exercise.id,
-        excludeSessionId: draft.sessionId);
+    final reference = await sessionRepo.lastTopSetEvidence(
+      exercise.id,
+      excludeSessionId: draft.sessionId,
+    );
+    final lastTop = reference.value;
+    final bestKg = await sessionRepo.bestTopSet(
+      exercise.id,
+      excludeSessionId: draft.sessionId,
+    );
     // An exercise appears once per workout: blocks are keyed by exercise id
     // on screen. Checked after the lookups, so a second add that was already
     // in flight is dropped too.
-    if (hasExercise(exercise.id)) return;
+    if (hasExercise(exercise.id)) {
+      return;
+    }
     final block = buildBlock(resolved: resolved, lastTopKg: lastTop?.weight);
     block.bestKg = bestKg;
     block.lastTop = lastTop;
+    block.lastTopUnavailable = reference.unavailable;
     draft.blocks.add(block);
     _closeRirPrompt();
     notifyListeners();
@@ -916,14 +1169,25 @@ class ActiveSessionController extends ChangeNotifier {
   /// resulting [lastFinished] to `SessionManager.recordFinished`. Pass
   /// [draftStore] to also clear the on-disk draft (call with the same
   /// [DraftStore] used to save the session while it was active).
-  Future<String> finish(SqlExecutor executor, {DraftStore? draftStore}) async {
-    final d = draft;
-    final now = DateTime.now();
-    final resumed = d.sessionId != null;
+  PreparedDomainAction? _pendingFinish;
+  FinishedSession? _pendingRecovery;
+  PreparedDomainAction? get pendingFinish => _pendingFinish;
+  bool get finishPending => _pendingFinish != null;
+
+  PreparedDomainAction prepareFinish(
+    WorkoutRepository repository, {
+    DateTime? at,
+  }) {
+    if (_pendingFinish != null) {
+      return _pendingFinish!;
+    }
+    final now = at ?? DateTime.now();
+    final d = snapshot();
     final sessionId = d.sessionId ?? uuid.v4();
-    final dateIso = d.sessionDate ?? isoDate(now);
-    final splitLabel =
-        d.focus.isEmpty ? d.name : '${d.name} · ${d.focus}'; // omit empty focus
+    final dateIso = d.sessionDate ?? (d.sessionId == null ? isoDate(now) : '');
+    final splitLabel = d.focus.isEmpty
+        ? d.name
+        : '${d.name} · ${d.focus}'; // omit empty focus
 
     // Collect all sets: warm-ups (is_warmup=true) then working, per block.
     // set_number runs across the whole workout (not per exercise) — it is the
@@ -934,26 +1198,49 @@ class ActiveSessionController extends ChangeNotifier {
     for (final block in d.blocks) {
       final blockSets = <SetWrite>[];
       for (final s in block.warmupSets.where((s) => s.done)) {
-        blockSets.add(SetWrite(
-          id: s.id, exerciseId: block.exercise.id, setNumber: setNum++,
-          weightKg: s.weightKg.toStringAsFixed(2), reps: s.reps, rir: null, isWarmup: true,
-        ));
+        blockSets.add(
+          SetWrite(
+            id: s.id,
+            exerciseId: block.exercise.id,
+            setNumber: setNum++,
+            weightKg: s.persistedWeight,
+            reps: s.reps,
+            rawUntouched: s.rawUntouched,
+            rir: null,
+            isWarmup: true,
+          ),
+        );
       }
       for (final s in block.workingSets.where((s) => s.done)) {
-        blockSets.add(SetWrite(
-          id: s.id, exerciseId: block.exercise.id, setNumber: setNum++,
-          weightKg: s.weightKg.toStringAsFixed(2), reps: s.reps, rir: s.rir, isWarmup: false,
-        ));
+        blockSets.add(
+          SetWrite(
+            id: s.id,
+            exerciseId: block.exercise.id,
+            setNumber: setNum++,
+            weightKg: s.persistedWeight,
+            reps: s.reps,
+            rawUntouched: s.rawUntouched,
+            rir: s.rir,
+            isWarmup: false,
+          ),
+        );
       }
       final topIdx = topSetIndex(blockSets);
       if (topIdx >= 0) {
         final top = blockSets[topIdx];
-        final topWeight = double.tryParse(top.weightKg) ?? 0;
+        final topWeight = double.tryParse(top.weightKg?.toString() ?? '') ?? 0;
         final isPr = block.bestKg != null && topWeight > block.bestKg!;
         blockSets[topIdx] = SetWrite(
-          id: top.id, exerciseId: top.exerciseId, setNumber: top.setNumber,
-          weightKg: top.weightKg, reps: top.reps, rir: top.rir, isWarmup: top.isWarmup,
-          isTopSet: true, isPr: isPr,
+          id: top.id,
+          exerciseId: top.exerciseId,
+          setNumber: top.setNumber,
+          weightKg: top.weightKg,
+          reps: top.reps,
+          rawUntouched: top.rawUntouched,
+          rir: top.rir,
+          isWarmup: top.isWarmup,
+          isTopSet: true,
+          isPr: isPr,
         );
       }
       sets.addAll(blockSets);
@@ -969,61 +1256,90 @@ class ActiveSessionController extends ChangeNotifier {
       sets: sets,
     );
 
-    if (resumed) {
-      await replaceSession(executor, write);
-    } else {
-      await persistSession(executor, write);
+    final store = _draftStore;
+    if (store == null || store.database == null) {
+      throw const StoreException('local_store_required');
     }
-
-    // Clear the on-disk draft (if a store is provided) then the in-memory state.
-    _saveDebounce?.cancel();
-    _saveEpoch++;
-    if (draftStore != null) {
-      await SessionWriteLedger.instance.write('draft', draftStore.clear);
-    }
-    // Recorded only once nothing above can fail any more.
-    _lastFinished = FinishedSession(
+    final recovery = FinishedSession(
       sessionId: sessionId,
       sessionDate: dateIso,
       finishedAt: now,
       elapsedSeconds: elapsedAtFinish.inSeconds,
-      draft: d.deepCopy(),
+      draft: d,
     );
+    _pendingRecovery = recovery;
+    _pendingFinish = repository.prepareFinish(
+      write: write,
+      baseRevision: d.localRevision ?? 0,
+      setBases: d.setBases,
+      recovery: recovery.toJson(),
+      draftRevision: store.pending == null
+          ? store.persistedRevision
+          : store.pending!.expectedRevision + 1,
+      draftId: d.draftId,
+    );
+    _saveDebounce?.cancel();
+    _saveEpoch++;
+    _captureFrozen.value = true;
+    super.notifyListeners();
+    return _pendingFinish!;
+  }
+
+  Future<String> commitFinish(WorkoutRepository repository) async {
+    final intent = prepareFinish(repository);
+    await _persistenceTail;
+    final store = _draftStore;
+    if (store?.pending != null) {
+      await store!.save(snapshot());
+    }
+    await repository.commitPrepared(intent);
+    // Only successfully awaited COMMIT or exact-byte replay adopts success.
+    final finished = _pendingRecovery!;
+    _lastFinished = finished;
+    _draftStore?.completed();
+    _pendingFinish = null;
+    _pendingRecovery = null;
+    _captureFrozen.value = _frozenGeneration != null;
+    _saveDebounce?.cancel();
+    _saveEpoch++;
+    _savePending = false;
     _draft = null;
     restStart = null;
     restTotal = 0;
     restEndedAt = null;
     _focusedSetId = null;
     _rirPromptSetId = null;
-    notifyListeners();
-
-    return sessionId;
+    super.notifyListeners();
+    return intent.action.target.id;
   }
 
-  /// Clears the in-memory draft without persisting, and deletes the draft
-  /// file so a discarded workout cannot resurrect. Used when the user
-  /// discards the session.
-  ///
-  /// One logical source operation: admitted before anything changes, so a
-  /// refusal (a capture holds the source) throws and leaves the workout as
-  /// it was. Completes once the file clear finished; its failure is thrown
-  /// and stays observable to capture.
-  Future<void> discard() => SessionWriteLedger.instance.track(
-        runSourceWrite('session.discard', (_) async {
-          _saveDebounce?.cancel();
-          _saveEpoch++;
-          _draft = null;
-          restStart = null;
-          restTotal = 0;
-          restEndedAt = null;
-          _focusedSetId = null;
-          _rirPromptSetId = null;
-          final store = _draftStore;
-          final clearing = store == null
-              ? null
-              : SessionWriteLedger.instance.write('draft', store.clear);
-          notifyListeners();
-          await clearing;
-        }),
-      );
+  Future<String> finish(
+    SqlExecutor executor, {
+    DraftStore? draftStore,
+    DateTime? now,
+  }) => Future.error(const StoreException('prepared_workout_required'));
+
+  Future<void> discard() async {
+    if (_pendingFinish != null) {
+      throw const StoreException('finish_retry_required');
+    }
+    _saveDebounce?.cancel();
+    _saveEpoch++;
+    await _persistenceTail;
+    final store = _draftStore;
+    if (store != null) {
+      if (store.pending != null) {
+        await store.save(snapshot());
+      }
+      await store.clear();
+    }
+    _draft = null;
+    restStart = null;
+    restTotal = 0;
+    restEndedAt = null;
+    _focusedSetId = null;
+    _rirPromptSetId = null;
+    _savePending = false;
+    super.notifyListeners();
+  }
 }

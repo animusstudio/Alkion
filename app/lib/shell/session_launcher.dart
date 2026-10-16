@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../capture/session_capture_hooks.dart';
-import '../capture/source_write_gate.dart';
 import '../data/active_session_draft.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
@@ -16,7 +14,7 @@ import '../session/active_session_controller.dart';
 import '../session/active_session_screen.dart';
 import '../session/resume.dart';
 import '../session/session_manager.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../theme/motion.dart';
 import '../widgets/w_dialog.dart';
 
@@ -26,11 +24,9 @@ import '../widgets/w_dialog.dart';
 /// a custom session), guards [BuildContext.mounted], and pushes
 /// [ActiveSessionScreen] on the **root** navigator wrapped in a
 /// [ChangeNotifierProvider].
-Future<void> startSession(
-  BuildContext context, {
-  DayTemplate? template,
-}) async {
+Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
   final manager = context.read<SessionManager>();
+  final database = context.read<LocalDatabase>();
   // Read before any await so the context is still valid (used for the
   // localized custom-session name below).
   final customName = AppLocalizations.of(context).todayCustomSession;
@@ -41,20 +37,42 @@ Future<void> startSession(
     return;
   }
 
-  if (await refusedDuringCaptureHold(context, manager)) return;
-
   // A second tap while this one is still building must not register a second
   // workout.
-  if (!manager.tryBeginLaunch()) return;
+  if (!manager.tryBeginLaunch()) {
+    return;
+  }
   try {
-    final controller = ActiveSessionController(draftStore: DraftStore());
+    final store = manager.draftStore;
+    if (store == null) {
+      throw const StoreException('local_store_required');
+    }
+    await store.load();
+    final controller = ActiveSessionController(draftStore: store);
+    final sessionRepo = SessionRepository.local(database);
 
     if (template != null) {
-      await controller.buildFromTemplate(
-        template,
-        exerciseRepo: ExerciseRepository(db),
-        sessionRepo: SessionRepository(db),
-      );
+      while (true) {
+        try {
+          await controller.buildFromTemplate(
+            template,
+            exerciseRepo: ExerciseRepository.local(database),
+            sessionRepo: sessionRepo,
+          );
+          break;
+        } on HistoryOrderReview catch (review) {
+          if (!context.mounted) {
+            controller.dispose();
+            return;
+          }
+          final chosen = await chooseHistoryOrder(context, review);
+          if (chosen == null) {
+            controller.dispose();
+            return;
+          }
+          await sessionRepo.resolveOrder(review, chosen);
+        }
+      }
     } else {
       controller.seedEmpty(name: customName, focus: '');
     }
@@ -63,21 +81,33 @@ Future<void> startSession(
       controller.dispose(); // cancels its pending autosave
       return;
     }
+    await controller.flushPersistence();
     manager.register(controller);
+  } catch (error) {
+    if (context.mounted) {
+      await showWriteFailed(context, error);
+    }
+    return;
   } finally {
     manager.endLaunch();
   }
 
-  if (!context.mounted) return;
+  if (!context.mounted) {
+    return;
+  }
   await openActiveSession(context, manager);
 }
 
 /// Pushes the session route for the manager's active controller (no-op if
 /// none or already open). Shared by start, mini-bar tap and notification tap.
 Future<void> openActiveSession(
-    BuildContext context, SessionManager manager) async {
+  BuildContext context,
+  SessionManager manager,
+) async {
   final controller = manager.active;
-  if (controller == null || manager.screenOpen) return;
+  if (controller == null || manager.screenOpen) {
+    return;
+  }
 
   await Navigator.of(context, rootNavigator: true).push<void>(
     PageRouteBuilder<void>(
@@ -85,16 +115,18 @@ Future<void> openActiveSession(
       reverseTransitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (_, __, ___) =>
           ChangeNotifierProvider<ActiveSessionController>.value(
-        value: controller,
-        child: const ActiveSessionScreen(),
-      ),
+            value: controller,
+            child: const ActiveSessionScreen(),
+          ),
       transitionsBuilder: (_, anim, __, child) {
         final curved = CurvedAnimation(parent: anim, curve: Motion.curve);
         return FadeTransition(
           opacity: curved,
           child: SlideTransition(
-            position: Tween(begin: const Offset(0, 0.06), end: Offset.zero)
-                .animate(curved),
+            position: Tween(
+              begin: const Offset(0, 0.06),
+              end: Offset.zero,
+            ).animate(curved),
             child: child,
           ),
         );
@@ -122,40 +154,43 @@ Future<ActiveSessionController?> prepareResume(
   final f = manager.lastFinished;
   // Every guard runs synchronously, before the first await: two taps must not
   // both get through and register two copies of the same session.
-  if (manager.hasActive || f == null || !isResumable(f, sessionId, t)) return null;
-  if (!manager.tryBeginLaunch()) return null;
+  if (manager.hasActive || f == null || !isResumable(f, sessionId, t)) {
+    return null;
+  }
+  if (!manager.tryBeginLaunch()) {
+    return null;
+  }
   try {
-    // One source operation from the lookups through the draft save and
-    // registration, so a capture awaits all of it (and refuses it whole).
-    return await SessionWriteLedger.instance.track(runSourceWrite(
-      'session.resume',
-      (ticket) async {
-        final session = await sessionRepo.sessionById(sessionId);
-        if (session == null) {
-          // Deleted (or synced away) since.
-          await manager.forgetFinished(sessionId, parent: ticket);
-          return null;
-        }
-        final rows = await sessionRepo.setsForSession(sessionId);
-        final draft = await restoreFinishedDraft(
-          f,
-          rows,
-          durationMin: session.durationMin,
-          exerciseRepo: exerciseRepo,
-          sessionRepo: sessionRepo,
-          now: t,
-        );
-        if (manager.hasActive) return null;
-        // Persist before registering, so process death right after Resume
-        // boots straight back into the resumed workout.
-        await SessionWriteLedger.instance
-            .write('draft', () => draftStore.save(draft));
-        final controller =
-            ActiveSessionController.fromDraft(draft, draftStore: draftStore);
-        manager.register(controller);
-        return controller;
-      },
-    ));
+    final session = await sessionRepo.sessionById(sessionId);
+    if (session == null) {
+      throw const StoreException('workout_recovery_review_required');
+    }
+    final rows = await sessionRepo.setsForSession(sessionId);
+    final original = await restoreFinishedDraft(
+      f,
+      rows,
+      durationMin: session.durationMin,
+      exerciseRepo: exerciseRepo,
+      sessionRepo: sessionRepo,
+      now: t,
+    );
+    final payload = original.toJson()
+      ..['sessionDate'] = session.date
+      ..['sessionDateEvidence'] = session.dateEvidence?.toJson()
+      ..['localRevision'] = session.localRevision
+      ..['setBases'] = await sessionRepo.allSetBases(sessionId);
+    final draft = SessionDraft.fromJson(payload);
+    if (manager.hasActive) {
+      return null;
+    }
+    await draftStore.load();
+    await draftStore.save(draft);
+    final controller = ActiveSessionController.fromDraft(
+      draft,
+      draftStore: draftStore,
+    );
+    manager.register(controller);
+    return controller;
   } finally {
     manager.endLaunch();
   }
@@ -174,33 +209,36 @@ Future<ActiveSessionController?> prepareResume(
 Future<String> finishWorkout(
   ActiveSessionController controller,
   SessionManager? manager, {
-  required Future<String> Function(Future<String> Function(SqlExecutor executor) body) transact,
-  DraftStore? draftStore,
-}) =>
-    SessionWriteLedger.instance.track(runSourceWrite('session.finish', (ticket) async {
-      final sessionId =
-          await transact((executor) => controller.finish(executor, draftStore: draftStore));
-      final finished = controller.lastFinished;
-      if (finished != null && manager != null) {
-        await manager.recordFinished(finished, parent: ticket);
-      }
-      return sessionId;
-    }));
+  required WorkoutRepository repository,
+}) async {
+  // Prepare on the synchronous call stack before the first await.
+  controller.prepareFinish(repository);
+  final id = await controller.commitFinish(repository);
+  final finished = controller.lastFinished;
+  if (finished != null) {
+    manager?.adoptCommitted(finished);
+  }
+  return id;
+}
 
 /// History's Resume action: restores the finished workout [sessionId] and
 /// opens it. Callers handle "another workout is running" themselves (it needs
 /// a dialog); here that case, like every other refusal, is a silent no-op.
-Future<void> resumeFinishedSession(BuildContext context, String sessionId) async {
+Future<void> resumeFinishedSession(
+  BuildContext context,
+  String sessionId,
+) async {
   final manager = context.read<SessionManager>();
-  if (await refusedDuringCaptureHold(context, manager)) return;
   final controller = await prepareResume(
     manager,
     sessionId,
-    sessionRepo: SessionRepository(db),
-    exerciseRepo: ExerciseRepository(db),
-    draftStore: DraftStore(),
+    sessionRepo: SessionRepository.local(context.read<LocalDatabase>()),
+    exerciseRepo: ExerciseRepository.local(context.read<LocalDatabase>()),
+    draftStore: manager.draftStore!,
   );
-  if (controller == null || !context.mounted) return;
+  if (controller == null || !context.mounted) {
+    return;
+  }
   await openActiveSession(context, manager);
 }
 
@@ -211,16 +249,41 @@ Future<void> resumeFinishedSession(BuildContext context, String sessionId) async
 Future<DayTemplate?> nextInRotation(
   DayTemplateRepository dayRepo,
   SessionRepository sessionRepo,
+) async {
+  final days = await dayRepo.watchDays().first;
+  return selectNextDay(days, await sessionRepo.lastDayForRotation());
+}
+
+Future<String?> chooseHistoryOrder(
+  BuildContext context,
+  HistoryOrderReview review,
 ) {
-  return dayRepo.nextInRotation(sessionRepo);
+  final l = AppLocalizations.of(context);
+  return showWDialog<String>(
+    context,
+    title: l.alkionOrderChoiceTitle,
+    message: l.alkionOrderChoiceBody,
+    actions: [
+      for (final row in review.choices)
+        WDialogAction(
+          label:
+              '${row['split_label'] ?? ''} · ${row['date']} · ${row['session_id']}',
+          value: row['session_id'] as String,
+        ),
+    ],
+  );
 }
 
 /// While a data capture holds the source (its callbacks are frozen) a new
 /// workout would live in memory only: refuse it with the hold's copy and
 /// return true. Otherwise false.
 Future<bool> refusedDuringCaptureHold(
-    BuildContext context, SessionManager manager) async {
-  if (!manager.callbacksFrozen) return false;
+  BuildContext context,
+  SessionManager manager,
+) async {
+  if (!manager.callbacksFrozen) {
+    return false;
+  }
   final l = AppLocalizations.of(context);
   await showWDialog<void>(
     context,

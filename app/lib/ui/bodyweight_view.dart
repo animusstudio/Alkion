@@ -6,7 +6,7 @@ import '../data/bodyweight_repository.dart';
 import '../data/models.dart';
 import '../settings/bodyweight_goal.dart';
 import '../settings/settings_service.dart';
-import '../sync/db.dart';
+import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
@@ -40,13 +40,13 @@ class BodyweightView extends StatefulWidget {
 
 class _BodyweightViewState extends State<BodyweightView> {
   late final BodyweightRepository _bwRepo;
-  late final Stream<List<BodyweightEntry>> _seriesStream =
-      _bwRepo.watchSeriesAsc();
+  late final Stream<List<BodyweightEntry>> _seriesStream = _bwRepo
+      .watchSeriesAsc();
 
   @override
   void initState() {
     super.initState();
-    _bwRepo = BodyweightRepository(db);
+    _bwRepo = BodyweightRepository.local(context.read<LocalDatabase>());
   }
 
   @override
@@ -59,23 +59,30 @@ class _BodyweightViewState extends State<BodyweightView> {
     return StreamBuilder<List<BodyweightEntry>>(
       stream: _seriesStream,
       builder: (context, snap) {
-        final entries = snap.data ?? [];
+        final allEntries = snap.data ?? <BodyweightEntry>[];
+        final entries = allEntries.where((e) => e.weightKg != null).toList();
         final unit = unitService.uLabel;
 
         // Map to display-unit values.
         final series = entries
-            .map((e) => (
-                  date: e.date,
-                  value: UnitService.fromKg(e.weightKg, unitService.unit),
-                  reps: 0,
-                  isPr: false,
-                ))
+            .map(
+              (e) => (
+                date: e.date,
+                value: UnitService.fromKg(e.weightKg!, unitService.unit),
+                reps: 0,
+                isPr: false,
+              ),
+            )
             .toList();
 
         return ListView(
           // Status-bar inset, mirroring the Progress screen's list padding.
           padding: EdgeInsets.fromLTRB(
-              16, 8 + MediaQuery.paddingOf(context).top, 16, 96),
+            16,
+            8 + MediaQuery.paddingOf(context).top,
+            16,
+            96,
+          ),
           children: [
             // Header
             Padding(
@@ -94,8 +101,10 @@ class _BodyweightViewState extends State<BodyweightView> {
                   const SizedBox(height: 5),
                   Text(
                     l.bodyweightTrend,
-                    style:
-                        WorkoutType.display(size: 28, weight: FontWeight.w700),
+                    style: WorkoutType.display(
+                      size: 28,
+                      weight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),
@@ -124,23 +133,41 @@ class _BodyweightViewState extends State<BodyweightView> {
             ),
             const SizedBox(height: 14),
 
+            if (allEntries.any((entry) => !entry.dateAvailable))
+              Text(
+                l.alkionBodyweightDateCoverage(
+                  allEntries.where((entry) => entry.dateAvailable).length,
+                  allEntries.length,
+                ),
+                style: WorkoutType.mono(size: 11, color: context.tokens.faint),
+              ),
             // BigStat cards
-            _BwStatRow(series: series, unit: unit, goal: goal),
+            _BwStatRow(
+              series: series,
+              unit: unit,
+              goal: goal,
+              currentAvailable:
+                  allEntries.isNotEmpty &&
+                  allEntries.last.weightKg != null &&
+                  allEntries.every((entry) => entry.dateAvailable),
+            ),
             const SizedBox(height: 14),
 
             // Log today's weight button
             _LogTodayButton(repo: _bwRepo),
             const SizedBox(height: 22),
 
+            for (final entry in allEntries.where((e) => e.weightKg == null))
+              Text(
+                '${entry.date} · ${l.bodyweightUnavailable}',
+                style: WorkoutType.mono(size: 12, color: context.tokens.faint),
+              ),
             // History section
             SectionLabel(
               label: l.bodyweightHistory,
               action: Text(
-                l.bodyweightEntriesCount(entries.length),
-                style: WorkoutType.mono(
-                  size: 11,
-                  color: context.tokens.dim,
-                ),
+                l.bodyweightEntriesCount(allEntries.length),
+                style: WorkoutType.mono(size: 11, color: context.tokens.dim),
               ),
             ),
             const SizedBox(height: 8),
@@ -151,7 +178,9 @@ class _BodyweightViewState extends State<BodyweightView> {
                   child: Text(
                     l.bodyweightEmpty,
                     style: WorkoutType.mono(
-                        size: 13, color: context.tokens.faint),
+                      size: 13,
+                      color: context.tokens.faint,
+                    ),
                   ),
                 ),
               )
@@ -167,11 +196,17 @@ class _BodyweightViewState extends State<BodyweightView> {
 // ── BwStatRow ─────────────────────────────────────────────────────────────────
 
 class _BwStatRow extends StatelessWidget {
-  const _BwStatRow({required this.series, required this.unit, required this.goal});
+  const _BwStatRow({
+    required this.series,
+    required this.unit,
+    required this.goal,
+    required this.currentAvailable,
+  });
 
   final List<({String date, double value, int reps, bool isPr})> series;
   final String unit;
   final BodyweightGoal goal;
+  final bool currentAvailable;
 
   @override
   Widget build(BuildContext context) {
@@ -179,11 +214,39 @@ class _BwStatRow extends StatelessWidget {
     if (series.isEmpty) {
       return Row(
         children: [
-          Expanded(child: WCard(padding: const EdgeInsets.fromLTRB(14, 13, 14, 13), child: BigStat(label: l.bodyweightStatCurrent, value: '—', unit: unit))),
+          Expanded(
+            child: WCard(
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+              child: BigStat(
+                label: l.bodyweightStatCurrent,
+                value: '—',
+                unit: unit,
+              ),
+            ),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: WCard(padding: const EdgeInsets.fromLTRB(14, 13, 14, 13), child: BigStat(label: l.bodyweightStat30Day, value: '—', unit: unit, accent: false))),
+          Expanded(
+            child: WCard(
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+              child: BigStat(
+                label: l.bodyweightStat30Day,
+                value: '—',
+                unit: unit,
+                accent: false,
+              ),
+            ),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: WCard(padding: const EdgeInsets.fromLTRB(14, 13, 14, 13), child: BigStat(label: l.bodyweightStatLowest, value: '—', unit: unit))),
+          Expanded(
+            child: WCard(
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+              child: BigStat(
+                label: l.bodyweightStatLowest,
+                value: '—',
+                unit: unit,
+              ),
+            ),
+          ),
         ],
       );
     }
@@ -191,22 +254,20 @@ class _BwStatRow extends StatelessWidget {
     // Rounded to what the cards show, so the delta is the change they read.
     final last = roundBodyweight(series.last.value);
     final lowest = roundBodyweight(
-        series.map((s) => s.value).reduce((a, b) => a < b ? a : b));
+      series.map((s) => s.value).reduce((a, b) => a < b ? a : b),
+    );
 
     // 30-day: earliest entry within the last 30 days.
     final now = DateTime.now();
     final cutoff = now.subtract(const Duration(days: 30));
-    final month30 = series.firstWhere(
-      (s) {
-        try {
-          final d = DateTime.parse('${s.date}T00:00:00');
-          return d.isAfter(cutoff) || d.isAtSameMomentAs(cutoff);
-        } catch (_) {
-          return false;
-        }
-      },
-      orElse: () => series.first,
-    );
+    final month30 = series.firstWhere((s) {
+      try {
+        final d = qualifiedCalendarDate(s.date);
+        return d != null && (d.isAfter(cutoff) || d.isAtSameMomentAs(cutoff));
+      } catch (_) {
+        return false;
+      }
+    }, orElse: () => series.first);
     final delta30 = last - roundBodyweight(month30.value);
     final delta30Label = signedChange(delta30, fmtBodyweight, l);
 
@@ -219,7 +280,7 @@ class _BwStatRow extends StatelessWidget {
               unitKey: unit,
               child: BigStat(
                 label: l.bodyweightStatCurrent,
-                value: fmtBodyweight(last),
+                value: currentAvailable ? fmtBodyweight(last) : '—',
                 unit: unit,
               ),
             ),
@@ -233,11 +294,15 @@ class _BwStatRow extends StatelessWidget {
               unitKey: unit,
               child: BigStat(
                 label: l.bodyweightStat30Day,
-                value: delta30Label,
+                value: currentAvailable ? delta30Label : '—',
                 unit: delta30Label == l.progressSame ? null : unit,
-                accent: bodyweightDeltaTone(
-                        displayedBodyweightDelta(delta30), goal) ==
-                    DeltaTone.good,
+                accent:
+                    currentAvailable &&
+                    bodyweightDeltaTone(
+                          displayedBodyweightDelta(delta30),
+                          goal,
+                        ) ==
+                        DeltaTone.good,
               ),
             ),
           ),
@@ -299,7 +364,12 @@ class _LogTodayButton extends StatelessWidget {
 // ── HistoryCard ───────────────────────────────────────────────────────────────
 
 class BodyweightHistoryCard extends StatelessWidget {
-  const BodyweightHistoryCard({super.key, required this.series, required this.unit, required this.goal});
+  const BodyweightHistoryCard({
+    super.key,
+    required this.series,
+    required this.unit,
+    required this.goal,
+  });
 
   final List<({String date, double value, int reps, bool isPr})> series;
   final String unit;
@@ -336,9 +406,7 @@ class BodyweightHistoryCard extends StatelessWidget {
             decoration: BoxDecoration(
               border: isLast
                   ? null
-                  : Border(
-                      bottom: BorderSide(color: tokens.line, width: 1),
-                    ),
+                  : Border(bottom: BorderSide(color: tokens.line, width: 1)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Row(
@@ -382,8 +450,11 @@ class BodyweightHistoryCard extends StatelessWidget {
                     style: WorkoutType.mono(
                       size: 11.5,
                       weight: FontWeight.w600,
-                      color: bodyweightDeltaTone(
-                                  displayedBodyweightDelta(diff), goal) ==
+                      color:
+                          bodyweightDeltaTone(
+                                displayedBodyweightDelta(diff),
+                                goal,
+                              ) ==
                               DeltaTone.good
                           ? tokens.accentText
                           : tokens.dim,
