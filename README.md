@@ -1,5 +1,10 @@
 # Reps
 
+> **Current state:** `main` is pre-1.0 development of Alkion, the successor app (see
+> [`docs/alkion/development.md`](docs/alkion/development.md)). **v0.18.1 is the final legacy
+> Reps release.** No tags, releases or use of the release skill happen before Alkion 1.0.
+> The rest of this page describes the legacy Reps app.
+
 A local-first gym logging app. Track your sets, watch your top-set weight climb, own your data.
 
 Built for one lifter's actual training (and used at the gym every week), open-sourced because it might fit yours too. **No account, no cloud, no telemetry** — everything lives on your phone, and if you want multi-device sync you point it at your own server.

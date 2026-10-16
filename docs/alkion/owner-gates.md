@@ -14,7 +14,7 @@ purge, release, signing or publication.
 
 | Gate | What it needs | Current evidence and status |
 | --- | --- | --- |
-| Build and installation identity | Final application ID, signing, repository, license and release route | Development ID `dev.animusstudio.alkion.dev` only. **UNRUN/unauthorized.** |
+| Build and installation identity | Final application ID, signing and release route | Development ID `dev.animusstudio.alkion.dev` only. The source is developed before 1.0 on `main` of this public repository under its existing MIT license. **UNRUN/unauthorized.** |
 | Device and writer inventory | Every installation and writer of the owner's legacy Reps data: phones, desktops, old images, admin/background jobs, server writers | None collected. The tooling refuses legacy roots and never discovers devices. **UNRUN.** |
 | Durable pause and input save | Each legacy writer paused with its owed input saved, before export | Alkion's own lifecycle barrier flushes owed input ([storage](storage.md)); nothing pauses legacy Reps. **UNRUN.** |
 | Complete legacy archive | Server-only rows, local/server comparison, pending queue and deletion evidence, non-exported state disposition, receiving-side restore check of the archive | A `reps-export` full v1 file is domain transfer only. Quarantine preserves explicit incoming files and uncertain queue evidence ([transfer](transfer.md#incoming-evidence-quarantine)). No complete legacy backup is claimed. **UNRUN.** |
