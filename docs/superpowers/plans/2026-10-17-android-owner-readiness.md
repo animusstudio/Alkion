@@ -1,6 +1,6 @@
 # Android owner-readiness implementation plan
 
-Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; T1–T3 reviewed, T4 next**.
+Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; T1–T4 independently reviewed**.
 Direction, supported ID `dev.animusstudio.alkion`, dedicated Alkion key and manual
 signed-APK updates approved; actual key custody/access pending. [Specification](../specs/2026-10-17-android-owner-readiness.md).
 
@@ -81,7 +81,7 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 
 ### T3 — First-start restore and preservation (A7)
 
-Status: implemented; host checks pass, independent task review pending.
+Status: implemented; host checks and independent task review PASS at `2cead98`.
 
 - Own `app/lib/main.dart` pre-runtime launch flow; new
   `app/lib/ui/alkion_recovery/first_start_screen.dart`; existing recovery app/screen;
@@ -123,6 +123,9 @@ Status: implemented; host checks pass, independent task review pending.
 - Own `app/test/alkion/workflows/timer_callback_test.dart`,
   `app/test/session/{workout_notification_test,session_manager_test,notif_strings_test}.dart`
   and new `notification_action_test.dart` there.
+- Bounded prerequisite: adapt `app/test/alkion/recovery/backup_restore_test.dart`
+  from the removed headless helper to the selected-owner action API, preserving
+  its positive control and exact pre-restore token refusal proof.
 - Initialize only the selected runtime's notifier. Visible +30s taps resume one
   owner, validate variant/profile/generation/draft/rest/revision, atomically consume
   the action with draft/timer state and refresh after commit. Replayed tokens no-op;
@@ -132,6 +135,47 @@ Status: implemented; host checks pass, independent task review pending.
   with honest feedback. Enable only needed existing receivers; add no service.
 - Checks: focused tests above plus `test/session/resume_test.dart` and
   `test/session/finish_resume_test.dart`; T5 proves installed plugin/action routing.
+- State: implemented on `2cead98` plus the frozen T4 diff; independent task review
+  PASS after bounded fixes. Runtime/draft ownership precedes plugin initialization and cold-response
+  handling. An issued random token is bound to variant/profile/generation/draft/rest
+  and timer revision; the SQL transaction consumes its timer-state receipt with the
+  draft/timer update. Controller adoption and OS refresh follow COMMIT. Autosaves
+  share the action tail; Finish preparation is refused during an in-flight action
+  and can retry afterward. Replays and stale/foreign/expired/finished tokens do not
+  change active SQL state. Close/restore cancels mirrors; absolute deadlines survive.
+- Capability audit: installed plugin 21.0.0 visible actions target the existing
+  singleTop activity; no background callback is registered. Only the unexported
+  `ScheduledNotificationReceiver` is enabled; no notification service/action
+  receiver is packaged. `POST_NOTIFICATIONS` and optional `SCHEDULE_EXACT_ALARM`
+  replace unconditional exact-alarm entitlement. Check permission/capability on
+  refresh, report denied/revoked/unavailable delivery, and fall back to inexact
+  scheduling without changing the saved deadline. See [Android alarm guidance](https://developer.android.com/about/versions/14/changes/schedule-exact-alarms)
+  and the [installed plugin contract](https://pub.dev/packages/flutter_local_notifications/versions/21.0.0).
+- Initial author checks: `make -C app test TEST='test/alkion/workflows/timer_callback_test.dart test/session/workout_notification_test.dart test/session/session_manager_test.dart test/session/notif_strings_test.dart test/session/notification_action_test.dart test/session/resume_test.dart test/session/finish_resume_test.dart test/alkion/recovery/backup_restore_test.dart test/alkion/workflows/draft_lifecycle_test.dart'`
+  → PASS, 72 tests, 0 skips. Covers replay/refreshed tokens, all fences, SQL rollback
+  and forwarding-after-COMMIT retry, autosave/Finish ordering, cold launch, denied
+  logging/finish, deadline reconciliation and cancellation. After tightening only
+  the test assertion for absent plugin callback handles, the notification test file
+  → PASS, 8 tests. Final `make -C app analyze format` → PASS, 0 issues, 344 files,
+  0 changes. Initial analyzer's ten brace-style infos were corrected; no behavioral
+  test failures occurred before independent review.
+- Review found two blocking action-ordering issues. Bounded fixes retain the exact
+  uncertain token until SQL receipt reconciliation and controller/revision adoption,
+  before later edit saves or replacement issuance. Later rest commands replay in
+  order on the committed result, preserving each original timestamp; Log Set stays
+  responsive and its next rest survives successful or forwarded-error COMMIT.
+  The same focused command above on fixed source → PASS, 77 tests, 0 skips,
+  including intervening +1 edits, timer/draft equality, subsequent Finish, actual
+  gated Log Set, multiple rest commands and autosave reconciliation. Final
+  `make -C app analyze format` → PASS, 0 issues, 344 files, 0 changes. New controls
+  reproduced both findings before the production fix; an initial new fixture's
+  missing required field was corrected before that valid red run. Fix-only review
+  PASS; no remaining findings.
+- `JAVA_HOME=/usr/lib/jvm/java-21-openjdk ANDROID_USER_HOME=<isolated synthetic user> make -C app build-apk-dev`
+  → PASS (7s) on pre-fix source; merged and packaged DEV debug manifests audited
+  as above. The ordering fixes have host checks only; the final installed candidate
+  must rebuild them. Installed notification routing/delivery/permissions,
+  force-stop and A4/A7 remain T5 UNRUN.
 
 ### T5 — Scoped emulator route and actual Android proof (A1–A7)
 
@@ -191,7 +235,7 @@ Status: implemented; host checks pass, independent task review pending.
 
 Independent design review at `92048af`: PASS, 2026-10-17, no remaining findings.
 Public Markdown check at `92048af`: PASS, 114 tracked files; whitespace PASS.
-T1–T3: implemented, independent task review PASS; T4: next; T5: initial driver
+T1–T4: implemented, independent task review PASS; T5: initial driver
 qualification in progress on its isolated branch; T6: not started. Installed
 Android and owner-storage gates remain UNRUN. T1 working-tree checks based on `a2b5005`:
 - `make -C app test TEST='test/alkion/identity/ test/session/workout_notification_test.dart test/session/notif_strings_test.dart'` → PASS, 19 tests, 0 skips.
@@ -213,7 +257,7 @@ T3 final fix review: PASS; already-selected fresh resumes validate staging befor
 identity adoption. Final recovery suite: 71 passed; direct-Dart backup proof: 26
 cases passed, including six fresh-restore SIGKILL boundaries. Analyzer clean;
 format 342 files, 0 changes. Installed Android restore remains UNRUN.
-Next: T4 notification/action ownership; actual signing custody/access
+Next: T5 installed qualification after source integration; actual signing custody/access
 stays gated before owner-candidate work. Record results in acceptance. Final review
 covers A1–A8 and remaining blockers. Every public push needs exact-range review,
 owner approval and owner-run publication; no tag/release follows from this plan.

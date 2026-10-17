@@ -668,5 +668,8 @@
   "alkionFirstRestoreTitle": "Restaurar respaldo",
   "alkionFirstRestoreConfirm": "¿Restaurar este respaldo verificado en esta instalación vacía? Se conservarán el perfil y el trabajo guardado; esta instalación tendrá una identidad nueva.",
   "alkionFirstResumeBody": "La restauración tiene una preparación completa y verificada. Complétala para recuperar el mismo perfil. Se conserva el intento anterior.",
-  "alkionFirstReselectBody": "Elige de nuevo el mismo respaldo para reintentar. Se conservan los archivos anteriores. No se puede crear un perfil independiente ahora."
+  "alkionFirstReselectBody": "Elige de nuevo el mismo respaldo para reintentar. Se conservan los archivos anteriores. No se puede crear un perfil independiente ahora.",
+  "alkionNotificationsDenied": "Las notificaciones están desactivadas. El registro y el fin guardado del descanso siguen funcionando. Puedes activarlas en los ajustes de Android.",
+  "alkionNotificationsInexact": "Las notificaciones de descanso en segundo plano pueden retrasarse. El fin guardado no cambia y se comprueba al volver a abrir Alkion.",
+  "alkionNotificationsUnavailable": "Las notificaciones de entrenamiento no están disponibles. El registro y el fin guardado del descanso siguen funcionando. Abre Alkion para comprobar tu descanso."
 }

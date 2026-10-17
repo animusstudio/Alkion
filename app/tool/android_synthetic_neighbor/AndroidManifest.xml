@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.github.psychonaut0.reps" android:versionCode="1" android:versionName="synthetic">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <application android:label="Synthetic Reps Neighbor" android:allowBackup="false" android:debuggable="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name=".SyntheticNeighbor" android:exported="true"
+            android:taskAffinity="io.github.psychonaut0.reps">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <provider android:name=".SyntheticNeighbor$LegacyProvider" android:exported="false"
+            android:authorities="io.github.psychonaut0.reps.flutter.share_provider"/>
+    </application>
+</manifest>
+
