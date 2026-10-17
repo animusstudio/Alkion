@@ -56,8 +56,14 @@ def read_json(path):
 
 def ini(path):
     require(path.is_file() and not path.is_symlink(), "avd_config_missing_or_linked")
-    return dict(line.split("=", 1) for line in path.read_text().splitlines()
-                if "=" in line and not line.startswith("#"))
+    values = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if "=" not in line or line.startswith("#"):
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip()
+    return values
 
 def adb(args, *tail, check=True):
     # Every invocation, including emu/package queries, carries this exact serial.
@@ -364,6 +370,23 @@ else: raise SystemExit("unexpected transport mutation: "+repr(cmd))
         expect(base, "receipt_must_be_coordinator_owned")
         receipt.chmod(0o600)
         config = directory / "config.ini"
+        original_config = config.read_text()
+        spaced_config = "  # ignored = comment" + chr(10) + " abi.type = x86_64 " + chr(10) + \
+            " tag.id = default " + chr(10) + " image.sysdir.1 = system-images/android-36/default/x86_64/ " + chr(10)
+        config.write_text(spaced_config)
+        avd_ini = avds / "guard-proof.ini"
+        avd_ini.write_text(" path = " + str(directory) + " " + chr(10))
+        expect(base, None)
+        for changed in (spaced_config.replace("android-36", "android-37"),
+                        spaced_config.replace("abi.type = x86_64", "abi.type = arm64-v8a"),
+                        spaced_config.replace("tag.id = default", "tag.id = google_apis")):
+            config.write_text(changed)
+            expect(base, "avd_image_mismatch")
+        config.write_text(spaced_config)
+        avd_ini.write_text(" path = " + str(directory) + "-other " + chr(10))
+        expect(base, "avd_directory_mismatch")
+        config.write_text(original_config)
+        avd_ini.write_text("path=" + str(directory) + chr(10))
         config.rename(directory / "real-config.ini")
         config.symlink_to(directory / "real-config.ini")
         expect(base, "avd_config_missing_or_linked")
