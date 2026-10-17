@@ -5,6 +5,10 @@ Increment start: 2026-10-17. Created: 2026-10-17.
 Baseline: `1892ca4f0c26ba04a12a91825ad06627164c487a`.
 [Specification](../specs/2026-10-17-history-numeric-overflow.md).
 
+Published 2026-10-17: the owner approved the exact range `1892ca4..95b52cd` and
+pushed it; public `main` is `95b52cd`. The **NOT APPROVED** wording that follows
+is the pre-push checkpoint.
+
 Status, 2026-10-17: T1 source task **ACCEPTED** after independent task review
 ([receipt](#t1-task-receipt-and-review-2026-10-17)). T2 integrated
 qualification **PASS** as run

@@ -2,10 +2,14 @@
 
 Increment start: 2026-10-17. Created: 2026-10-17.
 
+Published 2026-10-17: the owner approved the exact range `1892ca4..95b52cd` and
+pushed it; public `main` is `95b52cd`. The **NOT APPROVED** wording that follows
+is the pre-push checkpoint.
+
 Status, 2026-10-17: source task (T1) **ACCEPTED** after independent task
 review. Integrated qualification (T2) **PASS** as run. Independent final
-integration review **PASS**, 2026-10-17, with low-severity findings F1–F5; F4
-was closed by one added real-store test and a full-suite rerun. Publication
+integration review **PASS**, 2026-10-17, with low-severity final-review findings F1–F5 (F5, wording only,
+needs no change); F4 was closed by one added real-store test and a full-suite rerun. Publication
 **NOT APPROVED**: any push needs explicit owner approval of the exact outgoing
 range. Dated checkpoint, 2026-10-17: the change was then an uncommitted working
 tree on `1892ca4`. Receipts are in the
@@ -37,7 +41,8 @@ The problem is already recorded as the
 observed during hygiene T3 and as the known unresolved limit in
 [canonical acceptance](../../alkion/acceptance.md#hygiene-remediation-2026-10-17).
 Those dated records stay as historical text; later dated updates in the hygiene
-documents only record the repair's status and link back here, and add no
+documents only record the repair's status, the dated delivery observation of
+public `main` and links back here, and add no
 evidence to the original records.
 
 ## Purpose and boundary
