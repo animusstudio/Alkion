@@ -1,3 +1,9 @@
+import '../workflows/compatibility_history_test.dart'
+    show archiveOwned, checkpoint;
+import 'package:alkion/identity/alkion_profile.dart';
+import 'package:alkion/store/schema.dart';
+import 'package:alkion/transfer/transfer_service.dart';
+import 'best_load_consumers_test.dart' show importedBytes;
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/exercise_repository.dart';
@@ -11,13 +17,60 @@ void main() {
   late Directory root;
   late LocalStore store;
   setUp(() async {
-    root = await Directory.systemTemp.createTemp('alkion-catalog-domain');
+    root = await Directory.systemTemp.createTemp('alkion-workflow-catalog-');
     store = await openDomainStore(root);
   });
   tearDown(() async {
     await store.close();
-    await root.delete(recursive: true);
+    await archiveOwned(root);
   });
+  test(
+    'compatible catalog loads preserve unavailable negatives and zero without SQL numeric coercion',
+    () async {
+      final profile = await AlkionProfile.open(
+        supportRoot: Directory(
+          '${root.path}/numeric/dev.animusstudio.alkion.dev',
+        ),
+      );
+      final numeric = await LocalStore.open(
+        profile: profile,
+        expectedProfileId: profile.profileId,
+        schema: workflowSchemaRegistry(),
+      );
+      try {
+        final bytes = importedBytes(includeOverflow: true);
+        final outcome = await TransferService(
+          numeric,
+        ).importArtifact(bytes, namespace: 'numeric-best-load');
+        expect(outcome.status, ImportStatus.selected);
+        final before = await numeric.inventory();
+        final ids = {
+          for (final row in await numeric.getAll(
+            "SELECT external_id,local_id FROM origin_mappings WHERE source_kind='exercises'",
+          ))
+            row['external_id'] as String: row['local_id'] as String,
+        };
+        final repo = ExerciseRepository.local(numeric);
+        final expected = {
+          ids['imported']!: 60.0,
+          ids['negative']!: -5.25,
+          ids['zero']!: 0.0,
+        };
+        expect(await repo.prTopSets(), expected);
+        final stream = repo.watchPrTopSets();
+        expect(await stream.first, expected);
+        expect(await stream.first, expected);
+        expect(
+          await numeric.inventory(),
+          before,
+          reason: 'qualification and display reads cannot rewrite originals',
+        );
+        await checkpoint(numeric, root, 'numeric-best-load');
+      } finally {
+        await numeric.close();
+      }
+    },
+  );
   test(
     'rich edits preserve exact source kg, nullable defaults and inverted RIR when untouched',
     () async {

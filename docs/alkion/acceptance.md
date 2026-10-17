@@ -1,10 +1,58 @@
 ---
 app: alkion
 stage: development
-observed: 2026-10-16
+observed: 2026-10-17
 ---
 
 # Alkion integrated acceptance (T7)
+
+## Hygiene remediation (2026-10-17)
+
+Current hygiene increment: **integrated execution PASS; independent R1-public
+final review PASS**, 2026-10-17, reviewer `public_final_compliance`, no findings.
+H1–H7 scoped public implementation readiness is accepted; T1–T6 retain their
+independent task PASS results. This
+execution receipt covers the six bounded repairs in the
+[specification](../superpowers/specs/2026-10-16-alkion-hygiene-remediation.md);
+the [task plan and exact receipts](../superpowers/plans/2026-10-16-alkion-hygiene-remediation.md#t7-integrated-execution-receipt-2026-10-17)
+record the frozen inputs, reviewed qualification fixes, commands and proof paths.
+Earlier AC receipts below retain their original dates and inputs.
+
+| Evidence | Current executed result and scope |
+| --- | --- |
+| H1 — preference Retry | Current full suite reruns actual SQLite rollback/uncertain-COMMIT, queued snapshots, refusal and mounted Retry cases. Exact archived preference/kg/reopen proofs are retained; only an independently reviewed six-brace test cleanup changed the original T1 input. |
+| H2 — Keep current | Fresh backup proof includes actual owned-child SIGKILL after abandon COMMIT/before marker, before and after fencing, explicit retry and two independent process inventories; exact journal/work/profile/generation/staging preservation and refusal controls pass. |
+| H3 — compatible best loads | Native finish/edit/set and parent delete/restore, actual import, same mounted Library/editor refresh and two exact reopens pass. Extreme numeric catalog qualification remains repository-only; the History failure below is unresolved. |
+| H4 — weekly evidence | Actual import with unknown/missing/null and known groups, first/later weekly stream errors and recovery pass. The 16 mounted cases cover en/de/es/it × 320/412dp × 1x/2x with originals retained. Separate target-error branching has static evidence only. |
+| H5 — fresh generation limits | Working 1–99, warm-up 0–99, 100 template slots and 1,000 generated sets are preflighted; direct builders, refusal/no-partial-draft, correction and raw resume/manual preservation pass. The 16 refusal dialog cases cover four locales × four limits at 412dp/1x only. |
+| H6 — app orientation | Independent README review PASS, current relative links/Make/FVM orientation correct and historical body preserved. |
+| H7 — integrated checks | Full suite: 1381 passed, 0 failed, 0 skipped. Full analyzer: no issues. Check-only format: 325 files, zero changed. Linux bundle: 30 files. Driver/store/transfer/backup process proof: 13 / 59 / 4 crash boundaries plus split negative control / 20 cases. Independent R1-public final review PASS, 2026-10-17, no findings. |
+
+The first integrated analyzer found six missing-brace infos in one T1 test; a
+separate bounded fix and independent review accepted the semantic-preserving
+cleanup. The first full suite then exposed old editor fixtures lacking the
+production compatibility view; its 1,368 passed / 13 failed / zero skipped result
+is retained, followed by the independently reviewed fixture repair and current
+passing run. No qualifier feature/source fix was made.
+
+**Known unresolved limit:** an accepted exact 400-digit decimal can reach
+History's raw SUM/CAST, become non-finite and throw in formatting. The earlier
+whole-shell reproducer failed and is retained in the plan; moving that extreme
+catalog case to repository-only qualification did not repair or waive History.
+This suite PASS makes no full-app extreme-numeric qualification claim. The
+fresh generation caps remain conservative policy, not measured device capacity.
+
+Standalone reports retain their scoped UNRUN fields (driver/app boot,
+store/normal startup, store-only backup envelope and physical driver-close
+failure); the separate runtime and backup evidence must be read in their own
+scopes. Physical power loss/physical ENOSPC, Android/devices, owner profiles/media,
+complete legacy capture, live transfer/transport, READY, signing/release and
+publication remain UNRUN/unauthorized. The staged outgoing public-tree check
+remains required; its pre-staging two-untracked-target limitation is retained
+in the plan. G-PUB and G-LEGACY remain closed. No
+public push, published commit or submodule pin advance is established here.
+
+## Historical integrated acceptance (2026-10-15/16)
 
 Canonical Alkion status, observed 2026-10-16: pre-1.0 development on `main` of
 this public repository. T1–T7 app work is accepted; T5, T6 and T7 were each

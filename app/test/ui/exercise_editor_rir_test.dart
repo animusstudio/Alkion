@@ -20,7 +20,7 @@ void main() {
   testWidgets('RIR low and high stay ordered: each drags the other along', (
     tester,
   ) async {
-    await harness.open(tester);
+    await harness.open(tester, withWorkoutHistory: true);
     setPhone(tester, width: 412);
     await tester.pumpWidget(
       harness.wrap(
@@ -63,7 +63,7 @@ void main() {
   });
 
   testWidgets('RIR steppers stay within rirMin to rirMax', (tester) async {
-    await harness.open(tester);
+    await harness.open(tester, withWorkoutHistory: true);
     setPhone(tester, width: 412);
     await tester.pumpWidget(
       harness.wrap(

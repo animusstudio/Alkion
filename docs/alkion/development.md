@@ -1,5 +1,19 @@
 # Alkion development and qualified driver handoff
 
+Current hygiene qualification (2026-10-17) is recorded in
+[integrated acceptance](acceptance.md#hygiene-remediation-2026-10-17): preference
+Retry retains/reconciles owed snapshots, Keep current retries its committed
+journal/marker gap, compatible best loads refresh mounted Library/editor
+consumers, weekly volume retains unknown coverage and errors, and fresh workout
+generation refuses the approved bounded counts before creating a partial draft.
+The app [README](../../app/README.md) now gives current account-free/FVM
+orientation. Execution checks pass in the stated Linux/synthetic scope. Separate
+independent R1-public final review passed on 2026-10-17, reviewer
+`public_final_compliance`, no findings; scoped public implementation readiness is
+accepted. Owner/device/transport/publication gates and the required staged
+public-tree check remain unchanged. The dated T1 driver handoff below remains
+historical evidence.
+
 T1 author evidence on 2026-10-13; T1 was independently accepted as a bounded task on 2026-10-13. Status: [integrated acceptance](acceptance.md). Normal launch now opens the integrated account-free app over the selected store generation; the preflight widget remains only as the startup-failure screen, and it opens no application paths, preferences, credentials, database, notifications, capture plugin, network or updates. The sections below keep the T1 driver handoff as recorded, including its statements about the checkout as it was then. The source is now developed before 1.0 on `main` of this public repository.
 
 Development identity: Android namespace/application ID and Linux application ID `dev.animusstudio.alkion.dev`, Dart package/Linux binary `alkion`, display `Alkion Dev`, endorsement `Alkion, by Animus`. Final application ID, release identity, signing and release remain open. Android OTA permission/provider/native method channel are removed; inherited scheduled/action receivers are disabled for this phase. Notification channel/action/rest-preference keys have separate development identities. OS backup/restore and Android co-install/background/notification behavior are unqualified. No signing configuration was read.

@@ -28,6 +28,7 @@ void main() {
       );
       await harness.open(
         tester,
+        withWorkoutHistory: true,
         seed: (store) async {
           await store.writeTransaction((tx) async {
             await tx.putArtifact(

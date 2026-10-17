@@ -176,7 +176,7 @@ void main() {
 
   testWidgets('a loaded exercise is clean, dirty after an edit, clean once '
       'undone, and clean while its delete is in flight', (tester) async {
-    await harness.open(tester);
+    await harness.open(tester, withWorkoutHistory: true);
     setPhone(tester, width: 412);
     final guard = EditorGuard();
     var closed = 0;
@@ -219,7 +219,7 @@ void main() {
   testWidgets('an exercise being saved reports no unsaved edits', (
     tester,
   ) async {
-    await harness.open(tester);
+    await harness.open(tester, withWorkoutHistory: true);
     setPhone(tester, width: 412);
     final guard = EditorGuard();
     var closed = 0;
@@ -249,7 +249,7 @@ void main() {
   testWidgets('an untouched exercise stays clean when the unit switches', (
     tester,
   ) async {
-    await harness.open(tester);
+    await harness.open(tester, withWorkoutHistory: true);
     setPhone(tester, width: 412);
     final guard = EditorGuard();
     await _mountExercise(tester, harness, guard, id: 'ex3');

@@ -58,7 +58,11 @@ void main() {
     tester,
   ) async {
     // seedLong's ex3 starts at 20 kg = 44.09 lb.
-    await harness.open(tester, prefs: const {'unit': 'lb'});
+    await harness.open(
+      tester,
+      withWorkoutHistory: true,
+      prefs: const {'unit': 'lb'},
+    );
     await _openEditor(tester, harness);
     expect(_startWeight(find.text('44lb')), findsOneWidget);
     expect(await _editSeed(tester, '44lb'), '44');
@@ -70,6 +74,7 @@ void main() {
   ) async {
     await harness.open(
       tester,
+      withWorkoutHistory: true,
       seed: (d) async {
         await seedLong(d);
         final ex = (await ExerciseRepository.local(d).byId('ex3'))!;

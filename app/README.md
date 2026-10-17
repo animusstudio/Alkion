@@ -1,3 +1,30 @@
+# Alkion app development
+
+This is the pre-1.0, account-free Alkion app. Flutter is pinned to 3.44.0 with
+FVM in [`.fvmrc`](.fvmrc). Follow the current [Alkion development
+guide](../docs/alkion/development.md) for toolchain, storage and safety
+boundaries. From the repository root, the active app checks are:
+
+```sh
+make -C app get
+make -C app alkion-toolchain
+make -C app analyze
+make -C app test TEST='test/path/to/focused_test.dart'
+make -C app test
+make -C app format
+make -C app build
+```
+
+`get` uses offline locked dependencies; `format` checks formatting without
+writing files; `build` creates the Linux bundle. Use `make -C app test TEST=...`
+for a focused test path.
+
+## Historical Reps scaffold notes
+
+The following body is retained from the inherited Reps scaffold. It records the
+older PowerSync/backend proof-of-concept and its setup instructions; it is
+historical context, not current Alkion setup or run guidance.
+
 # app/
 
 Flutter (Dart) client for workout-tracker. Local-first: reads/writes a local

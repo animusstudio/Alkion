@@ -603,58 +603,181 @@ final class RestoreService {
   /// (generation stays advanced, so earlier tokens remain stale), journals the
   /// decision there and marks the restore abandoned. Staging is retained.
   Future<void> abandon(String restoreId) async {
-    final (directory, intent) = await _pendingIntent(restoreId);
+    final (directory, _) = await _pendingIntent(restoreId);
     final owner = _acquire(directory);
     try {
+      // Re-read identity, intent and pending selection while holding ownership.
+      final (lockedDirectory, intent) = await _pendingIntent(restoreId);
+      if (lockedDirectory != directory) {
+        throw const StoreException('foreign_profile');
+      }
+      if (pendingRestoreIds(directory).any((id) => id != restoreId)) {
+        throw const StoreException('restore_source_changed');
+      }
+      final staged = intent['staged'] as Map;
+      final stagedPath = p.relative(
+        generationDatabasePath(directory, restoreId),
+        from: directory,
+      );
+      if (staged['database'] != stagedPath) {
+        throw const StoreException('restore_staging_changed');
+      }
+      final stagedFile = p.join(directory, stagedPath);
+      rejectLinkedPath(stagedFile);
+      if (FileSystemEntity.typeSync(stagedFile, followLinks: false) !=
+              FileSystemEntityType.file ||
+          await _fileDigest(stagedFile) != staged['sha256']) {
+        throw const StoreException('restore_staging_changed');
+      }
       final previous = intent['previous'] as Map;
+      final stagedDb = sqlite.sqlite3.open(
+        stagedFile,
+        mode: sqlite.OpenMode.readOnly,
+      );
+      try {
+        final stagedState = await readCoveredState(rawSelect(stagedDb));
+        final metadata = stagedState.tables['profile_state']!.single;
+        if (metadata['profile_id'] != intent['profile_id'] ||
+            metadata['installation_id'] != intent['installation_id'] ||
+            metadata['generation'] != staged['generation'] ||
+            stagedState.digest() != staged['inventory_sha256']) {
+          throw const StoreException('restore_staging_changed');
+        }
+        // Staging already carries the immutable source boundary from the
+        // original selection transaction. The pending intent must still agree.
+        final selection = stagedState.tables['restore_journal']!
+            .where(
+              (entry) =>
+                  entry['restore_id'] == restoreId &&
+                  entry['entry_id'] == 'selection',
+            )
+            .singleOrNull;
+        if (selection == null) {
+          throw const StoreException('restore_staging_changed');
+        }
+        final evidence =
+            jsonDecode(
+                  utf8.decode(
+                    base64.decode(
+                      (selection['entry_bytes'] as Map)['blob_base64']
+                          as String,
+                    ),
+                  ),
+                )
+                as Map;
+        if (selection['from_generation'] != (previous['generation'] ?? 0) ||
+            selection['to_generation'] != staged['generation'] ||
+            evidence['restore_id'] != restoreId ||
+            evidence['mode'] != intent['mode'] ||
+            !_same(
+              Map<String, Object?>.from(evidence['previous'] as Map),
+              Map<String, Object?>.from(previous),
+            )) {
+          throw const StoreException('restore_source_changed');
+        }
+      } finally {
+        stagedDb.close();
+      }
       if (previous['state'] == 'readable') {
-        final db = sqlite.sqlite3.open(
-          p.join(directory, previous['path'] as String),
-        );
+        final selected = selectedRestoreId(directory);
+        final selectedPath = selected == null
+            ? generationDatabaseName
+            : p.relative(
+                generationDatabasePath(directory, selected),
+                from: directory,
+              );
+        if (previous['path'] != selectedPath ||
+            previous['generation'] is! int ||
+            (previous['generation'] as int) < 1) {
+          throw const StoreException('restore_source_changed');
+        }
+        final path = p.join(directory, selectedPath);
+        rejectLinkedPath(path);
+        if (FileSystemEntity.typeSync(path, followLinks: false) !=
+            FileSystemEntityType.file) {
+          throw const StoreException('restore_source_changed');
+        }
+        final db = sqlite.sqlite3.open(path);
         try {
           db.execute('PRAGMA foreign_keys = ON');
           db.execute('PRAGMA synchronous = FULL');
           db.execute('BEGIN IMMEDIATE');
           try {
             final state = await readCoveredState(rawSelect(db));
-            final row = db
-                .select(
-                  'SELECT generation,write_state FROM profile_state WHERE singleton=1',
-                )
-                .single;
+            final row = state.tables['profile_state']!.single;
+            if (row['profile_id'] != intent['profile_id'] ||
+                row['installation_id'] != intent['installation_id']) {
+              throw const StoreException('foreign_profile');
+            }
             final generation = previous['generation'] as int;
-            if (state.digest(excluding: const {'profile_state'}) !=
-                previous['covered_sha256']) {
-              throw const StoreException('restore_source_changed');
+            final decision = {
+              'blob_base64': base64.encode(
+                localBytes({
+                  'format': restoreJournalFormat,
+                  'restore_id': restoreId,
+                  'decision': 'explicit_keep_current_generation',
+                  'staging_retained': stagedPath,
+                }),
+              ),
+            };
+            final decisions = state.tables['restore_journal']!
+                .where((entry) => entry['restore_id'] == restoreId)
+                .toList();
+            if (decisions.isNotEmpty) {
+              // Only our exact committed decision can bridge the marker gap.
+              // Remove just that row to re-check every pre-decision work byte.
+              final entry = decisions.singleOrNull;
+              if (entry == null ||
+                  entry['profile_id'] != intent['profile_id'] ||
+                  entry['entry_id'] != 'abandoned' ||
+                  entry['from_generation'] != row['generation'] ||
+                  entry['to_generation'] != row['generation'] ||
+                  !_same(
+                    entry['entry_bytes'] as Map<String, Object?>,
+                    decision,
+                  ) ||
+                  row['write_state'] != 'writable' ||
+                  (row['generation'] != generation &&
+                      row['generation'] != generation + 1)) {
+                throw const StoreException('restore_source_changed');
+              }
+              final beforeDecision = CoveredState({
+                ...state.tables,
+                'restore_journal': [
+                  for (final candidate in state.tables['restore_journal']!)
+                    if (!identical(candidate, entry)) candidate,
+                ],
+              }, state.keys);
+              if (beforeDecision.digest(excluding: const {'profile_state'}) !=
+                  previous['covered_sha256']) {
+                throw const StoreException('restore_source_changed');
+              }
+            } else {
+              if (state.digest(excluding: const {'profile_state'}) !=
+                  previous['covered_sha256']) {
+                throw const StoreException('restore_source_changed');
+              }
+              if (row['write_state'] == 'fenced' &&
+                  row['generation'] == generation + 1) {
+                db.execute(
+                  "UPDATE profile_state SET write_state='writable' WHERE singleton=1",
+                );
+              } else if (row['write_state'] != 'writable' ||
+                  row['generation'] != generation) {
+                throw const StoreException('restore_source_changed');
+              }
+              _insert(db, 'restore_journal', {
+                'profile_id': intent['profile_id'],
+                'restore_id': restoreId,
+                'entry_id': 'abandoned',
+                'from_generation': row['generation'],
+                'to_generation': row['generation'],
+                'entry_bytes': decision,
+                'created_at': OperationInstant.now().text,
+              });
             }
-            if (row['write_state'] == 'fenced' &&
-                row['generation'] == generation + 1) {
-              db.execute(
-                "UPDATE profile_state SET write_state='writable' WHERE singleton=1",
-              );
-            } else if (row['write_state'] != 'writable' ||
-                row['generation'] != generation) {
-              throw const StoreException('restore_source_changed');
-            }
-            _insert(db, 'restore_journal', {
-              'profile_id': intent['profile_id'],
-              'restore_id': restoreId,
-              'entry_id': 'abandoned',
-              'from_generation': row['generation'],
-              'to_generation': row['generation'],
-              'entry_bytes': {
-                'blob_base64': base64.encode(
-                  localBytes({
-                    'format': restoreJournalFormat,
-                    'restore_id': restoreId,
-                    'decision': 'explicit_keep_current_generation',
-                    'staging_retained': (intent['staged'] as Map)['database'],
-                  }),
-                ),
-              },
-              'created_at': OperationInstant.now().text,
-            });
             db.execute('COMMIT');
+            await checkpoint?.call('restore-abandon-committed');
           } catch (_) {
             if (!db.autocommit) {
               db.execute('ROLLBACK');

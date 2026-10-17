@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -29,18 +30,23 @@ class _LibraryTabState extends State<LibraryTab> {
   late final ExerciseRepository _repo;
   late final Stream<List<Exercise>> _catalogStream = _repo.watchCatalog();
 
-  /// One-shot PR map: exercise_id → best top-set weight (kg).
-  /// Resolved once in initState via FutureBuilder.
+  /// One watch for all exercise best loads, retained across top-tab changes.
+  StreamSubscription<Map<String, double>>? _prSubscription;
   Map<String, double>? _prMap;
 
   @override
   void initState() {
     super.initState();
     _repo = ExerciseRepository.local(context.read<LocalDatabase>());
-    // Resolve PRs once — not N watches.
-    _repo.prTopSets().then((map) {
+    _prSubscription = _repo.watchPrTopSets().listen((map) {
       if (mounted) setState(() => _prMap = map);
     });
+  }
+
+  @override
+  void dispose() {
+    _prSubscription?.cancel();
+    super.dispose();
   }
 
   @override

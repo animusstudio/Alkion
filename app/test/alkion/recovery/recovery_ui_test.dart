@@ -19,6 +19,7 @@ import 'package:provider/provider.dart';
 
 import '../../../tool/alkion_backup_recovery.dart' as proof;
 import '../domains/local_screen_harness.dart';
+import 'abandon_retry_test.dart' show interrupted, AbandonFixture;
 import '../transfer/transfer_screen_test.dart'
     show dismissDialog, press, settleUntil;
 
@@ -368,4 +369,96 @@ void main() {
       }
     },
   );
+  for (final boundary in ['restore-intent', 'restore-fenced']) {
+    testWidgets(
+      'Keep current button retries marker failure and relaunches at $boundary',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 760);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        late Directory temp;
+        late AbandonFixture fixture;
+        final presented = <Widget>[];
+        await tester.runAsync(() async {
+          temp = await Directory.systemTemp.createTemp(
+            'alkion-keep-current-ui-',
+          );
+          fixture = await interrupted(temp, boundary, runtimeCompatible: true);
+          await fixture.markerObstacle.create();
+        });
+        try {
+          await tester.pumpWidget(
+            AlkionRecoveryApp.interrupted(
+              service: fixture.service,
+              pending: [fixture.pending],
+              relaunch: () => launchAlkion(
+                proof.supportRootOf(temp),
+                present: presented.add,
+              ),
+            ),
+          );
+          await tester.pump();
+          Future<void> choose() async {
+            final button = tester.widget<FilledButton>(
+              find.byKey(const Key('restore-keep-current')),
+            );
+            expect(button.onPressed, isNotNull);
+            await tester.runAsync(() async {
+              button.onPressed!();
+            });
+          }
+
+          await choose();
+          await settleUntil(tester, find.textContaining('FileSystemException'));
+          expect(presented, isEmpty);
+          await tester.runAsync(() async {
+            final state = await fixture.raw();
+            expect(
+              state.tables['restore_journal']!.where(
+                (r) => r['entry_id'] == 'abandoned',
+              ),
+              hasLength(1),
+            );
+            await fixture.markerObstacle.delete();
+          });
+          await choose();
+          for (var i = 0; i < 120 && presented.isEmpty; i++) {
+            await settleReal(tester, ticks: 1);
+          }
+          expect(
+            presented.single,
+            isA<AlkionApp>(),
+            reason: presented.single is AlkionPreflightApp
+                ? '${(presented.single as AlkionPreflightApp).error}'
+                : null,
+          );
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+          await tester.runAsync(() async {
+            final first = (presented.single as AlkionApp).runtime;
+            final kept = await proof.coveredOf(first.store);
+            await first.close();
+            for (var i = 0; i < 2; i++) {
+              final runtime = await AlkionRuntime.open(
+                proof.supportRootOf(temp),
+              );
+              try {
+                expect(
+                  (await proof.coveredOf(runtime.store)).digest(),
+                  kept.digest(),
+                );
+              } finally {
+                await runtime.close();
+              }
+            }
+          });
+        } finally {
+          await tester.pumpWidget(const SizedBox());
+          await tester.runAsync(() => temp.delete(recursive: true));
+        }
+      },
+    );
+  }
 }

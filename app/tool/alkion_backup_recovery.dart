@@ -641,9 +641,21 @@ Future<void> child(List<String> args) async {
       case 'abandon':
         await RestoreService(
           supportRootOf(caseRoot),
+          checkpoint: checkpoint,
           workDirectory: scratch,
         ).abandon(args[2]);
         result = {'abandoned': args[2]};
+      case 'inventory':
+        final store = await openStore(caseRoot);
+        try {
+          result = {
+            'state': stateJson(await coveredOf(store)),
+            'generation': store.token.generation,
+            'admission': store.admission.name,
+          };
+        } finally {
+          await store.close();
+        }
       case 'hold':
         final store = await openStore(caseRoot);
         stdout.writeln('BOUNDARY owned ${store.token.generation}');
@@ -1534,6 +1546,141 @@ final class Qualification {
     );
   }
 
+  /// Kill precisely after the Keep-current SQLite COMMIT while its abandoned
+  /// marker is still absent. Retry the same decision, then open in two separate
+  /// owned processes and compare complete inventories, journal bytes and files.
+  Future<void> abandonMarkerInterruptionCases() async {
+    for (final boundary in ['restore-intent', 'restore-fenced']) {
+      final label = 'abandon-marker-gap-$boundary';
+      final root = await copyOfBase(label);
+      final preparation = await runChild(output, '$label-prepare', [
+        'restore',
+        root.path,
+        backupPath,
+        boundary,
+      ], killAt: boundary);
+      final directory = await profileDirectoryOf(root);
+      final restoreId = pendingRestoreIds(directory).single;
+      final staged = File(generationDatabasePath(directory, restoreId));
+      final stagingDigest = sha256.convert(staged.readAsBytesSync()).toString();
+      final identity = File(
+        p.join(supportRootOf(root).path, 'local-profile.json'),
+      );
+      final identityDigest = sha256
+          .convert(identity.readAsBytesSync())
+          .toString();
+      final killed = await runChild(output, '$label-commit', [
+        'abandon',
+        root.path,
+        restoreId,
+        'restore-abandon-committed',
+      ], killAt: 'restore-abandon-committed');
+      final markerAbsent = !File(
+        p.join(generationDirectory(directory, restoreId), restoreAbandonedName),
+      ).existsSync();
+      final stillPending = pendingRestoreIds(directory).contains(restoreId);
+      final refused = await reopenTwice(root);
+      final (committed, metadata) = await rawGeneration(
+        p.join(directory, generationDatabaseName),
+        root,
+      );
+      final retried = await runChild(output, '$label-retry', [
+        'abandon',
+        root.path,
+        restoreId,
+      ]);
+      final launches = <Map<String, Object?>>[];
+      for (var i = 0; i < 2; i++) {
+        final child = await runChild(output, '$label-launch-$i', [
+          'inventory',
+          root.path,
+        ]);
+        final result = Map<String, Object?>.from(child['result'] as Map);
+        require(result['error'] == null, '$label launch failed');
+        launches.add(result);
+      }
+      final states = [
+        for (final launch in launches)
+          stateFromJson(Map<String, Object?>.from(launch['state'] as Map)),
+      ];
+      final expectedGeneration =
+          previousGeneration + (boundary == 'restore-fenced' ? 1 : 0);
+      final journal = committed.tables['restore_journal']!;
+      final decision = journal.single;
+      final decisionBytes = localBytes({
+        'format': restoreJournalFormat,
+        'restore_id': restoreId,
+        'decision': 'explicit_keep_current_generation',
+        'staging_retained': p.relative(staged.path, from: directory),
+      });
+      const excluded = {'profile_state', 'restore_journal'};
+      record(
+        label,
+        {
+          'preparation_actually_sigkilled_at_boundary':
+              preparation['boundary_reached'] == true &&
+              preparation['exit'] == -9,
+          'abandon_actually_sigkilled_after_commit_before_marker':
+              killed['boundary_reached'] == true &&
+              killed['exit'] == -9 &&
+              markerAbsent &&
+              stillPending,
+          'opening_refused_until_explicit_retry':
+              refused == 'refused:restore_interrupted',
+          'retry_succeeded': (retried['result'] as Map)['error'] == null,
+          'one_exact_committed_decision':
+              journal.length == 1 &&
+              decision['profile_id'] == profileId &&
+              decision['restore_id'] == restoreId &&
+              decision['entry_id'] == 'abandoned' &&
+              decision['from_generation'] == expectedGeneration &&
+              decision['to_generation'] == expectedGeneration &&
+              _canon(decision['entry_bytes']) ==
+                  _canon({'blob_base64': base64.encode(decisionBytes)}),
+          'all_previous_work_exact':
+              committed.digest(excluding: excluded) ==
+              previous.digest(excluding: excluded),
+          'generation_and_writability_preserved':
+              metadata['generation'] == expectedGeneration &&
+              metadata['write_state'] == 'writable' &&
+              launches.every(
+                (launch) =>
+                    launch['generation'] == expectedGeneration &&
+                    launch['admission'] == 'open',
+              ),
+          'two_independent_process_launches_exact': states.every(
+            (state) => state.digest() == committed.digest(),
+          ),
+          'profile_identity_exact':
+              sha256.convert(identity.readAsBytesSync()).toString() ==
+              identityDigest,
+          'staging_retained_exact':
+              sha256.convert(staged.readAsBytesSync()).toString() ==
+              stagingDigest,
+          'marker_completed_selection_unchanged':
+              pendingRestoreIds(directory).isEmpty &&
+              selectedRestoreId(directory) == null &&
+              File(
+                p.join(
+                  generationDirectory(directory, restoreId),
+                  restoreAbandonedName,
+                ),
+              ).existsSync(),
+        },
+        {
+          'preparation': preparation,
+          'killed_child': killed,
+          'retry': retried,
+          'before': stateJson(previous),
+          'committed_before_retry': stateJson(committed),
+          'launches': launches,
+          'staging_sha256': stagingDigest,
+          'identity_sha256': identityDigest,
+        },
+      );
+    }
+  }
+
   Future<void> staleProcessCase() async {
     final root = await copyOfBase('stale-process');
     final before = await reopenTwice(root) as CoveredState;
@@ -1739,6 +1886,7 @@ Future<void> main(List<String> args) async {
   await q.selectionInterruptionCase();
   await q.freshStorageCase();
   await q.abandonBeforeFenceCase();
+  await q.abandonMarkerInterruptionCases();
   await q.unreadablePreviousCase();
   await q.staleProcessCase();
   await q.negativeControls();
