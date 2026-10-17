@@ -10,6 +10,7 @@ import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
+import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_format.dart';
 import '../units/unit_service.dart';
@@ -81,7 +82,7 @@ class _BodyweightViewState extends State<BodyweightView> {
             16,
             8 + MediaQuery.paddingOf(context).top,
             16,
-            96,
+            bottomNavInset(context),
           ),
           children: [
             // Header
@@ -90,15 +91,6 @@ class _BodyweightViewState extends State<BodyweightView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    l.progressProgression,
-                    style: WorkoutType.mono(
-                      size: 11.5,
-                      color: context.tokens.faint,
-                      letterSpacing: 0.06 * 11.5,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
                   Text(
                     l.bodyweightTrend,
                     style: WorkoutType.display(
@@ -117,21 +109,39 @@ class _BodyweightViewState extends State<BodyweightView> {
               subtitle: l.bodyweightDailyLog(entries.length),
               onTap: widget.onOpenPicker,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
             // Chart
             WCard(
               padding: const EdgeInsets.fromLTRB(8, 16, 8, 10),
-              child: LineChart(
-                key: ValueKey('bw-$unit'),
-                series: series,
-                height: 210,
-                unit: unit,
-                showReps: false,
-                formatValue: fmtBodyweight,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  LineChart(
+                    key: ValueKey('bw-$unit'),
+                    series: series,
+                    height: 210,
+                    unit: unit,
+                    showReps: false,
+                    formatValue: fmtBodyweight,
+                  ),
+                  if (series.length < 2)
+                    Text(
+                      allEntries.isEmpty
+                          ? l.bodyweightEmpty
+                          : series.isEmpty
+                          ? l.bodyweightUnavailable
+                          : l.progressTrendNeedsMore,
+                      textAlign: TextAlign.center,
+                      style: WorkoutType.body(
+                        size: 14,
+                        color: context.tokens.dim,
+                      ),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
             if (allEntries.any((entry) => !entry.dateAvailable))
               Text(
@@ -139,7 +149,7 @@ class _BodyweightViewState extends State<BodyweightView> {
                   allEntries.where((entry) => entry.dateAvailable).length,
                   allEntries.length,
                 ),
-                style: WorkoutType.mono(size: 11, color: context.tokens.faint),
+                style: WorkoutType.body(size: 12, color: context.tokens.faint),
               ),
             // BigStat cards
             _BwStatRow(
@@ -151,23 +161,23 @@ class _BodyweightViewState extends State<BodyweightView> {
                   allEntries.last.weightKg != null &&
                   allEntries.every((entry) => entry.dateAvailable),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
             // Log today's weight button
             _LogTodayButton(repo: _bwRepo),
-            const SizedBox(height: 22),
+            const SizedBox(height: 24),
 
             for (final entry in allEntries.where((e) => e.weightKg == null))
               Text(
                 '${entry.date} · ${l.bodyweightUnavailable}',
-                style: WorkoutType.mono(size: 12, color: context.tokens.faint),
+                style: WorkoutType.body(size: 12, color: context.tokens.faint),
               ),
             // History section
             SectionLabel(
               label: l.bodyweightHistory,
               action: Text(
                 l.bodyweightEntriesCount(allEntries.length),
-                style: WorkoutType.mono(size: 11, color: context.tokens.dim),
+                style: WorkoutType.mono(size: 12, color: context.tokens.dim),
               ),
             ),
             const SizedBox(height: 8),
@@ -176,9 +186,11 @@ class _BodyweightViewState extends State<BodyweightView> {
                 padding: const EdgeInsets.symmetric(vertical: 32),
                 child: Center(
                   child: Text(
-                    l.bodyweightEmpty,
-                    style: WorkoutType.mono(
-                      size: 13,
+                    allEntries.isEmpty
+                        ? l.bodyweightEmpty
+                        : l.bodyweightUnavailable,
+                    style: WorkoutType.body(
+                      size: 14,
                       color: context.tokens.faint,
                     ),
                   ),
@@ -211,42 +223,29 @@ class _BwStatRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    Widget tile(
+      String label,
+      String value,
+      String? shownUnit, {
+      bool accent = false,
+    }) => WCard(
+      padding: const EdgeInsets.all(16),
+      child: UnitSwap(
+        unitKey: shownUnit ?? '',
+        child: BigStat(
+          label: label,
+          value: value,
+          unit: shownUnit,
+          accent: accent,
+        ),
+      ),
+    );
     if (series.isEmpty) {
-      return Row(
+      return ProgressStatRow(
         children: [
-          Expanded(
-            child: WCard(
-              padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-              child: BigStat(
-                label: l.bodyweightStatCurrent,
-                value: '—',
-                unit: unit,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: WCard(
-              padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-              child: BigStat(
-                label: l.bodyweightStat30Day,
-                value: '—',
-                unit: unit,
-                accent: false,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: WCard(
-              padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-              child: BigStat(
-                label: l.bodyweightStatLowest,
-                value: '—',
-                unit: unit,
-              ),
-            ),
-          ),
+          tile(l.bodyweightStatCurrent, '—', unit),
+          tile(l.bodyweightStat30Day, '—', unit),
+          tile(l.bodyweightStatLowest, '—', unit),
         ],
       );
     }
@@ -271,56 +270,23 @@ class _BwStatRow extends StatelessWidget {
     final delta30 = last - roundBodyweight(month30.value);
     final delta30Label = signedChange(delta30, fmtBodyweight, l);
 
-    return Row(
+    return ProgressStatRow(
       children: [
-        Expanded(
-          child: WCard(
-            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-            child: UnitSwap(
-              unitKey: unit,
-              child: BigStat(
-                label: l.bodyweightStatCurrent,
-                value: currentAvailable ? fmtBodyweight(last) : '—',
-                unit: unit,
-              ),
-            ),
-          ),
+        tile(
+          l.bodyweightStatCurrent,
+          currentAvailable ? fmtBodyweight(last) : '—',
+          unit,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: WCard(
-            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-            child: UnitSwap(
-              unitKey: unit,
-              child: BigStat(
-                label: l.bodyweightStat30Day,
-                value: currentAvailable ? delta30Label : '—',
-                unit: delta30Label == l.progressSame ? null : unit,
-                accent:
-                    currentAvailable &&
-                    bodyweightDeltaTone(
-                          displayedBodyweightDelta(delta30),
-                          goal,
-                        ) ==
-                        DeltaTone.good,
-              ),
-            ),
-          ),
+        tile(
+          l.bodyweightStat30Day,
+          currentAvailable ? delta30Label : '—',
+          delta30Label == l.progressSame ? null : unit,
+          accent:
+              currentAvailable &&
+              bodyweightDeltaTone(displayedBodyweightDelta(delta30), goal) ==
+                  DeltaTone.good,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: WCard(
-            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-            child: UnitSwap(
-              unitKey: unit,
-              child: BigStat(
-                label: l.bodyweightStatLowest,
-                value: fmtBodyweight(lowest),
-                unit: unit,
-              ),
-            ),
-          ),
-        ),
+        tile(l.bodyweightStatLowest, fmtBodyweight(lowest), unit),
       ],
     );
   }
@@ -338,22 +304,22 @@ class _LogTodayButton extends StatelessWidget {
     final tokens = context.tokens;
     return SizedBox(
       width: double.infinity,
-      height: 50,
       child: TextButton(
         style: TextButton.styleFrom(
-          backgroundColor: tokens.accent,
+          backgroundColor: tokens.action,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
-          padding: EdgeInsets.zero,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          minimumSize: const Size(48, 52),
         ),
         onPressed: () => showAddWeightSheet(context),
         child: Text(
           AppLocalizations.of(context).bodyweightLogToday,
-          style: WorkoutType.display(
-            size: 15,
+          style: WorkoutType.body(
+            size: 16,
             weight: FontWeight.w700,
-            color: tokens.accentInk,
+            color: tokens.onAction,
           ),
         ),
       ),
@@ -408,58 +374,65 @@ class BodyweightHistoryCard extends StatelessWidget {
                   ? null
                   : Border(bottom: BorderSide(color: tokens.line, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Row(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Date with weekday
-                SizedBox(
-                  width: 92,
-                  child: Text(
-                    fmtDate(entry.date, localeName, weekday: true),
-                    style: WorkoutType.mono(size: 12, color: tokens.dim),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false,
-                  ),
+                Text(
+                  fmtDate(entry.date, localeName, weekday: true),
+                  style: WorkoutType.mono(size: 12, color: tokens.dim),
+                  maxLines: 1,
+                  softWrap: false,
                 ),
-                const SizedBox(width: 12),
-                // Weight value
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: fmtBodyweight(value),
-                        style: WorkoutType.mono(
-                          size: 14,
-                          weight: FontWeight.w700,
-                          color: tokens.text,
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: fmtBodyweight(value),
+                                style: WorkoutType.mono(
+                                  size: 14,
+                                  weight: FontWeight.w700,
+                                  color: tokens.text,
+                                ),
+                              ),
+                              TextSpan(
+                                text: unit,
+                                style: WorkoutType.mono(
+                                  size: 12,
+                                  color: tokens.faint,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      TextSpan(
-                        text: unit,
-                        style: WorkoutType.mono(size: 10, color: tokens.faint),
-                      ),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                // Signed, and accent only when it moves the way the goal wants.
-                if (prevValue != null)
-                  Text(
-                    signedChange(diff, fmtBodyweight, l),
-                    style: WorkoutType.mono(
-                      size: 11.5,
-                      weight: FontWeight.w600,
-                      color:
-                          bodyweightDeltaTone(
-                                displayedBodyweightDelta(diff),
-                                goal,
-                              ) ==
-                              DeltaTone.good
-                          ? tokens.accentText
-                          : tokens.dim,
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    if (prevValue != null)
+                      Text(
+                        signedChange(diff, fmtBodyweight, l),
+                        style: WorkoutType.mono(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color:
+                              bodyweightDeltaTone(
+                                    displayedBodyweightDelta(diff),
+                                    goal,
+                                  ) ==
+                                  DeltaTone.good
+                              ? tokens.accentText
+                              : tokens.dim,
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           );

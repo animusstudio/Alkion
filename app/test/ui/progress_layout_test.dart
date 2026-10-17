@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/theme/typography.dart';
+import 'package:alkion/widgets/progress_widgets.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/progress_screen.dart';
 import 'package:alkion/widgets/section_label.dart';
 
@@ -71,4 +74,74 @@ void main() {
       lessThanOrEqualTo(304.01),
     );
   });
+  for (final code in ['en', 'de', 'es', 'it']) {
+    testWidgets(
+      'large-text metric controls keep labels and 48dp targets in $code',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        String? picked;
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: wrapL10n(
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: MetricTabs(
+                  selected: 'top',
+                  onSelect: (id) => picked = id,
+                ),
+              ),
+              locale: Locale(code),
+            ),
+          ),
+        );
+        final controls = find.descendant(
+          of: find.byType(MetricTabs),
+          matching: find.byType(InkWell),
+        );
+        expect(controls, findsNWidgets(4));
+        for (final element in controls.evaluate()) {
+          final rect = tester.getRect(find.byWidget(element.widget));
+          expect(rect.width, greaterThanOrEqualTo(48));
+          expect(rect.height, greaterThanOrEqualTo(48));
+          expect(rect.right, lessThanOrEqualTo(304.1));
+        }
+        expectNoSplitWords(tester, within: find.byType(MetricTabs));
+        await tester.tap(controls.last);
+        expect(picked, 'reps');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'progress selection uses neutral control colors and a blue focus state',
+    (tester) async {
+      final theme = buildTheme(Brightness.light, defaultWorkoutAccent);
+      final tokens = theme.extension<WorkoutTokens>()!;
+      await tester.pumpWidget(
+        wrapL10n(
+          Theme(
+            data: theme,
+            child: ProgressSelectorRow(
+              icon: Icons.fitness_center,
+              title: 'Bench press',
+              subtitle: 'Chest',
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+      final icon = tester.widget<Icon>(find.byIcon(Icons.fitness_center));
+      expect(icon.color, tokens.text);
+      final ink = tester.widget<InkWell>(find.byType(InkWell));
+      expect(ink.focusColor, tokens.focus.withValues(alpha: .16));
+      expect(
+        tester.getSize(find.byType(ProgressSelectorRow)).height,
+        greaterThanOrEqualTo(48),
+      );
+    },
+  );
 }

@@ -32,7 +32,7 @@ class VolumeBars extends StatelessWidget {
   final List<({String muscle, int sets, int target})> rows;
 
   static TextStyle _countStyle(Color color) =>
-      WorkoutType.mono(size: 11.5, color: color);
+      WorkoutType.mono(size: 12, color: color);
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +72,7 @@ class VolumeBars extends StatelessWidget {
             children: [
               for (final (index, row) in rows.indexed)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 11),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: _VolumeRow(
                     row: row,
                     tokens: tokens,
@@ -125,7 +125,7 @@ class _VolumeRow extends StatelessWidget {
           width: labelWidth,
           child: FitLabel(
             row.muscle,
-            style: WorkoutType.body(size: 12.5, color: tokens.dim),
+            style: WorkoutType.body(size: 14, color: tokens.dim),
           ),
         ),
         const SizedBox(width: 12),
@@ -140,7 +140,7 @@ class _VolumeRow extends StatelessWidget {
                 Container(
                   key: const Key('volume-track'),
                   decoration: BoxDecoration(
-                    color: tokens.surface3,
+                    color: tokens.grid,
                     borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                 ),
@@ -174,7 +174,7 @@ class _VolumeRow extends StatelessWidget {
                   child: Container(
                     key: const Key('volume-target-tick'),
                     width: 1.5,
-                    color: tokens.text.withValues(alpha: 0.4),
+                    color: tokens.lineStrong,
                   ),
                 ),
               ],

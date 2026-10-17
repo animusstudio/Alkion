@@ -1,6 +1,6 @@
 # Alkion UI/UX refactor plan
 
-Date: 2026-10-17. Status: **approved scope and visual direction; T1 source review PASS**.
+Date: 2026-10-17. Status: **approved scope and visual direction; T1 and T4 source reviews PASS**.
 
 ## Outcome
 
@@ -44,8 +44,15 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
 ### T4 — History, Progress and measurements
 
 - **Behavior:** Clarify history grouping, session edit/resume and bodyweight/history entry; make chart units, exact values, partial coverage and unavailable evidence understandable without inventing zeros. Keep targets distinct from measured data.
-- **Owned files/callers:** `app/lib/ui/{history_screen.dart,progress_screen.dart,bodyweight_view.dart,add_weight_sheet.dart,targets_tab.dart,progress_change.dart}` and only named chart/value callers `app/lib/widgets/{line_chart.dart,sparkline.dart,volume_bars.dart,stat_tile.dart,pr_badge.dart}` as needed. Own these surfaces' strings in all four ARB files.
+- **Owned files/callers:** `app/lib/ui/{history_screen.dart,progress_screen.dart,bodyweight_view.dart,add_weight_sheet.dart,targets_tab.dart,progress_change.dart}` and only named chart/value callers `app/lib/widgets/{line_chart.dart,sparkline.dart,volume_bars.dart,stat_tile.dart,pr_badge.dart,progress_widgets.dart}` as needed. Own these surfaces' strings in all four ARB files.
 - **Focused checks:** `make -C app test TEST=test/ui/history_layout_test.dart`; `... TEST=test/ui/history_session_card_test.dart`; `... TEST=test/ui/progress_layout_test.dart`; `... TEST=test/ui/progress_screen_target_test.dart`; `... TEST=test/ui/bodyweight_history_card_test.dart`; `... TEST=test/alkion/domains/measurement_null_evidence_test.dart`; `... TEST=test/alkion/domains/measurements_targets_test.dart`; `... TEST=test/widgets/line_chart_value_label_test.dart`; `... TEST=test/widgets/unit_swap_test.dart`.
+
+- **Bounded ownership amendments (2026-10-17):** coordinator assigned `app/lib/widgets/progress_widgets.dart` for the existing Progress selector, metric tabs and stat controls, `app/test/widgets/line_chart_fonts_test.dart` for the chart label size and real-font metric acceptance, and `app/test/ui/add_weight_sheet_test.dart` for normal/reduced-motion direct-save qualification after a bounded route-timing diagnostic. Preserve numeric and domain behavior. ARB ownership remains serialized with T3; T4 preserves existing localized copy.
+
+- **T4 receipt (2026-10-17, implementation ready for independent review):** translated existing History, Progress, measurements and target presentation to the shared tokens; neutral controls, Hanken labels, tabular mono values, flat chart/record marks, scaled chart gutters, responsive stats and preserved exact/unknown/partial evidence. Existing localized copy retained; no ARB, input, persistence or domain changes. Shared `stat_tile.dart` and `volume_bars.dart` edits are ready for serialized handoff to T2 after review.
+- **T4 verification:** pinned `make -C app test` batch of all nine planned files plus `test/widgets/line_chart_fonts_test.dart` passed **82 tests**; final `make -C app analyze` found no issues. Supplemental direct-save checks preserve the committed 81.4 assertion and five-second query timeout in normal and reduced motion. Initial chart paragraph-lifetime and one-point-widget regressions were corrected and covered by the passing focused batch. A shortened sheet exit caused a reproducible post-close query timeout; the unchanged reviewed baseline passed the same isolated test, and restoring incumbent Material route timing passed afterward. Normal motion keeps Material timing; reduced motion uses no animation. Native visual/device qualification remains pending T8.
+
+- **T4 review-fix receipt (2026-10-17):** month labels now reject intersections using final measured, scaled and edge-clamped bounds; yearlong 320 dp/2x coverage passes in all four locales. Stored rows with no readable measurements use the existing unavailable-evidence message in the chart and history, while a genuinely empty store keeps the empty message. No ARB, numeric, domain, coverage, logging or persistence changes. Chart/font/null-evidence checks passed in the affected batch; the final bodyweight file passed 10 tests. Two new-test assumptions were corrected through a bounded replan (qualified-entry subtitle count, then uppercased section heading); substantive unavailable-message, dash-stat and retained-row assertions remain. Analysis is clean; native qualification remains pending.
 
 ### T5 — Plans and exercise catalog
 
@@ -77,6 +84,8 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
 - **Status:** T1 shared foundation is implemented and independently reviewed PASS.
   The 11 planned focused test files plus settings regression passed 81 tests;
   analyzer and whitespace checks passed. Shared primitives are handed off.
-  T2–T8 remain pending; no native visual or final device acceptance is claimed.
+  T4 History/Progress/measurements passed independent review after two bounded
+  fixes; affected regression checks passed. Shared stat/value primitives are handed off.
+  T2–T3 and T5–T8 remain pending; no native visual or final device acceptance is claimed.
 
 Related: [design brief](../specs/2026-10-17-ui-ux-refactor.md).
