@@ -8,6 +8,8 @@ export GIT_OPTIONAL_LOCKS := 0
 
 .PHONY: help get analyze test fmt format build build-apk build-apk-dev build-apk-supported alkion-driver-qualification alkion-transfer-recovery alkion-backup-recovery run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean
 .PHONY: alkion-verify-backup
+.PHONY: android-synthetic android-synthetic-self-test android-synthetic-neighbor android-synthetic-driver-apk
+ALKION_SYNTHETIC_ACTION ?= check
 help:
 	@echo "Alkion: get, analyze, test TEST=<path>, format, fmt FORMAT_FILES=<owned paths>, alkion-driver-qualification ALKION_OUTPUT=<fresh /tmp path>, alkion-transfer-recovery ALKION_OUTPUT=<fresh transfer-proof* path>, alkion-backup-recovery ALKION_OUTPUT=<fresh backup-proof* path>"
 get:
@@ -53,6 +55,16 @@ build-apk-dev:
 	$(MAKE) build-apk ALKION_FLAVOR=dev
 build-apk-supported:
 	$(MAKE) build-apk ALKION_FLAVOR=supported
+android-synthetic:
+	bash tool/android_synthetic.sh --action "$(ALKION_SYNTHETIC_ACTION)" --avd "$(ALKION_AVD)" --serial "$(ALKION_SERIAL)" --receipt "$(ALKION_RECEIPT)" --output "$(ALKION_OUTPUT)"
+android-synthetic-self-test:
+	bash tool/android_synthetic.sh --action self-test
+android-synthetic-neighbor:
+	bash tool/android_synthetic.sh --action build-neighbor --output "$(ALKION_OUTPUT)"
+android-synthetic-driver-apk:
+	@case "$(ALKION_FLAVOR)" in dev|supported) ;; *) echo 'ALKION_FLAVOR must be dev or supported.' >&2; exit 2 ;; esac
+	@printf '%s' "$(ALKION_PROOF_RUN)" | rg -q '^[a-f0-9]{32}$$' || (echo 'Explicit 32-hex ALKION_PROOF_RUN is required.' >&2; exit 2)
+	$(FLUTTER) build apk --debug --no-pub --flavor "$(ALKION_FLAVOR)" --target-platform android-x64 --target integration_test/android_driver_test.dart --dart-define=ALKION_PROOF_RUN="$(ALKION_PROOF_RUN)"
 # No normal startup, legacy capture, release/signing, SDK installation/device
 # discovery, scaffold mutation or destructive clean is authorized at T1.
 run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean:

@@ -16,11 +16,47 @@ checks passed on the earlier T1 inputs. Both variants coexist on the named
 disposable API 36 x86_64 emulator and reach account-free Welcome after in-place
 updates, without clearing storage. Native attestation handles the OS-owned
 `/data/user/0` alias while retaining owned-path link refusals. Full workout,
-lifecycle, document-provider and Android qualification remain unrun.
+lifecycle, document-provider and the remaining Android gates below remain unrun.
 
 The reviewed portable directory-flush fix at `69596ba` removes the ARM flag
-mismatch. Dev-only Android directory fsync passed; complete driver qualification
-remains pending after two test-setup failures. No ARM-device result is inferred.
+mismatch. Initial T5 driver phase **PASS** at `708b4f7` on a fresh named API 36
+AOSP x86_64 emulator, native SQLite 3.53.1: both development and supported
+installations completed all ten cases; the synthetic legacy-package neighbor's
+bytes remained unchanged. Cases cover directory fsync, atomic domain/outbox and
+replay, real deferred-COMMIT 787 recovery, watches/relisten, serialized production
+admission plus actual SQLite concurrent snapshots, coherent WAL backup with a
+hot-main negative control, native-handle/isolate ownership, two reopens and stale
+generation fencing. Handle/isolate ownership is within one OS process.
+
+The executed route used pinned FVM 3.44.0, selected JDK 21, a disposable debug key,
+an explicit emulator serial, and a coordinator-owned fresh receipt/output:
+`make -C app android-synthetic ALKION_SYNTHETIC_ACTION=driver` with those required
+`ALKION_AVD`, `ALKION_SERIAL`, `ALKION_RECEIPT` and `ALKION_OUTPUT` inputs.
+Local receipts retain the exact command and target details. APK bytes:
+
+| Installation at `708b4f7` | APK SHA-256 |
+| --- | --- |
+| `dev.animusstudio.alkion.dev` | `98d43d71cd343dad5a193f58ace7383d8a7ac334fd989338fa7ad03ca73e1ca8` |
+| `dev.animusstudio.alkion` | `2dfeab01db63757313aa2f84b0820c7835cf41e153717bcbd9676e8c73f69e69` |
+
+Two earlier development-only runs stopped on test setup: a new-record revision
+conflicted with the shared draft before COMMIT, then a writer inherited the
+reader's locked zone. Reviewed fixes preceded the fresh successful run; failed
+reports and installation data remain retained. Neither failed run qualifies its
+unreached cases or the supported variant. An added OS-process ownership case now
+passes in the same-source native Linux batch (11 cases, 1 test, 0 skips); it checks
+a distinct child blocked while the native owner holds its lock and succeeding
+after release, with exact lock bytes and inventory preserved. Its Android result
+is **UNRUN**; adding it does not change the historical ten-case Android receipt.
+
+T5 overall remains **IN_PROGRESS**. OS-process ownership on Android, process-kill
+recovery, same-run updates and wrong-signer rejection, lifecycle/notifications
+and permission changes, actual document-provider failures, off-device delivery
+verification and separate fresh receiving restore remain unrun. ARM-device,
+physical-power-loss and the final refactored/signed installed-candidate gates
+remain open. Results apply to the recorded inputs; relevant source, signing or
+platform changes require affected checks again.
+
 First-start restore source passed independent review, including same-variant
 checks and changed/linked staging refusal before identity publication. Recovery
 tests passed 71 cases; Linux process proof passed 26, including six fresh-restore
