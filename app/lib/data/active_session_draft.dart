@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../store/local_store.dart';
 import '../session/active_session_controller.dart';
+import '../session/notification_action.dart';
 import 'json_file_store.dart';
 import 'session_writer.dart';
 
@@ -25,6 +26,7 @@ class DraftStore {
   static const fileName = 'workout-draft.json';
   int persistedRevision = 0;
   PreparedWorkflowState? pending;
+  NotificationAction? pendingNotificationAction;
   static SessionDraft? tryDecode(String raw) {
     try {
       return SessionDraft.fromJson(jsonDecode(raw) as Map<String, dynamic>);
@@ -37,6 +39,9 @@ class DraftStore {
     final db = database;
     if (db == null) {
       return Future.error(const StoreException('local_store_required'));
+    }
+    if (pendingNotificationAction != null) {
+      return Future.error(const StoreException('notification_action_pending'));
     }
     final intent = pending ??= PreparedWorkflowState(
       db,
@@ -53,6 +58,9 @@ class DraftStore {
   }
 
   Future<SessionDraft?> load() async {
+    if (pendingNotificationAction != null) {
+      throw const StoreException('notification_action_pending');
+    }
     final db = database;
     if (db == null) {
       if (_incoming != null) {
@@ -93,6 +101,9 @@ class DraftStore {
   }
 
   Future<void> clear() {
+    if (pendingNotificationAction != null) {
+      return Future.error(const StoreException('notification_action_pending'));
+    }
     final db = database;
     if (db == null) {
       return Future.error(const StoreException('local_store_required'));
@@ -115,6 +126,44 @@ class DraftStore {
   void completed() {
     persistedRevision++;
     pending = null;
+  }
+
+  Future<NotificationAction?> notificationAction() {
+    if (pendingNotificationAction != null) {
+      return Future.error(const StoreException('notification_action_pending'));
+    }
+    return database == null
+        ? Future.value(null)
+        : issueNotificationAction(database!);
+  }
+
+  Future<CommittedRestChange?> consumeAction(NotificationAction action) async {
+    final db = database;
+    if (db == null) return null;
+    if (pending != null) throw const StoreException('stale_local_state');
+    final previous = pendingNotificationAction;
+    if (previous != null && previous.encode() != action.encode()) {
+      throw const StoreException('notification_action_pending');
+    }
+    pendingNotificationAction ??= action;
+    return reconcileNotificationAction();
+  }
+
+  /// A thrown forwarding result cannot prove whether COMMIT happened. Retain
+  /// the exact token until its issued/consumed SQL receipt answers that question.
+  Future<CommittedRestChange?> reconcileNotificationAction() async {
+    final action = pendingNotificationAction;
+    if (action == null) return null;
+    final result = await consumeNotificationAction(database!, action);
+    if (result != null) persistedRevision = result.draftRevision;
+    return result;
+  }
+
+  void acknowledgeNotificationAction(NotificationAction action) {
+    if (pendingNotificationAction?.encode() != action.encode()) {
+      throw const StoreException('notification_action_pending');
+    }
+    pendingNotificationAction = null;
   }
 
   Future<File> file() =>

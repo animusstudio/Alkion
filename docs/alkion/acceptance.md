@@ -78,6 +78,13 @@ First-start restore source passed independent review, including same-variant
 checks and changed/linked staging refusal before identity publication. Recovery
 tests passed 71 cases; Linux process proof passed 26, including six fresh-restore
 SIGKILL boundaries. Installed Android restore remains unrun.
+Runtime-owned notification actions passed independent review after two ordering
+fixes: uncertain COMMITs reconcile before later saves/token issuance, and logging
+retains queued rest commands with their original timestamps. The focused suite
+passed 77 tests, 0 skips; analysis and formatting passed. Actions are issued to
+the visible selected owner, with atomic receipt/draft/timer fencing and no headless
+writer. Denied/inexact scheduling is explicit. These are host/source results; the
+fixed installed plugin/action, permission and lifecycle checks remain T5 UNRUN.
 Owner signing custody, the final refactored candidate, owner device/storage,
 real transfer and sync remain unqualified. The selected owner route is a dedicated
 Alkion key with manual signed APK updates. UI work follows the established specimen
