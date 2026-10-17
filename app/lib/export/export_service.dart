@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../domain/evidence.dart';
 import '../files/android_documents.dart';
 import '../files/document_access.dart';
+import '../files/publication_directory.dart';
 import '../identity/directory_durability.dart';
 import '../store/local_store.dart';
 import '../settings/settings_service.dart';
@@ -104,21 +105,30 @@ final class PlatformExportDelivery implements ExportDelivery {
 /// failures/cancellation retain the publication and all staging. A readback
 /// receipt proves this device's delivered copy only.
 final class DocumentExportDelivery implements ExportDelivery {
-  DocumentExportDelivery(this.documents, {this.directory});
+  DocumentExportDelivery(
+    this.documents, {
+    this.directory,
+    this.publicationDirectory,
+  });
   final DocumentAccess documents;
   final Directory? directory;
+  final Future<Directory> Function()? publicationDirectory;
+
+  static Future<Directory> _defaultPublicationDirectory() async {
+    if (Platform.isAndroid) {
+      return checkedAndroidPublicationDirectory('document-exports');
+    }
+    return Directory(
+      p.join((await getApplicationSupportDirectory()).path, 'document-exports'),
+    ).create(recursive: true);
+  }
 
   @override
   Future<ExportResult> deliver(Uint8List bytes, String filename) async {
     final root =
         directory ??
-        Directory(
-          p.join(
-            (await getApplicationSupportDirectory()).path,
-            'document-exports',
-          ),
-        );
-    await root.create(recursive: true);
+        await (publicationDirectory ?? _defaultPublicationDirectory)();
+    if (directory != null) await root.create(recursive: true);
     final operation = await root.createTemp('export-');
     final local = await DirectoryExportDelivery(
       operation,

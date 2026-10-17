@@ -9,12 +9,14 @@ observed: 2026-10-17
 ## Android preparation (2026-10-17, local work)
 
 The [Android plan](../superpowers/plans/2026-10-17-android-owner-readiness.md)
-is in progress; these changes are local, with publication pending. T1 at `af06bfe`
-passed independent code review, 19 focused tests (0 skips), analysis, formatting,
-direct-Dart recovery checks and both debug APK builds. The two variants install
-side by side on the named disposable API 36 emulator, but initial startup refuses
-the app namespace's root-owned `/data/user/0` alias. A bounded fix is in progress;
-no successful local workout or full Android qualification is claimed here.
+is in progress; these changes are local, with publication pending. T1 and its
+bounded startup fix at `0781189` passed independent code review, 23 focused tests
+(0 skips), analysis, formatting and both debug APK builds. Direct-Dart recovery
+checks passed on the earlier T1 inputs. Both variants coexist on the named
+disposable API 36 x86_64 emulator and reach account-free Welcome after in-place
+updates, without clearing storage. Native attestation handles the OS-owned
+`/data/user/0` alias while retaining owned-path link refusals. Full workout,
+lifecycle, document-provider and Android qualification remain unrun.
 
 Static review also identified an ARM directory-flush flag mismatch in
 `directory_durability.dart`; the Android primitive qualification must resolve it.
