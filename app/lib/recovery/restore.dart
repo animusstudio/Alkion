@@ -10,6 +10,8 @@ import 'package:uuid/uuid.dart';
 
 import '../domain/evidence.dart';
 import '../identity/alkion_profile.dart';
+import '../identity/alkion_identity.dart';
+import '../files/private_directory.dart';
 import '../identity/directory_durability.dart';
 import '../store/generation_selection.dart';
 import '../store/local_store.dart';
@@ -19,6 +21,15 @@ import 'backup.dart';
 const restoreIntentFormat = 'alkion-restore-intent/1';
 const restoreJournalFormat = 'alkion-restore-journal/1';
 const reconciliationFormat = 'alkion-restore-reconciliation/1';
+const freshPreparationFormat = 'alkion-fresh-restore-preparation/1';
+
+/// Null from [RestoreService.freshState] means an identity already exists.
+final class FreshRestoreState {
+  const FreshRestoreState({required this.canStartLocal, this.pending});
+  final bool canStartLocal;
+  final PendingRestore? pending;
+  bool get canComplete => pending?.intent['staged'] is Map;
+}
 
 /// Review categories written into a restored generation. Every row of the
 /// previous generation that the backup lacks or holds differently gets one
@@ -116,6 +127,7 @@ final class RestoreService {
       schema: schema,
       workDirectory: workDirectory,
     );
+    verified.requireWriterVariant();
     final existing = await AlkionProfile.existing(supportRoot: supportRoot);
     if (existing == null) {
       return _restoreFresh(verified);
@@ -186,20 +198,55 @@ final class RestoreService {
   }
 
   Future<RestoreOutcome> _restoreFresh(VerifiedBackup verified) async {
-    final root = p.normalize(p.absolute(supportRoot.path));
+    final root = (await AlkionProfile.checkedRoot(
+      supportRoot: supportRoot,
+    )).path;
+    _checkFreshTarget(root, verified.profileId);
+    if (_readPreparation(root) == null &&
+        Directory(root).existsSync() &&
+        Directory(root)
+            .listSync(followLinks: false)
+            .any((entry) => p.basename(entry.path) != '.identity.lock')) {
+      throw const StoreException('restore_target_not_empty');
+    }
+    final owner = _acquireFresh(root);
+    try {
+      if (File(p.join(root, 'local-profile.json')).existsSync()) {
+        throw const StoreException('restore_source_changed');
+      }
+      return await _restoreFreshOwned(verified);
+    } finally {
+      owner.close();
+    }
+  }
+
+  ProfileOwnership _acquireFresh(String root) {
+    _readPreparation(root);
+    final directory = _preparationDirectory(root);
+    if (!Directory(directory).existsSync()) {
+      claimPrivateDirectory(directory);
+      flushDirectory(p.dirname(directory));
+    }
+    final path = p.join(directory, 'preparation.lock');
+    rejectLinkedPath(path);
+    try {
+      return ProfileOwnership.acquire(path);
+    } on FileSystemException {
+      throw const StoreException('profile_in_use');
+    }
+  }
+
+  Future<RestoreOutcome> _restoreFreshOwned(VerifiedBackup verified) async {
+    final root = (await AlkionProfile.checkedRoot(
+      supportRoot: supportRoot,
+    )).path;
     final profileDirectory = p.join(root, 'profiles', verified.profileId);
-    final resumable = _freshResumable(root, profileDirectory, verified);
+    final preparation = await _prepareFresh(root, verified);
+    final state = (await freshState())!;
+    final resumable = state.canComplete ? state.pending!.restoreId : null;
     if (resumable != null) {
       final intent = _readIntent(profileDirectory, resumable);
-      final selected = File(
-        p.join(
-          generationDirectory(profileDirectory, resumable),
-          restoreSelectedName,
-        ),
-      ).existsSync();
-      final outcome = selected
-          ? RestoreOutcome(intent)
-          : await _select(profileDirectory, intent);
+      final outcome = await _select(profileDirectory, intent);
       await AlkionProfile.adoptRestored(
         supportRoot: Directory(root),
         profileId: verified.profileId,
@@ -209,7 +256,7 @@ final class RestoreService {
     }
     await Directory(profileDirectory).create(recursive: true);
     rejectLinkedPath(profileDirectory);
-    final installationId = const Uuid().v4();
+    final installationId = preparation['installation_id'] as String;
     final intent = await _stage(
       profileDirectory,
       _newRestoreId(),
@@ -228,55 +275,291 @@ final class RestoreService {
     return outcome;
   }
 
-  /// Separate storage must be empty, or hold only an interrupted fresh restore
-  /// of this same verified backup, which is then completed.
-  String? _freshResumable(
-    String root,
-    String profileDirectory,
-    VerifiedBackup verified,
-  ) {
-    if (FileSystemEntity.typeSync(root, followLinks: false) ==
-        FileSystemEntityType.notFound) {
-      return null;
+  String _preparationDirectory(String root) =>
+      p.join(freshPreparationDirectory(root, AlkionIdentity.applicationId));
+
+  Map<String, Object?>? _readPreparation(String root) {
+    final directory = _preparationDirectory(root);
+    rejectLinkedPath(directory);
+    final type = FileSystemEntity.typeSync(directory, followLinks: false);
+    if (type == FileSystemEntityType.notFound) return null;
+    if (type != FileSystemEntityType.directory) {
+      throw const StoreException('fresh_restore_preparation_invalid');
+    }
+    for (final entry in Directory(directory).listSync(followLinks: false)) {
+      if (![
+        'preparation.json',
+        'preparation.json.tmp',
+        'preparation.lock',
+      ].contains(p.basename(entry.path))) {
+        throw const StoreException('fresh_restore_preparation_invalid');
+      }
+      rejectLinkedPath(entry.path);
+      if (entry is! File) {
+        throw const StoreException('fresh_restore_preparation_invalid');
+      }
+    }
+    final published = File(p.join(directory, 'preparation.json'));
+    final temporary = File('${published.path}.tmp');
+    if (published.existsSync() &&
+        temporary.existsSync() &&
+        (temporary.lengthSync() > 16384 ||
+            published.lengthSync() > 16384 ||
+            temporary.readAsStringSync() != published.readAsStringSync())) {
+      throw const StoreException('fresh_restore_preparation_invalid');
+    }
+    final file = published.existsSync() ? published : temporary;
+    if (!file.existsSync()) {
+      return null; // Claim interrupted before first bytes.
+    }
+    if (file.lengthSync() > 16384) {
+      throw const StoreException('fresh_restore_preparation_invalid');
+    }
+    try {
+      final value = Map<String, Object?>.from(
+        jsonDecode(file.readAsStringSync()) as Map,
+      );
+      final uuid = RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      );
+      final evidence = value['backup'] as Map;
+      if (value['format'] != freshPreparationFormat ||
+          value['support_root'] != root ||
+          value['application_id'] != AlkionIdentity.applicationId ||
+          !uuid.hasMatch(value['profile_id'] as String) ||
+          !uuid.hasMatch(value['installation_id'] as String) ||
+          !restoreIdPattern.hasMatch(value['request_id'] as String) ||
+          evidence['application_id'] != AlkionIdentity.applicationId ||
+          !RegExp(
+            r'^[a-f0-9]{64}$',
+          ).hasMatch(evidence['container_sha256'] as String) ||
+          !RegExp(
+            r'^[a-f0-9]{64}$',
+          ).hasMatch(evidence['manifest_sha256'] as String) ||
+          !RegExp(
+            r'^[a-f0-9]{64}$',
+          ).hasMatch(evidence['inventory_sha256'] as String) ||
+          evidence['profile_generation'] is! int ||
+          (evidence['profile_generation'] as int) < 0 ||
+          evidence['schema_user_version'] is! int ||
+          (evidence['schema_user_version'] as int) < 1 ||
+          (evidence['schema_user_version'] as int) > schema.latestVersion ||
+          evidence.length != 7 ||
+          value.length != 8) {
+        throw const FormatException();
+      }
+      OperationInstant(value['created_at'] as String);
+      OperationInstant(evidence['created_at'] as String);
+      return value;
+    } catch (_) {
+      throw const StoreException('fresh_restore_preparation_invalid');
+    }
+  }
+
+  void _checkFreshTarget(String root, String profileId) {
+    rejectLinkedPath(root);
+    final rootType = FileSystemEntity.typeSync(root, followLinks: false);
+    if (rootType == FileSystemEntityType.notFound) return;
+    if (rootType != FileSystemEntityType.directory) {
+      throw const StoreException('restore_target_not_empty');
     }
     for (final entry in Directory(root).listSync(followLinks: false)) {
       final name = p.basename(entry.path);
-      if (name == '.identity.lock') {
+      rejectLinkedPath(entry.path);
+      if (['.identity.lock', 'local-profile.json.tmp'].contains(name) &&
+          entry is File) {
         continue;
       }
-      final profiles = name == 'profiles'
-          ? Directory(entry.path).listSync(followLinks: false)
-          : null;
-      if (profiles == null ||
-          profiles.length != 1 ||
-          p.basename(profiles.single.path) != verified.profileId) {
+      if (name != 'profiles' || entry is! Directory) {
         throw const StoreException('restore_target_not_empty');
       }
+      final profiles = entry.listSync(followLinks: false);
+      if (profiles.length != 1 ||
+          p.basename(profiles.single.path) != profileId ||
+          profiles.single is! Directory) {
+        throw const StoreException('restore_target_not_empty');
+      }
+      for (final child in (profiles.single as Directory).listSync(
+        followLinks: false,
+      )) {
+        rejectLinkedPath(child.path);
+        if (![
+          'generations',
+          selectionFileName,
+          '.store-owner.lock',
+        ].contains(p.basename(child.path))) {
+          throw const StoreException('restore_target_not_empty');
+        }
+      }
     }
+  }
+
+  Future<Map<String, Object?>> _prepareFresh(
+    String root,
+    VerifiedBackup verified,
+  ) async {
+    _checkFreshTarget(root, verified.profileId);
+    final prior = _readPreparation(root);
+    if (prior != null) {
+      if (prior['profile_id'] != verified.profileId ||
+          !_same(
+            Map<String, Object?>.from(prior['backup'] as Map),
+            _backupEvidence(verified),
+          )) {
+        throw const StoreException('fresh_restore_backup_mismatch');
+      }
+      return prior;
+    }
+    final directory = _preparationDirectory(root);
+    if (!Directory(directory).existsSync()) {
+      claimPrivateDirectory(directory);
+      flushDirectory(p.dirname(directory));
+    }
+    final preparation = <String, Object?>{
+      'format': freshPreparationFormat,
+      'support_root': root,
+      'application_id': AlkionIdentity.applicationId,
+      'request_id': _newRestoreId(),
+      'profile_id': verified.profileId,
+      'installation_id': const Uuid().v4(),
+      'created_at': OperationInstant.now().text,
+      'backup': _backupEvidence(verified),
+    };
+    await _writeDurable(
+      File(p.join(directory, 'preparation.json')),
+      localBytes(preparation),
+    );
+    await checkpoint?.call('fresh-preparation');
+    return preparation;
+  }
+
+  /// Inspect only the selected target and its variant-scoped preparation. No
+  /// identity/store is created; incomplete preparation always blocks local start.
+  Future<FreshRestoreState?> freshState() async {
+    final root = (await AlkionProfile.checkedRoot(
+      supportRoot: supportRoot,
+    )).path;
+    if (File(p.join(root, 'local-profile.json')).existsSync()) {
+      await AlkionProfile.existing(supportRoot: supportRoot);
+      return null;
+    }
+    final preparation = _readPreparation(root);
+    final directory = _preparationDirectory(root);
+    if (preparation == null) {
+      // Empty claimed preparation is honest reselection, never an empty profile.
+      if (Directory(directory).existsSync()) {
+        return const FreshRestoreState(canStartLocal: false);
+      }
+      await AlkionProfile.existing(supportRoot: supportRoot);
+      if (Directory(root).existsSync() &&
+          Directory(
+            root,
+          ).listSync().any((e) => p.basename(e.path) != '.identity.lock')) {
+        throw const StoreException('restore_target_not_empty');
+      }
+      return const FreshRestoreState(canStartLocal: true);
+    }
+    final profileId = preparation['profile_id'] as String;
+    _checkFreshTarget(root, profileId);
+    final identityTemporary = File(p.join(root, 'local-profile.json.tmp'));
+    if (identityTemporary.existsSync()) {
+      final expected = jsonEncode({
+        'version': 1,
+        'application_id': AlkionIdentity.applicationId,
+        'installation_id': preparation['installation_id'],
+        'profile_id': profileId,
+      });
+      if (identityTemporary.lengthSync() > 4096 ||
+          identityTemporary.readAsStringSync() != expected) {
+        throw const StoreException('fresh_restore_preparation_invalid');
+      }
+    }
+    final profileDirectory = p.join(root, 'profiles', profileId);
     final generations = Directory(
       p.join(profileDirectory, generationsDirectoryName),
     );
+    final candidates = <PendingRestore>[];
     if (generations.existsSync()) {
+      rejectLinkedPath(generations.path);
       for (final entry in generations.listSync(followLinks: false)) {
         final id = p.basename(entry.path);
-        final directory = entry.path;
-        if (!restoreIdPattern.hasMatch(id) ||
-            !File(p.join(directory, restoreIntentName)).existsSync() ||
-            File(p.join(directory, restoreAbandonedName)).existsSync()) {
-          continue;
+        if (!restoreIdPattern.hasMatch(id) || entry is! Directory) {
+          throw const StoreException('fresh_restore_preparation_invalid');
+        }
+        rejectLinkedPath(entry.path);
+        final intentFile = File(p.join(entry.path, restoreIntentName));
+        if (!intentFile.existsSync()) continue;
+        if (intentFile.lengthSync() > 16384) {
+          throw const StoreException('fresh_restore_preparation_invalid');
         }
         final intent = _readIntent(profileDirectory, id);
-        if (intent['mode'] == RestoreMode.fresh.name &&
-            (intent['backup'] as Map)['manifest_sha256'] ==
-                verified.manifestSha256) {
-          return id;
+        if (intent['mode'] != 'fresh' ||
+            intent['profile_id'] != profileId ||
+            intent['installation_id'] != preparation['installation_id'] ||
+            !_same(
+              Map<String, Object?>.from(intent['backup'] as Map),
+              Map<String, Object?>.from(preparation['backup'] as Map),
+            ) ||
+            (intent['staged'] as Map)['database'] !=
+                p.relative(
+                  generationDatabasePath(profileDirectory, id),
+                  from: profileDirectory,
+                )) {
+          throw const StoreException('fresh_restore_preparation_invalid');
         }
+        candidates.add(PendingRestore(id, intent));
       }
     }
-    if (Directory(profileDirectory).existsSync()) {
-      throw const StoreException('restore_target_not_empty');
+    if (candidates.length > 1) {
+      throw const StoreException('fresh_restore_preparation_invalid');
     }
-    return null;
+    return FreshRestoreState(
+      canStartLocal: false,
+      pending: candidates.isEmpty
+          ? PendingRestore(preparation['request_id'] as String, preparation)
+          : candidates.single,
+    );
+  }
+
+  Future<RestoreOutcome> completeFresh(String restoreId) async {
+    final initial = await freshState();
+    if (initial == null ||
+        !initial.canComplete ||
+        initial.pending?.restoreId != restoreId) {
+      throw const StoreException('restore_not_pending');
+    }
+    final root = (await AlkionProfile.checkedRoot(
+      supportRoot: supportRoot,
+    )).path;
+    final owner = _acquireFresh(root);
+    try {
+      return await _completeFreshOwned(restoreId);
+    } finally {
+      owner.close();
+    }
+  }
+
+  Future<RestoreOutcome> _completeFreshOwned(String restoreId) async {
+    final state = await freshState();
+    final pending = state?.pending;
+    if (pending == null ||
+        !state!.canComplete ||
+        pending.restoreId != restoreId) {
+      throw const StoreException('restore_not_pending');
+    }
+    final intent = pending.intent;
+    final root = (await AlkionProfile.checkedRoot(
+      supportRoot: supportRoot,
+    )).path;
+    final directory = p.join(root, 'profiles', intent['profile_id'] as String);
+    final outcome = await _select(directory, intent);
+    await checkpoint?.call('restore-before-identity');
+    await AlkionProfile.adoptRestored(
+      supportRoot: Directory(root),
+      profileId: intent['profile_id'] as String,
+      installationId: intent['installation_id'] as String,
+    );
+    return outcome;
   }
 
   /// Writes the verified snapshot into a new generation directory and turns it
@@ -451,8 +734,7 @@ final class RestoreService {
       db.close();
     }
     flushDirectory(directory.path);
-    await checkpoint?.call('restore-staged');
-    return {
+    final intent = <String, Object?>{
       'format': restoreIntentFormat,
       'restore_id': restoreId,
       'mode': mode.name,
@@ -469,6 +751,14 @@ final class RestoreService {
       'previous': previous.describe(),
       'reconciliation': reconciliation,
     };
+    if (mode == RestoreMode.fresh) {
+      await _writeDurable(
+        File(p.join(directory.path, restoreIntentName)),
+        localBytes(intent),
+      );
+    }
+    await checkpoint?.call('restore-staged');
+    return intent;
   }
 
   /// Takes the profile owner lock, records the durable intent, then fences
@@ -488,8 +778,8 @@ final class RestoreService {
       );
       if (!file.existsSync()) {
         await _writeDurable(file, localBytes(intent));
-        await checkpoint?.call('restore-intent');
       }
+      await checkpoint?.call('restore-intent');
       await _finish(profileDirectory, intent);
       return RestoreOutcome(intent);
     } finally {
@@ -505,6 +795,21 @@ final class RestoreService {
     final restoreId = intent['restore_id'] as String;
     final directory = generationDirectory(profileDirectory, restoreId);
     final staged = intent['staged'] as Map;
+    final expectedPath = p.relative(
+      generationDatabasePath(profileDirectory, restoreId),
+      from: profileDirectory,
+    );
+    if (staged['database'] != expectedPath) {
+      throw const StoreException('restore_staging_changed');
+    }
+    rejectLinkedPath(p.join(profileDirectory, expectedPath));
+    if (FileSystemEntity.typeSync(
+          p.join(profileDirectory, expectedPath),
+          followLinks: false,
+        ) !=
+        FileSystemEntityType.file) {
+      throw const StoreException('restore_staging_changed');
+    }
     if (await _fileDigest(p.join(profileDirectory, staged['database'])) !=
         staged['sha256']) {
       throw const StoreException('restore_staging_changed');
@@ -590,6 +895,10 @@ final class RestoreService {
   /// Explicitly completes an interrupted restore from its verified staging.
   Future<RestoreOutcome> complete(String restoreId) async {
     final (directory, intent) = await _pendingIntent(restoreId);
+    if ((intent['backup'] as Map)['application_id'] !=
+        AlkionIdentity.applicationId) {
+      throw const StoreException('backup_foreign_variant');
+    }
     final owner = _acquire(directory);
     try {
       await _finish(directory, intent);
@@ -1004,6 +1313,7 @@ void _insert(sqlite.Database db, String table, Map<String, Object?> row) {
 }
 
 Map<String, Object?> _backupEvidence(VerifiedBackup verified) => {
+  'application_id': (verified.manifest['tool'] as Map)['application_id'],
   'container_sha256': verified.containerSha256,
   'manifest_sha256': verified.manifestSha256,
   'created_at': verified.createdAt,
@@ -1016,6 +1326,7 @@ Map<String, Object?> _readIntent(String profileDirectory, String restoreId) {
   final file = File(
     p.join(generationDirectory(profileDirectory, restoreId), restoreIntentName),
   );
+  rejectLinkedPath(file.path);
   try {
     final value = Map<String, Object?>.from(
       jsonDecode(file.readAsStringSync()) as Map,

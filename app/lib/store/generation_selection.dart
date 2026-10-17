@@ -16,6 +16,8 @@ const generationDatabaseName = 'alkion.sqlite';
 const restoreIntentName = 'intent.json';
 const restoreSelectedName = 'selected.json';
 const restoreAbandonedName = 'abandoned.json';
+String freshPreparationDirectory(String supportRoot, String applicationId) =>
+    p.join(p.dirname(supportRoot), '.$applicationId-fresh-restore');
 final restoreIdPattern = RegExp(r'^rs-[0-9a-f]{32}$');
 
 /// Raised before any store byte is opened. Categories are stable.

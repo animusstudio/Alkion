@@ -156,6 +156,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     final path = await _selectedPath();
     if (path == null) return;
     final verified = await host.verifyBackup(path);
+    verified.requireWriterVariant();
     if (verified.profileId != host.profileId) {
       await _message(l.alkionBackupCheckOk, l.alkionBackupForeignProfile);
       return;

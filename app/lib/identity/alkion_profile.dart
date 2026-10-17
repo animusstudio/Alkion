@@ -22,11 +22,30 @@ class AlkionProfile {
   );
   static final _creating = <String>{};
 
+  /// Read-only validation for recovery before an identity can be published.
+  static Future<Directory> checkedRoot({required Directory supportRoot}) async {
+    final path = _canonicalRoot(supportRoot);
+    await _rejectLinks(path);
+    return Directory(path);
+  }
+
   /// The caller supplies the exact root for the selected Alkion variant.
   /// This method never asks the OS for another application's support path.
   static Future<AlkionProfile> open({required Directory supportRoot}) async {
     final path = _canonicalRoot(supportRoot);
     await _rejectLinks(path);
+    if (FileSystemEntity.typeSync(
+              freshPreparationDirectory(path, AlkionIdentity.applicationId),
+              followLinks: false,
+            ) !=
+            FileSystemEntityType.notFound &&
+        FileSystemEntity.typeSync(
+              p.join(path, 'local-profile.json'),
+              followLinks: false,
+            ) !=
+            FileSystemEntityType.file) {
+      throw const GenerationSelectionException('fresh_restore_interrupted');
+    }
     final root = Directory(path);
     await root.create(recursive: true);
     await _rejectLinks(path);
@@ -77,6 +96,13 @@ class AlkionProfile {
     final existing = await _readExisting(root);
     if (existing != null) {
       return existing;
+    }
+    if (FileSystemEntity.typeSync(
+          freshPreparationDirectory(root.path, AlkionIdentity.applicationId),
+          followLinks: false,
+        ) !=
+        FileSystemEntityType.notFound) {
+      throw const GenerationSelectionException('fresh_restore_interrupted');
     }
     final identity = File(p.join(root.path, 'local-profile.json'));
     final temporary = File('${identity.path}.tmp');

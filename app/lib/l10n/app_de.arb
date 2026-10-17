@@ -662,5 +662,11 @@
   "alkionTransferImportDocument": "Datei wählen und importieren",
   "alkionBackupSaveCopy": "Backup erstellen und Kopie speichern",
   "alkionBackupCopySaved": "{name}\nSHA-256 {digest}…\nBackup-Kopie hier vollständig geprüft. Kopiere sie auf ein anderes Gerät und prüfe die empfangene Datei dort.",
-  "alkionDocumentFailureMessage": "{reason}\nEine externe Kopie kann unvollständig sein. Lokales Original und privater Zwischenstand bleiben erhalten."
+  "alkionDocumentFailureMessage": "{reason}\nEine externe Kopie kann unvollständig sein. Lokales Original und privater Zwischenstand bleiben erhalten.",
+  "alkionFirstStartBody": "Starte auf diesem Gerät oder stelle vor dem Anlegen eines Profils ein Backup wieder her. Kein Konto nötig.",
+  "alkionFirstStartLocal": "Lokal starten",
+  "alkionFirstRestoreTitle": "Backup wiederherstellen",
+  "alkionFirstRestoreConfirm": "Dieses geprüfte Backup auf der leeren Installation wiederherstellen? Profil und gespeicherte Arbeit bleiben erhalten; diese Installation erhält eine neue Identität.",
+  "alkionFirstResumeBody": "Die vollständige geprüfte Wiederherstellung liegt bereit. Schließe sie ab, um dasselbe Profil wiederherzustellen. Der bisherige Versuch bleibt erhalten.",
+  "alkionFirstReselectBody": "Wähle dasselbe Backup erneut. Frühere Zwischenstände bleiben erhalten. Ein unabhängiges neues Profil kann jetzt nicht gestartet werden."
 }
