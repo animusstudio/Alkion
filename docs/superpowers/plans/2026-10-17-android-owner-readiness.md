@@ -1,6 +1,6 @@
 # Android owner-readiness implementation plan
 
-Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; T1–T2 reviewed, T3 next**.
+Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; T1–T3 reviewed, T4 next**.
 Direction, supported ID `dev.animusstudio.alkion`, dedicated Alkion key and manual
 signed-APK updates approved; actual key custody/access pending. [Specification](../specs/2026-10-17-android-owner-readiness.md).
 
@@ -81,12 +81,22 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 
 ### T3 — First-start restore and preservation (A7)
 
+Status: implemented; host checks pass, independent task review pending.
+
 - Own `app/lib/main.dart` pre-runtime launch flow; new
   `app/lib/ui/alkion_recovery/first_start_screen.dart`; existing recovery app/screen;
   `app/lib/recovery/restore.dart`, `app/lib/recovery/backup.dart`,
   `app/lib/store/generation_selection.dart`; the four ARBs after T2.
 - Own `app/test/alkion/recovery/{backup_restore_test,recovery_ui_test,abandon_retry_test}.dart`
   and new `first_start_restore_test.dart` there; `app/tool/alkion_backup_recovery.dart`.
+- Minimal prerequisite extension: `app/lib/identity/alkion_profile.dart` exposes
+  read-only root validation through its existing strict root/link guard, and
+  refuses unrelated fresh identity creation while sibling restore preparation
+  exists. Existing identities/adoption and variant/selected-store checks remain.
+- Before writing a fresh target, retain a private variant-scoped preparation
+  receipt beside that target (outside it). It pins backup/profile/installation
+  evidence without persisting a source path. Restart completes exact verified
+  staging or explicitly reselects that same backup; it never starts unrelated local data.
 - Offer local start/restore before identity creation; stage outside the target root.
   Preserve existing replace/reconciliation/generation semantics, unknown newer-work
   reviews and profile ownership. Expose safe resumption before fresh identity commit;
@@ -95,6 +105,15 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 - Checks: `make -C app test TEST=test/alkion/recovery/`; existing backup-recovery proof
   plus Android interruptions before identity, during selection, complete/keep-current,
   repeat restore and rejected foreign/newer/corrupt/nonempty targets in T5.
+- Working-tree evidence based on `2798ecf` (coordinator commit receipt pending):
+  `make -C app test TEST='test/alkion/recovery/ test/alkion/identity/ test/alkion/files/ test/session/workout_notification_test.dart test/session/notif_strings_test.dart'`
+  → PASS, 109 tests, 0 skips; `make -C app analyze` → PASS, 0 issues;
+  `make -C app format` → PASS, 342 files, 0 changed.
+  `make -C app alkion-backup-recovery ALKION_OUTPUT=<fresh disposable directory>`
+  → PASS, 26 cases including actual SIGKILL at preparation, raw staging, complete
+  staging, intent, selection and before identity. Preparation and unselected
+  attempts remain exact; selected covered state matches after two normal reopens.
+  These are Linux synthetic results. Installed Android A7 remains UNRUN.
 
 ### T4 — Runtime notification and action ownership (A4, A7)
 
@@ -172,7 +191,8 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 
 Independent design review at `92048af`: PASS, 2026-10-17, no remaining findings.
 Public Markdown check at `92048af`: PASS, 114 tracked files; whitespace PASS.
-T1: implemented, independent task review pending; T2–T6: not started. Installed
+T1–T3: implemented, independent task review PASS; T4: next; T5: initial driver
+qualification in progress on its isolated branch; T6: not started. Installed
 Android and owner-storage gates remain UNRUN. T1 working-tree checks based on `a2b5005`:
 - `make -C app test TEST='test/alkion/identity/ test/session/workout_notification_test.dart test/session/notif_strings_test.dart'` → PASS, 19 tests, 0 skips.
 - `make -C app analyze` → PASS, no issues; `make -C app format` → PASS, 330 files, 0 changed.
@@ -189,7 +209,11 @@ T2 at `32629e4`, integrated with `0781189` through `95ff792`, received three blo
 findings; its bounded fixes passed independent fix-only review. Final focused suite:
 53 passed, 0 skips; analyzer clean; format 339 files, 0 changes; dev APK compiled.
 Provider/device behavior remains for T5; no off-device durability is inferred.
-Next: T3 first-start restore; actual signing custody/access
+T3 final fix review: PASS; already-selected fresh resumes validate staging before
+identity adoption. Final recovery suite: 71 passed; direct-Dart backup proof: 26
+cases passed, including six fresh-restore SIGKILL boundaries. Analyzer clean;
+format 342 files, 0 changes. Installed Android restore remains UNRUN.
+Next: T4 notification/action ownership; actual signing custody/access
 stays gated before owner-candidate work. Record results in acceptance. Final review
 covers A1–A8 and remaining blockers. Every public push needs exact-range review,
 owner approval and owner-run publication; no tag/release follows from this plan.

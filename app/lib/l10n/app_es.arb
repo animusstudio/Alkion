@@ -662,5 +662,11 @@
   "alkionTransferImportDocument": "Elegir e importar archivo",
   "alkionBackupSaveCopy": "Crear respaldo y guardar copia",
   "alkionBackupCopySaved": "{name}\nSHA-256 {digest}…\nRespaldo comprobado completamente aquí. Cópialo fuera de este dispositivo y verifica allí el archivo recibido.",
-  "alkionDocumentFailureMessage": "{reason}\nCualquier copia externa puede estar incompleta. Se conservan el original local y los archivos privados temporales."
+  "alkionDocumentFailureMessage": "{reason}\nCualquier copia externa puede estar incompleta. Se conservan el original local y los archivos privados temporales.",
+  "alkionFirstStartBody": "Empieza en este dispositivo o restaura un respaldo antes de crear un perfil. No necesitas una cuenta.",
+  "alkionFirstStartLocal": "Empezar localmente",
+  "alkionFirstRestoreTitle": "Restaurar respaldo",
+  "alkionFirstRestoreConfirm": "¿Restaurar este respaldo verificado en esta instalación vacía? Se conservarán el perfil y el trabajo guardado; esta instalación tendrá una identidad nueva.",
+  "alkionFirstResumeBody": "La restauración tiene una preparación completa y verificada. Complétala para recuperar el mismo perfil. Se conserva el intento anterior.",
+  "alkionFirstReselectBody": "Elige de nuevo el mismo respaldo para reintentar. Se conservan los archivos anteriores. No se puede crear un perfil independiente ahora."
 }
