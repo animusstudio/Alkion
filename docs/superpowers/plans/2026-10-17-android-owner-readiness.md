@@ -116,6 +116,19 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 
 ### T5 — Scoped emulator route and actual Android proof (A1–A7)
 
+- A3 prerequisite ownership: `app/lib/identity/directory_durability.dart` and new
+  `app/test/alkion/identity/directory_durability_test.dart`; replace ABI-specific
+  numeric directory flags with libc directory APIs. Core stays Flutter-free;
+  Linux/proof regression and static API24 ARM evidence do not close ARM device proof.
+- A3 prerequisite author checks (base `0781189` plus this diff): pinned NDK 28.2
+  API24 ARM/AArch64/x86_64 stubs define `opendir`, `dirfd`, `fsync`, `closedir`.
+  `make -C app test TEST='test/alkion/identity/ test/alkion/driver_qualification_test.dart'`
+  → PASS, 24 tests, 0 skips; `make -C app analyze` → PASS; `make -C app format`
+  → PASS, 331 files, 0 changed. Direct-Dart Make proofs, each with fresh scratch:
+  `make -C app alkion-driver-qualification ALKION_OUTPUT=/tmp/alkion-durability-driver-20261017` → PASS 13;
+  `make -C app alkion-store-recovery ALKION_OUTPUT=/tmp/alkion-durability-store-20261017` → PASS 35;
+  `make -C app alkion-transfer-recovery ALKION_OUTPUT=/tmp/transfer-proof-durability-20261017` → PASS 4 + negative control;
+  `make -C app alkion-backup-recovery ALKION_OUTPUT=/tmp/backup-proof-durability-20261017` → PASS 20.
 - Own `app/Makefile`, new `app/tool/android_synthetic.sh`,
   `app/tool/android_synthetic_neighbor/{AndroidManifest.xml,SyntheticNeighbor.java}`,
   `app/integration_test/{android_driver,android_lifecycle,android_documents}_test.dart`,
