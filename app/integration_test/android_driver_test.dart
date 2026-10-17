@@ -14,6 +14,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 
+import '../tool/alkion_driver_qualification.dart'
+    as driver
+    show openQualificationDatabase, createProbeSchema, state, digest;
 import '../tool/alkion_store_recovery.dart'
     as proof
     show
@@ -121,6 +124,447 @@ Future<Map<String, Object?>> deferredCommitRecovery(LocalStore store) async {
   }
 }
 
+Future<void> snapshotProof(
+  LocalStore store,
+  Directory directory,
+  Map<String, dynamic> report,
+) async {
+  const query =
+      "SELECT revision,payload_bytes FROM local_state WHERE state_kind='semanticSetting' AND state_key='snapshot-proof'";
+  final ready = Completer<void>(), inspect = Completer<void>();
+  final inspected = Completer<void>(), release = Completer<void>();
+  var entered = false;
+  final reading = store.readTransaction((tx) async {
+    final before = await tx.getAll(query);
+    require(before.isEmpty, 'Snapshot key must start absent');
+    ready.complete();
+    await inspect.future;
+    require(
+      jsonEncode(await tx.getAll(query)) == jsonEncode(before),
+      'Owned read snapshot changed while writer was queued',
+    );
+    inspected.complete();
+    await release.future;
+  });
+  Future<void>? writing;
+  try {
+    await Future.any<void>([
+      ready.future,
+      reading,
+    ]).timeout(const Duration(seconds: 10));
+    require(ready.isCompleted, 'Reader ended before establishing snapshot');
+    // This call is in the caller's zone, outside the driver's reader-lock zone.
+    writing = store.writeTransaction((tx) async {
+      entered = true;
+      await tx.putLocalState(
+        LocalStateKind.semanticSetting,
+        'snapshot-proof',
+        localBytes({'value': 'synthetic'}),
+        expectedRevision: 0,
+      );
+    });
+    inspect.complete();
+    await Future.any<void>([
+      inspected.future,
+      reading,
+    ]).timeout(const Duration(seconds: 10));
+    require(
+      inspected.isCompleted && !entered,
+      'Writer entered before the production LocalStore reader released ownership',
+    );
+  } finally {
+    if (!inspect.isCompleted) inspect.complete();
+    release.complete();
+    await Future.wait([reading, if (writing != null) writing]);
+  }
+  final fresh = await store.get(query);
+  require(
+    entered &&
+        fresh['revision'] == 1 &&
+        jsonDecode(
+              utf8.decode((fresh['payload_bytes'] as List).cast<int>()),
+            )['value'] ==
+            'synthetic',
+    'Fresh production reader did not see the queued committed write',
+  );
+  report['store_snapshot_policy'] =
+      'production LocalStore serializes read/write owners; outside-zone queued writer committed after read release';
+
+  // Independently qualify actual SQLite WAL snapshot concurrency using the
+  // pinned factory/probe schema shared with the direct-Dart driver proof.
+  final db = driver.openQualificationDatabase(
+    p.join(directory.path, 'snapshot.sqlite'),
+  );
+  try {
+    await db.initialize();
+    await driver.createProbeSchema(db);
+    await db.execute('INSERT INTO parents VALUES (?,?,?)', [
+      'old',
+      1,
+      [0, 255, 7],
+    ]);
+    final baseline = await driver.state(db);
+    final snapshotReady = Completer<void>(),
+        releaseSnapshot = Completer<void>();
+    final snapshot = db.readTransaction((reader) async {
+      final old = await driver.state(reader);
+      snapshotReady.complete();
+      await releaseSnapshot.future;
+      require(
+        driver.digest(await driver.state(reader)) == driver.digest(old),
+        'Old SQLite snapshot changed after concurrent writer COMMIT',
+      );
+      return old;
+    });
+    try {
+      await Future.any<void>([
+        snapshotReady.future,
+        snapshot.then<void>((_) {}),
+      ]).timeout(const Duration(seconds: 10));
+      require(
+        snapshotReady.isCompleted,
+        'SQLite reader did not establish snapshot',
+      );
+      await db
+          .writeTransaction((writer) async {
+            await writer.execute('INSERT INTO parents VALUES (?,?,?)', [
+              'new',
+              2,
+              [42, 0, 255],
+            ]);
+            await writer.execute('INSERT INTO children VALUES (?,?,?)', [
+              'new-child',
+              'new',
+              '99.0000000000010',
+            ]);
+          })
+          .timeout(const Duration(seconds: 10));
+      require(
+        !releaseSnapshot.isCompleted,
+        'Writer must COMMIT while the old SQLite reader remains held',
+      );
+    } finally {
+      releaseSnapshot.complete();
+      require(
+        driver.digest(await snapshot) == driver.digest(baseline),
+        'Initial SQLite snapshot did not match baseline',
+      );
+    }
+    final parent = await db.get(
+      "SELECT revision,payload FROM parents WHERE id='new'",
+    );
+    final child = await db.get(
+      "SELECT parent_id,exact_value FROM children WHERE id='new-child'",
+    );
+    require(
+      parent['revision'] == 2 &&
+          (parent['payload'] as List).join(',') == '42,0,255' &&
+          child['parent_id'] == 'new' &&
+          child['exact_value'] == '99.0000000000010',
+      'Fresh SQLite reader did not see the exact concurrently committed rows',
+    );
+    report['native_sqlite_snapshot'] = {
+      'writer_committed_while_reader_held': true,
+      'old_snapshot_stable': true,
+      'fresh_reader_exact_rows': true,
+      'factory': 'QualificationOpenFactory from existing driver proof',
+    };
+  } finally {
+    await db.close();
+  }
+}
+
+/// Shared native cases; platform attestation and terminal Android receipt stay in main.
+Future<void> exerciseDriverCases(
+  Directory directory,
+  Map<String, dynamic> report,
+) async {
+  Future<void> check(String name, Future<void> Function() body) async {
+    try {
+      await body();
+      (report['cases'] as Map<String, String>)[name] = 'PASS';
+    } catch (error) {
+      report['failed_case'] = name;
+      report['error'] = '$error';
+      rethrow;
+    }
+  }
+
+  await check('directory_durability', () async {
+    final target = await Directory(
+      p.join(directory.path, 'directory-è'),
+    ).create();
+    flushDirectory(target.path);
+    final file = await File(
+      p.join(target.path, 'sentinel'),
+    ).writeAsBytes([0, 255, 7]);
+    var refusedFile = false, refusedMissing = false;
+    try {
+      flushDirectory(file.path);
+    } on FileSystemException {
+      refusedFile = true;
+    }
+    final missing = p.join(target.path, 'missing');
+    try {
+      flushDirectory(missing);
+    } on FileSystemException {
+      refusedMissing = true;
+    }
+    require(
+      refusedFile && refusedMissing && !await Directory(missing).exists(),
+      'Directory primitive must reject files/missing paths without creation',
+    );
+    require(
+      (await file.readAsBytes()).join(',') == '0,255,7',
+      'Primitive changed file bytes',
+    );
+  });
+
+  final parent = Directory(p.join(directory.path, 'store'));
+  var store = await proof.syntheticStore(parent);
+  try {
+    await check('atomic_outbox_replay', () async {
+      final action = proof.proofAction(store);
+      final first = await proof.executeAction(store, action);
+      require(!first.replayed, 'First local action was not committed');
+      require(
+        (await store.getAll('SELECT * FROM exercises')).length == 1,
+        'Domain mutation missing',
+      );
+      require(
+        (await store.getAll('SELECT * FROM operations')).length == 1,
+        'Atomic immutable outbox missing',
+      );
+      final before = inventoryDigest(await store.inventory());
+      require(
+        (await proof.executeAction(store, action)).replayed,
+        'Retry was not replayed',
+      );
+      require(
+        inventoryDigest(await store.inventory()) == before,
+        'Replay changed state',
+      );
+    });
+
+    await check('deferred_commit_recovery', () async {
+      report['deferred_commit'] = await deferredCommitRecovery(store);
+    });
+
+    await check('watch_relisten', () async {
+      final initial = Completer<void>(), changed = Completer<void>();
+      final stream = store.watch(
+        'SELECT id,revision,base_weight_kg FROM exercises ORDER BY id',
+      );
+      final subscription = stream.listen(
+        (rows) {
+          if (!initial.isCompleted) initial.complete();
+          if (rows.any(
+                (row) =>
+                    row['id'] == 'exercise-1' &&
+                    row['revision'] == 2 &&
+                    row['base_weight_kg'] == '84.125000000000000001',
+              ) &&
+              !changed.isCompleted) {
+            changed.complete();
+          }
+        },
+        onError: (Object error) {
+          if (!initial.isCompleted) initial.completeError(error);
+          if (!changed.isCompleted) changed.completeError(error);
+        },
+      );
+      try {
+        await initial.future.timeout(const Duration(seconds: 10));
+        await proof.executeAction(
+          store,
+          proof.proofAction(
+            store,
+            id: 'watch-operation',
+            base: 1,
+            value: '84.125000000000000001',
+          ),
+        );
+        await changed.future.timeout(const Duration(seconds: 10));
+      } finally {
+        await subscription.cancel();
+      }
+      final relistened = await stream.first.timeout(
+        const Duration(seconds: 10),
+      );
+      require(
+        relistened.length == 1 &&
+            relistened.single['revision'] == 2 &&
+            relistened.single['base_weight_kg'] == '84.125000000000000001',
+        'Relisten lost committed revision 2/value',
+      );
+    });
+
+    await check('snapshot', () async {
+      await snapshotProof(store, directory, report);
+    });
+
+    await check('wal_backup', () async {
+      await proof.executeAction(
+        store,
+        proof.proofAction(
+          store,
+          id: 'wal-operation',
+          base: 2,
+          value: '91.000000000000000001',
+        ),
+      );
+      final wal = File('${store.path}-wal');
+      require(
+        await wal.exists() && await wal.length() > 32,
+        'No committed WAL tail to qualify',
+      );
+      final hot = await File(
+        store.path,
+      ).copy(p.join(directory.path, 'negative-hot-main.sqlite'));
+      var lostTail = false;
+      sqlite.Database? mainOnly;
+      try {
+        mainOnly = sqlite.sqlite3.open(
+          hot.path,
+          mode: sqlite.OpenMode.readOnly,
+        );
+        final rows = mainOnly.select(
+          "SELECT base_weight_kg,revision FROM exercises WHERE id='exercise-1'",
+        );
+        lostTail =
+            rows.isEmpty ||
+            rows.single['base_weight_kg'] != '91.000000000000000001' ||
+            rows.single['revision'] != 3;
+      } on sqlite.SqliteException {
+        lostTail = true;
+      } finally {
+        mainOnly?.close();
+      }
+      require(
+        lostTail,
+        'Negative hot-main copy did not expose the WAL-only commit',
+      );
+      final backup = p.join(directory.path, 'coherent.sqlite');
+      await store.backupTo(backup);
+      final snapshot = sqlite.sqlite3.open(
+        backup,
+        mode: sqlite.OpenMode.readOnly,
+      );
+      try {
+        require(
+          snapshot.select('PRAGMA integrity_check').single.values.single ==
+              'ok',
+          'Backup integrity failed',
+        );
+        require(
+          snapshot.select('PRAGMA foreign_key_check').isEmpty,
+          'Backup FK check failed',
+        );
+        require(
+          snapshot
+                  .select(
+                    "SELECT base_weight_kg FROM exercises WHERE id='exercise-1'",
+                  )
+                  .single
+                  .values
+                  .single ==
+              '91.000000000000000001',
+          'Backup lost exact WAL-only value',
+        );
+        require(
+          snapshot
+                  .select(
+                    "SELECT revision FROM exercises WHERE id='exercise-1'",
+                  )
+                  .single
+                  .values
+                  .single ==
+              3,
+          'Backup lost committed revision 3',
+        );
+        require(
+          snapshot
+                  .select('SELECT COUNT(*) FROM operations')
+                  .single
+                  .values
+                  .single ==
+              3,
+          'Backup lost atomic outbox',
+        );
+      } finally {
+        snapshot.close();
+      }
+      report['hot_main_negative_control'] = 'detected';
+      report['backup_scope'] =
+          'coherent SQLite primitive; container/provider restore is separate';
+    });
+
+    await check('native_owner_handle', () async {
+      final path = await store.profile.ownerLockPath(
+        expectedProfileId: store.profileId,
+      );
+      require(await File(path).exists(), 'Expected live native ownership file');
+      ProfileOwnership? competing;
+      var refused = false;
+      try {
+        competing = ProfileOwnership.acquire(path);
+      } on FileSystemException {
+        refused = true;
+      } finally {
+        competing?.close();
+      }
+      require(refused, 'Independent native handle acquired the live lock');
+      report['owner_handle_scope'] =
+          'direct libc flock; bypasses LocalStore static registry';
+    });
+
+    await check('native_owner_isolate', () async {
+      final result = await proof.isolateOwnershipProbe(parent.path);
+      require(
+        result.contains('profile_in_use'),
+        'Independent isolate acquired live profile',
+      );
+      report['owner_isolate_scope'] =
+          'independent Dart static registry; same OS process';
+    });
+
+    await check('two_reopens', () async {
+      final before = inventoryDigest(await store.inventory());
+      final profile = store.profileId,
+          installation = store.profile.installationId;
+      for (var i = 0; i < 2; i++) {
+        await store.close();
+        store = await proof.syntheticStore(parent);
+        require(
+          store.profileId == profile &&
+              store.profile.installationId == installation,
+          'Reopen replaced installation/profile identity',
+        );
+        require(
+          inventoryDigest(await store.inventory()) == before,
+          'Reopen changed complete state',
+        );
+      }
+    });
+
+    await check('generation_fence', () async {
+      final token = store.token;
+      await store.fenceForReplacement();
+      var entered = false, refused = false;
+      try {
+        await store.writeTransaction((tx) async {
+          entered = true;
+        }, expected: token);
+      } on StoreException catch (error) {
+        refused = error.category == 'stale_generation';
+      }
+      require(refused && !entered, 'Old generation entered a write callback');
+    });
+  } finally {
+    await store.close();
+  }
+}
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   Directory? output;
@@ -211,335 +655,7 @@ void main() {
         report['platform'] = Platform.operatingSystem;
         report['dart'] = Platform.version;
 
-        Future<void> check(String name, Future<void> Function() body) async {
-          try {
-            await body();
-            (report['cases'] as Map<String, String>)[name] = 'PASS';
-          } catch (error) {
-            report['failed_case'] = name;
-            report['error'] = '$error';
-            rethrow;
-          }
-        }
-
-        await check('directory_durability', () async {
-          final target = await Directory(
-            p.join(directory.path, 'directory-è'),
-          ).create();
-          flushDirectory(target.path);
-          final file = await File(
-            p.join(target.path, 'sentinel'),
-          ).writeAsBytes([0, 255, 7]);
-          var refusedFile = false, refusedMissing = false;
-          try {
-            flushDirectory(file.path);
-          } on FileSystemException {
-            refusedFile = true;
-          }
-          final missing = p.join(target.path, 'missing');
-          try {
-            flushDirectory(missing);
-          } on FileSystemException {
-            refusedMissing = true;
-          }
-          require(
-            refusedFile && refusedMissing && !await Directory(missing).exists(),
-            'Directory primitive must reject files/missing paths without creation',
-          );
-          require(
-            (await file.readAsBytes()).join(',') == '0,255,7',
-            'Primitive changed file bytes',
-          );
-        });
-
-        final parent = Directory(p.join(directory.path, 'store'));
-        var store = await proof.syntheticStore(parent);
-        try {
-          await check('atomic_outbox_replay', () async {
-            final action = proof.proofAction(store);
-            final first = await proof.executeAction(store, action);
-            require(!first.replayed, 'First local action was not committed');
-            require(
-              (await store.getAll('SELECT * FROM exercises')).length == 1,
-              'Domain mutation missing',
-            );
-            require(
-              (await store.getAll('SELECT * FROM operations')).length == 1,
-              'Atomic immutable outbox missing',
-            );
-            final before = inventoryDigest(await store.inventory());
-            require(
-              (await proof.executeAction(store, action)).replayed,
-              'Retry was not replayed',
-            );
-            require(
-              inventoryDigest(await store.inventory()) == before,
-              'Replay changed state',
-            );
-          });
-
-          await check('deferred_commit_recovery', () async {
-            report['deferred_commit'] = await deferredCommitRecovery(store);
-          });
-
-          await check('watch_relisten', () async {
-            final initial = Completer<void>(), changed = Completer<void>();
-            final stream = store.watch(
-              'SELECT id,revision,base_weight_kg FROM exercises ORDER BY id',
-            );
-            final subscription = stream.listen(
-              (rows) {
-                if (!initial.isCompleted) initial.complete();
-                if (rows.any(
-                      (row) =>
-                          row['id'] == 'exercise-1' &&
-                          row['revision'] == 2 &&
-                          row['base_weight_kg'] == '84.125000000000000001',
-                    ) &&
-                    !changed.isCompleted) {
-                  changed.complete();
-                }
-              },
-              onError: (Object error) {
-                if (!initial.isCompleted) initial.completeError(error);
-                if (!changed.isCompleted) changed.completeError(error);
-              },
-            );
-            try {
-              await initial.future.timeout(const Duration(seconds: 10));
-              await proof.executeAction(
-                store,
-                proof.proofAction(
-                  store,
-                  id: 'watch-operation',
-                  base: 1,
-                  value: '84.125000000000000001',
-                ),
-              );
-              await changed.future.timeout(const Duration(seconds: 10));
-            } finally {
-              await subscription.cancel();
-            }
-            final relistened = await stream.first.timeout(
-              const Duration(seconds: 10),
-            );
-            require(
-              relistened.length == 1 &&
-                  relistened.single['revision'] == 2 &&
-                  relistened.single['base_weight_kg'] ==
-                      '84.125000000000000001',
-              'Relisten lost committed revision 2/value',
-            );
-          });
-
-          await check('snapshot', () async {
-            Future<void>? writer;
-            var entered = false;
-            await store.readTransaction((tx) async {
-              final before = await tx.getAll(
-                'SELECT id FROM exercises ORDER BY id',
-              );
-              writer = store.writeTransaction((next) async {
-                entered = true;
-                await next.putLocalState(
-                  LocalStateKind.semanticSetting,
-                  'snapshot-proof',
-                  localBytes({'value': 'synthetic'}),
-                  expectedRevision: 0,
-                );
-              });
-              await Future<void>.delayed(const Duration(milliseconds: 20));
-              require(
-                !entered,
-                'Writer entered before owned read snapshot ended',
-              );
-              require(
-                jsonEncode(
-                      await tx.getAll('SELECT id FROM exercises ORDER BY id'),
-                    ) ==
-                    jsonEncode(before),
-                'Owned read snapshot changed',
-              );
-            });
-            await writer;
-            require(entered, 'Queued writer did not run after read release');
-            report['snapshot_policy'] =
-                'production LocalStore serializes read/write owners';
-          });
-
-          await check('wal_backup', () async {
-            await proof.executeAction(
-              store,
-              proof.proofAction(
-                store,
-                id: 'wal-operation',
-                base: 2,
-                value: '91.000000000000000001',
-              ),
-            );
-            final wal = File('${store.path}-wal');
-            require(
-              await wal.exists() && await wal.length() > 32,
-              'No committed WAL tail to qualify',
-            );
-            final hot = await File(
-              store.path,
-            ).copy(p.join(directory.path, 'negative-hot-main.sqlite'));
-            var lostTail = false;
-            sqlite.Database? mainOnly;
-            try {
-              mainOnly = sqlite.sqlite3.open(
-                hot.path,
-                mode: sqlite.OpenMode.readOnly,
-              );
-              final rows = mainOnly.select(
-                "SELECT base_weight_kg,revision FROM exercises WHERE id='exercise-1'",
-              );
-              lostTail =
-                  rows.isEmpty ||
-                  rows.single['base_weight_kg'] != '91.000000000000000001' ||
-                  rows.single['revision'] != 3;
-            } on sqlite.SqliteException {
-              lostTail = true;
-            } finally {
-              mainOnly?.close();
-            }
-            require(
-              lostTail,
-              'Negative hot-main copy did not expose the WAL-only commit',
-            );
-            final backup = p.join(directory.path, 'coherent.sqlite');
-            await store.backupTo(backup);
-            final snapshot = sqlite.sqlite3.open(
-              backup,
-              mode: sqlite.OpenMode.readOnly,
-            );
-            try {
-              require(
-                snapshot
-                        .select('PRAGMA integrity_check')
-                        .single
-                        .values
-                        .single ==
-                    'ok',
-                'Backup integrity failed',
-              );
-              require(
-                snapshot.select('PRAGMA foreign_key_check').isEmpty,
-                'Backup FK check failed',
-              );
-              require(
-                snapshot
-                        .select(
-                          "SELECT base_weight_kg FROM exercises WHERE id='exercise-1'",
-                        )
-                        .single
-                        .values
-                        .single ==
-                    '91.000000000000000001',
-                'Backup lost exact WAL-only value',
-              );
-              require(
-                snapshot
-                        .select(
-                          "SELECT revision FROM exercises WHERE id='exercise-1'",
-                        )
-                        .single
-                        .values
-                        .single ==
-                    3,
-                'Backup lost committed revision 3',
-              );
-              require(
-                snapshot
-                        .select('SELECT COUNT(*) FROM operations')
-                        .single
-                        .values
-                        .single ==
-                    3,
-                'Backup lost atomic outbox',
-              );
-            } finally {
-              snapshot.close();
-            }
-            report['hot_main_negative_control'] = 'detected';
-            report['backup_scope'] =
-                'coherent SQLite primitive; container/provider restore is separate';
-          });
-
-          await check('native_owner_handle', () async {
-            final path = await store.profile.ownerLockPath(
-              expectedProfileId: store.profileId,
-            );
-            require(
-              await File(path).exists(),
-              'Expected live native ownership file',
-            );
-            ProfileOwnership? competing;
-            var refused = false;
-            try {
-              competing = ProfileOwnership.acquire(path);
-            } on FileSystemException {
-              refused = true;
-            } finally {
-              competing?.close();
-            }
-            require(
-              refused,
-              'Independent native handle acquired the live lock',
-            );
-            report['owner_handle_scope'] =
-                'direct libc flock; bypasses LocalStore static registry';
-          });
-
-          await check('native_owner_isolate', () async {
-            final result = await proof.isolateOwnershipProbe(parent.path);
-            require(
-              result.contains('profile_in_use'),
-              'Independent isolate acquired live profile',
-            );
-            report['owner_isolate_scope'] =
-                'independent Dart static registry; same OS process';
-          });
-
-          await check('two_reopens', () async {
-            final before = inventoryDigest(await store.inventory());
-            final profile = store.profileId,
-                installation = store.profile.installationId;
-            for (var i = 0; i < 2; i++) {
-              await store.close();
-              store = await proof.syntheticStore(parent);
-              require(
-                store.profileId == profile &&
-                    store.profile.installationId == installation,
-                'Reopen replaced installation/profile identity',
-              );
-              require(
-                inventoryDigest(await store.inventory()) == before,
-                'Reopen changed complete state',
-              );
-            }
-          });
-
-          await check('generation_fence', () async {
-            final token = store.token;
-            await store.fenceForReplacement();
-            var entered = false, refused = false;
-            try {
-              await store.writeTransaction((tx) async {
-                entered = true;
-              }, expected: token);
-            } on StoreException catch (error) {
-              refused = error.category == 'stale_generation';
-            }
-            require(
-              refused && !entered,
-              'Old generation entered a write callback',
-            );
-          });
-        } finally {
-          await store.close();
-        }
+        await exerciseDriverCases(directory, report);
       });
     },
     timeout: const Timeout(Duration(seconds: 120)),
