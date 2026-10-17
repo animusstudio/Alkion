@@ -16,6 +16,7 @@ import '../units/unit_format.dart';
 import '../units/unit_service.dart';
 import '../widgets/delete_button.dart';
 import '../widgets/plan_form.dart';
+import '../widgets/fit_label.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
 import 'editor_guard.dart';
@@ -566,15 +567,16 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                               l.exerciseEditorCompound,
                               style: WorkoutType.body(
                                 size: 14.5,
-                                weight: FontWeight.w600,
+                                weight: FontWeight.w700,
                                 color: tokens.text,
                               ),
                             ),
                             const SizedBox(height: 2),
-                            Text(
+                            FitLabel(
                               l.exerciseEditorCompoundHint,
-                              style: WorkoutType.mono(
-                                size: 10.5,
+                              maxLines: 3,
+                              style: WorkoutType.body(
+                                size: 12,
                                 color: tokens.faint,
                               ),
                             ),
@@ -614,7 +616,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                   decoration: BoxDecoration(
                     color: tokens.surface,
                     border: Border.all(color: tokens.line),
-                    borderRadius: BorderRadius.circular(15 * 0.6),
+                    borderRadius: BorderRadius.circular(AppRadius.panel),
                   ),
                   child: Row(
                     children: [
@@ -623,7 +625,9 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                         height: 34,
                         decoration: BoxDecoration(
                           color: tokens.surface3,
-                          borderRadius: BorderRadius.circular(15 * 0.5),
+                          borderRadius: BorderRadius.circular(
+                            AppRadius.control,
+                          ),
                         ),
                         alignment: Alignment.center,
                         child: Icon(
@@ -637,33 +641,40 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            FitLabel(
                               l.exerciseEditorPr,
+                              maxLines: 2,
                               style: WorkoutType.body(
                                 size: 14,
-                                weight: FontWeight.w600,
+                                weight: FontWeight.w700,
                                 color: tokens.text,
                               ),
                             ),
                             const SizedBox(height: 1),
-                            Text(
+                            FitLabel(
                               l.exerciseEditorPrHint,
-                              style: WorkoutType.mono(
-                                size: 10.5,
+                              maxLines: 3,
+                              style: WorkoutType.body(
+                                size: 12,
                                 color: tokens.faint,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      Text(
-                        _prKg > 0
-                            ? '${units.fmtWt(_prKg)}${units.uLabel}'
-                            : '–',
-                        style: WorkoutType.mono(
-                          size: 15,
-                          weight: FontWeight.w700,
-                          color: _prKg > 0 ? tokens.text : tokens.faint,
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _prKg > 0
+                                ? '${units.fmtWt(_prKg)}${units.uLabel}'
+                                : '–',
+                            style: WorkoutType.mono(
+                              size: 15,
+                              weight: FontWeight.w700,
+                              color: _prKg > 0 ? tokens.text : tokens.faint,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -724,7 +735,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Field(
                         label: l.dayEditorRepHigh,
@@ -770,7 +781,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Field(
                         label: l.dayEditorWarmups,
@@ -853,7 +864,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Field(
                         label: l.dayEditorRirHigh,

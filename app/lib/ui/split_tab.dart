@@ -10,7 +10,7 @@ import '../theme/icons.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../util/dates.dart';
-import '../widgets/dashed_border.dart';
+import '../widgets/plan_form.dart';
 import '../widgets/fit_label.dart';
 
 /// The Split sub-tab: a list of training days in rotation.
@@ -47,7 +47,7 @@ class _SplitTabState extends State<SplitTab> {
             // Day cards
             ...days.map(
               (day) => Padding(
-                padding: const EdgeInsets.only(bottom: 9),
+                padding: const EdgeInsets.only(bottom: 12),
                 child: SplitDayCard(
                   weekday: day.scheduledWeekday,
                   name: day.name,
@@ -58,7 +58,7 @@ class _SplitTabState extends State<SplitTab> {
               ),
             ),
 
-            if (days.isNotEmpty) const SizedBox(height: 14),
+            if (days.isNotEmpty) const SizedBox(height: 16),
 
             // "New training day" dashed button
             _NewDayButton(
@@ -114,12 +114,12 @@ class SplitDayCard extends StatelessWidget {
     final countText = l
         .splitDayMeta('', exerciseCount)
         .replaceFirst(RegExp(r'^\s*·\s*'), '');
-    final metaStyle = WorkoutType.mono(size: 11, color: tokens.faint);
+    final metaStyle = WorkoutType.body(size: 12, color: tokens.faint);
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: tokens.surface,
           border: Border.all(color: tokens.line),
@@ -166,7 +166,7 @@ class SplitDayCard extends StatelessWidget {
                     maxLines: 2,
                     style: WorkoutType.body(
                       size: 15.5,
-                      weight: FontWeight.w600,
+                      weight: FontWeight.w700,
                       color: tokens.text,
                     ),
                   ),
@@ -222,42 +222,11 @@ class _NewDayButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return GestureDetector(
+    return PrimaryBtn(
+      l.planNewDay,
+      enabled: true,
+      secondary: true,
       onTap: onTap,
-      child: Container(
-        height: 50,
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: tokens.lineStrong,
-            style: BorderStyle.solid,
-          ),
-          borderRadius: BorderRadius.circular(AppRadius.radius),
-          color: Colors.transparent,
-        ),
-        child: CustomPaint(
-          painter: DashedBorderPainter(
-            color: tokens.lineStrong,
-            radius: AppRadius.radius,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(WIcons.plus, size: 16, color: tokens.dim),
-              const SizedBox(width: 7),
-              Flexible(
-                child: FitLabel(
-                  l.planNewDay,
-                  style: WorkoutType.mono(
-                    size: 13,
-                    weight: FontWeight.w600,
-                    color: tokens.dim,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

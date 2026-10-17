@@ -1,6 +1,6 @@
 # Alkion UI/UX refactor plan
 
-Date: 2026-10-17. Status: **approved scope and visual direction; T1 and T4 source reviews PASS**.
+Date: 2026-10-17. Status: **approved scope and visual direction; T1, T4 and T5 source reviews PASS**.
 
 ## Outcome
 
@@ -60,6 +60,9 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
 - **Owned files/callers:** `app/lib/ui/{plan_screen.dart,split_tab.dart,exercise_library_tab.dart,day_editor.dart,exercise_editor.dart,editor_guard.dart,exercise_sheet.dart,set_editor_sheet.dart}` and only `app/lib/widgets/{plan_form.dart,split_card.dart,pending_input.dart}` when required by those screens. Own plan/catalog strings in all four ARB files.
 - **Focused checks:** `make -C app test TEST=test/ui/plan_layout_test.dart`; `... TEST=test/ui/plan_profile_layout_test.dart`; `... TEST=test/ui/split_tab_test.dart`; `... TEST=test/ui/day_editor_slot_row_test.dart`; `... TEST=test/ui/exercise_sheet_test.dart`; `... TEST=test/ui/editor_guard_test.dart`; `... TEST=test/ui/plan_editor_dirty_test.dart`; `... TEST=test/alkion/domains/exact_editor_ui_test.dart`.
 
+- **T5 receipt (2026-10-17, implementation ready for independent review):** translated the seven named plan/catalog/editor/sheet screens and `plan_form.dart` to the shared neutral action, blue focus, Hanken UI and mono value roles, panel/control shapes and spacing. Controls retain 48 dp targets, scaled labels and keyboard-safe picker actions; normal sheet route timing is retained and reduced motion uses no animation. `editor_guard.dart`, `pending_input.dart` and `split_card.dart` required no edits. Existing localized copy is retained; ARBs remain serialized with T3. No store, domain, exact-number, ordering, validation or dirty-protection changes. A coordinator-approved bounded picker correction gives the search field a lifetime-owned controller so Clear also clears its displayed query, matching its existing filter-reset intent without resetting pending typing on rebuild; user-action coverage verifies restored exercise identities and retained focus.
+- **T5 verification:** all eight planned test files plus unchanged `test/ui/set_editor_sheet_test.dart` and `test/widgets/tap_targets_test.dart` ran through pinned Make/FVM. The initial batch passed 116 tests and failed two new exercise-editor layout tests because their readiness finder targeted a lazy bottom-of-form button. Changing only that finder to the loaded input made the complete `plan_layout_test.dart` file pass 13 tests. After the bounded Clear correction, the complete `exercise_sheet_test.dart` file passed 8 tests. These runs establish 119 distinct passing tests across the batch and affected-file reruns, not a single final aggregate batch. Coverage includes four locales at 320 dp/2x, keyboard insets, light/dark focus and contrast, empty/populated catalog identity, existing exact editors, pending saves and dirty protection. Intermediate parser/style diagnostics were corrected before the final checks; final formatting is clean and `make -C app analyze` reports no issues. Native visual/device qualification remains pending T8.
+
 ### T6 — Profile and settings
 
 - **Behavior:** Clarify existing profile, units, locale, theme/accent and preference controls. Preserve settings semantics and retry feedback. Do not add sign-in or sign-out affordances beyond existing enabled behavior.
@@ -86,6 +89,8 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
   analyzer and whitespace checks passed. Shared primitives are handed off.
   T4 History/Progress/measurements passed independent review after two bounded
   fixes; affected regression checks passed. Shared stat/value primitives are handed off.
-  T2–T3 and T5–T8 remain pending; no native visual or final device acceptance is claimed.
+  T5 Plans/exercise catalog source review passed with 119 distinct focused checks
+  passing across the batch and targeted reruns. Shared form primitives are handed off.
+  T2–T3 and T6–T8 remain pending; no native visual or final device acceptance is claimed.
 
 Related: [design brief](../specs/2026-10-17-ui-ux-refactor.md).

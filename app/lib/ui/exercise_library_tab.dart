@@ -12,6 +12,8 @@ import '../theme/icons.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../widgets/fit_label.dart';
+import '../widgets/plan_form.dart';
 
 /// The Exercises sub-tab: a catalog of all exercises grouped by muscle.
 ///
@@ -78,7 +80,17 @@ class _LibraryTabState extends State<LibraryTab> {
               tokens: tokens,
               onTap: () => widget.onOpenEditor(null),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 24),
+
+            if (snap.hasData && exercises.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  AppLocalizations.of(context).progressEmpty,
+                  textAlign: TextAlign.center,
+                  style: WorkoutType.body(size: 16, color: tokens.dim),
+                ),
+              ),
 
             // Muscle-group sections.
             for (final muscle in ordered) ...[
@@ -110,32 +122,7 @@ class _NewExerciseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: tokens.accent,
-          borderRadius: BorderRadius.circular(15),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(WIcons.plus, size: 17, color: tokens.accentInk),
-            const SizedBox(width: 7),
-            Text(
-              l.planNewExercise,
-              style: WorkoutType.display(
-                size: 15,
-                weight: FontWeight.w700,
-                color: tokens.accentInk,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return PrimaryBtn(l.planNewExercise, enabled: true, onTap: onTap);
   }
 }
 
@@ -168,11 +155,11 @@ class _MuscleSection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
           child: Text(
             localizedMuscle(context, muscle).toUpperCase(),
-            style: WorkoutType.mono(
-              size: 10.5,
+            style: WorkoutType.body(
+              size: 12,
               weight: FontWeight.w700,
               color: tokens.faint,
-              letterSpacing: 0.1 * 10.5,
+              letterSpacing: 0.06 * 12,
             ),
           ),
         ),
@@ -229,83 +216,97 @@ class _ExerciseRow extends StatelessWidget {
     ];
     final subLabel = subParts.join(' ');
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-        decoration: BoxDecoration(
-          color: tokens.surface,
-          border: Border.all(color: tokens.line),
-          borderRadius: BorderRadius.circular(15 * 0.65),
-        ),
-        child: Row(
-          children: [
-            // 6×6 compound dot
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: exercise.compound
-                    ? tokens.accentText
-                    : tokens.lineStrong,
-              ),
-            ),
-            const SizedBox(width: 11),
-
-            // Name + sub-label
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: tokens.surface,
+            border: Border.all(color: tokens.line),
+            borderRadius: BorderRadius.circular(AppRadius.panel),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Text(
-                    exercise.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: WorkoutType.body(
-                      size: 14.5,
-                      weight: FontWeight.w600,
-                      color: tokens.text,
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: exercise.compound
+                          ? tokens.accentText
+                          : tokens.lineStrong,
                     ),
                   ),
-                  const SizedBox(height: 1),
-                  Text(
-                    subLabel,
-                    overflow: TextOverflow.ellipsis,
-                    style: WorkoutType.mono(size: 10.5, color: tokens.faint),
-                  ),
-                ],
-              ),
-            ),
-
-            // PR value (only when pr > 0)
-            if (pr > 0) ...[
-              const SizedBox(width: 8),
-              Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: units.fmtWt(pr),
-                      style: WorkoutType.mono(
-                        size: 12,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FitLabel(
+                      exercise.name,
+                      maxLines: 2,
+                      style: WorkoutType.body(
+                        size: 16,
                         weight: FontWeight.w700,
-                        color: tokens.dim,
+                        color: tokens.text,
                       ),
                     ),
-                    TextSpan(
-                      text: units.uLabel,
-                      style: WorkoutType.mono(size: 9, color: tokens.faint),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(WIcons.edit, size: 20, color: tokens.dim),
+                ],
+              ),
+              const SizedBox(height: 8),
+              FitLabel(
+                subLabel,
+                maxLines: 2,
+                style: WorkoutType.body(size: 12, color: tokens.dim),
+              ),
+              if (pr > 0) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      l.exerciseEditorPr,
+                      style: WorkoutType.body(size: 12, color: tokens.dim),
+                    ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: units.fmtWt(pr),
+                              style: WorkoutType.mono(
+                                size: 14,
+                                weight: FontWeight.w700,
+                                color: tokens.accentText,
+                              ),
+                            ),
+                            TextSpan(
+                              text: units.uLabel,
+                              style: WorkoutType.mono(
+                                size: 12,
+                                color: tokens.dim,
+                              ),
+                            ),
+                          ],
+                        ),
+                        maxLines: 1,
+                        softWrap: false,
+                      ),
                     ),
                   ],
                 ),
-              ),
+              ],
             ],
-
-            const SizedBox(width: 8),
-
-            // Edit icon
-            Icon(WIcons.edit, size: 15, color: tokens.faint),
-          ],
+          ),
         ),
       ),
     );
