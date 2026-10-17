@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../files/android_documents.dart';
+import '../../files/document_access.dart';
+import '../../recovery/backup.dart';
 import '../../recovery/recovery_host.dart';
 import '../../recovery/restore.dart' show unknownNewerWork;
 import '../../store/local_store.dart';
@@ -13,10 +16,11 @@ import '../../widgets/w_dialog.dart';
 /// reminds, uploads or shares: a backup is a verified local file the owner
 /// copies off the device and checks there.
 class AlkionRecoveryScreen extends StatefulWidget {
-  const AlkionRecoveryScreen({super.key, this.flush});
+  const AlkionRecoveryScreen({super.key, this.flush, this.documents});
 
   /// Owned lifecycle barrier: flush durable input before backup/restore.
   final Future<void> Function()? flush;
+  final DocumentAccess? documents;
 
   @override
   State<AlkionRecoveryScreen> createState() => _AlkionRecoveryScreenState();
@@ -25,6 +29,8 @@ class AlkionRecoveryScreen extends StatefulWidget {
 class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   final _path = TextEditingController();
   bool _busy = false;
+  late final DocumentAccess? _documents =
+      widget.documents ?? platformDocumentAccess();
   List<Map<String, Object?>> _history = const [];
   List<Map<String, Object?>> _pending = const [];
 
@@ -70,7 +76,11 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     } catch (e) {
       await _message(
         l.alkionBackupFailed,
-        l.alkionBackupFailedMessage(e is StoreException ? e.category : '$e'),
+        e is DocumentException
+            ? l.alkionDocumentFailureMessage(e.category)
+            : l.alkionBackupFailedMessage(
+                e is StoreException ? e.category : '$e',
+              ),
       );
     } finally {
       if (mounted) {
@@ -93,6 +103,20 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
 
   Future<void> _create() => _run((host, l) async {
     final receipt = await host.createBackup();
+    final documents = _documents;
+    if (documents != null) {
+      final saved = await saveBackupCopy(host, receipt, documents);
+      await _message(
+        saved == null ? l.alkionDocumentCancelled : l.alkionDocumentSaved,
+        saved == null
+            ? l.alkionDocumentCancelledMessage
+            : l.alkionBackupCopySaved(
+                documentLabel(saved.readback.name),
+                receipt.verified.containerSha256.substring(0, 16),
+              ),
+      );
+      return;
+    }
     await _message(
       l.alkionBackupCreated,
       l.alkionBackupCreatedMessage(
@@ -102,8 +126,19 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     );
   });
 
+  Future<String?> _selectedPath() async {
+    final documents = _documents;
+    if (documents == null) return _path.text.trim();
+    return (await documents.open(
+      maxBytes: maxBackupBytes,
+      mimeTypes: const ['*/*'],
+    ))?.path;
+  }
+
   Future<void> _check() => _run((host, l) async {
-    final verified = await host.verifyBackup(_path.text.trim());
+    final path = await _selectedPath();
+    if (path == null) return;
+    final verified = await host.verifyBackup(path);
     if (verified.profileId != host.profileId) {
       await _message(l.alkionBackupCheckOk, l.alkionBackupForeignProfile);
       return;
@@ -118,7 +153,8 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   });
 
   Future<void> _restore() => _run((host, l) async {
-    final path = _path.text.trim();
+    final path = await _selectedPath();
+    if (path == null) return;
     final verified = await host.verifyBackup(path);
     if (verified.profileId != host.profileId) {
       await _message(l.alkionBackupCheckOk, l.alkionBackupForeignProfile);
@@ -180,15 +216,23 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                 FilledButton(
                   key: const Key('backup-create'),
                   onPressed: enabled ? _create : null,
-                  child: Text(l.alkionBackupCreate),
+                  child: Text(
+                    _documents == null
+                        ? l.alkionBackupCreate
+                        : l.alkionBackupSaveCopy,
+                  ),
                 ),
               ]),
               header(l.alkionBackupFileSection),
-              TextField(
-                key: const Key('backup-path'),
-                controller: _path,
-                decoration: InputDecoration(labelText: l.alkionBackupPathLabel),
-              ),
+              if (_documents == null)
+                TextField(
+                  key: const Key('backup-path'),
+                  controller: _path,
+                  decoration: InputDecoration(
+                    labelText: l.alkionBackupPathLabel,
+                  ),
+                ),
+              if (_documents != null) line(l.alkionDocumentSelectExplain),
               const SizedBox(height: 8),
               actions([
                 OutlinedButton(

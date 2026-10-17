@@ -10,6 +10,7 @@ import '../data/session_repository.dart';
 import '../data/session_writer.dart';
 import '../data/stats_repository.dart';
 import '../export/export_service.dart';
+import '../files/document_access.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/app_languages.dart';
 import '../settings/bodyweight_goal.dart';
@@ -621,7 +622,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final l = AppLocalizations.of(context);
     switch (result.outcome) {
       case ExportOutcome.shared:
-        return; // the share sheet was the feedback
+        await showWDialog<bool>(
+          context,
+          title: l.alkionDocumentShared,
+          message: l.alkionDocumentSharedMessage,
+          actions: [WDialogAction(label: l.commonOk, value: true)],
+        );
+      case ExportOutcome.providerVerified:
+        await showWDialog<bool>(
+          context,
+          title: l.alkionDocumentSaved,
+          message: l.alkionDocumentSavedMessage(
+            documentLabel(result.path ?? ''),
+          ),
+          actions: [WDialogAction(label: l.commonOk, value: true)],
+        );
+      case ExportOutcome.cancelled:
+        await showWDialog<bool>(
+          context,
+          title: l.alkionDocumentCancelled,
+          message: l.alkionDocumentCancelledMessage,
+          actions: [WDialogAction(label: l.commonOk, value: true)],
+        );
       case ExportOutcome.saved:
         await showWDialog<bool>(
           context,
@@ -641,7 +663,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await showWDialog<bool>(
       context,
       title: l.exportFailedTitle,
-      message: '$e',
+      message: l.alkionDocumentFailureMessage(
+        e is DocumentException ? e.category : '$e',
+      ),
       actions: [WDialogAction(label: l.commonOk, value: true)],
     );
   }

@@ -1256,5 +1256,40 @@
         "type": "String"
       }
     }
+  },
+  "alkionDocumentSaved": "Copy saved and checked",
+  "alkionDocumentSavedMessage": "{name}\nCopy matches the original. Checked on this device only; verify a physical off-device copy separately.",
+  "@alkionDocumentSavedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionDocumentShared": "Delivery only",
+  "alkionDocumentSharedMessage": "Sharing does not verify a receiving copy or prove an off-device backup. Keep the local original.",
+  "alkionDocumentCancelled": "Save cancelled",
+  "alkionDocumentCancelledMessage": "The local original is kept. No verified external copy was completed.",
+  "alkionDocumentSelectExplain": "Choose a file through Files. Alkion checks a completed private copy and keeps the original unchanged.",
+  "alkionTransferImportDocument": "Choose and import file",
+  "alkionBackupSaveCopy": "Create backup and save copy",
+  "alkionBackupCopySaved": "{name}\nSHA-256 {digest}…\nBackup copy fully checked here. Copy it off this device and run the receiving verifier there.",
+  "@alkionBackupCopySaved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "digest": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionDocumentFailureMessage": "{reason}\nAny external copy may be incomplete. The local original and private staging are kept.",
+  "@alkionDocumentFailureMessage": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
   }
 }

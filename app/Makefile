@@ -7,6 +7,7 @@ ALKION_FLAVOR ?= dev
 export GIT_OPTIONAL_LOCKS := 0
 
 .PHONY: help get analyze test fmt format build build-apk build-apk-dev build-apk-supported alkion-driver-qualification alkion-transfer-recovery alkion-backup-recovery run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean
+.PHONY: alkion-verify-backup
 help:
 	@echo "Alkion: get, analyze, test TEST=<path>, format, fmt FORMAT_FILES=<owned paths>, alkion-driver-qualification ALKION_OUTPUT=<fresh /tmp path>, alkion-transfer-recovery ALKION_OUTPUT=<fresh transfer-proof* path>, alkion-backup-recovery ALKION_OUTPUT=<fresh backup-proof* path>"
 get:
@@ -32,6 +33,10 @@ alkion-transfer-recovery:
 alkion-backup-recovery:
 	@test -n "$(ALKION_OUTPUT)" || (echo 'Set ALKION_OUTPUT to a fresh disposable backup-proof* directory.' >&2; exit 2)
 	$(DART) run tool/alkion_backup_recovery.dart --output "$(ALKION_OUTPUT)"
+alkion-verify-backup:
+	@test -n "$(ALKION_BACKUP)" || (echo 'Set ALKION_BACKUP to the explicitly received backup file.' >&2; exit 2)
+	@test -n "$(ALKION_OUTPUT)" || (echo 'Set ALKION_OUTPUT to a fresh inspection directory.' >&2; exit 2)
+	$(DART) run tool/alkion_verify_backup.dart --backup "$(ALKION_BACKUP)" --output "$(ALKION_OUTPUT)"
 alkion-driver-diagnose:
 	@test -n "$(ALKION_OUTPUT)" || (echo 'Set fresh ALKION_OUTPUT.' >&2; exit 2)
 	$(DART) run tool/alkion_driver_qualification.dart --diagnose "$(ALKION_OUTPUT)"

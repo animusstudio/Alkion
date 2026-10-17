@@ -651,5 +651,16 @@
   "alkionFreshWarmupLimit": "{exercise}: {count} Aufwärmsätze. Neue Trainings erfordern 0–99 pro Übung.",
   "alkionFreshSlotLimit": "Dieser Plan hat {count} Übungsplätze. Neue Trainings erlauben höchstens 100.",
   "alkionFreshTotalLimit": "Dieser Plan überschreitet bei {exercise} insgesamt 1.000 Arbeits- und Aufwärmsätze.",
-  "alkionFreshLimitCorrection": "Korrigiere die Satzzahlen im Plan oder die Übungsvorgaben, oder teile den Plan in kleinere Pläne auf. Starte dann erneut. Deine Originaldaten bleiben erhalten."
+  "alkionFreshLimitCorrection": "Korrigiere die Satzzahlen im Plan oder die Übungsvorgaben, oder teile den Plan in kleinere Pläne auf. Starte dann erneut. Deine Originaldaten bleiben erhalten.",
+  "alkionDocumentSaved": "Kopie gespeichert und geprüft",
+  "alkionDocumentSavedMessage": "{name}\nKopie entspricht dem Original. Nur hier geprüft; prüfe eine physisch externe Kopie gesondert.",
+  "alkionDocumentShared": "Nur Übermittlung",
+  "alkionDocumentSharedMessage": "Teilen prüft keine empfangene Kopie und belegt kein externes Backup. Bewahre das lokale Original auf.",
+  "alkionDocumentCancelled": "Speichern abgebrochen",
+  "alkionDocumentCancelledMessage": "Das lokale Original bleibt erhalten. Keine geprüfte externe Kopie wurde fertiggestellt.",
+  "alkionDocumentSelectExplain": "Wähle eine Datei über Dateien. Alkion prüft eine vollständige private Kopie und lässt das Original unverändert.",
+  "alkionTransferImportDocument": "Datei wählen und importieren",
+  "alkionBackupSaveCopy": "Backup erstellen und Kopie speichern",
+  "alkionBackupCopySaved": "{name}\nSHA-256 {digest}…\nBackup-Kopie hier vollständig geprüft. Kopiere sie auf ein anderes Gerät und prüfe die empfangene Datei dort.",
+  "alkionDocumentFailureMessage": "{reason}\nEine externe Kopie kann unvollständig sein. Lokales Original und privater Zwischenstand bleiben erhalten."
 }

@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import '../domain/evidence.dart';
+import '../files/document_access.dart';
 import '../store/local_store.dart';
 import 'backup.dart';
 import 'restore.dart';
@@ -13,6 +15,39 @@ abstract interface class RecoveryHost {
   Future<VerifiedBackup> verifyBackup(String path);
   Future<void> restoreBackup(String path);
   String get profileId;
+}
+
+/// Save a coherent existing backup; verification is against the completed
+/// provider readback, never a later URI read. The original backup remains.
+Future<DocumentSave?> saveBackupCopy(
+  RecoveryHost host,
+  BackupReceipt receipt,
+  DocumentAccess documents,
+) async {
+  final saved = await documents.save(
+    File(receipt.path),
+    filename: receipt.path.split(Platform.pathSeparator).last,
+    maxBytes: maxBackupBytes,
+  );
+  if (saved == null) return null;
+  try {
+    final verified = await host.verifyBackup(saved.readback.path);
+    if (verified.containerSha256 != receipt.verified.containerSha256 ||
+        saved.readback.sha256 != receipt.verified.containerSha256 ||
+        saved.readback.length != await File(receipt.path).length()) {
+      throw const DocumentException('document_readback_mismatch');
+    }
+  } catch (error) {
+    throw DocumentException(
+      error is StoreException
+          ? error.category
+          : error is DocumentException
+          ? error.category
+          : 'document_readback_failed',
+      originalPath: receipt.path,
+    );
+  }
+  return saved;
 }
 
 /// Restore lineage and newer-work reviews of the selected generation.

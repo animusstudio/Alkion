@@ -239,11 +239,21 @@ final class RuntimeRecoveryHost implements RecoveryHost {
     required this.relaunch,
     this.present = runApp,
     Future<Directory> Function()? backupDirectory,
-  }) : backupDirectory = backupDirectory ?? getApplicationDocumentsDirectory;
+  }) : backupDirectory = backupDirectory ?? _privateBackupDirectory;
   final AlkionRuntime runtime;
   final Future<void> Function() relaunch;
   final void Function(Widget app) present;
   final Future<Directory> Function() backupDirectory;
+
+  static Future<Directory> _privateBackupDirectory() async {
+    if (!Platform.isAndroid) return getApplicationDocumentsDirectory();
+    return Directory(
+      paths.join(
+        (await getApplicationSupportDirectory()).path,
+        'document-backups',
+      ),
+    ).create(recursive: true);
+  }
 
   @override
   String get profileId => runtime.store.profileId;

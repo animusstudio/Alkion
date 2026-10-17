@@ -54,9 +54,13 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
   `app/lib/main.dart` recovery-host methods; `app/lib/ui/alkion_transfer/transfer_screen.dart`,
   `app/lib/ui/alkion_recovery/recovery_screen.dart`; export results in
   `app/lib/ui/profile_screen.dart`; `app/lib/l10n/app_{en,de,es,it}.arb`.
-- Own new `app/tool/alkion_verify_backup.dart`, `app/test/alkion/files/document_access_test.dart`,
+- Own new `app/tool/alkion_verify_backup.dart`,
+  `app/test/alkion/files/{document_access_test,receiving_verifier_test,fake_documents}.dart`,
   `app/test/alkion/transfer/{export_test,transfer_screen_test}.dart`,
   `app/test/alkion/recovery/recovery_ui_test.dart`.
+- Approved bounded ownership amendment: `app/Makefile` only for the permanent
+  `alkion-verify-backup` receiving-file target and its explicit inputs through
+  the existing pinned Dart route. T5 preserves and integrates that target.
 - Implement bounded OPEN/CREATE document streams with private staging, small typed
   receipts and serialized calls. Route Android import/verify/restore through selected
   staged files; route exports and verified backups through Save copy. Keep optional
@@ -109,7 +113,7 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
   `app/integration_test/{android_driver,android_lifecycle,android_documents}_test.dart`,
   `app/pubspec.yaml` / `pubspec.lock` only for Flutter SDK `integration_test`,
   `docs/alkion/{development,backup,recovery,owner-gates,acceptance}.md` and this plan.
-- Add `android-synthetic` and `alkion-verify-backup` Make routes; keep ordinary
+- Add `android-synthetic` and integrate T2's `alkion-verify-backup` Make route; keep ordinary
   run/install/discovery fail closed. All Flutter/Dart uses pinned FVM via Make.
   Require expected AVD + explicit serial + fresh disposable receipt; reject missing
   or physical/mismatched targets before install. All adb calls are serial scoped.

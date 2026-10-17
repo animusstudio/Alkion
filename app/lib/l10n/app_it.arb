@@ -651,5 +651,16 @@
   "alkionFreshWarmupLimit": "{exercise}: {count} serie di riscaldamento. I nuovi allenamenti richiedono 0–99 per esercizio.",
   "alkionFreshSlotLimit": "Questo piano ha {count} spazi per esercizi. I nuovi allenamenti ne consentono al massimo 100.",
   "alkionFreshTotalLimit": "Questo piano supera 1.000 serie totali di lavoro e riscaldamento in corrispondenza di {exercise}.",
-  "alkionFreshLimitCorrection": "Correggi le serie del piano o i valori predefiniti dell’esercizio, oppure dividi il piano in piani più piccoli. Poi avvia di nuovo. I dati originali vengono conservati."
+  "alkionFreshLimitCorrection": "Correggi le serie del piano o i valori predefiniti dell’esercizio, oppure dividi il piano in piani più piccoli. Poi avvia di nuovo. I dati originali vengono conservati.",
+  "alkionDocumentSaved": "Copia salvata e controllata",
+  "alkionDocumentSavedMessage": "{name}\nLa copia corrisponde all’originale. Controllata solo qui; verifica a parte una copia fisicamente esterna.",
+  "alkionDocumentShared": "Solo consegna",
+  "alkionDocumentSharedMessage": "La condivisione non verifica la copia ricevuta e non dimostra un backup esterno. Conserva l’originale locale.",
+  "alkionDocumentCancelled": "Salvataggio annullato",
+  "alkionDocumentCancelledMessage": "L’originale locale è conservato. Nessuna copia esterna verificata è stata completata.",
+  "alkionDocumentSelectExplain": "Scegli un file tramite File. Alkion controlla una copia privata completa e conserva l’originale senza modifiche.",
+  "alkionTransferImportDocument": "Scegli e importa file",
+  "alkionBackupSaveCopy": "Crea backup e salva copia",
+  "alkionBackupCopySaved": "{name}\nSHA-256 {digest}…\nCopia del backup controllata interamente qui. Copiala fuori dal dispositivo ed esegui lì il verificatore del file ricevuto.",
+  "alkionDocumentFailureMessage": "{reason}\nLa copia esterna potrebbe essere incompleta. L’originale locale e i file privati di preparazione sono conservati."
 }

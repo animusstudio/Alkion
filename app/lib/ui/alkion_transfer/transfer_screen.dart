@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../domain/local_action.dart';
 import '../../export/export_service.dart';
+import '../../files/android_documents.dart';
+import '../../files/document_access.dart';
 import '../../l10n/app_localizations.dart';
 import '../../settings/settings_service.dart';
 import '../../store/local_store.dart';
@@ -19,11 +21,17 @@ import '../../widgets/w_dialog.dart';
 /// exact original bytes or a limits-stating compatibility file. Nothing here
 /// discovers legacy roots, connects an account or starts a transport.
 class AlkionTransferScreen extends StatefulWidget {
-  const AlkionTransferScreen({super.key, this.flush, this.delivery});
+  const AlkionTransferScreen({
+    super.key,
+    this.flush,
+    this.delivery,
+    this.documents,
+  });
 
   /// Owned lifecycle barrier: flush durable input before import/export.
   final Future<void> Function()? flush;
   final ExportDelivery? delivery;
+  final DocumentAccess? documents;
 
   @override
   State<AlkionTransferScreen> createState() => _AlkionTransferScreenState();
@@ -38,6 +46,8 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
   List<Map<String, dynamic>> _measurements = const [];
 
   LocalDatabase get _db => context.read<LocalDatabase>();
+  late final DocumentAccess? _documents =
+      widget.documents ?? platformDocumentAccess();
 
   @override
   void initState() {
@@ -84,7 +94,11 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
         await showWDialog<bool>(
           context,
           title: l.alkionTransferFailed,
-          message: e is StoreException ? e.category : '$e',
+          message: e is DocumentException
+              ? l.alkionDocumentFailureMessage(e.category)
+              : e is StoreException
+              ? e.category
+              : '$e',
           actions: [WDialogAction(label: l.commonOk, value: true)],
         );
       }
@@ -108,9 +122,18 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
   }
 
   Future<void> _import() => _run((db, l) async {
-    final outcome = await TransferService(
-      db,
-    ).importFile(_path.text.trim(), namespace: _namespace.text.trim());
+    final documents = _documents;
+    final selected = documents == null
+        ? null
+        : await documents.open(
+            maxBytes: defaultMaxRawBytes,
+            mimeTypes: const ['application/json', 'application/octet-stream'],
+          );
+    if (documents != null && selected == null) return;
+    final outcome = await TransferService(db).importFile(
+      selected?.path ?? _path.text.trim(),
+      namespace: _namespace.text.trim(),
+    );
     final title = switch (outcome.status) {
       ImportStatus.selected => l.alkionTransferImportSelected,
       ImportStatus.alreadySelected => l.alkionTransferImportAlreadySelected,
@@ -128,9 +151,29 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
 
   Future<void> _exportResult(Future<ExportResult> export) async {
     final result = await export;
-    if (!mounted || result.outcome != ExportOutcome.saved) return;
+    if (!mounted) return;
     final l = AppLocalizations.of(context);
-    await _message(l.exportSavedTitle, l.exportSavedMessage(result.path ?? ''));
+    switch (result.outcome) {
+      case ExportOutcome.saved:
+        await _message(
+          l.exportSavedTitle,
+          l.exportSavedMessage(result.path ?? ''),
+        );
+      case ExportOutcome.providerVerified:
+        await _message(
+          l.alkionDocumentSaved,
+          l.alkionDocumentSavedMessage(documentLabel(result.path ?? '')),
+        );
+      case ExportOutcome.shared:
+        await _message(l.alkionDocumentShared, l.alkionDocumentSharedMessage);
+      case ExportOutcome.cancelled:
+        await _message(
+          l.alkionDocumentCancelled,
+          l.alkionDocumentCancelledMessage,
+        );
+      case ExportOutcome.empty:
+        return;
+    }
   }
 
   ExportService _exports(LocalDatabase db) =>
@@ -225,13 +268,15 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               header(l.alkionTransferImportSection),
-              TextField(
-                key: const Key('transfer-path'),
-                controller: _path,
-                decoration: InputDecoration(
-                  labelText: l.alkionTransferPathLabel,
+              if (_documents == null)
+                TextField(
+                  key: const Key('transfer-path'),
+                  controller: _path,
+                  decoration: InputDecoration(
+                    labelText: l.alkionTransferPathLabel,
+                  ),
                 ),
-              ),
+              if (_documents != null) line(l.alkionDocumentSelectExplain),
               TextField(
                 key: const Key('transfer-namespace'),
                 controller: _namespace,
@@ -244,7 +289,11 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
                 FilledButton(
                   key: const Key('transfer-import'),
                   onPressed: _busy ? null : _import,
-                  child: Text(l.alkionTransferImportAction),
+                  child: Text(
+                    _documents == null
+                        ? l.alkionTransferImportAction
+                        : l.alkionTransferImportDocument,
+                  ),
                 ),
                 OutlinedButton(
                   key: const Key('transfer-export-compat'),
