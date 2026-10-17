@@ -95,18 +95,20 @@ void main() {
   );
 
   for (final page in [0, 2]) {
-    testWidgets('slide $page holds at 320dp and 2.0x in German', (
-      tester,
-    ) async {
-      await _pump(
+    for (final code in ['en', 'de', 'es', 'it']) {
+      testWidgets('slide $page holds at 320dp and 2.0x in $code', (
         tester,
-        page: page,
-        width: 320,
-        scale: 2.0,
-        locale: const Locale('de'),
-      );
-      expect(tester.takeException(), isNull);
-      expectNoSplitWords(tester, within: find.byType(SplitCard));
-    });
+      ) async {
+        await _pump(
+          tester,
+          page: page,
+          width: 320,
+          scale: 2.0,
+          locale: Locale(code),
+        );
+        expect(tester.takeException(), isNull);
+        expectNoSplitWords(tester, within: find.byType(SplitCard));
+      });
+    }
   }
 }

@@ -110,7 +110,7 @@ void main() {
                   )
                   .decoration!
               as BoxDecoration;
-      expect(deco(2).color, tokens.accent);
+      expect(deco(2).color, tokens.surface2);
       expect(deco(0).color, tokens.surface);
       expect(
         find.text('NEXT'),
