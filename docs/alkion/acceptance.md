@@ -6,6 +6,23 @@ observed: 2026-10-17
 
 # Alkion integrated acceptance (T7)
 
+## Android preparation (2026-10-17, local work)
+
+The [Android plan](../superpowers/plans/2026-10-17-android-owner-readiness.md)
+is in progress; these changes are local, with publication pending. T1 at `af06bfe`
+passed independent code review, 19 focused tests (0 skips), analysis, formatting,
+direct-Dart recovery checks and both debug APK builds. The two variants install
+side by side on the named disposable API 36 emulator, but initial startup refuses
+the app namespace's root-owned `/data/user/0` alias. A bounded fix is in progress;
+no successful local workout or full Android qualification is claimed here.
+
+Static review also identified an ARM directory-flush flag mismatch in
+`directory_durability.dart`; the Android primitive qualification must resolve it.
+Owner signing custody, the final refactored candidate, owner device/storage,
+real transfer and sync remain unqualified. The selected owner route is a dedicated
+Alkion key with manual signed APK updates. UI work follows the established specimen
+and Animus branding directly in Flutter; its brief records that scope separately.
+
 ## History numeric overflow (2026-10-17)
 
 Published 2026-10-17: the owner approved the exact range `1892ca4..95b52cd` and
