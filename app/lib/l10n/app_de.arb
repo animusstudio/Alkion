@@ -668,5 +668,8 @@
   "alkionFirstRestoreTitle": "Backup wiederherstellen",
   "alkionFirstRestoreConfirm": "Dieses geprüfte Backup auf der leeren Installation wiederherstellen? Profil und gespeicherte Arbeit bleiben erhalten; diese Installation erhält eine neue Identität.",
   "alkionFirstResumeBody": "Die vollständige geprüfte Wiederherstellung liegt bereit. Schließe sie ab, um dasselbe Profil wiederherzustellen. Der bisherige Versuch bleibt erhalten.",
-  "alkionFirstReselectBody": "Wähle dasselbe Backup erneut. Frühere Zwischenstände bleiben erhalten. Ein unabhängiges neues Profil kann jetzt nicht gestartet werden."
+  "alkionFirstReselectBody": "Wähle dasselbe Backup erneut. Frühere Zwischenstände bleiben erhalten. Ein unabhängiges neues Profil kann jetzt nicht gestartet werden.",
+  "alkionNotificationsDenied": "Benachrichtigungen sind aus. Training und gespeicherte Pausenzeit funktionieren weiter. Du kannst Benachrichtigungen in den Android-Einstellungen aktivieren.",
+  "alkionNotificationsInexact": "Pausenbenachrichtigungen im Hintergrund können verspätet sein. Die gespeicherte Endzeit bleibt erhalten und wird beim Öffnen von Alkion abgeglichen.",
+  "alkionNotificationsUnavailable": "Trainingsbenachrichtigungen sind nicht verfügbar. Training und gespeicherte Pausenzeit funktionieren weiter. Öffne Alkion, um deine Pause zu prüfen."
 }

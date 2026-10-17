@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <application
         android:label="${alkionLabel}"
         android:name="${applicationName}"
@@ -45,9 +45,8 @@
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />
         <!-- Posts the scheduled rest-end notification (reverts countdown → elapsed). -->
-        <receiver android:enabled="false" android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
-        <!-- Routes the "+30s" action tap to the background isolate (app may be killed). -->
-        <receiver android:enabled="false" android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"/>
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
+        <!-- Visible actions use the existing singleTop activity; no headless writer. -->
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

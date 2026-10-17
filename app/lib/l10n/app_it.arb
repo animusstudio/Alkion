@@ -668,5 +668,8 @@
   "alkionFirstRestoreTitle": "Ripristina backup",
   "alkionFirstRestoreConfirm": "Ripristinare questo backup verificato nell’installazione vuota? Profilo e lavoro salvato saranno conservati; questa installazione avrà una nuova identità.",
   "alkionFirstResumeBody": "Il ripristino ha una preparazione completa e verificata. Completalo per recuperare lo stesso profilo. Il tentativo precedente è conservato.",
-  "alkionFirstReselectBody": "Scegli di nuovo lo stesso backup per riprovare. I file precedenti sono conservati. Ora non è possibile creare un profilo indipendente."
+  "alkionFirstReselectBody": "Scegli di nuovo lo stesso backup per riprovare. I file precedenti sono conservati. Ora non è possibile creare un profilo indipendente.",
+  "alkionNotificationsDenied": "Le notifiche sono disattivate. Il registro e la scadenza salvata del recupero funzionano ancora. Puoi attivare le notifiche nelle impostazioni Android.",
+  "alkionNotificationsInexact": "Le notifiche di recupero in background possono arrivare in ritardo. La scadenza salvata resta invariata e viene verificata quando riapri Alkion.",
+  "alkionNotificationsUnavailable": "Le notifiche di allenamento non sono disponibili. Il registro e la scadenza salvata del recupero funzionano ancora. Riapri Alkion per controllare il recupero."
 }

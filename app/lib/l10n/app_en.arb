@@ -1297,5 +1297,8 @@
   "alkionFirstRestoreTitle": "Restore backup",
   "alkionFirstRestoreConfirm": "Restore this verified backup onto this empty installation? Its profile and saved work will be kept; this installation gets a new identity.",
   "alkionFirstResumeBody": "This restore has complete verified staging. Complete it to recover the same profile. Your previous attempt is kept.",
-  "alkionFirstReselectBody": "This restore needs the same backup again. Choose it to retry; earlier staging is kept. Starting an unrelated profile is unavailable."
+  "alkionFirstReselectBody": "This restore needs the same backup again. Choose it to retry; earlier staging is kept. Starting an unrelated profile is unavailable.",
+  "alkionNotificationsDenied": "Notifications are off. Workout logging and your saved rest deadline still work. You can enable notifications in Android settings.",
+  "alkionNotificationsInexact": "Background rest notifications may be delayed. Your saved deadline is unchanged and reconciles when you reopen Alkion.",
+  "alkionNotificationsUnavailable": "Workout notifications are unavailable. Logging and your saved rest deadline still work; reopen Alkion to check your rest."
 }

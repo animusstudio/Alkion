@@ -7,8 +7,7 @@ import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/recovery_host.dart';
 import 'package:alkion/recovery/restore.dart';
-import 'package:alkion/session/workout_notification.dart'
-    show extendRestInBackground;
+import 'package:alkion/session/notification_action.dart';
 import 'package:alkion/store/generation_selection.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/transfer/incoming_quarantine.dart';
@@ -227,15 +226,10 @@ void main() {
           expectedRevision: 1,
         );
       });
+      final firstAction = (await issueNotificationAction(store))!;
+      expect(await consumeNotificationAction(store, firstAction), isNotNull);
+      final oldAction = (await issueNotificationAction(store))!;
       await store.close();
-      Future<void> plus30(int generation) => extendRestInBackground(
-        supportRoot: support,
-        expectedProfileId: profileId,
-        generation: generation,
-        draftId: 'd1',
-        restStart: start,
-      );
-      await plus30(oldGeneration); // positive control before restore
       final receipt = await backupOf(root);
       store = await proof.openStore(root);
       final service = RestoreService(support, workDirectory: temp);
@@ -262,19 +256,23 @@ void main() {
           storeCategory('stale_generation'),
         );
         before = await proof.coveredOf(current);
+        expect(await consumeNotificationAction(current, oldAction), isNull);
+        expect((await proof.coveredOf(current)).digest(), before.digest());
       } finally {
         await current.close();
       }
-      await expectLater(
-        plus30(oldGeneration),
-        storeCategory('stale_generation'),
-      );
       expect((await coveredAt(root)).digest(), before.digest());
       // Restored local state was adopted into the selected generation.
-      await plus30(outcome.selectedGeneration);
-      final timer = (await coveredAt(
-        root,
-      )).tables['local_state']!.firstWhere((r) => r['state_kind'] == 'timer');
+      final owner = await proof.openStore(root);
+      try {
+        final refreshed = (await issueNotificationAction(owner))!;
+        expect(await consumeNotificationAction(owner, refreshed), isNotNull);
+      } finally {
+        await owner.close();
+      }
+      final timer = (await coveredAt(root)).tables['local_state']!.firstWhere(
+        (r) => r['state_kind'] == 'timer' && r['state_key'] == 'active',
+      );
       final payload = jsonDecode(
         utf8.decode(
           base64.decode(
