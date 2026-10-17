@@ -5,8 +5,62 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/app_fonts.dart';
 
 void main() {
+  setUpAll(preloadAppFonts);
+  testWidgets(
+    'scaled decimal ruler labels keep exact centre value and never intersect',
+    (tester) async {
+      for (final scale in [1.0, 2.0]) {
+        await tester.pumpWidget(
+          wrapL10n(
+            MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: Center(
+                child: SizedBox(
+                  width: 262,
+                  child: RulerPicker(
+                    value: 142.5,
+                    step: 1,
+                    fineStep: 0.25,
+                    max: 500,
+                    format: (v) => '$v',
+                    semanticLabel: 'Weight',
+                    onChanged: (_) {},
+                    onTapValue: () {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final state = tester.state<RulerPickerState>(find.byType(RulerPicker));
+        expect(state.position, 142.5);
+        expect(state.centreLabels, contains('142.5'));
+        final boxes = state.labelBounds;
+        expect(boxes, isNotEmpty);
+        final height = tester.getSize(find.byType(RulerPicker)).height;
+        for (var i = 0; i < boxes.length; i++) {
+          expect(boxes[i].top, greaterThanOrEqualTo(0));
+          expect(boxes[i].bottom, lessThanOrEqualTo(height - 14));
+          for (var j = i + 1; j < boxes.length; j++) {
+            expect(
+              boxes[i].overlaps(boxes[j]),
+              isFalse,
+              reason: '$scale: ${boxes[i]} intersects ${boxes[j]}',
+            );
+          }
+        }
+        expect(
+          tester.getSize(find.byKey(const Key('ruler-centre'))).width,
+          greaterThanOrEqualTo(48),
+        );
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
   group('RulerScale', () {
     test('an on-grid anchor starts the tape at min', () {
       final s = RulerScale(anchor: 100, step: 2.5, min: 0, max: 500);

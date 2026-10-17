@@ -7,6 +7,7 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../widgets/fit_label.dart';
 import 'active_session_controller.dart';
 
 /// "Next · …" for the header rest row: the live set, or finishing.
@@ -134,27 +135,21 @@ class SessionHeader extends StatelessWidget {
       label: label,
       excludeSemantics: true,
       onTap: onTap,
-      child: GestureDetector(
+      child: IconButton(
         key: key,
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: tokens.surface,
-                border: Border.all(color: tokens.line),
-              ),
-              alignment: Alignment.center,
-              child: icon,
-            ),
+        onPressed: onTap,
+        style: IconButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          fixedSize: const Size(48, 48),
+          backgroundColor: tokens.surface2,
+          foregroundColor: tokens.dim,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
+          side: BorderSide(color: tokens.line),
+          focusColor: tokens.focus.withValues(alpha: 0.25),
         ),
+        icon: icon,
       ),
     );
 
@@ -165,27 +160,30 @@ class SessionHeader extends StatelessWidget {
         children: [
           SizedBox(height: MediaQuery.of(context).padding.top + 4),
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 12, 8),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Column(
               children: [
-                circleButton(
-                  key: const Key('session-minimize'),
-                  label: l.sessionMinimize,
-                  onTap: onMinimize,
-                  icon: Transform.rotate(
-                    angle: 1.5708,
-                    child: Icon(WIcons.chevron, size: 18, color: tokens.dim),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text.rich(
+                Row(
+                  children: [
+                    circleButton(
+                      key: const Key('session-minimize'),
+                      label: l.sessionMinimize,
+                      onTap: onMinimize,
+                      icon: Transform.rotate(
+                        angle: 1.5708,
+                        child: Icon(
+                          WIcons.chevron,
+                          size: 18,
+                          color: tokens.dim,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FitLabel.rich(
                         TextSpan(
                           style: WorkoutType.display(
-                            size: 18,
+                            size: 22,
                             weight: FontWeight.w700,
                             color: tokens.text,
                           ),
@@ -194,31 +192,36 @@ class SessionHeader extends StatelessWidget {
                             if (draft.focus.isNotEmpty)
                               TextSpan(
                                 text: ' · ${draft.focus}',
-                                style: WorkoutType.display(
-                                  size: 18,
-                                  weight: FontWeight.w600,
-                                  color: tokens.faint,
+                                style: WorkoutType.body(
+                                  size: 16,
+                                  color: tokens.dim,
                                 ),
                               ),
                           ],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        setsText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: WorkoutType.mono(size: 11, color: tokens.faint),
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 12),
+                    circleButton(
+                      key: const Key('session-menu'),
+                      label: l.sessionWorkoutOptions,
+                      onTap: onMenu,
+                      icon: Icon(WIcons.more, size: 18, color: tokens.dim),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                const SizedBox(height: 8),
+                Row(
                   children: [
+                    Expanded(
+                      child: FitLabel(
+                        setsText,
+                        maxLines: 2,
+                        style: WorkoutType.body(size: 12, color: tokens.dim),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Text(
                       '$mm:${ss.toString().padLeft(2, '0')}',
                       style: WorkoutType.mono(
@@ -227,23 +230,15 @@ class SessionHeader extends StatelessWidget {
                         color: tokens.accentText,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      l.sessionElapsed,
-                      style: WorkoutType.mono(
-                        size: 9,
-                        color: tokens.faint,
-                        letterSpacing: 0.06 * 9,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: FitLabel(
+                        l.sessionElapsed,
+                        maxLines: 2,
+                        style: WorkoutType.body(size: 12, color: tokens.dim),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(width: 4),
-                circleButton(
-                  key: const Key('session-menu'),
-                  label: l.sessionWorkoutOptions,
-                  onTap: onMenu,
-                  icon: Icon(WIcons.more, size: 18, color: tokens.dim),
                 ),
               ],
             ),
@@ -272,10 +267,9 @@ class SessionHeader extends StatelessWidget {
                                 children: [
                                   Text(
                                     resting ? l.restLabel : l.restRestedLabel,
-                                    style: WorkoutType.mono(
-                                      size: 10,
-                                      color: tokens.faint,
-                                      letterSpacing: 0.08 * 10,
+                                    style: WorkoutType.body(
+                                      size: 12,
+                                      color: tokens.dim,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -285,7 +279,7 @@ class SessionHeader extends StatelessWidget {
                                     duration: Motion.of(context, Motion.base),
                                     curve: Motion.curve,
                                     style:
-                                        WorkoutType.display(
+                                        WorkoutType.mono(
                                           size: 18,
                                           weight: FontWeight.w700,
                                           color: !resting
@@ -364,13 +358,12 @@ class SessionHeader extends StatelessWidget {
                     },
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  FitLabel(
                     resting && !restExtensionAvailable
                         ? l.captureRestUnavailable
                         : nextLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: WorkoutType.mono(size: 11, color: tokens.dim),
+                    maxLines: 2,
+                    style: WorkoutType.body(size: 12, color: tokens.dim),
                   ),
                 ],
               ),
@@ -425,42 +418,27 @@ class _RestChip extends StatelessWidget {
     return Semantics(
       enabled: enabled,
       hint: enabled ? null : unavailableLabel,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          height: 48,
-          constraints: const BoxConstraints(minWidth: 56),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          // Skip is secondary to the log bar, the screen's one lime action:
-          // a quiet filled chip, not an accent one.
-          decoration: BoxDecoration(
-            color: filled ? tokens.surface3 : null,
-            border: filled
-                ? null
-                : Border.all(color: enabled ? tokens.lineStrong : tokens.line),
-            borderRadius: BorderRadius.circular(AppRadius.radius * 0.5),
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(56, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          backgroundColor: filled ? tokens.surface2 : Colors.transparent,
+          foregroundColor: tokens.text,
+          disabledForegroundColor: tokens.faint,
+          side: BorderSide(color: enabled ? tokens.lineStrong : tokens.line),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
-          // widthFactor 1 sizes the chip to its label; a Container `alignment`
-          // would instead stretch it across all the width its Flexible offers.
-          // Longer translations (German "Überspringen") ellipsize rather than
-          // overflow at small widths / large text scale.
-          child: Center(
-            widthFactor: 1,
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: WorkoutType.mono(
-                size: 12,
-                weight: FontWeight.w700,
-                color: !enabled
-                    ? tokens.faint
-                    : filled
-                    ? tokens.text
-                    : tokens.dim,
-              ),
-            ),
+        ),
+        child: FitLabel(
+          label,
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          style: WorkoutType.body(
+            size: 14,
+            weight: FontWeight.w700,
+            color: enabled ? tokens.text : tokens.faint,
           ),
         ),
       ),

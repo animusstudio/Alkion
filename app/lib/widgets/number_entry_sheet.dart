@@ -5,6 +5,7 @@ import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
+import 'fit_label.dart';
 
 /// A modal sheet for typing one exact number (the ruler picker's typed-entry
 /// path). Modal on purpose: nothing else on screen can act while the typed
@@ -25,7 +26,11 @@ Future<double?> showNumberEntrySheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.55),
+    barrierColor: context.tokens.overlay,
+    useSafeArea: true,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
     builder: (_) => _NumberEntrySheet(
       title: title,
       initialText: initialText,
@@ -85,22 +90,23 @@ class _NumberEntrySheetState extends State<_NumberEntrySheet> {
         top: false,
         child: Container(
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: tokens.surface,
-            borderRadius: BorderRadius.circular(AppRadius.radius),
+            borderRadius: BorderRadius.circular(AppRadius.sheet),
             border: Border.all(color: tokens.lineStrong),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
+              FitLabel(
                 widget.title,
-                style: WorkoutType.mono(
-                  size: 10.5,
-                  color: tokens.faint,
-                  letterSpacing: 0.08 * 10.5,
+                maxLines: 2,
+                style: WorkoutType.display(
+                  size: 22,
+                  weight: FontWeight.w700,
+                  color: tokens.text,
                 ),
               ),
               const SizedBox(height: 6),
@@ -133,8 +139,8 @@ class _NumberEntrySheetState extends State<_NumberEntrySheet> {
                         ],
                         onSubmitted: (_) => _submit(),
                         style:
-                            WorkoutType.display(
-                              size: 30,
+                            WorkoutType.mono(
+                              size: 28,
                               weight: FontWeight.w700,
                               color: tokens.text,
                             ).copyWith(
@@ -142,42 +148,55 @@ class _NumberEntrySheetState extends State<_NumberEntrySheet> {
                                 FontFeature.tabularFigures(),
                               ],
                             ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 6),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: tokens.sunken,
+                          constraints: const BoxConstraints(minHeight: 48),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.control,
+                            ),
+                            borderSide: BorderSide(color: tokens.lineStrong),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.control,
+                            ),
+                            borderSide: BorderSide(
+                              color: tokens.focus,
+                              width: 2,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 12,
+                          ),
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Semantics(
-                    button: true,
-                    child: GestureDetector(
-                      key: const Key('number-entry-done'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _submit,
-                      child: Container(
-                        height: 48,
-                        constraints: const BoxConstraints(minWidth: 72),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: tokens.accent,
-                          borderRadius: BorderRadius.circular(
-                            AppRadius.radius * 0.6,
-                          ),
-                        ),
-                        child: Center(
-                          widthFactor: 1,
-                          child: Text(
-                            l.commonDone,
-                            style: WorkoutType.body(
-                              size: 15,
-                              weight: FontWeight.w700,
-                              color: tokens.accentInk,
-                            ),
-                          ),
-                        ),
+                  FilledButton(
+                    key: const Key('number-entry-done'),
+                    onPressed: _submit,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(72, 48),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      backgroundColor: tokens.action,
+                      foregroundColor: tokens.onAction,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                      ),
+                    ),
+                    child: Text(
+                      l.commonDone,
+                      style: WorkoutType.body(
+                        size: 14,
+                        weight: FontWeight.w700,
+                        color: tokens.onAction,
                       ),
                     ),
                   ),

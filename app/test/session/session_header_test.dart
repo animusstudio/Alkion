@@ -147,7 +147,12 @@ void main() {
 
   for (final width in const [412.0, 320.0]) {
     for (final scale in const [1.0, 2.0]) {
-      for (final locale in const [Locale('en'), Locale('it')]) {
+      for (final locale in const [
+        Locale('en'),
+        Locale('de'),
+        Locale('es'),
+        Locale('it'),
+      ]) {
         testWidgets(
           'resting and rested are the same height at ${width}dp / $scale× ${locale.languageCode}',
           (tester) async {

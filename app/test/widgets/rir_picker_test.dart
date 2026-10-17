@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +25,27 @@ Color? _digit(WidgetTester tester, int n) => tester
     ?.color;
 
 void main() {
+  testWidgets('selected RIR is announced independently of color', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      wrapL10n(
+        SizedBox(width: 180, child: RirPicker(value: 3, onChanged: (_) {})),
+      ),
+    );
+    for (var n = rirMin; n <= rirMax; n++) {
+      expect(
+        tester
+            .getSemantics(_chip(n))
+            .getSemanticsData()
+            .flagsCollection
+            .isSelected,
+        n == 3 ? Tristate.isTrue : Tristate.isFalse,
+      );
+    }
+    semantics.dispose();
+  });
   Widget picker(int? value, {double width = 320, List<int>? reports}) =>
       wrapL10n(
         SizedBox(
@@ -46,10 +69,10 @@ void main() {
     final reports = <int>[];
     await tester.pumpWidget(picker(rirMax, reports: reports));
     final tokens = tester.element(find.byType(RirPicker)).tokens;
-    expect(_fill(tester, rirMax), tokens.accent);
-    expect(_digit(tester, rirMax), tokens.accentInk);
+    expect(_fill(tester, rirMax), tokens.action);
+    expect(_digit(tester, rirMax), tokens.onAction);
     for (var n = rirMin; n < rirMax; n++) {
-      expect(_fill(tester, n), tokens.surface3, reason: 'rir-$n');
+      expect(_fill(tester, n), tokens.surface2, reason: 'rir-$n');
     }
     await tester.tap(_chip(rirMax));
     expect(reports, [rirMax]);
@@ -60,7 +83,7 @@ void main() {
       await tester.pumpWidget(picker(value));
       final tokens = tester.element(find.byType(RirPicker)).tokens;
       for (var n = rirMin; n <= rirMax; n++) {
-        expect(_fill(tester, n), tokens.surface3, reason: 'rir-$n');
+        expect(_fill(tester, n), tokens.surface2, reason: 'rir-$n');
         expect(_digit(tester, n), tokens.dim, reason: 'rir-$n');
       }
     });
