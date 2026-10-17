@@ -6,6 +6,7 @@
         <!-- Setup/receipts are owner-only files via the guarded harness, never IPC. -->
         <provider android:name=".SyntheticDocumentsProvider"
             android:authorities="dev.animusstudio.alkion.synthetic.documents.provider"
+            android:enabled="false"
             android:exported="true" android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">
             <intent-filter>
