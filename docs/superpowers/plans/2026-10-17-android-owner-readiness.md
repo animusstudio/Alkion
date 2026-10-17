@@ -1,6 +1,6 @@
 # Android owner-readiness implementation plan
 
-Date: 2026-10-17. Lane: **full**. Status: **proposed; independent design review pending**.
+Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; design review PASS, T1 in progress**.
 Direction and supported ID `dev.animusstudio.alkion` approved; signing custody and
 candidate update route pending. [Specification](../specs/2026-10-17-android-owner-readiness.md).
 
@@ -140,9 +140,11 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 
 ## State, checks and delivery
 
-T1–T6: not started; Android and owner-storage gates remain UNRUN. Planning-only
-checks: relative links and `git diff --check`; no build, device or key access.
-Next: independent design review, then approved synthetic implementation; settle
+Independent design review at `92048af`: PASS, 2026-10-17, no remaining findings.
+Public Markdown check at `92048af`: PASS, 114 tracked files; whitespace PASS.
+T1: in progress; T2–T6: not started. Android and owner-storage gates remain UNRUN.
+Synthetic preparation scope and the supported ID are owner-approved.
+Next: T1 build/identity implementation; settle
 signing/update custody before owner-candidate work. Record results in acceptance. Final review
 covers A1–A8 and remaining blockers. Every public push needs exact-range review,
 owner approval and owner-run publication; no tag/release follows from this plan.

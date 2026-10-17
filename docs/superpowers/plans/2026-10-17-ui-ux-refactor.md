@@ -1,6 +1,6 @@
 # Alkion UI/UX refactor plan
 
-Date: 2026-10-17. Status: **PROPOSED; owner approval required before implementation.**
+Date: 2026-10-17. Status: **approved refactor scope; independent planning review PASS**.
 
 ## Outcome
 

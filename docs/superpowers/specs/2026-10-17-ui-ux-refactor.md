@@ -1,6 +1,6 @@
 # Alkion UI/UX refactor
 
-Date: 2026-10-17. Public full-lane design brief. Status: **PROPOSED; implementation not approved by this document.**
+Date: 2026-10-17. Public full-lane design brief. Status: **approved refactor scope; independent planning review PASS**.
 
 ## Outcome
 

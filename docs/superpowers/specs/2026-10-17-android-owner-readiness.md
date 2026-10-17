@@ -1,6 +1,6 @@
 # Android owner readiness
 
-Date: 2026-10-17. Lane: **full**. Status: **proposed public implementation design**.
+Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; independent design review PASS**.
 The owner approved the offline-first preparation order and supported application
 ID `dev.animusstudio.alkion`. Signing custody and the candidate update route remain
 unresolved. This document records no device, signing or transfer qualification.
