@@ -7,14 +7,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/data/session_repository.dart';
+import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/session/set_values_editor.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/ui/set_editor_sheet.dart';
 import 'package:alkion/units/unit_service.dart';
+import 'package:alkion/util/number_input.dart';
+import 'package:alkion/widgets/fit_label.dart';
 import 'package:alkion/widgets/rir_picker.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
 
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
+import '../support/layout_expect.dart';
 import '../support/rir_expect.dart';
 import '../support/screen_harness.dart' show setPhone;
 
@@ -27,14 +32,19 @@ class FakeSessionRepository implements SessionRepository {
         ({
           String sessionId,
           String exerciseId,
-          String weightKg,
-          int reps,
+          String? weightKg,
+          int? reps,
           int? rir,
           bool isWarmup,
         })
       >[];
   String nextId = 'new-set';
+
+  /// The stored fields per set id, as the last commit left them.
   final values = <String, Map<String, Object?>>{};
+
+  /// Every prepared input, exactly as the sheet built it.
+  final prepared = <Map<String, Object?>>[];
   void remember(List<LoggedSet> sets) {
     for (final s in sets) {
       values[s.id] = {
@@ -53,6 +63,7 @@ class FakeSessionRepository implements SessionRepository {
     String? operationId,
   }) {
     input = jsonDecode(jsonEncode(input)) as Map<String, Object?>;
+    prepared.add(input);
     if (input['mode'] == 'add') {
       (input['set'] as Map)['id'] = nextId;
     }
@@ -82,14 +93,15 @@ class FakeSessionRepository implements SessionRepository {
         ...Map<String, Object?>.from(set['fields'] as Map),
       };
       if (input['mode'] == 'add') {
-        await addSet(
-          intent.action.target.id,
-          set['exercise_id'] as String,
-          weightKg: fields['weight_kg'] as String,
-          reps: fields['reps'] as int,
+        // Records what is stored, including a null (unavailable) weight.
+        addCalls.add((
+          sessionId: intent.action.target.id,
+          exerciseId: set['exercise_id'] as String,
+          weightKg: fields['weight_kg'] as String?,
+          reps: fields['reps'] as int?,
           rir: fields['rir'] as int?,
           isWarmup: set['is_warmup'] == 1,
-        );
+        ));
       } else {
         await updateSet(
           id,
@@ -182,7 +194,29 @@ LoggedSet _set(
   isPr: false,
 );
 
-Widget sheet(FakeSessionRepository repo, List<LoggedSet> sets) => wrapL10n(
+/// A stored row whose preserved weight text is [load], with real evidence.
+LoggedSet _stored(String id, Object? load, {Object? reps = 5}) =>
+    LoggedSet.fromRow({
+      'id': id,
+      'revision': 1,
+      'workout_revision': 1,
+      'exercise_id': 'bench',
+      'set_number': 1,
+      'weight_kg': load,
+      'reps': reps,
+      'rir': null,
+      'is_warmup': 0,
+      'is_top_set': 1,
+      'is_pr': 0,
+    });
+
+UnitService _units(Unit unit) => UnitService()..setUnit(unit);
+
+Widget sheet(
+  FakeSessionRepository repo,
+  List<LoggedSet> sets, {
+  Unit unit = Unit.kg,
+}) => wrapL10n(
   SetEditorSheet(
     block: ExerciseBlockData(
       exerciseId: 'bench',
@@ -194,14 +228,39 @@ Widget sheet(FakeSessionRepository repo, List<LoggedSet> sets) => wrapL10n(
     exercise: _exercise,
     sessionId: 'session-1',
     sessionRepo: repo..remember(sets),
-    units: UnitService(),
+    units: _units(unit),
   ),
 );
+
+/// The weight ruler's spoken value: its labels are painted, not Text.
+String _rulerValue(WidgetTester tester) {
+  final node = tester.getSemantics(find.byKey(const Key('live-weight')));
+  expect(node.label, startsWith('Weight, '));
+  return node.value;
+}
+
+/// Every reported Flutter error with its stack; `takeException` keeps one.
+Future<List<String>> _errors(Future<void> Function() body) async {
+  final errors = <FlutterErrorDetails>[];
+  final previous = FlutterError.onError;
+  FlutterError.onError = errors.add;
+  try {
+    await body();
+  } finally {
+    FlutterError.onError = previous;
+  }
+  return [for (final e in errors) '${e.exceptionAsString()}\n${e.stack}'];
+}
 
 /// A host that opens the sheet the same way History does — via
 /// `showModalBottomSheet` — so its route can actually be popped, exercising
 /// the real dismissal path instead of just the sheet in isolation.
-Widget host(FakeSessionRepository repo, List<LoggedSet> sets) => wrapL10n(
+Widget host(
+  FakeSessionRepository repo,
+  List<LoggedSet> sets, {
+  Locale locale = const Locale('en'),
+}) => wrapL10n(
+  locale: locale,
   Builder(
     builder: (context) => ElevatedButton(
       key: const Key('open-sheet'),
@@ -580,4 +639,223 @@ void main() {
       await tester.pumpAndSettle(); // let the exit animation and dispose finish
     },
   );
+  group('extreme loads', () {
+    final l = lookupAppLocalizations(const Locale('en'));
+    final nines = List.filled(400, '9').join();
+    final e29 = '1${List.filled(29, '0').join()}';
+    // (name, stored text, shown in kg, shown in lb, seed in kg, seed in lb,
+    // Add-set copy) — from the specification.
+    final cases = <(String, String, String?, String?, double, double, String?)>[
+      ('400-digit', nines, null, null, 0, 0, null),
+      ('Infinity', 'Infinity', null, null, 0, 0, null),
+      ('NaN', 'NaN', null, null, 0, 0, null),
+      ('9999oops', '9999oops', null, null, 0, 0, null),
+      ('1e29', e29, null, null, 0, 0, null),
+      (
+        '5e15 kg',
+        '5000000000000000',
+        '5000000000000000kg',
+        null,
+        5e15,
+        0,
+        '5000000000000000.00',
+      ),
+      ('1e3', '1e3', null, null, 1000, 1000, null),
+    ];
+    for (final (name, text, kgShown, lbShown, kgSeed, lbSeed, copy) in cases) {
+      for (final unit in Unit.values) {
+        testWidgets('$name in ${unit.name}: a dash row, a guarded seed and '
+            'caption, and a safe Add-set copy', (tester) async {
+          final semantics = tester.ensureSemantics();
+          final repo = FakeSessionRepository();
+          final shown = unit == Unit.kg ? kgShown : lbShown;
+          final seed = unit == Unit.kg ? kgSeed : lbSeed;
+          final errors = await _errors(() async {
+            await tester.pumpWidget(
+              sheet(repo, [_stored('s1', text)], unit: unit),
+            );
+            // Past the line's entrance, which hides it from semantics.
+            await tester.pumpAndSettle();
+            final line = find.byKey(const Key('set-line-s1'));
+            final row = find.descendant(
+              of: line,
+              matching: find.byType(RichText),
+            );
+            final rowText = tester
+                .widgetList<RichText>(row)
+                .map((r) => r.text.toPlainText(includeSemanticsLabels: false))
+                .join(' | ');
+            expect(rowText, contains(shown ?? '—  ×  5'));
+            if (shown == null) {
+              expect(rowText, isNot(contains('kg')));
+              expect(rowText, isNot(contains('lb')));
+              expect(
+                find.bySemanticsLabel(RegExp(l.alkionLoadUnavailableLabel)),
+                findsWidgets,
+              );
+            }
+
+            await tester.tap(line);
+            await tester.pumpAndSettle();
+            final editor = tester.widget<SetValuesEditor>(
+              find.byType(SetValuesEditor),
+            );
+            expect(editor.weightKg, seed);
+            expect(
+              _rulerValue(tester),
+              UnitService.fmtDisplay(UnitService.fromKg(seed, unit), unit),
+            );
+            expect(
+              find.text(l.alkionLoadUnavailable),
+              shown == null ? findsOneWidget : findsNothing,
+            );
+            expect(find.text(l.alkionLegacyFallback), findsNothing);
+            for (final bad in [
+              'Infinity',
+              'NaN',
+              '1e+29',
+              '9223372036854775807',
+            ]) {
+              expect(
+                find.textContaining(bad, findRichText: true),
+                findsNothing,
+              );
+            }
+            // Untouched: nothing is written.
+            await tester.pump(const Duration(milliseconds: 600));
+            expect(repo.updateCalls, isEmpty);
+
+            await tester.tap(find.byKey(const Key('add-set')));
+            await tester.pumpAndSettle();
+          });
+          expect(errors, isEmpty);
+          final add = repo.prepared.singleWhere((p) => p['mode'] == 'add');
+          final fields = (add['set'] as Map)['fields'] as Map;
+          expect(fields['weight_kg'], copy);
+          expect(repo.addCalls.single.weightKg, copy);
+          expect(repo.values['new-set']!['weight_kg'], copy);
+          expect(repo.updateCalls, isEmpty);
+          semantics.dispose();
+        });
+      }
+    }
+
+    Future<void> typeWeight(WidgetTester tester, String text) async {
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('live-weight')),
+          matching: find.byKey(const Key('ruler-centre')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('number-entry-field')), text);
+      await tester.tap(find.byKey(const Key('number-entry-done')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    }
+
+    testWidgets('a typed weight the kg display cannot show is refused', (
+      tester,
+    ) async {
+      final repo = FakeSessionRepository();
+      await tester.pumpWidget(sheet(repo, [_stored('s1', '100.00')]));
+      await tester.tap(find.byKey(const Key('set-line-s1')));
+      await tester.pumpAndSettle();
+
+      await typeWeight(tester, '99999999999999999999999');
+      // The shared parser saturates it; the sheet refuses the result.
+      expect(
+        parseNumberInput('99999999999999999999999', min: 0),
+        92233720368547760.0,
+      );
+      // The entry field never accepts an exponent; the value the shared
+      // parser would deliver is refused at the sheet's edit path too.
+      await typeWeight(tester, '1e30');
+      final saturated = parseNumberInput(
+        '1e30',
+        min: 0,
+        parseDisplay: (d) => UnitService.toKg(d, Unit.kg),
+      )!;
+      expect(saturated, 92233720368547760.0);
+      tester
+          .widget<SetValuesEditor>(find.byType(SetValuesEditor))
+          .onWeight(saturated);
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(repo.updateCalls, isEmpty);
+      expect(repo.prepared, isEmpty);
+      expect(
+        tester.widget<SetValuesEditor>(find.byType(SetValuesEditor)).weightKg,
+        100,
+      );
+      expect(find.textContaining('100kg', findRichText: true), findsOneWidget);
+      expect(
+        find.textContaining('92233720368547760', findRichText: true),
+        findsNothing,
+      );
+
+      // An ordinary typed edit still saves.
+      await typeWeight(tester, '102.5');
+      expect(repo.updateCalls.single.weightKg, '102.50');
+    });
+
+    testWidgets('in lb a typed 1e16 is refused and an ordinary weight saves', (
+      tester,
+    ) async {
+      final repo = FakeSessionRepository();
+      await tester.pumpWidget(
+        sheet(repo, [_stored('s1', '100.00')], unit: Unit.lb),
+      );
+      await tester.tap(find.byKey(const Key('set-line-s1')));
+      await tester.pumpAndSettle();
+
+      await typeWeight(tester, '10000000000000000');
+      expect(repo.updateCalls, isEmpty);
+      expect(repo.prepared, isEmpty);
+      expect(find.textContaining('220lb', findRichText: true), findsOneWidget);
+
+      await typeWeight(tester, '225');
+      expect(repo.updateCalls.single.weightKg, '102.06');
+    });
+
+    for (final locale in ['en', 'de', 'es', 'it']) {
+      testWidgets('unavailable weight and reps show both captions at 320dp, '
+          '2.0x in $locale', (tester) async {
+        setPhone(tester, width: 320, textScale: 2.0);
+        final ll = lookupAppLocalizations(Locale(locale));
+        final repo = FakeSessionRepository();
+        await tester.pumpWidget(
+          host(repo, [
+            _stored('s1', '9999oops', reps: null),
+            _stored('s2', nines),
+            _stored('s3', '5000000000000000'),
+          ], locale: Locale(locale)),
+        );
+        await tester.tap(find.byKey(const Key('open-sheet')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('set-line-s1')));
+        await tester.pumpAndSettle();
+        expect(find.text(ll.alkionLoadUnavailable), findsOneWidget);
+        expect(find.text(ll.alkionLegacyFallback), findsOneWidget);
+        expect(
+          tester
+              .renderObject<RenderFitLabel>(
+                find.ancestor(
+                  of: find.text(ll.alkionLoadUnavailable),
+                  matching: find.byType(FitLabel),
+                ),
+              )
+              .ellipsized,
+          isFalse,
+          reason: 'the caption wraps or shrinks whole',
+        );
+        expect(tester.takeException(), isNull);
+        expectNoSplitWords(
+          tester,
+          within: find.byType(SetEditorSheet),
+          where: 'set editor $locale',
+        );
+      });
+    }
+  });
 }

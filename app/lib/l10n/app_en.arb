@@ -1076,6 +1076,19 @@
   },
   "alkionBaselineUnavailable": "Previous reference unavailable",
   "alkionValuesUnavailable": "Values unavailable",
+  "alkionVolumeOutOfRange": "Volume is outside the displayable range in {unit}.",
+  "@alkionVolumeOutOfRange": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionVolumeNoEvidence": "No qualified weight evidence",
+  "alkionVolumeUnavailableLabel": "Volume unavailable",
+  "alkionLoadUnavailable": "A weight shown as — is unavailable: invalid, or outside the displayable range.",
+  "alkionLoadUnavailableLabel": "Weight unavailable",
+  "alkionRepsUnavailableLabel": "Reps unavailable",
   "alkionDomainExportSub": "Versioned Alkion domain export · JSON",
   "alkionImportTransfer": "Import & transfer",
   "alkionImportTransferSub": "Full export import, reviews, original bytes",

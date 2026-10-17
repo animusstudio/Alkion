@@ -556,6 +556,19 @@
   },
   "alkionBaselineUnavailable": "Vorherige Referenz nicht verfügbar",
   "alkionValuesUnavailable": "Werte nicht verfügbar",
+  "alkionVolumeOutOfRange": "Volumen außerhalb des darstellbaren Bereichs in {unit}.",
+  "@alkionVolumeOutOfRange": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionVolumeNoEvidence": "Keine gültigen Gewichtsdaten",
+  "alkionVolumeUnavailableLabel": "Volumen nicht verfügbar",
+  "alkionLoadUnavailable": "Ein als — angezeigtes Gewicht ist nicht verfügbar: ungültig oder außerhalb des darstellbaren Bereichs.",
+  "alkionLoadUnavailableLabel": "Gewicht nicht verfügbar",
+  "alkionRepsUnavailableLabel": "Wiederholungen nicht verfügbar",
   "alkionDomainExportSub": "Versionierter Alkion-Domänenexport · JSON",
   "alkionImportTransfer": "Import & Übertragung",
   "alkionImportTransferSub": "Vollexport-Import, Prüfungen, Originalbytes",

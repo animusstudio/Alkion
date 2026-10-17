@@ -399,7 +399,9 @@ class SessionRepository {
   /// PR count, tonnage), ordered newest first.
   ///
   /// Uses a LEFT JOIN so sessions with no sets still appear. `pr_count` counts
-  /// distinct exercises where any set is a PR. `tonnage` excludes warm-up sets.
+  /// distinct exercises where any set is a PR. `tonnage` excludes warm-up sets
+  /// and is legacy SQL arithmetic, not for display; History volume comes from
+  /// the exact evidence of the same `coverage_sets` rows.
   Stream<List<HistorySessionRow>> watchSessionStats() => reListenable(
     () => db
         .watch(
@@ -418,7 +420,8 @@ class SessionRepository {
             final sets = (jsonDecode(r['coverage_sets'] as String) as List)
                 .cast<Map>()
                 .where((s) => s['id'] != null)
-                .map((s) => LoggedSet.fromRow(Map<String, dynamic>.from(s)));
+                .map((s) => LoggedSet.fromRow(Map<String, dynamic>.from(s)))
+                .toList();
             final coverage = CompatibilityCoverage.sets(sets);
             final row = HistorySessionRow.fromRow(r);
             return HistorySessionRow(
@@ -435,6 +438,7 @@ class SessionRepository {
               prCount: row.prCount,
               tonnageKg: row.tonnageKg,
               coverage: coverage,
+              volumeEvidence: historyVolumeOf(sets),
             );
           }).toList(),
         ),

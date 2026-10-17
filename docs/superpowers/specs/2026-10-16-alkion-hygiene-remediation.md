@@ -18,6 +18,8 @@ INTEGRATION PENDING**, 2026-10-17 (reviewer `alkion_readme_review`). T7 has **in
 acceptance supersedes the task checkpoints' integration-pending status. Focused
 author receipts and review identities are recorded in the plan; current evidence is in
 [canonical acceptance](../../alkion/acceptance.md#hygiene-remediation-2026-10-17).
+The later delivery observation and the local History repair are recorded in the
+[dated appendix](#dated-appendix-delivery-observation-and-history-repair-2026-10-17).
 
 Baseline inspected: clean `main` at
 `ef3f6df2d53cdd33b3fbf437abd5af2f5a18f2b9`. The locally configured origin is
@@ -36,9 +38,10 @@ Use [development](../../alkion/development.md),
 [transfer](../../alkion/transfer.md) as the current public references.
 The dated 2026-10-15/16 [integrated acceptance](../../alkion/acceptance.md)
 receipts retain their frozen inputs; the current hygiene execution receipt is
-separate; independent R1-public review accepts scoped implementation readiness,
-while owner/publication gates stay closed and the staged outgoing public-tree
-check remains required.
+separate; independent R1-public review accepts scoped implementation readiness.
+At that review, owner/publication gates stayed closed and the staged outgoing
+public-tree check remained required; that is a dated checkpoint (see the
+[dated appendix](#dated-appendix-delivery-observation-and-history-repair-2026-10-17)).
 
 Only current pre-1.0 app source, synthetic tests/tools and the named public
 documentation are eligible. No `server/**` change, legacy hotfix/branch,
@@ -244,3 +247,28 @@ only for equal relevant inputs; missing prerequisites/proof remain BLOCKED/UNRUN
 never waived. All app checks are initially UNRUN; no runtime command was run to
 author this design. Independent design/task/final reviewers report findings
 without fixing their own reviewed diff. Material new behavior returns to owner.
+
+## Dated appendix: delivery observation and History repair (2026-10-17)
+
+This appendix is added after the receipts above, which stay as written.
+
+**Delivery observation.** A read-only query of the public repository's `main`,
+made on 2026-10-17, returned `1892ca4f0c26ba04a12a91825ad06627164c487a`, the
+merge `fix: integrate Alkion hygiene remediation` of `a82fac7` onto
+`ef3f6df`. Public `main` therefore carries this increment's integration. The
+statements above that publication or delivery is pending are dated checkpoints
+written before that push. This observation records only the remote state; it is
+not an approval record for that push.
+
+**Distinct History issue.** The
+[extreme-load History issue](../plans/2026-10-16-alkion-hygiene-remediation.md#distinct-unresolved-extreme-load-history-issue-observed-during-t3)
+observed during T3 was outside this increment and stayed unresolved here. It is
+now **repaired locally, pending publication**, by the separate
+[History numeric overflow](2026-10-17-history-numeric-overflow.md) increment.
+Dated checkpoint, 2026-10-17: that change was then an uncommitted working tree
+on `1892ca4`. Its source task is accepted after independent task review and its
+integrated qualification passed. Its independent final integration review
+returned **PASS** on 2026-10-17 with low-severity findings F1–F5, and F4 was
+closed by an added test. Its publication is not approved. Current evidence is in
+[canonical acceptance](../../alkion/acceptance.md#history-numeric-overflow-2026-10-17).
+H1–H7 and their receipts are unchanged by that repair.
