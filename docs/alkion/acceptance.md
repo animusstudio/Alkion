@@ -57,6 +57,23 @@ physical-power-loss and the final refactored/signed installed-candidate gates
 remain open. Results apply to the recorded inputs; relevant source, signing or
 platform changes require affected checks again.
 
+A2 update preparation is source/host work only. Shared helpers seed the normal
+variant app root with real repository/outbox, draft/timer, settings and original
+source evidence, close fully, then verify two host reopens. Seven native Linux
+scenarios pass, including changed domain, draft, source bytes, identity and
+generation refusals with exact database/identity/source bytes preserved. The
+explicit continuation harness accepts recognized complete driver receipts and
+audited same-run APKs; its fresh-driver guard still refuses existing packages.
+Same-signer higher-version installs, wrong-signer rejection and peer isolation
+on Android remain **UNRUN**, pending integrated source and execution. Independent
+source review passed after correcting ADB remote-argument quoting; faithful
+join-and-shell host controls cover guards, fingerprints and adversarial literals.
+Read-only inspection left a zero-byte WAL and 32 KiB SHM on the host; the rejected
+strict-absence control is retained. Peer evidence covers exact sidecar presence
+and bytes during a quiescent interval instead of omitting the WAL or deleting
+files. At this preparation checkpoint, no update APK or negative-signing key has
+been built or created.
+
 First-start restore source passed independent review, including same-variant
 checks and changed/linked staging refusal before identity publication. Recovery
 tests passed 71 cases; Linux process proof passed 26, including six fresh-restore
