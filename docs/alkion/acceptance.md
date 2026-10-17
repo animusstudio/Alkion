@@ -8,6 +8,10 @@ observed: 2026-10-17
 
 ## History numeric overflow (2026-10-17)
 
+Published 2026-10-17: the owner approved the exact range `1892ca4..95b52cd` and
+pushed it; public `main` is `95b52cd`. The **NOT APPROVED** wording that follows
+is the pre-push checkpoint.
+
 Status, 2026-10-17: source task **ACCEPTED** after independent task review;
 integrated qualification **PASS** as run below; independent final integration
 review **PASS**, 2026-10-17, with low-severity final-review findings F1–F5, of
@@ -50,7 +54,7 @@ Summary and Progress extreme paths, catalog/editor extreme qualification
 makes no general extreme-numeric claim. DST computation, Android/devices, real
 data, physical power loss/ENOSPC and transport remain **UNRUN**. The
 independent final integration review has passed (2026-10-17, low-severity
-findings F1–F5). Publication is still **NOT APPROVED**: local integration,
+findings F1–F5). Before the push, publication was still **NOT APPROVED**: local integration,
 independent review of the exact outgoing range, the staged outgoing public-tree
 check, fresh destination verification and explicit owner approval of that range
 are still required before any push.
