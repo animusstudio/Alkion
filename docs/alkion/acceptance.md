@@ -50,14 +50,19 @@ after release, with exact lock bytes and inventory preserved. Its Android result
 is **UNRUN**; adding it does not change the historical ten-case Android receipt.
 
 T5 overall remains **IN_PROGRESS**. OS-process ownership on Android, process-kill
-recovery, same-run updates and wrong-signer rejection, lifecycle/notifications
+recovery, lifecycle/notifications
 and permission changes, actual document-provider failures, off-device delivery
 verification and separate fresh receiving restore remain unrun. ARM-device,
 physical-power-loss and the final refactored/signed installed-candidate gates
 remain open. Results apply to the recorded inputs; relevant source, signing or
 platform changes require affected checks again.
 
-A2 update preparation is source/host work only. Shared helpers seed the normal
+The SAF proof adapter and isolated namespaced provider fixture passed independent
+source review, API 36 Java compilation, analysis and 12 host document tests. This
+prepares real picker/fault cases; installed provider behavior remains UNRUN.
+
+A2 preparation checkpoint, before the executed run below: source/host only.
+Shared helpers seed the normal
 variant app root with real repository/outbox, draft/timer, settings and original
 source evidence, close fully, then verify two host reopens. Seven native Linux
 scenarios pass, including changed domain, draft, source bytes, identity and
@@ -72,7 +77,20 @@ Read-only inspection left a zero-byte WAL and 32 KiB SHM on the host; the reject
 strict-absence control is retained. Peer evidence covers exact sidecar presence
 and bytes during a quiescent interval instead of omitting the WAL or deleting
 files. At this preparation checkpoint, no update APK or negative-signing key has
-been built or created.
+been built or created. The initial Android preflight refused API 36 metadata
+that uses `appId`; the independently reviewed fix binds full UIDs through exact
+package results. Retained metadata fixtures and 66 host guard cases pass; the
+actual update retry remains unrun.
+
+Executed A2 phase at `920d8e1`: **PASS**, including independent evidence review.
+`make -C app android-synthetic ALKION_SYNTHETIC_ACTION=updates-check` and the
+recognized-base `updates` route both passed on the same named API 36 emulator.
+Both variants preserved covered state, profile/installation identity, generation
+and UID through versions 38 → 39. Higher-version wrong-signer APKs (40) returned
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE`; installed APK/metadata/data remained exact.
+Peer, prior-driver and synthetic neighbor checks passed. All six APKs, audits and
+raw reports are retained. Only disposable signing material was used. This is the
+initial update phase; the final refactored candidate still needs affected proof.
 
 First-start restore source passed independent review, including same-variant
 checks and changed/linked staging refusal before identity publication. Recovery

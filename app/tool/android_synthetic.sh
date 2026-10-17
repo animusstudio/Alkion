@@ -332,9 +332,15 @@ def driver_continuation_contract(base, receipt):
 def package_metadata(args, package):
     value = adb(args, "shell", "dumpsys", "package", package).stdout
     version = re.findall(r"\bversionCode=([0-9]+)\b", value)
-    uid = re.findall(r"\buserId=([0-9]+)\b", value)
-    require(len(set(version)) == 1 and len(set(uid)) == 1, "package_metadata_unavailable")
-    return {"version_code": int(version[0]), "uid": int(uid[0])}
+    listing = adb(args, "shell", "pm", "list", "packages", "-U", package).stdout
+    # The filter can also return substring peers. Only the exact package binds
+    # its full UID; dumpsys appId is not a UID and userId is absent on API 36.
+    prefix = "package:" + re.escape(package)
+    exact = [line.strip() for line in listing.splitlines()
+             if re.match(prefix + r"(?:\s|$)", line.strip())]
+    uid = re.fullmatch(prefix + r" uid:([0-9]+)", exact[0]) if len(exact) == 1 else None
+    require(len(set(version)) == 1 and uid is not None, "package_metadata_unavailable")
+    return {"version_code": int(version[0]), "uid": int(uid[1])}
 
 def continuation_device_guard(args, receipt, base, local_facts):
     driver_continuation_contract(base, receipt)
@@ -580,8 +586,23 @@ elif scenario.startswith("continuation") and cmd[:2]==["shell","sha256sum"]:
  print(("0"*64 if scenario=="continuation-hash" else facts[package]["apk_sha256"])+"  "+cmd[-1])
 elif scenario.startswith("continuation") and cmd[:3]==["shell","dumpsys","package"]:
  facts=json.loads(os.environ["FAKE_FACTS"])
- print("userId="+str(10000+list(facts).index(cmd[-1])))
+ field="userId=" if scenario=="continuation-old-schema" else "appId="
+ print(field+str(10000+list(facts).index(cmd[-1])))
  print("versionCode="+str(facts[cmd[-1]]["version_code"]))
+elif scenario.startswith("continuation") and cmd[:5]==["shell","pm","list","packages","-U"]:
+ facts=json.loads(os.environ["FAKE_FACTS"])
+ package=cmd[-1]
+ uid=10000+list(facts).index(package)
+ exact="package:"+package+" uid:"+str(uid)
+ foreign="package:"+("dev.animusstudio.alkion.dev" if package=="dev.animusstudio.alkion" else package+".peer")+" uid:99999"
+ if scenario=="continuation-uid-missing": pass
+ elif scenario=="continuation-uid-foreign-only": print(foreign)
+ elif scenario=="continuation-uid-malformed": print("package:"+package+" uid:not-numeric")
+ elif scenario=="continuation-uid-duplicate": print(exact); print(exact)
+ elif scenario=="continuation-uid-conflicting": print(exact); print("package:"+package+" uid:"+str(uid+1))
+ else:
+  if scenario=="continuation-uid-exact-and-foreign": print(foreign)
+  print(exact)
 elif scenario.startswith("continuation") and cmd[:2]==["shell","run-as"]:
  app=Path(os.environ["FAKE_APP_ROOT"])/cmd[2]
  app.mkdir(parents=True,exist_ok=True)
@@ -746,13 +767,23 @@ else: raise SystemExit("unexpected transport mutation: "+repr(cmd))
         os.environ.update(env,FAKE_FACTS=json.dumps(local))
         target=argparse.Namespace(sdk=sdk,serial="emulator-5558",avd="guard-proof")
         try:
-            for scenario,error in (("continuation",None),("continuation-hash","same_run_apk_changed"),
-                                   ("continuation-profile","unexpected_existing_update_profile")):
+            for scenario,error in (("continuation",None),("continuation-old-schema",None),
+                    ("continuation-uid-exact-and-foreign",None),
+                    ("continuation-uid-missing","package_metadata_unavailable"),
+                    ("continuation-uid-duplicate","package_metadata_unavailable"),
+                    ("continuation-uid-conflicting","package_metadata_unavailable"),
+                    ("continuation-uid-malformed","package_metadata_unavailable"),
+                    ("continuation-uid-foreign-only","package_metadata_unavailable"),
+                    ("continuation-hash","same_run_apk_changed"),
+                    ("continuation-profile","unexpected_existing_update_profile")):
                 os.environ["FAKE_SCENARIO"]=scenario
-                try: continuation_device_guard(target,original,base_run,local)
+                try: metadata=continuation_device_guard(target,original,base_run,local)
                 except Refusal as refused:
                     require(error and error in str(refused),"continuation_guard_wrong_failure")
-                else: require(error is None,"continuation_guard_missed_failure")
+                else:
+                    require(error is None,"continuation_guard_missed_failure")
+                    require(metadata=={package:{"version_code":37,"uid":10000+index}
+                            for index,package in enumerate(PACKAGES)},"exact_package_uid_changed")
                 continuation_count += 1
             os.environ["FAKE_SCENARIO"]="continuation"
             nested=adb(target,"shell","/bin/sh","-c",
