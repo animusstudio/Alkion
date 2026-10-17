@@ -1,6 +1,6 @@
 # Alkion UI/UX refactor plan
 
-Date: 2026-10-17. Status: **approved scope and visual direction; owner answers incorporated; review required**.
+Date: 2026-10-17. Status: **approved scope and visual direction; T1 source review PASS**.
 
 ## Outcome
 
@@ -74,6 +74,9 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
 ## Deferred decisions and status
 
 - **Future dependency:** opening signup/login and returning-authenticated-session behavior are specified in the later sync workstream; preserve offline/local use and do not implement them here.
-- **Status:** approved scope, visual direction and direct Flutter build path are recorded; implementation approval follows the full-lane workflow. No tests or builds run for this docs-only task.
+- **Status:** T1 shared foundation is implemented and independently reviewed PASS.
+  The 11 planned focused test files plus settings regression passed 81 tests;
+  analyzer and whitespace checks passed. Shared primitives are handed off.
+  T2–T8 remain pending; no native visual or final device acceptance is claimed.
 
 Related: [design brief](../specs/2026-10-17-ui-ux-refactor.md).

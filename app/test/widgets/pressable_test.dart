@@ -26,6 +26,29 @@ void main() {
     expect(currentScale(), 1.0);
   });
 
+  testWidgets('reduced motion keeps the pressed control stationary', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: Center(
+            child: PressableScale(child: SizedBox(width: 100, height: 48)),
+          ),
+        ),
+      ),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(PressableScale)),
+    );
+    await tester.pump();
+    final scale = tester.widget<AnimatedScale>(find.byType(AnimatedScale));
+    expect(scale.scale, 1);
+    expect(scale.duration, Duration.zero);
+    await gesture.up();
+  });
+
   testWidgets('does not block the child own taps', (tester) async {
     var tapped = false;
     await tester.pumpWidget(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/theme/typography.dart';
 
 import '../support/app_fonts.dart';
 import '../support/text_theme_slots.dart';
@@ -57,6 +58,21 @@ void main() {
       tester.getSize(find.text('iiii')).width,
       proportionalTo(tester.getSize(find.text('MMMM')).width),
     );
+  });
+
+  test('display uses Hanken metrics and measured data stays tabular mono', () {
+    expect(
+      WorkoutType.display(size: 28),
+      WorkoutType.body(
+        size: 28,
+        weight: FontWeight.w700,
+        letterSpacing: -0.56,
+      ).copyWith(height: 1.25),
+    );
+    final mono = WorkoutType.mono();
+    expect(_width('1111', mono), closeTo(_width('8888', mono), 0.01));
+    expect(_width('iiii', mono), closeTo(_width('MMMM', mono), 0.01));
+    expect(mono.fontFeatures, contains(const FontFeature.tabularFigures()));
   });
 
   test('every text theme slot draws in Hanken Grotesk', () {
