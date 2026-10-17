@@ -72,7 +72,10 @@ Read-only inspection left a zero-byte WAL and 32 KiB SHM on the host; the reject
 strict-absence control is retained. Peer evidence covers exact sidecar presence
 and bytes during a quiescent interval instead of omitting the WAL or deleting
 files. At this preparation checkpoint, no update APK or negative-signing key has
-been built or created.
+been built or created. The initial Android preflight refused API 36 metadata
+that uses `appId`; the independently reviewed fix binds full UIDs through exact
+package results. Retained metadata fixtures and 66 host guard cases pass; the
+actual update retry remains unrun.
 
 First-start restore source passed independent review, including same-variant
 checks and changed/linked staging refusal before identity publication. Recovery
