@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 /// Glyph meaning is preserved; exact pixel match is not required.
 /// Source: `docs/design_handoff_workout_tracker/design/app/ui.jsx` `Icons` map.
 abstract final class WIcons {
-  static const IconData back = Icons.arrow_back_ios_new;
+  static const IconData back = Icons.arrow_back;
   static const IconData check = Icons.check;
   static const IconData plus = Icons.add;
   static const IconData minus = Icons.remove;
@@ -29,7 +29,7 @@ abstract final class WIcons {
   static const IconData cloud = Icons.cloud_outlined;
   static const IconData arrowUp = Icons.north;
   static const IconData flame = Icons.local_fire_department_outlined;
-  static const IconData export = Icons.ios_share;
+  static const IconData export = Icons.share_outlined;
   static const IconData capture = Icons.inventory_2_outlined;
   static const IconData update = Icons.system_update_outlined;
   static const IconData refresh = Icons.refresh;

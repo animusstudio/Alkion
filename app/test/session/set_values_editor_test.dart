@@ -6,8 +6,11 @@ import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/app_fonts.dart';
+import '../support/layout_expect.dart';
 
 void main() {
+  setUpAll(preloadAppFonts);
   late int weightCalls;
   late double? lastWeight;
   setUp(() {
@@ -30,6 +33,47 @@ void main() {
   Widget host(Widget child) => wrapL10n(
     SingleChildScrollView(child: SizedBox(width: 260, child: child)),
   );
+
+  for (final code in ['en', 'de', 'es', 'it']) {
+    testWidgets(
+      'typed live weight retains exact comma input above keyboard at 320dp 2x $code',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 800);
+        tester.view.devicePixelRatio = 1;
+        tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(
+          wrapL10n(
+            SingleChildScrollView(child: editor()),
+            locale: Locale(code),
+          ),
+        );
+        await tester.tap(
+          find.descendant(
+            of: find.byKey(const Key('live-weight')),
+            matching: find.byKey(const Key('ruler-centre')),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final field = find.byKey(const Key('number-entry-field'));
+        final done = find.byKey(const Key('number-entry-done'));
+        expect(tester.getSize(field).height, greaterThanOrEqualTo(48));
+        expect(tester.getSize(done).height, greaterThanOrEqualTo(48));
+        expect(tester.getRect(done).bottom, lessThanOrEqualTo(560));
+        expect(weightCalls, 0);
+        await tester.enterText(field, '151,5');
+        expectNoSplitWords(tester);
+        await tester.tap(done);
+        await tester.pumpAndSettle();
+        expect(lastWeight, 151.5);
+        expect(weightCalls, 1);
+        expect(find.byKey(const Key('number-entry-field')), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   // A coarse drag: each step's worth of distance covered at ~180 dp/s, safely
   // between the 120 dp/s zoom-in threshold and the 300 dp/s fling dead zone,

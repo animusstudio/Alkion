@@ -2,14 +2,14 @@ import 'package:flutter/widgets.dart';
 
 import '../theme/motion.dart';
 
-/// Press-down scale feedback (1.0 → 0.97) that never interferes with the
+/// Press-down scale feedback (1.0 → 0.98) that never interferes with the
 /// child's own gestures: it observes raw pointer events via [Listener]
 /// (no gesture-arena participation).
 class PressableScale extends StatefulWidget {
   const PressableScale({
     super.key,
     required this.child,
-    this.pressedScale = 0.97,
+    this.pressedScale = 0.98,
   });
 
   final Widget child;
@@ -30,7 +30,9 @@ class _PressableScaleState extends State<PressableScale> {
       onPointerUp: (_) => setState(() => _down = false),
       onPointerCancel: (_) => setState(() => _down = false),
       child: AnimatedScale(
-        scale: _down ? widget.pressedScale : 1.0,
+        scale: _down && !MediaQuery.disableAnimationsOf(context)
+            ? widget.pressedScale
+            : 1.0,
         duration: Motion.of(context, Motion.fast),
         curve: Motion.curve,
         child: widget.child,

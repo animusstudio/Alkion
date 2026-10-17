@@ -3,8 +3,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/settings/bodyweight_goal.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/ui/bodyweight_view.dart';
+import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/widgets/line_chart.dart';
+import 'package:alkion/widgets/progress_widgets.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/app_fonts.dart';
+import '../support/layout_expect.dart';
+import '../support/screen_harness.dart';
 
 final _series = [
   (date: '2026-09-06', value: 67.0, reps: 0, isPr: false),
@@ -16,6 +22,7 @@ Color _colorOf(WidgetTester tester, String text) =>
     tester.widget<Text>(find.text(text)).style!.color!;
 
 void main() {
+  setUpAll(preloadAppFonts);
   testWidgets('deltas are always signed, with a true minus', (tester) async {
     await tester.pumpWidget(
       wrapL10n(
@@ -200,4 +207,80 @@ void main() {
       expect(find.text('+3.5'), findsOneWidget);
     },
   );
+  testWidgets('wide values and signed deltas remain whole at 320dp 2x', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+        child: wrapL10n(
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: BodyweightHistoryCard(
+                series: [
+                  (date: '2026-09-06', value: 1388.8, reps: 0, isPr: false),
+                  (date: '2026-09-07', value: 1489.9, reps: 0, isPr: false),
+                ],
+                unit: 'lb',
+                goal: BodyweightGoal.maintain,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('1489.9lb'), findsOneWidget);
+    expect(find.text('+101.1'), findsOneWidget);
+    expectNoSplitWords(tester, within: find.byType(BodyweightHistoryCard));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('stored unavailable measurements are not described as no entries', (
+    tester,
+  ) async {
+    setPhone(tester, width: 412);
+    final harness = ScreenHarness();
+    addTearDown(harness.close);
+    addTearDown(() => harness.unmount(tester));
+    await harness.open(
+      tester,
+      seed: (database) async {
+        final values = <String?>[null, '', 'invalid'];
+        for (var index = 0; index < values.length; index++) {
+          await database.execute(
+            'INSERT INTO bodyweight_logs (id, date, weight_kg) VALUES (?, ?, ?)',
+            ['unavailable-$index', '2026-10-${10 + index}', values[index]],
+          );
+        }
+      },
+    );
+    await tester.pumpWidget(
+      harness.wrap(Scaffold(body: BodyweightView(onOpenPicker: () {}))),
+    );
+    final l = lookupAppLocalizations(const Locale('en'));
+    await settleUntilFound(
+      tester,
+      find.text(l.bodyweightUnavailable),
+      where: 'three unavailable stored measurements',
+    );
+    expect(find.text(l.bodyweightEmpty), findsNothing);
+    expect(find.text(l.bodyweightUnavailable), findsWidgets);
+    expect(tester.widget<LineChart>(find.byType(LineChart)).series, isEmpty);
+    final stats = tester.widgetList<BigStat>(find.byType(BigStat)).toList();
+    expect(stats.map((stat) => stat.value), everyElement('—'));
+    await scrollIntoView(
+      tester,
+      find.byType(BodyweightView),
+      find.text(l.bodyweightHistory.toUpperCase()),
+    );
+    expect(find.text(l.bodyweightEmpty), findsNothing);
+    expect(
+      find.text('2026-10-12 · ${l.bodyweightUnavailable}'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:alkion/domain/evidence.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/main.dart';
 import 'package:alkion/files/document_access.dart';
@@ -23,7 +24,7 @@ import '../domains/local_screen_harness.dart';
 import '../files/fake_documents.dart';
 import 'abandon_retry_test.dart' show interrupted, AbandonFixture;
 import '../transfer/transfer_screen_test.dart'
-    show dismissDialog, press, settleUntil;
+    show dismissDialog, press, settleUntil, expectCompleteTextAndActions;
 
 /// Real backup/verification in the real zone; restore is only recorded here
 /// (the runtime path is exercised separately below).
@@ -269,6 +270,12 @@ void main() {
           );
           await settleUntil(tester, find.byKey(const Key('backup-path')));
           await settleReal(tester, ticks: 3);
+          expectCompleteTextAndActions(
+            tester,
+            toolbarTitle: AppLocalizations.of(
+              tester.element(find.byType(AlkionRecoveryScreen)),
+            ).alkionBackupTitle,
+          );
           expect(tester.takeException(), isNull, reason: locale);
           await tester.pumpWidget(
             h.wrap(
@@ -282,6 +289,12 @@ void main() {
           await settleUntil(tester, find.byKey(const Key('backup-create')));
           await settleReal(tester, ticks: 3);
           expect(find.byKey(const Key('backup-path')), findsNothing);
+          expectCompleteTextAndActions(
+            tester,
+            toolbarTitle: AppLocalizations.of(
+              tester.element(find.byType(AlkionRecoveryScreen)),
+            ).alkionBackupTitle,
+          );
           expect(tester.takeException(), isNull, reason: 'phone $locale');
         }
         await h.unmount(tester);
@@ -308,6 +321,7 @@ void main() {
       ]) {
         await tester.pumpWidget(app);
         await tester.pump();
+        expectCompleteTextAndActions(tester);
         expect(tester.takeException(), isNull, reason: '$app');
         if (identical(app, interrupted)) {
           expect(find.byKey(const Key('restore-complete')), findsOneWidget);

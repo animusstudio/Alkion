@@ -10,34 +10,69 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
       : WorkoutTokens.light(accent);
 
   return ThemeData(
+    useMaterial3: true,
     brightness: brightness,
     scaffoldBackgroundColor: tokens.bg,
     extensions: [tokens],
     textTheme: WorkoutType.hankenTextTheme,
     colorScheme: ColorScheme(
       brightness: brightness,
-      primary: accent,
-      onPrimary: tokens.accentInk,
-      secondary: accent,
-      onSecondary: tokens.accentInk,
+      primary: tokens.action,
+      onPrimary: tokens.onAction,
+      secondary: tokens.accentText,
+      onSecondary: brightness == Brightness.dark ? tokens.bg : tokens.surface,
+      tertiary: tokens.info,
+      onTertiary: brightness == Brightness.dark ? tokens.bg : tokens.surface,
+      surfaceContainerLowest: tokens.sunken,
+      surfaceContainerLow: tokens.surface,
+      surfaceContainer: tokens.surface,
+      surfaceContainerHigh: tokens.surface2,
+      surfaceContainerHighest: tokens.surface3,
+      onSurfaceVariant: tokens.dim,
+      outline: tokens.lineStrong,
+      outlineVariant: tokens.line,
+      shadow: Colors.black,
+      scrim: tokens.overlay,
       error: tokens.danger,
-      onError: tokens.accentInk,
+      onError: brightness == Brightness.dark ? tokens.bg : tokens.surface,
       surface: tokens.surface,
       onSurface: tokens.text,
     ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: tokens.text,
+        minimumSize: const Size(48, 48),
+        side: BorderSide(color: tokens.lineStrong),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+      ),
+    ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: tokens.accentText),
+      style: TextButton.styleFrom(
+        foregroundColor: tokens.text,
+        minimumSize: const Size(48, 48),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+      ),
     ),
-    progressIndicatorTheme: ProgressIndicatorThemeData(
-      color: tokens.accentText,
-    ),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.text),
     inputDecorationTheme: InputDecorationTheme(
       floatingLabelStyle: WidgetStateTextStyle.resolveWith(
         (states) => TextStyle(
           color:
               states.contains(WidgetState.focused) &&
                   !states.contains(WidgetState.error)
-              ? tokens.accentText
+              ? tokens.focus
               : null,
         ),
       ),
@@ -45,30 +80,30 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
       // its own `border:` replaces it entirely and stays borderless.
       border: WidgetStateInputBorder.resolveWith(
         (states) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.radius),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           borderSide:
               states.contains(WidgetState.focused) &&
                   !states.contains(WidgetState.error)
-              ? BorderSide(color: tokens.accentText, width: 2)
+              ? BorderSide(color: tokens.focus, width: 2)
               : BorderSide(color: tokens.lineStrong),
         ),
       ),
     ),
     textSelectionTheme: TextSelectionThemeData(
-      cursorColor: tokens.accentText,
-      selectionHandleColor: tokens.accentText,
-      selectionColor: tokens.accent.withValues(alpha: 0.35),
+      cursorColor: tokens.focus,
+      selectionHandleColor: tokens.focus,
+      selectionColor: tokens.focus.withValues(alpha: 0.35),
     ),
   );
 }
 
 /// Convenience extension so any widget can write `context.tokens`.
 ///
-/// Falls back to [WorkoutTokens.dark] with the default lime accent when the
+/// Falls back to [WorkoutTokens.dark] with the default health coral accent when the
 /// theme extension is not present (e.g. in widget tests that use plain
 /// [MaterialApp] without [buildTheme]).
 extension ThemeTokens on BuildContext {
   WorkoutTokens get tokens =>
       Theme.of(this).extension<WorkoutTokens>() ??
-      WorkoutTokens.dark(const Color(0xFFc2f53a));
+      WorkoutTokens.dark(defaultWorkoutAccent);
 }

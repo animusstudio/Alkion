@@ -184,29 +184,64 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     final l = AppLocalizations.of(context);
     final enabled = !_busy && _host != null;
     Widget header(String text) => Padding(
-      padding: const EdgeInsets.fromLTRB(2, 20, 2, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: WorkoutType.mono(
-          size: 10.5,
-          weight: FontWeight.w600,
-          color: tokens.faint,
+      padding: const EdgeInsets.fromLTRB(0, 32, 0, 12),
+      child: Semantics(
+        header: true,
+        child: Text(
+          text,
+          style: WorkoutType.body(
+            size: 18,
+            weight: FontWeight.w600,
+            color: tokens.text,
+          ),
         ),
       ),
     );
     Widget line(String text) =>
-        Text(text, style: WorkoutType.mono(size: 11, color: tokens.faint));
-    Widget actions(List<Widget> children) =>
-        Wrap(spacing: 8, runSpacing: 4, children: children);
+        Text(text, style: WorkoutType.body(size: 14, color: tokens.dim));
+    Widget metadata(String text) =>
+        Text(text, style: WorkoutType.mono(size: 12, color: tokens.dim));
+    Widget actions(List<Widget> children) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < children.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          children[i],
+        ],
+      ],
+    );
+    final titleStyle = WorkoutType.body(
+      size: 20,
+      weight: FontWeight.w600,
+      color: tokens.text,
+    );
+    final titleLayout = TextPainter(
+      text: TextSpan(text: l.alkionBackupTitle, style: titleStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: MediaQuery.sizeOf(context).width - 88);
+    final titleHeight = titleLayout.height + 16;
+    titleLayout.dispose();
     return Scaffold(
       backgroundColor: tokens.bg,
       appBar: AppBar(
         backgroundColor: tokens.bg,
-        title: Text(l.alkionBackupTitle),
+        toolbarHeight: titleHeight < kToolbarHeight
+            ? kToolbarHeight
+            : titleHeight,
+        title: MediaQuery(
+          data: MediaQuery.of(context),
+          child: Text(
+            l.alkionBackupTitle,
+            style: titleStyle,
+            softWrap: true,
+            overflow: TextOverflow.visible,
+          ),
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -226,12 +261,22 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
               ]),
               header(l.alkionBackupFileSection),
               if (_documents == null)
-                TextField(
-                  key: const Key('backup-path'),
-                  controller: _path,
-                  decoration: InputDecoration(
-                    labelText: l.alkionBackupPathLabel,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      l.alkionBackupPathLabel,
+                      style: WorkoutType.body(size: 14, color: tokens.dim),
+                    ),
+                    const SizedBox(height: 8),
+                    Semantics(
+                      label: l.alkionBackupPathLabel,
+                      child: TextField(
+                        key: const Key('backup-path'),
+                        controller: _path,
+                      ),
+                    ),
+                  ],
                 ),
               if (_documents != null) line(l.alkionDocumentSelectExplain),
               const SizedBox(height: 8),
@@ -250,7 +295,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
               if (_history.isNotEmpty) ...[
                 header(l.alkionRestoreHistory),
                 for (final h in _history)
-                  line(
+                  metadata(
                     '${h['restore_id']} · ${h['from_generation']} → ${h['to_generation']} · ${h['created_at']}',
                   ),
               ],
@@ -258,7 +303,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
               if (_pending.isEmpty) line(l.alkionRestoreNoReviews),
               for (final r in _pending)
                 ListTile(
-                  contentPadding: EdgeInsets.zero,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
                   title: Text(
                     (r['evidence'] as Map)['disposition'] == unknownNewerWork
                         ? l.alkionRestoreUnknownNewerWork
@@ -268,7 +313,9 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      line(((r['evidence'] as Map)['key'] as List).join(' · ')),
+                      metadata(
+                        ((r['evidence'] as Map)['key'] as List).join(' · '),
+                      ),
                       actions([
                         TextButton(
                           onPressed: enabled

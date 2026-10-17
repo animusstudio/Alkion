@@ -57,6 +57,10 @@ physical-power-loss and the final refactored/signed installed-candidate gates
 remain open. Results apply to the recorded inputs; relevant source, signing or
 platform changes require affected checks again.
 
+The SAF proof adapter and isolated namespaced provider fixture passed independent
+source review, API 36 Java compilation, analysis and 12 host document tests. This
+prepares real picker/fault cases; installed provider behavior remains UNRUN.
+
 A2 preparation checkpoint, before the executed run below: source/host only.
 Shared helpers seed the normal
 variant app root with real repository/outbox, draft/timer, settings and original

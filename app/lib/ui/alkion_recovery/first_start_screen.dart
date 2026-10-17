@@ -11,6 +11,7 @@ import '../../recovery/backup.dart';
 import '../../recovery/restore.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
+import '../../theme/typography.dart';
 import '../../widgets/w_dialog.dart';
 import 'recovery_app.dart' show recoveryCategory;
 
@@ -145,18 +146,23 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final pending = _state.pending;
+    final tokens = context.tokens;
     return Scaffold(
+      backgroundColor: tokens.bg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                _state.canStartLocal
-                    ? l.onboardingWelcome
-                    : l.alkionRestoreInterruptedTitle,
-                style: Theme.of(context).textTheme.headlineMedium,
+              Semantics(
+                header: true,
+                child: Text(
+                  _state.canStartLocal
+                      ? l.onboardingWelcome
+                      : l.alkionRestoreInterruptedTitle,
+                  style: WorkoutType.display(size: 32, color: tokens.text),
+                ),
               ),
               const SizedBox(height: 12),
               Text(
@@ -165,16 +171,24 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                     : _state.canComplete
                     ? l.alkionFirstResumeBody
                     : l.alkionFirstReselectBody,
+                style: WorkoutType.body(size: 16, color: tokens.dim),
               ),
               if (pending != null) ...[
                 const SizedBox(height: 12),
                 Text(
                   'SHA-256 ${(pending.intent['backup'] as Map)['container_sha256']}',
+                  style: WorkoutType.mono(size: 12, color: tokens.dim),
                 ),
               ],
               if (_failure != null) ...[
                 const SizedBox(height: 12),
-                Text(l.alkionRestoreFailedBody(_failure!)),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    l.alkionRestoreFailedBody(_failure!),
+                    style: WorkoutType.body(size: 14, color: tokens.danger),
+                  ),
+                ),
               ],
               const SizedBox(height: 24),
               if (_state.canStartLocal)
@@ -214,13 +228,24 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                 ),
               if (!_state.canComplete) ...[
                 if (_documents == null)
-                  TextField(
-                    key: const Key('first-backup-path'),
-                    controller: _path,
-                    decoration: InputDecoration(
-                      labelText: l.alkionBackupPathLabel,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        l.alkionBackupPathLabel,
+                        style: WorkoutType.body(size: 14, color: tokens.dim),
+                      ),
+                      const SizedBox(height: 8),
+                      Semantics(
+                        label: l.alkionBackupPathLabel,
+                        child: TextField(
+                          key: const Key('first-backup-path'),
+                          controller: _path,
+                        ),
+                      ),
+                    ],
                   ),
+                const SizedBox(height: 12),
                 OutlinedButton(
                   key: const Key('first-restore'),
                   style: OutlinedButton.styleFrom(

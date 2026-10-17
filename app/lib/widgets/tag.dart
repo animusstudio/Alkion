@@ -15,9 +15,9 @@ enum TagTone {
   solid,
 }
 
-/// A small uppercase mono label chip.
+/// A small uppercase interface label chip.
 ///
-/// Visual spec: `docs/design_handoff_workout_tracker/design/app/ui.jsx` `Tag`.
+/// Workout tones preserve the selected workout accent.
 class Tag extends StatelessWidget {
   const Tag({super.key, required this.label, this.tone = TagTone.mute});
 
@@ -48,19 +48,19 @@ class Tag extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(AppRadius.radius * 0.4),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(color: borderColor),
       ),
       child: Text(
         label.toUpperCase(),
-        style: WorkoutType.mono(
-          size: 10.5,
-          weight: FontWeight.w600,
+        style: WorkoutType.body(
+          size: 12,
+          weight: FontWeight.w700,
           color: textColor,
-          letterSpacing: 0.04 * 10.5,
+          letterSpacing: 0.06 * 12,
         ),
       ),
     );

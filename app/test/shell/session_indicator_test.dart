@@ -17,6 +17,10 @@ void main() {
       ),
     );
     await tester.pump();
+    expect(
+      tester.getSize(find.byType(SessionIndicator)).height,
+      greaterThanOrEqualTo(48),
+    );
     expect(find.textContaining('5:0'), findsOneWidget); // 5:00–5:09 window
     await tester.tap(find.byType(SessionIndicator));
     expect(tapped, isTrue);

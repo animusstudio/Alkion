@@ -179,6 +179,45 @@ Status: implemented; host checks and independent task review PASS at `2cead98`.
 
 ### T5 — Scoped emulator route and actual Android proof (A1–A7)
 
+- Bounded SAF proof-source ownership amendment: new
+  `app/tool/android_synthetic_documents/{AndroidManifest.xml,SyntheticDocumentsProvider.java}`
+  and `app/integration_test/android_documents_test.dart` only, plus this receipt.
+  The isolated synthetic provider uses the framework `MANAGE_DOCUMENTS` gate and
+  picker URI grants; its fixed package has no network permission or public control
+  endpoint. Owner-only, run-bound setup supplies bounded synthetic backup bytes.
+  Fixed `<32hex>-<dev|supported>` namespaces append immutable config/input and
+  exclusive output names inside one fixture installation; roots and labels bind
+  run plus variant. No namespace reset, replacement or output deletion is used.
+  The test calls the production SAF adapter and emits explicit picker phases for
+  later serial-scoped harness integration. This source phase does not edit the
+  Make/harness, production code, dependencies, neighbor fixture or app UI, and
+  grants no build/install/device execution or first-start/process-crash claim.
+- SAF source preparation (base `e2db395`): 13 run/variant-bound picker cases use
+  the actual production adapter, complete backup verifier and retained source
+  checks. Reliable pipes cover unknown sizes, interrupted reads/writes and
+  changed/unavailable readback; arm/observed acks cannot replace the awaited
+  production result. Failed terminal reports and provider outputs remain.
+  Owner-only setup uses `files/proof-runs/<run>-<variant>/control.json` and
+  `input.alkionbackup`; per-namespace input pins and exclusive output names refuse
+  replacement. One fixed-parent observer validates a complete namespace before
+  invalidating the framework roots cache and is stopped at provider shutdown.
+  Future harness setup must create owner-only `proof-runs` before first discovery,
+  stage each namespace under a nonmatching name, then exclusively publish its
+  complete validated directory. The harness must drive the real system picker
+  and copy its corresponding provider receipt; this phase adds no execution route.
+- SAF source review: PASS, source preparation only. Provider process restart/reuse
+  receipt-prefix preservation is not qualified by this single-use case contract.
+- SAF source checks: existing locked SDK package metadata refreshed with
+  `make -C app get` (offline/enforce-lockfile), no dependency-file changes. Initial
+  analyzer also found one local brace info and redundant assertion, corrected.
+  `make -C app test TEST=test/alkion/files/` → PASS, 12 tests, 0 skips;
+  `make -C app analyze format` → PASS, 0 issues, 346 files, 0 changes.
+  JDK 21 `javac --release 8 -classpath <existing API36 android.jar> -d <fresh /tmp> app/tool/android_synthetic_documents/SyntheticDocumentsProvider.java`
+  → PASS (three expected obsolete-release option warnings). Local receipt/source
+  consistency checks pass; they provide no provider behavioral coverage. These are source compatibility and
+  host checks only: actual roots-cache refresh, provider routing/cases, URI-grant revocation, disk-full,
+  transfer import, fresh receiving restore, process interruptions and physically
+  off-device verification remain UNRUN. No APK/device/key operation ran here.
 - A3 prerequisite ownership: `app/lib/identity/directory_durability.dart` and new
   `app/test/alkion/identity/directory_durability_test.dart`; replace ABI-specific
   numeric directory flags with libc directory APIs. Core stays Flutter-free;

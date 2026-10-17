@@ -7,6 +7,7 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../widgets/pending_input.dart';
+import '../widgets/fit_label.dart';
 import 'active_session_controller.dart';
 
 /// The live workout's one primary action, pinned above the system inset.
@@ -85,36 +86,39 @@ class LogSetBar extends StatelessWidget {
             label: label,
             excludeSemantics: true,
             onTap: _tap,
-            child: GestureDetector(
+            child: FilledButton(
               key: const Key('log-set-bar'),
-              behavior: HitTestBehavior.opaque,
-              onTap: _tap,
-              child: Container(
-                height: 56,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: tokens.accent,
-                  borderRadius: BorderRadius.circular(AppRadius.radius),
+              onPressed: _tap,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 56),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(WIcons.check, size: 20, color: tokens.accentInk),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: WorkoutType.display(
-                          size: 16,
-                          weight: FontWeight.w700,
-                          color: tokens.accentInk,
-                        ),
+                backgroundColor: tokens.action,
+                foregroundColor: tokens.onAction,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(WIcons.check, size: 20, color: tokens.onAction),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: FitLabel(
+                      label,
+                      maxLines: 3,
+                      textAlign: TextAlign.center,
+                      style: WorkoutType.body(
+                        size: 16,
+                        weight: FontWeight.w700,
+                        color: tokens.onAction,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

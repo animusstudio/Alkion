@@ -8,8 +8,8 @@ import '../theme/typography.dart';
 /// A segmented RIR (Reps In Reserve) picker for values 0–5 ([rirMin] to
 /// [rirMax]).
 ///
-/// Selected segment = solid accent background + accentInk text.
-/// Unselected = surface3 background + dim text. A value outside the range
+/// Selected segment = neutral action background and its contrasting text.
+/// Unselected = surface background + dim text. A value outside the range
 /// (old free-text data, a restore) selects nothing and is never rewritten.
 ///
 /// One row of six when each chip's slot is at least 48dp wide, otherwise two
@@ -56,27 +56,34 @@ class RirPicker extends StatelessWidget {
 
     Widget chip(int r, {required bool lastInRow}) {
       final selected = value == r;
-      return GestureDetector(
-        key: Key('rir-$r'),
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onChanged(r);
-        },
-        child: Container(
-          height: height,
-          margin: EdgeInsets.only(right: lastInRow ? 0 : _gap),
-          decoration: BoxDecoration(
-            color: selected ? tokens.accent : tokens.surface3,
-            borderRadius: BorderRadius.circular(AppRadius.radius * 0.35),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            '$r',
-            style: WorkoutType.mono(
-              size: 12,
-              weight: FontWeight.w700,
-              color: selected ? tokens.accentInk : tokens.dim,
+      return Semantics(
+        button: true,
+        selected: selected,
+        child: GestureDetector(
+          key: Key('rir-$r'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            onChanged(r);
+          },
+          child: Container(
+            height: height,
+            margin: EdgeInsets.only(right: lastInRow ? 0 : _gap),
+            decoration: BoxDecoration(
+              color: selected ? tokens.action : tokens.surface2,
+              border: Border.all(
+                color: selected ? tokens.action : tokens.lineStrong,
+              ),
+              borderRadius: BorderRadius.circular(AppRadius.control),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '$r',
+              style: WorkoutType.mono(
+                size: 12,
+                weight: FontWeight.w700,
+                color: selected ? tokens.onAction : tokens.dim,
+              ),
             ),
           ),
         ),

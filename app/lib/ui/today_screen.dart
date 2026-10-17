@@ -308,7 +308,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 inProgress: manager.hasActive,
                 onTapProfile: widget.onOpenProfile,
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -327,11 +327,11 @@ class _TodayScreenState extends State<TodayScreen> {
                 )
               else if (_rotationLoaded) ...[
                 _buildSplitCard(),
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
               ] else ...[
                 // Loading placeholder — avoids layout jump when data arrives.
                 const SizedBox(height: 290),
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
               ],
             ],
           ),
@@ -348,7 +348,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 SectionLabel(label: l.todayThisWeek),
                 const SizedBox(height: 10),
                 _buildWeekStrip(_weekStart, manager.hasActive),
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -371,11 +371,11 @@ class _TodayScreenState extends State<TodayScreen> {
                     l.alkionDateWindowUnavailable(
                       coverage.total - coverage.known,
                     ),
-                    style: WorkoutType.mono(size: 10, color: tokens.faint),
+                    style: WorkoutType.body(size: 12, color: tokens.dim),
                   );
                 },
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -387,7 +387,7 @@ class _TodayScreenState extends State<TodayScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildRecentPrs(units, tokens),
-              const SizedBox(height: 22),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -492,131 +492,122 @@ class _TodayScreenState extends State<TodayScreen> {
         final bwUnit = hasBw ? units.uLabel : null;
         final sparkValues = lastUpTo18;
 
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Bodyweight tile
-              Expanded(
-                child: UnitSwap(
-                  unitKey: bwUnit ?? '',
-                  child: StatTile(
-                    label: l.todayBodyweight,
-                    value: bwValue,
-                    unit: bwUnit,
-                    spark: !hasBw && bwEntries.isNotEmpty
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              FitLabel(
-                                uncertainDay != null
-                                    ? l.alkionDateUnavailable(
-                                        uncertainDay.date.isEmpty
-                                            ? '—'
-                                            : uncertainDay.date,
-                                      )
-                                    : l.alkionUnavailableOn(
-                                        bwEntries.last.date,
-                                      ),
-                                style: WorkoutType.mono(
-                                  size: 10,
-                                  color: tokens.dim,
-                                ),
-                                maxLines: 3,
-                              ),
-                              if (sparkValues.length >= 2)
-                                Sparkline(
-                                  values: sparkValues,
-                                  stroke: tokens.dim,
-                                ),
-                              if (knownEntries.isNotEmpty)
-                                FitLabel(
-                                  l.alkionOlderKnownOn(knownEntries.last.date),
-                                  style: WorkoutType.mono(
-                                    size: 10,
-                                    color: tokens.faint,
-                                  ),
-                                  maxLines: 3,
-                                ),
-                            ],
-                          )
-                        : sparkValues.length >= 2
-                        ? Sparkline(values: sparkValues, stroke: tokens.dim)
-                        : null,
-                    onTap: () => widget.onOpenExercise('__bodyweight__'),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Sets/wk tile — nested streams
-              Expanded(
-                child: StreamBuilder<int>(
-                  stream: _setsWeekStream,
-                  builder: (context, setsSnap) {
-                    return StreamBuilder<int>(
-                      stream: _setsLastWeekStream,
-                      builder: (context, lastWeekSnap) {
-                        final sets = setsSnap.data ?? 0;
-                        final lastWeek = lastWeekSnap.data ?? 0;
-                        return CountUp(
-                          value: sets,
-                          builder: (v) => StatTile(
-                            label: l.todaySetsThisWeek,
-                            value: '$v',
-                            sub: setsVsLastWeek(l, sets, lastWeek),
+        final tiles = <Widget>[
+          UnitSwap(
+            unitKey: bwUnit ?? '',
+            child: StatTile(
+              label: l.todayBodyweight,
+              value: bwValue,
+              unit: bwUnit,
+              spark: !hasBw && bwEntries.isNotEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        FitLabel(
+                          uncertainDay != null
+                              ? l.alkionDateUnavailable(
+                                  uncertainDay.date.isEmpty
+                                      ? '—'
+                                      : uncertainDay.date,
+                                )
+                              : l.alkionUnavailableOn(bwEntries.last.date),
+                          style: WorkoutType.body(size: 12, color: tokens.dim),
+                          maxLines: 3,
+                        ),
+                        if (sparkValues.length >= 2)
+                          Sparkline(values: sparkValues, stroke: tokens.dim),
+                        if (knownEntries.isNotEmpty)
+                          FitLabel(
+                            l.alkionOlderKnownOn(knownEntries.last.date),
+                            style: WorkoutType.body(
+                              size: 12,
+                              color: tokens.dim,
+                            ),
+                            maxLines: 3,
                           ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 10),
-              // PRs/wk tile
-              Expanded(
-                child: StreamBuilder<int>(
-                  stream: _prsWeekStream,
-                  builder: (context, prsSnap) {
-                    final prs = prsSnap.data ?? 0;
-                    return StreamBuilder<
-                      List<
-                        ({
-                          String exerciseId,
-                          double? weight,
-                          int? reps,
-                          String date,
-                        })
-                      >
-                    >(
-                      stream: _recentPrsStream,
-                      builder: (context, recentSnap) {
-                        final recent = recentSnap.data ?? [];
-                        final sub = recent.isEmpty
-                            ? l.todayNoPrsShort
-                            : l.todayLastPrDate(
-                                fmtDate(
-                                  recent.first.date,
-                                  Localizations.localeOf(
-                                    context,
-                                  ).toLanguageTag(),
-                                ),
-                              );
-                        return CountUp(
-                          value: prs,
-                          builder: (v) => StatTile(
-                            label: l.todayPrsThisWeek,
-                            value: '$v',
-                            sub: sub,
-                            fitSub: true,
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+                      ],
+                    )
+                  : sparkValues.length >= 2
+                  ? Sparkline(values: sparkValues, stroke: tokens.dim)
+                  : null,
+              onTap: () => widget.onOpenExercise('__bodyweight__'),
+            ),
           ),
+          StreamBuilder<int>(
+            stream: _setsWeekStream,
+            builder: (context, setsSnap) {
+              return StreamBuilder<int>(
+                stream: _setsLastWeekStream,
+                builder: (context, lastWeekSnap) {
+                  final sets = setsSnap.data ?? 0;
+                  final lastWeek = lastWeekSnap.data ?? 0;
+                  return StatTile(
+                    label: l.todaySetsThisWeek,
+                    value: '$sets',
+                    sub: setsVsLastWeek(l, sets, lastWeek),
+                  );
+                },
+              );
+            },
+          ),
+          StreamBuilder<int>(
+            stream: _prsWeekStream,
+            builder: (context, prsSnap) {
+              final prs = prsSnap.data ?? 0;
+              return StreamBuilder<
+                List<
+                  ({String exerciseId, double? weight, int? reps, String date})
+                >
+              >(
+                stream: _recentPrsStream,
+                builder: (context, recentSnap) {
+                  final recent = recentSnap.data ?? [];
+                  final sub = recent.isEmpty
+                      ? l.todayNoPrsShort
+                      : l.todayLastPrDate(
+                          fmtDate(
+                            recent.first.date,
+                            Localizations.localeOf(context).toLanguageTag(),
+                          ),
+                        );
+                  return StatTile(
+                    label: l.todayPrsThisWeek,
+                    value: '$prs',
+                    sub: sub,
+                    fitSub: true,
+                  );
+                },
+              );
+            },
+          ),
+        ];
+        return LayoutBuilder(
+          builder: (context, box) {
+            final stacked =
+                box.maxWidth < 360 &&
+                MediaQuery.textScalerOf(context).scale(12) > 18;
+            return stacked
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < tiles.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 12),
+                        tiles[i],
+                      ],
+                    ],
+                  )
+                : IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var i = 0; i < tiles.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 12),
+                          Expanded(child: tiles[i]),
+                        ],
+                      ],
+                    ),
+                  );
+          },
         );
       },
     );
@@ -749,57 +740,53 @@ class _GreetingHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Avatar — 46px accent circle with the profile-name initials
-        GestureDetector(
+        Semantics(
+          button: true,
+          label: l.profileTitle,
+          excludeSemantics: true,
           onTap: onTapProfile,
-          child: Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: tokens.accent,
-              shape: BoxShape.circle,
+          child: IconButton(
+            onPressed: onTapProfile,
+            style: IconButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              fixedSize: const Size(48, 48),
+              padding: const EdgeInsets.all(8),
+              backgroundColor: tokens.surface2,
+              foregroundColor: tokens.text,
+              side: BorderSide(color: tokens.line),
+              shape: const CircleBorder(),
             ),
-            child: Center(
+            icon: FittedBox(
               child: Text(
                 initials,
-                style: WorkoutType.display(
+                style: WorkoutType.body(
                   size: 18,
                   weight: FontWeight.w700,
-                  color: tokens.accentInk,
-                  letterSpacing: 0,
+                  color: tokens.text,
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 13),
-        // Date + greeting text
+        const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                dateLabel.toUpperCase(),
-                style: WorkoutType.mono(
-                  size: 11.5,
-                  color: tokens.faint,
-                  letterSpacing: 11.5 * 0.06,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Text(
+              FitLabel(
                 inProgress ? l.todayWorkoutInProgress : l.todayGreeting,
+                maxLines: 2,
                 style: WorkoutType.display(
-                  size: 25,
+                  size: 28,
                   weight: FontWeight.w700,
                   color: tokens.text,
-                  letterSpacing: 25 * -0.02,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              FitLabel(
+                dateLabel.toUpperCase(),
+                maxLines: 2,
+                style: WorkoutType.body(size: 12, color: tokens.dim),
               ),
             ],
           ),
@@ -833,75 +820,80 @@ class _PrRow extends StatelessWidget {
     return WCard(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       onTap: onTap,
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Icon badge
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: tokens.surface3,
-              borderRadius: BorderRadius.circular(AppRadius.radius * 0.55),
-            ),
-            child: Icon(WIcons.bolt, size: 18, color: tokens.accentText),
-          ),
-          const SizedBox(width: 12),
-          // Exercise name + date
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tokens.surface2,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                ),
+                child: Icon(WIcons.bolt, size: 18, color: tokens.accentText),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FitLabel(
                   name,
+                  maxLines: 2,
                   style: WorkoutType.body(
-                    size: 14,
+                    size: 16,
                     weight: FontWeight.w600,
                     color: tokens.text,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 1),
-                Text(
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: FitLabel(
                   fmtDate(
                     pr.date,
                     Localizations.localeOf(context).toLanguageTag(),
                     weekday: true,
                   ),
-                  style: WorkoutType.mono(size: 11, color: tokens.faint),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Weight + reps
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RichText(
-                text: TextSpan(
-                  children: [
-                    TextSpan(
-                      text: pr.weight == null ? '—' : units.fmtWt(pr.weight!),
-                      style: WorkoutType.mono(
-                        size: 15,
-                        weight: FontWeight.w700,
-                        color: tokens.text,
-                      ),
-                    ),
-                    TextSpan(
-                      text: units.uLabel,
-                      style: WorkoutType.mono(size: 11, color: tokens.dim),
-                    ),
-                  ],
+                  maxLines: 2,
+                  style: WorkoutType.body(size: 12, color: tokens.dim),
                 ),
               ),
-              const SizedBox(height: 1),
-              Text(
-                pr.reps == null ? '×—' : '×${pr.reps}',
-                style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+              const SizedBox(width: 12),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: pr.weight == null
+                              ? '—'
+                              : units.fmtWt(pr.weight!),
+                          style: WorkoutType.mono(
+                            size: 16,
+                            weight: FontWeight.w700,
+                            color: tokens.text,
+                          ),
+                        ),
+                        TextSpan(
+                          text: units.uLabel,
+                          style: WorkoutType.mono(size: 12, color: tokens.dim),
+                        ),
+                        TextSpan(
+                          text: pr.reps == null ? ' ×—' : ' ×${pr.reps}',
+                          style: WorkoutType.mono(size: 14, color: tokens.dim),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    softWrap: false,
+                  ),
+                ),
               ),
             ],
           ),
@@ -927,7 +919,7 @@ class _EmptyState extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
           message,
-          style: WorkoutType.mono(size: 11, color: tokens.faint),
+          style: WorkoutType.body(size: 12, color: tokens.dim),
         ),
       ),
     );
@@ -1011,15 +1003,6 @@ class _ResumeHeroState extends State<_ResumeHero> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                l.todayActiveNow,
-                style: WorkoutType.mono(
-                  size: 10,
-                  color: tokens.accentText,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const SizedBox(height: 10),
               // A long single-word name shrinks, then ellipsizes; the full
               // name stays the label's text and semantics, never split.
               FitLabel(
@@ -1027,15 +1010,26 @@ class _ResumeHeroState extends State<_ResumeHero> {
                 maxLines: 3,
                 style: WorkoutType.display(size: 28, color: tokens.text),
               ),
+              Text(
+                l.todayActiveNow,
+                style: WorkoutType.body(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  color: tokens.accentText,
+                ),
+              ),
+              const SizedBox(height: 10),
               if (focus.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
                   focus,
-                  style: WorkoutType.body(size: 13, color: tokens.dim),
+                  style: WorkoutType.body(size: 16, color: tokens.dim),
                 ),
               ],
               const SizedBox(height: 14),
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
                 children: [
                   Text(
                     resting
@@ -1049,13 +1043,9 @@ class _ResumeHeroState extends State<_ResumeHero> {
                       color: resting ? tokens.accentText : tokens.text,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  // Narrow phones at large text (es at 320dp/2x) overflowed.
-                  Flexible(
-                    child: FitLabel(
-                      l.todayExerciseCount(exCount),
-                      style: WorkoutType.mono(size: 11, color: tokens.faint),
-                    ),
+                  Text(
+                    l.todayExerciseCount(exCount),
+                    style: WorkoutType.body(size: 12, color: tokens.dim),
                   ),
                 ],
               ),
@@ -1068,7 +1058,7 @@ class _ResumeHeroState extends State<_ResumeHero> {
             ],
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 24),
       ],
     );
   }

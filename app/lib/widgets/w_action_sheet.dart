@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
+import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import 'fit_label.dart';
@@ -47,7 +48,11 @@ Future<T?> showWActionSheet<T>(
   return showModalBottomSheet<T>(
     context: context,
     backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.55),
+    barrierColor: context.tokens.overlay,
+    sheetAnimationStyle: AnimationStyle(
+      duration: Motion.of(context, Motion.base),
+      reverseDuration: Motion.of(context, Motion.fast),
+    ),
     builder: (_) => _WActionSheetBody<T>(title: title, actions: actions),
   );
 }
@@ -95,7 +100,7 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
           color: tokens.surface,
-          borderRadius: BorderRadius.circular(AppRadius.radius),
+          borderRadius: BorderRadius.circular(AppRadius.sheet),
           border: Border.all(color: tokens.lineStrong),
         ),
         child: Column(
@@ -106,10 +111,10 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
               padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
               child: Text(
                 widget.title,
-                style: WorkoutType.mono(
-                  size: 10.5,
+                style: WorkoutType.body(
+                  size: 12,
                   color: tokens.faint,
-                  letterSpacing: 0.08 * 10.5,
+                  letterSpacing: 0.06 * 12,
                 ),
               ),
             ),
@@ -145,7 +150,7 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
     Key? key,
   }) {
     final color = !a.enabled
-        ? tokens.line
+        ? tokens.dim
         : a.destructive
         ? tokens.danger
         : tokens.text;
@@ -176,14 +181,14 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
                     maxLines: 2,
                     style: WorkoutType.body(
                       size: 15,
-                      weight: FontWeight.w600,
+                      weight: FontWeight.w700,
                       color: color,
                     ),
                   ),
                 ),
                 if (a.selected) ...[
                   const SizedBox(width: 14),
-                  Icon(WIcons.check, size: 20, color: tokens.accentText),
+                  Icon(WIcons.check, size: 20, color: tokens.text),
                 ],
               ],
             ),

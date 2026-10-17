@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/ui/profile_screen.dart';
@@ -29,7 +30,13 @@ void main() {
 
   // The quick stats ("KÖRPERGEWICHT", "82.4kg"), the theme chips and the
   // local-profile status all outgrew their slots at 2.0x.
-  for (final (width, code) in [(320.0, 'de'), (320.0, 'it'), (412.0, 'de')]) {
+  for (final (width, code) in [
+    (320.0, 'en'),
+    (320.0, 'de'),
+    (320.0, 'es'),
+    (320.0, 'it'),
+    (412.0, 'de'),
+  ]) {
     testWidgets('Profile holds at ${width.round()}dp 2.0x $code', (
       tester,
     ) async {
@@ -44,6 +51,36 @@ void main() {
       await harness.unmount(tester);
     });
   }
+
+  testWidgets(
+    'rest controls retain full targets and exact typed values at 320dp 2x',
+    (tester) async {
+      await harness.open(tester);
+      setPhone(tester, width: 320, textScale: 2);
+      await pumpProfile(tester, 'en');
+      final value = find.text('180s');
+      await scrollIntoView(tester, find.byType(ProfileScreen), value);
+      final target = find
+          .ancestor(of: value, matching: find.byType(GestureDetector))
+          .first;
+      expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getRect(target).top,
+        greaterThan(tester.getRect(find.text('Compound rest')).bottom),
+      );
+      await tester.tap(value);
+      await tester.pumpAndSettle();
+      final field = find.byType(TextField);
+      expect(tester.getSize(field).height, greaterThanOrEqualTo(48));
+      await tester.enterText(field, '195');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await settleReal(tester, ticks: 3);
+      expect(harness.settings.restCompoundSeconds, 195);
+      expect(find.text('195s'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await harness.unmount(tester);
+    },
+  );
 
   testWidgets('the theme chips wrap in their slot and leave the title room', (
     tester,

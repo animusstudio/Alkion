@@ -54,6 +54,57 @@ double _width(String text, TextStyle style) {
 void main() {
   setUpAll(preloadAppFonts);
 
+  testWidgets(
+    'seven-day rotation keeps targets and reveals selection without changing it',
+    (tester) async {
+      final days = [
+        for (var i = 0; i < 7; i++)
+          (name: 'Day ${i + 1}', weekday: i, isNext: i == 0, done: false),
+      ];
+      final reports = <int>[];
+      var selected = 6;
+      late StateSetter rebuild;
+      await _pumpAt(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) {
+            rebuild = setState;
+            return WeekStrip(
+              days: days,
+              selectedIndex: selected,
+              onSelect: reports.add,
+            );
+          },
+        ),
+        width: 320,
+        scale: 2,
+      );
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 7; i++) {
+        final chip = find.byKey(ValueKey('week-chip-$i'));
+        expect(tester.getSize(chip).width, greaterThanOrEqualTo(48));
+        expect(tester.getSize(chip).height, greaterThanOrEqualTo(48));
+      }
+      final last = tester.getRect(find.byKey(const ValueKey('week-chip-6')));
+      expect(last.left, greaterThanOrEqualTo(16));
+      expect(last.right, lessThanOrEqualTo(304));
+      expect(reports, isEmpty);
+      rebuild(() => selected = 0);
+      await tester.pumpAndSettle();
+      final first = tester.getRect(find.byKey(const ValueKey('week-chip-0')));
+      expect(first.left, greaterThanOrEqualTo(16));
+      expect(first.right, lessThanOrEqualTo(304));
+      expect(
+        reports,
+        isEmpty,
+        reason: 'revealing a selected day is not a selection callback',
+      );
+      await tester.tap(find.byKey(const ValueKey('week-chip-0')));
+      expect(reports, [0]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   group('WeekStrip at 320dp and 2.0x', () {
     const days = [
       (

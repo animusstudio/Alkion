@@ -13,8 +13,8 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../util/dates.dart';
-import '../widgets/dashed_border.dart';
 import '../widgets/delete_button.dart';
+import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
@@ -517,7 +517,7 @@ class _DayEditorState extends State<DayEditor> {
                 // ── Add exercise button ───────────────────────────────────────────
                 _AddExerciseButton(tokens: tokens, onTap: _addExercise),
 
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -679,7 +679,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
         border: Border.all(
           color: widget.expanded ? tokens.lineStrong : tokens.line,
         ),
-        borderRadius: BorderRadius.circular(AppRadius.radius * 0.6),
+        borderRadius: BorderRadius.circular(AppRadius.panel),
       ),
       clipBehavior: Clip.hardEdge,
       child: Column(
@@ -702,16 +702,20 @@ class _DaySlotRowState extends State<DaySlotRow> {
                         // Index
                         SizedBox(
                           width: 16,
-                          child: Text(
-                            '${widget.index + 1}',
-                            style: WorkoutType.mono(
-                              size: 12,
-                              weight: FontWeight.w700,
-                              color: tokens.faint,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '${widget.index + 1}',
+                              maxLines: 1,
+                              style: WorkoutType.mono(
+                                size: 12,
+                                weight: FontWeight.w700,
+                                color: tokens.faint,
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
 
                         // Name + summary
                         Expanded(
@@ -719,20 +723,21 @@ class _DaySlotRowState extends State<DaySlotRow> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
+                              FitLabel(
                                 widget.exercise.name,
-                                overflow: TextOverflow.ellipsis,
+                                maxLines: 2,
                                 style: WorkoutType.body(
                                   size: 14,
-                                  weight: FontWeight.w600,
+                                  weight: FontWeight.w700,
                                   color: tokens.text,
                                 ),
                               ),
                               const SizedBox(height: 1),
-                              Text(
+                              FitLabel(
                                 _collapsedLabel(l),
+                                maxLines: 2,
                                 style: WorkoutType.mono(
-                                  size: 10,
+                                  size: 12,
                                   color: tokens.faint,
                                 ),
                               ),
@@ -744,7 +749,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                         ExcludeSemantics(
                           child: AnimatedRotation(
                             turns: widget.expanded ? 0.25 : 0,
-                            duration: const Duration(milliseconds: 150),
+                            duration: Motion.of(context, Motion.fast),
                             child: Icon(
                               WIcons.chevron,
                               size: 16,
@@ -756,7 +761,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
 
                 // Drag handle (only while collapsed — a reordering list
                 // needs similar-height rows).
@@ -803,7 +808,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                           child: Icon(
                             WIcons.trash,
                             size: 15,
-                            color: tokens.faint,
+                            color: tokens.danger,
                           ),
                         ),
                       ),
@@ -839,7 +844,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Field(
                           label: l.dayEditorWarmups,
@@ -878,7 +883,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Field(
                           label: l.dayEditorRepHigh,
@@ -919,7 +924,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Field(
                           label: l.dayEditorRirHigh,
@@ -960,36 +965,11 @@ class _AddExerciseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return GestureDetector(
+    return PrimaryBtn(
+      l.dayEditorAddExercise,
+      enabled: true,
+      secondary: true,
       onTap: onTap,
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppRadius.radius * 0.6),
-          color: Colors.transparent,
-        ),
-        child: CustomPaint(
-          painter: DashedBorderPainter(
-            color: tokens.lineStrong,
-            radius: AppRadius.radius * 0.6,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(WIcons.plus, size: 15, color: tokens.dim),
-              const SizedBox(width: 7),
-              Text(
-                l.dayEditorAddExercise,
-                style: WorkoutType.mono(
-                  size: 12.5,
-                  weight: FontWeight.w600,
-                  color: tokens.dim,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

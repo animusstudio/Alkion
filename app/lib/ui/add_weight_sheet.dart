@@ -60,7 +60,10 @@ Future<void> showAddWeightSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.55),
+    barrierColor: context.tokens.overlay,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
     builder: (_) => _AddWeightSheet(selected: chosen, date: date),
   );
 }
@@ -320,195 +323,210 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     final unit = unitService.uLabel;
     final today = widget.date;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.surface2,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppRadius.radius * 1.5),
-        ),
-        border: Border(top: BorderSide(color: tokens.lineStrong, width: 1)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        16,
-        10,
-        16,
-        34 + MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Grabber
-          Container(
-            width: 38,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 16),
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Container(
             decoration: BoxDecoration(
-              color: tokens.lineStrong,
-              borderRadius: BorderRadius.circular(AppRadius.pill),
+              color: tokens.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppRadius.sheet),
+              ),
+              border: Border(
+                top: BorderSide(color: tokens.lineStrong, width: 1),
+              ),
             ),
-          ),
-
-          // Header row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                l.bodyweightLogTitle,
-                style: WorkoutType.display(
-                  size: 19,
-                  weight: FontWeight.w700,
-                  color: tokens.text,
-                ),
-              ),
-              Text(
-                fmtDate(
-                  today,
-                  Localizations.localeOf(context).toLanguageTag(),
-                  weekday: true,
-                ),
-                style: WorkoutType.mono(size: 11.5, color: tokens.faint),
-              ),
-            ],
-          ),
-
-          // Stepper + value row
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 26),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Minus button
-                StepperButton(
-                  icon: Icons.remove,
-                  semanticLabel: l.a11yDecrease(l.bodyweightTitle),
-                  onTap: () => _bump(-1),
+                // Grabber
+                Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: tokens.lineStrong,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
                 ),
-                const SizedBox(width: 12),
 
-                // Value display
-                SizedBox(
-                  width: 150,
+                // Header row
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      l.bodyweightLogTitle,
+                      style: WorkoutType.display(
+                        size: 22,
+                        weight: FontWeight.w700,
+                        color: tokens.text,
+                      ),
+                    ),
+                    Text(
+                      fmtDate(
+                        today,
+                        Localizations.localeOf(context).toLanguageTag(),
+                        weekday: true,
+                      ),
+                      style: WorkoutType.mono(size: 12, color: tokens.faint),
+                    ),
+                  ],
+                ),
+
+                // Stepper + value row
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
                     children: [
-                      // Flexible (not a fixed width) so the number always
-                      // gets a bounded, finite main-axis constraint from the
-                      // Row regardless of how wide the unit label ends up —
-                      // a TextField's internal single-line Scrollable throws
-                      // if given an unbounded width, and an unwrapped Text
-                      // can overflow the 150px box.
-                      Flexible(
-                        child: _editing
-                            ? TextField(
-                                controller: _editCtrl,
-                                focusNode: _focusNode,
-                                autofocus: true,
-                                textAlign: TextAlign.center,
-                                textInputAction: TextInputAction.done,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                inputFormatters: [
-                                  // A whole-string predicate, NOT
-                                  // FilteringTextInputFormatter.allow with an
-                                  // anchored pattern: that treats
-                                  // non-matching text as entirely banned and
-                                  // WIPES the field instead of rejecting the
-                                  // edit.
-                                  TextInputFormatter.withFunction((
-                                    oldValue,
-                                    newValue,
-                                  ) {
-                                    final ok = RegExp(
-                                      r'^-?\d*[.,]?\d*$',
-                                    ).hasMatch(newValue.text);
-                                    return ok ? newValue : oldValue;
-                                  }),
-                                ],
-                                onSubmitted: (_) => _commitEdit(),
-                                style: WorkoutType.display(
-                                  size: 52,
-                                  weight: FontWeight.w700,
-                                  color: tokens.text,
-                                  letterSpacing: 52 * -0.03,
-                                ),
-                                decoration: const InputDecoration(
-                                  isDense: true,
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                              )
-                            : GestureDetector(
-                                onTap: _beginEdit,
-                                // FittedBox (not just Flexible/ellipsis) so a
-                                // wide lb value ("388.8") stays fully visible
-                                // at larger text scales instead of
-                                // ellipsizing — the TextField branch above
-                                // must stay bare, it manages its own
-                                // scrolling.
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    _val?.toStringAsFixed(1) ?? '—',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: WorkoutType.display(
-                                      size: 52,
-                                      weight: FontWeight.w700,
-                                      color: tokens.text,
-                                      letterSpacing: 52 * -0.03,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                      // Minus button
+                      StepperButton(
+                        icon: Icons.remove,
+                        semanticLabel: l.a11yDecrease(l.bodyweightTitle),
+                        onTap: () => _bump(-1),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        unit,
-                        style: WorkoutType.mono(size: 16, color: tokens.dim),
+                      const SizedBox(width: 12),
+
+                      // Value display
+                      SizedBox(
+                        width: 150,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            // Flexible (not a fixed width) so the number always
+                            // gets a bounded, finite main-axis constraint from the
+                            // Row regardless of how wide the unit label ends up —
+                            // a TextField's internal single-line Scrollable throws
+                            // if given an unbounded width, and an unwrapped Text
+                            // can overflow the 150px box.
+                            Flexible(
+                              child: _editing
+                                  ? TextField(
+                                      controller: _editCtrl,
+                                      focusNode: _focusNode,
+                                      autofocus: true,
+                                      textAlign: TextAlign.center,
+                                      textInputAction: TextInputAction.done,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: [
+                                        // A whole-string predicate, NOT
+                                        // FilteringTextInputFormatter.allow with an
+                                        // anchored pattern: that treats
+                                        // non-matching text as entirely banned and
+                                        // WIPES the field instead of rejecting the
+                                        // edit.
+                                        TextInputFormatter.withFunction((
+                                          oldValue,
+                                          newValue,
+                                        ) {
+                                          final ok = RegExp(
+                                            r'^-?\d*[.,]?\d*$',
+                                          ).hasMatch(newValue.text);
+                                          return ok ? newValue : oldValue;
+                                        }),
+                                      ],
+                                      onSubmitted: (_) => _commitEdit(),
+                                      style: WorkoutType.mono(
+                                        size: 40,
+                                        weight: FontWeight.w700,
+                                        color: tokens.text,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                    )
+                                  : GestureDetector(
+                                      onTap: _beginEdit,
+                                      // FittedBox (not just Flexible/ellipsis) so a
+                                      // wide lb value ("388.8") stays fully visible
+                                      // at larger text scales instead of
+                                      // ellipsizing — the TextField branch above
+                                      // must stay bare, it manages its own
+                                      // scrolling.
+                                      behavior: HitTestBehavior.opaque,
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          minHeight: 64,
+                                        ),
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            _val?.toStringAsFixed(1) ?? '—',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: WorkoutType.mono(
+                                              size: 40,
+                                              weight: FontWeight.w700,
+                                              color: tokens.text,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              unit,
+                              style: WorkoutType.mono(
+                                size: 16,
+                                color: tokens.dim,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(width: 12),
+                      // Plus button
+                      StepperButton(
+                        icon: Icons.add,
+                        semanticLabel: l.a11yIncrease(l.bodyweightTitle),
+                        onTap: () => _bump(1),
                       ),
                     ],
                   ),
                 ),
 
-                const SizedBox(width: 12),
-                // Plus button
-                StepperButton(
-                  icon: Icons.add,
-                  semanticLabel: l.a11yIncrease(l.bodyweightTitle),
-                  onTap: () => _bump(1),
+                // Save button
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      backgroundColor: tokens.action,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                      ),
+                      padding: EdgeInsets.zero,
+                    ),
+                    onPressed: _save,
+                    child: Text(
+                      l.bodyweightSaveEntry,
+                      style: WorkoutType.body(
+                        size: 16,
+                        weight: FontWeight.w700,
+                        color: tokens.onAction,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-
-          // Save button
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: TextButton(
-              style: TextButton.styleFrom(
-                backgroundColor: tokens.accent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                padding: EdgeInsets.zero,
-              ),
-              onPressed: _save,
-              child: Text(
-                l.bodyweightSaveEntry,
-                style: WorkoutType.display(
-                  size: 16,
-                  weight: FontWeight.w700,
-                  color: tokens.accentInk,
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
