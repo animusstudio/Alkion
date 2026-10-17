@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../identity/alkion_profile.dart';
+import '../identity/alkion_identity.dart';
 import '../store/local_store.dart';
 import '../store/schema.dart';
 import '../domain/evidence.dart';
@@ -14,7 +15,7 @@ import 'package:timezone/timezone.dart' as tz;
 /// Notification id and channel id. Top-level so both the instance and the
 /// background isolate (which constructs a fresh plugin) agree on them.
 const _kNotifId = 4101;
-const _kChannelId = 'alkion.dev.workout_session';
+final _kChannelId = AlkionIdentity.notificationChannel;
 
 // Notification body strings keyed by locale. The notification is built with no
 // BuildContext (and the +30s revert path runs in a background isolate), so
@@ -109,9 +110,9 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
     when: when.millisecondsSinceEpoch,
     category: AndroidNotificationCategory.stopwatch,
     actions: withAction
-        ? const <AndroidNotificationAction>[
+        ? <AndroidNotificationAction>[
             AndroidNotificationAction(
-              'alkion.dev.add_30s',
+              AlkionIdentity.addRestAction,
               '+30s',
               showsUserInterface: true,
               cancelNotification: false,
@@ -132,7 +133,8 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
 Future<void> workoutNotificationBackground(
   NotificationResponse response,
 ) async {
-  if (response.actionId != 'alkion.dev.add_30s' || response.payload == null) {
+  if (response.actionId != AlkionIdentity.addRestAction ||
+      response.payload == null) {
     return;
   }
   WidgetsFlutterBinding.ensureInitialized();
@@ -250,7 +252,7 @@ class WorkoutNotification {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       ),
       onDidReceiveNotificationResponse: (resp) {
-        if (resp.actionId == 'alkion.dev.add_30s') {
+        if (resp.actionId == AlkionIdentity.addRestAction) {
           onAdd30?.call();
         } else {
           onTap?.call();

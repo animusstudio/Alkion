@@ -1,8 +1,8 @@
 # Android owner-readiness implementation plan
 
 Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; design review PASS, T1 in progress**.
-Direction and supported ID `dev.animusstudio.alkion` approved; signing custody and
-candidate update route pending. [Specification](../specs/2026-10-17-android-owner-readiness.md).
+Direction, supported ID `dev.animusstudio.alkion`, dedicated Alkion key and manual
+signed-APK updates approved; actual key custody/access pending. [Specification](../specs/2026-10-17-android-owner-readiness.md).
 
 ## Outcome, scope and execution
 
@@ -28,6 +28,10 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 
 ### T1 — Build and identity boundary (A1–A2)
 
+- Approved bounded ownership extension: `app/Makefile` flavor-only debug build
+  routes; `app/lib/main.dart` early identity guard; identity-only replacements in
+  `app/lib/session/workout_notification.dart` and its directly affected tests.
+  Keep direct-Dart tools Flutter-free via new `app/lib/identity/alkion_flutter_identity.dart`.
 - Own `app/android/app/build.gradle.kts`, `app/android/app/src/{main,debug,profile}/AndroidManifest.xml`,
   move `app/android/app/src/main/kotlin/dev/animusstudio/alkion/dev/MainActivity.kt`
   to `.../alkion/MainActivity.kt`; `app/lib/identity/{alkion_identity,alkion_profile}.dart`,
@@ -35,7 +39,7 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 - Add explicit supported/dev flavors and one checked Dart/native identity route;
   retain Linux development identity. Audit merged share-provider authorities and
   labels. Preserve profile validation and refuse silent root migration.
-- Confirm key custody/manual APK update decision before implementing any signing
+- Confirm actual key custody/access scope before implementing any signing
   input. Owner-candidate build must require the chosen external signing inputs,
   fail without them and never read inherited key properties or fall back to debug.
 - Checks: `make -C app test TEST=test/alkion/identity/`; inspect both merged manifests;
@@ -75,6 +79,7 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
   Preserve existing replace/reconciliation/generation semantics, unknown newer-work
   reviews and profile ownership. Expose safe resumption before fresh identity commit;
   never turn interrupted restore bytes into a new unrelated profile.
+  Reject foreign writer-variant restore; read-only receiving verification may inspect both.
 - Checks: `make -C app test TEST=test/alkion/recovery/`; existing backup-recovery proof
   plus Android interruptions before identity, during selection, complete/keep-current,
   repeat restore and rejected foreign/newer/corrupt/nonempty targets in T5.
@@ -142,9 +147,13 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 
 Independent design review at `92048af`: PASS, 2026-10-17, no remaining findings.
 Public Markdown check at `92048af`: PASS, 114 tracked files; whitespace PASS.
-T1: in progress; T2–T6: not started. Android and owner-storage gates remain UNRUN.
-Synthetic preparation scope and the supported ID are owner-approved.
-Next: T1 build/identity implementation; settle
-signing/update custody before owner-candidate work. Record results in acceptance. Final review
+T1: implemented, independent task review pending; T2–T6: not started. Installed
+Android and owner-storage gates remain UNRUN. T1 working-tree checks based on `a2b5005`:
+- `make -C app test TEST='test/alkion/identity/ test/session/workout_notification_test.dart test/session/notif_strings_test.dart'` → PASS, 19 tests, 0 skips.
+- `make -C app analyze` → PASS, no issues; `make -C app format` → PASS, 330 files, 0 changed.
+- Direct-Dart Make proofs → PASS: store `ALKION_CASE_ARGS=--checkpoint-reuse`; transfer 4 crash boundaries + split negative control; backup/restore 20 cases (fresh synthetic output for each).
+- `env JAVA_HOME=/usr/lib/jvm/java-21-openjdk ANDROID_USER_HOME=<fresh-temp-user> make -C app build-apk-dev` and `build-apk-supported` → PASS; merged/APK manifests and shared disposable debug certificate audited. Key existence/path checked only inside temporary Android user storage; no key bytes inspected.
+Next: coordinator commit receipt and independent T1 review; actual signing custody/access
+stays gated before owner-candidate work. Record results in acceptance. Final review
 covers A1–A8 and remaining blockers. Every public push needs exact-range review,
 owner approval and owner-run publication; no tag/release follows from this plan.

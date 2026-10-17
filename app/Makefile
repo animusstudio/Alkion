@@ -2,10 +2,11 @@
 # Every Flutter/Dart execution resolves the preserved FVM 3.44.0 pin.
 FLUTTER := fvm flutter
 DART := fvm dart
+ALKION_FLAVOR ?= dev
 # Tool subprocesses must not refresh the reviewed Git index opportunistically.
 export GIT_OPTIONAL_LOCKS := 0
 
-.PHONY: help get analyze test fmt format build build-apk alkion-driver-qualification alkion-transfer-recovery alkion-backup-recovery run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean
+.PHONY: help get analyze test fmt format build build-apk build-apk-dev build-apk-supported alkion-driver-qualification alkion-transfer-recovery alkion-backup-recovery run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean
 help:
 	@echo "Alkion: get, analyze, test TEST=<path>, format, fmt FORMAT_FILES=<owned paths>, alkion-driver-qualification ALKION_OUTPUT=<fresh /tmp path>, alkion-transfer-recovery ALKION_OUTPUT=<fresh transfer-proof* path>, alkion-backup-recovery ALKION_OUTPUT=<fresh backup-proof* path>"
 get:
@@ -41,7 +42,12 @@ alkion-toolchain:
 build:
 	$(FLUTTER) build linux --no-pub
 build-apk:
-	$(FLUTTER) build apk --debug
+	@case "$(ALKION_FLAVOR)" in dev|supported) ;; *) echo 'ALKION_FLAVOR must be dev or supported.' >&2; exit 2 ;; esac
+	$(FLUTTER) build apk --debug --no-pub --flavor "$(ALKION_FLAVOR)"
+build-apk-dev:
+	$(MAKE) build-apk ALKION_FLAVOR=dev
+build-apk-supported:
+	$(MAKE) build-apk ALKION_FLAVOR=supported
 # No normal startup, legacy capture, release/signing, SDK installation/device
 # discovery, scaffold mutation or destructive clean is authorized at T1.
 run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean:

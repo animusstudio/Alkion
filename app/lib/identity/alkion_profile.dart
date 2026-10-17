@@ -22,14 +22,10 @@ class AlkionProfile {
   );
   static final _creating = <String>{};
 
-  /// The caller supplies the exact Alkion root, including the development ID.
+  /// The caller supplies the exact root for the selected Alkion variant.
   /// This method never asks the OS for another application's support path.
   static Future<AlkionProfile> open({required Directory supportRoot}) async {
-    final path = p.normalize(p.absolute(supportRoot.path));
-    if (p.basename(path) != AlkionIdentity.applicationId ||
-        p.split(path).any(_legacyComponent)) {
-      throw const FormatException('Not an Alkion development support root');
-    }
+    final path = _canonicalRoot(supportRoot);
     await _rejectLinks(path);
     final root = Directory(path);
     await root.create(recursive: true);
@@ -201,8 +197,8 @@ class AlkionProfile {
   static String _canonicalRoot(Directory supportRoot) {
     final path = p.normalize(p.absolute(supportRoot.path));
     if (p.basename(path) != AlkionIdentity.applicationId ||
-        p.split(path).any(_legacyComponent)) {
-      throw const FormatException('Not an Alkion development support root');
+        p.split(path).any(_foreignComponent)) {
+      throw const FormatException('Not the selected Alkion support root');
     }
     return path;
   }
@@ -245,9 +241,14 @@ class AlkionProfile {
   static bool _validId(Object? value) =>
       value is String && _uuid.hasMatch(value);
 
-  static bool _legacyComponent(String component) {
+  static bool _foreignComponent(String component) {
     final value = component.toLowerCase();
-    return value == 'reps' ||
+    return AlkionVariant.values.any(
+          (variant) =>
+              variant != AlkionIdentity.current &&
+              value == variant.applicationId,
+        ) ||
+        value == 'reps' ||
         value.contains('workout-tracker') ||
         value.contains('workout_tracker') ||
         value.startsWith('io.github.psychonaut0.');

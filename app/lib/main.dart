@@ -12,6 +12,7 @@ import 'data/session_writer.dart';
 import 'data/exercise_repository.dart';
 import 'data/catalog_seed.dart';
 import 'identity/alkion_identity.dart';
+import 'identity/alkion_flutter_identity.dart';
 import 'identity/identity_service.dart';
 import 'identity/alkion_profile.dart';
 import 'l10n/app_localizations.dart';
@@ -172,14 +173,23 @@ class AlkionRuntime with WidgetsBindingObserver {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    final support = await getApplicationSupportDirectory();
-    final root = paths.basename(support.path) == AlkionIdentity.applicationId
-        ? support
-        : Directory(paths.join(support.path, AlkionIdentity.applicationId));
+    final root = await checkedAlkionSupportRoot();
     await launchAlkion(root);
   } catch (error) {
     runApp(AlkionPreflightApp(error: error));
   }
+}
+
+/// Identity is checked before even asking the platform for a storage directory.
+Future<Directory> checkedAlkionSupportRoot({
+  Future<void> Function()? verifyIdentity,
+  Future<Directory> Function()? supportDirectory,
+}) async {
+  await (verifyIdentity ?? AlkionFlutterIdentity.verifyPlatformIdentity)();
+  final support = await (supportDirectory ?? getApplicationSupportDirectory)();
+  return paths.basename(support.path) == AlkionIdentity.applicationId
+      ? support
+      : Directory(paths.join(support.path, AlkionIdentity.applicationId));
 }
 
 /// Opens the selected store generation. An interrupted restore keeps every

@@ -2,8 +2,8 @@
 
 Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; independent design review PASS**.
 The owner approved the offline-first preparation order and supported application
-ID `dev.animusstudio.alkion`. Signing custody and the candidate update route remain
-unresolved. This document records no device, signing or transfer qualification.
+ID `dev.animusstudio.alkion`, a dedicated Alkion key and manual signed-APK updates.
+Actual key creation/custody/access remain gated. No device, signing or transfer qualification is claimed.
 
 ## Outcome and inspected baseline
 
@@ -43,9 +43,9 @@ Never discover, open or silently adopt Reps or the other variant's private root.
 Same-package, same-signer updates with increasing version codes must retain the
 installation/profile IDs, selected generation and all local work. A signature or
 package mismatch fails closed; clearing/uninstalling an existing app is no repair.
-The proposed owner route is a dedicated supported signing key and manually
+The approved owner route is a dedicated supported signing key and manually
 delivered signed APK, with no OTA. Actual key creation, custody/recovery location,
-authorized signer and update procedure need an owner decision before access.
+authorized signer and execution scope must be recorded before access.
 No inherited key file or release secret is read; no debug-signing fallback is
 allowed for an owner candidate. Public tags, releases and binaries remain barred
 before 1.0. A private candidate is a qualification build, not a release claim.

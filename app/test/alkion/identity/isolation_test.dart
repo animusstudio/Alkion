@@ -56,7 +56,13 @@ void main() {
   test(
     'legacy/foreign roots and symlink escape are refused without opening data',
     () async {
-      for (final name in ['workout-tracker', 'Reps', 'foreign']) {
+      for (final name in [
+        'workout-tracker',
+        'Reps',
+        'io.github.psychonaut0.reps',
+        'dev.animusstudio.alkion',
+        'foreign',
+      ]) {
         await expectLater(
           AlkionProfile.open(supportRoot: Directory('${temporary.path}/$name')),
           throwsFormatException,
@@ -258,10 +264,14 @@ void main() {
     final notification = File(
       'lib/session/workout_notification.dart',
     ).readAsStringSync();
-    expect(gradle, contains('namespace = "dev.animusstudio.alkion.dev"'));
-    expect(gradle, contains('applicationId = "dev.animusstudio.alkion.dev"'));
+    expect(gradle, contains('namespace = "dev.animusstudio.alkion"'));
+    expect(gradle, contains('applicationId = "dev.animusstudio.alkion"'));
+    expect(gradle, contains('create("dev")'));
+    expect(gradle, contains('create("supported")'));
+    expect(gradle, contains('applicationIdSuffix = ".dev"'));
     expect(gradle, isNot(contains('FileInputStream')));
-    expect(manifest, contains('android:label="Alkion Dev"'));
+    expect(manifest, contains('android:label="\${alkionLabel}"'));
+    expect(manifest, contains('android:taskAffinity="\${applicationId}"'));
     expect(manifest, contains('android:allowBackup="false"'));
     expect(manifest, isNot(contains('REQUEST_INSTALL_PACKAGES')));
     expect(manifest, isNot(contains('OtaUpdateFileProvider')));
@@ -270,7 +280,7 @@ void main() {
       cmake,
       contains('set(APPLICATION_ID "dev.animusstudio.alkion.dev")'),
     );
-    expect(notification, contains("'alkion.dev.workout_session'"));
-    expect(notification, contains("'alkion.dev.add_30s'"));
+    expect(notification, contains('AlkionIdentity.notificationChannel'));
+    expect(notification, contains('AlkionIdentity.addRestAction'));
   });
 }

@@ -3,8 +3,8 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Development identity only. Never read inherited key.properties/signing files.
-// Release tasks remain unavailable until a separately reviewed release route.
+// Debug variants only. Never read inherited key.properties/signing files.
+// Owner signing and release tasks require a separately selected route.
 gradle.taskGraph.whenReady {
     if (allTasks.any { it.name.contains("Release", ignoreCase = true) }) {
         throw GradleException("Alkion release identity/signing is not selected.")
@@ -12,7 +12,7 @@ gradle.taskGraph.whenReady {
 }
 
 android {
-    namespace = "dev.animusstudio.alkion.dev"
+    namespace = "dev.animusstudio.alkion"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
     compileOptions {
@@ -21,11 +21,26 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     defaultConfig {
-        applicationId = "dev.animusstudio.alkion.dev"
+        applicationId = "dev.animusstudio.alkion"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+    flavorDimensions += "installation"
+    productFlavors {
+        create("dev") {
+            dimension = "installation"
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["alkionLabel"] = "Alkion Dev"
+        }
+        create("supported") {
+            dimension = "installation"
+            manifestPlaceholders["alkionLabel"] = "Alkion"
+        }
     }
 }
 kotlin {
