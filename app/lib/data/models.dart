@@ -1,4 +1,5 @@
 import '../domain/evidence.dart';
+import 'history_numeric_evidence.dart';
 
 // Retained display models. Exact evidence is the source of untouched writes.
 //
@@ -382,6 +383,18 @@ class LoggedSet {
       weightEvidence!.state == ValueState.valid &&
           weightEvidence!.exact?.displayDouble?.isFinite == true;
 
+  /// History's exact load in kg, or null when unknown. Valid decimal text is
+  /// known even when no double can show it; a set built without evidence
+  /// keeps the [weightAvailable] convention through its double's exact value.
+  HistoryDecimal? get historyLoadKg {
+    final evidence = weightEvidence;
+    if (evidence == null) {
+      return HistoryDecimal.ofDouble(weightKg);
+    }
+    final exact = evidence.state == ValueState.valid ? evidence.exact : null;
+    return exact == null ? null : HistoryDecimal.of(exact);
+  }
+
   const LoggedSet({
     required this.id,
     required this.exerciseId,
@@ -468,6 +481,25 @@ class CompatibilityCoverage {
       knownSubtotal: subtotal,
     );
   }
+}
+
+/// History volume evidence of one session's live sets. A warm-up (integer
+/// `is_warmup` other than 0) is excluded. A working set is known only with an
+/// exact load, integer reps and an integer `is_warmup`; otherwise it counts in
+/// the total and never as zero.
+HistoryVolumeEvidence historyVolumeOf(Iterable<LoggedSet> sets) {
+  var evidence = HistoryVolumeEvidence.empty;
+  for (final set in sets.where((s) => !s.isWarmup)) {
+    final load = set.historyLoadKg;
+    final warmupKnown =
+        set.rawFields.isEmpty || set.rawFields['is_warmup'] is int;
+    evidence = evidence.add(
+      load != null && set.repsAvailable && warmupKnown
+          ? load.times(set.reps)
+          : null,
+    );
+  }
+  return evidence;
 }
 
 // ── ExerciseBlockData ─────────────────────────────────────────────────────────
@@ -583,8 +615,16 @@ class HistorySessionRow {
   final Map<String, Object?> rawFields;
   final int exerciseCount;
   final int prCount;
-  final double tonnageKg; // named legacy compatibility numeric display
+
+  /// Legacy SQL tonnage, kept as a named compatibility value. Not for
+  /// display: it can be infinite, NaN or a substituted zero. History reads
+  /// [volumeEvidence].
+  final double tonnageKg;
   final CompatibilityCoverage? coverage;
+
+  /// Exact History volume evidence. Rows read from storage carry it; a row
+  /// built without it has an unknown volume, never zero.
+  final HistoryVolumeEvidence? volumeEvidence;
   final FieldEvidence? dateEvidence;
   bool get dateAvailable => hasQualifiedCalendarDay(date);
   HistorySessionRow({
@@ -601,6 +641,7 @@ class HistorySessionRow {
     required this.prCount,
     required this.tonnageKg,
     this.coverage,
+    this.volumeEvidence,
   });
   factory HistorySessionRow.fromRow(Map<String, dynamic> r) =>
       HistorySessionRow(

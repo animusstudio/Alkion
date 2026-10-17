@@ -7,6 +7,7 @@ import '../domain/local_action.dart';
 import 'package:flutter/material.dart';
 
 import '../data/session_writer.dart';
+import '../data/history_numeric_evidence.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
@@ -17,6 +18,7 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
 import '../widgets/rir_picker.dart';
 import '../widgets/w_dialog.dart';
@@ -139,9 +141,9 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
             weightKg: s.weightKg,
             reps: s.reps,
             rir: s.rir,
-            weightKnown:
-                s.weightEvidence == null ||
-                s.weightEvidence!.state.name == 'valid',
+            // Unit-independent: a finite load within the kg display bound.
+            // Valid text beyond it (a 400-digit decimal, 1e29) is not known.
+            weightKnown: s.weightAvailable && historyDoubleFits(s.weightKg),
             repsKnown: s.repsEvidence == null || s.repsEvidence!.raw is int,
             orderKnown: s.qualifiedSetNumber != null,
             isWarmup: s.isWarmup,
@@ -250,6 +252,12 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// was built with), and (re)starts that set's 400 ms persist debounce.
   void _edit(_EditableSet s, {double? weight, int? reps, int? rir}) {
     if (_writes > 0 || _pendingIntents.containsKey(s.id)) {
+      return;
+    }
+    // A typed weight the sheet could not show in the selected unit (a
+    // saturated 1e30, or 1e16 lb) is refused: no write, nothing changes.
+    if (weight != null &&
+        !historyDoubleFits(weight, pounds: widget.units.unit == Unit.lb)) {
       return;
     }
     setState(() {
@@ -690,6 +698,10 @@ class _EditableSet {
   bool weightKnown, repsKnown;
   final bool orderKnown;
   final bool isWarmup;
+
+  /// Whether the load renders in [unit]; otherwise it shows `—`.
+  bool showsLoad(Unit unit) =>
+      weightKnown && historyDoubleFits(weightKg, pounds: unit == Unit.lb);
 }
 
 /// One set: a read-only 48dp line that is the tap target, plus (when [open])
@@ -769,6 +781,7 @@ class _SetLineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
+    final shows = set.showsLoad(units.unit);
 
     return Semantics(
       button: true,
@@ -805,22 +818,24 @@ class _SetLineRow extends StatelessWidget {
                         TextSpan(
                           children: [
                             TextSpan(
-                              text: set.weightKnown
-                                  ? units.fmtWt(set.weightKg)
-                                  : '—',
+                              text: shows ? units.fmtWt(set.weightKg) : '—',
+                              semanticsLabel: shows
+                                  ? null
+                                  : l.alkionLoadUnavailableLabel,
                               style: WorkoutType.mono(
                                 size: 15,
                                 weight: FontWeight.w700,
                                 color: tokens.text,
                               ),
                             ),
-                            TextSpan(
-                              text: units.uLabel,
-                              style: WorkoutType.mono(
-                                size: 11,
-                                color: tokens.faint,
+                            if (shows)
+                              TextSpan(
+                                text: units.uLabel,
+                                style: WorkoutType.mono(
+                                  size: 11,
+                                  color: tokens.faint,
+                                ),
                               ),
-                            ),
                             TextSpan(
                               text: '  ×  ',
                               style: WorkoutType.mono(
@@ -888,6 +903,7 @@ class _SetEditingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
+    final pounds = units.unit == Unit.lb;
 
     TextStyle caption() => WorkoutType.mono(
       size: 10,
@@ -910,10 +926,20 @@ class _SetEditingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!set.weightKnown || !set.repsKnown || !set.orderKnown)
+          // Whenever the line shows `—` for the load, including a load that
+          // only the other unit can show, which is why the ruler reads 0.
+          if (!set.showsLoad(units.unit))
+            inset(
+              FitLabel(l.alkionLoadUnavailable, maxLines: 6, style: caption()),
+            ),
+          if (!set.repsKnown || !set.orderKnown)
             inset(Text(l.alkionLegacyFallback, style: caption())),
           SetValuesEditor(
-            weightKg: set.weightKg,
+            // Only a load the selected unit can show seeds the ruler; an
+            // untouched card writes nothing either way.
+            weightKg: historyDoubleFits(set.weightKg, pounds: pounds)
+                ? set.weightKg
+                : 0.0,
             reps: set.reps,
             unit: units,
             onWeight: onWeight,

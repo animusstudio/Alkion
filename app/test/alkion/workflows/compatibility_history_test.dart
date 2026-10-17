@@ -9,6 +9,7 @@ import 'package:alkion/widgets/line_chart.dart';
 import 'package:alkion/l10n/app_localizations_en.dart';
 import 'package:alkion/data/stats_repository.dart';
 import 'package:alkion/domain/evidence.dart';
+import 'package:alkion/data/history_numeric_evidence.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/data/progress_repository.dart';
 import 'dart:convert';
@@ -153,6 +154,14 @@ void main() {
         expect(a.coverage!.total, 2);
         expect(a.coverage!.complete, isFalse);
         expect(a.coverage!.knownSubtotal, 80.1250000000001 * 5);
+        // History evidence keeps the exact text: 80.125000000000100 × 5.
+        final evidence = a.volumeEvidence!;
+        expect((evidence.known, evidence.total), (1, 2));
+        expect(
+          evidence.knownSum.coefficient * BigInt.from(10).pow(15),
+          BigInt.parse('400625000000000500') *
+              BigInt.from(10).pow(evidence.knownSum.scale),
+        );
         final series = await ProgressRepository.local(
           store,
         ).watchSeriesFor('e').first;
@@ -301,6 +310,11 @@ void main() {
         expect(
           history.singleWhere((s) => s.id == 'date-1').dateEvidence!.state,
           ValueState.empty,
+        );
+        // Invalid load and reps: counted, never a zero contribution.
+        expect(
+          history.singleWhere((s) => s.id == 'date-0').volumeEvidence!.state,
+          HistoryVolumeState.none,
         );
         for (final raw in days.take(5)) {
           expect(qualifiedCalendarDate(raw), isNull);
