@@ -6,6 +6,55 @@ observed: 2026-10-17
 
 # Alkion integrated acceptance (T7)
 
+## History numeric overflow (2026-10-17)
+
+Status, 2026-10-17: source task **ACCEPTED** after independent task review;
+integrated qualification **PASS** as run below; independent final integration
+review **PASS**, 2026-10-17, with low-severity final-review findings F1–F5, of
+which F4 was closed by one added real-store test and a full-suite rerun;
+publication **NOT APPROVED**, pending explicit owner approval of the exact
+outgoing range. Dated checkpoint, 2026-10-17: the change was then a local,
+uncommitted working tree on `1892ca4`. The
+[specification](../superpowers/specs/2026-10-17-history-numeric-overflow.md)
+holds the scope and design decisions, and the
+[task plan](../superpowers/plans/2026-10-17-history-numeric-overflow.md#t2-integrated-qualification-receipt-2026-10-17)
+holds the frozen inputs, commands and receipts.
+
+This increment repairs, locally and pending publication, the known unresolved
+History limit recorded in the [hygiene section](#hygiene-remediation-2026-10-17)
+below; that section stays as written. History's four-week volume, its coverage
+lines, its expanded top-load rows and the set editor opened from them now read
+exact decimal evidence. A value that is unknown, or outside the 2^53 − 1
+display bound in the selected unit, shows `—` with a localized explanation. The
+accepted 400-digit decimal no longer throws. Claims are limited to those paths,
+on Linux with synthetic data and disposable storage.
+
+| Evidence | Executed result and scope |
+| --- | --- |
+| V1 — negative controls | On unchanged baseline source, the mounted shell test (History offstage) recorded two `Unsupported operation: Infinity or NaN toInt` errors, with the stack `fmtVolume` (`unit_format.dart:43`) ← `UnitService.fmtVol` ← `_HistoryScreenState._buildBody` (`history_screen.dart:174`). No other screen reported an error. The expanded-card control ran 10 passed and 4 failed: the 400-digit, `Infinity` and `-Infinity` cases threw through `fmtLoad` (`unit_format.dart:21`) via `_BlockRow`, and `NaN` showed `NaNkg`. The independent reviewer re-ran both controls on a baseline copy. Local evidence. |
+| V2 — repaired mounted run | Production import into a disposable store, then `AppShell` with History offstage. The test visits History, expands the affected session, and opens the set editor and its editing card on the overflow row, then closes them without an edit. No error is recorded. It asserts the unavailable tile and explanation, 5/11 coverage, the unavailable rows and `12.5kg ×—`. |
+| V3 — exact oracles | Expected values come from fixture text with exact integer/rational arithmetic, never from the helper's own predicates. Covered: the 7441.5 kg half total, the visible 915.5 kg fold (`916kg`), signed and zero values, invalid and missing evidence, the 400-digit and scale-5001 decimals, double-range overflow, cross-session cancellation, the 2^53 − 1 boundaries in kg and lb, and the N4 top-load cases. The reviewer separately checked the arithmetic against an independent rational oracle: 1,552 volume cases and 2,999 double conversions, 0 mismatches. |
+| V4 — behavior | kg/lb switching (a total safe in kg and unsafe in lb), the ordinary edit to `20.0000` and its refresh (`874kg`, `1.9k lb`), days 27 and 29 back, warm-up and deleted exclusions, unchanged PR counts and bolt, an infinite `tonnageKg` beside valid evidence, one stream re-listened, and a remount. History reports 5/11 known for the fixture while `CompatibilityCoverage` (Summary's basis) reports 4/11; this deliberate divergence is pinned by a test. |
+| V5 — localization and layout | New copy in en/de/es/it. Mounted History and the set editor hold at 320dp and 2.0x in each locale and at 412dp and 1.0x in en, including the longest safe volume strings, with no overflow, split word or exception. |
+| V6 — preservation | Rows, raw decimals, IDs, revisions, source artifact, original export bytes and inventory compare equal after the read-only interval, including opening and closing the set editor, and after each of two independent reopens. The unit switches and the deliberate edit are asserted separately. Profile still renders its counts. |
+| V8 — set editor | The 400-digit, `Infinity`, `NaN`, `9999oops`, 1e29 and 5e15 kg loads, each in kg and lb: `—` rows, guarded editing-card seeds, the unavailable-load caption, and Add set copying null or `5000000000000000.00`. Typed `1e30` and `99999999999999999999999`, and `1e16` in lb, make no write. An ordinary-block edit still saves. |
+| Review and fixes | Independent task review raised F1 (blocking: screen-level tile tests), F2 (discriminating PR-bolt cases) and F3 (`FitLabel` ellipsis at 320dp/2.0x). All three were fixed, followed by an optional full-width coverage-line layout improvement. The final task review PASS covers the accepted source hashes. Every listed mutation was killed. One further defect on the path was fixed: `_ExerciseBlocksState._reload` handed `setState` an arrow closure that returned a Future; it now uses a block body, guarded by a test. |
+| T1 focused checks | Focused group: 120 passed, 0 skipped (121 passed after the F4 test). Localization: 3 passed. Read-only regression group: 186 passed. Analyzer: no issues. Check-only format: 328 files, 0 changed. |
+| V7 — integrated checks | Full suite (`TEST='--concurrency=2'`): **1453 passed, 0 failed, 0 skipped**, rerun after the F4 test; the first T2 run passed 1452 with 0 skipped. Full analyzer: no issues. Check-only format: 328 files, 0 changed; both were rerun after the F4 test. Linux bundle: 31 files. The hygiene receipt recorded 30 bundle files and an earlier receipt recorded 31; the cause of the one-file difference was not investigated, and the claim is this run's 31-file inventory, which equals its CMake install manifest. The build and proofs consume no test file and were reused after an input comparison. Store / transfer / backup process proofs, rerun fresh because they consume the changed models: 59 cases / 4 crash boundaries plus split negative control / 20 cases, all PASS. Driver proof: reused after an input comparison, plus a fresh 13-case PASS. Native SQLite 3.53.1. |
+
+Remaining limits: the shared `number_input.dart` parser
+(`parseNumberInput`/`clampRound2`) still saturates very large typed values for
+its other callers; only the History set editor's typed path refuses them. The
+Summary and Progress extreme paths, catalog/editor extreme qualification
+(repository-only), exports and other screens are outside this increment, which
+makes no general extreme-numeric claim. DST computation, Android/devices, real
+data, physical power loss/ENOSPC and transport remain **UNRUN**. The
+independent final integration review has passed (2026-10-17, low-severity
+findings F1–F5). Publication is still **NOT APPROVED**: local integration,
+independent review of the exact outgoing range, the staged outgoing public-tree
+check, fresh destination verification and explicit owner approval of that range
+are still required before any push.
+
 ## Hygiene remediation (2026-10-17)
 
 Current hygiene increment: **integrated execution PASS; independent R1-public
@@ -51,6 +100,17 @@ publication remain UNRUN/unauthorized. The staged outgoing public-tree check
 remains required; its pre-staging two-untracked-target limitation is retained
 in the plan. G-PUB and G-LEGACY remain closed. No
 public push, published commit or submodule pin advance is established here.
+
+**Delivery observation (2026-10-17, after the receipt above):** a read-only
+query of the public repository's `main`, made on 2026-10-17, returned
+`1892ca4f0c26ba04a12a91825ad06627164c487a`, the merge
+`fix: integrate Alkion hygiene remediation` of `a82fac7` onto `ef3f6df`.
+Public `main` therefore carries this hygiene integration. The pending-delivery
+and no-published-commit wording above is a dated checkpoint written before that
+push; it is kept as written. This observation records only the remote state; it
+is not an approval record for that push. The known History limit above is
+repaired locally, pending publication, by the
+[History numeric overflow](#history-numeric-overflow-2026-10-17) increment.
 
 ## Historical integrated acceptance (2026-10-15/16)
 

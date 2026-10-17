@@ -21,8 +21,11 @@ INTEGRATION PENDING**, 2026-10-17 (reviewer `alkion_readme_review`). T7 has **in
 2026-10-17, reviewer `public_final_compliance`, no findings. This accepts scoped
 H1–H7 public implementation readiness and supersedes the dated task checkpoints'
 integration-pending status. Current evidence and the independent final review
-receipt are recorded below. Delivery and the staged outgoing public-tree check
-remain pending; G-PUB and G-LEGACY remain closed.
+receipt are recorded below. At that review, delivery and the staged outgoing
+public-tree check remained pending, and G-PUB and G-LEGACY remained closed; that
+is a dated checkpoint. The later delivery observation and the local History
+repair are recorded in the
+[dated appendix](#dated-appendix-delivery-observation-and-history-repair-2026-10-17).
 
 ## Dispatch contract
 
@@ -532,6 +535,13 @@ author receipt SHA-256 `85d25f6735f2e179790ba3ac056588281ba9ce1368d05a241da386e3
 | `app/test/alkion/workflows/compatibility_history_test.dart` | `069808cbbe22335fb5b8adcf692178780790756424bc447526ced8ef57e51aa1` |
 
 ### Distinct unresolved extreme-load History issue observed during T3
+
+Dated update, 2026-10-17: this issue is now **repaired locally, pending
+publication**, by the separate
+[History numeric overflow](2026-10-17-history-numeric-overflow.md) increment
+(see the
+[dated appendix](#dated-appendix-delivery-observation-and-history-repair-2026-10-17)).
+The record below stays as written.
 
 This is an **observed failure outside T3**, not repaired or waived. Mounting
 `AppShell` immediately after actual import of
@@ -1200,3 +1210,34 @@ reports remain an explicit pre-staging limitation; the actual staged outgoing
 public-tree check must pass. This review establishes no outgoing review, fresh
 remote verification, public push, published commit or submodule pin advance.
 Delivery remains pending. **G-PUB and G-LEGACY remain closed.**
+
+## Dated appendix: delivery observation and History repair (2026-10-17)
+
+This appendix is added after the receipts above, which stay as written.
+
+**Delivery observation.** A read-only query of the public repository's `main`,
+made on 2026-10-17, returned `1892ca4f0c26ba04a12a91825ad06627164c487a`, the
+merge `fix: integrate Alkion hygiene remediation` of `a82fac7` onto
+`ef3f6df`. Public `main` therefore carries this increment's integration. The
+pending-delivery, no-public-push and no-published-commit statements above are
+dated checkpoints written before that push. This observation records only the
+remote state; it is not an approval record for that push.
+
+**Distinct History issue.** The
+[extreme-load History issue](#distinct-unresolved-extreme-load-history-issue-observed-during-t3)
+recorded during T3, and listed as a known failure in the T7 receipt and the
+final review, is now **repaired locally, pending publication**, by the separate
+History numeric overflow increment
+([specification](../specs/2026-10-17-history-numeric-overflow.md),
+[plan](2026-10-17-history-numeric-overflow.md)). Dated checkpoint, 2026-10-17:
+that change was then an uncommitted working tree on `1892ca4`. On unchanged
+`1892ca4` source, its mounted negative control reproduced the recorded
+`fmtVolume` failure from History's offstage build. With the repair, the same
+mounted run records no error. Its source task is accepted after independent
+task review, and its integrated qualification passed. After one added F4 test,
+the full suite gave 1453 passed, 0 failed, 0 skipped. Its independent final
+integration review returned **PASS** on 2026-10-17 with low-severity findings
+F1–F5, and F4 was closed by that added test. Its publication is not approved.
+Current evidence is in
+[canonical acceptance](../../alkion/acceptance.md#history-numeric-overflow-2026-10-17).
+The H1–H7 receipts above are unchanged by that repair.
