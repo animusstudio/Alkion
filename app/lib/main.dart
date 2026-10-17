@@ -28,6 +28,7 @@ import 'store/local_store.dart';
 import 'store/schema.dart';
 import 'theme/app_theme.dart';
 import 'ui/alkion_recovery/recovery_app.dart';
+import 'ui/alkion_recovery/first_start_screen.dart';
 import 'ui/onboarding_screen.dart';
 import 'units/unit_service.dart';
 import 'widgets/pending_input.dart';
@@ -201,19 +202,24 @@ Future<void> launchAlkion(
   Directory root, {
   void Function(Widget app) present = runApp,
 }) async {
+  GoogleFonts.config.allowRuntimeFetching = false;
   Future<void> relaunch() => launchAlkion(root, present: present);
   try {
-    final runtime = await AlkionRuntime.open(root);
-    present(
-      AlkionApp(
-        runtime: runtime,
-        recovery: RuntimeRecoveryHost(
-          runtime,
+    final service = RestoreService(root);
+    final fresh = await service.freshState();
+    if (fresh != null) {
+      present(
+        AlkionFirstStartApp(
+          service: service,
+          state: fresh,
+          startLocal: () =>
+              _launchAlkionRuntime(root, present: present, relaunch: relaunch),
           relaunch: relaunch,
-          present: present,
         ),
-      ),
-    );
+      );
+      return;
+    }
+    await _launchAlkionRuntime(root, present: present, relaunch: relaunch);
   } on GenerationSelectionException catch (error) {
     if (error.category != 'restore_interrupted') {
       present(AlkionPreflightApp(error: error));
@@ -230,6 +236,24 @@ Future<void> launchAlkion(
   } catch (error) {
     present(AlkionPreflightApp(error: error));
   }
+}
+
+Future<void> _launchAlkionRuntime(
+  Directory root, {
+  required void Function(Widget) present,
+  required Future<void> Function() relaunch,
+}) async {
+  final runtime = await AlkionRuntime.open(root);
+  present(
+    AlkionApp(
+      runtime: runtime,
+      recovery: RuntimeRecoveryHost(
+        runtime,
+        relaunch: relaunch,
+        present: present,
+      ),
+    ),
+  );
 }
 
 /// Manual backup/restore for the running runtime. Backup flushes owed input
@@ -269,6 +293,7 @@ final class RuntimeRecoveryHost implements RecoveryHost {
   @override
   Future<void> restoreBackup(String path) async {
     final verified = await verifyBackup(path);
+    verified.requireWriterVariant();
     if (verified.profileId != profileId) {
       throw const StoreException('foreign_profile');
     }

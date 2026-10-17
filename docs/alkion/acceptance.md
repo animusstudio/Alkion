@@ -18,8 +18,13 @@ updates, without clearing storage. Native attestation handles the OS-owned
 `/data/user/0` alias while retaining owned-path link refusals. Full workout,
 lifecycle, document-provider and Android qualification remain unrun.
 
-Static review also identified an ARM directory-flush flag mismatch in
-`directory_durability.dart`; the Android primitive qualification must resolve it.
+The reviewed portable directory-flush fix at `69596ba` removes the ARM flag
+mismatch. Dev-only Android directory fsync passed; complete driver qualification
+remains pending after two test-setup failures. No ARM-device result is inferred.
+First-start restore source passed independent review, including same-variant
+checks and changed/linked staging refusal before identity publication. Recovery
+tests passed 71 cases; Linux process proof passed 26, including six fresh-restore
+SIGKILL boundaries. Installed Android restore remains unrun.
 Owner signing custody, the final refactored candidate, owner device/storage,
 real transfer and sync remain unqualified. The selected owner route is a dedicated
 Alkion key with manual signed APK updates. UI work follows the established specimen

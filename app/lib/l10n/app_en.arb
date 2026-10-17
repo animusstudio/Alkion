@@ -1291,5 +1291,11 @@
         "type": "String"
       }
     }
-  }
+  },
+  "alkionFirstStartBody": "Start on this device, or restore a backup before creating a profile. No account is needed.",
+  "alkionFirstStartLocal": "Start local",
+  "alkionFirstRestoreTitle": "Restore backup",
+  "alkionFirstRestoreConfirm": "Restore this verified backup onto this empty installation? Its profile and saved work will be kept; this installation gets a new identity.",
+  "alkionFirstResumeBody": "This restore has complete verified staging. Complete it to recover the same profile. Your previous attempt is kept.",
+  "alkionFirstReselectBody": "This restore needs the same backup again. Choose it to retry; earlier staging is kept. Starting an unrelated profile is unavailable."
 }
