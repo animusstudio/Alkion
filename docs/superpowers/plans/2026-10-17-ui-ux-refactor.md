@@ -1,6 +1,6 @@
 # Alkion UI/UX refactor plan
 
-Date: 2026-10-17. Status: **approved scope and visual direction; T1, T4 and T5 source reviews PASS**.
+Date: 2026-10-17. Status: **approved scope and visual direction; T1 and T4–T6 source reviews PASS**.
 
 ## Outcome
 
@@ -69,6 +69,9 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
 - **Owned files/callers:** presentation in `app/lib/ui/profile_screen.dart`; settings UI callers `app/lib/settings/{app_languages.dart,bodyweight_goal.dart}` and `app/lib/widgets/{plan_form.dart,stepper.dart,pending_input.dart}` only if required for profile/settings presentation. Consume T1 shared primitives; request serialized changes from T1 owner if needed. Do not change settings persistence/service semantics. Serialize `profile_screen.dart` with Android readiness work. Own profile/settings strings in all four ARB files.
 - **Focused checks:** `make -C app test TEST=test/ui/profile_layout_test.dart`; `... TEST=test/ui/profile_header_test.dart`; `... TEST=test/ui/profile_row_tap_test.dart`; `... TEST=test/ui/profile_pickers_test.dart`; `... TEST=test/settings/app_languages_test.dart`; `... TEST=test/settings/settings_test.dart`; `... TEST=test/alkion/domains/preferences_retry_test.dart`.
 
+- **T6 receipt (2026-10-17, implementation ready for independent review):** translated `profile_screen.dart` and the owned shared `stepper.dart` presentation to the established neutral action, blue focus, Hanken labels, mono measurements and panel/control shapes. Narrow/large-text settings place controls below their labels; quick stats adapt to rows and retain the existing values and unavailable evidence. All six accent choices retain their exact colors, 48 dp native buttons, selected semantics and contrasting check marks. Shared stepper input/commit/rounding code is unchanged; its value target is at least 48 dp high and its native buttons and input use neutral surfaces and blue focus. `app_languages.dart`, `bodyweight_goal.dart`, `plan_form.dart` and `pending_input.dart` needed no edits. Existing local-profile copy, preference services, retry semantics and export/transfer/recovery callers are unchanged. No ARB edits. Shared stepper presentation is ready for serialized handoff to T3 after review.
+- **T6 verification:** pinned Make/FVM ran all seven planned files plus unchanged `test/widgets/{stepper_test.dart,stepper_input_test.dart,stepper_targets_test.dart,stepper_commit_test.dart,tap_targets_test.dart}`, `test/alkion/domains/exact_editor_ui_test.dart` and `test/ui/plan_profile_layout_test.dart`. The initial batch passed 109 tests with three test-condition failures: two new accent tests released their semantics handle too late, and the old training-line test assumed the former mono font would wrap at 1x. Explicit handle disposal and exercising the same count/noun wrap assertion at 320 dp/2x made both affected files pass all 12 tests. Thus 112 distinct tests pass across the batch and affected-file rerun, not a single final aggregate batch. Added coverage exercises all four locales at 320 dp/2x, all six accents in light/dark including persisted legacy choices and selected-mark contrast, and exact typed rest values with 48 dp targets. Final formatting, whitespace checks and analysis are clean. Native visual/device qualification remains pending T8.
+
 ### T7 — Transfer, export and recovery presentation
 
 - **Behavior:** Make the existing transfer/export/backup/interrupted-restore surfaces explain what was selected, whether a step completed, how to verify the receiving copy, and the safe next action after interruption. Keep originals/current work accessible and defer operation policy to the coordinated preservation plan.
@@ -91,6 +94,8 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
   fixes; affected regression checks passed. Shared stat/value primitives are handed off.
   T5 Plans/exercise catalog source review passed with 119 distinct focused checks
   passing across the batch and targeted reruns. Shared form primitives are handed off.
-  T2–T3 and T6–T8 remain pending; no native visual or final device acceptance is claimed.
+  T6 Profile/settings passed independent review; 112 distinct focused checks passed
+  across the batch and targeted rerun. Shared stepper presentation is handed off.
+  T2–T3 and T7–T8 remain pending; no native visual or final device acceptance is claimed.
 
 Related: [design brief](../specs/2026-10-17-ui-ux-refactor.md).
