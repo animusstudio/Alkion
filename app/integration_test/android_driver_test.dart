@@ -274,6 +274,42 @@ Future<void> snapshotProof(
   }
 }
 
+/// Fixed OS tools contend only the already validated synthetic profile lock.
+Future<Map<String, Object?>> _processLockProbe(String path) async {
+  require(
+    Platform.isAndroid || Platform.isLinux,
+    'Unsupported process proof OS',
+  );
+  final shell = Platform.isAndroid ? '/system/bin/sh' : '/bin/sh';
+  final script = Platform.isAndroid
+      ? r'exec 9<>"$1"; /system/bin/flock -xn 9'
+      : r'exec 9<>"$1"; /bin/flock -xn 9';
+  final child = await Process.start(shell, [
+    '-c',
+    script,
+    'alkion-owned-lock',
+    path,
+  ]);
+  final output = child.stdout.transform(utf8.decoder).join();
+  final errors = child.stderr.transform(utf8.decoder).join();
+  int result;
+  try {
+    result = await child.exitCode.timeout(const Duration(seconds: 10));
+  } on TimeoutException {
+    child.kill(ProcessSignal.sigkill);
+    await child.exitCode;
+    rethrow;
+  }
+  require(child.pid != pid, 'Contender must run in a distinct OS process');
+  return {
+    'parent_pid': pid,
+    'child_pid': child.pid,
+    'exit_code': result,
+    'stdout': await output,
+    'stderr': await errors,
+  };
+}
+
 /// Shared native cases; platform attestation and terminal Android receipt stay in main.
 Future<void> exerciseDriverCases(
   Directory directory,
@@ -547,6 +583,54 @@ Future<void> exerciseDriverCases(
       }
     });
 
+    await check('native_owner_process', () async {
+      final path = await store.profile.ownerLockPath(
+        expectedProfileId: store.profileId,
+      );
+      require(
+        await FileSystemEntity.type(path, followLinks: false) ==
+            FileSystemEntityType.file,
+        'Process proof requires the existing unlinked app-owned lock file',
+      );
+      final lock = File(path), before = await store.inventory();
+      final bytes = await lock.readAsBytes();
+      final held = await _processLockProbe(path);
+      require(
+        held['exit_code'] == 1,
+        'OS process acquired the held ProfileOwnership lock: $held',
+      );
+      await store.close();
+      final released = await _processLockProbe(path);
+      require(
+        released['exit_code'] == 0,
+        'OS process could not acquire the released lock: $released',
+      );
+      final afterBytes = await lock.readAsBytes();
+      require(
+        jsonEncode(afterBytes) == jsonEncode(bytes),
+        'Process lock proof changed existing lock bytes',
+      );
+      store = await proof.syntheticStore(parent);
+      require(
+        inventoryDigest(await store.inventory()) == inventoryDigest(before),
+        'Release/reacquire for process proof changed complete inventory',
+      );
+      report['owner_process'] = {
+        'platform': Platform.operatingSystem,
+        'held': held,
+        'released': released,
+        'lock_path': path,
+        'lock_bytes_before': bytes,
+        'lock_bytes_after': afterBytes,
+        'same_validated_path': true,
+        'lock_bytes_unchanged': true,
+        'inventory_preserved': true,
+      };
+      if (Platform.isAndroid) {
+        (report['unrun'] as Map).remove('cross_process_ownership');
+      }
+    });
+
     await check('generation_fence', () async {
       final token = store.token;
       await store.fenceForReplacement();
@@ -572,14 +656,14 @@ void main() {
     'format': 'alkion-android-driver-proof/1',
     'phase': 'driver',
     'scope':
-        'real Android native driver; one process and independent Dart isolate',
+        'real Android native driver; native handle, Dart isolate and OS-process contender cases',
     'run_id': runId,
     'application_id': AlkionIdentity.applicationId,
     'complete': false,
     'cases': <String, String>{},
     'unrun': {
       'cross_process_ownership':
-          'UNRUN: independent isolate is same OS process',
+          'UNRUN: OS-process contender has not passed on this installation',
       'process_kill_recovery': 'UNRUN: later lifecycle proof',
       'physical_power_loss': 'UNRUN',
       'ARM_device': 'UNRUN',
@@ -594,7 +678,7 @@ void main() {
       final directory = output;
       if (directory == null) return;
       report['complete'] = true;
-      report['result'] = passed && (report['cases'] as Map).length == 10
+      report['result'] = passed && (report['cases'] as Map).length == 11
           ? 'PASS'
           : 'FAIL';
       if (!passed) {

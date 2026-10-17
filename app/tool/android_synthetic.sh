@@ -21,7 +21,7 @@ APP = SCRIPT.parent.parent
 PACKAGES = ("io.github.psychonaut0.reps", "dev.animusstudio.alkion.dev", "dev.animusstudio.alkion")
 CASES = {"directory_durability", "atomic_outbox_replay", "deferred_commit_recovery",
          "watch_relisten", "snapshot", "wal_backup", "native_owner_handle",
-         "native_owner_isolate", "two_reopens", "generation_fence"}
+         "native_owner_isolate", "native_owner_process", "two_reopens", "generation_fence"}
 
 class Refusal(Exception):
     pass
@@ -195,6 +195,16 @@ def receive_driver_report(output, flavor, raw):
     (output / ("driver-" + flavor + "-report.json")).write_text(raw)
     return json.loads(raw)
 
+def validate_driver_report(result, run_id, package):
+    require(isinstance(result, dict) and
+            result.get("format") == "alkion-android-driver-proof/1" and
+            result.get("run_id") == run_id and
+            result.get("application_id") == package and result.get("complete") is True,
+            "driver_result_identity_mismatch")
+    require(result.get("result") == "PASS" and set(result.get("cases", {})) == CASES and
+            all(value == "PASS" for value in result["cases"].values()),
+            "driver_assertions_incomplete_or_failed:" + package)
+
 def run_driver(args, receipt, output):
     toolchain(args)
     revision = command(["git", "-C", APP, "rev-parse", "HEAD"]).stdout.strip()
@@ -208,7 +218,7 @@ def run_driver(args, receipt, output):
              "serial": args.serial, "avd": args.avd, "phase": "driver",
              "source_commit": revision, "api": receipt["api"], "abi": receipt["abi"],
              "overall": "IN_PROGRESS", "installed": {}, "driver": {},
-             "pending": {"cross_process_ownership": "UNRUN: independent isolate only",
+             "pending": {"cross_process_ownership": "UNRUN: OS-process case has not passed on both variants",
                          "process_kill_recovery": "UNRUN: lifecycle handoff",
                          "updates_and_wrong_signer": "UNRUN: later same-run update cases",
                          "lifecycle_notifications": "UNRUN: T3/T4 handoff",
@@ -264,17 +274,11 @@ def run_driver(args, receipt, output):
             require(result is not None, "driver_result_timeout:" + flavor)
             state["driver"][flavor] = result
             save()
-            require(isinstance(result, dict) and
-                    result.get("format") == "alkion-android-driver-proof/1" and
-                    result.get("run_id") == receipt["run_id"] and
-                    result.get("application_id") == package and result.get("complete") is True,
-                    "driver_result_identity_mismatch")
-            require(result.get("result") == "PASS" and set(result.get("cases", {})) == CASES and
-                    all(value == "PASS" for value in result["cases"].values()),
-                    "driver_assertions_incomplete_or_failed:" + flavor)
+            validate_driver_report(result, receipt["run_id"], package)
             require(adb(args, "shell", "run-as", PACKAGES[0], "cat",
                         relative_neighbor).stdout == neighbor_before, "synthetic_neighbor_changed")
         installed_matches(args, installed)
+        state["pending"].pop("cross_process_ownership")
         state["driver_phase"] = "PASS"
         save()
         print("Driver phase PASS. T5 remains IN_PROGRESS; see pending cases in run.json.", flush=True)
@@ -401,7 +405,19 @@ else: raise SystemExit("unexpected transport mutation: "+repr(cmd))
                 pass
             require((root / "driver-dev-report.json").read_text() == raw,
                     "terminal_report_not_preserved")
-        print("PASS:",count,"real guard cases + 3 raw-report preservation cases; fake transport only; zero install/start/clear/uninstall.")
+        result = {"format":"alkion-android-driver-proof/1", "run_id":"1"*32,
+                  "application_id":PACKAGES[1], "complete":True, "result":"PASS",
+                  "cases":{name:"PASS" for name in CASES}}
+        validate_driver_report(result, "1"*32, PACKAGES[1])
+        for cases in ({name:"PASS" for name in CASES if name != "native_owner_process"},
+                      dict(result["cases"], native_owner_process="FAIL")):
+            try:
+                validate_driver_report(dict(result,cases=cases), "1"*32, PACKAGES[1])
+            except Refusal as error:
+                require("driver_assertions_incomplete_or_failed" in str(error), "wrong_case_contract_error")
+            else:
+                raise Refusal("missing_or_failed_process_case_was_accepted")
+        print("PASS:",count,"real guard cases + 3 raw-report preservation + 3 eleven-case contract cases; fake transport only; zero install/start/clear/uninstall.")
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--action", choices=("check","driver","build-neighbor","self-test"), default="check")
