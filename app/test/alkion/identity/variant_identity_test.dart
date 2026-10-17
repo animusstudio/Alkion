@@ -9,11 +9,21 @@ import 'package:alkion/session/workout_notification.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Map<String, dynamic> nativeIdentity(AlkionVariant variant) => {
-  'applicationId': variant.applicationId,
-  'flavor': variant.name,
-  'displayName': variant.displayName,
-};
+Map<String, dynamic> nativeIdentity(
+  AlkionVariant variant, {
+  String? dataDirectory,
+  String canonicalParent = '/data/data',
+}) {
+  final data = dataDirectory ?? '/data/user/0/${variant.applicationId}';
+  return {
+    'applicationId': variant.applicationId,
+    'flavor': variant.name,
+    'displayName': variant.displayName,
+    'dataDirectory': data,
+    'dataParentCanonical': canonicalParent,
+    'filesDirectory': '$data/files',
+  };
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -150,20 +160,26 @@ void main() {
       );
       addTearDown(() => temporary.delete(recursive: true));
       final events = <String>[];
+      final data = '${temporary.path}/${AlkionIdentity.applicationId}';
+      await Directory(data).create();
       messenger.setMockMethodCallHandler(channel, (call) async {
         events.add('identity');
-        return nativeIdentity(AlkionVariant.dev);
+        return nativeIdentity(
+          AlkionVariant.dev,
+          dataDirectory: data,
+          canonicalParent: temporary.path,
+        );
       });
       final root = await checkedAlkionSupportRoot(
         verifyIdentity: () =>
             AlkionFlutterIdentity.verifyPlatformIdentity(isAndroid: true),
         supportDirectory: () async {
           events.add('directory');
-          return temporary;
+          return Directory('$data/files');
         },
       );
       expect(events, ['identity', 'directory']);
-      expect(root.path, '${temporary.path}/${AlkionIdentity.applicationId}');
+      expect(root.path, '$data/files/${AlkionIdentity.applicationId}');
       expect(await root.exists(), isFalse);
       final first = await AlkionProfile.open(supportRoot: root);
       final again = await AlkionProfile.open(supportRoot: root);
@@ -173,6 +189,211 @@ void main() {
         await checkedAlkionSupportRoot(supportDirectory: () async => root),
         root,
       );
+    },
+  );
+
+  test(
+    'attested OS alias is normalized; explicit roots and descendants still reject links',
+    () async {
+      final temporary = await Directory.systemTemp.createTemp(
+        'alkion-os-alias-',
+      );
+      addTearDown(() => temporary.delete(recursive: true));
+      final parent = await Directory('${temporary.path}/system-data').create();
+      final alias = Link('${temporary.path}/system-user-zero');
+      await alias.create(parent.path);
+      final data = '${alias.path}/${AlkionIdentity.applicationId}';
+      final files = await Directory(
+        '${parent.path}/${AlkionIdentity.applicationId}/files',
+      ).create(recursive: true);
+      messenger.setMockMethodCallHandler(
+        channel,
+        (_) async => nativeIdentity(
+          AlkionVariant.dev,
+          dataDirectory: data,
+          canonicalParent: parent.path,
+        ),
+      );
+      final root = await checkedAlkionSupportRoot(
+        verifyIdentity: () =>
+            AlkionFlutterIdentity.verifyPlatformIdentity(isAndroid: true),
+        supportDirectory: () async => Directory('$data/files'),
+      );
+      expect(root.path, '${files.path}/${AlkionIdentity.applicationId}');
+      final profile = await AlkionProfile.open(supportRoot: root);
+      final explicitAliasRoot = Directory(
+        '$data/files/${AlkionIdentity.applicationId}',
+      );
+      await expectLater(
+        AlkionProfile.open(supportRoot: explicitAliasRoot),
+        throwsFormatException,
+      );
+      await expectLater(
+        AlkionProfile.existing(supportRoot: explicitAliasRoot),
+        throwsFormatException,
+      );
+      final outside = await Directory('${temporary.path}/outside').create();
+      final sentinel = await File(
+        '${outside.path}/sentinel',
+      ).writeAsBytes([0, 255, 8]);
+      await Link('${root.path}/profiles').create(outside.path);
+      await expectLater(
+        profile.databasePath(expectedProfileId: profile.profileId),
+        throwsFormatException,
+      );
+      expect(await sentinel.readAsBytes(), [0, 255, 8]);
+      expect((await outside.list().toList()).length, 1);
+    },
+  );
+
+  test(
+    'native normalization does not resolve app-owned data, files or profile links',
+    () async {
+      final temporary = await Directory.systemTemp.createTemp(
+        'alkion-owned-links-',
+      );
+      addTearDown(() => temporary.delete(recursive: true));
+      for (final linkedPart in ['data', 'files', 'profile']) {
+        final fixture = await Directory(
+          '${temporary.path}/$linkedPart',
+        ).create();
+        final parent = await Directory('${fixture.path}/system-data').create();
+        final alias = Link('${fixture.path}/system-user-zero');
+        await alias.create(parent.path);
+        final outside = await Directory('${fixture.path}/outside').create();
+        final sentinel = await File(
+          '${outside.path}/sentinel',
+        ).writeAsBytes([1, 2, 255]);
+        final realData = '${parent.path}/${AlkionIdentity.applicationId}';
+        if (linkedPart == 'data') {
+          await Link(realData).create(outside.path);
+        } else {
+          await Directory(realData).create();
+          if (linkedPart == 'files') {
+            await Link('$realData/files').create(outside.path);
+          } else {
+            await Directory('$realData/files').create();
+            await Link(
+              '$realData/files/${AlkionIdentity.applicationId}',
+            ).create(outside.path);
+          }
+        }
+        final data = '${alias.path}/${AlkionIdentity.applicationId}';
+        messenger.setMockMethodCallHandler(
+          channel,
+          (_) async => nativeIdentity(
+            AlkionVariant.dev,
+            dataDirectory: data,
+            canonicalParent: parent.path,
+          ),
+        );
+        var supportCalls = 0;
+        Future<Directory> selectRoot() => checkedAlkionSupportRoot(
+          verifyIdentity: () =>
+              AlkionFlutterIdentity.verifyPlatformIdentity(isAndroid: true),
+          supportDirectory: () async {
+            supportCalls++;
+            // A path-provider callback can mkdirs. It must never run through
+            // an app-owned data/files link into the outside directory.
+            await Directory(
+              '$data/files/path-provider-created',
+            ).create(recursive: true);
+            return Directory('$data/files');
+          },
+        );
+        if (linkedPart == 'profile') {
+          final root = await selectRoot();
+          expect(supportCalls, 1);
+          await expectLater(
+            AlkionProfile.open(supportRoot: root),
+            throwsFormatException,
+          );
+          await expectLater(
+            AlkionProfile.existing(supportRoot: root),
+            throwsFormatException,
+          );
+        } else {
+          await expectLater(selectRoot(), throwsFormatException);
+          expect(supportCalls, 0);
+        }
+        expect(await sentinel.readAsBytes(), [1, 2, 255]);
+        expect((await outside.list().toList()).length, 1);
+      }
+    },
+  );
+
+  test(
+    'malformed or foreign native storage refuses before directory access',
+    () async {
+      var supportCalls = 0;
+      for (final replacement in [
+        {
+          'dataDirectory':
+              '/data/user/0/${AlkionVariant.supported.applicationId}',
+        },
+        {'dataDirectory': '/data/user/0/io.github.psychonaut0.reps'},
+        {'dataDirectory': null},
+        {'dataParentCanonical': '../data'},
+        {'dataParentCanonical': '/data/../data/data'},
+        {
+          'filesDirectory':
+              '/data/user/0/${AlkionIdentity.applicationId}/other',
+        },
+      ]) {
+        messenger.setMockMethodCallHandler(
+          channel,
+          (_) async => {...nativeIdentity(AlkionVariant.dev), ...replacement},
+        );
+        await expectLater(
+          checkedAlkionSupportRoot(
+            verifyIdentity: () =>
+                AlkionFlutterIdentity.verifyPlatformIdentity(isAndroid: true),
+            supportDirectory: () async {
+              supportCalls++;
+              return Directory('/unused');
+            },
+          ),
+          throwsFormatException,
+        );
+      }
+      expect(supportCalls, 0);
+    },
+  );
+
+  test(
+    'path-provider mismatch is refused without canonicalizing a selected path',
+    () async {
+      final temporary = await Directory.systemTemp.createTemp(
+        'alkion-selected-alias-',
+      );
+      addTearDown(() => temporary.delete(recursive: true));
+      final outside = await Directory('${temporary.path}/outside').create();
+      final selected = Link('${temporary.path}/selected');
+      await selected.create(outside.path);
+      final data = '${temporary.path}/${AlkionIdentity.applicationId}';
+      await Directory(data).create();
+      messenger.setMockMethodCallHandler(
+        channel,
+        (_) async => nativeIdentity(
+          AlkionVariant.dev,
+          dataDirectory: data,
+          canonicalParent: temporary.path,
+        ),
+      );
+      var supportCalls = 0;
+      await expectLater(
+        checkedAlkionSupportRoot(
+          verifyIdentity: () =>
+              AlkionFlutterIdentity.verifyPlatformIdentity(isAndroid: true),
+          supportDirectory: () async {
+            supportCalls++;
+            return Directory(selected.path);
+          },
+        ),
+        throwsFormatException,
+      );
+      expect(supportCalls, 1);
+      expect(await outside.list().isEmpty, isTrue);
     },
   );
 

@@ -182,11 +182,13 @@ Future<void> main() async {
 
 /// Identity is checked before even asking the platform for a storage directory.
 Future<Directory> checkedAlkionSupportRoot({
-  Future<void> Function()? verifyIdentity,
+  Future<AlkionAndroidStorage?> Function()? verifyIdentity,
   Future<Directory> Function()? supportDirectory,
 }) async {
-  await (verifyIdentity ?? AlkionFlutterIdentity.verifyPlatformIdentity)();
-  final support = await (supportDirectory ?? getApplicationSupportDirectory)();
+  final storage =
+      await (verifyIdentity ?? AlkionFlutterIdentity.verifyPlatformIdentity)();
+  final supplied = await (supportDirectory ?? getApplicationSupportDirectory)();
+  final support = storage?.checkedSupportDirectory(supplied) ?? supplied;
   return paths.basename(support.path) == AlkionIdentity.applicationId
       ? support
       : Directory(paths.join(support.path, AlkionIdentity.applicationId));
