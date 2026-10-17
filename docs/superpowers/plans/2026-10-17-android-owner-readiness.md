@@ -32,6 +32,10 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
   routes; `app/lib/main.dart` early identity guard; identity-only replacements in
   `app/lib/session/workout_notification.dart` and its directly affected tests.
   Keep direct-Dart tools Flutter-free via new `app/lib/identity/alkion_flutter_identity.dart`.
+  T1 installed smoke found Android's app-namespace `/data/user/0` OS symlink.
+  Bounded fix: native-attest and normalize only its data-directory parent before
+  selecting app-owned storage; retain all untrusted/app-owned symlink refusals.
+  Check owned data/files links before path_provider can create any directory.
 - Own `app/android/app/build.gradle.kts`, `app/android/app/src/{main,debug,profile}/AndroidManifest.xml`,
   move `app/android/app/src/main/kotlin/dev/animusstudio/alkion/dev/MainActivity.kt`
   to `.../alkion/MainActivity.kt`; `app/lib/identity/{alkion_identity,alkion_profile}.dart`,
@@ -157,6 +161,12 @@ Android and owner-storage gates remain UNRUN. T1 working-tree checks based on `a
 - `make -C app analyze` → PASS, no issues; `make -C app format` → PASS, 330 files, 0 changed.
 - Direct-Dart Make proofs → PASS: store `ALKION_CASE_ARGS=--checkpoint-reuse`; transfer 4 crash boundaries + split negative control; backup/restore 20 cases (fresh synthetic output for each).
 - `env JAVA_HOME=/usr/lib/jvm/java-21-openjdk ANDROID_USER_HOME=<fresh-temp-user> make -C app build-apk-dev` and `build-apk-supported` → PASS; merged/APK manifests and shared disposable debug certificate audited. Key existence/path checked only inside temporary Android user storage; no key bytes inspected.
+Bounded startup fix author checks (base `af06bfe`): focused command above → PASS,
+23 tests, 0 skips; analysis and 330-file formatting check → PASS. Both debug build
+commands above → PASS on final fix bytes (dev 17.9s, supported 15.2s); merged/APK
+manifests and unchanged disposable debug certificate audited. Native app-namespace
+metadata confirmed the OS-owned alias; explicit/owned link negative controls pass.
+Updated-device startup proof remains pending coordinator execution; no clear/uninstall.
 Next: coordinator commit receipt and independent T1 review; actual signing custody/access
 stays gated before owner-candidate work. Record results in acceptance. Final review
 covers A1–A8 and remaining blockers. Every public push needs exact-range review,
