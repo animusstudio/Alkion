@@ -19,6 +19,37 @@ const uuid = Uuid();
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
+/// Conservative fresh-generation limits, independent of imported/resumed data.
+const freshTemplateSlotLimit = 100;
+const freshGeneratedSetLimit = 1000;
+
+enum FreshSessionLimit { workingSets, warmupSets, templateSlots, generatedSets }
+
+/// A prescription needs explicit correction; the source remains untouched.
+class FreshSessionLimitException implements Exception {
+  const FreshSessionLimitException(this.limit, {this.count, this.exerciseName});
+  final FreshSessionLimit limit;
+  final int? count;
+  final String? exerciseName;
+}
+
+void _validateFreshCounts(ResolvedSlot resolved) {
+  if (resolved.workSets < 1 || resolved.workSets > 99) {
+    throw FreshSessionLimitException(
+      FreshSessionLimit.workingSets,
+      count: resolved.workSets,
+      exerciseName: resolved.exercise.name,
+    );
+  }
+  if (resolved.warmupSets < 0 || resolved.warmupSets > 99) {
+    throw FreshSessionLimitException(
+      FreshSessionLimit.warmupSets,
+      count: resolved.warmupSets,
+      exerciseName: resolved.exercise.name,
+    );
+  }
+}
+
 /// Rounds [v] to the nearest [step].
 ///
 /// Example: `roundTo(38.75, 2.5) == 40.0`.
@@ -34,6 +65,7 @@ double roundTo(double v, double step) => (v / step).round() * step;
 ///
 /// Working sets use [suggested] weight, [repLow] reps, RIR 1.
 BlockState buildBlock({required ResolvedSlot resolved, double? lastTopKg}) {
+  _validateFreshCounts(resolved);
   final exercise = resolved.exercise;
   final step = exercise.plateStepKg;
 
@@ -679,8 +711,15 @@ class ActiveSessionController extends ChangeNotifier {
     required ExerciseRepository exerciseRepo,
     required SessionRepository sessionRepo,
   }) async {
-    final blocks = <BlockState>[];
-
+    // Count all slots, including unresolved references, before any lookup.
+    if (template.slots.length > freshTemplateSlotLimit) {
+      throw FreshSessionLimitException(
+        FreshSessionLimit.templateSlots,
+        count: template.slots.length,
+      );
+    }
+    final prescriptions = <ResolvedSlot>[];
+    var remaining = freshGeneratedSetLimit;
     for (final slot in template.slots) {
       final exercise = await exerciseRepo.byId(slot.exerciseId);
       if (exercise == null) {
@@ -688,10 +727,26 @@ class ActiveSessionController extends ChangeNotifier {
       }
 
       final resolved = resolveSlot(slot, exercise);
+      _validateFreshCounts(resolved);
+      // Subtract only validated bounded counts; stop before exceeding the cap.
+      if (resolved.workSets > remaining ||
+          resolved.warmupSets > remaining - resolved.workSets) {
+        throw FreshSessionLimitException(
+          FreshSessionLimit.generatedSets,
+          exerciseName: exercise.name,
+        );
+      }
+      remaining -= resolved.workSets + resolved.warmupSets;
+      prescriptions.add(resolved);
+    }
 
-      final reference = await sessionRepo.lastTopSetEvidence(slot.exerciseId);
+    // No generated block, per-set UUID or draft mutation precedes preflight.
+    final blocks = <BlockState>[];
+    for (final resolved in prescriptions) {
+      final exerciseId = resolved.exercise.id;
+      final reference = await sessionRepo.lastTopSetEvidence(exerciseId);
       final lastTop = reference.value;
-      final bestKg = await sessionRepo.bestTopSet(slot.exerciseId);
+      final bestKg = await sessionRepo.bestTopSet(exerciseId);
 
       final block = buildBlock(resolved: resolved, lastTopKg: lastTop?.weight);
       block.bestKg = bestKg;
@@ -1119,6 +1174,7 @@ class ActiveSessionController extends ChangeNotifier {
     // Build a default slot from the exercise's own defaults (no slot overrides).
     final slot = Slot(exerciseId: exercise.id, position: draft.blocks.length);
     final resolved = resolveSlot(slot, exercise);
+    _validateFreshCounts(resolved);
     // A resumed workout's own finished rows stay in the DB until it is
     // finished again; exclude them so the PR baseline and the "Last" row are
     // the pre-workout ones (a fresh workout has no sessionId: no filter).

@@ -119,6 +119,31 @@ and creates no duplicate operations or records.
 | Separate storage before identity | The root refuses to open (bytes without identity); repeating the restore of the same backup resumes it. |
 | Verification/staging failure (corrupt, newer, missing bytes, disk full) | Source file, staging and current generation retained; failure shown with its category. |
 
+### Retrying Keep current (2026-10-17 hygiene repair)
+
+A Keep-current decision can commit in SQLite before `abandoned.json` is
+published. While that marker is absent, normal opening still refuses
+`restore_interrupted`; the owner explicitly presses Keep current again. Under
+the same owner lock, retry validates profile/installation, restore and previous
+selection identity, retained staging bytes/inventory and its immutable source
+boundary, plus the exact committed journal decision. Only that same decision
+may finish the marker. It adds no journal row and never decrements a generation:
+before fencing the original writable generation stays unchanged; after fencing
+the advanced generation stays writable. All work and staging remain retained.
+Changed source/staging, mismatched identity/decision or another restore's fence
+still refuses, with no profile reset or cleanup of recovery evidence.
+
+Current Linux/synthetic proof includes actual marker-file failure and actual
+owned-child SIGKILL immediately after abandon COMMIT/before the marker, in both
+fencing cases. Explicit retry and two independent process launches preserve
+complete work/journal/profile/generation inventories and staging hashes. Mounted
+production Keep-current buttons also retry the failure and perform real runtime
+startup. These are the two additional cases in the 20-case backup qualification;
+[the current receipt](acceptance.md#hygiene-remediation-2026-10-17) keeps their
+scope and the independent R1-public final review PASS (2026-10-17, reviewer
+`public_final_compliance`, no findings) explicit. This accepts the scoped recovery
+implementation; owner and publication gates remain unchanged.
+
 ## Limits
 
 **Mutation versus transport after selection (T7 handoff).** The restored

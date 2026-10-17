@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show listEquals;
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../domain/evidence.dart';
 import '../store/local_store.dart';
@@ -34,30 +35,87 @@ class LocalPreferences {
                 as Map,
           );
   });
-  Future<void> save(Map<String, Object?> value) async {
-    final bytes = localBytes(value), base = revision, token = database.token;
-    // Reconcile an uncertain local-state COMMIT before retrying identical bytes.
-    final row = await database.readTransaction(
-      (tx) => tx.localState(LocalStateKind.semanticSetting, key),
-      expected: token,
-    );
-    if (row != null &&
-        row['revision'] == base + 1 &&
-        listEquals<int>((row['payload_bytes'] as List).cast<int>(), bytes)) {
-      revision = base + 1;
-      return;
-    }
-    final committed = await database.writeTransaction(
-      (tx) => tx.putLocalState(
-        LocalStateKind.semanticSetting,
-        key,
-        bytes,
-        expectedRevision: base,
+  final _owed = <_PreferenceSnapshot>[];
+  Future<void> _tail = Future.value();
+  (Object, StackTrace)? _error;
+
+  Future<void> save(Map<String, Object?> value) {
+    // Freeze bytes and ownership at the setter, even while an older attempt waits.
+    _owed.add(
+      _PreferenceSnapshot(
+        localBytes(value).asUnmodifiableView(),
+        database.token,
       ),
-      expected: token,
     );
-    revision = committed;
+    return _persist(retry: false);
   }
+
+  Future<void> flushPersistence() async {
+    await _persist(retry: true);
+    // Include saves queued while the barrier was awaiting an earlier attempt.
+    while (true) {
+      final pending = _tail;
+      await pending;
+      if (identical(pending, _tail)) break;
+    }
+    final error = _error;
+    if (error != null) Error.throwWithStackTrace(error.$1, error.$2);
+  }
+
+  Future<void> _persist({required bool retry}) {
+    final result = _tail.then((_) async {
+      final error = _error;
+      if (!retry && error != null) {
+        Error.throwWithStackTrace(error.$1, error.$2);
+      }
+      try {
+        while (_owed.isNotEmpty) {
+          final attempt = _owed.first;
+          // A newer snapshot acquires its base only after its predecessor is
+          // acknowledged. Failed attempts retain this exact base on every retry.
+          final base = attempt.base ??= revision;
+          final committed = await database.writeTransaction((tx) async {
+            final row = await tx.localState(
+              LocalStateKind.semanticSetting,
+              key,
+            );
+            if (row != null &&
+                row['generation'] == attempt.token.generation &&
+                row['status'] == 'active' &&
+                row['revision'] == base + 1 &&
+                listEquals<int>(
+                  (row['payload_bytes'] as List).cast<int>(),
+                  attempt.bytes,
+                )) {
+              return base + 1;
+            }
+            return tx.putLocalState(
+              LocalStateKind.semanticSetting,
+              key,
+              attempt.bytes,
+              expectedRevision: base,
+            );
+          }, expected: attempt.token);
+          revision = committed;
+          _owed.removeAt(0);
+        }
+        _error = null;
+      } catch (error, stack) {
+        _error = (error, stack);
+        rethrow;
+      }
+    });
+    // Keep the serialization tail usable without acknowledging failed input.
+    _tail = result.then<void>((_) {}, onError: (Object error) {});
+    return result;
+  }
+}
+
+class _PreferenceSnapshot {
+  _PreferenceSnapshot(this.bytes, this.token);
+  final Uint8List bytes;
+  final StoreToken token;
+  int? base;
 }
 
 class SettingsService extends ChangeNotifier {
@@ -117,35 +175,24 @@ class SettingsService extends ChangeNotifier {
     'locale': _localeOverride,
     'bodyweight_goal': _bodyweightGoal.name,
   };
-  Future<void> _tail = Future.value();
-  (Object, StackTrace)? _error;
+  bool _unboundOwed = false;
   Future<void> _save() {
-    final snapshot = _snapshot();
-    final future = _tail.then((_) async {
-      final p = _preferences;
-      if (p == null) throw const StoreException('unbound_preferences');
-      await p.save(snapshot);
-    });
-    _tail = future.then(
-      (_) {
-        _error = null;
-      },
-      onError: (Object e, StackTrace st) {
-        _error = (e, st);
-      },
-    );
+    final p = _preferences;
+    final Future<void> future;
+    if (p == null) {
+      _unboundOwed = true;
+      future = Future<void>.error(const StoreException('unbound_preferences'));
+      future.ignore();
+    } else {
+      future = p.save(_snapshot());
+    }
     notifyListeners();
     return future;
   }
 
   Future<void> flushPersistence() async {
-    while (true) {
-      final pending = _tail;
-      await pending;
-      if (identical(pending, _tail)) break;
-    }
-    final e = _error;
-    if (e != null) Error.throwWithStackTrace(e.$1, e.$2);
+    if (_unboundOwed) throw const StoreException('unbound_preferences');
+    await _preferences?.flushPersistence();
   }
 
   Future<void> setMode(String v) {

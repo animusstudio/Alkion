@@ -1193,5 +1193,55 @@
   "alkionRestoreComplete": "Complete restore",
   "alkionRestoreKeepCurrent": "Keep current state",
   "alkionRestoreRunning": "Restoring the verified backup. Local storage stays closed until the restore is selected.",
-  "alkionRestoreUnknownNewerWork": "Newer work unknown: the previous local state could not be read. Its bytes are kept unchanged."
+  "alkionRestoreUnknownNewerWork": "Newer work unknown: the previous local state could not be read. Its bytes are kept unchanged.",
+  "todayVolumeLoading": "Loading weekly volume…",
+  "todayVolumeUnavailable": "Weekly volume unavailable. Current totals could not be loaded.",
+  "todayVolumeUnknown": "{count} working sets have no muscle label; labeled totals are partial.",
+  "@todayVolumeUnknown": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionFreshLimitTitle": "Workout needs correction",
+  "alkionFreshWorkingLimit": "{exercise}: {count} working sets. Fresh workouts require 1–99 per exercise.",
+  "alkionFreshWarmupLimit": "{exercise}: {count} warm-up sets. Fresh workouts require 0–99 per exercise.",
+  "alkionFreshSlotLimit": "This plan has {count} exercise slots. Fresh workouts allow at most 100.",
+  "alkionFreshTotalLimit": "This plan exceeds 1,000 combined working and warm-up sets at {exercise}.",
+  "alkionFreshLimitCorrection": "Edit the plan’s set counts or exercise defaults, or split it into smaller plans, then start again. Your original data is preserved.",
+  "@alkionFreshWorkingLimit": {
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@alkionFreshWarmupLimit": {
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@alkionFreshSlotLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@alkionFreshTotalLimit": {
+    "placeholders": {
+      "exercise": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -220,7 +220,11 @@ void main() {
           final harness = ScreenHarness();
           addTearDown(harness.close);
           addTearDown(() => harness.unmount(tester));
-          await harness.open(tester, seed: seedEditors);
+          await harness.open(
+            tester,
+            withWorkoutHistory: !day,
+            seed: seedEditors,
+          );
           setPhone(tester, width: 412);
           final before = await inventory(tester, harness);
           final gate = mode == 'delayed'
@@ -575,7 +579,7 @@ void main() {
         final harness = ScreenHarness();
         addTearDown(harness.close);
         addTearDown(() => harness.unmount(tester));
-        await harness.open(tester, seed: seedEditors);
+        await harness.open(tester, withWorkoutHistory: !day, seed: seedEditors);
         setPhone(tester, width: 412);
         final fault = EditorFaultDatabase(harness.database, beforeCommit: true);
         harness.overrideDatabase = fault;

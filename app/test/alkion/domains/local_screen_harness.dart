@@ -49,6 +49,7 @@ class ScreenHarness {
     WidgetTester tester, {
     Map<String, Object> prefs = const {},
     Future<void> Function(LocalStore) seed = seedLong,
+    bool withWorkoutHistory = false,
   }) async {
     _tester = tester;
     await tester.runAsync(() async {
@@ -61,7 +62,9 @@ class ScreenHarness {
       _store = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: domainSchemaRegistry(),
+        schema: withWorkoutHistory
+            ? workflowSchemaRegistry()
+            : domainSchemaRegistry(),
       );
       await seed(database);
       units = UnitService.local(localDatabase);

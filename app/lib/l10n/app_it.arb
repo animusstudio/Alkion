@@ -622,5 +622,21 @@
   "alkionRestoreComplete": "Completa ripristino",
   "alkionRestoreKeepCurrent": "Mantieni stato attuale",
   "alkionRestoreRunning": "Ripristino del backup verificato. L'archivio locale resta chiuso finché il ripristino non è selezionato.",
-  "alkionRestoreUnknownNewerWork": "Lavoro più recente sconosciuto: lo stato locale precedente non era leggibile. I suoi byte restano invariati."
+  "alkionRestoreUnknownNewerWork": "Lavoro più recente sconosciuto: lo stato locale precedente non era leggibile. I suoi byte restano invariati.",
+  "todayVolumeLoading": "Caricamento del volume settimanale…",
+  "todayVolumeUnavailable": "Volume settimanale non disponibile. Impossibile caricare i totali attuali.",
+  "todayVolumeUnknown": "{count} serie di lavoro non hanno un gruppo muscolare; i totali per muscolo sono parziali.",
+  "@todayVolumeUnknown": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionFreshLimitTitle": "L’allenamento richiede una correzione",
+  "alkionFreshWorkingLimit": "{exercise}: {count} serie di lavoro. I nuovi allenamenti richiedono 1–99 per esercizio.",
+  "alkionFreshWarmupLimit": "{exercise}: {count} serie di riscaldamento. I nuovi allenamenti richiedono 0–99 per esercizio.",
+  "alkionFreshSlotLimit": "Questo piano ha {count} spazi per esercizi. I nuovi allenamenti ne consentono al massimo 100.",
+  "alkionFreshTotalLimit": "Questo piano supera 1.000 serie totali di lavoro e riscaldamento in corrispondenza di {exercise}.",
+  "alkionFreshLimitCorrection": "Correggi le serie del piano o i valori predefiniti dell’esercizio, oppure dividi il piano in piani più piccoli. Poi avvia di nuovo. I dati originali vengono conservati."
 }

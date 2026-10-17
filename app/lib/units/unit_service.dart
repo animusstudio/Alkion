@@ -21,39 +21,21 @@ class UnitService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _persisted = Future.value();
-  (Object, StackTrace)? _lastError;
+  bool _unboundOwed = false;
   void setUnit(Unit u) {
     _unit = u;
     final p = _preferences;
     if (p == null) {
-      _lastError = (
-        const StoreException('unbound_preferences'),
-        StackTrace.current,
-      );
-      notifyListeners();
-      return;
+      _unboundOwed = true;
+    } else {
+      p.save({'unit': u.name}).ignore();
     }
-    final pending = _persisted.then((_) => p.save({'unit': u.name}));
-    _persisted = pending.then(
-      (_) {
-        _lastError = null;
-      },
-      onError: (Object e, StackTrace st) {
-        _lastError = (e, st);
-      },
-    );
     notifyListeners();
   }
 
   Future<void> flushPersistence() async {
-    while (true) {
-      final pending = _persisted;
-      await pending;
-      if (identical(pending, _persisted)) break;
-    }
-    final e = _lastError;
-    if (e != null) Error.throwWithStackTrace(e.$1, e.$2);
+    if (_unboundOwed) throw const StoreException('unbound_preferences');
+    await _preferences?.flushPersistence();
   }
 
   /// Convert a kg value to the given [unit].

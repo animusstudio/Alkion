@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -80,8 +81,9 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
   // Per-exercise rest (seconds); 0 = "Default" = null (use the global default).
   int _restSeconds = 0;
 
-  // PR (kg, 0 = no PR)
+  // PR (kg, 0 = no PR); refresh independently of the editable draft.
   double _prKg = 0;
+  StreamSubscription<Map<String, double>>? _prSubscription;
 
   // Extra muscle chip: if the loaded exercise's muscleGroup is outside the 8
   // canonical keys, we include it so editing doesn't silently remap it.
@@ -115,6 +117,11 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
     _equipCtrl = TextEditingController();
     widget.guard?.isDirty = _isDirty;
     _loadData();
+    if (widget.id != null) {
+      _prSubscription = _repo.watchPrTopSets().listen((map) {
+        if (mounted) setState(() => _prKg = map[widget.id] ?? 0);
+      });
+    }
   }
 
   @override
@@ -125,6 +132,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
 
   @override
   void dispose() {
+    _prSubscription?.cancel();
     _nameCtrl.dispose();
     _equipCtrl.dispose();
     super.dispose();
@@ -150,7 +158,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       return;
     }
 
-    // Load existing exercise + PR.
+    // Load editable fields once; best loads refresh on their own watch.
     final ex = await _repo.byId(widget.id!);
     if (!mounted) return;
 
@@ -165,11 +173,6 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       return; */
     }
 
-    // Fetch PR from the one-shot map.
-    final prMap = await _repo.prTopSets();
-    if (!mounted) return;
-
-    final prKg = prMap[ex.id] ?? 0;
     final deleteBases = await _repo.deletionBases(ex.id);
     if (!mounted) return;
 
@@ -209,7 +212,6 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       _restSeconds = ex.defaultRestSeconds ?? 0;
       _rirLow = rir?.low;
       _rirHigh = rir?.high;
-      _prKg = prKg;
       _extraMuscle = extra;
       _loadedDraft = _currentDraft();
       _baseline = exerciseSnapshot(_loadedDraft!);

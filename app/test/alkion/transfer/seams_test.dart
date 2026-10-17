@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:alkion/data/stats_repository.dart';
 import 'package:alkion/data/bodyweight_repository.dart';
 import 'package:alkion/data/finished_session_store.dart';
 import 'package:alkion/data/models.dart';
@@ -24,6 +27,66 @@ Map<String, Object?> stableFields(Map<String, dynamic> row) =>
       ..remove('weight_kg');
 
 void main() {
+  test(
+    'historical muscle coverage stays partial across live parent delete/restore and reopens',
+    () async {
+      final h = await TransferHarness.open('seam-weekly-volume');
+      try {
+        final bytes = mutate(
+          seams,
+          '"id": "ex-known", "name": "Known Lift",',
+          '"id": "ex-known", "name": "Known Lift", "muscle_group": "chest",',
+        );
+        expect(
+          (await TransferService(
+            h.store,
+          ).importArtifact(bytes, namespace: ns)).status,
+          ImportStatus.selected,
+        );
+        final before = await h.store.getAll(
+          'SELECT * FROM source_revisions ORDER BY source_revision_id',
+        );
+        final repo = SessionRepository.local(h.store);
+        final id = await localId(h.store, ns, 'sessions', 'w-known');
+        final stream = StreamIterator(
+          StatsRepository.local(
+            h.store,
+          ).watchWeeklyVolumeByMuscle(weekStart: DateTime(2026, 5, 1)),
+        );
+        try {
+          expect(await stream.moveNext(), isTrue);
+          expect(stream.current.groups, [(muscle: 'chest', sets: 4)]);
+          expect(stream.current.unknownSets, 2);
+          await repo.commitPrepared(repo.prepareDelete(id, 1));
+          expect(await stream.moveNext(), isTrue);
+          expect(stream.current.groups, [(muscle: 'chest', sets: 3)]);
+          expect(stream.current.unknownSets, 2);
+          await repo.commitPrepared(repo.prepareDelete(id, 2, restore: true));
+          expect(await stream.moveNext(), isTrue);
+          expect(stream.current.groups, [(muscle: 'chest', sets: 4)]);
+          expect(stream.current.unknownSets, 2);
+        } finally {
+          await stream.cancel();
+        }
+        expect(
+          await h.store.getAll(
+            'SELECT * FROM source_revisions ORDER BY source_revision_id',
+          ),
+          before,
+        );
+        final inventory = await h.store.inventory();
+        expect(await h.reopenTwice(), inventory);
+        final reopened = await StatsRepository.local(
+          h.store,
+        ).watchWeeklyVolumeByMuscle(weekStart: DateTime(2026, 5, 1)).first;
+        expect(reopened.groups, [(muscle: 'chest', sets: 4)]);
+        expect(reopened.unknownSets, 2);
+      } finally {
+        await h.close();
+      }
+    },
+  );
+
   test(
     'historical measurement null/missing/empty/invalid raw date: selected-ID edit/delete/restore never touches the date',
     () async {

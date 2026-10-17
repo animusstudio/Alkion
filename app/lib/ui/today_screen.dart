@@ -153,7 +153,7 @@ class _TodayScreenState extends State<TodayScreen> {
   >
   _recentPrsStream;
   late final Stream<List<Exercise>> _catalogStream;
-  late final Stream<List<({String muscle, int sets})>> _volumeStream;
+  late final Stream<WeeklyMuscleVolume> _volumeStream;
   late final Stream<List<MuscleTarget>> _targetsStream;
 
   @override
@@ -671,14 +671,17 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Widget _buildWeeklyVolume(WorkoutTokens tokens) {
-    return StreamBuilder<List<({String muscle, int sets})>>(
+    return StreamBuilder<WeeklyMuscleVolume>(
       stream: _volumeStream,
       builder: (context, volSnap) {
         return StreamBuilder<List<MuscleTarget>>(
           stream: _targetsStream,
           builder: (context, targetSnap) {
             final l = AppLocalizations.of(context);
-            final volRows = volSnap.data ?? [];
+            final unavailable = volSnap.hasError || targetSnap.hasError;
+            final loading = !volSnap.hasData || !targetSnap.hasData;
+            final volume = volSnap.data;
+            final volRows = volume?.groups ?? [];
             final targetList = targetSnap.data ?? [];
 
             final targetMap = {
@@ -698,10 +701,23 @@ class _TodayScreenState extends State<TodayScreen> {
               children: [
                 SectionLabel(label: l.todayWeeklyVolume),
                 const SizedBox(height: 10),
-                if (rows.isEmpty)
-                  _EmptyState(tokens: tokens, message: l.todayNoSetsLogged)
-                else
-                  VolumeBars(rows: rows),
+                if (unavailable)
+                  _EmptyState(tokens: tokens, message: l.todayVolumeUnavailable)
+                else if (loading)
+                  _EmptyState(tokens: tokens, message: l.todayVolumeLoading)
+                else ...[
+                  if (volume!.unknownSets > 0) ...[
+                    _EmptyState(
+                      tokens: tokens,
+                      message: l.todayVolumeUnknown(volume.unknownSets),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  if (rows.isNotEmpty)
+                    VolumeBars(rows: rows)
+                  else if (volume.unknownSets == 0)
+                    _EmptyState(tokens: tokens, message: l.todayNoSetsLogged),
+                ],
               ],
             );
           },

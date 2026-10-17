@@ -1,3 +1,4 @@
+import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/finished_session_store.dart';
 import 'package:alkion/data/session_writer.dart';
 import 'package:alkion/session/active_session_controller.dart';
@@ -137,6 +138,10 @@ void main() {
         });
         final repo = SessionRepository.local(store);
         expect(
+          (await ExerciseRepository.local(store).prTopSets())['e'],
+          await repo.bestTopSet('e'),
+        );
+        expect(
           (await repo.watchSessionStats().first).length,
           2,
           reason: 'uncertain history remains readable',
@@ -210,12 +215,20 @@ void main() {
           1,
           reason: 'captured source flag retained',
         );
+        expect(
+          (await ExerciseRepository.local(store).prTopSets())['e'],
+          await repo.bestTopSet('e'),
+        );
         await checkpoint(store, root, 'compatibility');
         final expected = await store.inventory();
         await store.close();
         for (var i = 0; i < 2; i++) {
           store = await reopen(profile);
           expect(await store.inventory(), expected);
+          expect(
+            (await ExerciseRepository.local(store).prTopSets())['e'],
+            await SessionRepository.local(store).bestTopSet('e'),
+          );
           await checkpoint(store, root, 'reopen-$i');
           await store.close();
         }

@@ -530,10 +530,16 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         exercises: all,
                       );
                       if (picked != null) {
-                        await controller.addBlock(
-                          picked,
-                          sessionRepo: sessionRepo,
-                        );
+                        try {
+                          await controller.addBlock(
+                            picked,
+                            sessionRepo: sessionRepo,
+                          );
+                        } on FreshSessionLimitException catch (error) {
+                          if (context.mounted) {
+                            await showFreshSessionLimit(context, error);
+                          }
+                        }
                       }
                     },
                   ),

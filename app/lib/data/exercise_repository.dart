@@ -279,16 +279,33 @@ class ExerciseRepository {
   }
 
   Future<List<Exercise>> all() => watchCatalog().first;
-  Future<Map<String, double>> prTopSets() async {
-    final rows = await db.getAll(
-      'SELECT exercise_id, MAX(CAST(weight_kg AS REAL)) AS pr FROM sets WHERE profile_id=? AND deleted=0 AND is_top_set=1 AND is_warmup=0 GROUP BY exercise_id',
-      [db.profileId],
-    );
-    return {
-      for (final r in rows)
-        r['exercise_id'] as String: (r['pr'] as num?)?.toDouble() ?? 0,
-    };
+  static const _bestLoadsSql =
+      'SELECT s.exercise_id,s.weight_kg FROM reps_compat1_legacy_local s '
+      'JOIN sessions se ON se.id=s.session_id AND se.profile_id=s.profile_id '
+      'WHERE s.profile_id=? AND s.deleted=0 AND se.deleted=0 '
+      'AND s.legacy_local_top=1 AND s.is_warmup=0';
+
+  static Map<String, double> _bestLoads(List<Map<String, dynamic>> rows) {
+    final best = <String, double>{};
+    for (final row in rows) {
+      final evidence = DecimalEvidence.fromRow(row, 'weight_kg');
+      if (evidence.state != ValueState.valid) continue;
+      final value = evidence.exact!.displayDouble;
+      if (value == null || !value.isFinite) continue;
+      final id = row['exercise_id'] as String;
+      if (!best.containsKey(id) || value > best[id]!) best[id] = value;
+    }
+    return best;
   }
+
+  /// Recreate the qualified read for each subscriber; store watches follow
+  /// committed set, derived-result and parent-session changes.
+  Stream<Map<String, double>> watchPrTopSets() => reListenable(
+    () => db.watch(_bestLoadsSql, parameters: [db.profileId]).map(_bestLoads),
+  );
+
+  Future<Map<String, double>> prTopSets() async =>
+      _bestLoads(await db.getAll(_bestLoadsSql, [db.profileId]));
 
   PreparedDomainAction prepareExercise(
     ExerciseDraft draft, {

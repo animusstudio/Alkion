@@ -30,6 +30,23 @@ Future<String> _finish(ActiveSessionController c, FixtureDatabase db) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('direct fresh builder refuses 100 working sets before generation', () {
+    final exercise = Exercise.fromRow({'id': 'limit', 'name': 'Synthetic'});
+    expect(
+      () => buildBlock(
+        resolved: ResolvedSlot(
+          exercise: exercise,
+          workSets: 100,
+          warmupSets: 0,
+          repLow: 8,
+          repHigh: 12,
+          rirLow: 1,
+          rirHigh: 1,
+        ),
+      ),
+      throwsA(anything),
+    );
+  });
   // ── D1: build-model tests ────────────────────────────────────────────────
 
   test(

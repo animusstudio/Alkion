@@ -42,6 +42,8 @@ Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
   if (!manager.tryBeginLaunch()) {
     return;
   }
+  ActiveSessionController? unregisteredController;
+  var launchReleased = false;
   try {
     final store = manager.draftStore;
     if (store == null) {
@@ -49,6 +51,7 @@ Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
     }
     await store.load();
     final controller = ActiveSessionController(draftStore: store);
+    unregisteredController = controller;
     final sessionRepo = SessionRepository.local(database);
 
     if (template != null) {
@@ -62,12 +65,10 @@ Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
           break;
         } on HistoryOrderReview catch (review) {
           if (!context.mounted) {
-            controller.dispose();
             return;
           }
           final chosen = await chooseHistoryOrder(context, review);
           if (chosen == null) {
-            controller.dispose();
             return;
           }
           await sessionRepo.resolveOrder(review, chosen);
@@ -78,24 +79,62 @@ Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
     }
 
     if (manager.hasActive) {
-      controller.dispose(); // cancels its pending autosave
       return;
     }
+    if (!context.mounted) return;
     await controller.flushPersistence();
     manager.register(controller);
+    unregisteredController = null; // SessionManager now owns the controller.
+  } on FreshSessionLimitException catch (error) {
+    manager.endLaunch();
+    launchReleased = true;
+    if (context.mounted) {
+      await showFreshSessionLimit(context, error);
+    }
+    return;
   } catch (error) {
     if (context.mounted) {
       await showWriteFailed(context, error);
     }
     return;
   } finally {
-    manager.endLaunch();
+    unregisteredController?.dispose();
+    if (!launchReleased) manager.endLaunch();
   }
 
   if (!context.mounted) {
     return;
   }
   await openActiveSession(context, manager);
+}
+
+/// Explains a refused fresh prescription without changing its source.
+Future<void> showFreshSessionLimit(
+  BuildContext context,
+  FreshSessionLimitException error,
+) async {
+  if (!context.mounted) return;
+  final l = AppLocalizations.of(context);
+  final detail = switch (error.limit) {
+    FreshSessionLimit.workingSets => l.alkionFreshWorkingLimit(
+      error.exerciseName!,
+      error.count!,
+    ),
+    FreshSessionLimit.warmupSets => l.alkionFreshWarmupLimit(
+      error.exerciseName!,
+      error.count!,
+    ),
+    FreshSessionLimit.templateSlots => l.alkionFreshSlotLimit(error.count!),
+    FreshSessionLimit.generatedSets => l.alkionFreshTotalLimit(
+      error.exerciseName!,
+    ),
+  };
+  await showWDialog<void>(
+    context,
+    title: l.alkionFreshLimitTitle,
+    message: '$detail\n\n${l.alkionFreshLimitCorrection}',
+    actions: [WDialogAction(label: l.commonOk, value: null)],
+  );
 }
 
 /// Pushes the session route for the manager's active controller (no-op if

@@ -622,5 +622,21 @@
   "alkionRestoreComplete": "Wiederherstellung abschließen",
   "alkionRestoreKeepCurrent": "Aktuellen Stand behalten",
   "alkionRestoreRunning": "Das geprüfte Backup wird wiederhergestellt. Der lokale Speicher bleibt geschlossen, bis die Wiederherstellung ausgewählt ist.",
-  "alkionRestoreUnknownNewerWork": "Neuere Arbeit unbekannt: Der vorherige lokale Stand war nicht lesbar. Seine Bytes bleiben unverändert erhalten."
+  "alkionRestoreUnknownNewerWork": "Neuere Arbeit unbekannt: Der vorherige lokale Stand war nicht lesbar. Seine Bytes bleiben unverändert erhalten.",
+  "todayVolumeLoading": "Wochenvolumen wird geladen…",
+  "todayVolumeUnavailable": "Wochenvolumen nicht verfügbar. Aktuelle Summen konnten nicht geladen werden.",
+  "todayVolumeUnknown": "{count} Arbeitssätze haben keine Muskelangabe; die Summen je Muskel sind unvollständig.",
+  "@todayVolumeUnknown": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionFreshLimitTitle": "Training muss korrigiert werden",
+  "alkionFreshWorkingLimit": "{exercise}: {count} Arbeitssätze. Neue Trainings erfordern 1–99 pro Übung.",
+  "alkionFreshWarmupLimit": "{exercise}: {count} Aufwärmsätze. Neue Trainings erfordern 0–99 pro Übung.",
+  "alkionFreshSlotLimit": "Dieser Plan hat {count} Übungsplätze. Neue Trainings erlauben höchstens 100.",
+  "alkionFreshTotalLimit": "Dieser Plan überschreitet bei {exercise} insgesamt 1.000 Arbeits- und Aufwärmsätze.",
+  "alkionFreshLimitCorrection": "Korrigiere die Satzzahlen im Plan oder die Übungsvorgaben, oder teile den Plan in kleinere Pläne auf. Starte dann erneut. Deine Originaldaten bleiben erhalten."
 }

@@ -9,6 +9,17 @@ import '../domain/evidence.dart';
 const _qualifiedStatsDay =
     "length(se.date)=10 AND se.date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND se.date>='0001-01-01' AND date(se.date)=se.date";
 
+/// Labeled weekly working sets and the sets whose muscle is unavailable.
+/// Unknown evidence is deliberately separate from canonical/custom labels.
+final class WeeklyMuscleVolume {
+  WeeklyMuscleVolume({
+    required List<({String muscle, int sets})> groups,
+    required this.unknownSets,
+  }) : groups = List.unmodifiable(groups);
+  final List<({String muscle, int sets})> groups;
+  final int unknownSets;
+}
+
 /// Repository for aggregate stats derived from sets + sessions.
 ///
 /// All week-bounded queries accept a [weekStart] (Monday 00:00) and bind
@@ -199,7 +210,7 @@ class StatsRepository {
   }
 
   /// Live stream of working-set volume by muscle group since [weekStart].
-  Stream<List<({String muscle, int sets})>> watchWeeklyVolumeByMuscle({
+  Stream<WeeklyMuscleVolume> watchWeeklyVolumeByMuscle({
     required DateTime weekStart,
   }) {
     return reListenable(
@@ -214,16 +225,21 @@ class StatsRepository {
             'ORDER BY sets DESC',
             parameters: [isoDate(weekStart)],
           )
-          .map(
-            (rs) => rs
-                .map(
-                  (row) => (
-                    muscle: row['muscle'] as String,
-                    sets: row['sets'] as int? ?? 0,
-                  ),
-                )
-                .toList(),
-          ),
+          .map((rows) {
+            final groups = <({String muscle, int sets})>[];
+            var unknownSets = 0;
+            for (final row in rows) {
+              final muscle = row['muscle'];
+              final sets = row['sets'] as int;
+              if (muscle == null) {
+                unknownSets += sets;
+              } else {
+                // The accepted text projection includes custom and empty labels.
+                groups.add((muscle: muscle as String, sets: sets));
+              }
+            }
+            return WeeklyMuscleVolume(groups: groups, unknownSets: unknownSets);
+          }),
     );
   }
 }
