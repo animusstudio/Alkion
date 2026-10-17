@@ -1,6 +1,6 @@
 # Alkion UI/UX refactor plan
 
-Date: 2026-10-17. Status: **approved scope and visual direction; T1–T6 source reviews PASS**.
+Date: 2026-10-17. Status: **approved scope and visual direction; T1–T7 source reviews PASS**.
 
 ## Outcome
 
@@ -88,7 +88,15 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
 
 - **Behavior:** Make the existing transfer/export/backup/interrupted-restore surfaces explain what was selected, whether a step completed, how to verify the receiving copy, and the safe next action after interruption. Keep originals/current work accessible and defer operation policy to the coordinated preservation plan.
 - **Owned files/callers:** presentation only in `app/lib/ui/alkion_transfer/transfer_screen.dart` and `app/lib/ui/alkion_recovery/{recovery_screen.dart,recovery_app.dart}`. Consume T1 dialog primitives; request serialized changes from T1 owner if needed. Serialize these files with concurrent Android readiness changes. Do not change `app/lib/recovery/`, `app/lib/transfer/`, `app/lib/store/`, repository code, schemas or domain behavior. Own transfer/recovery strings in all four ARB files and coordinate user-facing copy with the approved recovery requirements.
+- **T7 ownership amendment (2026-10-17):** presentation also owns `app/lib/ui/alkion_recovery/first_start_screen.dart` and new focused `app/test/alkion/recovery/first_start_screen_test.dart`. The integrated first-start operation policy and all restore/transfer/storage services remain unchanged. The existing `first_start_restore_test.dart` runs unchanged as a regression. Main requires no presentation edits; all four ARBs are serialized to T7 only if existing copy proves insufficient.
 - **Focused checks:** `make -C app test TEST=test/alkion/recovery/recovery_ui_test.dart`; `... TEST=test/alkion/transfer/transfer_screen_test.dart`; `... TEST=test/alkion/acceptance/integrated_flows_test.dart`; `... TEST=test/alkion/workflows/prepared_workflow_retry_test.dart`.
+
+
+- **T7 receipt (2026-10-17, independent task review PASS):** translated the four owned first-start, transfer, backup and interrupted/post-restore surfaces to the accepted Hanken hierarchy, mono metadata, neutral native actions and blue input focus. Explanations wrap without ellipses; section headings carry heading semantics, failures announce through live regions, and metadata retains its existing contents. Action groups stack with at least 48 dp targets, historical measurement actions sit below their evidence, and closed-runtime messages remain scrollable. AppBar titles use full system scaling and measured toolbar heights. Manual input labels wrap outside the field and retain native editable semantic names. No main, ARB, service, operation-policy, verification, preparation, keep-current, retry or persistence changes; existing confirmation/loss-boundary copy and callbacks are preserved.
+- **T7 verification and dispositions:** pinned Make/FVM offline locked dependency refresh and localization regeneration succeeded. The six-file focused batch (four planned files, unchanged `first_start_restore_test.dart`, new `first_start_screen_test.dart`) passed 28 tests and failed four. The first affected-file rerun passed 11 and failed two. After the coordinator-approved bounded replan, the final three affected files passed all 13 tests: 32 distinct tests pass across these commands, not one final aggregate batch. Initial failures exposed clipped floating labels, an offscreen dialog test tap, and an invalid synthetic support-root basename; full external labels, ensuring visibility before the same actual dialog tap, and the selected variant root fixed those causes. The second attempt exposed a still-busy filesystem check and the AppBar's inherited ellipsis: the existing condition-based readiness helper and full-scaling, wrapping titles fixed those causes without changing operations or timeouts. New coverage exercises fresh/reselect/complete choices across all four locales, light/dark and reduced motion at 320 dp/2x; actual cancellation and busy/error controls preserve the empty installation. Existing transfer/recovery locale checks now assert complete rendered paragraphs and native target geometry; title tests check full scaled glyph bounds within the toolbar and no body overlap, including German. The initial analyzer found one new test braces lint, corrected; final analysis and read-only formatting (347 files, zero changes) and whitespace checks pass. No APK/device work or native visual qualification is claimed; final native inspection remains T8.
+
+
+- **T7 review fix (A5 critical values, 2026-10-17; fix-only recheck PASS):** the review identified that the new mono 18 historical measurement presentation wrapped an exact decimal at 320 dp/2x. A pre-fix regression reproduced the two-line paragraph before the production change. The same complete value and unit now occupy one horizontally scrollable line, retaining mono 18 and full system scaling with a minimum 48 dp gesture area; values are neither shortened nor shrunk. The new test covers the reported precision, a 383-character decimal, zero and null; it checks one-line/full text and font size, actual horizontal scrolling through the final unit, and the existing selected-row Delete callback preserving exact weight and raw date bytes. Only the affected transfer file was rerun: all four tests pass. Final analyzer, read-only formatting (347 files, zero changes) and whitespace checks pass. This adds one distinct regression to the earlier 32 passing focused tests; no broad T7 rerun, operation/persistence change, or device claim.
 
 ### T8 — Integrated accessibility, locale and candidate qualification
 
@@ -112,6 +120,8 @@ See A1–A7 in the [design brief](../specs/2026-10-17-ui-ux-refactor.md). Implem
   across the batch and targeted reruns. Shared controls are handed off.
   T2 Onboarding/shell/Today passed independent review after the semantic-action fix;
   129 distinct focused checks passed across the batch and targeted reruns.
-  T7–T8 remain pending; no native visual or final device acceptance is claimed.
+  T7 presentation is implemented with 33 distinct focused checks passing across
+  the batch and scoped reruns; independent task and fix-only reviews PASS.
+  T8 remains pending; no native visual or final device acceptance is claimed.
 
 Related: [design brief](../specs/2026-10-17-ui-ux-refactor.md).
