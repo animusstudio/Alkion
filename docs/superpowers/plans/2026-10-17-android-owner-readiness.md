@@ -179,6 +179,48 @@ Status: implemented; host checks and independent task review PASS at `2cead98`.
 
 ### T5 — Scoped emulator route and actual Android proof (A1–A7)
 
+- Bounded lifecycle stage ownership: `app/Makefile`,
+  `app/tool/android_synthetic.sh`, `app/integration_test/android_lifecycle_test.dart`,
+  new `app/test/alkion/acceptance/android_lifecycle_protocol_test.dart`, this plan
+  and the T5 receipt in `docs/alkion/acceptance.md` only. Recognize completed A2
+  receipts and retained normal roots; versions 40–44 alternate closed helper
+  checkpoints with literal `lib/main.dart` APKs. Exercise actual notification
+  taps separately from native-route replay/fence controls, then real UI logging,
+  minimize, background kill/reopen and one finish. Verify only after the main
+  process is absent, retaining exact original operations/source/identity and
+  recording intentional fixture changes. Host helpers/fake guards precede source
+  review; builds/device execution require the later coordinator window. Permission,
+  exact/inexact capability and force-stop stages 45–54 remain UNRUN. No production
+  hooks, UI/main/core edits, components, dependencies or owner signing access.
+- Lifecycle routing contract: the pinned
+  [plugin 21 implementation](https://github.com/MaikuB/flutter_local_notifications/blob/flutter_local_notifications-v21.0.0/flutter_local_notifications/android/src/main/java/com/dexterous/flutterlocalnotifications/FlutterLocalNotificationsPlugin.java)
+  stores scheduled payloads in its `scheduled_notifications` preference mirror and
+  creates activity PendingIntents for visible actions. Read only that bounded,
+  nonlinked native mirror; bind it to ID 4101, package/UID, current profile/rest,
+  run-specific title, the exact active notification record and actual shade UI.
+  [AOSP's exact-key notification command](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/notification/NotificationShellCmd.java)
+  supplies the OS record. These are routing evidence, never proof of SQL COMMIT.
+  Closed helper checkpoints remain the state oracle; missing binding stays UNRUN.
+- Coordinated UI build-only ownership: add `android-synthetic-ui-apk` to the same
+  Makefile for the separately owned `integration_test/android_ui_visual_test.dart`.
+  Require explicit flavor, run/source/case and bounded version; pinned FVM debug
+  x86_64 build only. No UI test edits, build or device execution in this phase.
+- Later provider composition must bootstrap the first owned namespace before
+  enabling the default-disabled synthetic provider. Its installation/picker and
+  separate receiving-restore routes remain outside this lifecycle source stage.
+- Lifecycle source checks, 2026-10-18 (base `6a3b756` plus this scoped diff):
+  `make -C app test TEST=test/alkion/acceptance/android_lifecycle_protocol_test.dart`
+  → PASS, 9 tests, 0 skips. Shared native SQLite helpers cover exact A2 preservation,
+  two distinct issued actions/replay, logging/finish/two reopens, and changed
+  identity/source/generation, timer, native binding, logged value and extra-workout
+  refusal without repair. `make -C app android-synthetic-self-test` → PASS, 108 host
+  controls (71 retained/continuation and 37 lifecycle/build/mirror), fake transport
+  and fake FVM only. Shell syntax/embedded Python compile pass. `make -C app analyze`
+  → PASS, no issues; `make -C app format` → PASS, 349 files, 0 changes. One initial
+  host expectation omitted the finish's three appended derived rows; the checkpoint
+  now validates those exact set/revision bindings and preserves old rows. An initial
+  unused test import was removed. No APK, key, device or Git operation ran; actual
+  notification records, UI hierarchy selectors and lifecycle outcomes remain UNRUN.
 - Bounded SAF proof-source ownership amendment: new
   `app/tool/android_synthetic_documents/{AndroidManifest.xml,SyntheticDocumentsProvider.java}`
   and `app/integration_test/android_documents_test.dart` only, plus this receipt.
@@ -271,6 +313,9 @@ Status: implemented; host checks and independent task review PASS at `2cead98`.
   results. Obtain separate transfer/switch direction; synthetic PASS grants neither.
 
 ## State, checks and delivery
+
+Stage 40–44 lifecycle source preparation: independent full-lane review PASS,
+2026-10-18, six-file scope, no findings. Actual execution remains UNRUN.
 
 Independent design review at `92048af`: PASS, 2026-10-17, no remaining findings.
 Public Markdown check at `92048af`: PASS, 114 tracked files; whitespace PASS.

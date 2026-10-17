@@ -5,10 +5,12 @@ DART := fvm dart
 ALKION_FLAVOR ?= dev
 # Tool subprocesses must not refresh the reviewed Git index opportunistically.
 export GIT_OPTIONAL_LOCKS := 0
+export ALKION_FLAVOR ALKION_PROOF_RUN ALKION_PROOF_VERSION ALKION_LIFECYCLE_PHASE
+export ALKION_PROOF_SOURCE ALKION_UI_CASE
 
 .PHONY: help get analyze test fmt format build build-apk build-apk-dev build-apk-supported alkion-driver-qualification alkion-transfer-recovery alkion-backup-recovery run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean
 .PHONY: alkion-verify-backup
-.PHONY: android-synthetic android-synthetic-self-test android-synthetic-neighbor android-synthetic-driver-apk android-synthetic-update-apk
+.PHONY: android-synthetic android-synthetic-self-test android-synthetic-neighbor android-synthetic-driver-apk android-synthetic-update-apk android-synthetic-lifecycle-apk android-synthetic-ui-apk
 ALKION_SYNTHETIC_ACTION ?= check
 help:
 	@echo "Alkion: get, analyze, test TEST=<path>, format, fmt FORMAT_FILES=<owned paths>, alkion-driver-qualification ALKION_OUTPUT=<fresh /tmp path>, alkion-transfer-recovery ALKION_OUTPUT=<fresh transfer-proof* path>, alkion-backup-recovery ALKION_OUTPUT=<fresh backup-proof* path>"
@@ -71,6 +73,10 @@ android-synthetic-update-apk:
 	@printf '%s' "$(ALKION_PROOF_RUN)" | rg -q '^[a-f0-9]{32}$$' || exit 2
 	@printf '%s' "$(ALKION_PROOF_VERSION)" | rg -q '^[0-9]{1,10}$$' || exit 2
 	$(FLUTTER) build apk --debug --no-pub --flavor "$(ALKION_FLAVOR)" --target-platform android-x64 --target integration_test/android_lifecycle_test.dart --build-number "$(ALKION_PROOF_VERSION)" --dart-define=ALKION_PROOF_RUN="$(ALKION_PROOF_RUN)" --dart-define=ALKION_UPDATE_PHASE="$(ALKION_UPDATE_PHASE)"
+android-synthetic-lifecycle-apk:
+	bash tool/android_synthetic.sh --action build-lifecycle
+android-synthetic-ui-apk:
+	@python3 -c 'import os,re,subprocess,sys; e=os.environ; f=e.get("ALKION_FLAVOR",""); r=e.get("ALKION_PROOF_RUN",""); s=e.get("ALKION_PROOF_SOURCE",""); v=e.get("ALKION_PROOF_VERSION",""); c=e.get("ALKION_UI_CASE",""); valid=f in ("dev","supported") and re.fullmatch("[a-f0-9]{32}",r) and re.fullmatch("[a-f0-9]{40}",s) and re.fullmatch("[0-9]{1,10}",v) and 1<=int(v)<=2099999999 and c in ("en-dark","de-light-reduced","es-light","it-dark"); valid or sys.exit("Explicit synthetic UI flavor/run/source/version/case required"); raise SystemExit(subprocess.call(["fvm","flutter","build","apk","--debug","--no-pub","--flavor",f,"--target-platform","android-x64","--target","integration_test/android_ui_visual_test.dart","--build-number",v,"--dart-define=ALKION_PROOF_RUN="+r,"--dart-define=ALKION_PROOF_SOURCE="+s,"--dart-define=ALKION_UI_CASE="+c,"--dart-define=ALKION_PROOF_VERSION="+v]))'
 # No normal startup, legacy capture, release/signing, SDK installation/device
 # discovery, scaffold mutation or destructive clean is authorized at T1.
 run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean:

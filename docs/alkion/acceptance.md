@@ -92,6 +92,26 @@ Peer, prior-driver and synthetic neighbor checks passed. All six APKs, audits an
 raw reports are retained. Only disposable signing material was used. This is the
 initial update phase; the final refactored candidate still needs affected proof.
 
+Lifecycle source preparation, 2026-10-18 (base `6a3b756`): a recognized-A2 route
+alternates versions 40–44 between closed normal-root helper checkpoints and the
+literal `lib/main.dart` APK. Real shade/body/cold `+30s` taps are distinguished
+from injected native-route replay/fence controls. The native scheduled-payload
+mirror and exact package/UID notification record provide routing evidence only;
+the closed-store checkpoint verifies the committed +60 total. Real UI logging,
+minimize, ordinary kill/reopen, one finish and another reopen have a separate
+closed checkpoint, with old operations, identity and original source preserved.
+Source/host checks are preparation only: no lifecycle APK build or Android
+execution has run. Permission denial/revocation, exact/inexact capability,
+force-stop, provider/receiving restore and the final candidate remain **UNRUN**.
+The coordinated UI screenshot target is build-only; its actual execution and
+capture evidence are separate from this lifecycle preparation.
+The shared native SQLite checkpoint suite passes 9 tests, 0 skips; it includes
+bad timer/logged value, extra-workout and changed-identity/source refusals without
+repair. Shell controls pass 108 host cases using fake transport/FVM, including
+current native-mirror binding and exclusive marker publication. Analysis and
+formatting pass (349 files, 0 changes). These checks qualify the helper/guard
+source only; they provide no installed UI, PendingIntent or process-death PASS.
+
 First-start restore source passed independent review, including same-variant
 checks and changed/linked staging refusal before identity publication. Recovery
 tests passed 71 cases; Linux process proof passed 26, including six fresh-restore
