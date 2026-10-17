@@ -184,6 +184,11 @@ def installed_matches(args, installed):
         require(digest and digest[0] == installed[package]["apk_sha256"],
                 "same_run_apk_changed:" + package)
 
+def receive_driver_report(output, flavor, raw):
+    # Preserve even FAIL, malformed or foreign receipts before interpreting them.
+    (output / ("driver-" + flavor + "-report.json")).write_text(raw)
+    return json.loads(raw)
+
 def run_driver(args, receipt, output):
     toolchain(args)
     revision = command(["git", "-C", APP, "rev-parse", "HEAD"]).stdout.strip()
@@ -247,19 +252,20 @@ def run_driver(args, receipt, output):
             while time.monotonic() < deadline:
                 read = adb(args, "shell", "run-as", package, "cat", relative, check=False)
                 if read.returncode == 0:
-                    result = json.loads(read.stdout)
+                    result = receive_driver_report(output, flavor, read.stdout)
                     break
                 time.sleep(1)
             require(result is not None, "driver_result_timeout:" + flavor)
-            require(result.get("format") == "alkion-android-driver-proof/1" and
+            state["driver"][flavor] = result
+            save()
+            require(isinstance(result, dict) and
+                    result.get("format") == "alkion-android-driver-proof/1" and
                     result.get("run_id") == receipt["run_id"] and
                     result.get("application_id") == package and result.get("complete") is True,
                     "driver_result_identity_mismatch")
             require(result.get("result") == "PASS" and set(result.get("cases", {})) == CASES and
                     all(value == "PASS" for value in result["cases"].values()),
                     "driver_assertions_incomplete_or_failed:" + flavor)
-            state["driver"][flavor] = result
-            save()
             require(adb(args, "shell", "run-as", PACKAGES[0], "cat",
                         relative_neighbor).stdout == neighbor_before, "synthetic_neighbor_changed")
         installed_matches(args, installed)
@@ -364,7 +370,15 @@ else: raise SystemExit("unexpected transport mutation: "+repr(cmd))
         transport = (root / "adb.log").read_text()
         require(all(word not in transport for word in ("install", "start", "clear", "uninstall")),
                 "self_test_reached_mutation")
-        print("PASS:",count,"real guard cases; fake transport only; zero install/start/clear/uninstall.")
+        for raw in ('{"result":"FAIL","error":"synthetic failure"}',
+                    '{"result":"PASS","run_id":"wrong"}', 'malformed terminal receipt'):
+            try:
+                receive_driver_report(root, "dev", raw)
+            except ValueError:
+                pass
+            require((root / "driver-dev-report.json").read_text() == raw,
+                    "terminal_report_not_preserved")
+        print("PASS:",count,"real guard cases + 3 raw-report preservation cases; fake transport only; zero install/start/clear/uninstall.")
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--action", choices=("check","driver","build-neighbor","self-test"), default="check")

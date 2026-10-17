@@ -16,12 +16,109 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 import '../tool/alkion_store_recovery.dart'
     as proof
-    show syntheticStore, proofAction, executeAction, isolateOwnershipProbe;
+    show
+        syntheticStore,
+        proofAction,
+        executeAction,
+        executeCase,
+        isolateOwnershipProbe;
 
 const runId = String.fromEnvironment('ALKION_PROOF_RUN');
 
 void require(bool condition, String detail) {
   if (!condition) throw StateError(detail);
+}
+
+/// Used by the installed proof and a host check against the same native store.
+Future<Map<String, Object?>> deferredCommitRecovery(LocalStore store) async {
+  final before = inventoryDigest(await store.inventory()),
+      epoch = store.poolEpoch;
+  // A new record at base 0 cannot update the already revision-1 shared draft.
+  // This is a rollback/preflight control, never evidence of failed COMMIT.
+  Object? preflight;
+  try {
+    await proof.executeAction(
+      store,
+      proof.proofAction(store, id: 'preflight-control', record: 'rolled-back'),
+    );
+  } catch (error) {
+    preflight = error;
+  }
+  require(
+    preflight is StoreException &&
+        preflight.category == 'stale_local_state' &&
+        store.poolEpoch == epoch &&
+        inventoryDigest(await store.inventory()) == before,
+    'Preflight control did not preserve state without pool recovery: $preflight',
+  );
+
+  final action = proof.proofAction(
+    store,
+    id: 'commit-failure',
+    base: 1,
+    dependencies: [
+      OperationDependency(store.profileId, GrantFamily.workouts, 'absent'),
+    ],
+  );
+  final phases = <RecoveryPhase>[];
+  final subscription = store.recoveryEvents.listen(phases.add);
+  var callbackCompleted = false;
+  Object? failure;
+  try {
+    try {
+      await store.apply(action, (tx) async {
+        final result = await proof.executeCase(
+          'atomic-action',
+          store,
+          tx,
+          action,
+        );
+        callbackCompleted = true;
+        return result;
+      });
+    } catch (error) {
+      failure = error;
+    }
+    if (!callbackCompleted ||
+        failure is! sqlite.SqliteException ||
+        failure.extendedResultCode != 787) {
+      throw StateError(
+        'Expected completed callback then deferred FK COMMIT 787; observed $failure',
+      );
+    }
+    require(
+      store.poolEpoch == epoch + 1 &&
+          phases.join(',') ==
+              [
+                RecoveryPhase.admissionClosed,
+                RecoveryPhase.watchesCancelled,
+                RecoveryPhase.poolClosed,
+                RecoveryPhase.validated,
+                RecoveryPhase.ready,
+              ].join(','),
+      'Deferred COMMIT did not drain/close/reopen before admission: $phases',
+    );
+    require(
+      inventoryDigest(await store.inventory()) == before,
+      'Failed COMMIT left domain/outbox/draft evidence',
+    );
+    require(
+      store.admission == StoreAdmission.open && store.reconciledOutcome == null,
+      'Recovered store did not reconcile absent outcome and reopen admission',
+    );
+    return {
+      'preflight_negative_control': preflight.toString(),
+      'callback_completed': callbackCompleted,
+      'sqlite_extended_result_code': failure.extendedResultCode,
+      'failure': failure.toString(),
+      'pool_epoch_before': epoch,
+      'pool_epoch_after': store.poolEpoch,
+      'recovery_phases': phases.map((phase) => phase.name).toList(),
+      'inventory_preserved': true,
+    };
+  } finally {
+    await subscription.cancel();
+  }
 }
 
 void main() {
@@ -182,47 +279,23 @@ void main() {
           });
 
           await check('deferred_commit_recovery', () async {
-            final before = inventoryDigest(await store.inventory()),
-                epoch = store.poolEpoch;
-            final action = proof.proofAction(
-              store,
-              id: 'commit-failure',
-              record: 'rolled-back',
-              dependencies: [
-                OperationDependency(
-                  store.profileId,
-                  GrantFamily.workouts,
-                  'absent',
-                ),
-              ],
-            );
-            var failed = false;
-            try {
-              await proof.executeAction(store, action);
-            } catch (_) {
-              failed = true;
-            }
-            require(
-              failed && store.poolEpoch == epoch + 1,
-              'Deferred COMMIT failure did not recover pool',
-            );
-            require(
-              inventoryDigest(await store.inventory()) == before,
-              'Failed COMMIT left domain/outbox/draft evidence',
-            );
-            require(
-              store.admission == StoreAdmission.open,
-              'Recovered store stayed closed',
-            );
+            report['deferred_commit'] = await deferredCommitRecovery(store);
           });
 
           await check('watch_relisten', () async {
             final initial = Completer<void>(), changed = Completer<void>();
-            final stream = store.watch('SELECT id FROM exercises ORDER BY id');
+            final stream = store.watch(
+              'SELECT id,revision,base_weight_kg FROM exercises ORDER BY id',
+            );
             final subscription = stream.listen(
               (rows) {
                 if (!initial.isCompleted) initial.complete();
-                if (rows.any((row) => row['id'] == 'watch-exercise') &&
+                if (rows.any(
+                      (row) =>
+                          row['id'] == 'exercise-1' &&
+                          row['revision'] == 2 &&
+                          row['base_weight_kg'] == '84.125000000000000001',
+                    ) &&
                     !changed.isCompleted) {
                   changed.complete();
                 }
@@ -239,19 +312,23 @@ void main() {
                 proof.proofAction(
                   store,
                   id: 'watch-operation',
-                  record: 'watch-exercise',
+                  base: 1,
+                  value: '84.125000000000000001',
                 ),
               );
               await changed.future.timeout(const Duration(seconds: 10));
             } finally {
               await subscription.cancel();
             }
+            final relistened = await stream.first.timeout(
+              const Duration(seconds: 10),
+            );
             require(
-              (await stream.first.timeout(
-                    const Duration(seconds: 10),
-                  )).length ==
-                  2,
-              'Watch could not relisten after invalidation',
+              relistened.length == 1 &&
+                  relistened.single['revision'] == 2 &&
+                  relistened.single['base_weight_kg'] ==
+                      '84.125000000000000001',
+              'Relisten lost committed revision 2/value',
             );
           });
 
@@ -296,7 +373,7 @@ void main() {
               proof.proofAction(
                 store,
                 id: 'wal-operation',
-                record: 'wal-exercise',
+                base: 2,
                 value: '91.000000000000000001',
               ),
             );
@@ -315,9 +392,13 @@ void main() {
                 hot.path,
                 mode: sqlite.OpenMode.readOnly,
               );
-              lostTail = mainOnly
-                  .select("SELECT id FROM exercises WHERE id='wal-exercise'")
-                  .isEmpty;
+              final rows = mainOnly.select(
+                "SELECT base_weight_kg,revision FROM exercises WHERE id='exercise-1'",
+              );
+              lostTail =
+                  rows.isEmpty ||
+                  rows.single['base_weight_kg'] != '91.000000000000000001' ||
+                  rows.single['revision'] != 3;
             } on sqlite.SqliteException {
               lostTail = true;
             } finally {
@@ -350,13 +431,24 @@ void main() {
               require(
                 snapshot
                         .select(
-                          "SELECT base_weight_kg FROM exercises WHERE id='wal-exercise'",
+                          "SELECT base_weight_kg FROM exercises WHERE id='exercise-1'",
                         )
                         .single
                         .values
                         .single ==
                     '91.000000000000000001',
                 'Backup lost exact WAL-only value',
+              );
+              require(
+                snapshot
+                        .select(
+                          "SELECT revision FROM exercises WHERE id='exercise-1'",
+                        )
+                        .single
+                        .values
+                        .single ==
+                    3,
+                'Backup lost committed revision 3',
               );
               require(
                 snapshot
