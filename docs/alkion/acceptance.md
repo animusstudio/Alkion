@@ -57,6 +57,9 @@ physical-power-loss and the final refactored/signed installed-candidate gates
 remain open. Results apply to the recorded inputs; relevant source, signing or
 platform changes require affected checks again.
 
+The SAF proof adapter and isolated namespaced provider fixture passed independent
+source review, API 36 Java compilation, analysis and 12 host document tests. This
+prepares real picker/fault cases; installed provider behavior remains UNRUN.
 First-start restore source passed independent review, including same-variant
 checks and changed/linked staging refusal before identity publication. Recovery
 tests passed 71 cases; Linux process proof passed 26, including six fresh-restore
