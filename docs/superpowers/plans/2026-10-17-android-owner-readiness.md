@@ -1,6 +1,6 @@
 # Android owner-readiness implementation plan
 
-Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; design review PASS, T1 in progress**.
+Date: 2026-10-17. Lane: **full**. Status: **approved preparation scope; T1–T2 reviewed, T3 next**.
 Direction, supported ID `dev.animusstudio.alkion`, dedicated Alkion key and manual
 signed-APK updates approved; actual key custody/access pending. [Specification](../specs/2026-10-17-android-owner-readiness.md).
 
@@ -65,6 +65,10 @@ pass; rerun affected checks after integration. No parallel ownership of these fi
 - Approved bounded ownership amendment: `app/Makefile` only for the permanent
   `alkion-verify-backup` receiving-file target and its explicit inputs through
   the existing pinned Dart route. T5 preserves and integrates that target.
+- Review-fix ownership extension: new `app/lib/files/{private_directory,publication_directory}.dart`
+  and `app/test/alkion/files/publication_directory_test.dart` for exclusive private
+  receiving directories and attested Android backup/export publication directories.
+  Keep the private-directory primitive Flutter-free and core identity unchanged.
 - Implement bounded OPEN/CREATE document streams with private staging, small typed
   receipts and serialized calls. Route Android import/verify/restore through selected
   staged files; route exports and verified backups through Save copy. Keep optional
@@ -166,8 +170,13 @@ Bounded startup fix author checks (base `af06bfe`): focused command above → PA
 commands above → PASS on final fix bytes (dev 17.9s, supported 15.2s); merged/APK
 manifests and unchanged disposable debug certificate audited. Native app-namespace
 metadata confirmed the OS-owned alias; explicit/owned link negative controls pass.
-Updated-device startup proof remains pending coordinator execution; no clear/uninstall.
-Next: coordinator commit receipt and independent T1 review; actual signing custody/access
+Updated-device startup proof at `0781189`: both variants reach Welcome after in-place
+updates on the named API 36 x86_64 emulator; no clear/uninstall. Fix review PASS.
+T2 at `32629e4`, integrated with `0781189` through `95ff792`, received three blocking
+findings; its bounded fixes passed independent fix-only review. Final focused suite:
+53 passed, 0 skips; analyzer clean; format 339 files, 0 changes; dev APK compiled.
+Provider/device behavior remains for T5; no off-device durability is inferred.
+Next: T3 first-start restore; actual signing custody/access
 stays gated before owner-candidate work. Record results in acceptance. Final review
 covers A1–A8 and remaining blockers. Every public push needs exact-range review,
 owner approval and owner-run publication; no tag/release follows from this plan.

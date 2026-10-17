@@ -13,6 +13,7 @@ import 'data/exercise_repository.dart';
 import 'data/catalog_seed.dart';
 import 'identity/alkion_identity.dart';
 import 'identity/alkion_flutter_identity.dart';
+import 'files/publication_directory.dart';
 import 'identity/identity_service.dart';
 import 'identity/alkion_profile.dart';
 import 'l10n/app_localizations.dart';
@@ -249,12 +250,7 @@ final class RuntimeRecoveryHost implements RecoveryHost {
 
   static Future<Directory> _privateBackupDirectory() async {
     if (!Platform.isAndroid) return getApplicationDocumentsDirectory();
-    return Directory(
-      paths.join(
-        (await getApplicationSupportDirectory()).path,
-        'document-backups',
-      ),
-    ).create(recursive: true);
+    return checkedAndroidPublicationDirectory('document-backups');
   }
 
   @override

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:alkion/files/document_access.dart';
+import 'package:alkion/files/private_directory.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:path/path.dart' as p;
@@ -11,6 +12,7 @@ import 'package:path/path.dart' as p;
 Future<Map<String, Object?>> verifyReceivedBackup({
   required String input,
   required String output,
+  RecoveryCheckpoint? checkpoint,
 }) async {
   final source = p.normalize(p.absolute(input));
   final destination = p.normalize(p.absolute(output));
@@ -37,7 +39,8 @@ Future<Map<String, Object?>> verifyReceivedBackup({
           FileSystemEntityType.directory) {
     throw const DocumentException('document_output_requires_fresh_directory');
   }
-  final directory = await Directory(destination).create();
+  if (checkpoint != null) await checkpoint('receiving-before-claim');
+  final directory = claimPrivateDirectory(destination);
   await File(
     p.join(destination, '.alkion-receiving-inspection'),
   ).writeAsString('alkion-receiving-inspection/1\n', flush: true);

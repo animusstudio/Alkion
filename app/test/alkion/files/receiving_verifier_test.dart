@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:alkion/recovery/backup.dart';
+import 'package:alkion/files/document_access.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -113,11 +115,101 @@ void main() {
           expect(await input.readAsBytes(), changed.value);
         }
         expect(await File(receipt.path).readAsBytes(), original);
+        final concurrent = p.join(temp.path, 'concurrent-inspection');
+        Future<Object> inspect() => verifyReceivedBackup(
+          input: receipt.path,
+          output: concurrent,
+        ).then<Object>((result) => result, onError: (Object error) => error);
+        final competing = await Future.wait([inspect(), inspect()]);
+        expect(competing.whereType<Map>(), hasLength(1));
+        expect(
+          competing.whereType<DocumentException>().single.category,
+          'document_output_requires_fresh_directory',
+        );
+        expect((await Directory(concurrent).stat()).mode & 511, 448);
+        expect(
+          await File(p.join(concurrent, 'source.complete')).readAsBytes(),
+          original,
+        );
+        final verified =
+            jsonDecode(
+                  await File(
+                    p.join(concurrent, 'verification.json'),
+                  ).readAsString(),
+                )
+                as Map;
+        expect(
+          (verified['container'] as Map)['sha256'],
+          sha256.convert(original).toString(),
+        );
       } finally {
         await temp.delete(recursive: true);
       }
     },
     timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test(
+    'directory created after precheck cannot be adopted or truncate preplanted marker/source/report links',
+    () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'alkion-receiving-collision-',
+      );
+      try {
+        final source = await File(
+          '${temp.path}/input',
+        ).writeAsString('synthetic');
+        final sentinel = await File(
+          '${temp.path}/sentinel',
+        ).writeAsBytes([0, 255, 9], flush: true);
+        final out = Directory('${temp.path}/inspection');
+        final checked = Completer<void>();
+        final continueClaim = Completer<void>();
+        final pending = verifyReceivedBackup(
+          input: source.path,
+          output: out.path,
+          checkpoint: (phase) async {
+            expect(phase, 'receiving-before-claim');
+            checked.complete();
+            await continueClaim.future;
+          },
+        );
+        final refusal = expectLater(
+          pending,
+          throwsA(
+            isA<DocumentException>().having(
+              (e) => e.category,
+              'category',
+              'document_output_requires_fresh_directory',
+            ),
+          ),
+        );
+        await checked.future;
+        await out.create();
+        final links = [
+          '.alkion-receiving-inspection',
+          'source.partial',
+          'source.complete',
+          'verification.json',
+          'failure.json',
+        ];
+        for (final name in links) {
+          await Link('${out.path}/$name').create(sentinel.path);
+        }
+        continueClaim.complete();
+        await refusal;
+        expect(await sentinel.readAsBytes(), [0, 255, 9]);
+        expect(out.listSync().length, links.length);
+        for (final name in links) {
+          expect(
+            FileSystemEntity.typeSync('${out.path}/$name', followLinks: false),
+            FileSystemEntityType.link,
+          );
+        }
+      } finally {
+        await temp.delete(recursive: true);
+      }
+    },
   );
 
   test(
