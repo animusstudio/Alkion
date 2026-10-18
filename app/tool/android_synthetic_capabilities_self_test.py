@@ -332,6 +332,7 @@ class CampaignHost(Host):
         self.flags = {package: True for package in capability.VARIANTS.values()}
         self.active = {}; self.dialog = set(); self.current_apks = {}; self.logging = set(); self.logged_clicks = []
         self.kill_calls = []; self.query_reports = []; self.session_open = set(); self.observer_wrong_nonce = False
+        self.observer_missing_readiness = False
         self.app_pid = lambda args, package: self.active.get(package)
         self.ordinary_kill = self.kill
         self.ui_document = self.attested_document
@@ -429,6 +430,14 @@ class CampaignHost(Host):
                     "window_active": True, "window_focused": True, "rotation": 0, "width": 1080, "height": 2400,
                     "elapsed_ms": 20, "node_count": len(list(tree.iter('node'))), "xml_length": len(raw),
                     "xml_sha256": observer.digest(raw), "captured_at": datetime.now(timezone.utc).isoformat().replace('+00:00','Z')}
+                labels = sum(node.get("visible-to-user") == "true" and any(node.get(key, "").strip(" \t\r\n")
+                    for key in ("text", "content-desc")) for node in tree.iter('node'))
+                receipt.update(readiness="visible-label" if values["expected_package"] in capability.VARIANTS.values()
+                    else "structural", visible_label_count=labels, sample_count=1, candidate_sample=1)
+                receipt["samples"] = [{"index": 1, "cache_cleared": True, "root_available": True, "ready": True,
+                    "elapsed_ms": 15, **{key: receipt[key] for key in
+                        ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")}}]
+                if self.observer_missing_readiness: del receipt["readiness"]
                 if self.observer_wrong_nonce: receipt["request_id"] = "f" * 32
                 target = self.package(observer.PACKAGE) / ('files/observations/' + RUN + '/' + values['request_id'])
                 self.write(target / 'receipt.json', receipt); self.write(target / 'hierarchy.xml', raw)
@@ -1016,6 +1025,21 @@ class Controls(unittest.TestCase):
         self.assertNotIn('preserve',result['cases']['dev/denied'])
         traces=[json.loads(path.read_bytes()) for path in Path(host.args.output).glob('*.observation/host-receipt.json')]
         self.assertEqual(traces[0]['result'],'FAIL')
+
+    def test_actual_facade_missing_observer_readiness_retains_failed_first_capture(self):
+        host=self.facade_campaign('missing-observer-readiness');host.observer_missing_readiness=True;host.args.action='capabilities'
+        timer=SimpleNamespace(monotonic=lambda:host.clock,sleep=lambda duration:setattr(host,'clock',host.clock+duration))
+        with patch.dict(os.environ,ANDROID_USER_HOME=str(host.user)),patch.object(capability,'time',timer),self.assertRaisesRegex(ValueError,'ui_observer_content_not_ready'):
+            host.capabilities_action(host.args)
+        result=json.loads((Path(host.args.output)/'run.json').read_bytes())
+        self.assertEqual(result['capability_phase'],'FAIL')
+        self.assertEqual(set(result['cases']),{'dev/denied'})
+        self.assertNotIn('preserve',result['cases']['dev/denied'])
+        self.assertEqual(host.logged_clicks,[])
+        traces=[json.loads(path.read_bytes()) for path in Path(host.args.output).glob('*.observation/host-receipt.json')]
+        self.assertEqual(len(traces),1);self.assertEqual(traces[0]['result'],'FAIL')
+        receipts=[json.loads(path.read_bytes()) for path in Path(host.args.output).glob('*.observation/receipt.json.stdout')]
+        self.assertEqual(len(receipts),1);self.assertNotIn('readiness',receipts[0])
 
     def test_make_literal_capability_inputs_and_receiving_paths(self):
         tools=self.root/'make-tools';tools.mkdir();log=self.root/'make-argv.json'
