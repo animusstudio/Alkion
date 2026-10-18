@@ -287,6 +287,86 @@ class Protocol(unittest.TestCase):
             ["pm", "path", PACKAGE], ["sha256sum", "/data/app/fake/base.apk"],
             ["dumpsys", "package", PACKAGE], ["pm", "list", "packages", "-U", "--user", "0", PACKAGE])}
 
+    def null_focus_state(self):
+        return ("ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)\n"
+                "  mCurrentFocus=null\n"
+                "  mFocusedApp=ActivityRecord{previous u0 com.android.launcher3/.uioverrides.QuickstepLauncher t15}\n"
+                "  mStartingProcessActivities=[ActivityRecord{starting u0 "
+                "dev.animusstudio.alkion.dev/.MainActivity t18}]")
+
+    def test_canonical_null_then_expected_app_keeps_nonadmitting_sample(self):
+        self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        absent = self.null_focus_state(); app = self.focus_state(self.package, "cold-app")
+        self.focus_sequence = [absent, app, app]; self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): document = self.observe()
+        self.assertEqual(document[0].get("package"), self.package)
+        trace = self.trace(); samples = trace["focus_readiness"]["samples"]
+        self.assertEqual([value["ready"] for value in samples], [False, True])
+        self.assertIsNone(samples[0]["owner"])
+        self.assertEqual(trace["focus_before"], samples[1]["owner"])
+        self.assertEqual(trace["focus_before"]["token"], "cold-app")
+        self.assertEqual((self.output / "capture.observation/focus-before.stdout").read_text().strip(), absent)
+        self.assertAlmostEqual(self.clock.elapsed, 0.1)
+        self.assertEqual(sum(cmd[:2] == ["am", "instrument"] for cmd in self.commands()), 1)
+        self.assertFalse(any(cmd[:1] == ["input"] or cmd[:2] in (["am", "start"], ["cmd", "statusbar"])
+                             for cmd in self.commands()))
+
+    def test_repeated_null_stops_at_twenty_samples_without_native_observation(self):
+        self.focus_sequence = [self.null_focus_state()]; self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        samples = self.trace()["focus_readiness"]["samples"]
+        self.assertEqual(len(samples), 20)
+        self.assertTrue(all(value["owner"] is None and not value["ready"] for value in samples))
+        self.assertLess(self.clock.elapsed, 2)
+        self.assertEqual(len(self.clock.pauses), 19)
+        self.assertEqual(len(list((self.output / "capture.observation").glob("focus-before*.stdout"))), 20)
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        self.assertEqual((self.output / "capture.observation/screenshot.stdout").read_bytes(), PNG)
+
+    def test_null_then_expected_arriving_after_two_seconds_refuses(self):
+        self.focus_sequence = [self.null_focus_state(), self.focus_state()]
+        self.costs = {("dumpsys", "activity", "activities"): 1}; self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        samples = self.trace()["focus_readiness"]["samples"]
+        self.assertEqual([value["ready"] for value in samples], [False, True])
+        self.assertIsNone(samples[0]["owner"])
+        self.assertNotIn("focus_before", self.trace())
+        self.assertIn("expected_focus_not_ready", self.trace()["error"])
+        queries = [call for call in self.timed_calls if call["native"] == ["dumpsys", "activity", "activities"]]
+        self.assertEqual(len(queries), 2)
+        self.assertAlmostEqual(queries[1]["timeout"], 0.9)
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+
+    def test_null_wait_uses_remaining_global_budget_without_late_screenshot(self):
+        self.focus_sequence = [self.null_focus_state()]
+        self.slow_identity(4.975); self.costs[("dumpsys", "activity", "activities")] = 0.05
+        self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        self.assertEqual(self.clock.elapsed, 20)
+        self.assertEqual(len(self.trace()["focus_readiness"]["samples"]), 1)
+        self.assertIsNone(self.trace()["focus_readiness"]["samples"][0]["owner"])
+        self.assertEqual(self.trace()["screenshot_skipped"], "capture_deadline")
+        self.assertFalse(any(cmd[:2] in (["am", "instrument"], ["exec-out", "screencap"]) for cmd in self.commands()))
+        self.assertTrue(all(0 < value["timeout"] <= 20 - value["started"] for value in self.timed_calls))
+
+    def test_unspecified_owner_null_still_refuses_without_wait(self):
+        self.focus_sequence = [self.null_focus_state()]; self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock):
+            self.refuses(lambda: observer.capture(self.host, self.args, self.output, "capture"))
+        self.assertIsNone(self.trace()["focus_readiness"]["expected_package"])
+        self.assertEqual(self.trace()["focus_readiness"]["samples"], [])
+        self.assertEqual(self.clock.pauses, [])
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+
+    def test_post_capture_null_still_refuses_after_null_readiness(self):
+        self.focus_sequence = [self.null_focus_state(), self.focus_state(), self.null_focus_state()]
+        self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        self.assertEqual(self.trace()["focus_before"]["token"], "shade")
+        self.assertIn("focus_ambiguous", self.trace()["error"])
+        self.assertEqual(sum(cmd[:2] == ["am", "instrument"] for cmd in self.commands()), 1)
+        self.assertAlmostEqual(self.clock.elapsed, 0.1)
+
     def test_fresh_expected_focus_after_transition_binds_final_token_and_keeps_raw_samples(self):
         app = self.focus_state("dev.animusstudio.alkion.dev", "app")
         shade = self.focus_state()
@@ -331,7 +411,13 @@ class Protocol(unittest.TestCase):
     def test_invalid_focus_samples_refuse_immediately_without_wait_or_instrumentation(self):
         for index, raw in enumerate(("not a native focus line", self.focus_state(user=1),
                 self.focus_state() + "\n" + self.focus_state(token="duplicate"),
-                self.focus_state("foreign.package"))):
+                self.focus_state("foreign.package"), self.focus_state("com.android.launcher3"),
+                "mCurrentFocus= null", "mCurrentFocus=NULL", "mCurrentFocus=null trailing",
+                "mCurrentFocus", "mCurrentFocus=null\nmCurrentFocus=null",
+                "mCurrentFocus=null\n" + self.focus_state(),
+                self.focus_state() + "\nmCurrentFocus=null",
+                self.focus_state() + "\nmCurrentFocus=malformed",
+                "mCurrentFocus=malformed\n" + self.focus_state())):
             with self.subTest(raw=raw):
                 self.focus_sequence = [raw]; (self.root / "focus-sequence").unlink(missing_ok=True)
                 self.output = self.root / ("bad-focus-" + str(index)); self.output.mkdir()

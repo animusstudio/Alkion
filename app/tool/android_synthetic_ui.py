@@ -218,11 +218,15 @@ def bind_previous(host, args, receipt, prior, prior_root, revision):
     return binding
 
 
-def focus(raw):
+def focus(raw, *, allow_null=False):
     require(len(raw) <= LIMIT, "focus_dump_too_large")
-    selected = re.findall(r"^\s*mCurrentFocus=Window\{([^{}\s]+) u([0-9]+) ([^{}\n]+)\}\s*$", raw, re.MULTILINE)
-    require(len(selected) == 1 and selected[0][1] == "0", "focus_ambiguous")
-    token, user, label = selected[0]
+    fields = re.findall(r"^[ \t]*mCurrentFocus[^\r\n]*", raw, re.MULTILINE)
+    require(len(fields) == 1, "focus_ambiguous")
+    if allow_null and fields[0].strip(" \t") == "mCurrentFocus=null":
+        return None
+    selected = re.fullmatch(r"[ \t]*mCurrentFocus=Window\{([^{}\s]+) u([0-9]+) ([^{}\r\n]+)\}[ \t]*", fields[0])
+    require(selected is not None and selected[2] == "0", "focus_ambiguous")
+    token, user, label = selected.groups()
     package = "com.android.systemui" if label == "NotificationShade" else label.split("/", 1)[0]
     require(package in ROOTS and (label == "NotificationShade" or "/" in label), "focus_package_unrecognized")
     return {"token": token, "user": int(user), "label": label, "package": package}
@@ -387,8 +391,8 @@ def capture(host, args, output, name, expected_package=None):
             label = "focus-before" if attempt == 0 else "focus-before-" + str(attempt)
             before = execute(label, ["shell", "dumpsys", "activity", "activities"], timeout=min(5, remaining))
             require(before.returncode == 0, "focus_query_failed")
-            owner = focus(before.stdout.decode("utf-8"))
-            ready = expected_package is None or owner["package"] == expected_package
+            owner = focus(before.stdout.decode("utf-8"), allow_null=expected_package is not None)
+            ready = owner is not None and (expected_package is None or owner["package"] == expected_package)
             focus_trace["samples"].append({"label": label, "owner": owner, "ready": ready,
                                             "elapsed_seconds": time.monotonic() - focus_started})
             require(time.monotonic() < focus_deadline, "expected_focus_not_ready")

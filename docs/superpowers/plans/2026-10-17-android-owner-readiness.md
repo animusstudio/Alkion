@@ -376,6 +376,40 @@ flag any necessary further ownership before editing. Independent scope and patch
 review precede actual V3 qualification on a fresh campaign. Preserve the fourth
 partial without resume, timer reset or re-preparation of its changed normal root.
 
+The next canonical-null focus slice owns only
+`app/tool/android_synthetic_ui.py` and
+`app/tool/android_synthetic_ui_self_test.py`, plus this plan amendment. Count all
+`mCurrentFocus` fields before classifying a sample. With an explicit expected
+package only, a sole exact `mCurrentFocus=null` is a well-formed absence and may
+be recorded as non-admitting pre-capture readiness (`owner=null`, `ready=false`).
+It authorizes no native observation or interaction. Missing, malformed, multiple
+or mixed null/window fields, foreign roots and wrong-user windows remain fatal.
+An unspecified expected owner and the post-capture check retain strict focus
+behavior; neither may accept null. Do not infer focus from `mFocusedApp` or add
+another recognized root. Only the final exact expected window can admit capture,
+with unchanged final pre/post token and native root/window/display attestation.
+
+Keep at most twenty fresh samples/two seconds inside the same 20-second capture
+budget, retain every raw attempt and the null-owner readiness journal, cap every
+command/pause by remaining budgets and refuse late results. Repeat no UI action,
+launch or product command and grant no extra command/failure-screenshot budget.
+The observed cold-start absence followed by later target focus motivates this
+classification; the actual focus-assignment time and adequacy of two seconds
+remain UNRUN. Later display/InputDispatcher events do not establish when
+`mCurrentFocus` became available. A further timing miss requires evidence and
+replanning, not an automatic bound extension or deadline rescue.
+
+This plan refines readiness classification within the specification's existing
+bounded wait: canonical absence is never an admitted root, while the strict
+single-window, primary-user and root-allowlist contract still governs admission.
+Run affected actual-capture protocol and controlled-clock tests for null-to-ready,
+repeated-null exhaustion, late arrivals, invalid/mixed fields, unspecified-owner
+null, post-capture null/token drift and exhausted global budget; run the complete
+Documents facade only if its shared fake is affected. No Java, manifest, helper
+version, SDK, shared Make/harness, product or dependency change belongs here.
+Independent scope and source review precede fresh native qualification. Preserve
+the fifth partial campaign without resume, timer reset or re-preparation.
+
 T5 receiving-restore prerequisite fixture ownership covers
 `app/integration_test/android_documents_test.dart` and new
 `app/test/alkion/acceptance/android_documents_fixture_test.dart` only. Enrich the
