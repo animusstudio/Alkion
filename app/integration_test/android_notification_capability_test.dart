@@ -15,6 +15,7 @@ import 'package:alkion/session/notification_action.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/store/schema.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path/path.dart' as p;
@@ -641,6 +642,25 @@ void main() {
           await capabilityCheckpoint(root, current, predecessor, snapshot),
         );
         report['complete'] = false;
+        // The checkpoint has flushed and closed its store. These plugin reads
+        // observe capabilities only; no initialization or permission request.
+        final plugin = AndroidFlutterLocalNotificationsPlugin();
+        final notificationsEnabled = await plugin
+            .areNotificationsEnabled()
+            .timeout(const Duration(seconds: 5));
+        final canScheduleExact = await plugin
+            .canScheduleExactNotifications()
+            .timeout(const Duration(seconds: 5));
+        _require(
+          notificationsEnabled != null && canScheduleExact != null,
+          'plugin_capabilities_unknown',
+        );
+        report['plugin_capabilities'] = {
+          'format': 'alkion-android-plugin-capabilities/1',
+          'notifications_enabled': notificationsEnabled!,
+          'can_schedule_exact_notifications': canScheduleExact!,
+          'queried_at': DateTime.now().toUtc().toIso8601String(),
+        };
       });
     },
     timeout: const Timeout(Duration(seconds: 120)),
