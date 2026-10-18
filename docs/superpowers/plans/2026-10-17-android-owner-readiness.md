@@ -350,6 +350,17 @@ review after atomic acknowledgement publication and literal Make-input fixes.
 Nineteen module controls, then twenty-four integrated host controls passed;
 three affected Make-boundary controls passed after the final quoting fix.
 These use fake transports; actual provider and receiving restore remain unrun.
+T5 capability fixture ownership covers new
+`app/integration_test/android_notification_capability_test.dart` and
+`app/test/alkion/acceptance/android_notification_capability_protocol_test.dart`.
+Permission/capability fixtures and closed-store oracles are implemented separately;
+later host routing and Make wiring require a serialized handoff and review.
+Capability fixture/checkpoint source: independent task review PASS, fourteen
+real-store host controls PASS, analyzer and owned formatting PASS. This qualifies
+preservation/logging oracles only; native permission, alarm and UI proof is unrun.
+T5 capability host-route ownership additionally covers new
+`app/tool/android_synthetic_capabilities{,_self_test}.py`; keep this isolated
+module separate from later serialized Make/harness wiring and device execution.
 
 Ordinary-kill harness fix, base `7e21216`: independent full-lane source review PASS.
 `make -C app android-synthetic-self-test` passed the retained 108 controls and
