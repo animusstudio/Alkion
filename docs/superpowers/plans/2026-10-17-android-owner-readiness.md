@@ -327,6 +327,41 @@ before implementation; that approval does not change the cleanup ordering.
 
 ## State, checks and delivery
 
+T5 receiving-restore prerequisite fixture ownership covers
+`app/integration_test/android_documents_test.dart` and new
+`app/test/alkion/acceptance/android_documents_fixture_test.dart` only. Enrich the
+existing nested synthetic producer with real relationships, draft/timer/settings
+and original/outbox evidence; preserve its thirteen-case document protocol.
+That fixture passed independent source review and 31 focused host controls.
+T5 A7 adapter ownership covers new `app/integration_test/android_restore_test.dart`
+and `app/test/alkion/acceptance/android_restore_protocol_test.dart`. First implement
+fresh receiving restore: six cuts retaining one preparation, guarded continuation,
+preserved refusals and two cold-launch protocols. Run the exact closed restore
+oracle before delegating production relaunch; validate bounded notification/expiry
+adoption separately. Same-profile replacement/Keep and host routing follow as
+separate reviewed slices; no device or process-death result is implied by source.
+
+T5 A7 host-route ownership first covers new
+`app/tool/android_synthetic_restore.py` and
+`app/tool/android_synthetic_restore_self_test.py` only. Bind actual documents and
+receiving inputs, receiver bootstrap and the fixed twelve-launch adapter protocol;
+drive real picker selection and six exact owned-process cuts on one immutable
+fresh preparation. Keep Make/harness wiring serialized as a later reviewed slice.
+Same-profile replacement/Keep remains separate; host controls imply no device PASS.
+
+At `2274080`, fresh driver11 passed both variants (independent evidence PASS),
+then A2 update/rejected-signer checks passed. Lifecycle failed after development
+prepare40: native previous-app state stayed noncached. Retain receipts/data and
+replan the second ordinary-kill gate failure before another execution attempt.
+The bounded replan retains cached eligibility and adds only exact native
+previous-process 700/15 evidence with bound stopped/nonvisible activity.
+Independent source review PASS; retained 108 host controls and 67 ordinary-kill
+cases PASS. Native diagnostic and a fresh lifecycle campaign are still required.
+At `2566979`, driver11/A2 passed again; lifecycle stopped before prepare40 on a
+non-atomic process-read race. A2 preflight still passes. Buffered sampling and
+fresh dual-absence fixes passed source/fix review, seven real-process controls
+and focused helper interleavings/timing controls. Android retry remains pending.
+
 Fresh driver attempt at `e532a82` failed on Android child descriptor inheritance;
 nine development cases passed, with later cases and supported execution unreached.
 The one-file direct-redirection fix passed independent source review, formatting,
@@ -336,6 +371,11 @@ Functional-first scope amendment, 2026-10-18: independent design/fix review PASS
 T5 SAF host-route ownership additionally covers new
 `app/tool/android_synthetic_documents{,_self_test}.py`; Make/harness wiring is
 serialized after the lifecycle helper's handoff. Installed proof remains pending.
+SAF host-route module and Make/harness integration passed independent source
+review after atomic acknowledgement publication and literal Make-input fixes.
+Nineteen module controls, then twenty-four integrated host controls passed;
+three affected Make-boundary controls passed after the final quoting fix.
+These use fake transports; actual provider and receiving restore remain unrun.
 T5 capability fixture ownership covers new
 `app/integration_test/android_notification_capability_test.dart` and
 `app/test/alkion/acceptance/android_notification_capability_protocol_test.dart`.

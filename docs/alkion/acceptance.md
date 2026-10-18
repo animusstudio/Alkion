@@ -6,11 +6,23 @@ observed: 2026-10-17
 
 # Alkion integrated acceptance (T7)
 
-The reviewed ordinary-kill harness fix now verifies native cached eligibility,
-system foreground displacement and exact PID/UID/start-time ownership before
-requesting `am kill`; it observes both original-process and package absence.
-Its source/host evidence does not qualify Alkion process death. The fresh
-synthetic driver, updates and lifecycle campaign is pending execution.
+Fresh campaign at `2566979` (API 36 AOSP x86_64): eleven driver cases and A2
+updates/rejected-signer checks passed in both variants. Lifecycle stopped before
+preparation installation when the killed process disappeared between `/proc`
+reads. Both apps remain at the accepted A2 version 39; its recognized preflight
+passes without clearing or rollback. Failed receipts/APKs/data are retained.
+The reviewed sampler/death-loop fix discards partial reads, polls terminating
+identities and requires fresh dual absence. Eligibility allows 14 seconds within
+the unchanged 30-second total; installed lifecycle retry remains unrun.
+The earlier retained native diagnostic passed on the cached branch only.
+
+Lifecycle retry at `a4499b8` passed development preparation and the actual
+ordinary-kill previous-process branch: exact PID/UID/start identity, stopped
+activity, platform kill and fresh process/package absence were observed. The
+subsequent notification-body step stopped with `ui_hierarchy_unavailable` after
+main version 41 installation. Preserve that partial state and all receipts;
+notification interaction, remaining lifecycle steps and the supported variant
+remain unrun. This run does not qualify lifecycle as a whole.
 
 ## Android preparation (2026-10-17, local work)
 
@@ -71,6 +83,10 @@ platform changes require affected checks again.
 The SAF proof adapter and isolated namespaced provider fixture passed independent
 source review, API 36 Java compilation, analysis and 12 host document tests. This
 prepares real picker/fault cases; installed provider behavior remains UNRUN.
+The guarded host route passed independent review after matching the receiving
+CLI's structured schema/inventory. Six affected controls and a real synthetic
+receiving verification passed (schema 3, 30 tables, 99 rows). This is host-file
+compatibility evidence; provider and physically off-device proof remain unrun.
 
 A2 preparation checkpoint, before the executed run below: source/host only.
 Shared helpers seed the normal
