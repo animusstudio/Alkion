@@ -1046,6 +1046,44 @@ def wait_ui_label(args, output, name, label):
         time.sleep(1)
     raise Refusal("ui_checkpoint_label_missing:"+label)
 
+def summary_ui_ready(document, package, title):
+    # Flutter may expose the heading and its rows as one multiline label.
+    # This read-only checkpoint never changes whole-label action selection.
+    if package not in PACKAGES[1:]:
+        return False
+    def unique_line(label):
+        matches = [node for node in document.iter("node") for key in ("text", "content-desc")
+                   for line in node.get(key, "").split("\n") if line == label]
+        return matches[0] if len(matches) == 1 else None
+    def visible(node):
+        if node is None or node.get("package") != package or node.get("visible-to-user") != "true":
+            return False
+        bounds = re.fullmatch(r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]", node.get("bounds", ""))
+        width, height = node.get("observer-display-width", ""), node.get("observer-display-height", "")
+        if bounds is None or not width.isdigit() or not height.isdigit():
+            return False
+        x1, y1, x2, y2 = map(int, bounds.groups())
+        return 0 <= x1 < x2 <= int(width) and 0 <= y1 < y2 <= int(height)
+    heading, named = unique_line("TOP SETS"), unique_line(title)
+    done = semantic_nodes(document, "Done")
+    return (visible(heading) and visible(named) and len(done) == 1 and visible(done[0]) and
+            done[0].get("enabled") == "true" and done[0].get("clickable") == "true" and
+            not semantic_nodes(document, "Minimize") and not semantic_nodes(document, "Finish workout"))
+
+def wait_summary_ui(args, output, name, package, run, prepared):
+    draft = prepared.get("draft", {})
+    expected_name = "Synthetic lifecycle "+run+" "+package
+    require(package in PACKAGES[1:] and re.fullmatch(r"[a-f0-9]{32}", run) and
+            prepared.get("run_id") == run and prepared.get("application_id") == package and
+            draft.get("name") == expected_name and draft.get("focus") == "legs", "summary_fixture_binding_changed")
+    title = expected_name+" · legs"
+    for attempt in range(12):
+        document = ui_document(args, output, name+"-"+str(attempt))
+        if summary_ui_ready(document, package, title):
+            return document
+        time.sleep(1)
+    raise Refusal("ui_checkpoint_summary_missing")
+
 def stage_native_evidence(args, package, run, value):
     raw = json.dumps(value, separators=(",", ":"))
     require(len(raw) <= 65536, "native_evidence_too_large")
@@ -1177,7 +1215,7 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
                     semantic_nodes(document,"Finish workout"),"logged_set_did_not_resume")
             require(app_pid(args,package) not in (None,log_pid),"logging_reopen_did_not_change_pid")
             ui_tap(args,output,package+"-actual-finish","Finish workout")
-            wait_ui_label(args,output,package+"-finished-summary","TOP SETS")
+            wait_summary_ui(args,output,package+"-finished-summary",package,receipt["run_id"],prepared)
             wait_notification_absent(args,package,metadata[package]["uid"],output)
             ordinary_kill(args,package,metadata[package]["uid"],output); main_start(args,package)
             wait_ui_label(args,output,package+"-finished-reopen","Today")
@@ -1575,6 +1613,107 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
             time = original_time; command = original_command
             os.environ.clear(); os.environ.update(previous)
         print("PASS:",count,"ordinary-kill faithful ADB/remote-shell protocol cases; fake native state/clock only.")
+
+def summary_ui_self_test():
+    global ui_document, click_node, time
+    count=0; run="1"*32
+    def fixture(package=PACKAGES[1]):
+        document=ET.Element("hierarchy")
+        title="Synthetic lifecycle "+run+" "+package+" · legs"
+        def node(label, **changes):
+            return ET.SubElement(document,"node",{"text":"","content-desc":label,"package":package,
+                "visible-to-user":"true","enabled":"true","clickable":"false",
+                "bounds":"[42,199][1038,714]","observer-display-width":"1080",
+                "observer-display-height":"2400",**changes})
+        named=node(title+"\n2026-10-18")
+        heading=node("TOP SETS\nSynthetic exercise\n82.5kg × 5\nPR")
+        done=node("Done",clickable="true")
+        return document,title,named,heading,done
+    for package in PACKAGES[1:]:
+        document,title,*_=fixture(package)
+        require(summary_ui_ready(document,package,title),"merged_summary_refused"); count+=1
+    cases=("missing-heading","duplicate-heading","substring-heading","repeated-heading","hidden-heading",
+           "clipped-heading","foreign-heading","missing-title","duplicate-title","substring-title",
+           "foreign-run-title","foreign-package-title","partial-title","hidden-title","repeated-title",
+           "missing-done","hidden-done","disabled-done","unclickable-done","duplicate-done",
+           "substring-done","foreign-done","active-screen","error-screen","transition")
+    for case in cases:
+        document,title,named,heading,done=fixture()
+        if case.startswith("missing-"):
+            document.remove({"heading":heading,"title":named,"done":done}[case[8:]])
+        elif case.startswith("duplicate-"):
+            document.append(ET.fromstring(ET.tostring({"heading":heading,"title":named,"done":done}[case[10:]])))
+        elif case.startswith("substring-"):
+            node={"heading":heading,"title":named,"done":done}[case[10:]]
+            node.set("content-desc","Not "+node.get("content-desc"))
+        elif case.startswith("repeated-"):
+            node=heading if case=="repeated-heading" else named
+            node.set("content-desc",node.get("content-desc")+"\n"+("TOP SETS" if node is heading else title))
+        elif case.startswith("hidden-"):
+            {"heading":heading,"title":named,"done":done}[case[7:]].set("visible-to-user","false")
+        elif case=="clipped-heading": heading.set("bounds","[42,199][1038,2401]")
+        elif case in ("foreign-heading","foreign-done"):
+            (heading if case=="foreign-heading" else done).set("package",PACKAGES[2])
+        elif case=="foreign-run-title": named.set("content-desc",named.get("content-desc").replace(run,"2"*32))
+        elif case=="foreign-package-title": named.set("content-desc",named.get("content-desc").replace(PACKAGES[1],PACKAGES[2]))
+        elif case=="partial-title": named.set("content-desc",title.removesuffix(" · legs"))
+        elif case=="disabled-done": done.set("enabled","false")
+        elif case=="unclickable-done": done.set("clickable","false")
+        elif case=="active-screen": ET.SubElement(document,"node",{"content-desc":"Minimize"})
+        else:
+            document.remove(named); document.remove(heading)
+            ET.SubElement(document,"node",{"content-desc":"Save failed" if case=="error-screen" else "Notifications delayed"})
+        require(not summary_ui_ready(document,PACKAGES[1],title),"invalid_summary_accepted:"+case); count+=1
+    original_document,original_click,original_time=ui_document,click_node,time
+    try:
+        taps=[]; document,title,named,heading,done=fixture()
+        ui_document=lambda *args: document
+        click_node=lambda args,node: taps.append(node)
+        ui_tap(None,None,"exact-done","Done")
+        require(taps==[done],"exact_done_action_changed"); count+=1
+        heading.set("clickable","true")
+        for label in ("TOP SETS","Not Done"):
+            try: ui_tap(None,None,"no-line-action",label)
+            except Refusal: pass
+            else: raise Refusal("summary_line_matching_leaked_into_action_selection")
+            require(taps==[done],"nonexact_action_tapped"); count+=1
+        prepared={"run_id":run,"application_id":PACKAGES[1],
+            "draft":{"name":"Synthetic lifecycle "+run+" "+PACKAGES[1],"focus":"legs"}}
+        good=fixture()[0]; transition=ET.Element("hierarchy")
+        def poll(pages):
+            calls=[]; sleeps=[]
+            def capture(args,output,name):
+                calls.append(name)
+                value=pages[min(len(calls)-1,len(pages)-1)]
+                if isinstance(value,Exception): raise value
+                return value
+            return capture,calls,sleeps
+        capture,calls,sleeps=poll([transition,good]); ui_document=capture
+        time=SimpleNamespace(sleep=sleeps.append)
+        require(wait_summary_ui(None,None,"summary",PACKAGES[1],run,prepared) is good and
+                calls==["summary-0","summary-1"] and sleeps==[1],"summary_poll_transition_changed"); count+=1
+        capture,calls,sleeps=poll([transition]); ui_document=capture
+        time=SimpleNamespace(sleep=sleeps.append)
+        try: wait_summary_ui(None,None,"summary",PACKAGES[1],run,prepared)
+        except Refusal as error: require(str(error)=="ui_checkpoint_summary_missing","wrong_summary_timeout")
+        else: raise Refusal("missing_summary_accepted")
+        require(calls==["summary-"+str(i) for i in range(12)] and sleeps==[1]*12,
+                "summary_poll_budget_changed"); count+=1
+        capture,calls,sleeps=poll([Refusal("capture_failed")]); ui_document=capture
+        time=SimpleNamespace(sleep=sleeps.append)
+        try: wait_summary_ui(None,None,"summary",PACKAGES[1],run,prepared)
+        except Refusal as error: require(str(error)=="capture_failed","capture_failure_reclassified")
+        else: raise Refusal("capture_failure_accepted")
+        require(calls==["summary-0"] and not sleeps,"capture_failure_retried"); count+=1
+        capture,calls,sleeps=poll([good]); ui_document=capture
+        time=SimpleNamespace(sleep=sleeps.append)
+        try: wait_summary_ui(None,None,"summary",PACKAGES[2],run,prepared)
+        except Refusal as error: require(str(error)=="summary_fixture_binding_changed","wrong_summary_binding_failure")
+        else: raise Refusal("foreign_summary_fixture_accepted")
+        require(not calls and not sleeps,"foreign_summary_binding_observed_before_refusal"); count+=1
+    finally:
+        ui_document=original_document; click_node=original_click; time=original_time
+    print("PASS:",count,"summary-only semantic/action/polling host controls; no device transport.")
 
 def lifecycle_self_test():
     count=0
@@ -2147,6 +2286,7 @@ args.sdk = Path(os.environ.get("ANDROID_HOME",""))
 try:
     if args.action == "self-test":
         self_test()
+        summary_ui_self_test()
         lifecycle_self_test()
         ordinary_kill_self_test()
         process_identity_self_test()

@@ -204,6 +204,17 @@ before implementation; that approval does not change the cleanup ordering.
   review; builds/device execution require the later coordinator window. Permission,
   exact/inexact capability and force-stop stages 45–54 remain UNRUN. No production
   hooks, UI/main/core edits, components, dependencies or owner signing access.
+- Bounded summary-checkpoint correction after the preserved seventh lifecycle
+  failure: its native tree merged `TOP SETS` and the rows into one multiline
+  label. The summary-only host predicate requires one visible exact heading
+  line, the exact run/package title including ` · legs`, and one visible,
+  enabled/clickable exact `Done` action, all within the attested display. Keep
+  whole-label action selectors, capture guards, twelve polls and the existing
+  closed finish verifier unchanged. Focused synthetic negatives and retained
+  native XML replay precede independent source review and a separate fresh
+  campaign; the failed seventh run remains FAIL and finish remains unqualified.
+  Author checks: 34 focused host controls and all12 retained native observations
+  replayed offline PASS (transition0 refused); syntax/whitespace PASS, no device run.
 - Lifecycle routing contract: the pinned
   [plugin 21 implementation](https://github.com/MaikuB/flutter_local_notifications/blob/flutter_local_notifications-v21.0.0/flutter_local_notifications/android/src/main/java/com/dexterous/flutterlocalnotifications/FlutterLocalNotificationsPlugin.java)
   stores scheduled payloads in its `scheduled_notifications` preference mirror and
