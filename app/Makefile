@@ -72,10 +72,16 @@ android-synthetic:
 android-synthetic-self-test:
 	bash tool/android_synthetic.sh --action self-test
 	$(MAKE) android-synthetic-documents-self-test
+	$(MAKE) android-synthetic-ui-observer-self-test
 android-synthetic-documents-self-test:
 	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_documents_self_test.py
 android-synthetic-neighbor:
 	bash tool/android_synthetic.sh --action build-neighbor --output "$(ALKION_OUTPUT)"
+.PHONY: android-synthetic-ui-observer android-synthetic-ui-observer-self-test
+android-synthetic-ui-observer:
+	bash tool/android_synthetic.sh --action build-ui-observer --output "$${ALKION_OUTPUT}"
+android-synthetic-ui-observer-self-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_ui_self_test.py
 android-synthetic-driver-apk:
 	@case "$(ALKION_FLAVOR)" in dev|supported) ;; *) echo 'ALKION_FLAVOR must be dev or supported.' >&2; exit 2 ;; esac
 	@printf '%s' "$(ALKION_PROOF_RUN)" | rg -q '^[a-f0-9]{32}$$' || (echo 'Explicit 32-hex ALKION_PROOF_RUN is required.' >&2; exit 2)
