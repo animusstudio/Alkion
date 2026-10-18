@@ -6,6 +6,12 @@ observed: 2026-10-17
 
 # Alkion integrated acceptance (T7)
 
+The reviewed ordinary-kill harness fix now verifies native cached eligibility,
+system foreground displacement and exact PID/UID/start-time ownership before
+requesting `am kill`; it observes both original-process and package absence.
+Its source/host evidence does not qualify Alkion process death. The fresh
+synthetic driver, updates and lifecycle campaign is pending execution.
+
 ## Android preparation (2026-10-17, local work)
 
 The [Android plan](../superpowers/plans/2026-10-17-android-owner-readiness.md)
