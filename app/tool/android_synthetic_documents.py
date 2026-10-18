@@ -49,6 +49,15 @@ UNRUN = ("transfer_import_semantics", "uri_grant_revocation", "physical_disk_ful
          "fresh_receiver_restore", "app_process_interruption", "provider_process_death",
          "provider_restart_reuse", "roots_cache_recovery", "physical_off_device_verification",
          "owner_data")
+# Current schema.dart preservedTables, including its domainTables expansion.
+# The receiving CLI verifies SQL/migration digests against the real registry;
+# this consumer checks its structured report and complete inventory contract.
+RECEIVING_TABLES = frozenset((
+    "profile_state", "schema_migrations", "operations", "operation_dependencies", "reviews", "review_decisions",
+    "operation_attempts", "attempt_outcomes", "record_revisions", "source_artifacts", "origin_mappings",
+    "source_revisions", "source_projections", "corrections", "derived_results", "local_state", "catalog_pins",
+    "import_generations", "import_journal", "correspondence", "replica_rows", "replica_checkpoints", "restore_journal",
+    "exercises", "day_templates", "day_template_items", "sessions", "sets", "bodyweight_logs", "muscle_targets"))
 
 
 class Refusal(ValueError):
@@ -592,6 +601,46 @@ def validate_outputs(outputs, control, observed):
                     "completed_provider_output_changed")
 
 
+def validate_receiving_report(report, control):
+    def hash_value(value):
+        return isinstance(value, str) and re.fullmatch(r"[a-f0-9]{64}", value)
+
+    require(isinstance(report, dict), "host_receiving_report_mismatch")
+    schema, inventory, container = (report.get(key) for key in ("schema", "inventory", "container"))
+    # workflowSchemaRegistry registers the contiguous foundation/domain/workflow
+    # versions 1..3; currentSchemaVersion alone names only the foundation.
+    require(isinstance(schema, dict) and set(schema) == {"user_version", "application_id", "migrations", "sql_sha256"} and
+            type(schema.get("user_version")) is int and 1 <= schema["user_version"] <= 3 and
+            type(schema.get("application_id")) is int and schema["application_id"] == 0x414C4B31 and
+            hash_value(schema.get("sql_sha256")) and isinstance(schema.get("migrations"), list) and
+            len(schema["migrations"]) == schema["user_version"], "host_receiving_schema_mismatch")
+    for version, migration in enumerate(schema["migrations"], 1):
+        require(isinstance(migration, dict) and set(migration) == {"version", "digest"} and
+                type(migration.get("version")) is int and migration["version"] == version and hash_value(migration.get("digest")),
+                "host_receiving_schema_mismatch")
+    require(isinstance(inventory, dict) and set(inventory) == {"tables", "rows", "sha256"} and
+            type(inventory.get("rows")) is int and inventory["rows"] >= 0 and hash_value(inventory.get("sha256")) and
+            isinstance(inventory.get("tables"), dict) and set(inventory["tables"]) == RECEIVING_TABLES,
+            "host_receiving_inventory_mismatch")
+    for table in inventory["tables"].values():
+        require(isinstance(table, dict) and set(table) == {"rows", "sha256"} and
+                type(table.get("rows")) is int and table["rows"] >= 0 and hash_value(table.get("sha256")),
+                "host_receiving_inventory_mismatch")
+    table_hashes = {name: value["sha256"] for name, value in inventory["tables"].items()}
+    require(inventory["rows"] == sum(value["rows"] for value in inventory["tables"].values()) and
+            inventory["sha256"] == digest(json.dumps(table_hashes, sort_keys=True, separators=(",", ":")).encode()),
+            "host_receiving_inventory_mismatch")
+    require(isinstance(container, dict) and set(container) == {"sha256", "length", "format", "version"} and
+            container.get("sha256") == control["sha256"] and type(container.get("length")) is int and
+            container["length"] == control["length"] and container.get("format") == "alkion-backup" and
+            type(container.get("version")) is int and container["version"] == 1 and
+            report.get("format") == "alkion-receiving-verification/1" and report.get("result") == "verified" and
+            report.get("inventory_result") == "all_covered_rows_match" and
+            report.get("storage_claim") == "receiving_file_verified; physically_off_device_location_requires_owner_evidence",
+            "host_receiving_report_mismatch")
+    return report
+
+
 def receive_good(evidence, flavor, outputs, control):
     require(set(outputs) == set(OUTPUT_CASES), "provider_failed_outputs_missing")
     good = outputs["save-good"]
@@ -605,15 +654,7 @@ def receive_good(evidence, flavor, outputs, control):
     evidence.keep(flavor + "-receiving.stderr", result.stderr.encode())
     require(result.returncode == 0, "host_receiving_verifier_failed")
     report = evidence.host.read_json(inspection / "verification.json", JSON_LIMIT)
-    require(report.get("format") == "alkion-receiving-verification/1" and report.get("result") == "verified" and
-            report.get("container", {}).get("sha256") == control["sha256"] and
-            report["container"].get("length") == control["length"] and
-            report.get("inventory_result") == "all_covered_rows_match" and
-            isinstance(report.get("schema"), int) and isinstance(report.get("inventory"), dict) and
-            re.fullmatch(r"[a-f0-9]{64}", report["inventory"].get("sha256", "")) and
-            report.get("storage_claim") == "receiving_file_verified; physically_off_device_location_requires_owner_evidence",
-            "host_receiving_report_mismatch")
-    return report
+    return validate_receiving_report(report, control)
 
 
 def build_provider(host, args, output):

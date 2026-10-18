@@ -39,6 +39,23 @@ def result(stdout="", stderr="", code=0):
     return SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
 
 
+def receiving_report(data):
+    tables = {name: {"rows": 3 if name == "schema_migrations" else 1 if name == "profile_state" else 0,
+                     "sha256": hashlib.sha256((name + " synthetic rows").encode()).hexdigest()}
+              for name in documents.RECEIVING_TABLES}
+    inventory = {"tables": tables, "rows": sum(table["rows"] for table in tables.values()),
+                 "sha256": hashlib.sha256(json.dumps({name: table["sha256"] for name, table in tables.items()},
+                                                        sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+    return {"format": "alkion-receiving-verification/1", "result": "verified",
+        "schema": {"user_version": 3, "application_id": 0x414C4B31,
+                   "migrations": [{"version": version, "digest": "e" * 64} for version in (1, 2, 3)], "sql_sha256": "f" * 64},
+        "container": {"sha256": documents.digest(data), "length": len(data), "format": "alkion-backup", "version": 1},
+        "tool": {"writer": "alkion-backup-writer/1", "application_id": documents.PACKAGES[1],
+                 "sqlite_async": "0.14.2", "sqlite3_package": "3.3.2", "sqlite_native": "host-only-synthetic"},
+        "created_at": "2026-10-18T12:13:14Z", "inventory": inventory, "inventory_result": "all_covered_rows_match",
+        "storage_claim": "receiving_file_verified; physically_off_device_location_requires_owner_evidence"}
+
+
 def load_harness():
     script = Path(__file__).with_name("android_synthetic.sh")
     body = script.read_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
@@ -213,12 +230,11 @@ class FakeHost:
                     self.write(Path(options["ALKION_OUTPUT"]) / "failure.json", {"result": "failed"})
                     return result(stderr="synthetic verifier refusal", code=1)
                 data = Path(options["ALKION_BACKUP"]).read_bytes()
-                report = {"format": "alkion-receiving-verification/1", "result": "verified", "schema": 1,
-                    "container": {"sha256": documents.digest(data), "length": len(data), "format": "alkion-backup/1", "version": 1},
-                    "inventory": {"sha256": "c" * 64, "rows": 1, "tables": {}}, "inventory_result": "all_covered_rows_match",
-                    "storage_claim": "receiving_file_verified; physically_off_device_location_requires_owner_evidence"}
+                report = receiving_report(data)
                 if self.scenario == "receiving-digest":
                     report["container"]["sha256"] = "0" * 64
+                if self.scenario == "receiving-schema-int":
+                    report["schema"] = 1
                 self.write(Path(options["ALKION_OUTPUT"]) / "verification.json", report)
                 return result(json.dumps(report))
             options = dict(value.split("=", 1) for value in argv if value.startswith("ALKION_"))
@@ -782,6 +798,62 @@ class DocumentsControls(unittest.TestCase):
             documents.receive_good(evidence, "dev", outputs, control)
         self.assertEqual((self.root / "output/dev-received.alkionbackup").read_bytes(), RAW)
         self.assertTrue((self.root / "output/dev-receiving-inspection/verification.json").is_file())
+
+    def test_receiving_structured_schema_and_complete_inventory_are_accepted(self):
+        evidence, phase = self.evidence_after_seed()
+        control = phase["provider_control"]
+        outputs = {case: {"name": case, "length": len(RAW), "sha256": documents.digest(RAW), "bytes": RAW}
+                   for case in documents.OUTPUT_CASES}
+        report = documents.receive_good(evidence, "dev", outputs, control)
+        self.assertEqual(report, receiving_report(RAW))
+        self.assertEqual(set(report["inventory"]["tables"]), documents.RECEIVING_TABLES)
+        self.assertEqual((evidence.output / "dev-received.alkionbackup").read_bytes(), RAW)
+
+    def test_integer_receiving_schema_is_retained_and_refused(self):
+        evidence, phase = self.evidence_after_seed()
+        outputs = {case: {"length": len(RAW), "sha256": documents.digest(RAW), "bytes": RAW} for case in documents.OUTPUT_CASES}
+        self.host.scenario = "receiving-schema-int"
+        with self.assertRaisesRegex(documents.Refusal, "host_receiving_schema_mismatch"):
+            documents.receive_good(evidence, "dev", outputs, phase["provider_control"])
+        self.assertEqual((evidence.output / "dev-received.alkionbackup").read_bytes(), RAW)
+        report = json.loads((evidence.output / "dev-receiving-inspection/verification.json").read_bytes())
+        self.assertEqual(report["schema"], 1)
+
+    def test_malformed_unsupported_or_boolean_receiving_fields_refuse(self):
+        control = {"length": len(RAW), "sha256": documents.digest(RAW)}
+        good = receiving_report(RAW)
+        changes = [
+            lambda report: report.update(schema=True),
+            lambda report: report.update(schema=[]),
+            lambda report: report["schema"].pop("sql_sha256"),
+            lambda report: report["schema"].update(user_version=True, migrations=[{"version": 1, "digest": "e" * 64}]),
+            lambda report: report["schema"].update(user_version=4, migrations=[{"version": version, "digest": "e" * 64} for version in range(1, 5)]),
+            lambda report: report["schema"].update(application_id=True),
+            lambda report: report["schema"].update(application_id=0),
+            lambda report: report["schema"].update(sql_sha256="bad"),
+            lambda report: report["schema"].update(migrations={}),
+            lambda report: report["schema"]["migrations"][0].update(version=True),
+            lambda report: report["schema"]["migrations"][0].update(digest=7),
+            lambda report: report["schema"]["migrations"].append({"version": 2, "digest": "e" * 64}),
+            lambda report: report.update(inventory=[]),
+            lambda report: report["inventory"].update(rows=True),
+            lambda report: report["inventory"].update(rows=-1),
+            lambda report: report["inventory"].update(rows=1),
+            lambda report: report["inventory"].update(sha256="0" * 64),
+            lambda report: report["inventory"]["tables"].pop("operations"),
+            lambda report: report["inventory"]["tables"].update(foreign={"rows": 0, "sha256": "e" * 64}),
+            lambda report: report["inventory"]["tables"]["operations"].update(rows=True),
+            lambda report: report["inventory"]["tables"]["operations"].update(sha256=7),
+            lambda report: report["container"].update(version=True),
+            lambda report: report["container"].update(length=True),
+            lambda report: report["container"].update(format="alkion-backup/1"),
+        ]
+        for number, change in enumerate(changes):
+            with self.subTest(case=number):
+                report = copy.deepcopy(good); change(report)
+                with self.assertRaisesRegex(documents.Refusal, "host_receiving_(?:schema|inventory|report)_mismatch"):
+                    documents.validate_receiving_report(report, control)
+        self.assertEqual(good, receiving_report(RAW))
 
     def test_incomplete_receipt_cannot_satisfy_failed_stream_case(self):
         control = {"run_id": RUN, "variant": "dev", "length": len(RAW), "sha256": documents.digest(RAW)}

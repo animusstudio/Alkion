@@ -75,6 +75,10 @@ platform changes require affected checks again.
 The SAF proof adapter and isolated namespaced provider fixture passed independent
 source review, API 36 Java compilation, analysis and 12 host document tests. This
 prepares real picker/fault cases; installed provider behavior remains UNRUN.
+The guarded host route passed independent review after matching the receiving
+CLI's structured schema/inventory. Six affected controls and a real synthetic
+receiving verification passed (schema 3, 30 tables, 99 rows). This is host-file
+compatibility evidence; provider and physically off-device proof remain unrun.
 
 A2 preparation checkpoint, before the executed run below: source/host only.
 Shared helpers seed the normal
