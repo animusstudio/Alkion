@@ -335,6 +335,10 @@ The bounded replan retains cached eligibility and adds only exact native
 previous-process 700/15 evidence with bound stopped/nonvisible activity.
 Independent source review PASS; retained 108 host controls and 67 ordinary-kill
 cases PASS. Native diagnostic and a fresh lifecycle campaign are still required.
+At `2566979`, driver11/A2 passed again; lifecycle stopped before prepare40 on a
+non-atomic process-read race. A2 preflight still passes. Buffered sampling and
+fresh dual-absence fixes passed source/fix review, seven real-process controls
+and focused helper interleavings/timing controls. Android retry remains pending.
 
 Fresh driver attempt at `e532a82` failed on Android child descriptor inheritance;
 nine development cases passed, with later cases and supported execution unreached.

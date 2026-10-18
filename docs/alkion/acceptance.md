@@ -6,14 +6,15 @@ observed: 2026-10-17
 
 # Alkion integrated acceptance (T7)
 
-Fresh campaign at `2274080` (API 36 AOSP x86_64): all eleven driver cases passed
-in both variants; independent evidence review passed. A2 in-place updates 38→39
-and wrong-signer rejection at 40 passed for both, preserving covered data/identity.
-The lifecycle attempt completed development preparation at 40, then refused
-`ordinary_kill_never_became_cached` before notification/logging/reopen proof.
-Raw receipts, APKs and failed installation data are retained. Two failures at
-this gate trigger a bounded replan against the native ordinary-kill contract;
-no lifecycle PASS or stronger kill fallback is claimed. T5 remains in progress.
+Fresh campaign at `2566979` (API 36 AOSP x86_64): eleven driver cases and A2
+updates/rejected-signer checks passed in both variants. Lifecycle stopped before
+preparation installation when the killed process disappeared between `/proc`
+reads. Both apps remain at the accepted A2 version 39; its recognized preflight
+passes without clearing or rollback. Failed receipts/APKs/data are retained.
+The reviewed sampler/death-loop fix discards partial reads, polls terminating
+identities and requires fresh dual absence. Eligibility allows 14 seconds within
+the unchanged 30-second total; installed lifecycle retry remains unrun.
+The earlier retained native diagnostic passed on the cached branch only.
 
 ## Android preparation (2026-10-17, local work)
 

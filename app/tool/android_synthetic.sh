@@ -665,9 +665,12 @@ def app_pid(args, package, *, timeout=60):
     return int(values[0]) if values else None
 
 PROCESS_IDENTITY_SCRIPT = '''if [ ! -d "/proc/$1" ]; then printf 'absent\\n'; exit 0; fi
-cat "/proc/$1/status" || exit
-printf '\\nalkion-proc-stat\\n'
-cat "/proc/$1/stat"
+if ! status=$(cat "/proc/$1/status" 2>/dev/null) ||
+   ! native_stat=$(cat "/proc/$1/stat" 2>/dev/null); then
+  if [ ! -d "/proc/$1" ]; then printf 'absent\\n'; exit 0; fi
+  exit 1
+fi
+printf '%s\\n\\nalkion-proc-stat\\n%s\\n' "$status" "$native_stat"
 '''
 
 def parse_process_identity(raw, pid, uid):
@@ -836,7 +839,7 @@ def ordinary_kill(args, package, uid, output):
         wait_resumed(settings,"settings_resumed")
         native("input","keyevent","KEYCODE_HOME")
         wait_resumed(home,"home_resumed")
-        eligible_deadline = min(deadline,time.monotonic()+8)
+        eligible_deadline = min(deadline,time.monotonic()+14)
         while True:
             owner()
             raw = native("dumpsys","activity","processes",package).stdout
@@ -872,15 +875,26 @@ def ordinary_kill(args, package, uid, output):
         path.write_text(json.dumps(evidence,indent=2)+chr(10))
         evidence["kill_command"] = native("am","kill","--user","0",package).stdout
         death_deadline = min(deadline,time.monotonic()+15)
+        evidence["death_observations"] = []
         while time.monotonic() < death_deadline:
             observed = app_pid(args,package,timeout=remaining())
+            sample = {"elapsed_seconds":time.monotonic()-started,"package_pid_before":observed}
+            evidence["death_observations"].append(sample)
             raw = native("sh","-c",PROCESS_IDENTITY_SCRIPT,"alkion-process-identity",str(before)).stdout
             identity = parse_process_identity(raw,before,uid)
+            sample["identity"] = identity
+            require(observed in (None,before), "ordinary_kill_package_restarted")
             if identity is None:
-                require(observed is None, "ordinary_kill_package_restarted")
+                # The original PID can exit between pidof and the proc reads.
+                # Only a fresh package query after exact PID absence qualifies.
+                fresh = app_pid(args,package,timeout=remaining())
+                sample["package_pid_after_absence"] = fresh
+                require(fresh is None, "ordinary_kill_package_restarted")
                 evidence["exact_pid_absent"] = True; evidence["result"] = "PASS"
                 return before
-            require(observed == before and identity == evidence["identity"], "ordinary_kill_process_changed_after_kill")
+            # pidof can omit a terminating process whose unchanged /proc record
+            # is still present. Poll it; never mistake this for confirmed death.
+            require(identity == evidence["identity"], "ordinary_kill_process_changed_after_kill")
             time.sleep(min(0.25,max(0,death_deadline-time.monotonic())))
         raise Refusal("ordinary_kill_did_not_exit_no_force_stop_fallback")
     except Exception as error:
@@ -1197,6 +1211,99 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
     except Exception as error:
         state["initial_lifecycle_phase"]="FAIL"; state["error"]=str(error); save(); raise
 
+def process_identity_self_test():
+    # Run the exact production shell program over real owned /proc children.
+    # The cat transport pauses a read so the parent can gracefully exit/reap
+    # that child, or returns a controlled unreadable/changed native response.
+    with tempfile.TemporaryDirectory(prefix="alkion-process-identity-host-") as name:
+        root = Path(name); shim = root/"cat"
+        native_cat = shutil.which("cat")
+        require(native_cat, "process_identity_host_cat_missing")
+        shim.write_text('''#!/usr/bin/env python3
+import os,subprocess,sys,time
+from pathlib import Path
+root=Path(os.environ["IDENTITY_CASE"]); mode=os.environ["IDENTITY_MODE"]
+path=Path(sys.argv[1]); part=path.name
+with (root/"reads").open("a") as log: log.write(part+chr(10))
+if mode=="exit-before-"+part:
+ (root/"blocked").write_text(part)
+ end=time.monotonic()+5
+ while not (root/"released").exists():
+  if time.monotonic()>=end: raise SystemExit("controlled_read_release_timeout")
+  time.sleep(0.005)
+if mode=="unreadable-status" and part=="status":
+ print("controlled unreadable status",file=sys.stderr); raise SystemExit(1)
+if mode=="partial-stat" and part=="stat":
+ print("partial native stat"); print("controlled partial read",file=sys.stderr); raise SystemExit(1)
+if mode=="changed-start" and part=="stat":
+ # Another owned child's real native stat supplies changed start ticks. Only
+ # its PID prefix is translated: this is not a claim of real kernel PID reuse.
+ value=Path("/proc/"+os.environ["IDENTITY_REPLACEMENT"]+"/stat").read_text()
+ print(path.parent.name+value[value.index(" "):],end=""); raise SystemExit(0)
+raise SystemExit(subprocess.run([os.environ["IDENTITY_NATIVE_CAT"],str(path)]).returncode)
+''')
+        shim.chmod(0o755); count = 0
+        for mode in ("normal", "absent-before-sample", "exit-before-status", "exit-before-stat",
+                     "unreadable-status", "partial-stat", "changed-start"):
+            directory = root/mode; directory.mkdir()
+            child = subprocess.Popen([sys.executable,"-c","import sys; sys.stdin.buffer.read()"],
+                                     stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            replacement = runner = None
+            try:
+                ticks = int(Path(f"/proc/{child.pid}/stat").read_text().rsplit(") ",1)[1].split()[19])
+                expected = {"pid":child.pid,"uid":os.getuid(),"start_ticks":ticks}
+                env = dict(os.environ,PATH=str(root)+os.pathsep+os.environ["PATH"],
+                           IDENTITY_CASE=str(directory),IDENTITY_MODE=mode,IDENTITY_NATIVE_CAT=native_cat)
+                if mode == "changed-start":
+                    time.sleep(1/os.sysconf("SC_CLK_TCK")+0.01)
+                    replacement = subprocess.Popen([sys.executable,"-c","import sys; sys.stdin.buffer.read()"],
+                        stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                    env["IDENTITY_REPLACEMENT"] = str(replacement.pid)
+                if mode == "absent-before-sample":
+                    child.stdin.close(); child.wait(timeout=5)
+                runner = subprocess.Popen(["/bin/sh","-c",PROCESS_IDENTITY_SCRIPT,
+                    "alkion-process-identity",str(child.pid)],env=env,text=True,
+                    stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                if mode.startswith("exit-before-"):
+                    limit = time.monotonic()+5
+                    while not (directory/"blocked").exists():
+                        require(runner.poll() is None and time.monotonic()<limit,
+                                "process_identity_host_read_not_blocked:"+mode)
+                        time.sleep(0.005)
+                    child.stdin.close(); child.wait(timeout=5)
+                    require(not Path(f"/proc/{child.pid}").exists(),"process_identity_host_child_not_reaped")
+                    (directory/"released").write_text("reaped")
+                stdout,stderr = runner.communicate(timeout=5)
+                require(not stderr,"process_identity_host_stderr:"+mode)
+                reads = (directory/"reads").read_text().splitlines() if (directory/"reads").exists() else []
+                if mode in ("unreadable-status","partial-stat"):
+                    require(runner.returncode != 0 and stdout == "" and child.poll() is None and
+                            Path(f"/proc/{child.pid}").is_dir(),"process_identity_host_live_read_failure_accepted:"+mode)
+                else:
+                    require(runner.returncode == 0,"process_identity_host_sample_failed:"+mode)
+                    identity = parse_process_identity(stdout,child.pid,os.getuid())
+                    if mode in ("absent-before-sample","exit-before-status","exit-before-stat"):
+                        require(stdout == "absent\n" and identity is None,"process_identity_host_partial_absence:"+mode)
+                    elif mode == "changed-start":
+                        try: require(identity == expected,"ordinary_kill_process_identity_changed")
+                        except Refusal: pass
+                        else: raise Refusal("process_identity_host_changed_start_accepted")
+                    else:
+                        require(identity == expected,"process_identity_host_normal_identity_changed")
+                expected_reads = [] if mode == "absent-before-sample" else ["status"] if mode in (
+                    "exit-before-status","unreadable-status") else ["status","stat"]
+                require(reads == expected_reads,"process_identity_host_read_order_changed:"+mode)
+                print("PASS: real-process identity control",mode); count += 1
+            finally:
+                for owned in (child,replacement):
+                    if owned is not None:
+                        if not owned.stdin.closed: owned.stdin.close()
+                        owned.wait(timeout=5)
+                if runner is not None and runner.poll() is None:
+                    (directory/"released").write_text("cleanup")
+                    runner.communicate(timeout=5)
+        print("PASS:",count,"real-process shell identity controls; no device transport or actual kernel PID reuse.")
+
 def ordinary_kill_self_test():
     # Exercise real argv -> ADB shell joining -> remote shell -> native shims.
     # Only the clock and synthetic /proc mount are substituted; no real ADB runs.
@@ -1241,7 +1348,7 @@ elif command==["am","start","-W","--user","0","-n",settings]:
  state["foreground"]="settings"; save(); print("Status: ok")
 elif command==["input","keyevent","KEYCODE_HOME"]:
  assert state["foreground"]=="settings"
- state["foreground"]="home"; save()
+ state["foreground"]="home"; state["home_started"]=float(os.environ.get("FAKE_CLOCK","0")); save()
 elif command==["dumpsys","activity","activities"]:
  component=settings if state["foreground"]=="settings" else home
  if scenario=="settings-not-resumed" and state["foreground"]=="settings": component=package+"/.MainActivity"
@@ -1253,6 +1360,7 @@ elif command==["dumpsys","activity","activities"]:
  print("  ResumedActivity: "+("malformed" if scenario=="malformed-resumed" else "ActivityRecord{223442197 u0 "+component+" t7}"))
  status="STOPPED" if previous or state.get("eligible") else "STOPPING"
  if scenario=="previous-settles" and state.get("probes",0)<2: status="STOPPING"
+ if scenario=="previous-late-stop" and state["foreground"]=="home" and float(os.environ["FAKE_CLOCK"])-state["home_started"]<10.5: status="STOPPING"
  if scenario=="previous-never-stopped" or (scenario=="previous-activity-drift" and state.get("probes",0)>1): status="STOPPING"
  if scenario=="previous-resumed-target": status="RESUMED"
  activity_package="other.package" if scenario=="previous-foreign-activity" else package
@@ -1320,8 +1428,11 @@ elif command==["pidof",package]:
   state["death_reads"]=state.get("death_reads",0)+1; save()
   gone=scenario!="no-death" and (scenario!="delayed-death" or state["death_reads"]>=3)
   if scenario=="pidof-only-absence": raise SystemExit(1)
+  if scenario=="death-between-reads" and state["death_reads"]==1: print(pid); raise SystemExit(0)
+  if scenario=="death-omitted-terminating": raise SystemExit(1)
+  if scenario=="death-fresh-replacement": print(pid if state["death_reads"]==1 else pid+1); raise SystemExit(0)
   if scenario=="death-restart": print(pid+1)
-  elif gone and scenario!="pid-reuse": raise SystemExit(1)
+  elif gone and scenario not in ("pid-reuse","death-uid-reuse"): raise SystemExit(1)
   else: print(pid)
  elif state["foreground"]=="home" and scenario=="pid-change": print(pid+1)
  elif state["foreground"]=="home" and scenario=="spontaneous-death": raise SystemExit(1)
@@ -1329,13 +1440,14 @@ elif command==["pidof",package]:
 elif command[:2]==["sh","-c"]:
  assert args==["-c",os.environ["FAKE_PROC_SCRIPT"],"alkion-process-identity",str(pid)],args
  proc=Path(os.environ["FAKE_PROC"]); directory=proc/str(pid)
- gone=state.get("killed") and scenario not in ("no-death","pid-reuse","pidof-only-absence") and (scenario!="delayed-death" or state.get("death_reads",0)>=3)
+ gone=state.get("killed") and scenario not in ("no-death","pid-reuse","death-uid-reuse","pidof-only-absence") and (scenario!="delayed-death" or state.get("death_reads",0)>=3)
+ if scenario=="death-omitted-terminating" and state.get("death_reads",0)<2: gone=False
  if gone:
   for item in directory.iterdir(): item.unlink()
   directory.rmdir()
  else:
   directory.mkdir(exist_ok=True)
-  observed_uid=uid+1 if scenario=="uid-change" and state["foreground"]=="home" else uid
+  observed_uid=uid+1 if (scenario=="uid-change" and state["foreground"]=="home") or (scenario=="death-uid-reuse" and state.get("killed")) else uid
   ticks=101 if (scenario=="start-changed" and state["foreground"]=="home") or (scenario=="pid-reuse" and state.get("killed")) else 100
   if scenario=="previous-late-start-change" and state.get("probes",0)>1: ticks=101
   (directory/"status").write_text("Name: alkion"+chr(10)+"Pid: "+str(pid)+chr(10)+"Uid: "+" ".join([str(observed_uid)]*4)+chr(10))
@@ -1354,6 +1466,10 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
         target = argparse.Namespace(sdk=sdk,serial="emulator-5558")
         previous = dict(os.environ); count = 0
         scenarios = (("previous-to-cached",None,1),("already-cached",None,1),("delayed-death",None,1),
+            ("death-between-reads",None,1),("death-omitted-terminating",None,1),
+            ("death-fresh-replacement","ordinary_kill_package_restarted",1),
+            ("death-uid-reuse","ordinary_kill_proc_pid_or_uid_changed",1),
+            ("previous-late-stop",None,1),
             ("never-cached","ordinary_kill_never_became_eligible",0),
             ("protected-state","ordinary_kill_never_became_eligible",0),
             ("foreground-cached","ordinary_kill_never_became_eligible",0),
@@ -1381,7 +1497,7 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
             ("no-death","ordinary_kill_did_not_exit_no_force_stop_fallback",1),
             ("death-restart","ordinary_kill_package_restarted",1),
             ("pid-reuse","ordinary_kill_process_changed_after_kill",1),
-            ("pidof-only-absence","ordinary_kill_process_changed_after_kill",1),
+            ("pidof-only-absence","ordinary_kill_did_not_exit_no_force_stop_fallback",1),
             ("previous-exact",None,1),("previous-settles",None,1),
             *((scenario,"ordinary_kill_never_became_eligible",0) for scenario in
                 ("previous-never-stopped","previous-resumed-target","previous-visible","previous-requested",
@@ -1415,6 +1531,7 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
                 def timed_command(argv, **options):
                     require(argv[0] == tools/"adb" and 0 < options["timeout"] <= min(5,30-time.value),
                             "ordinary_kill_host_transport_exceeded_remaining_budget")
+                    os.environ["FAKE_CLOCK"] = str(time.value)
                     result = original_command(argv,**options)
                     time.value += min(options["timeout"],5 if scenario == "total-budget" else 0.03)
                     return result
@@ -1427,6 +1544,20 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
                 record = json.loads(next(directory.glob("*-ordinary-kill-*.json")).read_text())
                 require(record["elapsed_seconds"] <= 30.1 and record["result"] == ("FAIL" if expected else "PASS"),
                         "ordinary_kill_host_budget_or_receipt_changed:"+scenario)
+                deaths = record.get("death_observations",[])
+                if scenario == "death-between-reads":
+                    require(len(deaths) == 1 and deaths[0]["package_pid_before"] == 4220 and
+                            deaths[0]["identity"] is None and deaths[0]["package_pid_after_absence"] is None,
+                            "ordinary_kill_host_between_reads_not_observed")
+                if scenario == "death-omitted-terminating":
+                    require(len(deaths) >= 2 and deaths[0]["package_pid_before"] is None and
+                            deaths[0]["identity"] == record["identity"] and
+                            deaths[-1]["identity"] is None and deaths[-1]["package_pid_after_absence"] is None,
+                            "ordinary_kill_host_terminating_omission_not_observed")
+                if scenario == "death-fresh-replacement":
+                    require(deaths[-1]["package_pid_before"] == 4220 and deaths[-1]["identity"] is None and
+                            deaths[-1]["package_pid_after_absence"] == 4221 and
+                            not record.get("exact_pid_absent"),"ordinary_kill_host_replacement_not_observed")
                 commands = [json.loads(line) for line in (directory/"remote.jsonl").read_text().splitlines()]
                 require(commands.count(["am","kill","--user","0",PACKAGES[1]]) == kills and
                         not any(word in command for command in commands for word in
@@ -1440,6 +1571,10 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
                     if scenario in ("previous-to-cached","previous-settles"):
                         require(not record["eligibility"][0]["eligible"] and len(record["eligibility"]) >= 2,
                                 "ordinary_kill_host_previous_app_not_observed")
+                    if scenario == "previous-late-stop":
+                        require(not record["eligibility"][0]["eligible"] and
+                                8 < record["eligibility"][-1]["elapsed_seconds"] < 14,
+                                "ordinary_kill_host_late_stop_not_observed")
                 count += 1
         finally:
             time = original_time; command = original_command
@@ -1916,6 +2051,7 @@ try:
         self_test()
         lifecycle_self_test()
         ordinary_kill_self_test()
+        process_identity_self_test()
     elif args.action == "build-lifecycle":
         argv = lifecycle_build_arguments(os.environ)
         toolchain(args)
