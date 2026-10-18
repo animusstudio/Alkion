@@ -1,4 +1,4 @@
-"""Notification capability campaign; no executable entry point or shared wiring.
+"""Notification capability campaign imported by the guarded harness routes.
 
 The harness supplies its existing receipt/path/toolchain/APK/UID/platform/A2,
 process, ordinary_kill(args, package, uid, output), UI and native-mirror helpers.
@@ -43,7 +43,9 @@ DEFINES = ("ALKION_PROOF_RUN", "ALKION_PROOF_SOURCE", "ALKION_PRIOR_SOURCE", "AL
            "ALKION_PRIOR_REPORT_SHA256", "ALKION_PRIOR_STATE_SHA256")
 ALLOWED_CODE_CHANGES = {"app/Makefile", "app/tool/android_synthetic.sh", "app/" + HELPER,
     "app/test/alkion/acceptance/android_notification_capability_protocol_test.dart",
-    "app/tool/android_synthetic_capabilities.py", "app/tool/android_synthetic_capabilities_self_test.py"}
+    "app/tool/android_synthetic_capabilities.py", "app/tool/android_synthetic_capabilities_self_test.py",
+    "app/tool/android_synthetic_ui.py", "app/tool/android_synthetic_ui_self_test.py",
+    "app/tool/android_synthetic_ui/AndroidManifest.xml", "app/tool/android_synthetic_ui/HierarchyInstrumentation.java"}
 DENIED_MESSAGE = "Notifications are off. Workout logging and your saved rest deadline still work. You can enable notifications in Android settings."
 INEXACT_MESSAGE = "Background rest notifications may be delayed. Your saved deadline is unchanged and reconciles when you reopen Alkion."
 UNRUN = ("force_stop", "recents_dismissal", "natural_expiry_delivery", "expired_payload_replay",
@@ -686,7 +688,12 @@ def limitation_ui(evidence, package, message, *, require_dialog):
     denied = False
     while time.monotonic() < deadline:
         name = str(evidence.count + 1).zfill(5) + "-limitation"
-        document = evidence.host.ui_document(evidence.prepared.args, evidence.prepared.output, name)
+        activity = evidence.adb("shell", "dumpsys", "activity", "activities").stdout
+        owner = evidence.host.resumed_component(activity)
+        native(owner is not None and owner[0] == "0" and owner[1].split("/", 1)[0] in
+               (package, "com.android.permissioncontroller"), "BLOCKED:limitation_native_owner_unbound")
+        document = evidence.host.ui_document(evidence.prepared.args, evidence.prepared.output, name,
+                                            expected_package=owner[1].split("/", 1)[0])
         activity = evidence.adb("shell", "dumpsys", "activity", "activities").stdout
         if any(node.get("package") == "com.android.permissioncontroller" for node in document.iter("node")):
             native(not denied, "BLOCKED:repeated_permission_dialog")
@@ -749,6 +756,7 @@ def run(host, prepared):
         "version_ledger": {"path": str(prepared.ledger_path), "sha256": prepared.ledger_sha256},
         "package_uids": {package: value["uid"] for package, value in prepared.metadata.items()},
         "closed_baselines": dict(prepared.baselines),
+        "ui_observer": getattr(args, "_ui_observer", (None,))[0],
         "producer_sha256": sha((host.APP / HELPER).read_bytes()),
         "installed": dict(prepared.installed), "allocation_floor": prepared.floor, "builds": [], "cases": {},
         "unrun": list(UNRUN), "native_evidence_role": "capability/routing only; closed helper owns SQL conclusions"}
@@ -887,6 +895,7 @@ def run(host, prepared):
             require(host.closed_profile_fingerprint(args, package, prepared.lifecycle["lifecycle"][package]["finish"]) == before,
                     "capability_closed_baseline_changed_after_preflight")
         for flavor, package in VARIANTS.items():
+            args.ui_expected_package = package
             predecessor, snapshot = prepared.lifecycle_raw, prepared.snapshots[package]
             for case in CASES:
                 key = flavor + "/" + case
