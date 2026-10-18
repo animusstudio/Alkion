@@ -217,9 +217,10 @@ class FakeHost(saf.FakeHost):
                 return saf.result(stdout=b"synthetic exact reviewed range\n")
             return saf.result("app/integration_test/android_restore_test.dart\n" if self.scenario != "runtime-diff" else "app/lib/main.dart\n")
         if text[0].endswith("/aapt2"):
-            return saf.result(documents.PROVIDER + " " + documents.AUTHORITY +
-                ' android.permission.MANAGE_DOCUMENTS\n A: android:enabled(0x0101000e)=(type 0x12)0x' +
-                ("1" if self.scenario == "provider-enabled" else "0") + "\n")
+            tree = saf.PACKAGED_PROVIDER_TREE
+            if self.scenario == "provider-enabled":
+                tree = tree.replace("enabled(0x0101000e)=false", "enabled(0x0101000e)=true")
+            return saf.result(tree)
         if text[0].endswith("/adb") and text[3] == "install" and self.scenario == "install-timeout":
             raise subprocess.TimeoutExpired(text, 60, output=b"partial native stdout\x00", stderr=b"partial stderr\xff")
         if text[0].endswith("/adb") and text[3:] == ["get-state"] and self.scenario == "preflight-timeout":
@@ -869,6 +870,32 @@ print("fake compiler only")
         with self.assertRaisesRegex(restore.Refusal, "already_present"):
             self.prepare()
         self.assertEqual((self.host.package_root(package) / ("files/" + package + "/retained")).read_bytes(), b"no repair")
+
+    def test_receiver_provider_uses_real_sdk36_scoped_audit_and_preserves_error(self):
+        self.assertIsNotNone(self.prepare())
+        original = self.host.command
+        enabled = next(line for line in saf.PACKAGED_PROVIDER_TREE.splitlines() if ":enabled(" in line)
+        trees = (
+            saf.PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=true")),
+            saf.PACKAGED_PROVIDER_TREE.replace(enabled + "\n", ""),
+            saf.PACKAGED_PROVIDER_TREE.replace(enabled, enabled + "\n" + enabled),
+            saf.PACKAGED_PROVIDER_TREE.replace(documents.AUTHORITY, documents.AUTHORITY + ".foreign"),
+            saf.PACKAGED_PROVIDER_TREE.replace("          E: provider", enabled[4:] + "\n          E: provider")
+                .replace(enabled + "\n", enabled.replace("=false", "=true") + "\n"),
+        )
+        for tree in trees:
+            self.assertNotEqual(tree, saf.PACKAGED_PROVIDER_TREE)
+
+            def command(argv, **options):
+                if str(argv[0]).endswith("/aapt2"):
+                    return saf.result(tree)
+                return original(argv, **options)
+
+            with self.subTest(tree=tree), patch.object(self.host, "command", side_effect=command):
+                with self.assertRaisesRegex(restore.Refusal, "^receiver_provider_not_default_disabled$"):
+                    self.prepare()
+            self.assertFalse(self.host.mutations)
+            self.assertFalse(Path(self.host.args.output).exists())
 
     def test_receiver_observer_needs_exact_build_and_fresh_binding(self):
         path = Path(self.host.args.ui_observer_build)

@@ -312,9 +312,18 @@ class FakeHost:
             assert argv[1:3] == ["-s", "emulator-5560"], argv
             tail = argv[3:]
             if tail[0] == "shell":
-                value = self.android(shlex.split(tail[1]), binary)
+                if tail[1:2] == ["-T"]:
+                    assert len(tail) == 3, tail
+                    value = self.android(shlex.split(tail[2]), binary, input)
+                else:
+                    value = self.android(shlex.split(tail[1]), binary)
             elif tail[0] == "exec-out":
                 value = self.android(shlex.split(tail[1]) if len(tail) == 2 else tail[1:], binary, input)
+                # Match actual raw ADB exec: it merges diagnostics and loses the
+                # remote program's exit status. Optional reads must not use it.
+                stdout = value.stdout.encode() if isinstance(value.stdout, str) else value.stdout
+                stderr = value.stderr.encode() if isinstance(value.stderr, str) else value.stderr
+                value = result(stdout + stderr, b"", 0)
             elif tail[0] == "install":
                 facts = self.fake_apk_facts(None, Path(tail[-1]), self.facts_for_file(Path(tail[-1]))["package"])
                 self.installed[facts["package"]] = facts
@@ -636,6 +645,55 @@ class DocumentsControls(unittest.TestCase):
 
     def prepared(self):
         return documents.prepare(self.host, self.host.args)
+
+    def test_remote_shell_T_preserves_binary_input_output_stderr_exit_and_quoting(self):
+        data = bytes(range(256)) + b"\r\n\x00\xfftail"
+        diagnostic = 'literal "quotes" \'single\' $(never-run) ' + chr(96) + "also-literal" + chr(96)
+        program = r'cat; printf "%s" "$1" >&2; printf "\000\377\r\n" >&2; exit "$2"'
+        with patch.object(self.host, "command", wraps=self.host.command) as command:
+            for code in (0, 3, 4, 5):
+                with self.subTest(code=code):
+                    observed = documents.remote(self.host, self.host.args, documents.PACKAGES[1],
+                                                program, diagnostic, str(code), data=data)
+                    self.assertEqual(observed.stdout, data)
+                    self.assertEqual(observed.stderr, diagnostic.encode() + b"\x00\xff\r\n")
+                    self.assertEqual(observed.returncode, code)
+                    self.assertEqual(command.call_args.kwargs,
+                                     {"binary": True, "input": data, "check": False, "timeout": 60})
+                    argv = self.host.calls[-1]
+                    self.assertEqual(argv[:5], [str(self.host.sdk / "platform-tools/adb"), "-s",
+                                               self.host.args.serial, "shell", "-T"])
+                    self.assertEqual(shlex.split(argv[5]), ["run-as", documents.PACKAGES[1],
+                        "/system/bin/sh", "-c", program, "alkion-documents", diagnostic, str(code)])
+        self.assertFalse(self.host.mutations)
+
+    def test_optional_read_requires_remote_absence_not_empty_or_invalid_file(self):
+        prepared = self.prepared()
+        prepared.output.mkdir()
+        evidence = documents.Evidence(self.host, prepared)
+        package = documents.PACKAGES[1]
+        self.assertIsNone(evidence.json(package, "files/not-present.json", "absent", optional=True))
+        directory = self.host.package_root(package) / "files/reads"
+        directory.mkdir(parents=True)
+        (directory / "empty.json").touch()
+        with self.assertRaises(json.JSONDecodeError):
+            evidence.json(package, "files/reads/empty.json", "empty", optional=True)
+        (directory / "malformed.json").write_bytes(b"{")
+        with self.assertRaises(json.JSONDecodeError):
+            evidence.json(package, "files/reads/malformed.json", "malformed", optional=True)
+        (directory / "linked.json").symlink_to(directory / "empty.json")
+        with self.assertRaisesRegex(documents.Refusal, "documents_owned_read_failed"):
+            evidence.read(package, "files/reads/linked.json", 4, "linked", optional=True)
+        with self.assertRaisesRegex(documents.Refusal, "documents_owned_read_failed"):
+            evidence.read(package, "files/reads", 4, "directory", optional=True)
+        (directory / "oversize.json").write_bytes(b"12345")
+        with self.assertRaisesRegex(documents.Refusal, "documents_owned_read_failed"):
+            evidence.read(package, "files/reads/oversize.json", 4, "oversize", optional=True)
+        with patch.object(self.host, "command", return_value=result(b"", b"diagnostic", 3)):
+            with self.assertRaisesRegex(documents.Refusal, "documents_owned_read_failed"):
+                evidence.read(package, "files/not-present.json", 4, "bad-absence", optional=True)
+        self.assertEqual(next(prepared.output.glob("*-empty.stdout")).read_bytes(), b"")
+        self.assertFalse(self.host.mutations)
 
     def test_packaged_provider_accepts_sdk36_scoped_literal_false_only(self):
         self.assertIsNone(documents.validate_packaged_provider(PACKAGED_PROVIDER_TREE))

@@ -544,6 +544,15 @@ flags. A pre-install audit refusal preserves failed builds; a reviewed tooling
 fix can retain the accepted lifecycle/observer through existing guards and a
 fresh Documents output. Version math and native fixture/admission stay unchanged;
 failed candidate versions remain in the later complete attempt inventory.
+
+Owner-only SAF transport uses non-PTY adb shell -T with binary streams and
+remote exit status, preserving strict missing-file versus empty-file checks.
+Receiving restore reuses the same scoped packaged-provider audit and retains
+its existing error, exact source-APK and installation guards. Focused host
+controls cover binary stdin/stdout/stderr, exit status, optional-read refusals
+and both affected fake facades. These tooling corrections do not admit or
+resume a failed installed campaign; the initial fixture backup failure remains
+separate native evidence requiring diagnosis.
 T5 capability fixture ownership covers new
 `app/integration_test/android_notification_capability_test.dart` and
 `app/test/alkion/acceptance/android_notification_capability_protocol_test.dart`.

@@ -219,12 +219,12 @@ def prepare(host, args):
     return Prepared(args, receipt, output, driver, updates, lifecycle, saved, metadata, revision, tuple(paths))
 
 
-# Fixed programs run as the exact debug package. exec-out preserves binary bytes;
-# the reviewed command helper supplies timeout/check handling and shell=False.
+# Fixed programs run as the exact debug package. Non-PTY shell-v2 preserves
+# binary streams and remote exit status; exec-out loses that status.
 def remote(host, args, package, program, *arguments, data=None):
     require(package in (*PACKAGES, PROVIDER), "unrecognized_documents_package")
     argv = ["run-as", package, "/system/bin/sh", "-c", program, "alkion-documents", *map(str, arguments)]
-    return host.command([args.sdk / "platform-tools/adb", "-s", args.serial, "exec-out", shlex.join(argv)],
+    return host.command([args.sdk / "platform-tools/adb", "-s", args.serial, "shell", "-T", shlex.join(argv)],
                         binary=True, input=data, check=False, timeout=60)
 
 

@@ -545,8 +545,10 @@ def prepare(host, args):
             "receiver_provider_not_exact_source_artifact")
     tree = host.command([args.sdk / "build-tools/36.0.0/aapt2", "dump", "xmltree", provider_path,
                          "--file", "AndroidManifest.xml"]).stdout
-    require(PROVIDER in tree and documents.AUTHORITY in tree and "android.permission.MANAGE_DOCUMENTS" in tree and
-            re.search(r"android:enabled\([^)]*\)=\(type 0x12\)0x0\b", tree), "receiver_provider_not_default_disabled")
+    try:
+        documents.validate_packaged_provider(tree)
+    except documents.Refusal as error:
+        raise Refusal("receiver_provider_not_default_disabled") from error
     observer, observer_path = local(host, args.ui_observer_build, pins)
     require(observer_path.name == "build.json" and observer_path.parent.name == "ui-observer" and
             callable(getattr(host, "ui_observer_validate_build", None)) and
