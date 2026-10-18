@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import zipfile
 import xml.etree.ElementTree as ET
 
@@ -664,9 +665,12 @@ def app_pid(args, package, *, timeout=60):
     return int(values[0]) if values else None
 
 PROCESS_IDENTITY_SCRIPT = '''if [ ! -d "/proc/$1" ]; then printf 'absent\\n'; exit 0; fi
-cat "/proc/$1/status" || exit
-printf '\\nalkion-proc-stat\\n'
-cat "/proc/$1/stat"
+if ! status=$(cat "/proc/$1/status" 2>/dev/null) ||
+   ! native_stat=$(cat "/proc/$1/stat" 2>/dev/null); then
+  if [ ! -d "/proc/$1" ]; then printf 'absent\\n'; exit 0; fi
+  exit 1
+fi
+printf '%s\\n\\nalkion-proc-stat\\n%s\\n' "$status" "$native_stat"
 '''
 
 def parse_process_identity(raw, pid, uid):
@@ -685,16 +689,17 @@ def parse_process_identity(raw, pid, uid):
             re.fullmatch(r"[0-9]+", values[18]), "ordinary_kill_malformed_proc_stat")
     return {"pid":pid, "uid":uid, "start_ticks":int(values[18])}
 
-def parse_cached_process(raw, package, pid, uid):
+def parse_ordinary_kill_process(raw, package, pid, uid):
     require(len(raw.encode()) <= 1048576, "ordinary_kill_process_dump_too_large")
     headers = list(re.finditer(r"^( *)\*APP\* UID[^\n]*$", raw, re.MULTILINE))
     selected = [index for index, header in enumerate(headers)
                 if re.search(r":"+re.escape(package)+r"(?:[/:}\s]|$)", header[0])]
     require(len(selected) == 1, "ordinary_kill_process_record_ambiguous")
     index = selected[0]; header = headers[index]
-    expected = (r" *\*APP\* UID "+str(uid)+r" ProcessRecord\{[^{}\s]+ "+str(pid)+":"+
-                re.escape(package)+r"/u0a"+str(uid-10000)+r"\}")
-    require(re.fullmatch(expected, header[0]), "ordinary_kill_native_pid_or_uid_changed")
+    expected = (r" *\*APP\* UID "+str(uid)+r" (ProcessRecord\{[^{}\s]+ "+str(pid)+":"+
+                re.escape(package)+r"/u0a"+str(uid-10000)+r"\})")
+    record = re.fullmatch(expected, header[0])
+    require(record, "ordinary_kill_native_pid_or_uid_changed")
     block = raw[header.end():headers[index+1].start() if index+1 < len(headers) else len(raw)]
     prefix = re.escape(header[1]+"  ")
     def one(pattern):
@@ -714,11 +719,50 @@ def parse_cached_process(raw, package, pid, uid):
     foreground = re.fullmatch(r"foregroundActivities=(true|false) \(rep=(true|false)\)\s*",flags[0]) if flags else None
     require(not flags or foreground, "ordinary_kill_malformed_foreground_flags")
     activity_flags = foreground.groups() if foreground else None
-    # API 36 can retain LAST_ACTIVITY (15) after its adjustment becomes cached.
-    # State 15 alone is insufficient: PREVIOUS_APP_ADJ (700) must never pass.
-    return {"eligible":cached == "true" and activity_flags in (None,("false","false")) and
-            all(900 <= value <= 999 for value in adj) and all(15 <= value <= 19 for value in states),
-            "adj":adj, "states":states, "cached":cached, "empty":empty, "foreground":activity_flags}
+    own_lines = [line for line in block.splitlines() if line.startswith(header[1]+"  ") and
+                 not line.startswith(header[1]+"   ")]
+    protected = [flag for line in own_lines for flag in re.findall(
+        r"\b(persistent|mPersistent|hasForegroundServices|foregroundServices)=(\S+)",line)]
+    require(len({key for key,value in protected}) == len(protected) and
+            all(value in ("true","false") for key,value in protected),
+            "ordinary_kill_protected_flags_ambiguous")
+    background = activity_flags in (None,("false","false")) and all(value == "false" for key,value in protected)
+    branch = None; previous = []
+    if background and cached == "true" and all(900 <= value <= 999 for value in adj) and all(15 <= value <= 19 for value in states):
+        branch = "cached"
+    elif background and adj == (700,)*4 and states == (15,)*3 and cached == "false" and empty == "false":
+        previous = re.findall(r"^\s*mPreviousProcess:\s*([^\n]*)$",raw,re.MULTILINE)
+        require(previous and all(value == record[1] for value in previous),
+                "ordinary_kill_previous_process_mismatch")
+        branch = "previous"
+    return {"eligible":branch is not None, "branch":branch, "process_record":record[1],
+            "previous_references":previous, "adj":adj, "states":states, "cached":cached,
+            "empty":empty, "foreground":activity_flags, "protected":dict(protected)}
+
+def parse_stopped_activity(raw, package, process_record):
+    require(len(raw.encode()) <= 1048576, "ordinary_kill_activity_dump_too_large")
+    headers = list(re.finditer(r"^( *)\* Hist\s+#[0-9]+: ([^\n]+)$",raw,re.MULTILINE))
+    selected = [index for index,header in enumerate(headers)
+                if re.search(r" u[0-9]+ "+re.escape(package)+r"/",header[2])]
+    require(len(selected) == 1, "ordinary_kill_target_activity_ambiguous")
+    index = selected[0]; header = headers[index]
+    main = "dev.animusstudio.alkion.MainActivity"
+    classes = re.escape(main)+(r"|\.MainActivity" if package == PACKAGES[2] else "")
+    require(re.fullmatch(r"ActivityRecord\{[^{}\s]+ u0 "+re.escape(package)+r"/(?:"+classes+r") t[0-9]+\}",header[2]),
+            "ordinary_kill_target_activity_mismatch")
+    block = raw[header.end():headers[index+1].start() if index+1 < len(headers) else len(raw)]
+    prefix = re.escape(header[1]+"  ")
+    def one(pattern):
+        values = re.findall("^"+prefix+pattern,block,re.MULTILINE)
+        require(len(values) == 1, "ordinary_kill_target_activity_state_ambiguous")
+        return values[0]
+    require(one(r"packageName=(\S+) processName=(\S+)\s*$") == (package,package) and
+            one(r"app=([^\n]+)$") == process_record, "ordinary_kill_target_activity_process_mismatch")
+    state = one(r"state=([A-Z_]+)\b[^\n]*$")
+    visible = one(r"mVisibleRequested=(true|false) mVisible=(true|false) mClientVisible=(true|false) reportedDrawn=(true|false) reportedVisible=(true|false)\s*$")
+    now_visible = one(r"nowVisible=(true|false)\b[^\n]*$")
+    return {"stopped":state == "STOPPED" and all(value == "false" for value in visible) and now_visible == "false",
+            "state":state, "visibility":visible, "now_visible":now_visible, "process_record":process_record}
 
 def resumed_component(raw):
     require(len(raw.encode()) <= 1048576, "ordinary_kill_activity_dump_too_large")
@@ -790,39 +834,67 @@ def ordinary_kill(args, package, uid, output):
         require(native("am","get-current-user").stdout.strip() == "0", "ordinary_kill_primary_user_required")
         settings = resolve("com.android.settings","android.settings.SETTINGS")
         home = resolve("com.android.launcher3","android.intent.action.MAIN","-c","android.intent.category.HOME")
-        # Displace PREVIOUS_APP_ADJ through an observed native Settings foreground.
+        # Observe native foreground displacement; the previous slot may remain 700.
         evidence["settings_start"] = native("am","start","-W","--user","0","-n",settings).stdout
         wait_resumed(settings,"settings_resumed")
         native("input","keyevent","KEYCODE_HOME")
         wait_resumed(home,"home_resumed")
-        eligible_deadline = min(deadline,time.monotonic()+8)
+        eligible_deadline = min(deadline,time.monotonic()+14)
         while True:
             owner()
             raw = native("dumpsys","activity","processes",package).stdout
-            evidence["eligibility"].append({"elapsed_seconds":time.monotonic()-started,"dump":raw})
-            cached = parse_cached_process(raw,package,before,uid)
-            evidence["eligibility"][-1]["state"] = cached
-            if cached["eligible"]:
+            sample = {"elapsed_seconds":time.monotonic()-started,"dump":raw}
+            evidence["eligibility"].append(sample)
+            state = parse_ordinary_kill_process(raw,package,before,uid)
+            sample["state"] = state; sample["eligible"] = state["eligible"]
+            if state["branch"] == "previous":
+                activities = native("dumpsys","activity","activities").stdout
+                sample["activities"] = activities
+                require(resumed_component(activities) == ("0",home), "ordinary_kill_home_no_longer_resumed")
+                sample["activity"] = parse_stopped_activity(activities,package,state["process_record"])
+                sample["eligible"] = sample["activity"]["stopped"]
+            if sample["eligible"]:
                 break
-            require(time.monotonic() < eligible_deadline, "ordinary_kill_never_became_cached")
+            require(time.monotonic() < eligible_deadline, "ordinary_kill_never_became_eligible")
             time.sleep(min(0.25,max(0,eligible_deadline-time.monotonic())))
-        # Recheck actual foreground and kernel identity immediately before am kill.
+        # Refresh process, activity, Home and kernel identity before the one command.
+        raw = native("dumpsys","activity","processes",package).stdout
+        evidence["before_kill_process_dump"] = raw
+        state = parse_ordinary_kill_process(raw,package,before,uid)
+        evidence["before_kill_state"] = state
+        require(state["eligible"], "ordinary_kill_process_no_longer_eligible")
+        require(state["process_record"] == sample["state"]["process_record"], "ordinary_kill_native_process_record_changed")
         raw = native("dumpsys","activity","activities").stdout
         evidence["before_kill_resumed"] = raw
         require(resumed_component(raw) == ("0",home), "ordinary_kill_home_no_longer_resumed")
+        if state["branch"] == "previous":
+            evidence["before_kill_activity"] = parse_stopped_activity(raw,package,state["process_record"])
+            require(evidence["before_kill_activity"]["stopped"], "ordinary_kill_activity_no_longer_stopped")
+        evidence["eligibility_branch"] = state["branch"]
         owner()
         path.write_text(json.dumps(evidence,indent=2)+chr(10))
         evidence["kill_command"] = native("am","kill","--user","0",package).stdout
         death_deadline = min(deadline,time.monotonic()+15)
+        evidence["death_observations"] = []
         while time.monotonic() < death_deadline:
             observed = app_pid(args,package,timeout=remaining())
+            sample = {"elapsed_seconds":time.monotonic()-started,"package_pid_before":observed}
+            evidence["death_observations"].append(sample)
             raw = native("sh","-c",PROCESS_IDENTITY_SCRIPT,"alkion-process-identity",str(before)).stdout
             identity = parse_process_identity(raw,before,uid)
+            sample["identity"] = identity
+            require(observed in (None,before), "ordinary_kill_package_restarted")
             if identity is None:
-                require(observed is None, "ordinary_kill_package_restarted")
+                # The original PID can exit between pidof and the proc reads.
+                # Only a fresh package query after exact PID absence qualifies.
+                fresh = app_pid(args,package,timeout=remaining())
+                sample["package_pid_after_absence"] = fresh
+                require(fresh is None, "ordinary_kill_package_restarted")
                 evidence["exact_pid_absent"] = True; evidence["result"] = "PASS"
                 return before
-            require(observed == before and identity == evidence["identity"], "ordinary_kill_process_changed_after_kill")
+            # pidof can omit a terminating process whose unchanged /proc record
+            # is still present. Poll it; never mistake this for confirmed death.
+            require(identity == evidence["identity"], "ordinary_kill_process_changed_after_kill")
             time.sleep(min(0.25,max(0,death_deadline-time.monotonic())))
         raise Refusal("ordinary_kill_did_not_exit_no_force_stop_fallback")
     except Exception as error:
@@ -1139,6 +1211,99 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
     except Exception as error:
         state["initial_lifecycle_phase"]="FAIL"; state["error"]=str(error); save(); raise
 
+def process_identity_self_test():
+    # Run the exact production shell program over real owned /proc children.
+    # The cat transport pauses a read so the parent can gracefully exit/reap
+    # that child, or returns a controlled unreadable/changed native response.
+    with tempfile.TemporaryDirectory(prefix="alkion-process-identity-host-") as name:
+        root = Path(name); shim = root/"cat"
+        native_cat = shutil.which("cat")
+        require(native_cat, "process_identity_host_cat_missing")
+        shim.write_text('''#!/usr/bin/env python3
+import os,subprocess,sys,time
+from pathlib import Path
+root=Path(os.environ["IDENTITY_CASE"]); mode=os.environ["IDENTITY_MODE"]
+path=Path(sys.argv[1]); part=path.name
+with (root/"reads").open("a") as log: log.write(part+chr(10))
+if mode=="exit-before-"+part:
+ (root/"blocked").write_text(part)
+ end=time.monotonic()+5
+ while not (root/"released").exists():
+  if time.monotonic()>=end: raise SystemExit("controlled_read_release_timeout")
+  time.sleep(0.005)
+if mode=="unreadable-status" and part=="status":
+ print("controlled unreadable status",file=sys.stderr); raise SystemExit(1)
+if mode=="partial-stat" and part=="stat":
+ print("partial native stat"); print("controlled partial read",file=sys.stderr); raise SystemExit(1)
+if mode=="changed-start" and part=="stat":
+ # Another owned child's real native stat supplies changed start ticks. Only
+ # its PID prefix is translated: this is not a claim of real kernel PID reuse.
+ value=Path("/proc/"+os.environ["IDENTITY_REPLACEMENT"]+"/stat").read_text()
+ print(path.parent.name+value[value.index(" "):],end=""); raise SystemExit(0)
+raise SystemExit(subprocess.run([os.environ["IDENTITY_NATIVE_CAT"],str(path)]).returncode)
+''')
+        shim.chmod(0o755); count = 0
+        for mode in ("normal", "absent-before-sample", "exit-before-status", "exit-before-stat",
+                     "unreadable-status", "partial-stat", "changed-start"):
+            directory = root/mode; directory.mkdir()
+            child = subprocess.Popen([sys.executable,"-c","import sys; sys.stdin.buffer.read()"],
+                                     stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            replacement = runner = None
+            try:
+                ticks = int(Path(f"/proc/{child.pid}/stat").read_text().rsplit(") ",1)[1].split()[19])
+                expected = {"pid":child.pid,"uid":os.getuid(),"start_ticks":ticks}
+                env = dict(os.environ,PATH=str(root)+os.pathsep+os.environ["PATH"],
+                           IDENTITY_CASE=str(directory),IDENTITY_MODE=mode,IDENTITY_NATIVE_CAT=native_cat)
+                if mode == "changed-start":
+                    time.sleep(1/os.sysconf("SC_CLK_TCK")+0.01)
+                    replacement = subprocess.Popen([sys.executable,"-c","import sys; sys.stdin.buffer.read()"],
+                        stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                    env["IDENTITY_REPLACEMENT"] = str(replacement.pid)
+                if mode == "absent-before-sample":
+                    child.stdin.close(); child.wait(timeout=5)
+                runner = subprocess.Popen(["/bin/sh","-c",PROCESS_IDENTITY_SCRIPT,
+                    "alkion-process-identity",str(child.pid)],env=env,text=True,
+                    stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                if mode.startswith("exit-before-"):
+                    limit = time.monotonic()+5
+                    while not (directory/"blocked").exists():
+                        require(runner.poll() is None and time.monotonic()<limit,
+                                "process_identity_host_read_not_blocked:"+mode)
+                        time.sleep(0.005)
+                    child.stdin.close(); child.wait(timeout=5)
+                    require(not Path(f"/proc/{child.pid}").exists(),"process_identity_host_child_not_reaped")
+                    (directory/"released").write_text("reaped")
+                stdout,stderr = runner.communicate(timeout=5)
+                require(not stderr,"process_identity_host_stderr:"+mode)
+                reads = (directory/"reads").read_text().splitlines() if (directory/"reads").exists() else []
+                if mode in ("unreadable-status","partial-stat"):
+                    require(runner.returncode != 0 and stdout == "" and child.poll() is None and
+                            Path(f"/proc/{child.pid}").is_dir(),"process_identity_host_live_read_failure_accepted:"+mode)
+                else:
+                    require(runner.returncode == 0,"process_identity_host_sample_failed:"+mode)
+                    identity = parse_process_identity(stdout,child.pid,os.getuid())
+                    if mode in ("absent-before-sample","exit-before-status","exit-before-stat"):
+                        require(stdout == "absent\n" and identity is None,"process_identity_host_partial_absence:"+mode)
+                    elif mode == "changed-start":
+                        try: require(identity == expected,"ordinary_kill_process_identity_changed")
+                        except Refusal: pass
+                        else: raise Refusal("process_identity_host_changed_start_accepted")
+                    else:
+                        require(identity == expected,"process_identity_host_normal_identity_changed")
+                expected_reads = [] if mode == "absent-before-sample" else ["status"] if mode in (
+                    "exit-before-status","unreadable-status") else ["status","stat"]
+                require(reads == expected_reads,"process_identity_host_read_order_changed:"+mode)
+                print("PASS: real-process identity control",mode); count += 1
+            finally:
+                for owned in (child,replacement):
+                    if owned is not None:
+                        if not owned.stdin.closed: owned.stdin.close()
+                        owned.wait(timeout=5)
+                if runner is not None and runner.poll() is None:
+                    (directory/"released").write_text("cleanup")
+                    runner.communicate(timeout=5)
+        print("PASS:",count,"real-process shell identity controls; no device transport or actual kernel PID reuse.")
+
 def ordinary_kill_self_test():
     # Exercise real argv -> ADB shell joining -> remote shell -> native shims.
     # Only the clock and synthetic /proc mount are substituted; no real ADB runs.
@@ -1166,6 +1331,7 @@ command=[tool,*args]
 with open(os.environ["FAKE_REMOTE_LOG"],"a") as f: f.write(json.dumps(command)+chr(10))
 state_path=Path(os.environ["FAKE_STATE"]); state=json.loads(state_path.read_text())
 scenario=state["scenario"]; package="dev.animusstudio.alkion.dev"; pid=4220; uid=10151
+previous=scenario.startswith("previous-") and scenario!="previous-to-cached"
 settings="com.android.settings/.homepage.SettingsHomepageActivity"
 home="com.android.launcher3/.uioverrides.QuickstepLauncher"
 def save(): state_path.write_text(json.dumps(state))
@@ -1182,7 +1348,7 @@ elif command==["am","start","-W","--user","0","-n",settings]:
  state["foreground"]="settings"; save(); print("Status: ok")
 elif command==["input","keyevent","KEYCODE_HOME"]:
  assert state["foreground"]=="settings"
- state["foreground"]="home"; save()
+ state["foreground"]="home"; state["home_started"]=float(os.environ.get("FAKE_CLOCK","0")); save()
 elif command==["dumpsys","activity","activities"]:
  component=settings if state["foreground"]=="settings" else home
  if scenario=="settings-not-resumed" and state["foreground"]=="settings": component=package+"/.MainActivity"
@@ -1192,21 +1358,52 @@ elif command==["dumpsys","activity","activities"]:
  print("      topResumedActivity=ActivityRecord{223442197 u0 "+component+" t7}")
  if scenario=="ambiguous-resumed" and state["foreground"]=="home": component=package+"/.MainActivity"
  print("  ResumedActivity: "+("malformed" if scenario=="malformed-resumed" else "ActivityRecord{223442197 u0 "+component+" t7}"))
+ status="STOPPED" if previous or state.get("eligible") else "STOPPING"
+ if scenario=="previous-settles" and state.get("probes",0)<2: status="STOPPING"
+ if scenario=="previous-late-stop" and state["foreground"]=="home" and float(os.environ["FAKE_CLOCK"])-state["home_started"]<10.5: status="STOPPING"
+ if scenario=="previous-never-stopped" or (scenario=="previous-activity-drift" and state.get("probes",0)>1): status="STOPPING"
+ if scenario=="previous-resumed-target": status="RESUMED"
+ activity_package="other.package" if scenario=="previous-foreign-activity" else package
+ activity_user=10 if scenario=="previous-activity-user" else 0
+ record="otherrecord" if scenario=="previous-activity-process" else "7333d1f"
+ visibility=["false"]*5
+ for index,label in enumerate(("requested","visible","client","drawn","reported")):
+  if scenario=="previous-"+label: visibility[index]="true"
+ target="    * Hist  #0: ActivityRecord{aa222 u"+str(activity_user)+" "+activity_package+"/dev.animusstudio.alkion.MainActivity t8}"+chr(10)
+ target+="      packageName="+package+" processName="+package+chr(10)
+ target+="      app=ProcessRecord{"+record+" "+str(pid)+":"+package+"/u0a151}"+chr(10)
+ target+="      state="+("malformed" if scenario=="previous-malformed-activity" else status)+" delayedResume=false finishing=false"+chr(10)
+ target+="      mVisibleRequested="+visibility[0]+" mVisible="+visibility[1]+" mClientVisible="+visibility[2]+" reportedDrawn="+visibility[3]+" reportedVisible="+visibility[4]+chr(10)
+ target+="      nowVisible="+("true" if scenario=="previous-now-visible" else "false")+" lastVisibleTime=-1s"+chr(10)
+ print(target)
+ if scenario=="previous-duplicate-activity": print(target)
 elif command==["dumpsys","activity","processes",package]:
  assert state["foreground"]=="home"
  state["probes"]=state.get("probes",0)+1
  eligible=scenario=="already-cached" or state["probes"]>1
  if scenario=="never-cached": eligible=False
- state["eligible"]=eligible; save()
+ if previous: eligible=False
+ state["eligible"]=eligible or previous; save()
  observed_uid=uid+1 if scenario=="native-uid-change" else uid
  observed_pid=pid+1 if scenario=="native-pid-change" else pid
  adj=900 if eligible else 700; proc_state=16 if scenario=="already-cached" else 15
+ if scenario in ("previous-adj-500","previous-adj-600","previous-adj-800"): adj=int(scenario.rsplit("-",1)[1])
+ if scenario=="previous-cached-false-900": adj=900
+ if scenario=="previous-state-drift" and state["probes"]>1: proc_state=14
  if scenario=="protected-state": proc_state=14
  header="  *APP* UID "+str(observed_uid)+" ProcessRecord{7333d1f "+str(observed_pid)+":"+package+"/u0a"+str(observed_uid-10000)+"}"
  block=header+chr(10)+"    user #0 uid="+str(observed_uid)+" gids={50151}"+chr(10)+"    pid="+str(observed_pid)+chr(10)
  block+="    oom adj: max=1001 curRaw="+str(adj)+" setRaw="+str(adj)+" cur="+str(adj)+" set="+str(adj)+chr(10)
  block+="    curProcState="+str(proc_state)+" mRepProcState="+str(proc_state)+" setProcState="+str(proc_state)+" lastStateTime=-1s395ms"+chr(10)
  block+="    cached="+("true" if eligible else "false")+" empty=false"+chr(10)
+ if scenario=="previous-mixed-adj": block=block.replace("setRaw=700","setRaw=900")
+ if scenario=="previous-mixed-state": block=block.replace("mRepProcState=15","mRepProcState=16")
+ if scenario=="previous-empty": block=block.replace("empty=false","empty=true")
+ if scenario=="previous-record-drift" and state["probes"]>1: block=block.replace("7333d1f","newrecord")
+ if scenario=="previous-persistent": block+="    persistent=true"+chr(10)
+ if scenario=="previous-foreground-service": block+="    hasForegroundServices=true"+chr(10)
+ if scenario=="previous-malformed-protected": block+="    persistent=malformed"+chr(10)
+ if scenario=="previous-foreground" or (scenario=="previous-foreground-drift" and state["probes"]>1): block+="    foregroundActivities=true (rep=false)"+chr(10)
  if scenario=="already-cached": block+="    foregroundActivities=false (rep=false)"+chr(10)
  if scenario=="foreground-cached": block+="    foregroundActivities=true (rep=false)"+chr(10)
  if scenario=="reported-foreground": block+="    foregroundActivities=false (rep=true)"+chr(10)
@@ -1217,6 +1414,13 @@ elif command==["dumpsys","activity","processes",package]:
  if scenario=="malformed-header": block=block.replace("*APP* UID ","*APP* UID malformed ")
  print(block)
  if scenario=="duplicate-process": print(block)
+ reference="ProcessRecord{7333d1f "+str(pid)+":"+package+"/u0a151}"
+ if scenario in ("previous-foreign-reference","previous-conflicting-reference") or (scenario=="previous-reference-drift" and state["probes"]>1): reference="ProcessRecord{7333d1f 4221:other.package/u0a151}"
+ if scenario=="previous-record-drift" and state["probes"]>1: reference=reference.replace("7333d1f","newrecord")
+ if scenario=="previous-malformed-reference": reference="malformed"
+ if scenario!="previous-missing-reference": print("  mPreviousProcess: "+reference)
+ if scenario=="previous-exact": print("  mPreviousProcess: "+reference)
+ if scenario=="previous-conflicting-reference": print("  mPreviousProcess: ProcessRecord{7333d1f "+str(pid)+":"+package+"/u0a151}")
  # A real dump repeats cached flags in its later OOM summary, at deeper indent.
  print("  OOM levels:"+chr(10)+"        cached=false empty=false hasAboveClient=false")
 elif command==["pidof",package]:
@@ -1224,8 +1428,11 @@ elif command==["pidof",package]:
   state["death_reads"]=state.get("death_reads",0)+1; save()
   gone=scenario!="no-death" and (scenario!="delayed-death" or state["death_reads"]>=3)
   if scenario=="pidof-only-absence": raise SystemExit(1)
+  if scenario=="death-between-reads" and state["death_reads"]==1: print(pid); raise SystemExit(0)
+  if scenario=="death-omitted-terminating": raise SystemExit(1)
+  if scenario=="death-fresh-replacement": print(pid if state["death_reads"]==1 else pid+1); raise SystemExit(0)
   if scenario=="death-restart": print(pid+1)
-  elif gone and scenario!="pid-reuse": raise SystemExit(1)
+  elif gone and scenario not in ("pid-reuse","death-uid-reuse"): raise SystemExit(1)
   else: print(pid)
  elif state["foreground"]=="home" and scenario=="pid-change": print(pid+1)
  elif state["foreground"]=="home" and scenario=="spontaneous-death": raise SystemExit(1)
@@ -1233,14 +1440,16 @@ elif command==["pidof",package]:
 elif command[:2]==["sh","-c"]:
  assert args==["-c",os.environ["FAKE_PROC_SCRIPT"],"alkion-process-identity",str(pid)],args
  proc=Path(os.environ["FAKE_PROC"]); directory=proc/str(pid)
- gone=state.get("killed") and scenario not in ("no-death","pid-reuse","pidof-only-absence") and (scenario!="delayed-death" or state.get("death_reads",0)>=3)
+ gone=state.get("killed") and scenario not in ("no-death","pid-reuse","death-uid-reuse","pidof-only-absence") and (scenario!="delayed-death" or state.get("death_reads",0)>=3)
+ if scenario=="death-omitted-terminating" and state.get("death_reads",0)<2: gone=False
  if gone:
   for item in directory.iterdir(): item.unlink()
   directory.rmdir()
  else:
   directory.mkdir(exist_ok=True)
-  observed_uid=uid+1 if scenario=="uid-change" and state["foreground"]=="home" else uid
+  observed_uid=uid+1 if (scenario=="uid-change" and state["foreground"]=="home") or (scenario=="death-uid-reuse" and state.get("killed")) else uid
   ticks=101 if (scenario=="start-changed" and state["foreground"]=="home") or (scenario=="pid-reuse" and state.get("killed")) else 100
+  if scenario=="previous-late-start-change" and state.get("probes",0)>1: ticks=101
   (directory/"status").write_text("Name: alkion"+chr(10)+"Pid: "+str(pid)+chr(10)+"Uid: "+" ".join([str(observed_uid)]*4)+chr(10))
   fields=["0"]*49; fields[18]=str(ticks)
   (directory/"stat").write_text(str(pid)+" (alkion (dev)) S "+" ".join(fields)+chr(10))
@@ -1257,10 +1466,14 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
         target = argparse.Namespace(sdk=sdk,serial="emulator-5558")
         previous = dict(os.environ); count = 0
         scenarios = (("previous-to-cached",None,1),("already-cached",None,1),("delayed-death",None,1),
-            ("never-cached","ordinary_kill_never_became_cached",0),
-            ("protected-state","ordinary_kill_never_became_cached",0),
-            ("foreground-cached","ordinary_kill_never_became_cached",0),
-            ("reported-foreground","ordinary_kill_never_became_cached",0),
+            ("death-between-reads",None,1),("death-omitted-terminating",None,1),
+            ("death-fresh-replacement","ordinary_kill_package_restarted",1),
+            ("death-uid-reuse","ordinary_kill_proc_pid_or_uid_changed",1),
+            ("previous-late-stop",None,1),
+            ("never-cached","ordinary_kill_never_became_eligible",0),
+            ("protected-state","ordinary_kill_never_became_eligible",0),
+            ("foreground-cached","ordinary_kill_never_became_eligible",0),
+            ("reported-foreground","ordinary_kill_never_became_eligible",0),
             ("malformed-foreground","ordinary_kill_malformed_foreground_flags",0),
             ("duplicate-foreground","ordinary_kill_foreground_flags_ambiguous",0),
             ("pid-change","ordinary_kill_package_pid_changed",0),
@@ -1284,7 +1497,28 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
             ("no-death","ordinary_kill_did_not_exit_no_force_stop_fallback",1),
             ("death-restart","ordinary_kill_package_restarted",1),
             ("pid-reuse","ordinary_kill_process_changed_after_kill",1),
-            ("pidof-only-absence","ordinary_kill_process_changed_after_kill",1))
+            ("pidof-only-absence","ordinary_kill_did_not_exit_no_force_stop_fallback",1),
+            ("previous-exact",None,1),("previous-settles",None,1),
+            *((scenario,"ordinary_kill_never_became_eligible",0) for scenario in
+                ("previous-never-stopped","previous-resumed-target","previous-visible","previous-requested",
+                 "previous-client","previous-drawn","previous-reported","previous-now-visible","previous-mixed-adj",
+                 "previous-mixed-state","previous-adj-500","previous-adj-600","previous-adj-800",
+                 "previous-cached-false-900","previous-empty","previous-persistent",
+                 "previous-foreground-service","previous-foreground")),
+            *((scenario,"ordinary_kill_previous_process_mismatch",0) for scenario in
+                ("previous-missing-reference","previous-foreign-reference","previous-conflicting-reference",
+                 "previous-malformed-reference","previous-reference-drift")),
+            ("previous-malformed-protected","ordinary_kill_protected_flags_ambiguous",0),
+            ("previous-activity-process","ordinary_kill_target_activity_process_mismatch",0),
+            ("previous-foreign-activity","ordinary_kill_target_activity_ambiguous",0),
+            ("previous-duplicate-activity","ordinary_kill_target_activity_ambiguous",0),
+            ("previous-activity-user","ordinary_kill_target_activity_mismatch",0),
+            ("previous-malformed-activity","ordinary_kill_target_activity_state_ambiguous",0),
+            ("previous-state-drift","ordinary_kill_process_no_longer_eligible",0),
+            ("previous-foreground-drift","ordinary_kill_process_no_longer_eligible",0),
+            ("previous-activity-drift","ordinary_kill_activity_no_longer_stopped",0),
+            ("previous-record-drift","ordinary_kill_native_process_record_changed",0),
+            ("previous-late-start-change","ordinary_kill_process_identity_changed",0))
         try:
             for scenario, expected, kills in scenarios:
                 directory = root/scenario; directory.mkdir(); (directory/"proc").mkdir()
@@ -1297,6 +1531,7 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
                 def timed_command(argv, **options):
                     require(argv[0] == tools/"adb" and 0 < options["timeout"] <= min(5,30-time.value),
                             "ordinary_kill_host_transport_exceeded_remaining_budget")
+                    os.environ["FAKE_CLOCK"] = str(time.value)
                     result = original_command(argv,**options)
                     time.value += min(options["timeout"],5 if scenario == "total-budget" else 0.03)
                     return result
@@ -1309,17 +1544,37 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
                 record = json.loads(next(directory.glob("*-ordinary-kill-*.json")).read_text())
                 require(record["elapsed_seconds"] <= 30.1 and record["result"] == ("FAIL" if expected else "PASS"),
                         "ordinary_kill_host_budget_or_receipt_changed:"+scenario)
+                deaths = record.get("death_observations",[])
+                if scenario == "death-between-reads":
+                    require(len(deaths) == 1 and deaths[0]["package_pid_before"] == 4220 and
+                            deaths[0]["identity"] is None and deaths[0]["package_pid_after_absence"] is None,
+                            "ordinary_kill_host_between_reads_not_observed")
+                if scenario == "death-omitted-terminating":
+                    require(len(deaths) >= 2 and deaths[0]["package_pid_before"] is None and
+                            deaths[0]["identity"] == record["identity"] and
+                            deaths[-1]["identity"] is None and deaths[-1]["package_pid_after_absence"] is None,
+                            "ordinary_kill_host_terminating_omission_not_observed")
+                if scenario == "death-fresh-replacement":
+                    require(deaths[-1]["package_pid_before"] == 4220 and deaths[-1]["identity"] is None and
+                            deaths[-1]["package_pid_after_absence"] == 4221 and
+                            not record.get("exact_pid_absent"),"ordinary_kill_host_replacement_not_observed")
                 commands = [json.loads(line) for line in (directory/"remote.jsonl").read_text().splitlines()]
                 require(commands.count(["am","kill","--user","0",PACKAGES[1]]) == kills and
                         not any(word in command for command in commands for word in
                             ("force-stop","kill-all","clear","uninstall","install","rm","su","SIGKILL")),
                         "ordinary_kill_host_forbidden_fallback:"+scenario)
                 if expected is None:
-                    require(record.get("exact_pid_absent") is True and record["eligibility"][-1]["state"]["eligible"],
+                    require(record.get("exact_pid_absent") is True and record["eligibility"][-1]["eligible"] and
+                            record.get("eligibility_branch") == ("previous" if scenario.startswith("previous-") and
+                            scenario != "previous-to-cached" else "cached"),
                             "ordinary_kill_host_missing_native_proof")
-                    if scenario == "previous-to-cached":
-                        require(not record["eligibility"][0]["state"]["eligible"] and len(record["eligibility"]) >= 2,
+                    if scenario in ("previous-to-cached","previous-settles"):
+                        require(not record["eligibility"][0]["eligible"] and len(record["eligibility"]) >= 2,
                                 "ordinary_kill_host_previous_app_not_observed")
+                    if scenario == "previous-late-stop":
+                        require(not record["eligibility"][0]["eligible"] and
+                                8 < record["eligibility"][-1]["elapsed_seconds"] < 14,
+                                "ordinary_kill_host_late_stop_not_observed")
                 count += 1
         finally:
             time = original_time; command = original_command
@@ -1740,13 +1995,55 @@ else: raise SystemExit("unexpected transport mutation: "+repr(cmd))
         print("PASS:",count,"fresh guards +3 raw-report +3 driver-contract +2 faithful shell-quoting +",continuation_count,
               "continuation/candidate cases; fake transport only; zero install/start/clear/uninstall.")
 
+def documents_module():
+    # The source candidate must remain clean; never cache imports in the checkout.
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(SCRIPT.parent))
+    import android_synthetic_documents
+    return android_synthetic_documents
+
+def documents_host():
+    names = ("APP", "command", "adb", "receipt_guard", "temporary_path", "read_json", "toolchain",
+             "apk_facts", "installed_matches", "package_metadata", "device_platform_guard",
+             "driver_continuation_contract", "lifecycle_contract", "driver_neighbor_bytes",
+             "closed_profile_fingerprint", "app_pid", "ordinary_kill", "ui_document", "click_node")
+    return SimpleNamespace(**{name: globals()[name] for name in names})
+
+def documents_action(args):
+    module = documents_module(); host = documents_host()
+    if args.action == "build-documents":
+        argv = module.documents_build_arguments(os.environ)
+        toolchain(args)
+        revision = os.environ["ALKION_PROOF_SOURCE"]
+        require(module.source(host) == revision, "documents_build_source_mismatch")
+        built = command(argv, check=False, timeout=600)
+        print(built.stdout, end=""); print(built.stderr, end="", file=sys.stderr)
+        require(module.source(host) == revision, "source_changed_during_documents_build")
+        raise SystemExit(built.returncode)
+    if args.action == "build-documents-provider":
+        revision = os.environ.get("ALKION_PROOF_SOURCE", "")
+        require(re.fullmatch(r"[a-f0-9]{40}", revision), "explicit_provider_build_source_required")
+        require(args.output is not None, "fresh_output_required")
+        require(module.source(host) == revision, "provider_build_source_mismatch")
+        apk, facts = module.build_provider(host, args, temporary_path(args.output))
+        require(module.source(host) == revision, "source_changed_during_provider_build")
+        print("Synthetic documents provider built:", apk)
+        return
+    prepared = module.prepare(host, args)
+    if args.action == "documents-check":
+        print("Recognized driver/A2/current-lifecycle installation verified; no install, enable, launch or picker action.")
+    else:
+        return module.run(host, prepared)
+
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","self-test"), default="check")
+parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","self-test","documents-check","documents","build-documents","build-documents-provider"), default="check")
 parser.add_argument("--avd")
 parser.add_argument("--serial")
 parser.add_argument("--receipt")
 parser.add_argument("--output")
 parser.add_argument("--base-run")
+parser.add_argument("--driver-run")
+parser.add_argument("--updates-run")
 args = parser.parse_args(sys.argv[2:])
 args.sdk = Path(os.environ.get("ANDROID_HOME",""))
 try:
@@ -1754,6 +2051,7 @@ try:
         self_test()
         lifecycle_self_test()
         ordinary_kill_self_test()
+        process_identity_self_test()
     elif args.action == "build-lifecycle":
         argv = lifecycle_build_arguments(os.environ)
         toolchain(args)
@@ -1764,6 +2062,8 @@ try:
         require(args.output is not None,"fresh_output_required")
         apk, facts = build_neighbor(args,temporary_path(args.output))
         print("Synthetic neighbor built:",apk)
+    elif args.action in ("documents-check", "documents", "build-documents", "build-documents-provider"):
+        documents_action(args)
     else:
         receipt, output = receipt_guard(args)
         require((args.sdk / "platform-tools/adb").is_file(),"adb_required")

@@ -345,6 +345,14 @@ At `2274080`, fresh driver11 passed both variants (independent evidence PASS),
 then A2 update/rejected-signer checks passed. Lifecycle failed after development
 prepare40: native previous-app state stayed noncached. Retain receipts/data and
 replan the second ordinary-kill gate failure before another execution attempt.
+The bounded replan retains cached eligibility and adds only exact native
+previous-process 700/15 evidence with bound stopped/nonvisible activity.
+Independent source review PASS; retained 108 host controls and 67 ordinary-kill
+cases PASS. Native diagnostic and a fresh lifecycle campaign are still required.
+At `2566979`, driver11/A2 passed again; lifecycle stopped before prepare40 on a
+non-atomic process-read race. A2 preflight still passes. Buffered sampling and
+fresh dual-absence fixes passed source/fix review, seven real-process controls
+and focused helper interleavings/timing controls. Android retry remains pending.
 
 Fresh driver attempt at `e532a82` failed on Android child descriptor inheritance;
 nine development cases passed, with later cases and supported execution unreached.
@@ -355,6 +363,22 @@ Functional-first scope amendment, 2026-10-18: independent design/fix review PASS
 T5 SAF host-route ownership additionally covers new
 `app/tool/android_synthetic_documents{,_self_test}.py`; Make/harness wiring is
 serialized after the lifecycle helper's handoff. Installed proof remains pending.
+SAF host-route module and Make/harness integration passed independent source
+review after atomic acknowledgement publication and literal Make-input fixes.
+Nineteen module controls, then twenty-four integrated host controls passed;
+three affected Make-boundary controls passed after the final quoting fix.
+These use fake transports; actual provider and receiving restore remain unrun.
+T5 capability fixture ownership covers new
+`app/integration_test/android_notification_capability_test.dart` and
+`app/test/alkion/acceptance/android_notification_capability_protocol_test.dart`.
+Permission/capability fixtures and closed-store oracles are implemented separately;
+later host routing and Make wiring require a serialized handoff and review.
+Capability fixture/checkpoint source: independent task review PASS, fourteen
+real-store host controls PASS, analyzer and owned formatting PASS. This qualifies
+preservation/logging oracles only; native permission, alarm and UI proof is unrun.
+T5 capability host-route ownership additionally covers new
+`app/tool/android_synthetic_capabilities{,_self_test}.py`; keep this isolated
+module separate from later serialized Make/harness wiring and device execution.
 
 Ordinary-kill harness fix, base `7e21216`: independent full-lane source review PASS.
 `make -C app android-synthetic-self-test` passed the retained 108 controls and
