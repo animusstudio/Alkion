@@ -241,6 +241,12 @@ below six seconds, watchdog eight seconds, host capture 20 seconds and host focu
 20 samples/two seconds unchanged. No UI/product-action retry, idle wait, new root,
 deadline reset or budget extension is introduced. V4 rejects V3 artifacts.
 
+For V4 staged diagnostics, receipt JSON has a separate finite limit of 65,536
+bytes, replacing the prior 16,384-byte metadata limit. Enforce this byte limit
+before JSON parsing, including failure receipts. XML remains limited to 1 MiB;
+every sample/tree/native/global timing bound remains unchanged. Oversized,
+partial, malformed or late inputs refuse without a retry, deadline or size rescue.
+
 The earlier compound window refusal does not identify its failed subcondition.
 Null/inactive/unfocused readiness is an explicit prospective classification, not
 a demonstrated explanation or fix of that historical failure. Preserve failed

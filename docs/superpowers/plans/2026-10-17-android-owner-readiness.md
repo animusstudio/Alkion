@@ -445,6 +445,14 @@ seconds, completion below six seconds, watchdog eight seconds, host capture
 20 seconds and focus 20 samples/two seconds; no product/UI action retry,
 global-idle wait, timer reset, deadline rescue or expanded bound.
 
+V4 receipt JSON alone may grow from 16,384 to 65,536 bytes for mandatory staged
+diagnostics. A measured compact 40-sample host fixture is 29,445 bytes; this is
+an observed fixture size, not an absolute mathematical maximum. Enforce the
+finite byte limit before parsing and test the actual 40-sample fixture through
+the bounded reader, plus oversized/partial/late refusal. XML remains 1 MiB;
+all sample, tree, native, focus and global deadlines stay unchanged. No retry,
+size/deadline rescue, new API or device qualification follows this adjustment.
+
 Run the actual compiled poller and window classifier for null-to-ready and each
 independent flag path, invalid/mismatched/changed identity/display/type despite
 unready flags, getter/security/same-message unrelated failure, known-fact stages,
