@@ -348,7 +348,7 @@ void main() {
           ),
         );
         // An unrelated file already holding the name is never replaced, even
-        // without any pre-check: the exclusive link refuses it.
+        // without any pre-check: exclusive publication refuses it.
         final occupied = File(
           '${out.path}/alkion-original-${bad.artifactId!.substring(4, 20)}.bin',
         );

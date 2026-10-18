@@ -31,6 +31,15 @@ empty-storage restore, but the app has no first-start entry for it.
 The locked `sqlite3`/`sqlite_async` driver, FFI locking/fsync, transfer and restore
 tests prove bounded Linux behavior, with Android still unqualified.
 
+Publication amendment (2026-10-18): preserve atomic exclusive final-name
+publication, directory fsync and readback verification. Android uses a fixed
+two-path NDK shim calling `renameat2(RENAME_NOREPLACE)` through the compiler's
+syscall header at minSdk24, returning same-call errno without an overwrite
+fallback. Success consumes the owned temporary; callers clean it up only if it
+remains. Linux retains its existing hard-link route. API24 compilation does not
+qualify API24–29 runtime support; actual Android publication, collision and
+receiving-file gates remain required.
+
 `WorkoutNotification` is not initialized by production startup; native scheduled
 and action receivers are disabled. Its shown notification carries no fenced
 payload, and its background helper changes SQL without refreshing the OS mirror.

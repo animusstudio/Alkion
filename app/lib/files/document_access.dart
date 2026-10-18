@@ -107,10 +107,10 @@ Future<DocumentFile> stageDocument(
   if (copied.sha256 != original.sha256 || copied.length != original.length) {
     throw const DocumentException('document_source_changed');
   }
-  if (!linkExclusive(partial.path, complete.path)) {
+  if (!publishExclusive(partial.path, complete.path)) {
     throw const DocumentException('document_staging_collision');
   }
-  await partial.delete();
+  if (await partial.exists()) await partial.delete();
   flushDirectory(directory.path);
   return DocumentFile(
     path: complete.path,

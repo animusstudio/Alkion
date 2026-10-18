@@ -130,6 +130,78 @@ void main() {
     timeout: const Timeout(Duration(seconds: 120)),
   );
 
+  test('backup accepts a temporary consumed at publication', () async {
+    final root = await seeded();
+    final store = await proof.openStore(root);
+    final dest = await destination();
+    late BackupReceipt receipt;
+    try {
+      receipt = await createBackup(
+        store,
+        dest,
+        checkpoint: (phase) async {
+          if (phase == 'backup-published') {
+            // Linux link retains the temporary. Removing that owned name here
+            // reproduces Android's consumed-source state before caller cleanup.
+            for (final file in dest.listSync().whereType<File>()) {
+              if (p.basename(file.path).contains('.partial-')) {
+                await file.delete();
+              }
+            }
+          }
+        },
+      );
+    } finally {
+      await store.close();
+    }
+    expect(dest.listSync().map((e) => e.path), [receipt.path]);
+    expect(
+      (await verifyBackupFile(
+        File(receipt.path),
+        workDirectory: temp,
+      )).containerSha256,
+      receipt.verified.containerSha256,
+    );
+  });
+
+  for (final cut in ['backup-before-publish', 'backup-published']) {
+    test(
+      'backup interruption at $cut preserves source and any final',
+      () async {
+        final root = await seeded();
+        final before = await coveredAt(root);
+        final store = await proof.openStore(root);
+        final dest = await destination();
+        try {
+          await expectLater(
+            createBackup(
+              store,
+              dest,
+              checkpoint: (phase) async {
+                if (phase == cut) throw StateError('publication cut');
+              },
+            ),
+            throwsStateError,
+          );
+        } finally {
+          await store.close();
+        }
+        final files = dest.listSync();
+        if (cut == 'backup-before-publish') {
+          expect(files, isEmpty);
+        } else {
+          expect(files, hasLength(1));
+          final verified = await verifyBackupFile(
+            files.single as File,
+            workDirectory: temp,
+          );
+          expect(verified.facts.state.digest(), before.digest());
+        }
+        expect((await coveredAt(root)).digest(), before.digest());
+      },
+    );
+  }
+
   test(
     'injected disk-full while writing publishes nothing and keeps the source',
     () async {

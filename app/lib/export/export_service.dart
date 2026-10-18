@@ -33,7 +33,7 @@ abstract interface class ExportDelivery {
 }
 
 /// Publishes flushed temporary bytes into an explicit directory with an
-/// exclusive hard link (which cannot replace an existing name, unlike rename),
+/// atomic exclusive publication (which cannot replace an existing name),
 /// removes the temporary name, fsyncs the directory and re-reads the hash.
 final class DirectoryExportDelivery implements ExportDelivery {
   DirectoryExportDelivery(this.directory);
@@ -58,7 +58,7 @@ final class DirectoryExportDelivery implements ExportDelivery {
       } finally {
         await handle.close();
       }
-      if (!linkExclusive(temp.path, target.path)) {
+      if (!publishExclusive(temp.path, target.path)) {
         throw const StoreException('export_destination_exists');
       }
     } finally {

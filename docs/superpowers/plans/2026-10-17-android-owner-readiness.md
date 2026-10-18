@@ -24,6 +24,20 @@ high design review). One implementer per task; coordinator serializes Git and
 shared files. Each task receives one independent review; fixes get a diff recheck.
 One branch/PR for this plan, no direct main push or history rewrite.
 
+Bounded publication correction (2026-10-18): own
+`app/lib/export/exclusive_publish.dart`, its backup/export/document-staging
+callers, the restore and notification-capability integration-test callers,
+`app/android/app/build.gradle.kts` and new `src/main/cpp/{alkion_fileops.c,CMakeLists.txt}`.
+Use one min24 NDK no-replace rename operation with same-call errno; preserve
+Linux hard links, directory flush/readback and published-final preservation.
+Focused filesystem and backup-checkpoint tests cover collision, concurrent
+publication and consumed-temporary cleanup. Update the backup/export guides,
+this specification/plan and acceptance record. Host Documents/CAP proof writers
+need a separately reviewed atomic publisher before another campaign; this
+product correction grants no host-helper, provider or A5 ownership. Compile and
+host checks establish no Android runtime PASS; schedule fresh exact-source
+native publication and downstream document/restore proof after source review.
+
 The [separate UI plan](2026-10-17-ui-ux-refactor.md) owns a deferred visual
 polish pass. Preserve its committed source baseline and completed history; do not
 make new styling work a gate for functional qualification. Any later presentation

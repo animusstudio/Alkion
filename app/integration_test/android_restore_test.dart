@@ -88,7 +88,7 @@ Future<Uint8List> restoreRegular(File file, {int limit = _bound}) async {
   return file.readAsBytes();
 }
 
-/// Hard-link publication refuses replacement; even partial receipts are retained.
+/// Exclusive publication refuses replacement and retains failed partial receipts.
 Future<void> restorePublish(File file, Map<String, Object?> value) async {
   final partial = File('${file.path}.partial-$pid');
   must(
@@ -97,7 +97,7 @@ Future<void> restorePublish(File file, Map<String, Object?> value) async {
     'Receipt partial already exists',
   );
   await partial.writeAsBytes(localBytes(value), flush: true);
-  must(linkExclusive(partial.path, file.path), 'Receipt already exists');
+  must(publishExclusive(partial.path, file.path), 'Receipt already exists');
   flushDirectory(file.parent.path);
 }
 

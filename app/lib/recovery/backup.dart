@@ -478,11 +478,11 @@ Future<BackupReceipt> createBackup(
       await handle.close();
     }
     await checkpoint?.call('backup-before-publish');
-    if (!linkExclusive(partial.path, target)) {
+    if (!publishExclusive(partial.path, target)) {
       throw const StoreException('backup_destination_exists');
     }
     await checkpoint?.call('backup-published');
-    await partial.delete();
+    if (await partial.exists()) await partial.delete();
     flushDirectory(directory);
     final verified = await verifyBackupFile(
       File(target),

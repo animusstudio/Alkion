@@ -551,7 +551,7 @@ Future<void> publishCapabilityReport(
     'report_already_present',
   );
   await partial.writeAsString('${jsonEncode(report)}\n', flush: true);
-  _require(linkExclusive(partial.path, terminal), 'report_already_present');
+  _require(publishExclusive(partial.path, terminal), 'report_already_present');
   flushDirectory(directory.path);
 }
 

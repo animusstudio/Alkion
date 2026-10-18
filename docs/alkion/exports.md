@@ -16,9 +16,11 @@ receiving verification and restore are T6.
 | Original bytes | the staged artifact bytes | `TransferService.originalBytes` verifies the stored SHA-256 and returns the exact staged bytes for selected, superseded, rejected or incompatible artifacts. Never a rebuilt document. |
 
 Delivery (`ExportDelivery`) never alters bytes. `DirectoryExportDelivery` writes a
-flushed temporary file, publishes it with an exclusive libc `link(2)` (which,
-unlike rename, cannot replace an existing name), removes the temporary name,
-fsyncs the directory, re-reads and compares the SHA-256; a failed write
+flushed temporary file and publishes it atomically without replacing any
+existing name. Android uses the min24 NDK `renameat2(RENAME_NOREPLACE)` shim,
+which consumes the temporary name; Linux retains libc `link(2)`. The caller
+removes its temporary name only if it remains, fsyncs the directory, re-reads
+and compares the SHA-256; a failed write
 removes only its own temporary file. Linux uses the documents directory;
 other platforms write to the temporary directory and open the share sheet, and
 share success is not backup proof.

@@ -215,6 +215,16 @@ checks ran. This is a failed attempt, not a lifecycle PASS. T5 remains
 campaign must be fresh and cannot continue from that attempt. No process-death,
 notification-action or reopen/logging result is established by it.
 
+Android publication correction (2026-10-18): the ninth backup attempt failed
+before SAF in the old hard-link publisher. A separate bounded cache probe
+observed hard-link permission denial; the original backup's errno and cause
+remain unknown. The correction uses a min24 NDK atomic no-replace rename on
+Android and retains Linux hard links, with consumed-temporary cleanup and
+published-final preservation. Focused host filesystem/checkpoint tests and
+min24 ABI compilation qualify source behavior only. Actual app-context
+publication, API24–29 execution and the new Documents/receiving/CAP campaign
+remain **UNRUN**. Host proof publication is a separate dependency.
+
 ## History numeric overflow (2026-10-17)
 
 Published 2026-10-17: the owner approved the exact range `1892ca4..95b52cd` and
@@ -401,7 +411,7 @@ remainder is UNRUN or a finding. **UNRUN/BLOCKED**, nothing ran.
 | AC-13 | PASS | `transfer/import_test.dart`: AC-13 changed source with overlay, absence kept or successor-deleted, absent slot, exercise and sets, repeated imports, and D2 supersession. Integrated changed reimport yields one absence review. | — |
 | AC-14 | PASS (synthetic) | `transfer/correspondence_test.dart`. | Real lookup and verification are **UNRUN** (R3). |
 | AC-15 | PASS (synthetic seam) | `transfer/quarantine_test.dart` (exact malformed, expired, temp and unknown bytes; ordered uncertain queue; failed read is not empty); `recovery/backup_restore_test.dart` (AC-15 evidence survives backup and separate restore). The integrated flow leaves decoys untouched. There is no app loader by decision ([owner gates](owner-gates.md#incoming-quarantine-wiring-t5t6-carry)). | A complete legacy backup is not claimed. Owner legacy capture is **UNRUN**. |
-| AC-16 | PASS | `transfer/export_test.dart` (domain exactness and coverage, history exclusions and non-importability, compatibility round trip, exact originals with atomic publication, coherence under concurrent writes). All four integrated exports. | Without hard links, export fails generically (known limit). |
+| AC-16 | PASS | `transfer/export_test.dart` (domain exactness and coverage, history exclusions and non-importability, compatibility round trip, exact originals with atomic publication, coherence under concurrent writes). All four integrated exports. | Android no-replace publication runtime qualification remains **UNRUN**; unsupported native operations fail closed. |
 | AC-17 | PASS (process-crash and injected scope) | `alkion-backup-recovery`: WAL-tail backup and receiving copy; flipped, truncated, missing-line, tampered-inventory, unsupported-version and missing-file refusal; newer schema; foreign profile; SIGKILL during publication; separate-storage restore and its interruption; two reopens; stale process; `profile_in_use`; hot-copy negative control. `recovery/backup_restore_test.dart` (WAL-only commit, injected `ENOSPC` while writing and staging). Integrated backup, restore and separate restore. | Physical `ENOSPC` and power loss **UNRUN**; Android/off-device media **UNRUN**. |
 | AC-18 | PASS (owned synthetic installation) | Backup proof: post-backup edit, delete, draft change, pending attempt, rejected and acknowledged outcomes, and a reimport are reconciled as reviews; unreadable previous generation gives an explicit unknown loss boundary; interruption and abandon cases; the naive replacement negative control. `recovery_ui_test.dart` (in-app restore and interrupted launch). The integrated flow keeps newer work as a review with transport blocked. | Global multi-device writer handoff is **UNRUN** (milestone O). |
 | AC-19 | PASS (Linux) | Integrated flows, layout and focused regression tests (above), with no tolerated exception or split; FVM format, analyze, full suite and Linux build (receipts below). | Android is **UNRUN** (outside this Linux claim; see AC-2/AC-8 and [owner gates](owner-gates.md)). |
