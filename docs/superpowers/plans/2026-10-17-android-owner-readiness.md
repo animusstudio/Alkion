@@ -534,6 +534,16 @@ review after atomic acknowledgement publication and literal Make-input fixes.
 Nineteen module controls, then twenty-four integrated host controls passed;
 three affected Make-boundary controls passed after the final quoting fix.
 These use fake transports; actual provider and receiving restore remain unrun.
+
+The packaged-provider audit uses the pinned SDK 36 manifest-tree grammar and
+requires the unique expected provider's full Android-namespace attributes,
+including literal disabled state, exact name/authority/permission and exported/
+URI-grant flags. Focused host controls replay the real packaged dump and reject
+foreign or ambiguously scoped values, duplicates, missing attributes and changed
+flags. A pre-install audit refusal preserves failed builds; a reviewed tooling
+fix can retain the accepted lifecycle/observer through existing guards and a
+fresh Documents output. Version math and native fixture/admission stay unchanged;
+failed candidate versions remain in the later complete attempt inventory.
 T5 capability fixture ownership covers new
 `app/integration_test/android_notification_capability_test.dart` and
 `app/test/alkion/acceptance/android_notification_capability_protocol_test.dart`.

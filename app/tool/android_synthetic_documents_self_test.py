@@ -36,6 +36,36 @@ CERT = "b" * 64
 RAW = bytes(range(256)) * 1025
 SOURCE_NAME = "alkion-backup-12345678-20261018T121314Z-abcdef.alkionbackup"
 
+# Faithful pinned SDK 36 aapt2 xmltree output for the synthetic fixture.
+PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/android (line=1)
+  E: manifest (line=1)
+    A: http://schemas.android.com/apk/res/android:versionCode(0x0101021b)=1
+    A: http://schemas.android.com/apk/res/android:versionName(0x0101021c)="synthetic" (Raw: "synthetic")
+    A: http://schemas.android.com/apk/res/android:compileSdkVersion(0x01010572)=36
+    A: http://schemas.android.com/apk/res/android:compileSdkVersionCodename(0x01010573)="16" (Raw: "16")
+    A: package="dev.animusstudio.alkion.synthetic.documents" (Raw: "dev.animusstudio.alkion.synthetic.documents")
+    A: platformBuildVersionCode=36
+    A: platformBuildVersionName=16
+      E: uses-sdk (line=0)
+        A: http://schemas.android.com/apk/res/android:minSdkVersion(0x0101020c)=24
+        A: http://schemas.android.com/apk/res/android:targetSdkVersion(0x01010270)=36
+      E: application (line=4)
+        A: http://schemas.android.com/apk/res/android:label(0x01010001)="Alkion Synthetic Documents" (Raw: "Alkion Synthetic Documents")
+        A: http://schemas.android.com/apk/res/android:debuggable(0x0101000f)=true
+        A: http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=false
+        A: http://schemas.android.com/apk/res/android:usesCleartextTraffic(0x010104ec)=false
+          E: provider (line=7)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)=".SyntheticDocumentsProvider" (Raw: ".SyntheticDocumentsProvider")
+            A: http://schemas.android.com/apk/res/android:permission(0x01010006)="android.permission.MANAGE_DOCUMENTS" (Raw: "android.permission.MANAGE_DOCUMENTS")
+            A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=false
+            A: http://schemas.android.com/apk/res/android:exported(0x01010010)=true
+            A: http://schemas.android.com/apk/res/android:authorities(0x01010018)="dev.animusstudio.alkion.synthetic.documents.provider" (Raw: "dev.animusstudio.alkion.synthetic.documents.provider")
+            A: http://schemas.android.com/apk/res/android:grantUriPermissions(0x0101001b)=true
+              E: intent-filter (line=12)
+                  E: action (line=13)
+                    A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.content.action.DOCUMENTS_PROVIDER" (Raw: "android.content.action.DOCUMENTS_PROVIDER")
+"""
+
 
 def result(stdout="", stderr="", code=0):
     return SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
@@ -269,8 +299,7 @@ class FakeHost:
                 with zipfile.ZipFile(argv[argv.index("-o") + 1], "w"):
                     pass
                 return result()
-            return result(documents.PROVIDER + " " + documents.AUTHORITY +
-                          ' android.permission.MANAGE_DOCUMENTS\n A: android:enabled(0x0101000e)=(type 0x12)0x0\n')
+            return result(PACKAGED_PROVIDER_TREE)
         if argv[0].endswith("/zipalign"):
             shutil.copyfile(argv[-2], argv[-1]); return result()
         if argv[0].endswith("/java"):
@@ -607,6 +636,54 @@ class DocumentsControls(unittest.TestCase):
 
     def prepared(self):
         return documents.prepare(self.host, self.host.args)
+
+    def test_packaged_provider_accepts_sdk36_scoped_literal_false_only(self):
+        self.assertIsNone(documents.validate_packaged_provider(PACKAGED_PROVIDER_TREE))
+        enabled = next(line for line in PACKAGED_PROVIDER_TREE.splitlines() if ":enabled(" in line)
+        provider = PACKAGED_PROVIDER_TREE[PACKAGED_PROVIDER_TREE.index("          E: provider"):]
+        wrong = {
+            "enabled-true": PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=true")),
+            "missing-enabled": PACKAGED_PROVIDER_TREE.replace(enabled + "\n", ""),
+            "duplicate-enabled": PACKAGED_PROVIDER_TREE.replace(enabled, enabled + "\n" + enabled),
+            "conflicting-enabled": PACKAGED_PROVIDER_TREE.replace(enabled, enabled + "\n" + enabled.replace("=false", "=true")),
+            "foreign-name": PACKAGED_PROVIDER_TREE.replace(".SyntheticDocumentsProvider", ".ForeignProvider"),
+            "foreign-authority": PACKAGED_PROVIDER_TREE.replace(documents.AUTHORITY, documents.AUTHORITY + ".foreign"),
+            "wrong-permission": PACKAGED_PROVIDER_TREE.replace("android.permission.MANAGE_DOCUMENTS", "android.permission.INTERNET"),
+            "wrong-exported": PACKAGED_PROVIDER_TREE.replace("exported(0x01010010)=true", "exported(0x01010010)=false"),
+            "wrong-grant": PACKAGED_PROVIDER_TREE.replace("grantUriPermissions(0x0101001b)=true", "grantUriPermissions(0x0101001b)=false"),
+            "foreign-namespace": PACKAGED_PROVIDER_TREE.replace("http://schemas.android.com/apk/res/android", "http://foreign.invalid/android"),
+            "legacy-fake-boolean": PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=(type 0x12)0x0")),
+            "wrong-resource-id": PACKAGED_PROVIDER_TREE.replace("enabled(0x0101000e)", "enabled(0x0101000f)"),
+            "wrong-package": PACKAGED_PROVIDER_TREE.replace('package="' + documents.PROVIDER + '"', 'package="foreign.provider"'),
+            "duplicate-provider": PACKAGED_PROVIDER_TREE + provider,
+            "foreign-provider-false": PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=true")) + provider.replace(".SyntheticDocumentsProvider", ".ForeignProvider"),
+            "application-false-only": PACKAGED_PROVIDER_TREE.replace(enabled, enabled[4:]),
+            "application-false-provider-true": PACKAGED_PROVIDER_TREE.replace("          E: provider", enabled[4:] + "\n          E: provider").replace(enabled + "\n", enabled.replace("=false", "=true") + "\n"),
+            "child-false-provider-true": PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=true")) + "                    " + enabled.lstrip() + "\n",
+        }
+        for name, tree in wrong.items():
+            self.assertNotEqual(tree, PACKAGED_PROVIDER_TREE, name)
+            with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "packaged_provider_not_default_disabled"):
+                documents.validate_packaged_provider(tree)
+
+    def test_provider_build_rejects_packaged_flags_before_fact_audit_or_install(self):
+        original = self.host.command
+        bad = PACKAGED_PROVIDER_TREE.replace("enabled(0x0101000e)=false", "enabled(0x0101000e)=true")
+
+        def transport(argv, **kwargs):
+            if str(argv[0]).endswith("/aapt2") and argv[1] == "dump":
+                return result(bad)
+            return original(argv, **kwargs)
+
+        output = self.root / "rejected-provider"
+        with patch.object(self.host, "command", side_effect=transport), patch.object(self.host, "apk_facts", wraps=self.host.apk_facts) as facts:
+            with self.assertRaisesRegex(documents.Refusal, "packaged_provider_not_default_disabled"):
+                documents.build_provider(self.host, self.host.args, output)
+            facts.assert_not_called()
+        self.assertEqual((output / "packaged-manifest.txt").read_text(), bad)
+        self.assertTrue((output / "synthetic-documents.apk").is_file())
+        self.assertFalse((output / "build.json").exists())
+        self.assertFalse(self.host.mutations)
 
     def test_complete_actual_module_with_fake_transport_both_variants(self):
         self.host.args.action = "documents"

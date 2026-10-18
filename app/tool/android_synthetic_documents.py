@@ -657,6 +657,46 @@ def receive_good(evidence, flavor, outputs, control):
     return validate_receiving_report(report, control)
 
 
+def validate_packaged_provider(tree):
+    """Validate the expected component in the pinned SDK 36 aapt2 tree grammar."""
+    reason = "packaged_provider_not_default_disabled"
+    require(isinstance(tree, str) and 0 < len(tree) <= 65536, reason)
+    elements, stack, namespaces = [], [], []
+    for line in tree.splitlines():
+        element = re.fullmatch(r"( *)E: ([A-Za-z][A-Za-z0-9_-]*) \(line=[0-9]+\)", line)
+        if element:
+            indent = len(element[1])
+            while stack and stack[-1]["indent"] >= indent:
+                stack.pop()
+            node = {"name": element[2], "indent": indent, "parent": stack[-1] if stack else None, "attrs": []}
+            elements.append(node)
+            stack.append(node)
+        elif line.lstrip().startswith("A: "):
+            require(stack and len(line) - len(line.lstrip()) == stack[-1]["indent"] + 2, reason)
+            stack[-1]["attrs"].append(line.strip())
+        else:
+            require(re.fullmatch(r"N: android=http://schemas[.]android[.]com/apk/res/android \(line=[0-9]+\)", line), reason)
+            namespaces.append(line)
+    roots = [node for node in elements if node["parent"] is None]
+    providers = [node for node in elements if node["name"] == "provider"]
+    applications = [node for node in elements if node["name"] == "application"]
+    require(len(namespaces) == len(roots) == len(providers) == len(applications) == 1 and
+            roots[0]["name"] == "manifest" and applications[0]["parent"] is roots[0] and
+            providers[0]["parent"] is applications[0], reason)
+    package = 'A: package="' + PROVIDER + '" (Raw: "' + PROVIDER + '")'
+    require([line for line in roots[0]["attrs"] if line.startswith("A: package=")] == [package], reason)
+    prefix = "A: http://schemas.android.com/apk/res/android:"
+    expected = {
+        prefix + 'name(0x01010003)=".SyntheticDocumentsProvider" (Raw: ".SyntheticDocumentsProvider")',
+        prefix + 'permission(0x01010006)="android.permission.MANAGE_DOCUMENTS" (Raw: "android.permission.MANAGE_DOCUMENTS")',
+        prefix + "enabled(0x0101000e)=false",
+        prefix + "exported(0x01010010)=true",
+        prefix + 'authorities(0x01010018)="' + AUTHORITY + '" (Raw: "' + AUTHORITY + '")',
+        prefix + "grantUriPermissions(0x0101001b)=true",
+    }
+    require(len(providers[0]["attrs"]) == len(expected) and set(providers[0]["attrs"]) == expected, reason)
+
+
 def build_provider(host, args, output):
     host.toolchain(args)
     require(not output.exists(), "provider_build_output_exists")
@@ -701,8 +741,7 @@ def build_provider(host, args, output):
                   "--out", apk, output / "aligned.apk"])
     tree = host.command([tools / "aapt2", "dump", "xmltree", apk, "--file", "AndroidManifest.xml"]).stdout
     exclusive(output / "packaged-manifest.txt", tree.encode())
-    require(PROVIDER in tree and AUTHORITY in tree and "android.permission.MANAGE_DOCUMENTS" in tree and
-            re.search(r"android:enabled\([^)]*\)=\(type 0x12\)0x0\b", tree), "packaged_provider_not_default_disabled")
+    validate_packaged_provider(tree)
     facts = host.apk_facts(args, apk, PROVIDER)
     require(facts["version_code"] == 1, "provider_fixture_version_changed")
     exclusive(output / "build.json", encoded(facts))
