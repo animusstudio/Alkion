@@ -3,14 +3,29 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:alkion/data/active_session_draft.dart';
+import 'package:alkion/data/day_template_repository.dart';
+import 'package:alkion/data/exercise_repository.dart';
+import 'package:alkion/data/finished_session_store.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/data/session_writer.dart';
+import 'package:alkion/domain/evidence.dart';
+import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/files/android_documents.dart';
 import 'package:alkion/files/document_access.dart';
 import 'package:alkion/identity/alkion_flutter_identity.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/identity/directory_durability.dart';
+import 'package:alkion/identity/identity_service.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/recovery_host.dart';
+import 'package:alkion/session/active_session_controller.dart'
+    show SessionDraft;
+import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/store/local_store.dart';
+import 'package:alkion/store/schema.dart';
+import 'package:alkion/transfer/full_v1.dart' show fullV1Tables;
+import 'package:alkion/transfer/transfer_service.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -19,7 +34,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../tool/alkion_store_recovery.dart'
     as fixtures
-    show syntheticStore, executeAction, proofAction;
+    show syntheticStore, workflowDraft;
 
 const _run = String.fromEnvironment('ALKION_PROOF_RUN');
 const _source = String.fromEnvironment('ALKION_PROOF_SOURCE');
@@ -54,6 +69,652 @@ void _require(bool condition, String reason) {
 
 Future<String> _digest(File file) async =>
     (await sha256.bind(file.openRead()).first).toString();
+
+const _notesNamespace = 'documents-fixture-notes';
+const _workoutId = 'documents-finished-workout';
+const _activeDraftId = 'documents-active-draft';
+const _reviewId = 'documents-fixture-review';
+const _exerciseOperation = 'documents-exercise-create';
+const _dayOperation = 'documents-plan-create';
+const _finishOperation = 'documents-workout-finish';
+const _workoutDate = '2026-10-18';
+const _setNames = ['warmup', 'work', 'planned'];
+const _weights = ['40.0000', '80.12500000000000000100', '82.5000'];
+
+Uint8List _documentsOriginal() => Uint8List.fromList(
+  List.generate(256 * 1024, (index) => (index * 17 + 3) & 255),
+);
+
+/// Import a small in-memory source note to retain the production importer's
+/// explicit unavailable-correction evidence, never an invented authored value.
+Uint8List _documentsNoteInput() => localBytes({
+  'format': 'reps-export',
+  'version': 1,
+  'kind': 'full',
+  'exported_at': '2026-10-18T08:00:00Z',
+  'settings': <String, Object?>{},
+  'data': {
+    for (final table in fullV1Tables)
+      table.table: table.table == 'day_templates'
+          ? [
+              {
+                'id': 'source-note-day',
+                'name': 'Synthetic source note',
+                'notes':
+                    'Preserved original note; external corrections unavailable',
+                'position': 7,
+                'is_template': 0,
+                'created_at': '2026-10-18T08:00:00Z',
+              },
+            ]
+          : <Object?>[],
+  },
+});
+
+Future<CoveredState> _documentsCovered(LocalStore store) =>
+    store.readTransaction((tx) => readCoveredState((sql) => tx.getAll(sql)));
+
+SessionDraft _documentsDraft(
+  String prefix,
+  String exerciseId,
+  String dayId,
+  DateTime started, {
+  required bool finished,
+}) {
+  final value = Map<String, dynamic>.from(fixtures.workflowDraft());
+  value.addAll({
+    'draftId': finished ? 'documents-finished-draft' : _activeDraftId,
+    'templateId': dayId,
+    'name': 'Synthetic documents workout',
+    'startedAt': started.toIso8601String(),
+    'restStart': finished ? null : started.toIso8601String(),
+    'restTotal': finished ? 0 : 600,
+    'focusedSetId': finished ? null : '$prefix-planned',
+  });
+  final block = (value['blocks'] as List).single as Map;
+  block['exerciseId'] = exerciseId;
+  final sets = [
+    ...block['warmupSets'] as List,
+    ...block['workingSets'] as List,
+  ];
+  for (var index = 0; index < sets.length; index++) {
+    final set = sets[index] as Map;
+    set['id'] = '$prefix-${_setNames[index]}';
+    set['originalWeight'] = _weights[index];
+    set['rir'] = index == 1 ? 2 : null;
+    set['done'] = finished || index < 2;
+  }
+  return SessionDraft.fromJson(value);
+}
+
+/// Seeds only the explicitly supplied fresh nested producer store. No runtime,
+/// notification plugin, sender or canonical application root is opened here.
+Future<Map<String, Object?>> seedDocumentsFixture(LocalStore store) async {
+  final initial = await _documentsCovered(store);
+  _require(
+    preservedTables
+        .where(
+          (table) => table != 'profile_state' && table != 'schema_migrations',
+        )
+        .every((table) => initial.tables[table]!.isEmpty),
+    'Documents fixture requires a fresh nested store',
+  );
+  final exerciseRepository = ExerciseRepository.local(store);
+  final exercise = exerciseRepository.prepareExercise(
+    ExerciseDraft(
+      name: 'Synthetic documents press',
+      muscleGroup: 'chest',
+      equip: 'barbell',
+      compound: true,
+      plateStepKg: 1.25,
+      originalBaseWeightEvidence: const DecimalEvidence(
+        ValueState.valid,
+        '20.000000000000000001',
+      ),
+      originalPlateStepEvidence: const DecimalEvidence(
+        ValueState.valid,
+        '1.2500',
+      ),
+      defaultRepLow: 5,
+      defaultRepHigh: 8,
+      defaultWarmupSets: 1,
+      defaultWorkingSets: 2,
+      defaultRirLow: 1,
+      defaultRirHigh: 2,
+      defaultRestSeconds: 155,
+    ),
+    operationId: _exerciseOperation,
+  );
+  await exerciseRepository.commitPrepared(exercise);
+  final exerciseId = exercise.action.target.id;
+  final days = DayTemplateRepository.local(store);
+  final day = days.prepareDay(
+    DayDraft(
+      name: 'Synthetic documents day',
+      notes: 'Native plan note',
+      focus: 'push',
+      weekday: 2,
+      slots: [
+        SlotDraft(
+          exerciseId: exerciseId,
+          workSets: 2,
+          warmupSets: 1,
+          repLow: 5,
+          repHigh: 8,
+          rirLow: 1,
+          rirHigh: 2,
+        ),
+      ],
+    ),
+    operationId: _dayOperation,
+    dependencies: [
+      OperationDependency(
+        store.profileId,
+        GrantFamily.workouts,
+        _exerciseOperation,
+      ),
+    ],
+  );
+  await days.commitPrepared(day);
+  final dayId = day.action.target.id;
+  final slotId = ((day.input['slots'] as List).single as Map)['id'] as String;
+  final now = DateTime.now().toUtc();
+  final finishedDraft = _documentsDraft(
+    'documents-finished',
+    exerciseId,
+    dayId,
+    now.subtract(const Duration(minutes: 15)),
+    finished: true,
+  );
+  final drafts = DraftStore.local(store);
+  await drafts.load();
+  await drafts.save(finishedDraft);
+  final sets = [
+    ...finishedDraft.blocks.single.warmupSets,
+    ...finishedDraft.blocks.single.workingSets,
+  ];
+  final workouts = WorkoutRepository.local(store);
+  await workouts.commitPrepared(
+    workouts.prepareFinish(
+      write: SessionWrite(
+        id: _workoutId,
+        dateIso: _workoutDate,
+        dayTemplateId: dayId,
+        splitLabel: 'Synthetic documents day',
+        durationMin: 15,
+        sets: [
+          for (var index = 0; index < sets.length; index++)
+            SetWrite(
+              id: sets[index].id,
+              exerciseId: exerciseId,
+              setNumber: index + 1,
+              weightKg: sets[index].persistedWeight,
+              reps: sets[index].reps,
+              rir: sets[index].rir,
+              isWarmup: sets[index].isWarmup,
+              isTopSet: index == 2,
+              isPr: index == 2,
+            ),
+        ],
+      ),
+      baseRevision: 0,
+      setBases: const {},
+      recovery: FinishedSession(
+        sessionId: _workoutId,
+        sessionDate: _workoutDate,
+        finishedAt: now,
+        elapsedSeconds: 900,
+        draft: finishedDraft,
+      ).toJson(),
+      draftRevision: drafts.persistedRevision,
+      draftId: finishedDraft.draftId,
+      operationId: _finishOperation,
+      dependencies: [
+        OperationDependency(
+          store.profileId,
+          GrantFamily.workouts,
+          _exerciseOperation,
+        ),
+        OperationDependency(
+          store.profileId,
+          GrantFamily.workouts,
+          _dayOperation,
+        ),
+      ],
+    ),
+  );
+  await drafts.load();
+  await drafts.save(
+    _documentsDraft(
+      'documents-active',
+      exerciseId,
+      dayId,
+      now,
+      finished: false,
+    ),
+  );
+  final settings = SettingsService.local(store);
+  try {
+    await settings.load();
+    await settings.setMode('light');
+    await settings.setProfileName('Synthetic documents lifter');
+    await settings.setRestCompoundSeconds(155);
+    await settings.setRestIsolationSeconds(75);
+    await settings.setLocaleOverride('it');
+    await settings.flushPersistence();
+  } finally {
+    settings.dispose();
+  }
+  final identity = IdentityService.local(store);
+  try {
+    await identity.load();
+    await identity.completeOnboarding();
+    await identity.flushPersistence();
+  } finally {
+    identity.dispose();
+  }
+  final imported = await TransferService(
+    store,
+  ).importArtifact(_documentsNoteInput(), namespace: _notesNamespace);
+  _require(
+    imported.status == ImportStatus.selected,
+    'Synthetic note import failed: ${imported.toJson()}',
+  );
+  final correction = await store.get('SELECT * FROM corrections');
+  final original = _documentsOriginal();
+  await store.writeTransaction((tx) async {
+    await tx.putArtifact(
+      id: 'synthetic-original',
+      bytes: original,
+      digest: sha256.convert(original).toString(),
+      parserVersion: 'synthetic/1',
+      format: 'synthetic-only',
+      disposition: 'preserved',
+    );
+    await tx.addReview(
+      id: _reviewId,
+      category: 'synthetic_fixture_evidence',
+      evidence: localBytes({
+        'format': 'alkion-documents-fixture-review/1',
+        'artifact_id': imported.artifactId,
+        'correction_id': correction['correction_id'],
+        'workout_id': _workoutId,
+      }),
+    );
+  });
+  final state = await _documentsCovered(store);
+  final profile = state.tables['profile_state']!.single;
+  final facts = <String, Object?>{
+    'format': 'alkion-android-documents-fixture/1',
+    'source_profile_id': store.profileId,
+    'source_installation_id': profile['installation_id'],
+    'source_generation': store.token.generation,
+    'ids': {
+      'exercise': exerciseId,
+      'day': dayId,
+      'slot': slotId,
+      'workout': _workoutId,
+      'draft': _activeDraftId,
+      'imported_day': correction['record_id'],
+      'correction': correction['correction_id'],
+      'review': _reviewId,
+      'import_artifact': imported.artifactId,
+      'original': 'synthetic-original',
+    },
+    'original': {
+      'length': original.length,
+      'sha256': sha256.convert(original).toString(),
+    },
+    'import_input': {
+      'namespace': _notesNamespace,
+      'length': _documentsNoteInput().length,
+      'sha256': sha256.convert(_documentsNoteInput()).toString(),
+    },
+    'inventory': state.manifestInventory(),
+    'correction_claim':
+        'Production import records external correction availability as unavailable; no authored correction value is supplied.',
+  };
+  final violations = documentsFixtureViolations(state, facts);
+  _require(
+    violations.isEmpty,
+    'Rich documents fixture lacks required components: $violations',
+  );
+  return facts;
+}
+
+/// Read-only named-component oracle over actual canonical covered rows. Restore
+/// selection/lineage is checked separately by the existing restoreViolations.
+List<String> documentsFixtureViolations(
+  CoveredState state,
+  Map<String, Object?> facts,
+) {
+  final violations = <String>[];
+  void check(String name, bool valid) {
+    if (!valid) violations.add(name);
+  }
+
+  final ids = facts['ids'] is Map ? facts['ids'] as Map : <Object?, Object?>{};
+  Map<String, Object?> row(String table, String key, Object? id) {
+    final selected = (state.tables[table] ?? [])
+        .where((value) => value[key] == id)
+        .toList();
+    if (id == null || selected.length != 1) {
+      violations.add('$table/$id missing or ambiguous');
+      return {};
+    }
+    return selected.single;
+  }
+
+  void fields(
+    String name,
+    Map<String, Object?> actual,
+    Map<String, Object?> expected,
+  ) {
+    check(
+      name,
+      expected.entries.every(
+        (value) =>
+            actual.containsKey(value.key) &&
+            jsonEncode(actual[value.key]) == jsonEncode(value.value),
+      ),
+    );
+  }
+
+  Uint8List blob(Map<String, Object?> value, String key) {
+    final decoded = sqlValue(value[key]);
+    if (decoded is Uint8List) return decoded;
+    violations.add('Missing $key bytes');
+    return Uint8List(0);
+  }
+
+  Map<String, dynamic> payload(
+    Map<String, Object?> value, [
+    String key = 'payload_bytes',
+  ]) {
+    try {
+      return Map<String, dynamic>.from(
+        jsonDecode(utf8.decode(blob(value, key))) as Map,
+      );
+    } catch (_) {
+      violations.add('Malformed $key');
+      return {};
+    }
+  }
+
+  check(
+    'fixture format',
+    facts['format'] == 'alkion-android-documents-fixture/1',
+  );
+  final profile = row('profile_state', 'singleton', 1);
+  check(
+    'profile identity',
+    profile['profile_id'] == facts['source_profile_id'] &&
+        profile['write_state'] == 'writable' &&
+        profile['generation'] is int,
+  );
+  fields(
+    'exercise exact values/revision',
+    row('exercises', 'id', ids['exercise']),
+    {
+      'revision': 1,
+      'deleted': 0,
+      'name': 'Synthetic documents press',
+      'base_weight_kg': '20.000000000000000001',
+      'plate_step_kg': '1.2500',
+    },
+  );
+  fields('day values/revision', row('day_templates', 'id', ids['day']), {
+    'revision': 1,
+    'deleted': 0,
+    'name': 'Synthetic documents day',
+    'notes': 'Native plan note',
+    'scheduled_weekday': 2,
+  });
+  fields(
+    'slot relationship/revision',
+    row('day_template_items', 'id', ids['slot']),
+    {
+      'revision': 1,
+      'deleted': 0,
+      'day_template_id': ids['day'],
+      'exercise_id': ids['exercise'],
+      'target_working_sets': 2,
+      'target_warmup_sets': 1,
+    },
+  );
+  fields(
+    'workout relationship/revision',
+    row('sessions', 'id', ids['workout']),
+    {
+      'id': _workoutId,
+      'revision': 1,
+      'deleted': 0,
+      'date': _workoutDate,
+      'day_template_id': ids['day'],
+      'original_day_id': ids['day'],
+    },
+  );
+  final revisions = <String, String>{
+    'exercise/${ids['exercise']}': _exerciseOperation,
+    'trainingDay/${ids['day']}': _dayOperation,
+    'trainingSlot/${ids['slot']}': _dayOperation,
+    'workout/$_workoutId': _finishOperation,
+  };
+  for (var index = 0; index < _setNames.length; index++) {
+    final id = 'documents-finished-${_setNames[index]}';
+    fields('set $id exact relationship/value/revision', row('sets', 'id', id), {
+      'revision': 1,
+      'deleted': 0,
+      'session_id': _workoutId,
+      'exercise_id': ids['exercise'],
+      'set_number': index + 1,
+      'weight_kg': _weights[index],
+      'reps': index == 0 ? 8 : 5,
+      'rir': index == 1 ? 2 : null,
+      'is_warmup': index == 0 ? 1 : 0,
+    });
+    revisions['workoutSet/$id'] = _finishOperation;
+    final derived = row('derived_results', 'result_id', 'workout-set:$id:1');
+    fields('derived set $id', derived, {
+      'profile_version': 'reps-compat/1',
+      'view': 'legacy-local',
+    });
+    fields('derived input $id', payload(derived, 'input_revisions'), {
+      'id': id,
+      'revision': 1,
+    });
+  }
+  for (final entry in revisions.entries) {
+    final parts = entry.key.split('/');
+    final selected = (state.tables['record_revisions'] ?? [])
+        .where(
+          (value) =>
+              value['kind'] == parts[0] &&
+              value['record_id'] == parts[1] &&
+              value['revision'] == 1,
+        )
+        .toList();
+    check(
+      'atomic revision ${entry.key}',
+      selected.length == 1 &&
+          selected.single['family'] == 'workouts' &&
+          selected.single['operation_id'] == entry.value &&
+          selected.single['layer'] == 'authored',
+    );
+  }
+  final operations = {
+    _exerciseOperation: ('definitionCreate', ids['exercise']),
+    _dayOperation: ('planCreate', ids['day']),
+    _finishOperation: ('workoutFinish', _workoutId),
+  };
+  for (final entry in operations.entries) {
+    final value = row('operations', 'operation_id', entry.key);
+    fields('atomic outbox ${entry.key}', value, {
+      'family': 'workouts',
+      'action': entry.value.$1,
+      'target_id': entry.value.$2,
+      'base_local_revision': 0,
+    });
+    check(
+      'outbox bytes ${entry.key}',
+      sha256.convert(blob(value, 'input_bytes')).toString() ==
+          value['input_hash'],
+    );
+  }
+  final dependencies = (state.tables['operation_dependencies'] ?? [])
+      .map((value) => '${value['operation_id']}/${value['dependency_id']}')
+      .toSet();
+  check(
+    'outbox dependencies',
+    dependencies.containsAll({
+      '$_dayOperation/$_exerciseOperation',
+      '$_finishOperation/$_exerciseOperation',
+      '$_finishOperation/$_dayOperation',
+    }),
+  );
+  Map<String, Object?> local(String kind, String key) {
+    final selected = (state.tables['local_state'] ?? [])
+        .where(
+          (value) => value['state_kind'] == kind && value['state_key'] == key,
+        )
+        .toList();
+    if (selected.length != 1) {
+      violations.add('Missing $kind/$key');
+      return {};
+    }
+    check(
+      '$kind generation',
+      selected.single['generation'] == profile['generation'],
+    );
+    return selected.single;
+  }
+
+  final draftRow = local('draft', 'active'),
+      timerRow = local('timer', 'active');
+  fields('active draft revision/status', draftRow, {
+    'revision': 3,
+    'status': 'active',
+  });
+  fields('active timer revision/status', timerRow, {
+    'revision': 3,
+    'status': 'active',
+  });
+  final draft = payload(draftRow), timer = payload(timerRow);
+  try {
+    final resumed = SessionDraft.fromJson(draft);
+    check(
+      'resumable active draft',
+      resumed.draftId == _activeDraftId &&
+          ids['draft'] == _activeDraftId &&
+          resumed.templateId == ids['day'] &&
+          resumed.sessionId == null &&
+          resumed.blocks.single.exercise.id == ids['exercise'] &&
+          resumed.blocks.single.workingSets.last.id ==
+              'documents-active-planned' &&
+          !resumed.blocks.single.workingSets.last.done &&
+          resumed.restStart != null &&
+          resumed.restTotal == 600,
+    );
+    check(
+      'matching exact timer',
+      base64Encode(localBytes(timer)) ==
+          base64Encode(localBytes(resumed.timerJson)),
+    );
+  } catch (_) {
+    violations.add('Malformed resumable draft');
+  }
+  final settingsRow = local('semanticSetting', 'settings');
+  fields('semantic settings revision/status', settingsRow, {
+    'revision': 5,
+    'status': 'active',
+  });
+  final settings = payload(settingsRow);
+  fields('nondefault semantic settings', settings, {
+    'mode': 'light',
+    'profile_name': 'Synthetic documents lifter',
+    'rest_compound_seconds': 155,
+    'rest_isolation_seconds': 75,
+    'locale': 'it',
+  });
+  final onboarding = local('onboarding', 'complete');
+  fields('completed onboarding', onboarding, {
+    'revision': 1,
+    'status': 'complete',
+  });
+  fields('onboarding profile', payload(onboarding), {
+    'profileId': facts['source_profile_id'],
+  });
+  final finishedRow = local('finishedRecovery', 'last');
+  fields('finished recovery revision/status', finishedRow, {
+    'revision': 1,
+    'status': 'active',
+  });
+  final finished = payload(finishedRow);
+  fields('finished recovery relationship', finished, {
+    'sessionId': _workoutId,
+    'sessionDate': _workoutDate,
+  });
+  final original = row('source_artifacts', 'artifact_id', ids['original']);
+  final originalBytes = blob(original, 'raw_bytes');
+  final expectedOriginal = sha256.convert(_documentsOriginal()).toString();
+  check(
+    'large original exact bytes',
+    ids['original'] == 'synthetic-original' &&
+        originalBytes.length == 256 * 1024 &&
+        sha256.convert(originalBytes).toString() == expectedOriginal &&
+        original['digest'] == expectedOriginal &&
+        (facts['original'] as Map?)?['sha256'] == expectedOriginal,
+  );
+  final input = row('source_artifacts', 'artifact_id', ids['import_artifact']);
+  check(
+    'note input exact bytes',
+    base64Encode(blob(input, 'raw_bytes')) ==
+            base64Encode(_documentsNoteInput()) &&
+        input['digest'] == sha256.convert(_documentsNoteInput()).toString(),
+  );
+  final correction = row('corrections', 'correction_id', ids['correction']);
+  fields('unavailable correction evidence', correction, {
+    'kind': 'trainingDay',
+    'record_id': ids['imported_day'],
+    'base_local_revision': 1,
+    'attribution': 'animus-correction',
+    'availability': 'unavailable',
+  });
+  fields('correction meaning', payload(correction, 'correction_bytes'), {
+    'format': 'alkion-correction-availability/1',
+    'field': 'notes',
+    'reason': 'reps_full_v1_cannot_carry_animus_corrections',
+  });
+  fields(
+    'correction source lineage',
+    row(
+      'source_revisions',
+      'source_revision_id',
+      correction['source_revision_id'],
+    ),
+    {'artifact_id': ids['import_artifact'], 'namespace': _notesNamespace},
+  );
+  fields(
+    'imported original note',
+    row('day_templates', 'id', ids['imported_day']),
+    {
+      'revision': 1,
+      'notes': 'Preserved original note; external corrections unavailable',
+    },
+  );
+  final review = row('reviews', 'review_id', ids['review']);
+  fields('named review category', review, {
+    'review_id': _reviewId,
+    'category': 'synthetic_fixture_evidence',
+  });
+  fields('named review exact references', payload(review, 'evidence_bytes'), {
+    'format': 'alkion-documents-fixture-review/1',
+    'artifact_id': ids['import_artifact'],
+    'correction_id': ids['correction'],
+    'workout_id': _workoutId,
+  });
+  return violations;
+}
 
 /// No restore/startup is exercised by this phase. Save uses the production
 /// delivery helper and full receiving verifier over completed private readback.
@@ -374,29 +1035,26 @@ void main() {
           caseName: 'workflow-autosave',
         );
         try {
-          await fixtures.executeAction(store, fixtures.proofAction(store));
-          final original = Uint8List.fromList(
-            List.generate(256 * 1024, (index) => (index * 17 + 3) & 255),
-          );
-          await store.writeTransaction(
-            (tx) => tx.putArtifact(
-              id: 'synthetic-original',
-              bytes: original,
-              digest: sha256.convert(original).toString(),
-              parserVersion: 'synthetic/1',
-              format: 'synthetic-only',
-              disposition: 'preserved',
-            ),
-          );
+          final fixture = await seedDocumentsFixture(store);
+          report['fixture'] = fixture;
           final backups = await Directory(
             p.join(directory.path, 'backups'),
           ).create();
           final receipt = await createBackup(store, backups);
+          _require(
+            documentsFixtureViolations(
+                  receipt.verified.facts.state,
+                  fixture,
+                ).isEmpty &&
+                jsonEncode(receipt.verified.facts.state.manifestInventory()) ==
+                    jsonEncode(fixture['inventory']),
+            'Actual provider input backup lacks the complete rich fixture',
+          );
           final host = _BackupHost(store, receipt);
           final documents = AndroidDocuments.instance;
           final backupFile = File(receipt.path);
           final baseline = jsonEncode(await store.inventory());
-          final artifactDigest = sha256.convert(original).toString();
+          final artifactDigest = (fixture['original'] as Map)['sha256'];
           Future<void> originals() async {
             _require(
               await _digest(backupFile) == receipt.verified.containerSha256 &&
