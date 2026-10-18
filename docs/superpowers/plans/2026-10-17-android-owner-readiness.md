@@ -344,6 +344,9 @@ later host routing and Make wiring require a serialized handoff and review.
 Capability fixture/checkpoint source: independent task review PASS, fourteen
 real-store host controls PASS, analyzer and owned formatting PASS. This qualifies
 preservation/logging oracles only; native permission, alarm and UI proof is unrun.
+T5 capability host-route ownership additionally covers new
+`app/tool/android_synthetic_capabilities{,_self_test}.py`; keep this isolated
+module separate from later serialized Make/harness wiring and device execution.
 
 Ordinary-kill harness fix, base `7e21216`: independent full-lane source review PASS.
 `make -C app android-synthetic-self-test` passed the retained 108 controls and
