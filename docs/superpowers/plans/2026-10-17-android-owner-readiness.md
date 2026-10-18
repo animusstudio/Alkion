@@ -355,6 +355,27 @@ No Java, manifest, observer version, Make/harness or product change belongs to
 this slice, and unchanged native code needs no SDK rebuild. Independent patch
 review precedes actual focus-transition qualification and the fresh lifecycle.
 
+The subsequent V3 incomplete-child slice owns exactly
+`app/tool/android_synthetic_ui/{AndroidManifest.xml,HierarchyInstrumentation.java}`,
+`app/tool/android_synthetic_ui.py`, `app/tool/android_synthetic_ui_self_test.py`,
+and the affected receipt shapes only in
+`app/tool/android_synthetic_documents_self_test.py` and
+`app/tool/android_synthetic_capabilities_self_test.py`. Bump the helper to V3 and
+reject V2 through normal source/APK/UID binders. Retry only the dedicated typed
+null-child signal in the actual polling controller; journal and discard the
+whole candidate before fresh cache/root acquisition. Add mandatory outcome and
+`candidate_complete` fields, strict final complete-sample validation and honest
+identity-bound native FAIL diagnostics. Unknown exceptions, structural bounds
+and foreign/changed roots remain fatal. Keep 40 samples/five seconds, capture
+below six seconds, watchdog eight seconds and existing host bounds unchanged.
+Run actual compiled polling classification/timing controls, strict parser/fake
+transport controls, each affected Documents and capability complete facade once,
+and one actual SDK compile/package check because native source changes. No H
+route/self-test, shared Make/harness, product or dependency change belongs here;
+flag any necessary further ownership before editing. Independent scope and patch
+review precede actual V3 qualification on a fresh campaign. Preserve the fourth
+partial without resume, timer reset or re-preparation of its changed normal root.
+
 T5 receiving-restore prerequisite fixture ownership covers
 `app/integration_test/android_documents_test.dart` and new
 `app/test/alkion/acceptance/android_documents_fixture_test.dart` only. Enrich the
