@@ -188,6 +188,17 @@ For app roots, bounded fresh samples must include visible semantic content;
 an empty native container tree cannot authorize an interaction. Keep each sample
 complete, retain readiness failures and preserve the existing capture deadlines.
 
+For an explicit expected root, the host may sample fresh recognized focus at most
+20 times and for at most two seconds inside the existing 20-second capture
+budget. Only the exact expected owner can admit observation. Preserve the strict
+single-window, primary-user and root-allowlist parser; malformed, ambiguous,
+foreign or wrong-user samples refuse. Retain every raw focus attempt. Bind the
+final admitted owner token to the unchanged post-capture focus check and native
+root/window/display attestation. Cap each command and pause by both remaining
+budgets; late arrivals refuse, and no command, including a failure screenshot,
+starts after the capture deadline. This wait dispatches no UI action, retries no
+product command and does not wait for global idle.
+
 Authentication, Animus transport, real legacy capture/transfer, writer handoff,
 deployment and retirement remain separate work. This design grants no operational
 access or public publication. Related: [implementation plan](../plans/2026-10-17-android-owner-readiness.md).

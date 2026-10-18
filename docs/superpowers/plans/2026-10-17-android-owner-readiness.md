@@ -338,6 +338,23 @@ The observed empty Flutter tree requires observer V2 readiness in its manifest,
 Java, Python module and self-test only; update the affected documents fixture if
 needed. Review before a pinned in-place synthetic helper update and native proof.
 
+The next expected-focus readiness slice owns only
+`app/tool/android_synthetic_ui.py` and
+`app/tool/android_synthetic_ui_self_test.py`. For an explicit expected owner,
+allow at most twenty fresh recognized samples and two seconds within the same
+20-second capture deadline. Retain raw attempts, strict parser/refusal rules,
+exact final pre/post focus token and native root/window/display checks. Cap
+commands and pauses by remaining budgets and refuse late results; expired time
+cannot become an extra command or failure-screenshot allowance. Observation
+repeats no UI command and never accepts another root. An unspecified expected
+owner retains the existing strict current-owner behavior.
+Run affected Python protocol and timing controls for delayed readiness,
+never-ready/late/refused roots, post-capture drift and exhausted global budget;
+run the complete documents facade route only if its common fake is affected.
+No Java, manifest, observer version, Make/harness or product change belongs to
+this slice, and unchanged native code needs no SDK rebuild. Independent patch
+review precedes actual focus-transition qualification and the fresh lifecycle.
+
 T5 receiving-restore prerequisite fixture ownership covers
 `app/integration_test/android_documents_test.dart` and new
 `app/test/alkion/acceptance/android_documents_fixture_test.dart` only. Enrich the
