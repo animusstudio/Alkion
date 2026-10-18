@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.animusstudio.alkion.synthetic.uiobserver"
-    android:versionCode="1" android:versionName="synthetic">
+    android:versionCode="2" android:versionName="synthetic">
     <application android:label="Alkion Synthetic UI Observer" android:allowBackup="false"
         android:debuggable="true" android:usesCleartextTraffic="false"/>
     <instrumentation android:name=".HierarchyInstrumentation"

@@ -19,7 +19,7 @@ import zipfile
 
 PACKAGE = "dev.animusstudio.alkion.synthetic.uiobserver"
 COMPONENT = PACKAGE + "/.HierarchyInstrumentation"
-VERSION = 1
+VERSION = 2
 LIMIT = 1048576
 ROOTS = frozenset(("com.android.systemui", "com.android.documentsui", "com.android.permissioncontroller",
                    "dev.animusstudio.alkion.dev", "dev.animusstudio.alkion"))
@@ -139,6 +139,8 @@ def validate_build(host, args, root, record):
 
 def installed(host, args, binding, execute=None):
     facts = binding["build"]["apk"]
+    require(facts.get("package") == PACKAGE and facts.get("version_code") == VERSION,
+            "binding_version_changed")
     def read(label, *tail):
         result = execute(label, ["shell", *tail]) if execute else host.adb(args, "shell", *tail)
         require(result.returncode == 0 and not result.stderr, "identity_query_failed")
@@ -235,7 +237,7 @@ def parse_observation(raw, receipt, request, binding, expected, started, ended):
               "expected_package": expected, "root_package": expected, "display_id": 0,
               "window_active": True, "window_focused": True}
     require(all(type(receipt.get(k)) is type(v) and receipt[k] == v for k, v in wanted.items()), "receipt_identity_changed")
-    require(type(receipt.get("elapsed_ms")) is int and 0 <= receipt["elapsed_ms"] <= 8500 and
+    require(type(receipt.get("elapsed_ms")) is int and 0 <= receipt["elapsed_ms"] < 6000 and
             type(receipt.get("window_id")) is int and receipt["window_id"] >= 0 and
             type(receipt.get("window_type")) is int and receipt["window_type"] in (1, 3) and
             type(receipt.get("node_count")) is int and 1 <= receipt["node_count"] <= 4096 and
@@ -253,14 +255,18 @@ def parse_observation(raw, receipt, request, binding, expected, started, ended):
     require(document.tag == "hierarchy" and len(document) == 1 and
             document.get("rotation") == str(receipt["rotation"]), "hierarchy_invalid")
     count = 0
+    labels = 0
     def walk(node, depth):
-        nonlocal count
+        nonlocal count, labels
         count += 1
         require(node.tag == "node" and depth <= 64 and count <= 4096 and all(k in node.attrib for k in
                 ("text", "content-desc", "resource-id", "package", "class", "clickable", "enabled", "visible-to-user", "bounds")),
                 "node_incomplete")
         require(node.get("package") == expected and all(node.get(k) in ("true", "false") for k in
                 ("clickable", "enabled", "visible-to-user")), "node_package_or_flags_changed")
+        if node.get("visible-to-user") == "true" and any(node.get(key).strip(" \t\r\n") for key in
+                                                       ("text", "content-desc")):
+            labels += 1
         match = re.fullmatch(r"\[(-?[0-9]+),(-?[0-9]+)\]\[(-?[0-9]+),(-?[0-9]+)\]", node.get("bounds", ""))
         require(match is not None, "node_bounds_invalid")
         x1, y1, x2, y2 = map(int, match.groups())
@@ -269,6 +275,39 @@ def parse_observation(raw, receipt, request, binding, expected, started, ended):
             walk(child, depth + 1)
     walk(document[0], 0)
     require(count == receipt["node_count"], "node_count_changed")
+    needs_labels = expected in ("dev.animusstudio.alkion.dev", "dev.animusstudio.alkion")
+    require(receipt.get("readiness") == ("visible-label" if needs_labels else "structural") and
+            type(receipt.get("visible_label_count")) is int and receipt["visible_label_count"] == labels and
+            (not needs_labels or labels > 0), "content_not_ready")
+    samples = receipt.get("samples")
+    require(type(receipt.get("sample_count")) is int and 1 <= receipt["sample_count"] <= 40 and
+            isinstance(samples, list) and len(samples) == receipt["sample_count"] and
+            type(receipt.get("candidate_sample")) is int and receipt["candidate_sample"] == len(samples),
+            "sample_count_invalid")
+    elapsed = 0
+    for index, sample in enumerate(samples, 1):
+        require(isinstance(sample, dict) and type(sample.get("index")) is int and sample["index"] == index and
+                all(type(sample.get(key)) is bool for key in ("cache_cleared", "root_available", "ready")) and
+                type(sample.get("elapsed_ms")) is int and elapsed <= sample["elapsed_ms"] < 5000 and
+                sample["elapsed_ms"] <= receipt["elapsed_ms"] and
+                all(type(sample.get(key)) is int for key in
+                    ("node_count", "visible_label_count", "window_id", "xml_length")), "sample_invalid")
+        elapsed = sample["elapsed_ms"]
+        if sample["root_available"]:
+            require(1 <= sample["node_count"] <= 4096 and
+                    0 <= sample["visible_label_count"] <= sample["node_count"] and
+                    sample["window_id"] == receipt["window_id"] and 0 < sample["xml_length"] <= LIMIT and
+                    re.fullmatch(r"[a-f0-9]{64}", sample.get("xml_sha256", "")) and
+                    sample["ready"] == (not needs_labels or sample["visible_label_count"] > 0),
+                    "sample_tree_invalid")
+        else:
+            require(not sample["ready"] and sample["node_count"] == sample["visible_label_count"] ==
+                    sample["xml_length"] == 0 and sample["window_id"] == -1 and sample.get("xml_sha256") == "",
+                    "null_sample_invalid")
+        require(sample["ready"] == (index == len(samples)), "readiness_sequence_invalid")
+    require(all(samples[-1].get(key) == receipt[key] for key in
+                ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")),
+            "final_sample_changed")
     # Keep native off-screen/partly clipped bounds intact. The dispatcher must
     # validate only its selected semantic target against this attested display.
     for node in document.iter("node"):
