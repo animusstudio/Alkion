@@ -16,6 +16,11 @@ then failed at 116 ms. Its compound guard does not identify the failed condition
 The partial run and disks are retained without reset or re-preparation. Cold
 resume, closed-SQL rest, logging, finish and supported lifecycle remain unqualified.
 
+V4 source at `b1e4cfd` passed independent review, 43 compiled controller/window
+scenarios, 20 resolved protocol methods, both affected consumer facades and SDK
+packaging. Staged diagnostics distinguish narrowly bound readiness from fatal
+identity failures; only receipt metadata grows to 64 KiB. Native V4 remains unrun.
+
 ## Previous Android checkpoint
 
 At `0e4ec4d`, a fresh API 36 AOSP x86_64 campaign passed all eleven driver
