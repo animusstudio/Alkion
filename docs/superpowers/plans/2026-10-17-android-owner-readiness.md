@@ -341,6 +341,14 @@ oracle before delegating production relaunch; validate bounded notification/expi
 adoption separately. Same-profile replacement/Keep and host routing follow as
 separate reviewed slices; no device or process-death result is implied by source.
 
+T5 A7 host-route ownership first covers new
+`app/tool/android_synthetic_restore.py` and
+`app/tool/android_synthetic_restore_self_test.py` only. Bind actual documents and
+receiving inputs, receiver bootstrap and the fixed twelve-launch adapter protocol;
+drive real picker selection and six exact owned-process cuts on one immutable
+fresh preparation. Keep Make/harness wiring serialized as a later reviewed slice.
+Same-profile replacement/Keep remains separate; host controls imply no device PASS.
+
 At `2274080`, fresh driver11 passed both variants (independent evidence PASS),
 then A2 update/rejected-signer checks passed. Lifecycle failed after development
 prepare40: native previous-app state stayed noncached. Retain receipts/data and
