@@ -184,6 +184,9 @@ reads the active accessibility root without global-idle waiting. Bind actual
 semantic XML, root package, bounded tree, screenshot and fresh request receipt to
 the exact observer APK, run and target. Observation dispatches no UI actions and
 changes no product timer or notification behavior; incomplete evidence refuses.
+For app roots, bounded fresh samples must include visible semantic content;
+an empty native container tree cannot authorize an interaction. Keep each sample
+complete, retain readiness failures and preserve the existing capture deadlines.
 
 Authentication, Animus transport, real legacy capture/transfer, writer handoff,
 deployment and retirement remain separate work. This design grants no operational
