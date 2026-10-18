@@ -1,10 +1,27 @@
 ---
 app: alkion
 stage: development
-observed: 2026-10-17
+observed: 2026-10-18
 ---
 
 # Alkion integrated acceptance (T7)
+
+## Current Android checkpoint (2026-10-18)
+
+At `0e4ec4d`, a fresh API 36 AOSP x86_64 campaign passed all eleven driver
+cases and A2 update/rejected-signer checks in both variants; evidence review is
+pending. Earlier V2 previews independently passed app and SystemUI observation.
+In the fourth campaign, ordinary kill, notification-body routing, visible +30s
+routing and seven captures completed before an `incomplete_child` observer failure.
+That run remains FAIL; the post-action SQL oracle, cold actions, logging, finish
+and the supported variant were not reached.
+
+V3 source at `1ec85db` independently passed review, 17 compiled controller cases,
+30 protocol tests, affected consumer facades and SDK packaging. It retries only
+typed null-child samples within unchanged bounds; native V3 proof is unrun.
+File/provider, permission, restore and owner-device qualification remain unrun.
+
+## Earlier Android checkpoints
 
 Fresh campaign at `2566979` (API 36 AOSP x86_64): eleven driver cases and A2
 updates/rejected-signer checks passed in both variants. Lifecycle stopped before
