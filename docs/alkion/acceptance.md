@@ -32,7 +32,7 @@ The executed route used pinned FVM 3.44.0, selected JDK 21, a disposable debug k
 an explicit emulator serial, and a coordinator-owned fresh receipt/output:
 `make -C app android-synthetic ALKION_SYNTHETIC_ACTION=driver` with those required
 `ALKION_AVD`, `ALKION_SERIAL`, `ALKION_RECEIPT` and `ALKION_OUTPUT` inputs.
-Local receipts retain the exact command and target details. APK bytes:
+The historical receipt recorded the exact command, target details and APK bytes:
 
 | Installation at `708b4f7` | APK SHA-256 |
 | --- | --- |
@@ -42,18 +42,19 @@ Local receipts retain the exact command and target details. APK bytes:
 Two earlier development-only runs stopped on test setup: a new-record revision
 conflicted with the shared draft before COMMIT, then a writer inherited the
 reader's locked zone. Reviewed fixes preceded the fresh successful run; failed
-reports and installation data remain retained. Neither failed run qualifies its
-unreached cases or the supported variant. An added OS-process ownership case now
-passes in the same-source native Linux batch (11 cases, 1 test, 0 skips); it checks
-a distinct child blocked while the native owner holds its lock and succeeding
-after release, with exact lock bytes and inventory preserved. Its Android result
-is **UNRUN**; adding it does not change the historical ten-case Android receipt.
+reports and installation data were retained at that time. Neither failed run
+qualifies its unreached cases or the supported variant. An added OS-process
+ownership case now passes in the same-source native Linux batch (11 cases,
+1 test, 0 skips); it checks a distinct child blocked while the native owner holds
+its lock, then succeeding after release with exact lock bytes and inventory preserved.
+Its Android result is **UNRUN**; adding it does not change the historical
+ten-case Android receipt.
 
 T5 overall remains **IN_PROGRESS**. OS-process ownership on Android, process-kill
 recovery, lifecycle/notifications
 and permission changes, actual document-provider failures, off-device delivery
 verification and separate fresh receiving restore remain unrun. ARM-device,
-physical-power-loss and the final refactored/signed installed-candidate gates
+physical-power-loss and the final signed installed-candidate gates
 remain open. Results apply to the recorded inputs; relevant source, signing or
 platform changes require affected checks again.
 
@@ -88,9 +89,16 @@ recognized-base `updates` route both passed on the same named API 36 emulator.
 Both variants preserved covered state, profile/installation identity, generation
 and UID through versions 38 → 39. Higher-version wrong-signer APKs (40) returned
 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; installed APK/metadata/data remained exact.
-Peer, prior-driver and synthetic neighbor checks passed. All six APKs, audits and
-raw reports are retained. Only disposable signing material was used. This is the
-initial update phase; the final refactored candidate still needs affected proof.
+Peer, prior-driver and synthetic neighbor checks passed. The historical receipt
+recorded all six APKs, audits and raw reports as retained. Only disposable signing
+material was used. This is the
+initial update phase; the final functional candidate still needs affected proof.
+
+Artifact availability (2026-10-18): the temporary APKs, emulator data and raw
+execution receipts from these Android campaigns are unavailable. The accepted
+driver and A2 PASS results remain recorded as historical results above; they are
+not fresh proof and cannot be re-executed from those artifacts. Any new
+qualification must use a fresh campaign and its own receipts.
 
 Lifecycle source preparation, 2026-10-18 (base `6a3b756`): a recognized-A2 route
 alternates versions 40–44 between closed normal-root helper checkpoints and the
@@ -100,11 +108,14 @@ mirror and exact package/UID notification record provide routing evidence only;
 the closed-store checkpoint verifies the committed +60 total. Real UI logging,
 minimize, ordinary kill/reopen, one finish and another reopen have a separate
 closed checkpoint, with old operations, identity and original source preserved.
-Source/host checks are preparation only: no lifecycle APK build or Android
-execution has run. Permission denial/revocation, exact/inexact capability,
-force-stop, provider/receiving restore and the final candidate remain **UNRUN**.
-The coordinated UI screenshot target is build-only; its actual execution and
-capture evidence are separate from this lifecycle preparation.
+At this preparation checkpoint, source/host checks were preparation only and no
+lifecycle APK build or Android execution had run. The later candidate attempt
+and its guard refusal are recorded below. Permission denial/revocation,
+exact/inexact capability, force-stop, provider/receiving restore and the final
+candidate remain **UNRUN**.
+The visual screenshot target is deferred; visual QA is not a prerequisite for
+functional offline or final device qualification. Accessibility and functional
+layout checks remain required as part of workflow acceptance.
 The shared native SQLite checkpoint suite passes 9 tests, 0 skips; it includes
 bad timer/logged value, extra-workout and changed-identity/source refusals without
 repair. Shell controls pass 108 host cases using fake transport/FVM, including
@@ -123,10 +134,21 @@ passed 77 tests, 0 skips; analysis and formatting passed. Actions are issued to
 the visible selected owner, with atomic receipt/draft/timer fencing and no headless
 writer. Denied/inexact scheduling is explicit. These are host/source results; the
 fixed installed plugin/action, permission and lifecycle checks remain T5 UNRUN.
-Owner signing custody, the final refactored candidate, owner device/storage,
+Owner signing custody, the final functional candidate, owner device/storage,
 real transfer and sync remain unqualified. The selected owner route is a dedicated
-Alkion key with manual signed APK updates. UI work follows the established specimen
-and Animus branding directly in Flutter; its brief records that scope separately.
+Alkion key with manual signed APK updates. Preserve the committed UI baseline and
+completed UI work; no rollback is implied. Functional behavior, accessibility and
+functional layout checks remain required. New visual studies, wireframes,
+components, styling and visual QA are deferred until functional offline flows and
+the functional R3 Animus auth/sync integration are complete.
+
+Lifecycle execution update (2026-10-18): a candidate attempt built APK versions
+40–44 and completed the development preparation step at version 40. The
+ordinary-kill guard then refused before notification actions or reopen/logging
+checks ran. This is a failed attempt, not a lifecycle PASS. T5 remains
+**IN_PROGRESS**; prior temporary execution receipts are unavailable, so the next
+campaign must be fresh and cannot continue from that attempt. No process-death,
+notification-action or reopen/logging result is established by it.
 
 ## History numeric overflow (2026-10-17)
 

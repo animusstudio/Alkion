@@ -9,8 +9,14 @@ Actual key creation/custody/access remain gated. No device, signing or transfer 
 
 Prepare an isolated supported Alkion installation, durable phone file workflows
 and reproducible Android evidence before real data enters that installation.
-Initial emulator feasibility may precede the [UI/UX refactor](2026-10-17-ui-ux-refactor.md);
-final affected device proof must use the refactored candidate.
+Qualification is functional-first: complete the offline workflows and their
+device evidence before visual polish. Preserve the committed UI baseline,
+completed implementation and existing behavior; do not roll back that work.
+Defer any new visual studies, wireframes, components, styling or visual QA until
+functional offline flows and the functional R3 Animus auth/sync integration are
+complete. Accessibility and functional layout checks remain part of workflow
+acceptance. The [UI/UX refactor](2026-10-17-ui-ux-refactor.md) is a separate,
+deferred presentation pass and is not a prerequisite for offline qualification.
 
 At `f6b54f9`, `app/android/app/build.gradle.kts` selects only `.dev` and blocks
 release tasks. `app/Makefile` blocks ordinary run/install/device discovery.
@@ -166,11 +172,12 @@ key, real export or broad device inventory is part of emulator preparation.
   IDs/values/relationships/drafts/settings/evidence across interrupted boundaries;
   newer work remains reviewable, repeat callbacks cannot write old generations,
   and foreign/corrupt/newer-schema/nonempty targets stay preserved.
-- **A8:** After the UI refactor, the final signed candidate separately passes A1–A7
-  as applicable on the named owner installation using synthetic successor data.
-  Record commit/build/APK digest, package, signer fingerprint, OS and storage route.
-  Independent acceptance blocks real transfer and switch; changed candidate,
-  signer, storage or relevant platform inputs invalidate affected evidence.
+- **A8:** The functional candidate separately passes applicable A1–A7 on the
+  named owner installation using synthetic successor data. Record commit/build/APK
+  digest, package, signer fingerprint, OS and storage route. Independent
+  acceptance blocks real transfer and switch; changed candidate, signer, storage
+  or relevant platform inputs invalidate affected evidence. Visual polish is
+  deferred and is not a functional qualification gate.
 
 Authentication, Animus transport, real legacy capture/transfer, writer handoff,
 deployment and retirement remain separate work. This design grants no operational

@@ -8,7 +8,12 @@ signed-APK updates approved; actual key custody/access pending. [Specification](
 
 Implement isolated supported/dev builds, reusable Android document delivery and
 first-start recovery, then qualify the real driver and lifecycle before owner
-transfer. A1–A8 are observable gates in the specification, not delivered claims.
+transfer. Prioritize functional offline workflows; preserve the committed UI
+baseline and defer new specimen styling and visual QA until feature flows work.
+Accessibility and functional layout checks remain required. The separate UI
+presentation plan is deferred and is not a prerequisite for offline or final
+device qualification. A1–A8 are observable gates in the specification, not
+delivered claims.
 No legacy changes, auth/transport, owner-data access, release/tag/public binary,
 deployment or switch is authorized by this plan. Owner signing/device/media access
 needs named scope; approved synthetic debug work does not wait for signing custody.
@@ -19,10 +24,10 @@ high design review). One implementer per task; coordinator serializes Git and
 shared files. Each task receives one independent review; fixes get a diff recheck.
 One branch/PR for this plan, no direct main push or history rewrite.
 
-UI work owns visual treatment under the [separate plan](2026-10-17-ui-ux-refactor.md).
-Serialize its edits to `main.dart`, onboarding, profile, transfer/recovery screens
-and ARBs with T2–T4 below. Complete operational behavior before its presentation
-pass; rerun affected checks after integration. No parallel ownership of these files.
+The [separate UI plan](2026-10-17-ui-ux-refactor.md) owns a deferred visual
+polish pass. Preserve its committed source baseline and completed history; do not
+make new styling work a gate for functional qualification. Any later presentation
+edits to shared files must still be serialized with T2–T4 below.
 
 ## Tasks and exclusive file ownership
 
@@ -179,6 +184,13 @@ Status: implemented; host checks and independent task review PASS at `2cead98`.
 
 ### T5 — Scoped emulator route and actual Android proof (A1–A7)
 
+Complete functional offline qualification first. After offline proof, separately
+scope and review public-repository cleanup for obsolete backend/PowerSync
+remnants; complete that cleanup before both final device qualification and any
+R3 implementation. Cleanup does not include deployment or backend retirement.
+R3 auth and transport require a separately approved specification and plan
+before implementation; that approval does not change the cleanup ordering.
+
 - Bounded lifecycle stage ownership: `app/Makefile`,
   `app/tool/android_synthetic.sh`, `app/integration_test/android_lifecycle_test.dart`,
   new `app/test/alkion/acceptance/android_lifecycle_protocol_test.dart`, this plan
@@ -298,11 +310,12 @@ Status: implemented; host checks and independent task review PASS at `2cead98`.
   commands → results at candidate SHA, Android build/API/ABI and artifact digests in
   acceptance. Missing capabilities remain BLOCKED/UNRUN. Never infer device PASS.
 
-### T6 — Final refactored candidate and installed-device gate (A8)
+### T6 — Final functional candidate and installed-device gate (A8)
 
 - Own `docs/alkion/{acceptance,owner-gates}.md` and this plan only; code fixes return
-  to the task owner. Finish/review the UI refactor, rebuild and rerun affected T5
-  cases. Record final commit/build/APK digest, package and public signer fingerprint.
+  to the task owner. Freeze the functional candidate, rebuild and rerun affected
+  T5 cases. Record final commit/build/APK digest, package and public signer
+  fingerprint. Visual polish and screenshot review are not prerequisites.
 - After named owner execution scope and signing decision, qualify that signed
   candidate on the intended installation with synthetic successor data: unchanged
   Reps coexistence, logging, background/kill/reopen/resume, timers/+30s/permissions,
@@ -314,8 +327,17 @@ Status: implemented; host checks and independent task review PASS at `2cead98`.
 
 ## State, checks and delivery
 
+Functional-first scope amendment, 2026-10-18: independent design/fix review PASS.
+T5 SAF host-route ownership additionally covers new
+`app/tool/android_synthetic_documents{,_self_test}.py`; Make/harness wiring is
+serialized after the lifecycle helper's handoff. Installed proof remains pending.
+
 Stage 40–44 lifecycle source preparation: independent full-lane review PASS,
-2026-10-18, six-file scope, no findings. Actual execution remains UNRUN.
+2026-10-18, six-file scope, no findings. A subsequent candidate attempt built
+versions 40–44 and completed development preparation at 40, then the ordinary-kill
+guard refused before notification actions or reopen/logging checks. This failed
+attempt establishes no lifecycle result. Temporary receipts are unavailable;
+execution must restart as a fresh campaign.
 
 Independent design review at `92048af`: PASS, 2026-10-17, no remaining findings.
 Public Markdown check at `92048af`: PASS, 114 tracked files; whitespace PASS.
