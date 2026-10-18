@@ -356,6 +356,10 @@ receiving inputs, receiver bootstrap and the fixed twelve-launch adapter protoco
 drive real picker selection and six exact owned-process cuts on one immutable
 fresh preparation. Keep Make/harness wiring serialized as a later reviewed slice.
 Same-profile replacement/Keep remains separate; host controls imply no device PASS.
+The next H slice owns `app/Makefile`, `app/tool/android_synthetic.sh` and the two
+restore Python files for paired build/check/run wiring. Pin the immutable reserved
+ledger before builds, retain attempted-build evidence, and consume a separate
+built ledger before execution. Review wiring before any installed restore proof.
 
 At `2274080`, fresh driver11 passed both variants (independent evidence PASS),
 then A2 update/rejected-signer checks passed. Lifecycle failed after development
