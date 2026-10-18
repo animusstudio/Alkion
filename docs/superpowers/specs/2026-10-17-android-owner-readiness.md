@@ -179,6 +179,12 @@ key, real export or broad device inventory is part of emulator preparation.
   or relevant platform inputs invalidate affected evidence. Visual polish is
   deferred and is not a functional qualification gate.
 
+Android synthetic qualification may use a disposable self-targeted observer that
+reads the active accessibility root without global-idle waiting. Bind actual
+semantic XML, root package, bounded tree, screenshot and fresh request receipt to
+the exact observer APK, run and target. Observation dispatches no UI actions and
+changes no product timer or notification behavior; incomplete evidence refuses.
+
 Authentication, Animus transport, real legacy capture/transfer, writer handoff,
 deployment and retirement remain separate work. This design grants no operational
 access or public publication. Related: [implementation plan](../plans/2026-10-17-android-owner-readiness.md).
