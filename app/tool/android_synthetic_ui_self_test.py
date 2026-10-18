@@ -38,7 +38,7 @@ def hierarchy(package="com.android.systemui"):
 
 
 ADB = r'''#!/usr/bin/env python3
-import datetime,hashlib,json,os,shlex,subprocess,sys,time
+import datetime,hashlib,json,os,shlex,subprocess,sys,time,xml.etree.ElementTree as ET
 from pathlib import Path
 root=Path(os.environ["UI_TEST_ROOT"]); config=json.loads((root/"config").read_text())
 args=sys.argv[1:]; assert args[:2]==["-s","emulator-5558"],args
@@ -49,7 +49,7 @@ if cmd==["pm","path",package]:
  if mode=="fresh" and not (root/"installed").exists(): raise SystemExit(1)
  print("package:/data/app/fake/base.apk")
 elif cmd[:1]==["sha256sum"]: print(config["hash"]+"  "+cmd[1])
-elif cmd==["dumpsys","package",package]: print("versionCode=1")
+elif cmd==["dumpsys","package",package]: print("versionCode="+str(config.get("live_version",config["version"])))
 elif cmd[:3]==["pm","list","packages"]: print("package:"+package+" uid:"+str(10223 if mode=="helper-uid" else 10222))
 elif cmd==["dumpsys","activity","activities"]:
  state=root/("focused-"+mode); token="abc" if not state.exists() or mode!="focus-drift" else "changed"
@@ -65,12 +65,29 @@ elif cmd[:2]==["am","instrument"]:
  target.mkdir(parents=True)
  raw=(root/"tree.xml").read_bytes()
  receipt={"format":"alkion-android-ui-observation/1",**values,"complete":True,"result":"PASS",
-  "observer_package":package,"observer_version":1,"observer_uid":10222,
+  "observer_package":package,"observer_version":config["version"],"observer_uid":10222,
   "root_package":config["package"],"display_id":0,"window_id":7,"window_type":3,
   "window_active":True,"window_focused":True,"rotation":0,"width":1080,"height":2400,
   "elapsed_ms":20,"node_count":raw.count(b"<node "),"xml_length":len(raw),
   "xml_sha256":hashlib.sha256(raw).hexdigest(),"captured_at":datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")}
- changes={"run_id":"f"*32,"source_commit":"f"*40,"request_id":"f"*32,"root_package":"foreign.package",
+ labels=sum(node.get("visible-to-user")=="true" and any(node.get(key,"").strip(" \t\r\n") for key in ("text","content-desc")) for node in ET.fromstring(raw).iter("node"))
+ needs_labels=config["package"] in ("dev.animusstudio.alkion.dev","dev.animusstudio.alkion")
+ receipt.update(readiness="visible-label" if needs_labels else "structural",visible_label_count=labels,sample_count=1,candidate_sample=1)
+ sample={"index":1,"cache_cleared":mode!="cache-absent","root_available":True,"ready":not needs_labels or labels>0,"elapsed_ms":15,
+  **{key:receipt[key] for key in ("node_count","visible_label_count","window_id","xml_length","xml_sha256")}}
+ receipt["samples"]=[sample]
+ if mode=="delayed-readiness":
+  empty=dict(sample,index=1,ready=False,visible_label_count=0,node_count=5,xml_length=1165,xml_sha256="a"*64,elapsed_ms=5)
+  absent=dict(sample,index=2,ready=False,root_available=False,visible_label_count=0,node_count=0,xml_length=0,xml_sha256="",window_id=-1,elapsed_ms=10)
+  receipt.update(samples=[empty,absent,dict(sample,index=3)],sample_count=3,candidate_sample=3)
+ if mode=="native-not-ready": receipt.update(result="FAIL",error="readiness_sample_limit")
+ if mode=="sample-window": sample["window_id"]=99
+ if mode=="sample-late": sample["elapsed_ms"]=5000
+ if mode=="sample-counter": sample["node_count"]+=1
+ if mode=="sample-cache-unknown": sample["cache_cleared"]="unknown"
+ if mode=="sample-early-ready": receipt["samples"]=[dict(sample),dict(sample,index=2)];receipt.update(sample_count=2,candidate_sample=2)
+ changes={"readiness":"foreign","visible_label_count":999,"sample_count":0,"candidate_sample":40,
+  "observer_version":1,"run_id":"f"*32,"source_commit":"f"*40,"request_id":"f"*32,"root_package":"foreign.package",
   "xml_sha256":"0"*64,"node_count":999,"display_id":1,"window_active":False,
   "window_focused":False,"elapsed_ms":9000,"captured_at":"2000-01-01T00:00:00Z","result":"FAIL"}
  if mode in changes: receipt[mode]=changes[mode]
@@ -102,7 +119,7 @@ class Protocol(unittest.TestCase):
         tools = self.root / "sdk/platform-tools"; tools.mkdir(parents=True)
         self.adb = tools / "adb"; self.adb.write_text(ADB); self.adb.chmod(0o755)
         self.mode = "valid"; self.package = "com.android.systemui"
-        self.facts = {"package": PACKAGE, "version_code": 1, "apk_sha256": "d" * 64, "certificate_sha256": "e" * 64}
+        self.facts = {"package": PACKAGE, "version_code": observer.VERSION, "apk_sha256": "d" * 64, "certificate_sha256": "e" * 64}
         self.binding = {"format": "alkion-android-ui-binding/1", "run_id": RUN, "serial": "emulator-5558",
             "avd": "ui-host", "uid": 10222, "build": {"format": "alkion-android-ui-build/1",
             "source_commit": SOURCE, "native_source_sha256": observer.native_digest(SimpleNamespace(APP=TOOL.parent)), "apk": self.facts}}
@@ -126,7 +143,8 @@ class Protocol(unittest.TestCase):
         self.temporary.cleanup()
 
     def configure(self):
-        (self.root / "config").write_text(json.dumps({"mode": self.mode, "package": self.package, "hash": self.facts["apk_sha256"]}))
+        (self.root / "config").write_text(json.dumps({"mode": self.mode, "package": self.package, "hash": self.facts["apk_sha256"],
+            "version": observer.VERSION, "live_version": 1 if self.mode == "live-v1" else observer.VERSION}))
         (self.root / "tree.xml").write_bytes(ET.tostring(self.tree, encoding="utf-8", xml_declaration=True))
 
     def command(self, argv, *, binary=False, check=True, timeout=30, **kwargs):
@@ -177,7 +195,9 @@ class Protocol(unittest.TestCase):
     def test_receipt_identity_bounds_and_failure_controls(self):
         for mode in ("run_id", "source_commit", "request_id", "root_package", "xml_sha256", "node_count", "display_id",
                      "window_active", "window_focused", "elapsed_ms", "captured_at", "result", "helper-uid", "focus-drift",
-                     "linked-output", "missing-receipt"):
+                     "linked-output", "missing-receipt", "observer_version", "readiness", "visible_label_count",
+                     "sample_count", "candidate_sample", "sample-window", "sample-late", "sample-counter",
+                     "sample-cache-unknown", "sample-early-ready"):
             with self.subTest(mode=mode):
                 self.mode = mode
                 self.output = self.root / ("output-" + mode); self.output.mkdir()
@@ -245,6 +265,70 @@ class Protocol(unittest.TestCase):
         for key in receipt:
             with self.assertRaises(observer.Refusal): observer.binding_identity(self.binding, {**receipt, key: "foreign"})
 
+
+    def test_v2_empty_captured_app_shape_blank_and_invisible_labels_refuse(self):
+        # The V1 native preview returned this host-only shape while Flutter pixels
+        # visibly contained Resume workout. Exercise the actual parser/transport.
+        package = "dev.animusstudio.alkion.dev"
+        self.package = package
+        tree = ET.Element("hierarchy", rotation="0")
+        root = ET.SubElement(tree, "node", {"text": "", "content-desc": "", "resource-id": "",
+            "package": package, "class": "android.widget.FrameLayout", "clickable": "false",
+            "enabled": "true", "visible-to-user": "true", "bounds": "[0,0][1080,2400]"})
+        linear = ET.SubElement(root, "node", dict(root.attrib, **{"class": "android.widget.LinearLayout"}))
+        content = ET.SubElement(linear, "node", dict(root.attrib, **{"resource-id": "android:id/content"}))
+        ET.SubElement(content, "node", dict(root.attrib))
+        ET.SubElement(root, "node", dict(root.attrib, **{"class": "android.view.View",
+            "resource-id": "android:id/navigationBarBackground", "visible-to-user": "false",
+            "bounds": "[0,2274][1080,2400]"}))
+        self.assertEqual(len(list(tree.iter("node"))), 5)
+        for mode in ("captured-empty", "blank-only", "invisible-only"):
+            with self.subTest(mode=mode):
+                self.tree = copy.deepcopy(tree)
+                if mode == "blank-only": self.tree[0].set("text", " \t\r\n")
+                if mode == "invisible-only": self.tree[0][-1].set("text", "Resume workout")
+                self.output = self.root / mode; self.output.mkdir()
+                self.refuses()
+                attempt = self.output / "capture.observation"
+                self.assertEqual((attempt / "hierarchy.xml.stdout").read_bytes(), (self.root / "tree.xml").read_bytes())
+                self.assertEqual((attempt / "screenshot.stdout").read_bytes(), PNG)
+
+    def test_v2_cache_absent_is_recorded_and_current_labeled_tree_is_accepted(self):
+        self.mode = "cache-absent"; self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        self.assertEqual(self.observe()[0][0].get("text"), "Minimize")
+        report = json.loads((self.output / "capture.observation/receipt.json.stdout").read_bytes())
+        self.assertIs(report["samples"][0]["cache_cleared"], False)
+        self.assertEqual(report["visible_label_count"], 2)
+
+    def test_v2_complete_current_sample_after_empty_and_null_journal(self):
+        self.mode = "delayed-readiness"; self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        self.assertEqual(self.observe()[0][0].get("text"), "Minimize")
+        report = json.loads((self.output / "capture.observation/receipt.json.stdout").read_bytes())
+        self.assertEqual(report["sample_count"], 3)
+        self.assertEqual([sample["ready"] for sample in report["samples"]], [False, False, True])
+        self.assertEqual(report["xml_sha256"], report["samples"][-1]["xml_sha256"])
+
+    def test_v2_native_readiness_failure_keeps_candidate_receipt_and_screenshot(self):
+        self.mode = "native-not-ready"; self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        for node in self.tree.iter("node"): node.set("text", "")
+        self.refuses()
+        attempt = self.output / "capture.observation"
+        self.assertEqual((attempt / "hierarchy.xml.stdout").read_bytes(), (self.root / "tree.xml").read_bytes())
+        self.assertEqual(json.loads((attempt / "receipt.json.stdout").read_bytes())["error"], "readiness_sample_limit")
+        self.assertEqual((attempt / "screenshot.stdout").read_bytes(), PNG)
+
+    def test_v1_rejected_by_normal_capture_and_build_binder(self):
+        self.facts["version_code"] = 1
+        self.refuses()
+        self.assertEqual(self.commands(), [["exec-out", "screencap", "-p"]])
+        self.facts["version_code"] = observer.VERSION
+        self.mode = "live-v1"; self.output = self.root / "live-v1"; self.output.mkdir()
+        self.refuses()
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        host, root, apk, record, receipt = self.retained()
+        invalid = copy.deepcopy(record); invalid["apk"]["version_code"] = 1
+        with self.assertRaises(observer.Refusal): observer.validate_build(host, self.args, root, invalid)
+
     def retained(self):
         prior_root = self.root / "prior"; directory = prior_root / "ui-observer"; directory.mkdir(parents=True)
         apk = directory / "synthetic-ui-observer.apk"; apk.write_bytes(b"owned synthetic APK bytes")
@@ -262,7 +346,7 @@ class Protocol(unittest.TestCase):
         host = SimpleNamespace(APP=TOOL.parent, command=command, adb=self.transport,
             temporary_path=temporary, read_json=lambda path: json.loads(path.read_bytes()),
             apk_facts=lambda args, path, package: {**self.facts, "apk_sha256": observer.digest(path.read_bytes())},
-            package_metadata=lambda args, package: {"version_code": 1, "uid": 10222},
+            package_metadata=lambda args, package: {"version_code": observer.VERSION, "uid": 10222},
             device_platform_guard=lambda args: None)
         receipt = {key: self.binding[key] for key in ("run_id", "serial", "avd")}
         return host, prior_root, apk, record, receipt
@@ -299,6 +383,92 @@ class Protocol(unittest.TestCase):
                     observer.install_fresh(host, self.args, receipt, root, invalid, current)
                 self.assertEqual(self.commands(), [])
                 self.assertEqual(apk.read_bytes(), original)
+
+
+POLLING_JAVA = r"""
+package dev.animusstudio.alkion.synthetic.uiobserver;
+
+import dev.animusstudio.alkion.synthetic.uiobserver.HierarchyInstrumentation.Polling;
+
+public final class PollingControl {
+    static final class Clock implements Polling.Clock {
+        long time;
+        long largestPause;
+        public long now() { return time; }
+        public void pause(long milliseconds) {
+            if (milliseconds <= 0 || milliseconds > 100) throw new AssertionError("invalid_pause");
+            largestPause = Math.max(largestPause, milliseconds); time += milliseconds;
+        }
+    }
+    static void check(boolean value) { if (!value) throw new AssertionError("control_failed"); }
+    public static void main(String[] args) throws Exception {
+        Clock clock = new Clock();
+        int[] calls = {0};
+        String mode = args[0];
+        String expected = null;
+        if (mode.equals("setup-deadline")) { clock.time = 5000; expected = "readiness_deadline"; }
+        if (mode.equals("never-ready")) expected = "readiness_sample_limit";
+        if (mode.equals("costly-never-ready") || mode.equals("late-ready") || mode.equals("short-pause"))
+            expected = "readiness_deadline";
+        if (mode.equals("fatal-window")) expected = "changed_window";
+        if (mode.equals("late-ready")) clock.time = 4800;
+        if (mode.equals("near-deadline")) clock.time = 4400;
+        if (mode.equals("short-pause")) clock.time = 4900;
+        try {
+            int count = Polling.run(clock, index -> {
+                check(index == ++calls[0]);
+                if (mode.equals("fatal-window")) throw new IllegalStateException("changed_window");
+                if (mode.equals("costly-never-ready")) clock.time += 400;
+                if (mode.equals("late-ready")) { clock.time += 200; return true; }
+                if (mode.equals("near-deadline")) { clock.time += index == 1 ? 250 : 200; return index == 2; }
+                if (mode.equals("short-pause")) clock.time += 50;
+                return mode.equals("empty-then-ready") && index == 3;
+            }, 0);
+            check(expected == null);
+            check(mode.equals("empty-then-ready") ? count == 3 && clock.time == 200
+                                                   : count == 2 && clock.time == 4950);
+        } catch (IllegalStateException failure) {
+            check(failure.getMessage().equals(expected));
+        }
+        if (mode.equals("never-ready")) check(calls[0] == 40 && clock.time == 3900);
+        if (mode.equals("costly-never-ready")) check(calls[0] == 10 && clock.time == 5000);
+        if (mode.equals("late-ready") || mode.equals("fatal-window")) check(calls[0] == 1);
+        if (mode.equals("setup-deadline")) check(calls[0] == 0);
+        if (mode.equals("short-pause")) check(calls[0] == 1 && clock.largestPause == 50 && clock.time == 5000);
+        check(clock.time <= 5000);
+        System.out.println("PASS " + mode + " calls=" + calls[0] + " elapsed_ms=" + clock.time);
+    }
+}
+"""
+
+
+class ProductionPolling(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temporary = tempfile.TemporaryDirectory(prefix="alkion-ui-polling-")
+        cls.root = Path(cls.temporary.name)
+        cls.java = Path(os.environ.get("JAVA_HOME", "/usr/lib/jvm/java-21-openjdk")) / "bin"
+        cls.jar = Path(os.environ.get("ANDROID_SDK_ROOT", os.environ.get("ANDROID_HOME", str(Path.home() / "Android/Sdk")))) / "platforms/android-36/android.jar"
+        source = cls.root / "PollingControl.java"; source.write_text(POLLING_JAVA)
+        result = subprocess.run([str(cls.java / "javac"), "--release", "17", "-classpath", str(cls.jar),
+            "-d", str(cls.root), str(TOOL / "android_synthetic_ui/HierarchyInstrumentation.java"), str(source)],
+            capture_output=True, text=True, timeout=30)
+        if result.returncode:
+            cls.temporary.cleanup()
+            raise AssertionError(result.stdout + result.stderr)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temporary.cleanup()
+
+    def test_actual_production_controller_with_scripted_samples_and_monotonic_clock(self):
+        for mode in ("empty-then-ready", "near-deadline", "never-ready", "costly-never-ready", "late-ready",
+                     "setup-deadline", "short-pause", "fatal-window"):
+            with self.subTest(mode=mode):
+                result = subprocess.run([str(self.java / "java"), "-cp", str(self.root) + os.pathsep + str(self.jar),
+                    PACKAGE + ".PollingControl", mode], capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("PASS " + mode, result.stdout)
 
 
 if __name__ == "__main__":

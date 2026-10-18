@@ -377,6 +377,12 @@ class FakeHost:
                 "elapsed_ms": 20, "node_count": len(list(ET.fromstring(tree).iter("node"))),
                 "xml_length": len(tree), "xml_sha256": observer.digest(tree),
                 "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")}
+            labels = sum(node.get("visible-to-user") == "true" and any(node.get(key, "").strip(" \t\r\n")
+                for key in ("text", "content-desc")) for node in ET.fromstring(tree).iter("node"))
+            receipt.update(readiness="structural", visible_label_count=labels, sample_count=1, candidate_sample=1)
+            receipt["samples"] = [{"index": 1, "cache_cleared": True, "root_available": True, "ready": True,
+                "elapsed_ms": 15, **{key: receipt[key] for key in
+                    ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")}}]
             if self.scenario == "observer-wrong-nonce": receipt["request_id"] = "f" * 32
             directory = self.package_root(observer.PACKAGE) / ("files/observations/" + RUN + "/" + arguments["request_id"])
             assert not directory.exists()
