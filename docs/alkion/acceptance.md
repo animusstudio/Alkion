@@ -24,6 +24,13 @@ main version 41 installation. Preserve that partial state and all receipts;
 notification interaction, remaining lifecycle steps and the supported variant
 remain unrun. This run does not qualify lifecycle as a whole.
 
+A fresh campaign at `33ad6be` passed eleven driver cases and A2 in both variants;
+independent evidence review passed. Its lifecycle remains unrun. A separate
+observer preview at `1e5c449` captured the real dynamic notification shade with
+bound XML and screenshot. After an explicit Back, the app capture returned only
+five empty native containers despite visible workout UI. App semantics remain
+unqualified; bounded readiness is required before the fresh lifecycle run.
+
 ## Android preparation (2026-10-17, local work)
 
 The [Android plan](../superpowers/plans/2026-10-17-android-owner-readiness.md)
