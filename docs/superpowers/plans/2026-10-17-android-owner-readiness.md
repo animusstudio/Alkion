@@ -336,6 +336,11 @@ Functional-first scope amendment, 2026-10-18: independent design/fix review PASS
 T5 SAF host-route ownership additionally covers new
 `app/tool/android_synthetic_documents{,_self_test}.py`; Make/harness wiring is
 serialized after the lifecycle helper's handoff. Installed proof remains pending.
+T5 capability fixture ownership covers new
+`app/integration_test/android_notification_capability_test.dart` and
+`app/test/alkion/acceptance/android_notification_capability_protocol_test.dart`.
+Permission/capability fixtures and closed-store oracles are implemented separately;
+later host routing and Make wiring require a serialized handoff and review.
 
 Ordinary-kill harness fix, base `7e21216`: independent full-lane source review PASS.
 `make -C app android-synthetic-self-test` passed the retained 108 controls and
