@@ -7,6 +7,7 @@ directories, including exclusive writes and namespace publication.
 """
 
 import copy
+import datetime
 import hashlib
 import json
 import os
@@ -26,6 +27,7 @@ import zipfile
 
 sys.dont_write_bytecode = True
 import android_synthetic_documents as documents
+import android_synthetic_ui as observer
 
 
 RUN = "1" * 32
@@ -87,6 +89,10 @@ class FakeHost:
         original = Path(__file__).parent / "android_synthetic_documents"
         for name in ("AndroidManifest.xml", "SyntheticDocumentsProvider.java"):
             shutil.copyfile(original / name, fixture / name)
+        ui_fixture = self.APP / "tool/android_synthetic_ui"
+        ui_fixture.mkdir()
+        for name in ("AndroidManifest.xml", "HierarchyInstrumentation.java"):
+            shutil.copyfile(Path(__file__).parent / "android_synthetic_ui" / name, ui_fixture / name)
         self.sdk = root / "sdk"
         (self.sdk / "platform-tools").mkdir(parents=True)
         (self.sdk / "platform-tools/adb").touch()
@@ -212,6 +218,15 @@ class FakeHost:
                 lifecycle["installed"][package] = driver["installed"][package]
                 self.write(self.package_root(package) / "files/synthetic-neighbor.json",
                     {"format": "alkion-synthetic-neighbor/1", "run_id": RUN, "sentinel": "synthetic-only-keep-exact"})
+        ui_apk = self.root / "lifecycle/ui-observer/synthetic-ui-observer.apk"
+        ui_facts = self.artifact(ui_apk, observer.PACKAGE, observer.VERSION)
+        ui_build = {"format": "alkion-android-ui-build/1", "source_commit": REVISION,
+                    "native_source_sha256": observer.native_digest(self), "apk": ui_facts}
+        self.write(ui_apk.parent / "build.json", ui_build)
+        lifecycle["ui_observer"] = {"format": "alkion-android-ui-binding/1", "run_id": RUN,
+            "serial": self.receipt["serial"], "avd": self.receipt["avd"], "build": ui_build, "uid": 10004}
+        self.installed[observer.PACKAGE] = ui_facts
+        self.metadata[observer.PACKAGE] = {"version_code": observer.VERSION, "uid": 10004}
         return driver, updates, lifecycle
 
     def save_receipts(self):
@@ -284,6 +299,9 @@ class FakeHost:
                 raise AssertionError(tail)
             if check and value.returncode:
                 raise documents.Refusal("fake_transport_failed:" + repr(tail))
+            if binary:
+                value = result(value.stdout if isinstance(value.stdout, bytes) else value.stdout.encode(),
+                               value.stderr if isinstance(value.stderr, bytes) else value.stderr.encode(), value.returncode)
             return value
         raise AssertionError("Unexpected command: " + repr(argv))
 
@@ -317,7 +335,8 @@ class FakeHost:
                 "    cached=true empty=false\n")
         if argv[:2] == ["dumpsys", "activity"]:
             component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(self.front, "/.picker.PickActivity")
-            return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + component + " t1}\n")
+            return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + component + " t1}\n"
+                          "  mCurrentFocus=Window{abc u0 " + self.front + component + "}\n")
         if argv[:1] == ["sha256sum"]:
             package = argv[1].split("/")[-2]
             return result(self.installed[package]["apk_sha256"] + "  " + argv[1] + "\n")
@@ -344,6 +363,26 @@ class FakeHost:
             assert argv[-1] == documents.COMPONENT
             self.pids[documents.PROVIDER] = 501
             self.mutations.append(("enable", argv[-1])); return result()
+        if argv[:2] == ["am", "instrument"]:
+            assert argv[-1] == observer.COMPONENT and argv[argv.index("--user") + 1] == "0"
+            arguments = {argv[index + 1]: argv[index + 2] for index, value in enumerate(argv) if value == "-e"}
+            assert arguments["run_id"] == RUN and arguments["source_commit"] == REVISION
+            assert arguments["serial"] == self.args.serial and arguments["avd"] == self.args.avd
+            assert arguments["expected_package"] == self.front == "com.android.documentsui"
+            tree = self.ui_xml().encode()
+            receipt = {"format": "alkion-android-ui-observation/1", **arguments, "complete": True, "result": "PASS",
+                "observer_package": observer.PACKAGE, "observer_uid": 10004, "observer_version": observer.VERSION,
+                "root_package": self.front, "display_id": 0, "window_id": 7, "window_type": 1,
+                "window_active": True, "window_focused": True, "rotation": 0, "width": 1080, "height": 2400,
+                "elapsed_ms": 20, "node_count": len(list(ET.fromstring(tree).iter("node"))),
+                "xml_length": len(tree), "xml_sha256": observer.digest(tree),
+                "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")}
+            if self.scenario == "observer-wrong-nonce": receipt["request_id"] = "f" * 32
+            directory = self.package_root(observer.PACKAGE) / ("files/observations/" + RUN + "/" + arguments["request_id"])
+            assert not directory.exists()
+            self.write(directory / "hierarchy.xml", tree)
+            self.write(directory / "receipt.json", receipt)
+            return result("INSTRUMENTATION_CODE: -1\n")
         if argv[:2] == ["am", "start"]:
             package = argv[-1].split("/")[0]
             if package == "com.android.settings":
@@ -464,19 +503,23 @@ class FakeHost:
                 self.next_case(value["sequence"] + 1)
 
     def ui_xml(self):
+        root = ET.Element("hierarchy", rotation="0")
+        container = ET.SubElement(root, "node", {"package": self.front, "resource-id": self.front + ":id/content",
+            "class": "android.widget.FrameLayout", "text": "", "content-desc": "", "clickable": "false",
+            "enabled": "true", "visible-to-user": "true", "bounds": "[0,0][1080,2400]"})
         if self.front != "com.android.documentsui":
-            return '<hierarchy><node package="' + self.front + '"/></hierarchy>'
+            return ET.tostring(root, encoding="unicode")
         namespace = RUN + "-" + self.flavor
         prefix = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + namespace)
         pin = (RUN + "\n" + self.flavor + "\n" + str(len(RAW)) + "\n" + documents.digest(RAW)).encode()
         if not (prefix / "input.pin").exists():
             self.write(prefix / "input.pin", pin)
-        root = ET.Element("hierarchy")
         label = "Alkion synthetic " + namespace
         if self.scenario == "wrong-root":
             label = "Alkion synthetic " + "2" * 32 + "-" + self.flavor
         def node(text, y, clickable=True, cls="android.widget.TextView", desc=""):
-            ET.SubElement(root, "node", {"package": "com.android.documentsui", "text": text, "content-desc": desc,
+            ET.SubElement(container, "node", {"package": "com.android.documentsui", "text": text, "content-desc": desc,
+                "resource-id": "com.android.documentsui:id/item", "enabled": "true", "visible-to-user": "true",
                 "class": cls, "clickable": str(clickable).lower(), "bounds": "[0," + str(y) + "][100," + str(y + 100) + "]"})
         node(label, 0, self.drawer)
         if self.scenario == "duplicate-root" and self.drawer:
@@ -573,6 +616,17 @@ class DocumentsControls(unittest.TestCase):
         self.assertEqual(len(kills), 3)
         self.assertEqual({item["uid"] for item in kills}, {10001, 10002})
         self.assertTrue(all(item["result"] == "PASS" and item["exact_pid_absent"] for item in kills))
+        self.assertEqual(self.host.args._ui_observer[0], self.host.lifecycle["ui_observer"])
+        observations = list((self.root / "output").glob("*.observation/host-receipt.json"))
+        self.assertTrue(observations)
+        for path in observations:
+            retained = json.loads(path.read_bytes())
+            native = json.loads((path.parent / "receipt.json.stdout").read_bytes())
+            self.assertEqual(retained["result"], "PASS")
+            self.assertEqual(retained["binding"], self.host.lifecycle["ui_observer"])
+            self.assertEqual(native["root_package"], "com.android.documentsui")
+            self.assertEqual(native["source_commit"], REVISION)
+            self.assertEqual(native["xml_sha256"], observer.digest((path.parent / "hierarchy.xml.stdout").read_bytes()))
 
     def test_real_guard_refusals_never_reach_mutation(self):
         changes = (("driver", "driver_phase", "FAIL"), ("updates", "updates_phase", "FAIL"),
@@ -628,16 +682,18 @@ class DocumentsControls(unittest.TestCase):
 
     def test_picker_negative_preserves_raw_and_never_observes_case(self):
         self.host.scenario = "wrong-root"
+        self.host.args.action = "documents"
         with self.assertRaisesRegex(documents.Refusal, "documentsui_checkpoint_unavailable"):
-            documents.run(self.host, self.prepared())
+            self.host.documents_action(self.host.args)
         self.assertEqual([value["action"] for value in self.host.ack_objects], ["seeded", "armed"])
         self.assertTrue(list((self.root / "output").glob("*.xml.raw")))
         self.assertEqual(json.loads((self.root / "output/run.json").read_bytes())["documents_phase"], "FAIL")
 
     def test_receiving_failure_retains_every_provider_output(self):
         self.host.scenario = "receiving-failure"
+        self.host.args.action = "documents"
         with self.assertRaisesRegex(documents.Refusal, "host_receiving_verifier_failed"):
-            documents.run(self.host, self.prepared())
+            self.host.documents_action(self.host.args)
         outputs = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev/outputs")
         self.assertEqual(len(list(outputs.iterdir())), 5)
         self.assertEqual((self.root / "output/dev-received.alkionbackup").read_bytes(), RAW)

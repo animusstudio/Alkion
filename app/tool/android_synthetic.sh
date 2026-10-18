@@ -237,7 +237,7 @@ def run_driver(args, receipt, output):
                          "updates_and_wrong_signer": "UNRUN: later same-run update cases",
                          "lifecycle_notifications": "UNRUN: T3/T4 handoff",
                          "documents_provider_restore": "UNRUN: T3/provider handoff",
-                         "final_candidate": "UNRUN: final UI and installed-device gate"}}
+                         "final_candidate": "UNRUN: final functional and installed-device gate"}}
     def save():
         (output / "run.json").write_text(json.dumps(state, indent=2) + chr(10))
     save()
@@ -932,25 +932,18 @@ def parse_native_mirror(raw, record, package, uid, prepared):
             "native_notification_record_binding_unavailable")
     return action
 
-def ui_document(args, output, name):
-    result = adb(args, "exec-out", "uiautomator", "dump", "/dev/tty", check=False)
-    (output / (name+".xml.raw")).write_text(result.stdout+result.stderr)
-    require(result.returncode == 0 and "<?xml" in result.stdout, "ui_hierarchy_unavailable:"+name)
-    raw = result.stdout[result.stdout.index("<?xml"):]
-    end = raw.find("</hierarchy>")
-    require(end >= 0 and len(raw) <= 1048576, "ui_hierarchy_incomplete")
-    document = ET.fromstring(raw[:end+len("</hierarchy>")])
-    shot = command([args.sdk / "platform-tools/adb", "-s", args.serial, "exec-out", "screencap", "-p"],
-                   binary=True, check=False)
-    require(shot.returncode == 0 and shot.stdout.startswith(b"\x89PNG\r\n\x1a\n"), "ui_screenshot_unavailable")
-    (output / (name+".png")).write_bytes(shot.stdout)
-    return document
+def ui_document(args, output, name, *, expected_package=None):
+    return ui_module().capture(ui_host(),args,output,name,
+        expected_package or getattr(args,"ui_expected_package",None))
 
 def click_node(args, node):
     match = re.fullmatch(r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]", node.get("bounds", ""))
     require(match is not None, "ui_node_bounds_missing")
     x1, y1, x2, y2 = map(int, match.groups())
     require(x2 > x1 >= 0 and y2 > y1 >= 0, "ui_node_bounds_invalid")
+    require(node.get("enabled") == "true" and node.get("visible-to-user") == "true" and
+            x2 <= int(node.get("observer-display-width","0")) and
+            y2 <= int(node.get("observer-display-height","0")),"ui_node_outside_attested_display")
     adb(args, "shell", "input", "tap", str((x1+x2)//2), str((y1+y2)//2))
 
 def semantic_nodes(document, label):
@@ -974,7 +967,7 @@ def wait_session_ui(args, output, name):
 def shade_tap(args, output, name, title, *, action):
     adb(args, "shell", "cmd", "statusbar", "expand-notifications")
     for attempt in range(2):
-        document = ui_document(args, output, name+"-"+str(attempt))
+        document = ui_document(args, output, name+"-"+str(attempt),expected_package="com.android.systemui")
         titles = semantic_nodes(document, title)
         require(len(titles) == 1, "run_specific_notification_title_missing")
         parents = {child: parent for parent in document.iter() for child in parent}
@@ -1104,6 +1097,7 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
                 "source_changed_during_lifecycle_build")
         device_platform_guard(args); installed_matches(args,local)
         originals=driver_neighbor_bytes(args,receipt,original)
+        state["ui_observer"]=ui_module().prepare(ui_host(),args,receipt,output,revision); save()
         installed=state["installed"]
         def install(package,phase):
             require(app_pid(args,package) is None,"main_process_must_exit_before_checkpoint_install")
@@ -1117,6 +1111,7 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
                     "lifecycle_installed_uid_or_version_changed")
             save()
         for package in PACKAGES[1:]:
+            args.ui_expected_package=package
             result={}; state["lifecycle"][package]=result; save()
             peer_before={peer:closed_profile_fingerprint(args,peer,base["updates"][peer]["verify"])
                          for peer in PACKAGES[1:] if peer != package}
@@ -2002,6 +1997,17 @@ def documents_module():
     import android_synthetic_documents
     return android_synthetic_documents
 
+def ui_module():
+    sys.dont_write_bytecode = True
+    sys.path.insert(0,str(SCRIPT.parent))
+    import android_synthetic_ui
+    return android_synthetic_ui
+
+def ui_host():
+    names=("APP","command","adb","temporary_path","read_json","toolchain","apk_facts",
+           "package_metadata","device_platform_guard")
+    return SimpleNamespace(**{name:globals()[name] for name in names})
+
 def documents_host():
     names = ("APP", "command", "adb", "receipt_guard", "temporary_path", "read_json", "toolchain",
              "apk_facts", "installed_matches", "package_metadata", "device_platform_guard",
@@ -2033,10 +2039,12 @@ def documents_action(args):
     if args.action == "documents-check":
         print("Recognized driver/A2/current-lifecycle installation verified; no install, enable, launch or picker action.")
     else:
+        ui_module().bind_previous(ui_host(),args,prepared.receipt,prepared.lifecycle,
+            Path(args.base_run).parent,prepared.revision)
         return module.run(host, prepared)
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","self-test","documents-check","documents","build-documents","build-documents-provider"), default="check")
+parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","build-ui-observer","self-test","documents-check","documents","build-documents","build-documents-provider"), default="check")
 parser.add_argument("--avd")
 parser.add_argument("--serial")
 parser.add_argument("--receipt")
@@ -2062,6 +2070,12 @@ try:
         require(args.output is not None,"fresh_output_required")
         apk, facts = build_neighbor(args,temporary_path(args.output))
         print("Synthetic neighbor built:",apk)
+    elif args.action == "build-ui-observer":
+        revision=os.environ.get("ALKION_PROOF_SOURCE","")
+        require(args.output is not None and ui_module().source(ui_host()) == revision,"explicit_ui_build_source_required")
+        apk,facts=ui_module().build(ui_host(),args,temporary_path(args.output),revision)
+        require(ui_module().source(ui_host()) == revision,"source_changed_during_ui_build")
+        print("Synthetic UI observer built:",apk)
     elif args.action in ("documents-check", "documents", "build-documents", "build-documents-provider"):
         documents_action(args)
     else:
