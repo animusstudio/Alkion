@@ -381,6 +381,7 @@ class FakeHost:
                 for key in ("text", "content-desc")) for node in ET.fromstring(tree).iter("node"))
             receipt.update(readiness="structural", visible_label_count=labels, sample_count=1, candidate_sample=1)
             receipt["samples"] = [{"index": 1, "cache_cleared": True, "root_available": True, "ready": True,
+                "candidate_complete": True, "outcome": "complete",
                 "elapsed_ms": 15, **{key: receipt[key] for key in
                     ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")}}]
             if self.scenario == "observer-wrong-nonce": receipt["request_id"] = "f" * 32

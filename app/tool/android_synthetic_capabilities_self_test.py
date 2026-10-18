@@ -435,6 +435,7 @@ class CampaignHost(Host):
                 receipt.update(readiness="visible-label" if values["expected_package"] in capability.VARIANTS.values()
                     else "structural", visible_label_count=labels, sample_count=1, candidate_sample=1)
                 receipt["samples"] = [{"index": 1, "cache_cleared": True, "root_available": True, "ready": True,
+                "candidate_complete": True, "outcome": "complete",
                     "elapsed_ms": 15, **{key: receipt[key] for key in
                         ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")}}]
                 if self.observer_missing_readiness: del receipt["readiness"]

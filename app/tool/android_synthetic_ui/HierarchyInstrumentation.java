@@ -55,12 +55,17 @@ public final class HierarchyInstrumentation extends Instrumentation {
         static final long SAMPLE_BUDGET_MS = 5000;
         interface Clock { long now(); void pause(long milliseconds); }
         interface Probe { boolean sample(int index) throws Exception; }
+        static final class IncompleteChild extends Exception {
+            IncompleteChild() { super("incomplete_child"); }
+        }
 
         static int run(Clock clock, Probe probe, long started) throws Exception {
             long deadline = started + SAMPLE_BUDGET_MS;
             for (int index = 1; index <= MAX_SAMPLES; index++) {
                 if (clock.now() >= deadline) throw new IllegalStateException("readiness_deadline");
-                boolean ready = probe.sample(index);
+                boolean ready;
+                try { ready = probe.sample(index); }
+                catch (IncompleteChild rejected) { ready = false; }
                 // A slow sample cannot authorize a result after the sampling deadline.
                 if (clock.now() >= deadline) throw new IllegalStateException("readiness_deadline");
                 if (ready) return index;
@@ -144,7 +149,8 @@ public final class HierarchyInstrumentation extends Instrumentation {
             throws Exception {
         checkTime();
         JSONObject summary = new JSONObject().put("index", index).put("cache_cleared", false)
-            .put("root_available", false).put("ready", false).put("node_count", 0)
+            .put("root_available", false).put("candidate_complete", false).put("outcome", "pending")
+            .put("ready", false).put("node_count", 0)
             .put("visible_label_count", 0).put("window_id", -1).put("xml_length", 0)
             .put("xml_sha256", "");
         synchronized (this) {
@@ -159,7 +165,10 @@ public final class HierarchyInstrumentation extends Instrumentation {
             synchronized (this) { summary.put("cache_cleared", cleared); }
             node = automation.getRootInActiveWindow();
             checkTime();
-            if (node == null) return false;
+            if (node == null) {
+                synchronized (this) { summary.put("outcome", "null_root"); }
+                return false;
+            }
             require(expected.contentEquals(node.getPackageName()), "root_package_changed");
             window = node.getWindow();
             require(window != null && window.getId() == node.getWindowId()
@@ -168,6 +177,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
             require(observedWindow == -1 || (observedWindow == window.getId()
                 && observedWindowType == window.getType()), "sample_window_changed");
             observedWindow = window.getId(); observedWindowType = window.getType();
+            synchronized (this) { summary.put("root_available", true).put("window_id", window.getId()); }
             Display display = ((DisplayManager) getTargetContext().getSystemService(Context.DISPLAY_SERVICE)).getDisplay(0);
             require(display != null, "display_unavailable");
             Point size = new Point(); display.getRealSize(size);
@@ -191,11 +201,17 @@ public final class HierarchyInstrumentation extends Instrumentation {
             synchronized (this) {
                 require(!completed.get(), "capture_deadline");
                 candidate = new Candidate(data, metadata);
-                summary.put("root_available", true).put("ready", ready).put("node_count", nodes)
+                summary.put("candidate_complete", true).put("outcome", ready ? "complete" : "content_not_ready")
+                    .put("ready", ready).put("node_count", nodes)
                     .put("visible_label_count", visibleLabels).put("window_id", window.getId())
                     .put("xml_length", data.length).put("xml_sha256", hash);
             }
             return ready;
+        } catch (Polling.IncompleteChild rejected) {
+            // No partial bytes/counts reach candidate: publication is after full serialization.
+            nodes = 0; visibleLabels = 0;
+            synchronized (this) { summary.put("outcome", "incomplete_child"); }
+            throw rejected;
         } finally {
             synchronized (this) { summary.put("elapsed_ms", SystemClock.elapsedRealtime() - started); }
             if (window != null) window.recycle();
@@ -236,7 +252,7 @@ public final class HierarchyInstrumentation extends Instrumentation {
         int children = node.getChildCount(); require(children <= 4096, "child_limit");
         for (int index = 0; index < children; index++) {
             AccessibilityNodeInfo child = node.getChild(index);
-            require(child != null, "incomplete_child");
+            if (child == null) throw new Polling.IncompleteChild();
             try { serialize(xml, bytes, child, depth + 1, window, expected); }
             finally { child.recycle(); }
         }
