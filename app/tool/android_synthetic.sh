@@ -68,14 +68,14 @@ def ini(path):
         values[key.strip()] = value.strip()
     return values
 
-def adb(args, *tail, check=True, input=None):
+def adb(args, *tail, check=True, input=None, timeout=60):
     # Every invocation, including emu/package queries, carries this exact serial.
     # ADB joins shell arguments without escaping; preserve argv through that
     # outer remote shell before any nested sh -c interprets its fixed program.
     if tail and tail[0] == "shell":
         tail = ("shell", shlex.join(str(value) for value in tail[1:]))
     return command([args.sdk / "platform-tools/adb", "-s", args.serial, *tail],
-                   check=check, timeout=60, input=input)
+                   check=check, timeout=timeout, input=input)
 
 def receipt_guard(args):
     require(args.serial is not None and re.fullmatch(r"emulator-[0-9]{4,5}", args.serial),
@@ -655,25 +655,182 @@ def prepare_lifecycle(args, receipt, output):
         require(query.returncode == 0, "lifecycle_run_already_present")
     return base, original, local, metadata
 
-def app_pid(args, package):
-    result = adb(args, "shell", "pidof", package, check=False)
+def app_pid(args, package, *, timeout=60):
+    result = adb(args, "shell", "pidof", package, check=False, timeout=timeout)
     require(result.returncode in (0, 1) and not result.stderr.strip(), "scoped_pid_query_failed")
     values = result.stdout.split()
     require(len(values) <= 1 and all(re.fullmatch(r"[0-9]+", value) for value in values),
             "unexpected_package_processes")
     return int(values[0]) if values else None
 
-def ordinary_kill(args, package):
-    before = app_pid(args, package)
-    require(before is not None, "ordinary_kill_requires_live_process")
-    adb(args, "shell", "input", "keyevent", "KEYCODE_HOME")
-    adb(args, "shell", "am", "kill", "--user", "0", package)
-    deadline = time.monotonic()+15
-    while time.monotonic() < deadline:
-        if app_pid(args, package) is None:
-            return before
-        time.sleep(0.5)
-    raise Refusal("ordinary_kill_did_not_exit_no_force_stop_fallback")
+PROCESS_IDENTITY_SCRIPT = '''if [ ! -d "/proc/$1" ]; then printf 'absent\\n'; exit 0; fi
+cat "/proc/$1/status" || exit
+printf '\\nalkion-proc-stat\\n'
+cat "/proc/$1/stat"
+'''
+
+def parse_process_identity(raw, pid, uid):
+    if raw == "absent\n":
+        return None
+    require(len(raw.encode()) <= 65536 and raw.count("\nalkion-proc-stat\n") == 1,
+            "ordinary_kill_malformed_proc_identity")
+    status, native_stat = raw.split("\nalkion-proc-stat\n")
+    require(re.findall(r"^Pid:\s*([0-9]+)$", status, re.MULTILINE) == [str(pid)] and
+            re.findall(r"^Uid:\s*([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)$", status,
+                       re.MULTILINE) == [(str(uid),)*4], "ordinary_kill_proc_pid_or_uid_changed")
+    # comm may contain spaces/parentheses; field 22 is the kernel start time.
+    fields = re.fullmatch(r"([0-9]+) \(.*\) [A-Za-z] (.+)\n?", native_stat)
+    values = fields[2].split() if fields else []
+    require(fields and fields[1] == str(pid) and len(values) >= 19 and
+            re.fullmatch(r"[0-9]+", values[18]), "ordinary_kill_malformed_proc_stat")
+    return {"pid":pid, "uid":uid, "start_ticks":int(values[18])}
+
+def parse_cached_process(raw, package, pid, uid):
+    require(len(raw.encode()) <= 1048576, "ordinary_kill_process_dump_too_large")
+    headers = list(re.finditer(r"^( *)\*APP\* UID[^\n]*$", raw, re.MULTILINE))
+    selected = [index for index, header in enumerate(headers)
+                if re.search(r":"+re.escape(package)+r"(?:[/:}\s]|$)", header[0])]
+    require(len(selected) == 1, "ordinary_kill_process_record_ambiguous")
+    index = selected[0]; header = headers[index]
+    expected = (r" *\*APP\* UID "+str(uid)+r" ProcessRecord\{[^{}\s]+ "+str(pid)+":"+
+                re.escape(package)+r"/u0a"+str(uid-10000)+r"\}")
+    require(re.fullmatch(expected, header[0]), "ordinary_kill_native_pid_or_uid_changed")
+    block = raw[header.end():headers[index+1].start() if index+1 < len(headers) else len(raw)]
+    prefix = re.escape(header[1]+"  ")
+    def one(pattern):
+        values = re.findall("^"+prefix+pattern, block, re.MULTILINE)
+        require(len(values) == 1, "ordinary_kill_process_state_ambiguous")
+        return values[0]
+    require(one(r"pid=([0-9]+)\s*$") == str(pid) and
+            one(r"user #([0-9]+) uid=([0-9]+)\b[^\n]*$") == ("0",str(uid)),
+            "ordinary_kill_native_pid_or_uid_changed")
+    adj = tuple(map(int,one(r"oom adj: max=-?[0-9]+ curRaw=(-?[0-9]+) setRaw=(-?[0-9]+) cur=(-?[0-9]+) set=(-?[0-9]+)\s*$")))
+    states = tuple(map(int,one(r"curProcState=([0-9]+) mRepProcState=([0-9]+) setProcState=([0-9]+)\b[^\n]*$")))
+    cached, empty = one(r"cached=(true|false) empty=(true|false)\s*$")
+    # API 36 omits this line when both activity flags are false. An observed
+    # true/reported-true flag still excludes the process; malformed input refuses.
+    flags = re.findall("^"+prefix+r"(foregroundActivities[^\n]*)$",block,re.MULTILINE)
+    require(len(flags) <= 1, "ordinary_kill_foreground_flags_ambiguous")
+    foreground = re.fullmatch(r"foregroundActivities=(true|false) \(rep=(true|false)\)\s*",flags[0]) if flags else None
+    require(not flags or foreground, "ordinary_kill_malformed_foreground_flags")
+    activity_flags = foreground.groups() if foreground else None
+    # API 36 can retain LAST_ACTIVITY (15) after its adjustment becomes cached.
+    # State 15 alone is insufficient: PREVIOUS_APP_ADJ (700) must never pass.
+    return {"eligible":cached == "true" and activity_flags in (None,("false","false")) and
+            all(900 <= value <= 999 for value in adj) and all(15 <= value <= 19 for value in states),
+            "adj":adj, "states":states, "cached":cached, "empty":empty, "foreground":activity_flags}
+
+def resumed_component(raw):
+    require(len(raw.encode()) <= 1048576, "ordinary_kill_activity_dump_too_large")
+    values = re.findall(r"^\s*(?:topResumedActivity=|mResumedActivity: |ResumedActivity: |Resumed: )([^\n]+)$",
+                        raw, re.MULTILINE)
+    records = []
+    for value in values:
+        if value == "null":
+            continue
+        record = re.fullmatch(r"ActivityRecord\{[^{}\s]+ u([0-9]+) ([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+) t[0-9]+[^{}]*\}", value)
+        require(record, "ordinary_kill_malformed_resumed_activity")
+        records.append((record[1],record[2]))
+    require(len(set(records)) <= 1, "ordinary_kill_resumed_activity_ambiguous")
+    return records[0] if records else None
+
+def ordinary_kill(args, package, uid, output):
+    require(package in PACKAGES[1:] and type(uid) is int and 10000 <= uid < 100000,
+            "ordinary_kill_primary_variant_required")
+    # One total budget includes displacement, eligibility, transport and death.
+    # The real 600-second rest continues running throughout; never extend it here.
+    started = time.monotonic(); deadline = started+30
+    evidence = {"format":"alkion-android-ordinary-kill/1", "package":package, "uid":uid,
+                "budget_seconds":30, "result":"IN_PROGRESS", "eligibility":[]}
+    index = len(list(output.glob(package+"-ordinary-kill-*.json")))
+    path = output/(package+"-ordinary-kill-"+str(index)+".json")
+    require(not path.exists(), "ordinary_kill_evidence_exists")
+    def remaining():
+        value = deadline-time.monotonic()
+        require(value > 0, "ordinary_kill_total_budget_exhausted")
+        return min(5,value)
+    def native(*tail, check=True):
+        return adb(args,"shell",*tail,check=check,timeout=remaining())
+    def owner():
+        observed = app_pid(args,package,timeout=remaining())
+        require(observed == evidence["pid"], "ordinary_kill_package_pid_changed")
+        raw = native("sh","-c",PROCESS_IDENTITY_SCRIPT,"alkion-process-identity",str(observed)).stdout
+        identity = parse_process_identity(raw,observed,uid)
+        require(identity is not None and identity == evidence["identity"], "ordinary_kill_process_identity_changed")
+    def resolve(expected, action, *category):
+        raw = native("cmd","package","resolve-activity","--brief","--user","0","-a",action,*category).stdout
+        evidence[expected+"_resolution"] = raw
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        require(len(lines) in (1,2) and re.fullmatch(re.escape(expected)+r"/[A-Za-z0-9_.$]+",lines[-1]) and
+                (len(lines) == 1 or re.fullmatch(r"priority=-?[0-9]+ preferredOrder=[0-9]+ match=0x[0-9a-f]+ specificIndex=-?[0-9]+ isDefault=(?:true|false)",lines[0])),
+                "ordinary_kill_system_activity_unresolved")
+        installed = native("pm","list","packages","-s","-U","--user","0",expected).stdout
+        evidence[expected+"_system_package"] = installed
+        exact = re.findall(r"^package:"+re.escape(expected)+r" uid:([0-9]+)$",installed,re.MULTILINE)
+        require(len(exact) == 1 and (int(exact[0]) == 1000 if expected == "com.android.settings" else
+                10000 <= int(exact[0]) < 100000), "ordinary_kill_native_system_package_required")
+        return lines[-1]
+    def wait_resumed(component, label):
+        limit = min(deadline,time.monotonic()+5)
+        while time.monotonic() < limit:
+            raw = native("dumpsys","activity","activities").stdout
+            evidence[label] = raw
+            owner()
+            if resumed_component(raw) == ("0",component):
+                return
+            time.sleep(min(0.25,max(0,limit-time.monotonic())))
+        raise Refusal("ordinary_kill_expected_system_activity_not_resumed:"+label)
+    try:
+        before = app_pid(args,package,timeout=remaining())
+        require(before is not None, "ordinary_kill_requires_live_process")
+        evidence["pid"] = before
+        raw = native("sh","-c",PROCESS_IDENTITY_SCRIPT,"alkion-process-identity",str(before)).stdout
+        evidence["identity"] = parse_process_identity(raw,before,uid)
+        require(evidence["identity"] is not None, "ordinary_kill_requires_live_process")
+        require(native("am","get-current-user").stdout.strip() == "0", "ordinary_kill_primary_user_required")
+        settings = resolve("com.android.settings","android.settings.SETTINGS")
+        home = resolve("com.android.launcher3","android.intent.action.MAIN","-c","android.intent.category.HOME")
+        # Displace PREVIOUS_APP_ADJ through an observed native Settings foreground.
+        evidence["settings_start"] = native("am","start","-W","--user","0","-n",settings).stdout
+        wait_resumed(settings,"settings_resumed")
+        native("input","keyevent","KEYCODE_HOME")
+        wait_resumed(home,"home_resumed")
+        eligible_deadline = min(deadline,time.monotonic()+8)
+        while True:
+            owner()
+            raw = native("dumpsys","activity","processes",package).stdout
+            evidence["eligibility"].append({"elapsed_seconds":time.monotonic()-started,"dump":raw})
+            cached = parse_cached_process(raw,package,before,uid)
+            evidence["eligibility"][-1]["state"] = cached
+            if cached["eligible"]:
+                break
+            require(time.monotonic() < eligible_deadline, "ordinary_kill_never_became_cached")
+            time.sleep(min(0.25,max(0,eligible_deadline-time.monotonic())))
+        # Recheck actual foreground and kernel identity immediately before am kill.
+        raw = native("dumpsys","activity","activities").stdout
+        evidence["before_kill_resumed"] = raw
+        require(resumed_component(raw) == ("0",home), "ordinary_kill_home_no_longer_resumed")
+        owner()
+        path.write_text(json.dumps(evidence,indent=2)+chr(10))
+        evidence["kill_command"] = native("am","kill","--user","0",package).stdout
+        death_deadline = min(deadline,time.monotonic()+15)
+        while time.monotonic() < death_deadline:
+            observed = app_pid(args,package,timeout=remaining())
+            raw = native("sh","-c",PROCESS_IDENTITY_SCRIPT,"alkion-process-identity",str(before)).stdout
+            identity = parse_process_identity(raw,before,uid)
+            if identity is None:
+                require(observed is None, "ordinary_kill_package_restarted")
+                evidence["exact_pid_absent"] = True; evidence["result"] = "PASS"
+                return before
+            require(observed == before and identity == evidence["identity"], "ordinary_kill_process_changed_after_kill")
+            time.sleep(min(0.25,max(0,death_deadline-time.monotonic())))
+        raise Refusal("ordinary_kill_did_not_exit_no_force_stop_fallback")
+    except Exception as error:
+        evidence["result"] = "FAIL"; evidence["error"] = str(error)
+        raise
+    finally:
+        evidence["elapsed_seconds"] = time.monotonic()-started
+        path.write_text(json.dumps(evidence,indent=2)+chr(10))
 
 def parse_native_mirror(raw, record, package, uid, prepared):
     require(len(raw.encode()) <= 131072 and "<!DOCTYPE" not in raw and "<!ENTITY" not in raw,
@@ -891,11 +1048,11 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
             result={}; state["lifecycle"][package]=result; save()
             peer_before={peer:closed_profile_fingerprint(args,peer,base["updates"][peer]["verify"])
                          for peer in PACKAGES[1:] if peer != package}
-            if app_pid(args,package) is not None: ordinary_kill(args,package)
+            if app_pid(args,package) is not None: ordinary_kill(args,package,metadata[package]["uid"],output)
             install(package,"prepare"); main_start(args,package)
             prepared=read_lifecycle_report(args,package,receipt["run_id"],"prepare",output)
             result["prepare"]=prepared; save()
-            ordinary_kill(args,package); install(package,"main-actions")
+            ordinary_kill(args,package,metadata[package]["uid"],output); install(package,"main-actions")
             # Positive fixture setup only; denial/revocation qualification is a later stage.
             adb(args,"shell","pm","grant","--user","0",package,"android.permission.POST_NOTIFICATIONS")
             main_start(args,package)
@@ -918,7 +1075,7 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
                 require(app_pid(args,package)==visible_pid,"native_injection_changed_owner_process")
                 wait_session_ui(args,output,package+"-native-injection-"+str(index))
             (output/(package+"-native-injections.json")).write_text(json.dumps(injections,indent=2)+chr(10))
-            killed=ordinary_kill(args,package)
+            killed=ordinary_kill(args,package,metadata[package]["uid"],output)
             shade_tap(args,output,package+"-cold-action",prepared["draft"]["name"],action=True)
             wait_session_ui(args,output,package+"-cold-resume")
             cold_pid=app_pid(args,package)
@@ -929,7 +1086,7 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
             wait_ui_label(args,output,package+"-minimized","Resume workout")
             shade_tap(args,output,package+"-minimized-body",prepared["draft"]["name"],action=False)
             wait_session_ui(args,output,package+"-minimized-resume")
-            ordinary_kill(args,package)
+            ordinary_kill(args,package,metadata[package]["uid"],output)
             native={"actual_actions":[first,second],"visible_tap":True,"cold_tap":True,
                     "native_replay_and_fences":True,"ordinary_kill_pid_changed":True,
                     "visible_pid":visible_pid,"ordinary_killed_pid":killed,"cold_pid":cold_pid,
@@ -938,14 +1095,14 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
             stage_native_evidence(args,package,receipt["run_id"],native)
             install(package,"rest"); main_start(args,package)
             result["rest"]=read_lifecycle_report(args,package,receipt["run_id"],"rest",output); save()
-            ordinary_kill(args,package); install(package,"main-log"); main_start(args,package)
+            ordinary_kill(args,package,metadata[package]["uid"],output); install(package,"main-log"); main_start(args,package)
             wait_ui_label(args,output,package+"-resume-before-log","Resume workout")
             ui_tap(args,output,package+"-open-before-log","Resume workout")
             wait_session_ui(args,output,package+"-ready-to-log")
             ui_tap(args,output,package+"-actual-log","Log set 2 · 82.5kg × 5")
             ui_tap(args,output,package+"-log-minimize","Minimize")
             wait_ui_label(args,output,package+"-log-minimized","Resume workout")
-            log_pid=ordinary_kill(args,package); main_start(args,package)
+            log_pid=ordinary_kill(args,package,metadata[package]["uid"],output); main_start(args,package)
             wait_ui_label(args,output,package+"-log-reopened","Resume workout")
             ui_tap(args,output,package+"-log-resume","Resume workout")
             document=wait_session_ui(args,output,package+"-logged-restored")
@@ -955,11 +1112,11 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
             ui_tap(args,output,package+"-actual-finish","Finish workout")
             wait_ui_label(args,output,package+"-finished-summary","TOP SETS")
             wait_notification_absent(args,package,metadata[package]["uid"],output)
-            ordinary_kill(args,package); main_start(args,package)
+            ordinary_kill(args,package,metadata[package]["uid"],output); main_start(args,package)
             wait_ui_label(args,output,package+"-finished-reopen","Today")
             replay_native_action(args,package,first)
             ui_document(args,output,package+"-finished-stale-action")
-            ordinary_kill(args,package)
+            ordinary_kill(args,package,metadata[package]["uid"],output)
             install(package,"finish"); main_start(args,package)
             result["finish"]=read_lifecycle_report(args,package,receipt["run_id"],"finish",output)
             require(driver_neighbor_bytes(args,receipt,original)==originals,"lifecycle_neighbor_or_driver_changed")
@@ -981,6 +1138,193 @@ def run_lifecycle(args, receipt, output, base, original, local, metadata):
         save()
     except Exception as error:
         state["initial_lifecycle_phase"]="FAIL"; state["error"]=str(error); save(); raise
+
+def ordinary_kill_self_test():
+    # Exercise real argv -> ADB shell joining -> remote shell -> native shims.
+    # Only the clock and synthetic /proc mount are substituted; no real ADB runs.
+    global time, command
+    original_time = time; original_command = command
+    class Clock:
+        value = 0
+        def monotonic(self):
+            return self.value
+        def sleep(self, seconds):
+            self.value += seconds
+    with tempfile.TemporaryDirectory(prefix="alkion-ordinary-kill-host-") as name:
+        root = Path(name); sdk = root/"sdk"; tools = sdk/"platform-tools"; tools.mkdir(parents=True)
+        fake = tools/"adb"
+        fake.write_text('''#!/usr/bin/env python3
+import json,os,subprocess,sys
+from pathlib import Path
+tool=Path(sys.argv[0]).name; args=sys.argv[1:]
+if tool=="adb":
+ assert args[:2]==["-s","emulator-5558"] and len(args)==4 and args[2]=="shell",args
+ with open(os.environ["FAKE_ADB_LOG"],"a") as f: f.write(json.dumps(args)+chr(10))
+ env=dict(os.environ,PATH=str(Path(sys.argv[0]).parent)+os.pathsep+os.environ["PATH"])
+ raise SystemExit(subprocess.run(["/bin/sh","-c"," ".join(args[3:])],env=env).returncode)
+command=[tool,*args]
+with open(os.environ["FAKE_REMOTE_LOG"],"a") as f: f.write(json.dumps(command)+chr(10))
+state_path=Path(os.environ["FAKE_STATE"]); state=json.loads(state_path.read_text())
+scenario=state["scenario"]; package="dev.animusstudio.alkion.dev"; pid=4220; uid=10151
+settings="com.android.settings/.homepage.SettingsHomepageActivity"
+home="com.android.launcher3/.uioverrides.QuickstepLauncher"
+def save(): state_path.write_text(json.dumps(state))
+if command==["am","get-current-user"]: print(10 if scenario=="foreign-user" else 0)
+elif command[:3]==["cmd","package","resolve-activity"]:
+ assert args[2:5]==["--brief","--user","0"] and args[5]=="-a",args
+ print("priority=1 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true")
+ component=settings if args[6]=="android.settings.SETTINGS" else home
+ print("foreign.package/.Settings" if scenario=="foreign-settings" and component==settings else component)
+elif command[:5]==["pm","list","packages","-s","-U"]:
+ assert args[4:6]==["--user","0"],args
+ if scenario!="non-system": print("package:"+args[-1]+" uid:"+str(1000 if args[-1]=="com.android.settings" else 10120))
+elif command==["am","start","-W","--user","0","-n",settings]:
+ state["foreground"]="settings"; save(); print("Status: ok")
+elif command==["input","keyevent","KEYCODE_HOME"]:
+ assert state["foreground"]=="settings"
+ state["foreground"]="home"; save()
+elif command==["dumpsys","activity","activities"]:
+ component=settings if state["foreground"]=="settings" else home
+ if scenario=="settings-not-resumed" and state["foreground"]=="settings": component=package+"/.MainActivity"
+ if state["foreground"]=="home":
+  state["home_reads"]=state.get("home_reads",0)+1; save()
+  if scenario=="home-lost" and state["home_reads"]>1: component=package+"/.MainActivity"
+ print("      topResumedActivity=ActivityRecord{223442197 u0 "+component+" t7}")
+ if scenario=="ambiguous-resumed" and state["foreground"]=="home": component=package+"/.MainActivity"
+ print("  ResumedActivity: "+("malformed" if scenario=="malformed-resumed" else "ActivityRecord{223442197 u0 "+component+" t7}"))
+elif command==["dumpsys","activity","processes",package]:
+ assert state["foreground"]=="home"
+ state["probes"]=state.get("probes",0)+1
+ eligible=scenario=="already-cached" or state["probes"]>1
+ if scenario=="never-cached": eligible=False
+ state["eligible"]=eligible; save()
+ observed_uid=uid+1 if scenario=="native-uid-change" else uid
+ observed_pid=pid+1 if scenario=="native-pid-change" else pid
+ adj=900 if eligible else 700; proc_state=16 if scenario=="already-cached" else 15
+ if scenario=="protected-state": proc_state=14
+ header="  *APP* UID "+str(observed_uid)+" ProcessRecord{7333d1f "+str(observed_pid)+":"+package+"/u0a"+str(observed_uid-10000)+"}"
+ block=header+chr(10)+"    user #0 uid="+str(observed_uid)+" gids={50151}"+chr(10)+"    pid="+str(observed_pid)+chr(10)
+ block+="    oom adj: max=1001 curRaw="+str(adj)+" setRaw="+str(adj)+" cur="+str(adj)+" set="+str(adj)+chr(10)
+ block+="    curProcState="+str(proc_state)+" mRepProcState="+str(proc_state)+" setProcState="+str(proc_state)+" lastStateTime=-1s395ms"+chr(10)
+ block+="    cached="+("true" if eligible else "false")+" empty=false"+chr(10)
+ if scenario=="already-cached": block+="    foregroundActivities=false (rep=false)"+chr(10)
+ if scenario=="foreground-cached": block+="    foregroundActivities=true (rep=false)"+chr(10)
+ if scenario=="reported-foreground": block+="    foregroundActivities=false (rep=true)"+chr(10)
+ if scenario=="malformed-foreground": block+="    foregroundActivities=malformed"+chr(10)
+ if scenario=="duplicate-foreground": block+=("    foregroundActivities=false (rep=false)"+chr(10))*2
+ if scenario=="missing-state": block=block.replace("    cached=","    missing=")
+ if scenario=="duplicate-state": block+="    cached=true empty=false"+chr(10)
+ if scenario=="malformed-header": block=block.replace("*APP* UID ","*APP* UID malformed ")
+ print(block)
+ if scenario=="duplicate-process": print(block)
+ # A real dump repeats cached flags in its later OOM summary, at deeper indent.
+ print("  OOM levels:"+chr(10)+"        cached=false empty=false hasAboveClient=false")
+elif command==["pidof",package]:
+ if state.get("killed"):
+  state["death_reads"]=state.get("death_reads",0)+1; save()
+  gone=scenario!="no-death" and (scenario!="delayed-death" or state["death_reads"]>=3)
+  if scenario=="pidof-only-absence": raise SystemExit(1)
+  if scenario=="death-restart": print(pid+1)
+  elif gone and scenario!="pid-reuse": raise SystemExit(1)
+  else: print(pid)
+ elif state["foreground"]=="home" and scenario=="pid-change": print(pid+1)
+ elif state["foreground"]=="home" and scenario=="spontaneous-death": raise SystemExit(1)
+ else: print(pid)
+elif command[:2]==["sh","-c"]:
+ assert args==["-c",os.environ["FAKE_PROC_SCRIPT"],"alkion-process-identity",str(pid)],args
+ proc=Path(os.environ["FAKE_PROC"]); directory=proc/str(pid)
+ gone=state.get("killed") and scenario not in ("no-death","pid-reuse","pidof-only-absence") and (scenario!="delayed-death" or state.get("death_reads",0)>=3)
+ if gone:
+  for item in directory.iterdir(): item.unlink()
+  directory.rmdir()
+ else:
+  directory.mkdir(exist_ok=True)
+  observed_uid=uid+1 if scenario=="uid-change" and state["foreground"]=="home" else uid
+  ticks=101 if (scenario=="start-changed" and state["foreground"]=="home") or (scenario=="pid-reuse" and state.get("killed")) else 100
+  (directory/"status").write_text("Name: alkion"+chr(10)+"Pid: "+str(pid)+chr(10)+"Uid: "+" ".join([str(observed_uid)]*4)+chr(10))
+  fields=["0"]*49; fields[18]=str(ticks)
+  (directory/"stat").write_text(str(pid)+" (alkion (dev)) S "+" ".join(fields)+chr(10))
+ script=args[1].replace("/proc/",str(proc)+"/")
+ raise SystemExit(subprocess.run(["/bin/sh","-c",script,*args[2:]]).returncode)
+elif command==["am","kill","--user","0",package]:
+ assert state.get("eligible") and not state.get("killed"),state
+ state["killed"]=True; save()
+else: raise SystemExit("unexpected remote command: "+repr(command))
+''')
+        fake.chmod(0o755)
+        for remote in ("am","cmd","pm","input","dumpsys","pidof","sh"):
+            (tools/remote).symlink_to(fake)
+        target = argparse.Namespace(sdk=sdk,serial="emulator-5558")
+        previous = dict(os.environ); count = 0
+        scenarios = (("previous-to-cached",None,1),("already-cached",None,1),("delayed-death",None,1),
+            ("never-cached","ordinary_kill_never_became_cached",0),
+            ("protected-state","ordinary_kill_never_became_cached",0),
+            ("foreground-cached","ordinary_kill_never_became_cached",0),
+            ("reported-foreground","ordinary_kill_never_became_cached",0),
+            ("malformed-foreground","ordinary_kill_malformed_foreground_flags",0),
+            ("duplicate-foreground","ordinary_kill_foreground_flags_ambiguous",0),
+            ("pid-change","ordinary_kill_package_pid_changed",0),
+            ("uid-change","ordinary_kill_proc_pid_or_uid_changed",0),
+            ("start-changed","ordinary_kill_process_identity_changed",0),
+            ("spontaneous-death","ordinary_kill_package_pid_changed",0),
+            ("native-uid-change","ordinary_kill_native_pid_or_uid_changed",0),
+            ("native-pid-change","ordinary_kill_native_pid_or_uid_changed",0),
+            ("duplicate-process","ordinary_kill_process_record_ambiguous",0),
+            ("malformed-header","ordinary_kill_native_pid_or_uid_changed",0),
+            ("missing-state","ordinary_kill_process_state_ambiguous",0),
+            ("duplicate-state","ordinary_kill_process_state_ambiguous",0),
+            ("foreign-user","ordinary_kill_primary_user_required",0),
+            ("foreign-settings","ordinary_kill_system_activity_unresolved",0),
+            ("non-system","ordinary_kill_native_system_package_required",0),
+            ("settings-not-resumed","ordinary_kill_expected_system_activity_not_resumed",0),
+            ("ambiguous-resumed","ordinary_kill_resumed_activity_ambiguous",0),
+            ("malformed-resumed","ordinary_kill_malformed_resumed_activity",0),
+            ("home-lost","ordinary_kill_home_no_longer_resumed",0),
+            ("total-budget","ordinary_kill_total_budget_exhausted",0),
+            ("no-death","ordinary_kill_did_not_exit_no_force_stop_fallback",1),
+            ("death-restart","ordinary_kill_package_restarted",1),
+            ("pid-reuse","ordinary_kill_process_changed_after_kill",1),
+            ("pidof-only-absence","ordinary_kill_process_changed_after_kill",1))
+        try:
+            for scenario, expected, kills in scenarios:
+                directory = root/scenario; directory.mkdir(); (directory/"proc").mkdir()
+                state = directory/"state.json"
+                state.write_text(json.dumps({"scenario":scenario,"foreground":"app"}))
+                os.environ.update(FAKE_STATE=str(state),FAKE_ADB_LOG=str(directory/"adb.jsonl"),
+                    FAKE_REMOTE_LOG=str(directory/"remote.jsonl"),FAKE_PROC=str(directory/"proc"),
+                    FAKE_PROC_SCRIPT=PROCESS_IDENTITY_SCRIPT)
+                time = Clock()
+                def timed_command(argv, **options):
+                    require(argv[0] == tools/"adb" and 0 < options["timeout"] <= min(5,30-time.value),
+                            "ordinary_kill_host_transport_exceeded_remaining_budget")
+                    result = original_command(argv,**options)
+                    time.value += min(options["timeout"],5 if scenario == "total-budget" else 0.03)
+                    return result
+                command = timed_command
+                try: killed = ordinary_kill(target,PACKAGES[1],10151,directory)
+                except Refusal as error:
+                    require(expected and expected in str(error),"ordinary_kill_host_wrong_refusal:"+scenario+":"+str(error))
+                else:
+                    require(expected is None and killed == 4220,"ordinary_kill_host_missed_refusal:"+scenario)
+                record = json.loads(next(directory.glob("*-ordinary-kill-*.json")).read_text())
+                require(record["elapsed_seconds"] <= 30.1 and record["result"] == ("FAIL" if expected else "PASS"),
+                        "ordinary_kill_host_budget_or_receipt_changed:"+scenario)
+                commands = [json.loads(line) for line in (directory/"remote.jsonl").read_text().splitlines()]
+                require(commands.count(["am","kill","--user","0",PACKAGES[1]]) == kills and
+                        not any(word in command for command in commands for word in
+                            ("force-stop","kill-all","clear","uninstall","install","rm","su","SIGKILL")),
+                        "ordinary_kill_host_forbidden_fallback:"+scenario)
+                if expected is None:
+                    require(record.get("exact_pid_absent") is True and record["eligibility"][-1]["state"]["eligible"],
+                            "ordinary_kill_host_missing_native_proof")
+                    if scenario == "previous-to-cached":
+                        require(not record["eligibility"][0]["state"]["eligible"] and len(record["eligibility"]) >= 2,
+                                "ordinary_kill_host_previous_app_not_observed")
+                count += 1
+        finally:
+            time = original_time; command = original_command
+            os.environ.clear(); os.environ.update(previous)
+        print("PASS:",count,"ordinary-kill faithful ADB/remote-shell protocol cases; fake native state/clock only.")
 
 def lifecycle_self_test():
     count=0
@@ -1409,6 +1753,7 @@ try:
     if args.action == "self-test":
         self_test()
         lifecycle_self_test()
+        ordinary_kill_self_test()
     elif args.action == "build-lifecycle":
         argv = lifecycle_build_arguments(os.environ)
         toolchain(args)

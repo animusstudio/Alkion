@@ -327,10 +327,22 @@ before implementation; that approval does not change the cleanup ordering.
 
 ## State, checks and delivery
 
+Fresh driver attempt at `e532a82` failed on Android child descriptor inheritance;
+nine development cases passed, with later cases and supported execution unreached.
+The one-file direct-redirection fix passed independent source review, formatting,
+analysis and the existing host driver test. Retain failed data; retry fresh.
+
 Functional-first scope amendment, 2026-10-18: independent design/fix review PASS.
 T5 SAF host-route ownership additionally covers new
 `app/tool/android_synthetic_documents{,_self_test}.py`; Make/harness wiring is
 serialized after the lifecycle helper's handoff. Installed proof remains pending.
+
+Ordinary-kill harness fix, base `7e21216`: independent full-lane source review PASS.
+`make -C app android-synthetic-self-test` passed the retained 108 controls and
+new helper controls before the final observed cached-state amendment; the final
+affected helper check passed 31 cases. Bash/Python syntax, whitespace and native
+format parsing passed. Shared 30-second kill budget, no stronger fallback.
+Fresh driver, update and lifecycle execution still required.
 
 Stage 40–44 lifecycle source preparation: independent full-lane review PASS,
 2026-10-18, six-file scope, no findings. A subsequent candidate attempt built
