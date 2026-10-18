@@ -10,8 +10,10 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
 sys.dont_write_bytecode = True
@@ -51,6 +53,10 @@ if cmd==["pm","path",package]:
 elif cmd[:1]==["sha256sum"]: print(config["hash"]+"  "+cmd[1])
 elif cmd==["dumpsys","package",package]: print("versionCode="+str(config.get("live_version",config["version"])))
 elif cmd[:3]==["pm","list","packages"]: print("package:"+package+" uid:"+str(10223 if mode=="helper-uid" else 10222))
+elif cmd==["dumpsys","activity","activities"] and config.get("focus_sequence") is not None:
+ state=root/"focus-sequence"; index=int(state.read_text()) if state.exists() else 0
+ state.write_text(str(index+1)); values=config["focus_sequence"]
+ print(values[min(index,len(values)-1)])
 elif cmd==["dumpsys","activity","activities"]:
  state=root/("focused-"+mode); token="abc" if not state.exists() or mode!="focus-drift" else "changed"
  state.write_text("read")
@@ -111,6 +117,28 @@ else: raise SystemExit("unexpected native command:"+repr(cmd))
 '''
 
 
+class ControlledClock:
+    def __init__(self):
+        self.elapsed = 0.0
+        self.epoch = time.time()
+        self.pauses = []
+
+    def monotonic(self):
+        return self.elapsed
+
+    def time(self):
+        return self.epoch + self.elapsed
+
+    def sleep(self, seconds):
+        if not 0 < seconds <= 0.1:
+            raise AssertionError("pause outside focused sampling contract")
+        self.pauses.append(seconds)
+        self.advance(seconds)
+
+    def advance(self, seconds):
+        self.elapsed = round(self.elapsed + seconds, 12)
+
+
 class Protocol(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="alkion-ui-host-")
@@ -119,6 +147,7 @@ class Protocol(unittest.TestCase):
         tools = self.root / "sdk/platform-tools"; tools.mkdir(parents=True)
         self.adb = tools / "adb"; self.adb.write_text(ADB); self.adb.chmod(0o755)
         self.mode = "valid"; self.package = "com.android.systemui"
+        self.focus_sequence = None; self.clock = None; self.costs = {}; self.timed_calls = []
         self.facts = {"package": PACKAGE, "version_code": observer.VERSION, "apk_sha256": "d" * 64, "certificate_sha256": "e" * 64}
         self.binding = {"format": "alkion-android-ui-binding/1", "run_id": RUN, "serial": "emulator-5558",
             "avd": "ui-host", "uid": 10222, "build": {"format": "alkion-android-ui-build/1",
@@ -144,16 +173,29 @@ class Protocol(unittest.TestCase):
 
     def configure(self):
         (self.root / "config").write_text(json.dumps({"mode": self.mode, "package": self.package, "hash": self.facts["apk_sha256"],
-            "version": observer.VERSION, "live_version": 1 if self.mode == "live-v1" else observer.VERSION}))
+            "version": observer.VERSION, "live_version": 1 if self.mode == "live-v1" else observer.VERSION,
+            "focus_sequence": self.focus_sequence}))
         (self.root / "tree.xml").write_bytes(ET.tostring(self.tree, encoding="utf-8", xml_declaration=True))
 
     def command(self, argv, *, binary=False, check=True, timeout=30, **kwargs):
         self.configure()
         env = dict(os.environ, UI_TEST_ROOT=str(self.root))
-        if self.mode in ("screenshot-timeout", "instrument-timeout"):
+        tail = list(map(str, argv[3:]))
+        native = shlex.split(tail[1]) if tail[0] == "shell" else tail
+        if ((self.mode == "instrument-timeout" and native[:2] == ["am", "instrument"]) or
+                (self.mode == "screenshot-timeout" and native[:2] == ["exec-out", "screencap"])):
             timeout = min(timeout, 0.1)
-        result = subprocess.run([str(x) for x in argv], capture_output=True, text=not binary,
-                                timeout=timeout, env=env)
+        if self.clock is not None:
+            self.timed_calls.append({"native": native, "started": self.clock.monotonic(), "timeout": timeout})
+        try:
+            result = subprocess.run([str(x) for x in argv], capture_output=True, text=not binary,
+                                    timeout=timeout, env=env)
+        except subprocess.TimeoutExpired:
+            if self.clock is not None:
+                self.clock.advance(timeout)
+            raise
+        if self.clock is not None:
+            self.clock.advance(self.costs.get(tuple(native), 0))
         if check and result.returncode:
             raise ValueError(result.stderr)
         return result
@@ -186,11 +228,123 @@ class Protocol(unittest.TestCase):
     def test_explicit_variant_and_three_argument_documents_capture(self):
         for index, package in enumerate(("dev.animusstudio.alkion.dev", "com.android.documentsui", "com.android.permissioncontroller")):
             self.package = package; self.tree = hierarchy(package)
-            document = self.main["ui_document"](self.args, self.output, "variant-" + str(index), expected_package=package)
+            if package == "com.android.documentsui":
+                document = self.main["ui_document"](self.args, self.output, "variant-" + str(index))
+                trace = json.loads((self.output / ("variant-" + str(index) + ".observation/host-receipt.json")).read_bytes())
+                self.assertIsNone(trace["focus_readiness"]["expected_package"])
+                self.assertEqual(len(trace["focus_readiness"]["samples"]), 1)
+            else:
+                document = self.main["ui_document"](self.args, self.output, "variant-" + str(index), expected_package=package)
             self.assertEqual(document[0].get("package"), package)
 
     def test_explicit_wrong_focus_refuses(self):
-        self.refuses(lambda: observer.capture(self.host, self.args, self.output, "capture", "dev.animusstudio.alkion.dev"))
+        self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock):
+            self.refuses(lambda: observer.capture(self.host, self.args, self.output, "capture", "dev.animusstudio.alkion.dev"))
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+
+    def focus_state(self, package="com.android.systemui", token="shade", user=0):
+        label = "NotificationShade" if package == "com.android.systemui" else package + "/.MainActivity"
+        return "  mCurrentFocus=Window{" + token + " u" + str(user) + " " + label + "}"
+
+    def trace(self):
+        return json.loads((self.output / "capture.observation/host-receipt.json").read_bytes())
+
+    def slow_identity(self, seconds):
+        self.costs = {tuple(call): seconds for call in (
+            ["pm", "path", PACKAGE], ["sha256sum", "/data/app/fake/base.apk"],
+            ["dumpsys", "package", PACKAGE], ["pm", "list", "packages", "-U", "--user", "0", PACKAGE])}
+
+    def test_fresh_expected_focus_after_transition_binds_final_token_and_keeps_raw_samples(self):
+        app = self.focus_state("dev.animusstudio.alkion.dev", "app")
+        shade = self.focus_state()
+        self.focus_sequence = [app, app, shade, shade]
+        self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock):
+            document = self.observe()
+        self.assertEqual(document[0].get("package"), "com.android.systemui")
+        trace = self.trace(); samples = trace["focus_readiness"]["samples"]
+        self.assertEqual([value["ready"] for value in samples], [False, False, True])
+        self.assertEqual(trace["focus_before"]["token"], "shade")
+        self.assertAlmostEqual(self.clock.elapsed, 0.2)
+        for index, raw in enumerate((app, app, shade)):
+            label = "focus-before" if index == 0 else "focus-before-" + str(index)
+            self.assertEqual((self.output / "capture.observation" / (label + ".stdout")).read_text().strip(), raw.strip())
+        self.assertEqual(sum(cmd[:2] == ["am", "instrument"] for cmd in self.commands()), 1)
+        self.assertFalse(any(cmd[:1] == ["input"] or cmd[:2] == ["cmd", "statusbar"] for cmd in self.commands()))
+
+    def test_never_expected_focus_stops_at_twenty_samples_without_instrumentation(self):
+        self.focus_sequence = [self.focus_state("dev.animusstudio.alkion.dev", "app")]
+        self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        trace = self.trace()
+        self.assertEqual(len(trace["focus_readiness"]["samples"]), 20)
+        self.assertLess(self.clock.elapsed, 2)
+        self.assertEqual(len(self.clock.pauses), 19)
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        self.assertEqual(len(list((self.output / "capture.observation").glob("focus-before*.stdout"))), 20)
+        self.assertEqual((self.output / "capture.observation/screenshot.stdout").read_bytes(), PNG)
+
+    def test_expected_focus_returned_at_deadline_refuses_before_instrumentation(self):
+        self.focus_sequence = [self.focus_state()]
+        self.costs = {("dumpsys", "activity", "activities"): 2}
+        self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        self.assertIn("expected_focus_not_ready", self.trace()["error"])
+        self.assertTrue(self.trace()["focus_readiness"]["samples"][0]["ready"])
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        focus = next(value for value in self.timed_calls if value["native"] == ["dumpsys", "activity", "activities"])
+        self.assertEqual(focus["timeout"], 2)
+
+    def test_invalid_focus_samples_refuse_immediately_without_wait_or_instrumentation(self):
+        for index, raw in enumerate(("not a native focus line", self.focus_state(user=1),
+                self.focus_state() + "\n" + self.focus_state(token="duplicate"),
+                self.focus_state("foreign.package"))):
+            with self.subTest(raw=raw):
+                self.focus_sequence = [raw]; (self.root / "focus-sequence").unlink(missing_ok=True)
+                self.output = self.root / ("bad-focus-" + str(index)); self.output.mkdir()
+                self.clock = ControlledClock()
+                with patch.object(observer, "time", self.clock): self.refuses()
+                self.assertEqual(self.clock.pauses, [])
+                self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+
+    def test_post_capture_token_drift_still_refuses_after_readiness(self):
+        self.focus_sequence = [self.focus_state("dev.animusstudio.alkion.dev", "app"),
+                               self.focus_state(), self.focus_state(token="different-shade")]
+        self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        self.assertIn("focused_window_changed", self.trace()["error"])
+        self.assertEqual(self.trace()["focus_before"]["token"], "shade")
+        self.assertEqual(sum(cmd[:2] == ["am", "instrument"] for cmd in self.commands()), 1)
+
+    def test_focus_wait_uses_remaining_global_budget_and_skips_late_failure_screenshot(self):
+        self.focus_sequence = [self.focus_state("dev.animusstudio.alkion.dev", "app")]
+        self.slow_identity(4.975); self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        self.assertLessEqual(self.clock.elapsed, 20)
+        self.assertEqual(len(self.trace()["focus_readiness"]["samples"]), 1)
+        self.assertEqual(self.trace()["screenshot_skipped"], "capture_deadline")
+        self.assertFalse(any(cmd[:2] in (["am", "instrument"], ["exec-out", "screencap"]) for cmd in self.commands()))
+        self.assertTrue(all(0 < value["timeout"] <= 20 - value["started"] for value in self.timed_calls))
+
+    def test_expired_global_budget_never_starts_focus_or_failure_screenshot(self):
+        self.slow_identity(5); self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        self.assertEqual(self.clock.elapsed, 20)
+        self.assertEqual(self.trace()["screenshot_skipped"], "capture_deadline")
+        self.assertFalse(any(cmd[:2] in (["dumpsys", "activity"], ["exec-out", "screencap"]) for cmd in self.commands()))
+        self.assertEqual(len(self.timed_calls), 4)
+        self.assertTrue((self.output / "capture.observation/helper-uid.stdout").exists())
+
+    def test_global_deadline_timeout_retains_binary_streams_without_late_screenshot(self):
+        self.mode = "instrument-timeout"; self.slow_identity(4.975); self.clock = ControlledClock()
+        with patch.object(observer, "time", self.clock): self.refuses()
+        target = self.output / "capture.observation"
+        self.assertIn(b"\xff", (target / "instrument.stdout").read_bytes())
+        self.assertIn(b"\xfe", (target / "instrument.stderr").read_bytes())
+        self.assertEqual(self.clock.elapsed, 20)
+        self.assertEqual(self.trace()["screenshot_skipped"], "capture_deadline")
+        self.assertFalse(any(cmd[:2] == ["exec-out", "screencap"] for cmd in self.commands()))
 
     def test_receipt_identity_bounds_and_failure_controls(self):
         for mode in ("run_id", "source_commit", "request_id", "root_package", "xml_sha256", "node_count", "display_id",
