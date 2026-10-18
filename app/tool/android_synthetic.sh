@@ -2015,6 +2015,38 @@ def documents_host():
              "closed_profile_fingerprint", "app_pid", "ordinary_kill", "ui_document", "click_node")
     return SimpleNamespace(**{name: globals()[name] for name in names})
 
+def capabilities_module():
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(SCRIPT.parent))
+    import android_synthetic_capabilities
+    return android_synthetic_capabilities
+
+def capabilities_host():
+    names = ("resumed_component", "read_native_mirror", "parse_native_mirror", "ui_tap", "wait_ui_label", "wait_session_ui")
+    return SimpleNamespace(**vars(documents_host()), **{name: globals()[name] for name in names})
+
+def capabilities_action(args):
+    module = capabilities_module(); host = capabilities_host()
+    if args.action == "build-capability":
+        argv = module.capability_build_arguments(os.environ)
+        revision = os.environ.get("ALKION_PROOF_SOURCE", "")
+        require(re.fullmatch(r"[a-f0-9]{40}", revision), "explicit_capability_build_source_required")
+        toolchain(args)
+        require(module.current_source(host) == revision, "capability_build_source_mismatch")
+        built = command(argv, check=False, timeout=600)
+        print(built.stdout, end=""); print(built.stderr, end="", file=sys.stderr)
+        require(module.current_source(host) == revision, "source_changed_during_capability_build")
+        raise SystemExit(built.returncode)
+    args.attempt_manifests = json.loads(args.attempt_manifests_json)
+    require(isinstance(args.attempt_manifests, list) and all(isinstance(value, str) for value in args.attempt_manifests),
+            "explicit_attempt_manifest_list_required")
+    prepared = module.prepare(host, args)
+    ui_module().bind_previous(ui_host(), args, prepared.receipt, prepared.lifecycle, Path(args.base_run).parent, prepared.revision)
+    if args.action == "capabilities-check":
+        print("Recognized driver/A2/current lifecycle, version ledger and accepted UI observer verified; no mutation or allocation.")
+    else:
+        return module.run(host, prepared)
+
 def documents_action(args):
     module = documents_module(); host = documents_host()
     if args.action == "build-documents":
@@ -2044,7 +2076,7 @@ def documents_action(args):
         return module.run(host, prepared)
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","build-ui-observer","self-test","documents-check","documents","build-documents","build-documents-provider"), default="check")
+parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","build-ui-observer","self-test","documents-check","documents","build-documents","build-documents-provider","capabilities-check","capabilities","build-capability"), default="check")
 parser.add_argument("--avd")
 parser.add_argument("--serial")
 parser.add_argument("--receipt")
@@ -2052,6 +2084,10 @@ parser.add_argument("--output")
 parser.add_argument("--base-run")
 parser.add_argument("--driver-run")
 parser.add_argument("--updates-run")
+parser.add_argument("--version-ledger")
+parser.add_argument("--source-review")
+parser.add_argument("--attempt-manifests-json", default="[]")
+parser.add_argument("--jit-build-budget", type=int, default=120)
 args = parser.parse_args(sys.argv[2:])
 args.sdk = Path(os.environ.get("ANDROID_HOME",""))
 try:
@@ -2076,6 +2112,8 @@ try:
         apk,facts=ui_module().build(ui_host(),args,temporary_path(args.output),revision)
         require(ui_module().source(ui_host()) == revision,"source_changed_during_ui_build")
         print("Synthetic UI observer built:",apk)
+    elif args.action in ("capabilities-check", "capabilities", "build-capability"):
+        capabilities_action(args)
     elif args.action in ("documents-check", "documents", "build-documents", "build-documents-provider"):
         documents_action(args)
     else:

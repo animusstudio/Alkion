@@ -7,6 +7,7 @@ are loaded without its entry point and exercised against private fake transport.
 """
 
 import copy
+import base64
 from datetime import datetime, timezone
 import json
 import os
@@ -22,12 +23,14 @@ import xml.etree.ElementTree as ET
 
 sys.dont_write_bytecode = True
 import android_synthetic_capabilities as capability
+import android_synthetic_ui as observer
 
 
 RUN = "1" * 32
 SOURCE = "a" * 40
 CERT = "b" * 64
 UTC = "2026-10-18T12:00:00.000Z"
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jE1sAAAAASUVORK5CYII=")
 
 
 def response(stdout="", stderr="", code=0):
@@ -181,6 +184,31 @@ class Host:
         self.write(path, {"package": package, "version": version})
         return {"package": package, "version_code": version, "apk_sha256": capability.sha(path.read_bytes()), "certificate_sha256": CERT}
 
+    def add_observer(self):
+        fixture = self.APP / "tool/android_synthetic_ui"; fixture.mkdir(parents=True)
+        for name in ("AndroidManifest.xml", "HierarchyInstrumentation.java"):
+            (fixture / name).write_bytes((Path(__file__).parent / "android_synthetic_ui" / name).read_bytes())
+        root = Path(self.args.base_run).parent / "ui-observer"
+        facts = self.artifact(root / "synthetic-ui-observer.apk", observer.PACKAGE, observer.VERSION)
+        self.installed[observer.PACKAGE] = facts
+        self.metadata[observer.PACKAGE] = {"uid": 10004, "version_code": observer.VERSION}
+        record = {"format": "alkion-android-ui-build/1", "source_commit": SOURCE,
+                  "native_source_sha256": observer.native_digest(self), "apk": facts}
+        self.write(root / "build.json", record)
+        self.lifecycle["ui_observer"] = {"format": "alkion-android-ui-binding/1", "run_id": RUN,
+            "serial": self.args.serial, "avd": self.args.avd, "uid": 10004, "build": record}
+        self.write(Path(self.args.base_run), self.lifecycle)
+        self.ledger["manifest_sha256"][self.args.base_run] = capability.sha(Path(self.args.base_run).read_bytes())
+        self.write(Path(self.args.version_ledger), self.ledger)
+        self.args.attempt_manifests_json = "[]"; self.args.jit_build_budget = 120
+
+    def transport(self, argv, **options):
+        result = self.command(argv, **options)
+        if options.get("binary"):
+            result.stdout = result.stdout.encode() if isinstance(result.stdout, str) else result.stdout
+            result.stderr = result.stderr.encode() if isinstance(result.stderr, str) else result.stderr
+        return result
+
     def make_chain(self):
         driver = {"format": "alkion-android-run/1", "phase": "driver", "driver_phase": "PASS", "overall": "IN_PROGRESS",
             "pending": {}, "run_id": RUN, "serial": self.args.serial, "avd": self.args.avd, "api": 36, "abi": "x86_64",
@@ -303,10 +331,10 @@ class CampaignHost(Host):
         self.exact = {package: True for package in capability.VARIANTS.values()}
         self.flags = {package: True for package in capability.VARIANTS.values()}
         self.active = {}; self.dialog = set(); self.current_apks = {}; self.logging = set(); self.logged_clicks = []
-        self.kill_calls = []; self.query_reports = []
+        self.kill_calls = []; self.query_reports = []; self.session_open = set(); self.observer_wrong_nonce = False
         self.app_pid = lambda args, package: self.active.get(package)
         self.ordinary_kill = self.kill
-        self.ui_document = self.document
+        self.ui_document = self.attested_document
         self.ui_tap = self.tap
         self.wait_ui_label = lambda *args: None
         self.wait_session_ui = lambda *args: None
@@ -322,15 +350,45 @@ class CampaignHost(Host):
             self.logging.add(package); self.logged_clicks.append(package)
         else:
             assert label in ("Resume workout", "Minimize")
+            package, = self.active
+            if label == "Resume workout": self.session_open.add(package)
+            else: self.session_open.discard(package)
         self.clock += 0.1
 
-    def document(self, args, output, name):
+    def document(self, args, output, name, *, expected_package=None):
         package, = self.active
+        owner = "com.android.permissioncontroller" if package in self.dialog else package
+        assert expected_package in (None, owner)
+        tree = ET.Element("hierarchy", rotation="0")
+        frame = ET.SubElement(tree, "node", {"package": owner, "bounds": "[0,0][1080,2400]"})
+        def node(text, resource, bounds, clickable=False):
+            ET.SubElement(frame, "node", {"package": owner, "text": text, "resource-id": resource,
+                                         "clickable": str(clickable).lower(), "bounds": bounds})
         if package in self.dialog:
             label = "Alkion Dev" if package.endswith(".dev") else "Alkion"
-            return ET.fromstring('<hierarchy><node package="com.android.permissioncontroller" resource-id="com.android.permissioncontroller:id/permission_message" text="Allow ' + label + ' to send you notifications?"/><node package="com.android.permissioncontroller" resource-id="com.android.permissioncontroller:id/permission_deny_button" text="Don’t allow" clickable="true" bounds="[0,0][100,100]"/></hierarchy>')
-        message = capability.INEXACT_MESSAGE if self.permission[package] else capability.DENIED_MESSAGE
-        return ET.fromstring('<hierarchy><node package="' + package + '" text="' + message + '"/></hierarchy>')
+            node('Allow ' + label + ' to send you notifications?', owner + ':id/permission_message', '[0,0][200,100]')
+            node('Don’t allow', owner + ':id/permission_deny_button', '[0,100][200,200]', True)
+        else:
+            node(capability.INEXACT_MESSAGE if self.permission[package] else capability.DENIED_MESSAGE, '', '[0,400][1080,500]')
+            if package in self.session_open:
+                node('Log set 2 · 82.5kg × 5', '', '[0,100][200,200]', True)
+                node('Minimize', '', '[0,200][200,300]', True)
+            else:
+                node('Resume workout', '', '[0,0][200,100]', True)
+        for element in tree.iter('node'):
+            for key, value in {'text': '', 'content-desc': '', 'resource-id': '', 'class': 'android.view.View',
+                               'clickable': 'false', 'enabled': 'true', 'visible-to-user': 'true'}.items():
+                element.attrib.setdefault(key, value)
+        return tree
+
+    def attested_document(self, *args, **kwargs):
+        # Legacy direct-module controls use an already-parsed fake observation;
+        # facade controls above still obtain these attributes from the real
+        # observer parser, never from this convenience wrapper.
+        tree = self.document(*args, **kwargs)
+        for node in tree.iter('node'):
+            node.set('observer-display-width','1080');node.set('observer-display-height','2400')
+        return tree
 
     def mirror(self, package):
         entries = []
@@ -358,6 +416,23 @@ class CampaignHost(Host):
         if words[0].endswith("/adb"):
             tail = words[3:]
             remote = shlex.split(tail[1]) if tail[0] in ("shell", "exec-out") else []
+            if tail == ["exec-out", "screencap", "-p"]:
+                self.calls.append(words); return response(PNG, b"")
+            if remote[:2] == ["am", "instrument"]:
+                self.calls.append(words)
+                values = {remote[index + 1]: remote[index + 2] for index, value in enumerate(remote) if value == "-e"}
+                tree = self.document(self.args, None, None, expected_package=values["expected_package"])
+                raw = ET.tostring(tree)
+                receipt = {"format": "alkion-android-ui-observation/1", **values, "complete": True, "result": "PASS",
+                    "observer_package": observer.PACKAGE, "observer_uid": 10004, "observer_version": observer.VERSION,
+                    "root_package": values["expected_package"], "display_id": 0, "window_id": 7, "window_type": 3,
+                    "window_active": True, "window_focused": True, "rotation": 0, "width": 1080, "height": 2400,
+                    "elapsed_ms": 20, "node_count": len(list(tree.iter('node'))), "xml_length": len(raw),
+                    "xml_sha256": observer.digest(raw), "captured_at": datetime.now(timezone.utc).isoformat().replace('+00:00','Z')}
+                if self.observer_wrong_nonce: receipt["request_id"] = "f" * 32
+                target = self.package(observer.PACKAGE) / ('files/observations/' + RUN + '/' + values['request_id'])
+                self.write(target / 'receipt.json', receipt); self.write(target / 'hierarchy.xml', raw)
+                return response('INSTRUMENTATION_CODE: -1\n')
             if tail[:2] == ["install", "-r"]:
                 self.calls.append(words); self.mutations.append(tail)
                 path = Path(tail[2]); value = json.loads(path.read_bytes()); package = value["package"]
@@ -404,11 +479,17 @@ class CampaignHost(Host):
             if remote[:2] == ["date", "-u"]:
                 self.calls.append(words); return response(utc(capability.instant(UTC) + self.clock) + "\n")
             if remote[:2] == ["input", "tap"]:
-                self.calls.append(words); self.mutations.append(remote); package, = self.dialog
-                self.dialog.remove(package); self.permission[package] = False; self.flags[package] = True; self.mirror(package); return response()
+                self.calls.append(words); self.mutations.append(remote)
+                if self.dialog:
+                    package, = self.dialog
+                    self.dialog.remove(package); self.permission[package] = False; self.flags[package] = True; self.mirror(package)
+                else:
+                    self.tap(self.args, None, None, {50:'Resume workout',150:'Log set 2 · 82.5kg × 5',250:'Minimize'}[int(remote[-1])])
+                return response()
             if remote == ["dumpsys", "activity", "activities"]:
                 self.calls.append(words); package, = self.active
-                return response('mResumedActivity: ActivityRecord{abc u0 com.android.permissioncontroller/.permission.ui.GrantPermissionsActivity t1}\n Intent { act=android.content.pm.action.REQUEST_PERMISSIONS }\n launchedFromUid=' + str(self.metadata[package]["uid"]) + ' launchedFromPackage=' + package + '\n')
+                component = 'com.android.permissioncontroller/.permission.ui.GrantPermissionsActivity' if package in self.dialog else package + '/dev.animusstudio.alkion.MainActivity'
+                return response('mResumedActivity: ActivityRecord{abc u0 ' + component + ' t1}\n mCurrentFocus=Window{abc u0 ' + component + '}\n Intent { act=android.content.pm.action.REQUEST_PERMISSIONS }\n launchedFromUid=' + str(self.metadata[package]["uid"]) + ' launchedFromPackage=' + package + '\n')
             if remote[:3] == ["cmd", "notification", "get"]:
                 self.calls.append(words); package = remote[-1].split("|")[1]
                 if not self.permission[package]: return response("no active notification matching key: " + remote[-1], code=1)
@@ -508,13 +589,14 @@ class Controls(unittest.TestCase):
             root = ET.Element("hierarchy")
             ET.SubElement(root, "node", {"package": owner, "text": "", "content-desc": capability.DENIED_MESSAGE})
             return root
-        host.ui_document = lambda *args: document(package)
+        host.ui_document = lambda *args, **kwargs: document(package)
+        host.resumed_component = self.host.resumed_component
         evidence = SimpleNamespace(count=0, host=host, prepared=SimpleNamespace(args=self.host.args, output=self.root),
-                                   adb=lambda *args: response("actual captured native activity placeholder"))
+                                   adb=lambda *args: response('mResumedActivity: ActivityRecord{abc u0 ' + package + '/dev.animusstudio.alkion.MainActivity t1}\n'))
         timer = SimpleNamespace(monotonic=lambda: clock.now, sleep=lambda duration: setattr(clock, "now", clock.now + duration))
         with patch.object(capability, "time", timer):
             self.assertEqual(capability.limitation_ui(evidence, package, capability.DENIED_MESSAGE, require_dialog=False)["message"], capability.DENIED_MESSAGE)
-            host.ui_document = lambda *args: document(capability.PACKAGES[2])
+            host.ui_document = lambda *args, **kwargs: document(capability.PACKAGES[2])
             with self.assertRaisesRegex(capability.Blocked, "snackbar_not_observed"):
                 capability.limitation_ui(evidence, package, capability.DENIED_MESSAGE, require_dialog=False)
 
@@ -886,6 +968,130 @@ class Controls(unittest.TestCase):
         self.assertEqual(closed["prepare"]["state_digest"], closed["preserve"]["state_digest"])
         budgets = [json.loads(path.read_bytes()) for path in prepared.output.glob("*remaining-budget.json")]
         self.assertEqual(len({item["original_deadline"] for item in budgets}), 1)
+
+    def facade_campaign(self, name):
+        host = CampaignHost(self.root / name); host.add_observer()
+        host.namespace.update(command=host.transport, app_pid=host.app_pid, ordinary_kill=host.kill)
+        return host
+
+    def test_actual_facade_check_and_complete_fake_observer_campaign(self):
+        host = self.facade_campaign('facade-positive')
+        with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+            host.args.action = 'capabilities-check'
+            host.capabilities_action(host.args)
+            self.assertEqual(host.args._ui_observer[0], host.lifecycle['ui_observer'])
+            self.assertFalse(host.mutations); self.assertFalse(Path(host.args.output).exists())
+            host.args.action = 'capabilities'
+            timer = SimpleNamespace(monotonic=lambda: host.clock, sleep=lambda duration: setattr(host,'clock',host.clock+duration))
+            with patch.object(capability, 'time', timer):
+                result = host.capabilities_action(host.args)
+        self.assertEqual(result['capability_phase'],'PASS')  # Host-only protocol input, never Android PASS.
+        self.assertEqual(len(result['cases']),8); self.assertEqual(len(host.query_reports),20)
+        receipts=[json.loads(path.read_bytes()) for path in Path(host.args.output).glob('*.observation/receipt.json.stdout')]
+        self.assertTrue(receipts)
+        self.assertEqual({item['root_package'] for item in receipts},set(capability.VARIANTS.values())|{'com.android.permissioncontroller'})
+        self.assertEqual(result['ui_observer'],host.lifecycle['ui_observer'])
+        self.assertTrue(all(item['peer_and_neighbor_preserved'] for item in result['cases'].values()))
+
+    def test_actual_facade_refuses_foreign_observer_before_actions(self):
+        for failure in ('uid','native-source','missing-retained-apk'):
+            with self.subTest(failure=failure):
+                host=self.facade_campaign('foreign-'+failure); host.args.action='capabilities'
+                if failure=='uid': host.metadata[observer.PACKAGE]['uid']+=1
+                elif failure=='native-source':
+                    path=host.APP/'tool/android_synthetic_ui/HierarchyInstrumentation.java';path.write_bytes(path.read_bytes()+b'\n')
+                else: (Path(host.args.base_run).parent/'ui-observer/synthetic-ui-observer.apk').unlink()
+                with patch.dict(os.environ,ANDROID_USER_HOME=str(host.user)), self.assertRaises((ValueError,host.namespace['Refusal'])):
+                    host.capabilities_action(host.args)
+                self.assertFalse(host.mutations);self.assertFalse(Path(host.args.output).exists())
+
+    def test_actual_facade_bad_observer_nonce_retains_failed_first_capture(self):
+        host=self.facade_campaign('bad-observer-nonce');host.observer_wrong_nonce=True;host.args.action='capabilities'
+        timer=SimpleNamespace(monotonic=lambda:host.clock,sleep=lambda duration:setattr(host,'clock',host.clock+duration))
+        with patch.dict(os.environ,ANDROID_USER_HOME=str(host.user)),patch.object(capability,'time',timer),self.assertRaises(ValueError):
+            host.capabilities_action(host.args)
+        result=json.loads((Path(host.args.output)/'run.json').read_bytes())
+        self.assertEqual(result['capability_phase'],'FAIL')
+        self.assertEqual(set(result['cases']),{'dev/denied'})
+        self.assertNotIn('preserve',result['cases']['dev/denied'])
+        traces=[json.loads(path.read_bytes()) for path in Path(host.args.output).glob('*.observation/host-receipt.json')]
+        self.assertEqual(traces[0]['result'],'FAIL')
+
+    def test_make_literal_capability_inputs_and_receiving_paths(self):
+        tools=self.root/'make-tools';tools.mkdir();log=self.root/'make-argv.json'
+        shim='#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_ARGV_LOG"]).write_text(json.dumps({"argv":sys.argv[1:],"env":{k:v for k,v in os.environ.items() if k.startswith("ALKION_")}}))\n'
+        for name in ('bash','fvm'):
+            path=tools/name;path.write_text(shim);path.chmod(0o700)
+        canary=self.root/'must-not-execute'
+        literal='space "double" \'single\' `touch '+str(canary)+'` $(touch '+str(canary)+') $(shell touch '+str(canary)+') ${HOME}'
+        app=Path(__file__).parent.parent
+        values={'ALKION_SYNTHETIC_ACTION':'capabilities-check','ALKION_AVD':literal,'ALKION_SERIAL':literal,
+                'ALKION_RECEIPT':literal,'ALKION_OUTPUT':literal,'ALKION_BASE_RUN':literal,'ALKION_DRIVER_RUN':literal,
+                'ALKION_UPDATES_RUN':literal,'ALKION_VERSION_LEDGER':literal,'ALKION_SOURCE_REVIEW':literal,
+                'ALKION_ATTEMPT_MANIFESTS_JSON':json.dumps([literal]),'ALKION_JIT_BUILD_BUDGET':'120'}
+        flags=('--action','--avd','--serial','--receipt','--output','--base-run','--driver-run','--updates-run',
+               '--version-ledger','--source-review','--attempt-manifests-json','--jit-build-budget')
+        expected=['tool/android_synthetic.sh',*(part for flag,value in zip(flags,values.values()) for part in (flag,value))]
+        env=dict(os.environ,PATH=str(tools)+os.pathsep+os.environ['PATH'],FAKE_ARGV_LOG=str(log))
+        for origin in ('command-line','environment'):
+            def invoke(target,inputs):
+                command=['make','-C',str(app),target];variables=dict(env)
+                if origin=='command-line':command += [key+'='+value for key,value in inputs.items()]
+                else:variables.update(inputs)
+                completed=subprocess.run(command,env=variables,capture_output=True,text=True,timeout=10)
+                self.assertEqual(completed.returncode,0,completed.stderr)
+                self.assertFalse(canary.exists())
+                return json.loads(log.read_bytes())
+            self.assertEqual(invoke('android-synthetic',values)['argv'],expected)
+            inputs={key:literal for key in (*capability.DEFINES,'ALKION_FLAVOR')}
+            built=invoke('android-synthetic-capability-apk',inputs)
+            self.assertEqual(built['argv'],['tool/android_synthetic.sh','--action','build-capability'])
+            self.assertTrue(all(built['env'][key]==literal for key in inputs))
+            receiving=invoke('alkion-verify-backup',{'ALKION_BACKUP':literal,'ALKION_OUTPUT':literal})
+            self.assertEqual(receiving['argv'],['dart','run','tool/alkion_verify_backup.dart','--backup',literal,'--output',literal])
+
+    def test_actual_make_build_route_validates_helper_and_literal_main_without_build(self):
+        tools=self.root/'build-tools';tools.mkdir();log=self.root/'fake-fvm.json'
+        git=tools/'git';git.write_text('#!/usr/bin/env python3\nimport os,sys\nif sys.argv[3:]==["rev-parse","HEAD"]:print(os.environ["FAKE_SOURCE"])\nelif sys.argv[3:]==["status","--porcelain","--untracked-files=normal"]:print(os.environ.get("FAKE_DIRTY",""),end="")\nelse:raise SystemExit("unexpected fake git command")\n');git.chmod(0o700)
+        fvm=tools/'fvm';fvm.write_text('#!/usr/bin/env python3\nimport os,json,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_FVM_LOG"]).write_text(json.dumps(sys.argv[1:]))\n');fvm.chmod(0o700)
+        before=snapshot();raw=capability.canonical(self.host.lifecycle)+b'\n';identity=step(raw,before,'dev','denied','prepare',81)
+        inputs=dict(zip(capability.DEFINES,map(str,(identity[key] for key in ('run_id','source_commit','prior_source_commit','variant','case_id','phase','version_code','prior_version_code','consumed_version_floor','profile_id','generation','prior_report_sha256','prior_state_digest')))))
+        inputs['ALKION_FLAVOR']='dev'
+        env=dict(os.environ,PATH=str(tools)+os.pathsep+os.environ['PATH'],ANDROID_HOME=str(self.host.sdk),FAKE_SOURCE=SOURCE,FAKE_FVM_LOG=str(log),PYTHONDONTWRITEBYTECODE='1')
+        base=['make','-C',str(Path(__file__).parent.parent),'android-synthetic-capability-apk']
+        for phase in ('prepare','main'):
+            values=dict(inputs,ALKION_CAPABILITY_PHASE=phase)
+            completed=subprocess.run(base+[key+'='+value for key,value in values.items()],env=env,capture_output=True,text=True,timeout=10)
+            self.assertEqual(completed.returncode,0,completed.stderr)
+            self.assertEqual(json.loads(log.read_bytes()),capability.capability_build_arguments(values)[1:])
+        saved=log.read_bytes()
+        for overrides,environment in (({'ALKION_PRIOR_REPORT_SHA256':'bad'},{}),({}, {'FAKE_DIRTY':' M source'}),({}, {'FAKE_SOURCE':'0'*40})):
+            values=dict(inputs,**overrides)
+            completed=subprocess.run(base+[key+'='+value for key,value in values.items()],env=dict(env,**environment),capture_output=True,text=True,timeout=10)
+            self.assertNotEqual(completed.returncode,0)
+            self.assertEqual(log.read_bytes(),saved)
+
+    def test_capability_cli_missing_identity_refuses_before_device(self):
+        for action in ('capabilities-check','capabilities'):
+            completed=subprocess.run(['bash',str(Path(__file__).with_name('android_synthetic.sh')),'--action',action],capture_output=True,text=True,timeout=10)
+            self.assertNotEqual(completed.returncode,0)
+            self.assertIn('explicit_emulator_serial_required',completed.stderr)
+
+    def test_reviewed_source_delta_allows_only_exact_new_observer_paths(self):
+        paths=sorted(('app/tool/android_synthetic_ui.py','app/tool/android_synthetic_ui_self_test.py',
+                      'app/tool/android_synthetic_ui/AndroidManifest.xml','app/tool/android_synthetic_ui/HierarchyInstrumentation.java'))
+        review=self.root/'source-review.json';self.host.args.source_review=str(review)
+        self.host.write(review,{'format':'alkion-capability-source-review/1','result':'PASS','base_source_commit':'b'*40,'source_commit':SOURCE,'changed_paths':paths})
+        original=self.host.command
+        def command(argv,**options):
+            if 'diff' in argv:return response('\n'.join(paths)+'\n')
+            return original(argv,**options)
+        with patch.object(self.host,'command',command):
+            capability.provenance(self.host,self.host.args,'b'*40,SOURCE)
+            paths.append('app/lib/unreviewed.dart')
+            self.host.write(review,{'format':'alkion-capability-source-review/1','result':'PASS','base_source_commit':'b'*40,'source_commit':SOURCE,'changed_paths':paths})
+            with self.assertRaisesRegex(capability.Refusal,'unreviewed_or_runtime_source_change'):
+                capability.provenance(self.host,self.host.args,'b'*40,SOURCE)
 
 
 if __name__ == "__main__":

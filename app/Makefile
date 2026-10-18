@@ -12,6 +12,7 @@ export ALKION_PROOF_SOURCE ALKION_UI_CASE
 .PHONY: alkion-verify-backup
 .PHONY: android-synthetic android-synthetic-self-test android-synthetic-neighbor android-synthetic-driver-apk android-synthetic-update-apk android-synthetic-lifecycle-apk android-synthetic-ui-apk
 .PHONY: android-synthetic-documents-apk android-synthetic-documents-provider android-synthetic-documents-self-test
+.PHONY: android-synthetic-capability-apk android-synthetic-capabilities-self-test
 ALKION_SYNTHETIC_ACTION ?= check
 # Preserve raw operator inputs in the environment, including literal dollars.
 override export ALKION_SYNTHETIC_ACTION := $(value ALKION_SYNTHETIC_ACTION)
@@ -22,6 +23,25 @@ override export ALKION_OUTPUT := $(value ALKION_OUTPUT)
 override export ALKION_BASE_RUN := $(value ALKION_BASE_RUN)
 override export ALKION_DRIVER_RUN := $(value ALKION_DRIVER_RUN)
 override export ALKION_UPDATES_RUN := $(value ALKION_UPDATES_RUN)
+override export ALKION_VERSION_LEDGER := $(value ALKION_VERSION_LEDGER)
+override export ALKION_SOURCE_REVIEW := $(value ALKION_SOURCE_REVIEW)
+override export ALKION_ATTEMPT_MANIFESTS_JSON := $(value ALKION_ATTEMPT_MANIFESTS_JSON)
+override export ALKION_JIT_BUILD_BUDGET := $(value ALKION_JIT_BUILD_BUDGET)
+override export ALKION_BACKUP := $(value ALKION_BACKUP)
+override export ALKION_FLAVOR := $(value ALKION_FLAVOR)
+override export ALKION_PROOF_RUN := $(value ALKION_PROOF_RUN)
+override export ALKION_PROOF_SOURCE := $(value ALKION_PROOF_SOURCE)
+override export ALKION_PRIOR_SOURCE := $(value ALKION_PRIOR_SOURCE)
+override export ALKION_PROOF_VARIANT := $(value ALKION_PROOF_VARIANT)
+override export ALKION_CAPABILITY_CASE := $(value ALKION_CAPABILITY_CASE)
+override export ALKION_CAPABILITY_PHASE := $(value ALKION_CAPABILITY_PHASE)
+override export ALKION_PROOF_VERSION := $(value ALKION_PROOF_VERSION)
+override export ALKION_PRIOR_VERSION := $(value ALKION_PRIOR_VERSION)
+override export ALKION_CONSUMED_VERSION_FLOOR := $(value ALKION_CONSUMED_VERSION_FLOOR)
+override export ALKION_PROOF_PROFILE := $(value ALKION_PROOF_PROFILE)
+override export ALKION_PROOF_GENERATION := $(value ALKION_PROOF_GENERATION)
+override export ALKION_PRIOR_REPORT_SHA256 := $(value ALKION_PRIOR_REPORT_SHA256)
+override export ALKION_PRIOR_STATE_SHA256 := $(value ALKION_PRIOR_STATE_SHA256)
 help:
 	@echo "Alkion: get, analyze, test TEST=<path>, format, fmt FORMAT_FILES=<owned paths>, alkion-driver-qualification ALKION_OUTPUT=<fresh /tmp path>, alkion-transfer-recovery ALKION_OUTPUT=<fresh transfer-proof* path>, alkion-backup-recovery ALKION_OUTPUT=<fresh backup-proof* path>"
 get:
@@ -48,9 +68,9 @@ alkion-backup-recovery:
 	@test -n "$(ALKION_OUTPUT)" || (echo 'Set ALKION_OUTPUT to a fresh disposable backup-proof* directory.' >&2; exit 2)
 	$(DART) run tool/alkion_backup_recovery.dart --output "$(ALKION_OUTPUT)"
 alkion-verify-backup:
-	@test -n "$(ALKION_BACKUP)" || (echo 'Set ALKION_BACKUP to the explicitly received backup file.' >&2; exit 2)
-	@test -n "$(ALKION_OUTPUT)" || (echo 'Set ALKION_OUTPUT to a fresh inspection directory.' >&2; exit 2)
-	$(DART) run tool/alkion_verify_backup.dart --backup "$(ALKION_BACKUP)" --output "$(ALKION_OUTPUT)"
+	@test -n "$${ALKION_BACKUP}" || (echo 'Set ALKION_BACKUP to the explicitly received backup file.' >&2; exit 2)
+	@test -n "$${ALKION_OUTPUT}" || (echo 'Set ALKION_OUTPUT to a fresh inspection directory.' >&2; exit 2)
+	$(DART) run tool/alkion_verify_backup.dart --backup "$${ALKION_BACKUP}" --output "$${ALKION_OUTPUT}"
 alkion-driver-diagnose:
 	@test -n "$(ALKION_OUTPUT)" || (echo 'Set fresh ALKION_OUTPUT.' >&2; exit 2)
 	$(DART) run tool/alkion_driver_qualification.dart --diagnose "$(ALKION_OUTPUT)"
@@ -68,11 +88,20 @@ build-apk-dev:
 build-apk-supported:
 	$(MAKE) build-apk ALKION_FLAVOR=supported
 android-synthetic:
-	bash tool/android_synthetic.sh --action "$${ALKION_SYNTHETIC_ACTION}" --avd "$${ALKION_AVD}" --serial "$${ALKION_SERIAL}" --receipt "$${ALKION_RECEIPT}" --output "$${ALKION_OUTPUT}" --base-run "$${ALKION_BASE_RUN}" --driver-run "$${ALKION_DRIVER_RUN}" --updates-run "$${ALKION_UPDATES_RUN}"
+	@set --; \
+	case "$${ALKION_SYNTHETIC_ACTION}" in \
+	capabilities-check|capabilities) set -- --version-ledger "$${ALKION_VERSION_LEDGER}" --source-review "$${ALKION_SOURCE_REVIEW}" --attempt-manifests-json "$${ALKION_ATTEMPT_MANIFESTS_JSON:-[]}" --jit-build-budget "$${ALKION_JIT_BUILD_BUDGET:-120}" ;; \
+	esac; \
+	bash tool/android_synthetic.sh --action "$${ALKION_SYNTHETIC_ACTION}" --avd "$${ALKION_AVD}" --serial "$${ALKION_SERIAL}" --receipt "$${ALKION_RECEIPT}" --output "$${ALKION_OUTPUT}" --base-run "$${ALKION_BASE_RUN}" --driver-run "$${ALKION_DRIVER_RUN}" --updates-run "$${ALKION_UPDATES_RUN}" "$$@"
 android-synthetic-self-test:
 	bash tool/android_synthetic.sh --action self-test
 	$(MAKE) android-synthetic-documents-self-test
 	$(MAKE) android-synthetic-ui-observer-self-test
+	$(MAKE) android-synthetic-capabilities-self-test
+android-synthetic-capabilities-self-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_capabilities_self_test.py
+android-synthetic-capability-apk:
+	bash tool/android_synthetic.sh --action build-capability
 android-synthetic-documents-self-test:
 	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_documents_self_test.py
 android-synthetic-neighbor:
