@@ -11,7 +11,17 @@ export ALKION_PROOF_SOURCE ALKION_UI_CASE
 .PHONY: help get analyze test fmt format build build-apk build-apk-dev build-apk-supported alkion-driver-qualification alkion-transfer-recovery alkion-backup-recovery run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean
 .PHONY: alkion-verify-backup
 .PHONY: android-synthetic android-synthetic-self-test android-synthetic-neighbor android-synthetic-driver-apk android-synthetic-update-apk android-synthetic-lifecycle-apk android-synthetic-ui-apk
+.PHONY: android-synthetic-documents-apk android-synthetic-documents-provider android-synthetic-documents-self-test
 ALKION_SYNTHETIC_ACTION ?= check
+# Preserve raw operator inputs in the environment, including literal dollars.
+override export ALKION_SYNTHETIC_ACTION := $(value ALKION_SYNTHETIC_ACTION)
+override export ALKION_AVD := $(value ALKION_AVD)
+override export ALKION_SERIAL := $(value ALKION_SERIAL)
+override export ALKION_RECEIPT := $(value ALKION_RECEIPT)
+override export ALKION_OUTPUT := $(value ALKION_OUTPUT)
+override export ALKION_BASE_RUN := $(value ALKION_BASE_RUN)
+override export ALKION_DRIVER_RUN := $(value ALKION_DRIVER_RUN)
+override export ALKION_UPDATES_RUN := $(value ALKION_UPDATES_RUN)
 help:
 	@echo "Alkion: get, analyze, test TEST=<path>, format, fmt FORMAT_FILES=<owned paths>, alkion-driver-qualification ALKION_OUTPUT=<fresh /tmp path>, alkion-transfer-recovery ALKION_OUTPUT=<fresh transfer-proof* path>, alkion-backup-recovery ALKION_OUTPUT=<fresh backup-proof* path>"
 get:
@@ -58,9 +68,12 @@ build-apk-dev:
 build-apk-supported:
 	$(MAKE) build-apk ALKION_FLAVOR=supported
 android-synthetic:
-	bash tool/android_synthetic.sh --action "$(ALKION_SYNTHETIC_ACTION)" --avd "$(ALKION_AVD)" --serial "$(ALKION_SERIAL)" --receipt "$(ALKION_RECEIPT)" --output "$(ALKION_OUTPUT)" --base-run "$(ALKION_BASE_RUN)"
+	bash tool/android_synthetic.sh --action "$${ALKION_SYNTHETIC_ACTION}" --avd "$${ALKION_AVD}" --serial "$${ALKION_SERIAL}" --receipt "$${ALKION_RECEIPT}" --output "$${ALKION_OUTPUT}" --base-run "$${ALKION_BASE_RUN}" --driver-run "$${ALKION_DRIVER_RUN}" --updates-run "$${ALKION_UPDATES_RUN}"
 android-synthetic-self-test:
 	bash tool/android_synthetic.sh --action self-test
+	$(MAKE) android-synthetic-documents-self-test
+android-synthetic-documents-self-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_documents_self_test.py
 android-synthetic-neighbor:
 	bash tool/android_synthetic.sh --action build-neighbor --output "$(ALKION_OUTPUT)"
 android-synthetic-driver-apk:
@@ -75,6 +88,10 @@ android-synthetic-update-apk:
 	$(FLUTTER) build apk --debug --no-pub --flavor "$(ALKION_FLAVOR)" --target-platform android-x64 --target integration_test/android_lifecycle_test.dart --build-number "$(ALKION_PROOF_VERSION)" --dart-define=ALKION_PROOF_RUN="$(ALKION_PROOF_RUN)" --dart-define=ALKION_UPDATE_PHASE="$(ALKION_UPDATE_PHASE)"
 android-synthetic-lifecycle-apk:
 	bash tool/android_synthetic.sh --action build-lifecycle
+android-synthetic-documents-apk:
+	bash tool/android_synthetic.sh --action build-documents
+android-synthetic-documents-provider:
+	bash tool/android_synthetic.sh --action build-documents-provider --output "$${ALKION_OUTPUT}"
 android-synthetic-ui-apk:
 	@python3 -c 'import os,re,subprocess,sys; e=os.environ; f=e.get("ALKION_FLAVOR",""); r=e.get("ALKION_PROOF_RUN",""); s=e.get("ALKION_PROOF_SOURCE",""); v=e.get("ALKION_PROOF_VERSION",""); c=e.get("ALKION_UI_CASE",""); valid=f in ("dev","supported") and re.fullmatch("[a-f0-9]{32}",r) and re.fullmatch("[a-f0-9]{40}",s) and re.fullmatch("[0-9]{1,10}",v) and 1<=int(v)<=2099999999 and c in ("en-dark","de-light-reduced","es-light","it-dark"); valid or sys.exit("Explicit synthetic UI flavor/run/source/version/case required"); raise SystemExit(subprocess.call(["fvm","flutter","build","apk","--debug","--no-pub","--flavor",f,"--target-platform","android-x64","--target","integration_test/android_ui_visual_test.dart","--build-number",v,"--dart-define=ALKION_PROOF_RUN="+r,"--dart-define=ALKION_PROOF_SOURCE="+s,"--dart-define=ALKION_UI_CASE="+c,"--dart-define=ALKION_PROOF_VERSION="+v]))'
 # No normal startup, legacy capture, release/signing, SDK installation/device

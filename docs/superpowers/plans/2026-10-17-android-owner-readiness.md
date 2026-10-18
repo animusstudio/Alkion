@@ -345,6 +345,11 @@ Functional-first scope amendment, 2026-10-18: independent design/fix review PASS
 T5 SAF host-route ownership additionally covers new
 `app/tool/android_synthetic_documents{,_self_test}.py`; Make/harness wiring is
 serialized after the lifecycle helper's handoff. Installed proof remains pending.
+SAF host-route module and Make/harness integration passed independent source
+review after atomic acknowledgement publication and literal Make-input fixes.
+Nineteen module controls, then twenty-four integrated host controls passed;
+three affected Make-boundary controls passed after the final quoting fix.
+These use fake transports; actual provider and receiving restore remain unrun.
 
 Ordinary-kill harness fix, base `7e21216`: independent full-lane source review PASS.
 `make -C app android-synthetic-self-test` passed the retained 108 controls and
