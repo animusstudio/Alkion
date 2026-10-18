@@ -80,13 +80,44 @@ elif cmd[:2]==["am","instrument"]:
  needs_labels=config["package"] in ("dev.animusstudio.alkion.dev","dev.animusstudio.alkion")
  receipt.update(readiness="visible-label" if needs_labels else "structural",visible_label_count=labels,sample_count=1,candidate_sample=1)
  sample={"index":1,"cache_cleared":mode!="cache-absent","root_available":True,"ready":not needs_labels or labels>0,"elapsed_ms":15,
+  "candidate_complete":True,"outcome":"complete" if not needs_labels or labels>0 else "content_not_ready",
   **{key:receipt[key] for key in ("node_count","visible_label_count","window_id","xml_length","xml_sha256")}}
  receipt["samples"]=[sample]
  if mode=="delayed-readiness":
-  empty=dict(sample,index=1,ready=False,visible_label_count=0,node_count=5,xml_length=1165,xml_sha256="a"*64,elapsed_ms=5)
-  absent=dict(sample,index=2,ready=False,root_available=False,visible_label_count=0,node_count=0,xml_length=0,xml_sha256="",window_id=-1,elapsed_ms=10)
+  empty=dict(sample,index=1,ready=False,outcome="content_not_ready",visible_label_count=0,node_count=5,xml_length=1165,xml_sha256="a"*64,elapsed_ms=5)
+  absent=dict(sample,index=2,ready=False,root_available=False,candidate_complete=False,outcome="null_root",visible_label_count=0,node_count=0,xml_length=0,xml_sha256="",window_id=-1,elapsed_ms=10)
   receipt.update(samples=[empty,absent,dict(sample,index=3)],sample_count=3,candidate_sample=3)
  if mode=="native-not-ready": receipt.update(result="FAIL",error="readiness_sample_limit")
+ if mode.startswith("mixed-") or mode.startswith("partial-"):
+  absent=dict(sample,index=1,ready=False,root_available=False,candidate_complete=False,outcome="null_root",
+   visible_label_count=0,node_count=0,xml_length=0,xml_sha256="",window_id=-1,elapsed_ms=2)
+  empty=dict(sample,index=2,ready=False,outcome="content_not_ready",visible_label_count=0,node_count=5,
+   xml_length=1165,xml_sha256="a"*64,elapsed_ms=5)
+  incomplete=dict(sample,index=3,ready=False,candidate_complete=False,outcome="incomplete_child",
+   visible_label_count=0,node_count=0,xml_length=0,xml_sha256="",elapsed_ms=10)
+  receipt.update(samples=[absent,empty,incomplete,dict(sample,index=4)],sample_count=4,candidate_sample=4)
+  if mode=="partial-final": receipt["samples"][-1].update(candidate_complete=False,outcome="incomplete_child")
+  if mode=="partial-count": incomplete["node_count"]=1
+  if mode=="partial-hash": incomplete.update(xml_length=1,xml_sha256="a"*64)
+  if mode=="partial-window": incomplete["window_id"]=8
+  if mode=="partial-complete": incomplete["candidate_complete"]=True
+  if mode=="partial-ready": incomplete["ready"]=True
+  if mode=="mixed-unknown": incomplete["outcome"]="pending"
+  if mode=="mixed-stale": receipt["candidate_sample"]=2
+  if mode=="mixed-final-hash": receipt["samples"][-1]["xml_sha256"]="a"*64
+ if mode=="outcome-missing": del sample["outcome"]
+ if mode=="candidate-complete-missing": del sample["candidate_complete"]
+ if mode=="native-v2": receipt["observer_version"]=2
+ if mode in ("native-incomplete-no-xml","native-fail-foreign","native-fail-malformed"):
+  incomplete=dict(sample,ready=False,candidate_complete=False,outcome="incomplete_child",visible_label_count=0,
+   node_count=0,xml_length=0,xml_sha256="")
+  receipt.update(result="FAIL",error="java.lang.IllegalStateException: readiness_sample_limit",elapsed_ms=3901,
+   samples=[dict(incomplete,index=i,elapsed_ms=(i-1)*100) for i in range(1,41)],sample_count=40)
+  for key in ("candidate_sample","root_package","window_id","window_type","window_active","window_focused",
+   "display_id","rotation","width","height","node_count","visible_label_count","xml_length","xml_sha256"):
+   receipt.pop(key,None)
+  if mode=="native-fail-foreign": receipt["source_commit"]="f"*40
+
  if mode=="sample-window": sample["window_id"]=99
  if mode=="sample-late": sample["elapsed_ms"]=5000
  if mode=="sample-counter": sample["node_count"]+=1
@@ -97,7 +128,8 @@ elif cmd[:2]==["am","instrument"]:
   "xml_sha256":"0"*64,"node_count":999,"display_id":1,"window_active":False,
   "window_focused":False,"elapsed_ms":9000,"captured_at":"2000-01-01T00:00:00Z","result":"FAIL"}
  if mode in changes: receipt[mode]=changes[mode]
- (target/"receipt.json").write_text(json.dumps(receipt));(target/"hierarchy.xml").write_bytes(raw)
+ (target/"receipt.json").write_text("{" if mode=="native-fail-malformed" else json.dumps(receipt));(target/"hierarchy.xml").write_bytes(raw)
+ if mode in ("native-incomplete-no-xml","native-fail-foreign","native-fail-malformed"): (target/"hierarchy.xml").unlink()
  if mode=="linked-output":
   (target/"hierarchy.xml").unlink();(target/"hierarchy.xml").symlink_to(root/"tree.xml")
  if mode=="missing-receipt": (target/"receipt.json").unlink()
@@ -173,7 +205,7 @@ class Protocol(unittest.TestCase):
 
     def configure(self):
         (self.root / "config").write_text(json.dumps({"mode": self.mode, "package": self.package, "hash": self.facts["apk_sha256"],
-            "version": observer.VERSION, "live_version": 1 if self.mode == "live-v1" else observer.VERSION,
+            "version": observer.VERSION, "live_version": 1 if self.mode == "live-v1" else 2 if self.mode == "live-v2" else observer.VERSION,
             "focus_sequence": self.focus_sequence}))
         (self.root / "tree.xml").write_bytes(ET.tostring(self.tree, encoding="utf-8", xml_declaration=True))
 
@@ -483,6 +515,60 @@ class Protocol(unittest.TestCase):
         invalid = copy.deepcopy(record); invalid["apk"]["version_code"] = 1
         with self.assertRaises(observer.Refusal): observer.validate_build(host, self.args, root, invalid)
 
+    def test_v3_mixed_null_empty_incomplete_then_complete_uses_only_final_tree(self):
+        self.mode = "mixed-valid"; self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        self.assertEqual(len(list(self.observe().iter("node"))), 3)
+        report = json.loads((self.output / "capture.observation/receipt.json.stdout").read_bytes())
+        self.assertEqual([sample["outcome"] for sample in report["samples"]],
+                         ["null_root", "content_not_ready", "incomplete_child", "complete"])
+        self.assertEqual(report["candidate_sample"], 4)
+        self.assertEqual(report["node_count"], 3)
+        self.assertEqual(report["visible_label_count"], 2)
+        self.assertEqual((self.output / "capture.xml.raw").read_bytes(), (self.root / "tree.xml").read_bytes())
+
+    def test_v3_partial_mixed_and_stale_candidate_claims_refuse(self):
+        self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        for mode in ("partial-final", "partial-count", "partial-hash", "partial-window", "partial-complete",
+                     "partial-ready", "mixed-unknown", "mixed-stale", "mixed-final-hash", "outcome-missing",
+                     "candidate-complete-missing"):
+            with self.subTest(mode=mode):
+                self.mode = mode; self.output = self.root / mode; self.output.mkdir()
+                self.refuses()
+                self.assertFalse((self.output / "capture.xml.raw").exists())
+
+    def test_v3_bound_native_failure_without_xml_retains_reason_and_refuses_foreign_or_malformed(self):
+        self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        for mode in ("native-incomplete-no-xml", "native-fail-foreign", "native-fail-malformed"):
+            with self.subTest(mode=mode):
+                self.mode = mode; self.output = self.root / mode; self.output.mkdir()
+                self.refuses(); trace = self.trace(); target = self.output / "capture.observation"
+                self.assertEqual((target / "screenshot.stdout").read_bytes(), PNG)
+                self.assertEqual((target / "hierarchy.xml.stdout").read_bytes(), b"")
+                self.assertFalse((self.output / "capture.xml.raw").exists())
+                if mode == "native-incomplete-no-xml":
+                    self.assertEqual(trace["native_failure"]["error"], "java.lang.IllegalStateException: readiness_sample_limit")
+                    self.assertIn("native_capture_failed", trace["error"])
+                    report = json.loads((target / "receipt.json.stdout").read_bytes())
+                    self.assertEqual(len(report["samples"]), 40)
+                else:
+                    self.assertNotIn("native_failure", trace)
+                    self.assertNotIn("native_capture_failed:", trace["error"])
+
+    def test_v3_normal_binding_live_identity_and_receipt_reject_v2(self):
+        host, root, apk, record, receipt = self.retained()
+        invalid = copy.deepcopy(record); invalid["apk"]["version_code"] = 2
+        with self.assertRaises(observer.Refusal): observer.validate_build(host, self.args, root, invalid)
+        self.facts["version_code"] = 2
+        self.refuses()
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        self.facts["version_code"] = observer.VERSION
+        self.mode = "live-v2"; self.output = self.root / "live-v2"; self.output.mkdir()
+        self.refuses()
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        self.mode = "native-v2"; self.output = self.root / "native-v2"; self.output.mkdir()
+        self.refuses()
+        self.assertIn("receipt_identity_changed", self.trace()["error"])
+
     def retained(self):
         prior_root = self.root / "prior"; directory = prior_root / "ui-observer"; directory.mkdir(parents=True)
         apk = directory / "synthetic-ui-observer.apk"; apk.write_bytes(b"owned synthetic APK bytes")
@@ -561,10 +647,15 @@ public final class PollingControl {
         String mode = args[0];
         String expected = null;
         if (mode.equals("setup-deadline")) { clock.time = 5000; expected = "readiness_deadline"; }
-        if (mode.equals("never-ready")) expected = "readiness_sample_limit";
-        if (mode.equals("costly-never-ready") || mode.equals("late-ready") || mode.equals("short-pause"))
-            expected = "readiness_deadline";
+        if (mode.equals("never-ready") || mode.equals("null-child-bound")) expected = "readiness_sample_limit";
+        if (mode.equals("costly-never-ready") || mode.equals("late-ready") || mode.equals("short-pause")
+                || mode.equals("null-child-deadline")) expected = "readiness_deadline";
         if (mode.equals("fatal-window")) expected = "changed_window";
+        if (mode.equals("fatal-identity")) expected = "node_package_changed";
+        if (mode.equals("fatal-size")) expected = "tree_limit";
+        if (mode.equals("fatal-capture-time")) expected = "capture_deadline";
+        if (mode.equals("same-message-fatal")) expected = "incomplete_child";
+        if (mode.equals("fatal-security")) expected = "security";
         if (mode.equals("late-ready")) clock.time = 4800;
         if (mode.equals("near-deadline")) clock.time = 4400;
         if (mode.equals("short-pause")) clock.time = 4900;
@@ -572,6 +663,21 @@ public final class PollingControl {
             int count = Polling.run(clock, index -> {
                 check(index == ++calls[0]);
                 if (mode.equals("fatal-window")) throw new IllegalStateException("changed_window");
+                if (mode.equals("fatal-identity")) throw new IllegalStateException("node_package_changed");
+                if (mode.equals("fatal-size")) throw new IllegalStateException("tree_limit");
+                if (mode.equals("fatal-capture-time")) throw new IllegalStateException("capture_deadline");
+                if (mode.equals("same-message-fatal")) throw new IllegalStateException("incomplete_child");
+                if (mode.equals("fatal-security")) throw new SecurityException("security");
+                if (mode.equals("null-child-bound")) throw new Polling.IncompleteChild();
+                if (mode.equals("null-child-deadline")) { clock.time += 5000; throw new Polling.IncompleteChild(); }
+                if (mode.equals("child-then-complete")) {
+                    if (index == 1) throw new Polling.IncompleteChild();
+                    return true;
+                }
+                if (mode.equals("mixed-then-complete")) {
+                    if (index == 3) throw new Polling.IncompleteChild();
+                    return index == 4;
+                }
                 if (mode.equals("costly-never-ready")) clock.time += 400;
                 if (mode.equals("late-ready")) { clock.time += 200; return true; }
                 if (mode.equals("near-deadline")) { clock.time += index == 1 ? 250 : 200; return index == 2; }
@@ -579,14 +685,20 @@ public final class PollingControl {
                 return mode.equals("empty-then-ready") && index == 3;
             }, 0);
             check(expected == null);
-            check(mode.equals("empty-then-ready") ? count == 3 && clock.time == 200
-                                                   : count == 2 && clock.time == 4950);
-        } catch (IllegalStateException failure) {
+            if (mode.equals("empty-then-ready")) check(count == 3 && clock.time == 200);
+            else if (mode.equals("near-deadline")) check(count == 2 && clock.time == 4950);
+            else if (mode.equals("child-then-complete")) check(count == 2 && clock.time == 100);
+            else if (mode.equals("mixed-then-complete")) check(count == 4 && clock.time == 300);
+            else throw new AssertionError("unrecognized_positive");
+        } catch (Exception failure) {
             check(failure.getMessage().equals(expected));
+            if (mode.equals("same-message-fatal")) check(failure instanceof IllegalStateException);
+            if (mode.equals("fatal-security")) check(failure instanceof SecurityException);
         }
-        if (mode.equals("never-ready")) check(calls[0] == 40 && clock.time == 3900);
+        if (mode.equals("never-ready") || mode.equals("null-child-bound")) check(calls[0] == 40 && clock.time == 3900);
         if (mode.equals("costly-never-ready")) check(calls[0] == 10 && clock.time == 5000);
-        if (mode.equals("late-ready") || mode.equals("fatal-window")) check(calls[0] == 1);
+        if (mode.equals("late-ready") || mode.equals("null-child-deadline") || mode.startsWith("fatal-")
+                || mode.equals("same-message-fatal")) check(calls[0] == 1);
         if (mode.equals("setup-deadline")) check(calls[0] == 0);
         if (mode.equals("short-pause")) check(calls[0] == 1 && clock.largestPause == 50 && clock.time == 5000);
         check(clock.time <= 5000);
@@ -594,7 +706,6 @@ public final class PollingControl {
     }
 }
 """
-
 
 class ProductionPolling(unittest.TestCase):
     @classmethod
@@ -617,7 +728,9 @@ class ProductionPolling(unittest.TestCase):
 
     def test_actual_production_controller_with_scripted_samples_and_monotonic_clock(self):
         for mode in ("empty-then-ready", "near-deadline", "never-ready", "costly-never-ready", "late-ready",
-                     "setup-deadline", "short-pause", "fatal-window"):
+                     "setup-deadline", "short-pause", "fatal-window", "child-then-complete", "mixed-then-complete",
+                     "null-child-bound", "null-child-deadline", "same-message-fatal", "fatal-identity", "fatal-size",
+                     "fatal-capture-time", "fatal-security"):
             with self.subTest(mode=mode):
                 result = subprocess.run([str(self.java / "java"), "-cp", str(self.root) + os.pathsep + str(self.jar),
                     PACKAGE + ".PollingControl", mode], capture_output=True, text=True, timeout=5)

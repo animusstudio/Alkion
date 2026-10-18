@@ -199,6 +199,19 @@ budgets; late arrivals refuse, and no command, including a failure screenshot,
 starts after the capture deadline. This wait dispatches no UI action, retries no
 product command and does not wait for global idle.
 
+Observer V3 may retry only a typed signal raised when a child lookup returns
+null. Discard that entire incomplete candidate, record its outcome, and acquire
+a fresh root; never skip the child, combine samples or publish partial XML.
+Distinguish root availability from a complete candidate with explicit sample
+outcome and `candidate_complete` fields. Every other exception, foreign or
+changed identity/window, malformed structure and size/depth limit remains a
+failure. Keep at most 40 samples within five seconds, capture below six seconds
+and the eight-second watchdog unchanged, alongside the host focus/capture bounds.
+Only a final complete candidate can pass. Preserve identity-bound native failure
+diagnostics even when no XML exists. V3 binders reject V2 artifacts; qualify a
+fresh campaign with reviewed source/APK receipts. Preserve the failed partial
+campaign without resetting its deadline or re-preparing its mutated root.
+
 Authentication, Animus transport, real legacy capture/transfer, writer handoff,
 deployment and retirement remain separate work. This design grants no operational
 access or public publication. Related: [implementation plan](../plans/2026-10-17-android-owner-readiness.md).

@@ -19,7 +19,7 @@ import zipfile
 
 PACKAGE = "dev.animusstudio.alkion.synthetic.uiobserver"
 COMPONENT = PACKAGE + "/.HierarchyInstrumentation"
-VERSION = 2
+VERSION = 3
 LIMIT = 1048576
 ROOTS = frozenset(("com.android.systemui", "com.android.documentsui", "com.android.permissioncontroller",
                    "dev.animusstudio.alkion.dev", "dev.animusstudio.alkion"))
@@ -228,7 +228,25 @@ def focus(raw):
     return {"token": token, "user": int(user), "label": label, "package": package}
 
 
+def receipt_header(receipt, request, binding, expected, started, ended):
+    require(isinstance(receipt, dict) and receipt.get("format") == "alkion-android-ui-observation/1" and
+            receipt.get("complete") is True and receipt.get("result") in ("PASS", "FAIL"), "native_capture_failed")
+    wanted = {"run_id": binding["run_id"], "serial": binding["serial"], "avd": binding["avd"],
+              "source_commit": request["source_commit"], "request_id": request["request_id"],
+              "observer_package": PACKAGE, "observer_uid": binding["uid"], "observer_version": VERSION,
+              "expected_package": expected}
+    require(all(type(receipt.get(key)) is type(value) and receipt[key] == value for key, value in wanted.items()),
+            "receipt_identity_changed")
+    require(type(receipt.get("elapsed_ms")) is int and 0 <= receipt["elapsed_ms"] <= 8500,
+            "receipt_bounds_invalid")
+    stamp = receipt.get("captured_at", "")
+    require(isinstance(stamp, str) and stamp.endswith("Z"), "timestamp_not_utc")
+    captured = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    require(started - 5 <= captured <= ended + 5, "stale_capture")
+
+
 def parse_observation(raw, receipt, request, binding, expected, started, ended):
+    receipt_header(receipt, request, binding, expected, started, ended)
     require(isinstance(receipt, dict) and receipt.get("format") == "alkion-android-ui-observation/1" and
             receipt.get("complete") is True and receipt.get("result") == "PASS", "native_capture_failed")
     wanted = {"run_id": binding["run_id"], "serial": binding["serial"], "avd": binding["avd"],
@@ -287,23 +305,29 @@ def parse_observation(raw, receipt, request, binding, expected, started, ended):
     elapsed = 0
     for index, sample in enumerate(samples, 1):
         require(isinstance(sample, dict) and type(sample.get("index")) is int and sample["index"] == index and
-                all(type(sample.get(key)) is bool for key in ("cache_cleared", "root_available", "ready")) and
+                all(type(sample.get(key)) is bool for key in ("cache_cleared", "root_available", "candidate_complete", "ready")) and
                 type(sample.get("elapsed_ms")) is int and elapsed <= sample["elapsed_ms"] < 5000 and
                 sample["elapsed_ms"] <= receipt["elapsed_ms"] and
                 all(type(sample.get(key)) is int for key in
                     ("node_count", "visible_label_count", "window_id", "xml_length")), "sample_invalid")
         elapsed = sample["elapsed_ms"]
-        if sample["root_available"]:
-            require(1 <= sample["node_count"] <= 4096 and
+        outcome = sample.get("outcome")
+        require(outcome in ("null_root", "incomplete_child", "content_not_ready", "complete"), "sample_outcome_invalid")
+        if sample["candidate_complete"]:
+            require(sample["root_available"] and outcome in ("content_not_ready", "complete") and
+                    sample["ready"] == (outcome == "complete") and 1 <= sample["node_count"] <= 4096 and
                     0 <= sample["visible_label_count"] <= sample["node_count"] and
                     sample["window_id"] == receipt["window_id"] and 0 < sample["xml_length"] <= LIMIT and
-                    re.fullmatch(r"[a-f0-9]{64}", sample.get("xml_sha256", "")) and
+                    isinstance(sample.get("xml_sha256"), str) and re.fullmatch(r"[a-f0-9]{64}", sample["xml_sha256"]) and
                     sample["ready"] == (not needs_labels or sample["visible_label_count"] > 0),
                     "sample_tree_invalid")
         else:
-            require(not sample["ready"] and sample["node_count"] == sample["visible_label_count"] ==
-                    sample["xml_length"] == 0 and sample["window_id"] == -1 and sample.get("xml_sha256") == "",
-                    "null_sample_invalid")
+            require(outcome in ("null_root", "incomplete_child") and not sample["ready"] and
+                    sample["node_count"] == sample["visible_label_count"] == sample["xml_length"] == 0 and
+                    sample.get("xml_sha256") == "" and
+                    sample["root_available"] == (outcome == "incomplete_child") and
+                    sample["window_id"] == (receipt["window_id"] if outcome == "incomplete_child" else -1),
+                    "discarded_sample_invalid")
         require(sample["ready"] == (index == len(samples)), "readiness_sequence_invalid")
     require(all(samples[-1].get(key) == receipt[key] for key in
                 ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")),
@@ -396,13 +420,20 @@ def capture(host, args, output, name, expected_package=None):
         # Preserve screenshot even when instrumentation or its receipt failed.
         shot = execute("screenshot", ["exec-out", "screencap", "-p"], binary=True)
         after = execute("focus-after", ["shell", "dumpsys", "activity", "activities"])
+        observed_receipt = json.loads(report.stdout) if report.returncode == 0 else None
+        if isinstance(observed_receipt, dict) and observed_receipt.get("result") == "FAIL":
+            receipt_header(observed_receipt, request, binding, expected, started, time.time())
+            error = observed_receipt.get("error")
+            require(isinstance(error, str) and 0 < len(error) <= 4096, "native_failure_error_invalid")
+            trace["native_failure"] = {"error": error, "elapsed_ms": observed_receipt["elapsed_ms"]}
+            raise Refusal("ui_observer_native_capture_failed:" + error)
         require(native.returncode == report.returncode == tree.returncode == shot.returncode == after.returncode == 0,
                 "capture_transport_failed")
         require(shot.stdout.startswith(b"\x89PNG\r\n\x1a\n"), "screenshot_invalid")
         keep(output / (name + ".png"), shot.stdout)
         trace["screenshot_sha256"] = digest(shot.stdout)
         require(focus(after.stdout.decode("utf-8")) == owner, "focused_window_changed")
-        document = parse_observation(tree.stdout, json.loads(report.stdout), request, binding,
+        document = parse_observation(tree.stdout, observed_receipt, request, binding,
                                      expected, started, time.time())
         keep(output / (name + ".xml.raw"), tree.stdout)
         trace["result"] = "PASS"
