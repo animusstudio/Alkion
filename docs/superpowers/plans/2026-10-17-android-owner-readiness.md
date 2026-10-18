@@ -330,7 +330,8 @@ before implementation; that approval does not change the cleanup ordering.
 T5 no-idle observation owns new `app/tool/android_synthetic_ui.py`,
 `android_synthetic_ui_self_test.py` and `android_synthetic_ui/{AndroidManifest.xml,HierarchyInstrumentation.java}`
 under that tool directory, plus narrow `app/tool/android_synthetic.sh` and
-`app/Makefile` wiring. Use SDK-only builds, strict bounded observation and retained
+`app/Makefile` wiring, plus the affected complete-route control in
+`app/tool/android_synthetic_documents_self_test.py`. Use SDK-only builds, strict bounded observation and retained
 failure evidence. Independent source review and real synthetic observation precede
 one fresh driver/A2/lifecycle campaign; preserve the earlier partial failure.
 
