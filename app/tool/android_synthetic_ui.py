@@ -327,7 +327,10 @@ def capture(host, args, output, name, expected_package=None):
     request = {"request_id": secrets.token_hex(16), "source_commit": revision}
     trace = {"request": request, "binding": binding, "commands": [], "started_at": started}
     def execute(label, tail, *, binary=True, timeout=5):
-        budget = min(timeout, max(0.01, deadline - time.monotonic()))
+        remaining = deadline - time.monotonic()
+        require(remaining > 0, "capture_deadline")
+        budget = min(timeout, remaining)
+        require(budget > 0, "capture_deadline")
         try:
             if binary:
                 transport = ["shell", shlex.join(str(x) for x in tail[1:])] if tail[0] == "shell" else tail
@@ -345,14 +348,36 @@ def capture(host, args, output, name, expected_package=None):
         keep(target / (label + ".stdout"), result.stdout if binary else result.stdout.encode())
         keep(target / (label + ".stderr"), result.stderr if binary else result.stderr.encode())
         trace["commands"].append({"label": label, "returncode": result.returncode, "args": tail})
+        require(time.monotonic() < deadline, "capture_deadline")
         return result
     try:
         installed(host, args, binding, execute)
-        before = execute("focus-before", ["shell", "dumpsys", "activity", "activities"])
-        require(before.returncode == 0, "focus_query_failed")
-        owner = focus(before.stdout.decode("utf-8")); trace["focus_before"] = owner
-        expected = expected_package or owner["package"]
-        require(expected in ROOTS and expected == owner["package"], "expected_focus_mismatch")
+        require(expected_package is None or expected_package in ROOTS, "expected_focus_mismatch")
+        focus_started = time.monotonic()
+        focus_deadline = min(deadline, focus_started + 2) if expected_package is not None else deadline
+        focus_trace = {"expected_package": expected_package, "samples": []}
+        trace["focus_readiness"] = focus_trace
+        for attempt in range(20 if expected_package is not None else 1):
+            remaining = focus_deadline - time.monotonic()
+            require(remaining > 0, "expected_focus_not_ready")
+            label = "focus-before" if attempt == 0 else "focus-before-" + str(attempt)
+            before = execute(label, ["shell", "dumpsys", "activity", "activities"], timeout=min(5, remaining))
+            require(before.returncode == 0, "focus_query_failed")
+            owner = focus(before.stdout.decode("utf-8"))
+            ready = expected_package is None or owner["package"] == expected_package
+            focus_trace["samples"].append({"label": label, "owner": owner, "ready": ready,
+                                            "elapsed_seconds": time.monotonic() - focus_started})
+            require(time.monotonic() < focus_deadline, "expected_focus_not_ready")
+            if ready:
+                trace["focus_before"] = owner
+                expected = expected_package or owner["package"]
+                break
+            require(attempt < 19, "expected_focus_not_ready")
+            remaining = focus_deadline - time.monotonic()
+            require(remaining > 0, "expected_focus_not_ready")
+            time.sleep(min(0.1, remaining))
+        else:
+            raise Refusal("ui_observer_expected_focus_not_ready")
         arguments = {**request, **{k: binding[k] for k in ("run_id", "serial", "avd")}, "expected_package": expected}
         tail = ["shell", "am", "instrument", "-w", "-r", "--user", "0"]
         for key, value in arguments.items():
@@ -385,7 +410,9 @@ def capture(host, args, output, name, expected_package=None):
     except Exception as failure:
         trace["result"] = "FAIL"; trace["error"] = str(failure)
         # Even binary TimeoutExpired output remains raw in the attempt directory.
-        if not (target / "screenshot.stdout").exists():
+        if not (target / "screenshot.stdout").exists() and time.monotonic() >= deadline:
+            trace["screenshot_skipped"] = "capture_deadline"
+        elif not (target / "screenshot.stdout").exists():
             try:
                 execute("screenshot", ["exec-out", "screencap", "-p"], binary=True, timeout=2)
             except Exception as screenshot_failure:
