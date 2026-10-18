@@ -110,9 +110,9 @@ def check_pins(pins):
 def timeout_context(phase):
     def decorate(function):
         @wraps(function)
-        def wrapped(host, args_or_prepared):
+        def wrapped(host, args_or_prepared, *more):
             try:
-                return function(host, args_or_prepared)
+                return function(host, args_or_prepared, *more)
             except subprocess.TimeoutExpired as error:
                 def raw(value):
                     return value if isinstance(value, bytes) else value.encode() if isinstance(value, str) else b""
@@ -183,6 +183,149 @@ def restore_build_arguments(environment):
             "--target-platform", "android-x64", "--target", "integration_test/android_restore_test.dart",
             "--build-number", version, "--dart-define=ALKION_PROOF_RUN=" + run,
             "--dart-define=ALKION_PROOF_SOURCE=" + revision]
+
+
+@dataclass
+class BuildPrepared:
+    args: object
+    receipt: dict
+    output: Path
+    revision: str
+    version: int
+    floor: int
+    ledger_path: Path
+    pins: dict
+    driver: dict
+    argv: dict
+
+
+@timeout_context("prepare-build")
+def prepare_pair_build(host, args, environment):
+    """Validate the immutable reserved pair; allocate no versions or device work."""
+    receipt, output = host.receipt_guard(args)
+    require(all(getattr(args, name, None) for name in
+                ("source_manifest", "receiver_driver", "source_review", "version_ledger")),
+            "explicit_restore_pair_build_inputs_required")
+    revision = environment.get("ALKION_PROOF_SOURCE", "")
+    argv = {flavor: restore_build_arguments({**environment, "ALKION_FLAVOR": flavor}) for flavor in VARIANTS}
+    require(environment.get("ALKION_PROOF_RUN") == receipt["run_id"] and revision != "0" * 40 and
+            documents.source(host) == revision, "restore_build_source_or_run_mismatch")
+    version = int(environment["ALKION_PROOF_VERSION"])
+    require(environment["ALKION_PROOF_VERSION"] == str(version), "canonical_restore_build_version_required")
+    pins = {}
+    source, paths, _, source_attempts = source_inputs(host, args, args.source_manifest, pins)
+    driver, driver_path = local(host, args.receiver_driver, pins)
+    require(host.driver_continuation_contract(driver, receipt) == "alkion-driver/2" and
+            source["disposable"]["run_id"] != receipt["run_id"] and source["disposable"]["avd"] != receipt["avd"],
+            "separate_fresh_receiver_build_chain_required")
+    source_review(host, args, {source["documents"]["source_commit"], driver["source_commit"]}, revision, pins)
+    manifests = {str(path): digest(pins[path]) for path in (*paths.values(), driver_path)}
+    observed = recorded_codes(source) | recorded_codes(source_attempts) | recorded_codes(driver)
+    require(isinstance(args.attempt_manifests, (list, tuple)), "explicit_receiver_attempt_manifest_list_required")
+    for value in args.attempt_manifests:
+        attempted, path = local(host, value, pins)
+        require(all(attempted.get(key) == receipt[key] for key in ("run_id", "serial", "avd")) and
+                str(path) not in manifests, "receiver_build_attempt_identity_or_duplicate")
+        manifests[str(path)] = digest(pins[path])
+        observed |= recorded_codes(attempted)
+    ledger, ledger_path = local(host, args.version_ledger, pins)
+    require(ledger.get("format") == "alkion-android-version-ledger/1" and ledger.get("complete") is True and
+            ledger.get("coverage") == "all-attempted-and-reserved-in-disposable-run" and
+            all(ledger.get(key) == receipt[key] for key in ("run_id", "serial", "avd")) and
+            ledger.get("manifest_sha256") == manifests and isinstance(ledger.get("entries"), list),
+            "complete_restore_allocation_ledger_required")
+    seen, matched, floor = set(), set(), 44
+    for entry in ledger["entries"]:
+        require(isinstance(entry, dict) and entry.get("application_id") in PACKAGES and
+                type(entry.get("version_code")) is int and 0 < entry["version_code"] <= MAX_VERSION and
+                entry.get("state") in ("reserved", "attempted", "built", "installed", "failed") and
+                hexadecimal(entry.get("source_commit"), 40) and isinstance(entry.get("role"), str) and
+                bool(entry["role"].strip()), "restore_allocation_entry_invalid")
+        pair = entry["application_id"], entry["version_code"]
+        require(pair not in seen, "restore_allocation_reused_code")
+        seen.add(pair)
+        if pair[0] in VARIANTS.values() and pair[1] == version:
+            require(entry["state"] == "reserved" and entry["role"] == "fresh-receiving-restore" and
+                    entry["source_commit"] == revision and "apk_sha256" not in entry,
+                    "restore_exact_unbuilt_reservations_required")
+            matched.add(pair[0])
+        else:
+            floor = max(floor, pair[1])
+    require(observed <= seen and matched == set(VARIANTS.values()) and version > floor and
+            not any((package, version) in observed for package in VARIANTS.values()),
+            "restore_reserved_pair_not_new_or_ledger_incomplete")
+    # Retained bootstrap facts bind the expected signer without querying Android.
+    for flavor, package in {"neighbor": PACKAGES[0], **VARIANTS}.items():
+        path = driver_path.parent / ("neighbor-build/synthetic-neighbor.apk" if flavor == "neighbor" else "driver-" + flavor + ".apk")
+        _, path = local(host, str(path), pins, bound=128 * LIMIT, json_value=False)
+        require(host.apk_facts(args, path, package) == driver["installed"][package], "restore_build_bootstrap_apk_changed")
+    host.toolchain(args)
+    check_pins(pins)
+    return BuildPrepared(args, receipt, output, revision, version, floor, ledger_path, pins, driver, argv)
+
+
+@timeout_context("build")
+def build_pair(host, prepared):
+    """Produce the exact paired manifest; never rewrite the allocation ledger."""
+    check_pins(prepared.pins)
+    require(documents.source(host) == prepared.revision, "restore_source_changed_before_pair_build")
+    output = prepared.output
+    output.mkdir(mode=0o700)
+    context = {"format": "alkion-restore-build-attempt/1", **{key: prepared.receipt[key] for key in ("run_id", "serial", "avd")},
+               "source_commit": prepared.revision, "allocation_floor": prepared.floor,
+               "reservation_ledger": str(prepared.ledger_path),
+               "reservation_ledger_sha256": digest(prepared.pins[prepared.ledger_path])}
+    exclusive(output / "original-reservation-ledger.json", prepared.pins[prepared.ledger_path])
+    exclusive(output / "input-pins.json", encoded({str(path): digest(raw) for path, raw in prepared.pins.items()}))
+    manifest = {"format": "alkion-restore-build/1", "run_id": prepared.receipt["run_id"],
+                "source_commit": prepared.revision, "steps": list(STEPS), "variants": {}}
+    attempted = []
+    try:
+        for flavor, package in VARIANTS.items():
+            check_pins(prepared.pins)
+            require(documents.source(host) == prepared.revision, "restore_source_changed_before_variant_build")
+            source = host.APP / "build/app/outputs/flutter-apk" / ("app-" + flavor + "-debug.apk")
+            previous = None
+            if source.exists() or source.is_symlink():
+                require(source.is_file() and all(not path.is_symlink() for path in (source, *source.parents)) and
+                        source.stat().st_uid == os.getuid() and 0 < source.stat().st_size <= 128 * LIMIT,
+                        "restore_previous_build_output_not_bounded_regular")
+                previous = digest(source.read_bytes())
+            header = {**context, "variant": flavor, "application_id": package, "version_code": prepared.version,
+                      "role": "fresh-receiving-restore", "state": "attempted", "argv": prepared.argv[flavor],
+                      "working_apk_sha256_before": previous}
+            exclusive(output / (flavor + "-build-attempt.json"), encoded(header))
+            attempted.append(header)
+            built = host.command(prepared.argv[flavor], check=False, timeout=600, binary=True)
+            exclusive(output / (flavor + "-build.stdout"), built.stdout)
+            exclusive(output / (flavor + "-build.stderr"), built.stderr)
+            require(built.returncode == 0, "restore_fvm_build_failed:" + flavor)
+            check_pins(prepared.pins)
+            require(documents.source(host) == prepared.revision, "restore_source_changed_during_variant_build")
+            require(source.is_file() and all(not path.is_symlink() for path in (source, *source.parents)) and
+                    source.stat().st_uid == os.getuid() and 0 < source.stat().st_size <= 128 * LIMIT,
+                    "restore_fvm_artifact_not_bounded_regular")
+            apk = output / (flavor + "-restore.apk")
+            raw = source.read_bytes()
+            require(0 < len(raw) <= 128 * LIMIT and digest(raw) != previous, "restore_fvm_output_missing_or_stale")
+            exclusive(apk, raw)
+            facts = host.apk_facts(prepared.args, apk, package)
+            require(facts["version_code"] == prepared.version and facts["certificate_sha256"] ==
+                    prepared.driver["installed"][package]["certificate_sha256"] and
+                    digest(apk.read_bytes()) == facts["apk_sha256"], "restore_built_artifact_binding_mismatch")
+            manifest["variants"][flavor] = {"apk": str(apk), "facts": facts, "argv": prepared.argv[flavor]}
+        check_pins(prepared.pins)
+        require(documents.source(host) == prepared.revision, "restore_source_changed_before_build_manifest")
+        exclusive(output / "build.json", encoded(manifest))
+        return manifest
+    except Exception as error:
+        if isinstance(error, subprocess.TimeoutExpired):
+            for name, raw in (("stdout", error.stdout), ("stderr", error.stderr)):
+                exclusive(output / ("build-timeout." + name),
+                          raw if isinstance(raw, bytes) else raw.encode() if isinstance(raw, str) else b"")
+        exclusive(output / "build-failure.json", encoded({**context, "result": "FAIL", "error": str(error),
+            "attempted": attempted, "retained_variants": manifest["variants"], "completion": "No retry or ledger rewrite"}))
+        raise
 
 
 def source_review(host, args, bases, revision, pins):

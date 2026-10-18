@@ -2075,8 +2075,55 @@ def documents_action(args):
             Path(args.base_run).parent,prepared.revision)
         return module.run(host, prepared)
 
+def restore_module():
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(SCRIPT.parent))
+    import android_synthetic_restore
+    return android_synthetic_restore
+
+def restore_ui_validate_build(host, args, root, record):
+    return ui_module().validate_build(ui_host(), args, root, record)
+
+def restore_ui_install_fresh(host, args, receipt, root, record, revision):
+    return ui_module().install_fresh(ui_host(), args, receipt, root, record, revision)
+
+def restore_host():
+    names = ("APP", "command", "adb", "receipt_guard", "temporary_path", "read_json", "toolchain",
+             "apk_facts", "installed_matches", "package_metadata", "device_platform_guard",
+             "driver_continuation_contract", "lifecycle_contract", "driver_neighbor_bytes", "app_pid",
+             "ordinary_kill", "ui_document", "click_node", "PROCESS_IDENTITY_SCRIPT", "parse_process_identity")
+    return SimpleNamespace(**{name: globals()[name] for name in names},
+        ui_observer_validate_build=restore_ui_validate_build, ui_observer_install_fresh=restore_ui_install_fresh)
+
+def restore_action(args):
+    module, host = restore_module(), restore_host()
+    require(len(args.attempt_manifests_json.encode()) <= module.JSON_LIMIT, "restore_attempt_list_too_large")
+    args.attempt_manifests = json.loads(args.attempt_manifests_json)
+    require(isinstance(args.attempt_manifests, list) and len(args.attempt_manifests) <= 64 and
+            all(isinstance(value, str) and len(value) <= 4096 for value in args.attempt_manifests),
+            "explicit_restore_attempt_manifest_list_required")
+    try:
+        if args.action == "build-restore":
+            built = module.build_pair(host, module.prepare_pair_build(host, args, os.environ))
+            print("Retained paired restore APKs and exact build manifest:", Path(built["variants"]["dev"]["apk"]).parent / "build.json")
+            return built
+        prepared = module.prepare(host, args)
+        if args.action == "restore-check":
+            print("Explicit fresh receiver, source chain, paired artifacts, ledger and fresh observer verified; no install or launch.")
+            return
+        return module.run(host, prepared)
+    except subprocess.TimeoutExpired as error:
+        # Read-only preflight has no output directory to claim. Preserve exact
+        # partial bytes in a typed stderr record for the coordinator's CLI log.
+        receipt = getattr(error, "restore_timeout_receipt", None)
+        if receipt is not None:
+            print(json.dumps({**receipt,
+                "stdout_base64": module.base64.b64encode(error.restore_partial_stdout).decode(),
+                "stderr_base64": module.base64.b64encode(error.restore_partial_stderr).decode()}, sort_keys=True), file=sys.stderr)
+        raise
+
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","build-ui-observer","self-test","documents-check","documents","build-documents","build-documents-provider","capabilities-check","capabilities","build-capability"), default="check")
+parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","build-ui-observer","self-test","documents-check","documents","build-documents","build-documents-provider","capabilities-check","capabilities","build-capability","build-restore","restore-check","restore"), default="check")
 parser.add_argument("--avd")
 parser.add_argument("--serial")
 parser.add_argument("--receipt")
@@ -2088,6 +2135,13 @@ parser.add_argument("--version-ledger")
 parser.add_argument("--source-review")
 parser.add_argument("--attempt-manifests-json", default="[]")
 parser.add_argument("--jit-build-budget", type=int, default=120)
+parser.add_argument("--source-manifest")
+parser.add_argument("--receiver-driver")
+parser.add_argument("--candidate-manifest")
+parser.add_argument("--dev-apk")
+parser.add_argument("--supported-apk")
+parser.add_argument("--provider-apk")
+parser.add_argument("--ui-observer-build")
 args = parser.parse_args(sys.argv[2:])
 args.sdk = Path(os.environ.get("ANDROID_HOME",""))
 try:
@@ -2114,6 +2168,8 @@ try:
         print("Synthetic UI observer built:",apk)
     elif args.action in ("capabilities-check", "capabilities", "build-capability"):
         capabilities_action(args)
+    elif args.action in ("build-restore", "restore-check", "restore"):
+        restore_action(args)
     elif args.action in ("documents-check", "documents", "build-documents", "build-documents-provider"):
         documents_action(args)
     else:

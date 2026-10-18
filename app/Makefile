@@ -13,6 +13,7 @@ export ALKION_PROOF_SOURCE ALKION_UI_CASE
 .PHONY: android-synthetic android-synthetic-self-test android-synthetic-neighbor android-synthetic-driver-apk android-synthetic-update-apk android-synthetic-lifecycle-apk android-synthetic-ui-apk
 .PHONY: android-synthetic-documents-apk android-synthetic-documents-provider android-synthetic-documents-self-test
 .PHONY: android-synthetic-capability-apk android-synthetic-capabilities-self-test
+.PHONY: android-synthetic-restore-apks android-synthetic-restore-check android-synthetic-restore-run android-synthetic-restore-self-test
 ALKION_SYNTHETIC_ACTION ?= check
 # Preserve raw operator inputs in the environment, including literal dollars.
 override export ALKION_SYNTHETIC_ACTION := $(value ALKION_SYNTHETIC_ACTION)
@@ -42,6 +43,13 @@ override export ALKION_PROOF_PROFILE := $(value ALKION_PROOF_PROFILE)
 override export ALKION_PROOF_GENERATION := $(value ALKION_PROOF_GENERATION)
 override export ALKION_PRIOR_REPORT_SHA256 := $(value ALKION_PRIOR_REPORT_SHA256)
 override export ALKION_PRIOR_STATE_SHA256 := $(value ALKION_PRIOR_STATE_SHA256)
+override export ALKION_RESTORE_SOURCE_MANIFEST := $(value ALKION_RESTORE_SOURCE_MANIFEST)
+override export ALKION_RESTORE_RECEIVER_DRIVER := $(value ALKION_RESTORE_RECEIVER_DRIVER)
+override export ALKION_RESTORE_CANDIDATE_MANIFEST := $(value ALKION_RESTORE_CANDIDATE_MANIFEST)
+override export ALKION_RESTORE_DEV_APK := $(value ALKION_RESTORE_DEV_APK)
+override export ALKION_RESTORE_SUPPORTED_APK := $(value ALKION_RESTORE_SUPPORTED_APK)
+override export ALKION_RESTORE_PROVIDER_APK := $(value ALKION_RESTORE_PROVIDER_APK)
+override export ALKION_UI_OBSERVER_BUILD := $(value ALKION_UI_OBSERVER_BUILD)
 help:
 	@echo "Alkion: get, analyze, test TEST=<path>, format, fmt FORMAT_FILES=<owned paths>, alkion-driver-qualification ALKION_OUTPUT=<fresh /tmp path>, alkion-transfer-recovery ALKION_OUTPUT=<fresh transfer-proof* path>, alkion-backup-recovery ALKION_OUTPUT=<fresh backup-proof* path>"
 get:
@@ -91,6 +99,7 @@ android-synthetic:
 	@set --; \
 	case "$${ALKION_SYNTHETIC_ACTION}" in \
 	capabilities-check|capabilities) set -- --version-ledger "$${ALKION_VERSION_LEDGER}" --source-review "$${ALKION_SOURCE_REVIEW}" --attempt-manifests-json "$${ALKION_ATTEMPT_MANIFESTS_JSON:-[]}" --jit-build-budget "$${ALKION_JIT_BUILD_BUDGET:-120}" ;; \
+	build-restore|restore-check|restore) set -- --source-manifest "$${ALKION_RESTORE_SOURCE_MANIFEST}" --receiver-driver "$${ALKION_RESTORE_RECEIVER_DRIVER}" --version-ledger "$${ALKION_VERSION_LEDGER}" --source-review "$${ALKION_SOURCE_REVIEW}" --attempt-manifests-json "$${ALKION_ATTEMPT_MANIFESTS_JSON:-[]}" --candidate-manifest "$${ALKION_RESTORE_CANDIDATE_MANIFEST}" --dev-apk "$${ALKION_RESTORE_DEV_APK}" --supported-apk "$${ALKION_RESTORE_SUPPORTED_APK}" --provider-apk "$${ALKION_RESTORE_PROVIDER_APK}" --ui-observer-build "$${ALKION_UI_OBSERVER_BUILD}" ;; \
 	esac; \
 	bash tool/android_synthetic.sh --action "$${ALKION_SYNTHETIC_ACTION}" --avd "$${ALKION_AVD}" --serial "$${ALKION_SERIAL}" --receipt "$${ALKION_RECEIPT}" --output "$${ALKION_OUTPUT}" --base-run "$${ALKION_BASE_RUN}" --driver-run "$${ALKION_DRIVER_RUN}" --updates-run "$${ALKION_UPDATES_RUN}" "$$@"
 android-synthetic-self-test:
@@ -98,6 +107,15 @@ android-synthetic-self-test:
 	$(MAKE) android-synthetic-documents-self-test
 	$(MAKE) android-synthetic-ui-observer-self-test
 	$(MAKE) android-synthetic-capabilities-self-test
+	$(MAKE) android-synthetic-restore-self-test
+android-synthetic-restore-apks:
+	$(MAKE) android-synthetic ALKION_SYNTHETIC_ACTION=build-restore
+android-synthetic-restore-check:
+	$(MAKE) android-synthetic ALKION_SYNTHETIC_ACTION=restore-check
+android-synthetic-restore-run:
+	$(MAKE) android-synthetic ALKION_SYNTHETIC_ACTION=restore
+android-synthetic-restore-self-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_restore_self_test.py
 android-synthetic-capabilities-self-test:
 	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_capabilities_self_test.py
 android-synthetic-capability-apk:

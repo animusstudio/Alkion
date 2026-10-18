@@ -1,12 +1,14 @@
 """Host controls for the real restore module and real private /tmp file ingress.
 
-No Android, Git, Make, FVM, build or device command is executed. The reviewed
+No Android, real Git/FVM, build or device command is executed. Focused Make
+controls use fake shell/FVM executables. The reviewed
 harness parsers and file publication programs run through a fake ADB transport.
 Synthetic report/container bytes here establish host orchestration only; they do
 not qualify the installed adapter's SQL/backup oracle or an Android interruption.
 """
 
 import copy
+import io
 import json
 import os
 from pathlib import Path
@@ -22,6 +24,7 @@ sys.dont_write_bytecode = True
 import android_synthetic_documents as documents
 import android_synthetic_documents_self_test as saf
 import android_synthetic_restore as restore
+import android_synthetic_ui as observer
 
 
 SOURCE_RUN = "2" * 32
@@ -41,8 +44,13 @@ class FakeHost(saf.FakeHost):
         self.starts = []
         self.exact_cuts = []
         self.kernel_reads = {}
+        self.builds = []
+        self.external_fvm = None
         self.scenario = "valid"
         self.arguments = self.args
+        self.installed.pop(restore.OBSERVER, None)
+        self.metadata.pop(restore.OBSERVER, None)
+        self.pids.pop(restore.OBSERVER, None)
         # Fresh driver bootstrap has nested proof files only. These are private
         # fixture setup operations, never Android repair performed by the module.
         for package in documents.VARIANTS.values():
@@ -72,19 +80,18 @@ class FakeHost(saf.FakeHost):
         self.artifact(provider_path, documents.PROVIDER, 1)
         self.args.provider_apk = str(provider_path)
         observer = root / "retained-ui/ui-observer"
-        observer_apk = self.artifact(observer / "synthetic-ui-observer.apk", restore.OBSERVER, 1)
-        self.native_source = self.APP / "synthetic-observer-native-input"
-        self.native_source.write_bytes(b"synthetic observer native source; never compiled")
+        observer_apk = self.artifact(observer / "synthetic-ui-observer.apk", restore.OBSERVER, saf.observer.VERSION)
+        self.native_source = self.APP / "tool/android_synthetic_ui/HierarchyInstrumentation.java"
         self.args.ui_observer_build = str(observer / "build.json")
         self.write(Path(self.args.ui_observer_build), {"format": "alkion-android-ui-build/1", "source_commit": saf.REVISION,
-            "native_source_sha256": documents.digest(self.native_source.read_bytes()), "apk": observer_apk})
+            "native_source_sha256": saf.observer.native_digest(self), "apk": observer_apk})
         self.args.version_ledger = str(root / "ledger.json")
         self.refresh_ledger()
 
     @staticmethod
     def ui_observer_validate_build(host, args, root, record):
         path = root / "ui-observer/synthetic-ui-observer.apk"
-        documents.require(record["native_source_sha256"] == documents.digest(host.native_source.read_bytes()) and
+        documents.require(record["native_source_sha256"] == observer.native_digest(host) and
                           host.fake_apk_facts(args, path, restore.OBSERVER) == record["apk"], "fake_observer_artifact_changed")
         return path
 
@@ -179,6 +186,28 @@ class FakeHost(saf.FakeHost):
 
     def command(self, argv, **options):
         text = list(map(str, argv))
+        if text[0] == "fvm":
+            flavor = text[text.index("--flavor") + 1]
+            self.calls.append(text)
+            header = Path(self.args.output) / (flavor + "-build-attempt.json")
+            assert header.is_file(), "FVM reached before durable attempted-version header"
+            self.builds.append(text)
+            if self.scenario == "build-timeout":
+                raise subprocess.TimeoutExpired(text, 600, output=b"partial FVM stdout\x00", stderr=b"partial FVM stderr\xff")
+            if self.scenario == "build-supported-fail" and flavor == "supported":
+                return saf.result(b"failed supported FVM stdout", b"failed supported FVM stderr", 1)
+            if self.scenario == "build-stale-output":
+                return saf.result(b"fake FVM returned success without publishing new bytes", b"")
+            if self.scenario == "build-ledger-drift":
+                Path(self.args.version_ledger).write_bytes(b"changed allocation ledger after FVM")
+            if self.external_fvm is not None:
+                return subprocess.run([str(self.external_fvm), *text[1:]], cwd=self.APP,
+                                      capture_output=True, timeout=10)
+            self.artifact(self.APP / ("build/app/outputs/flutter-apk/app-" + flavor + "-debug.apk"),
+                          documents.VARIANTS[flavor], int(text[text.index("--build-number") + 1]))
+            return saf.result(b"fake FVM completed\n", b"")
+        if text[0] == "git" and self.scenario == "build-source-drift" and self.builds and text[-1] == "HEAD":
+            return saf.result("0" * 40 + "\n")
         if text[0] == "git" and "merge-base" in text:
             self.calls.append(text)
             return saf.result(code=0 if self.scenario != "not-descendant" else 1)
@@ -195,7 +224,12 @@ class FakeHost(saf.FakeHost):
             raise subprocess.TimeoutExpired(text, 60, output=b"partial native stdout\x00", stderr=b"partial stderr\xff")
         if text[0].endswith("/adb") and text[3:] == ["get-state"] and self.scenario == "preflight-timeout":
             raise subprocess.TimeoutExpired(text, 30, output=b"partial preflight\x00", stderr=b"partial preflight stderr")
-        return super().command(argv, **options)
+        result = super().command(argv, **options)
+        if text[0].endswith("/adb") and text[3] == "install" and result.returncode == 0:
+            facts = self.facts_for_file(Path(text[-1]))
+            if facts["package"] == restore.OBSERVER:
+                self.metadata[restore.OBSERVER]["uid"] = 10004
+        return result
 
     def android(self, argv, binary=False, data=None):
         if argv[:1] == ["run-as"]:
@@ -412,6 +446,341 @@ class RestoreControls(unittest.TestCase):
         value = json.loads(Path(path).read_bytes())
         mutation(value)
         self.host.write(Path(path), value)
+
+    def reservation(self, host=None):
+        host = host or self.host
+        ledger = json.loads(Path(host.args.version_ledger).read_bytes())
+        ledger["manifest_sha256"].pop(host.args.candidate_manifest)
+        for entry in ledger["entries"]:
+            if entry["version_code"] == 90:
+                entry["state"] = "reserved"
+                entry.pop("apk_sha256")
+        path = host.root / "allocation-ledger.json"
+        host.write(path, ledger)
+        host.args.version_ledger = str(path)
+        host.args.attempt_manifests = []
+        host.args.attempt_manifests_json = "[]"
+        return path
+
+    def build_environment(self):
+        return {"ALKION_PROOF_RUN": saf.RUN, "ALKION_PROOF_SOURCE": saf.REVISION, "ALKION_PROOF_VERSION": "90"}
+
+    def test_pair_builder_preserves_reserved_ledger_and_emits_exact_manifest(self):
+        ledger = self.reservation()
+        raw = ledger.read_bytes()
+        prepared = restore.prepare_pair_build(self.host, self.host.args, self.build_environment())
+        self.assertFalse(prepared.output.exists())
+        self.assertEqual(prepared.floor, 80)
+        manifest = restore.build_pair(self.host, prepared)
+        self.assertEqual(ledger.read_bytes(), raw)
+        self.assertEqual((prepared.output / "original-reservation-ledger.json").read_bytes(), raw)
+        self.assertEqual(set(manifest), {"format", "run_id", "source_commit", "steps", "variants"})
+        self.assertEqual(manifest["steps"], list(restore.STEPS))
+        self.assertEqual([value[value.index("--flavor") + 1] for value in self.host.builds], ["dev", "supported"])
+        for flavor, item in manifest["variants"].items():
+            self.assertEqual(item["argv"], restore.restore_build_arguments({**self.build_environment(), "ALKION_FLAVOR": flavor}))
+            self.assertEqual(item["facts"]["apk_sha256"], documents.digest(Path(item["apk"]).read_bytes()))
+            header = json.loads((prepared.output / (flavor + "-build-attempt.json")).read_bytes())
+            self.assertEqual((header["state"], header["reservation_ledger_sha256"]), ("attempted", documents.digest(raw)))
+        self.assertFalse(self.host.mutations)
+        self.assertFalse(any(call[0].endswith("/adb") for call in self.host.calls))
+
+    def test_pair_build_refuses_reservation_identity_floor_and_raw_drift(self):
+        path = self.reservation()
+        original = path.read_bytes()
+        mutations = (
+            lambda value: value["entries"][-1].__setitem__("state", "built"),
+            lambda value: value["entries"][-1].__setitem__("source_commit", "0" * 40),
+            lambda value: value["entries"][-1].__setitem__("role", "other"),
+            lambda value: value["entries"].append(copy.deepcopy(value["entries"][-1])),
+            lambda value: value["entries"].append({"application_id": documents.PACKAGES[1], "version_code": 91,
+                "state": "reserved", "role": "unrelated-future", "source_commit": saf.REVISION}),
+            lambda value: value["manifest_sha256"].clear())
+        for change in mutations:
+            path.write_bytes(original)
+            self.mutate_json(path, change)
+            with self.assertRaises(restore.Refusal):
+                restore.prepare_pair_build(self.host, self.host.args, self.build_environment())
+            self.assertFalse(self.host.builds)
+        path.write_bytes(original)
+        prepared = restore.prepare_pair_build(self.host, self.host.args, self.build_environment())
+        path.write_bytes(original + b" ")
+        with self.assertRaisesRegex(restore.Refusal, "host_input_changed"):
+            restore.build_pair(self.host, prepared)
+        self.assertFalse(self.host.builds)
+        self.assertFalse(prepared.output.exists())
+
+    def test_pair_build_failure_and_timeout_keep_attempted_versions_and_bytes(self):
+        for scenario in ("build-supported-fail", "build-timeout", "build-source-drift", "build-ledger-drift"):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix="alkion-restore-build-negative-") as directory:
+                host = FakeHost(Path(directory))
+                with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+                    ledger = self.reservation(host)
+                    original = ledger.read_bytes()
+                    prepared = restore.prepare_pair_build(host, host.args, self.build_environment())
+                    host.scenario = scenario
+                    with self.assertRaises((restore.Refusal, subprocess.TimeoutExpired)):
+                        restore.build_pair(host, prepared)
+                    self.assertTrue((prepared.output / "dev-build-attempt.json").is_file())
+                    self.assertTrue((prepared.output / "build-failure.json").is_file())
+                    self.assertFalse((prepared.output / "build.json").exists())
+                    self.assertEqual((prepared.output / "original-reservation-ledger.json").read_bytes(), original)
+                    if scenario == "build-supported-fail":
+                        self.assertTrue((prepared.output / "dev-restore.apk").is_file())
+                        self.assertTrue((prepared.output / "supported-build-attempt.json").is_file())
+                        self.assertEqual((prepared.output / "supported-build.stderr").read_bytes(), b"failed supported FVM stderr")
+                        self.assertEqual(ledger.read_bytes(), original)
+                    if scenario == "build-timeout":
+                        self.assertEqual((prepared.output / "build-timeout.stdout").read_bytes(), b"partial FVM stdout\x00")
+                        self.assertEqual((prepared.output / "build-timeout.stderr").read_bytes(), b"partial FVM stderr\xff")
+                    self.assertFalse(host.mutations)
+
+    def test_actual_restore_facade_check_and_full_fake_observer_route(self):
+        self.host.args.attempt_manifests_json = "[]"
+        self.host.args.action = "restore-check"
+        self.host.restore_action(self.host.args)
+        self.assertFalse(self.host.mutations)
+        self.assertFalse(Path(self.host.args.output).exists())
+        self.assertFalse(hasattr(self.host.args, "_ui_observer"))
+        self.host.args.action = "restore"
+        state = self.host.restore_action(self.host.args)
+        self.assertEqual(state["restore_phase"], "PASS")
+        self.assertEqual(len(self.host.exact_cuts), 12)
+        self.assertEqual(len(self.host.starts), 24)
+        observations = list(Path(self.host.args.output).glob("*.observation/host-receipt.json"))
+        self.assertTrue(observations)
+        self.assertTrue(all(json.loads(path.read_bytes())["result"] == "PASS" for path in observations))
+        self.assertEqual(state["ui_observer"]["build"]["source_commit"], saf.REVISION)
+
+    def test_restore_facade_invalid_json_source_and_preflight_timeout_do_not_mutate(self):
+        self.host.args.action = "restore-check"
+        for raw in ("{}", "[1]", "not-json"):
+            self.host.args.attempt_manifests_json = raw
+            with self.assertRaises((ValueError, self.host.Refusal)):
+                self.host.restore_action(self.host.args)
+            self.assertFalse(self.host.mutations)
+        self.host.args.attempt_manifests_json = "[]"
+        self.host.scenario = "preflight-timeout"
+        with patch("sys.stderr", new_callable=io.StringIO) as capture, self.assertRaises(subprocess.TimeoutExpired):
+            self.host.restore_action(self.host.args)
+        record = json.loads(capture.getvalue())
+        self.assertEqual(restore.base64.b64decode(record["stdout_base64"]), b"partial preflight\x00")
+        self.assertFalse(Path(self.host.args.output).exists())
+        self.assertFalse(self.host.mutations)
+
+    def make_capture(self, target, values, *, origin="command-line"):
+        tools = self.root / "make-transport"
+        tools.mkdir(exist_ok=True)
+        log = self.root / "make-transport.json"
+        shell = tools / "bash"
+        shell.write_text('#!/usr/bin/env python3\nimport os,json,sys\nfrom pathlib import Path\nPath(os.environ["RESTORE_MAKE_LOG"]).write_text(json.dumps({"argv":sys.argv[1:],"env":{k:v for k,v in os.environ.items() if k.startswith("ALKION_")}}))\n')
+        shell.chmod(0o700)
+        environment = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], RESTORE_MAKE_LOG=str(log))
+        argv = ["make", "-C", str(Path(__file__).parent.parent), target]
+        if origin == "command-line":
+            argv += [key + "=" + value for key, value in values.items()]
+        else:
+            environment.update(values)
+        completed = subprocess.run(argv, env=environment, capture_output=True, text=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        return json.loads(log.read_bytes())
+
+    def restore_make_inputs(self):
+        args = self.host.args
+        return {"ALKION_AVD": args.avd, "ALKION_SERIAL": args.serial, "ALKION_RECEIPT": args.receipt,
+            "ALKION_OUTPUT": args.output, "ALKION_BASE_RUN": args.base_run, "ALKION_DRIVER_RUN": args.driver_run,
+            "ALKION_UPDATES_RUN": args.updates_run, "ALKION_RESTORE_SOURCE_MANIFEST": args.source_manifest,
+            "ALKION_RESTORE_RECEIVER_DRIVER": args.receiver_driver, "ALKION_VERSION_LEDGER": args.version_ledger,
+            "ALKION_SOURCE_REVIEW": args.source_review, "ALKION_ATTEMPT_MANIFESTS_JSON": "[]",
+            "ALKION_RESTORE_CANDIDATE_MANIFEST": args.candidate_manifest, "ALKION_RESTORE_DEV_APK": args.dev_apk,
+            "ALKION_RESTORE_SUPPORTED_APK": args.supported_apk, "ALKION_RESTORE_PROVIDER_APK": args.provider_apk,
+            "ALKION_UI_OBSERVER_BUILD": args.ui_observer_build, **self.build_environment()}
+
+    def parse_captured_cli(self, captured):
+        body = Path(__file__).with_name("android_synthetic.sh").read_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        start = body.index("\nparser = argparse.ArgumentParser")
+        parser_source = body[start:body.index("\ntry:\n", start)]
+        with patch.object(sys, "argv", ["-", *captured["argv"]]):
+            exec(compile(parser_source, "actual restore CLI parser", "exec"), self.host.namespace)
+        self.host.args = self.host.namespace["args"]
+        return self.host.args
+
+    def test_actual_make_preserves_literal_restore_paths_json_and_build_inputs(self):
+        canary = self.root / "must-not-execute"
+        literal = 'space "double" \'single\' `touch ' + str(canary) + '` $(touch ' + str(canary) + ') $(shell touch ' + str(canary) + ') ${HOME}'
+        values = {key: literal for key in self.restore_make_inputs()}
+        values["ALKION_ATTEMPT_MANIFESTS_JSON"] = json.dumps([literal])
+        flags = {"--avd": "ALKION_AVD", "--serial": "ALKION_SERIAL", "--receipt": "ALKION_RECEIPT", "--output": "ALKION_OUTPUT",
+            "--source-manifest": "ALKION_RESTORE_SOURCE_MANIFEST", "--receiver-driver": "ALKION_RESTORE_RECEIVER_DRIVER",
+            "--version-ledger": "ALKION_VERSION_LEDGER", "--source-review": "ALKION_SOURCE_REVIEW",
+            "--attempt-manifests-json": "ALKION_ATTEMPT_MANIFESTS_JSON", "--candidate-manifest": "ALKION_RESTORE_CANDIDATE_MANIFEST",
+            "--dev-apk": "ALKION_RESTORE_DEV_APK", "--supported-apk": "ALKION_RESTORE_SUPPORTED_APK",
+            "--provider-apk": "ALKION_RESTORE_PROVIDER_APK", "--ui-observer-build": "ALKION_UI_OBSERVER_BUILD"}
+        for origin in ("command-line", "environment"):
+            for target, action in (("android-synthetic-restore-apks", "build-restore"),
+                                   ("android-synthetic-restore-check", "restore-check"), ("android-synthetic-restore-run", "restore")):
+                captured = self.make_capture(target, values, origin=origin)
+                argv = captured["argv"]
+                self.assertEqual(argv[argv.index("--action") + 1], action)
+                for flag, key in flags.items():
+                    self.assertEqual(argv[argv.index(flag) + 1], values[key])
+                for key in ("ALKION_PROOF_RUN", "ALKION_PROOF_SOURCE", "ALKION_PROOF_VERSION"):
+                    self.assertEqual(captured["env"][key], literal)
+                self.assertFalse(canary.exists())
+
+    def test_actual_make_parser_facade_and_fake_fvm_produce_pair(self):
+        self.reservation()
+        captured = self.make_capture("android-synthetic-restore-apks", self.restore_make_inputs())
+        fvm = self.root / "fake-fvm"
+        log = self.root / "fake-fvm.jsonl"
+        fvm.write_text('''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+args=sys.argv[1:]; flavor=args[args.index("--flavor")+1]; version=int(args[args.index("--build-number")+1])
+assert (Path(os.environ["RESTORE_BUILD_OUTPUT"])/(flavor+"-build-attempt.json")).is_file()
+with Path(os.environ["RESTORE_FVM_LOG"]).open("a") as stream: stream.write(json.dumps(args)+"\\n")
+path=Path.cwd()/"build/app/outputs/flutter-apk"/("app-"+flavor+"-debug.apk"); path.parent.mkdir(parents=True,exist_ok=True)
+path.write_text(json.dumps({"package":"dev.animusstudio.alkion.dev" if flavor=="dev" else "dev.animusstudio.alkion","version":version}))
+print("fake compiler only")
+''')
+        fvm.chmod(0o700)
+        self.host.external_fvm = fvm
+        with patch.dict(os.environ, **captured["env"], ANDROID_HOME=str(self.host.sdk),
+                        RESTORE_BUILD_OUTPUT=self.host.args.output, RESTORE_FVM_LOG=str(log)):
+            args = self.parse_captured_cli(captured)
+            result = self.host.restore_action(args)
+        actual = [json.loads(line) for line in log.read_text().splitlines()]
+        self.assertEqual(actual, [restore.restore_build_arguments({**self.build_environment(), "ALKION_FLAVOR": flavor})[1:]
+                                  for flavor in documents.VARIANTS])
+        self.assertEqual(set(result["variants"]), set(documents.VARIANTS))
+        self.assertFalse(self.host.mutations)
+
+    def test_paired_manifest_and_new_built_ledger_feed_unchanged_receiver_check(self):
+        original_ledger = self.reservation()
+        reserved_raw = original_ledger.read_bytes()
+        built = restore.build_pair(self.host, restore.prepare_pair_build(self.host, self.host.args, self.build_environment()))
+        build_path = Path(self.host.args.output) / "build.json"
+        ledger = json.loads(reserved_raw)
+        ledger["manifest_sha256"][str(build_path)] = documents.digest(build_path.read_bytes())
+        attempts = [original_ledger, *(build_path.parent / (flavor + "-build-attempt.json") for flavor in documents.VARIANTS)]
+        for path in attempts:
+            ledger["manifest_sha256"][str(path)] = documents.digest(path.read_bytes())
+        for entry in ledger["entries"]:
+            if entry["version_code"] == 90:
+                flavor = next(name for name, package in documents.VARIANTS.items() if package == entry["application_id"])
+                entry.update(state="built", apk_sha256=built["variants"][flavor]["facts"]["apk_sha256"])
+        # The coordinator creates this separate synthetic receipt; the builder
+        # never changes either ledger or allocates another code.
+        new_ledger = self.root / "built-ledger.json"
+        self.host.write(new_ledger, ledger)
+        self.host.args.version_ledger = str(new_ledger)
+        self.host.args.candidate_manifest = str(build_path)
+        self.host.args.attempt_manifests_json = json.dumps(list(map(str, attempts)))
+        self.host.args.output = str(self.root / "receiver-run")
+        self.host.args.action = "restore-check"
+        for flavor in documents.VARIANTS:
+            setattr(self.host.args, flavor + "_apk", built["variants"][flavor]["apk"])
+        self.host.restore_action(self.host.args)
+        self.assertEqual(original_ledger.read_bytes(), reserved_raw)
+        self.assertFalse(self.host.mutations)
+        self.assertFalse(Path(self.host.args.output).exists())
+
+    def test_cli_missing_restore_identity_and_literal_main_stay_guarded(self):
+        for action in ("build-restore", "restore-check", "restore"):
+            completed = subprocess.run(["bash", str(Path(__file__).with_name("android_synthetic.sh")), "--action", action],
+                                       capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("explicit_emulator_serial_required", completed.stderr)
+        argv = self.host.lifecycle_build_arguments({"ALKION_FLAVOR": "dev", "ALKION_PROOF_RUN": saf.RUN,
+                                                   "ALKION_PROOF_VERSION": "91", "ALKION_LIFECYCLE_PHASE": "main"})
+        self.assertEqual(argv[argv.index("--target") + 1], "lib/main.dart")
+        self.assertFalse(any(value.startswith("--dart-define") for value in argv))
+
+    def test_actual_make_build_source_and_compile_refusals_never_reach_fvm(self):
+        self.reservation()
+        tools = self.root / "source-guard-tools"
+        tools.mkdir()
+        git = tools / "git"
+        git.write_text('#!/usr/bin/env python3\nimport os,sys\nif sys.argv[3:]==["rev-parse","HEAD"]:print(os.environ["RESTORE_FAKE_SOURCE"])\nelif sys.argv[3:]==["status","--porcelain","--untracked-files=normal"]:print(os.environ.get("RESTORE_FAKE_DIRTY",""),end="")\nelse:raise SystemExit("unexpected fake Git")\n')
+        git.chmod(0o700)
+        log = self.root / "must-not-reach-fvm"
+        fvm = tools / "fvm"
+        fvm.write_text('#!/usr/bin/env python3\nimport os\nfrom pathlib import Path\nPath(os.environ["RESTORE_FVM_CANARY"]).write_text("unexpected compiler")\n')
+        fvm.chmod(0o700)
+        environment = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], ANDROID_HOME=str(self.host.sdk),
+                           RESTORE_FAKE_SOURCE=saf.REVISION, RESTORE_FVM_CANARY=str(log))
+        cases = (({"ALKION_PROOF_SOURCE": "0" * 40}, {}, "source_or_run_mismatch"),
+                 ({"ALKION_PROOF_SOURCE": "c" * 40}, {}, "source_or_run_mismatch"),
+                 ({"ALKION_PROOF_VERSION": "90; arbitrary"}, {}, "explicit_restore_build_inputs"),
+                 ({"ALKION_PROOF_VERSION": "00090"}, {}, "canonical_restore_build_version"),
+                 ({}, {"RESTORE_FAKE_DIRTY": " M helper.py\n"}, "commit_reviewed_source"))
+        for changes, overrides, reason in cases:
+            values = {**self.restore_make_inputs(), **changes}
+            completed = subprocess.run(["make", "-C", str(Path(__file__).parent.parent), "android-synthetic-restore-apks",
+                                        *(key + "=" + value for key, value in values.items())],
+                                       env={**environment, **overrides}, capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(reason, completed.stderr)
+            self.assertFalse(log.exists())
+            self.assertFalse(Path(self.host.args.output).exists())
+
+    def test_reservation_cannot_reuse_a_recorded_failed_attempt_code(self):
+        path = self.reservation()
+        attempt = self.root / "prior-failed-build.json"
+        self.host.write(attempt, {"format": "alkion-restore-build-attempt/1", "run_id": saf.RUN,
+            "serial": self.host.args.serial, "avd": self.host.args.avd, "source_commit": saf.REVISION,
+            "application_id": documents.PACKAGES[1], "version_code": 90, "state": "attempted"})
+        self.host.args.attempt_manifests = [str(attempt)]
+        self.mutate_json(path, lambda value: value["manifest_sha256"].__setitem__(str(attempt), documents.digest(attempt.read_bytes())))
+        with self.assertRaisesRegex(restore.Refusal, "reserved_pair_not_new"):
+            restore.prepare_pair_build(self.host, self.host.args, self.build_environment())
+        self.assertFalse(self.host.builds)
+        self.assertFalse(Path(self.host.args.output).exists())
+
+    def test_successful_fvm_cannot_adopt_stale_working_apk(self):
+        self.reservation()
+        prepared = restore.prepare_pair_build(self.host, self.host.args, self.build_environment())
+        self.host.artifact(self.host.APP / "build/app/outputs/flutter-apk/app-dev-debug.apk", documents.PACKAGES[1], 90)
+        self.host.scenario = "build-stale-output"
+        with self.assertRaisesRegex(restore.Refusal, "output_missing_or_stale"):
+            restore.build_pair(self.host, prepared)
+        self.assertTrue((prepared.output / "dev-build-attempt.json").is_file())
+        self.assertTrue((prepared.output / "build-failure.json").is_file())
+        self.assertFalse((prepared.output / "build.json").exists())
+
+    def test_actual_restore_facade_refuses_foreign_observer_before_actions(self):
+        for scenario in ("foreign-source", "changed-native-source", "preexisting-helper"):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix="alkion-restore-observer-guard-") as directory:
+                host = FakeHost(Path(directory))
+                host.args.action = "restore"
+                host.args.attempt_manifests_json = "[]"
+                if scenario == "foreign-source":
+                    value = json.loads(Path(host.args.ui_observer_build).read_bytes())
+                    value["source_commit"] = "0" * 40
+                    host.write(Path(host.args.ui_observer_build), value)
+                elif scenario == "changed-native-source":
+                    host.native_source.write_bytes(host.native_source.read_bytes() + b"\nchanged synthetic native input")
+                else:
+                    build = json.loads(Path(host.args.ui_observer_build).read_bytes())
+                    host.installed[observer.PACKAGE] = build["apk"]
+                    host.metadata[observer.PACKAGE] = {"uid": 10004, "version_code": observer.VERSION}
+                with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)), self.assertRaises((ValueError, host.Refusal)):
+                    host.restore_action(host.args)
+                self.assertFalse(host.mutations)
+                self.assertFalse(Path(host.args.output).exists())
+
+    def test_actual_restore_facade_wrong_observer_nonce_retains_failed_capture(self):
+        self.host.args.action = "restore"
+        self.host.args.attempt_manifests_json = "[]"
+        self.host.scenario = "observer-wrong-nonce"
+        with self.assertRaises(ValueError):
+            self.host.restore_action(self.host.args)
+        state = json.loads((Path(self.host.args.output) / "run.json").read_bytes())
+        self.assertEqual(state["restore_phase"], "FAIL")
+        self.assertEqual(len(self.host.exact_cuts), 0)
+        receipts = list(Path(self.host.args.output).glob("*.observation/host-receipt.json"))
+        self.assertEqual(json.loads(receipts[0].read_bytes())["result"], "FAIL")
+        self.assertTrue(list(Path(self.host.args.output).glob("*.observation/receipt.json.stdout")))
 
     def test_full_real_module_fake_adb_and_real_private_files(self):
         prepared = self.prepare()
