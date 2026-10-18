@@ -281,8 +281,9 @@ Future<Map<String, Object?>> _processLockProbe(String path) async {
     'Unsupported process proof OS',
   );
   final shell = Platform.isAndroid ? '/system/bin/sh' : '/bin/sh';
+  // Attach Android's descriptor to flock itself so the shell passes it through.
   final script = Platform.isAndroid
-      ? r'exec 9<>"$1"; /system/bin/flock -xn 9'
+      ? r'/system/bin/flock -xn 9 9<>"$1"'
       : r'exec 9<>"$1"; /bin/flock -xn 9';
   final child = await Process.start(shell, [
     '-c',
@@ -596,14 +597,16 @@ Future<void> exerciseDriverCases(
       final bytes = await lock.readAsBytes();
       final held = await _processLockProbe(path);
       require(
-        held['exit_code'] == 1,
-        'OS process acquired the held ProfileOwnership lock: $held',
+        held['exit_code'] == 1 && held['stdout'] == '' && held['stderr'] == '',
+        'OS process did not quietly refuse the held ProfileOwnership lock: $held',
       );
       await store.close();
       final released = await _processLockProbe(path);
       require(
-        released['exit_code'] == 0,
-        'OS process could not acquire the released lock: $released',
+        released['exit_code'] == 0 &&
+            released['stdout'] == '' &&
+            released['stderr'] == '',
+        'OS process did not quietly acquire the released lock: $released',
       );
       final afterBytes = await lock.readAsBytes();
       require(

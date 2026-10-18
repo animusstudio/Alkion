@@ -53,8 +53,12 @@ qualifies its unreached cases or the supported variant. An added OS-process
 ownership case now passes in the same-source native Linux batch (11 cases,
 1 test, 0 skips); it checks a distinct child blocked while the native owner holds
 its lock, then succeeding after release with exact lock bytes and inventory preserved.
-Its Android result is **UNRUN**; adding it does not change the historical
-ten-case Android receipt.
+Fresh Android attempt at `e532a82` failed on the development OS-process case:
+the child reported `flock: Bad file descriptor`; nine earlier cases passed,
+generation fencing and the supported variant were unreached. Raw receipts and
+installation data are retained. The reviewed direct-redirection test fix rejects
+unexpected child output; format, analysis and the existing host driver test pass.
+A fresh Android retry is required; this does not change the historical receipt.
 
 T5 overall remains **IN_PROGRESS**. OS-process ownership on Android, process-kill
 recovery, lifecycle/notifications

@@ -327,6 +327,11 @@ before implementation; that approval does not change the cleanup ordering.
 
 ## State, checks and delivery
 
+Fresh driver attempt at `e532a82` failed on Android child descriptor inheritance;
+nine development cases passed, with later cases and supported execution unreached.
+The one-file direct-redirection fix passed independent source review, formatting,
+analysis and the existing host driver test. Retain failed data; retry fresh.
+
 Functional-first scope amendment, 2026-10-18: independent design/fix review PASS.
 T5 SAF host-route ownership additionally covers new
 `app/tool/android_synthetic_documents{,_self_test}.py`; Make/harness wiring is
