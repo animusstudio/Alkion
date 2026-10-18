@@ -6,11 +6,14 @@ observed: 2026-10-17
 
 # Alkion integrated acceptance (T7)
 
-The reviewed ordinary-kill harness fix now verifies native cached eligibility,
-system foreground displacement and exact PID/UID/start-time ownership before
-requesting `am kill`; it observes both original-process and package absence.
-Its source/host evidence does not qualify Alkion process death. The fresh
-synthetic driver, updates and lifecycle campaign is pending execution.
+Fresh campaign at `2274080` (API 36 AOSP x86_64): all eleven driver cases passed
+in both variants; independent evidence review passed. A2 in-place updates 38→39
+and wrong-signer rejection at 40 passed for both, preserving covered data/identity.
+The lifecycle attempt completed development preparation at 40, then refused
+`ordinary_kill_never_became_cached` before notification/logging/reopen proof.
+Raw receipts, APKs and failed installation data are retained. Two failures at
+this gate trigger a bounded replan against the native ordinary-kill contract;
+no lifecycle PASS or stronger kill fallback is claimed. T5 remains in progress.
 
 ## Android preparation (2026-10-17, local work)
 

@@ -327,6 +327,11 @@ before implementation; that approval does not change the cleanup ordering.
 
 ## State, checks and delivery
 
+At `2274080`, fresh driver11 passed both variants (independent evidence PASS),
+then A2 update/rejected-signer checks passed. Lifecycle failed after development
+prepare40: native previous-app state stayed noncached. Retain receipts/data and
+replan the second ordinary-kill gate failure before another execution attempt.
+
 Fresh driver attempt at `e532a82` failed on Android child descriptor inheritance;
 nine development cases passed, with later cases and supported execution unreached.
 The one-file direct-redirection fix passed independent source review, formatting,
