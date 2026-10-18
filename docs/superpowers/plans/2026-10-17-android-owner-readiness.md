@@ -327,6 +327,12 @@ before implementation; that approval does not change the cleanup ordering.
 
 ## State, checks and delivery
 
+T5 receiving-restore prerequisite fixture ownership covers
+`app/integration_test/android_documents_test.dart` and new
+`app/test/alkion/acceptance/android_documents_fixture_test.dart` only. Enrich the
+existing nested synthetic producer with real relationships, draft/timer/settings
+and original/outbox evidence; preserve its thirteen-case document protocol.
+
 At `2274080`, fresh driver11 passed both variants (independent evidence PASS),
 then A2 update/rejected-signer checks passed. Lifecycle failed after development
 prepare40: native previous-app state stayed noncached. Retain receipts/data and
