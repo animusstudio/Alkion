@@ -332,6 +332,14 @@ T5 receiving-restore prerequisite fixture ownership covers
 `app/test/alkion/acceptance/android_documents_fixture_test.dart` only. Enrich the
 existing nested synthetic producer with real relationships, draft/timer/settings
 and original/outbox evidence; preserve its thirteen-case document protocol.
+That fixture passed independent source review and 31 focused host controls.
+T5 A7 adapter ownership covers new `app/integration_test/android_restore_test.dart`
+and `app/test/alkion/acceptance/android_restore_protocol_test.dart`. First implement
+fresh receiving restore: six cuts retaining one preparation, guarded continuation,
+preserved refusals and two cold-launch protocols. Run the exact closed restore
+oracle before delegating production relaunch; validate bounded notification/expiry
+adoption separately. Same-profile replacement/Keep and host routing follow as
+separate reviewed slices; no device or process-death result is implied by source.
 
 At `2274080`, fresh driver11 passed both variants (independent evidence PASS),
 then A2 update/rejected-signer checks passed. Lifecycle failed after development
