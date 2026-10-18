@@ -410,6 +410,66 @@ version, SDK, shared Make/harness, product or dependency change belongs here.
 Independent scope and source review precede fresh native qualification. Preserve
 the fifth partial campaign without resume, timer reset or re-preparation.
 
+The next V4 window-readiness slice owns exactly
+`app/tool/android_synthetic_ui/{AndroidManifest.xml,HierarchyInstrumentation.java}`,
+`app/tool/android_synthetic_ui.py`, `app/tool/android_synthetic_ui_self_test.py`,
+and required diagnostic-schema receipt shapes only in
+`app/tool/android_synthetic_documents_self_test.py` and
+`app/tool/android_synthetic_capabilities_self_test.py`, plus this plan and its
+specification amendment. No shared Make/harness, receiving-restore route,
+runtime/UI, provider, dependency or root-allowlist change belongs here.
+
+Implement the explicitly chosen null-window and independent inactive/unfocused
+classifications. Journal actual root/package, valid node-window ID, window
+presence/ID/type, active/focused/display, observation stage and known facts before
+each refusal. Unobserved fields are nullable with observation markers; getter
+failure is not absence or false. Read each root/window admission getter once into
+facts shared by diagnostics and guards; retain original getter/security errors.
+After exact expected package and valid nonnegative node-window ID, pin that ID
+before an actual null window can be non-admitting readiness. A present window
+must match node/pinned ID, primary display 0 and the pinned present-window type
+before independently observed inactive or unfocused flags may be unready. Pin
+present type before classifying flags. Invalid/mismatched/changed ID, wrong
+display, foreign package, changed type and unrelated/security/getter exceptions
+are fatal. Only dedicated owned readiness types may reach the retry boundary;
+identical-message unrelated exceptions still fail, with no catch-all retry.
+
+Every discarded sample has zero candidate XML/hash/counts and explicit
+`candidate_complete=false`/`ready=false`; no partial tree may pass. Add mandatory
+V4 diagnostic facts/stages/outcomes with strict host validation for success and
+identity/time-bound failure. Bump manifest/helper/native schema to V4 and reject
+V3 through normal source/APK/cert/full-UID binders. Preserve final active+focused,
+complete tree, visible app labels, exact expected root, pinned window/type,
+primary display and strict host pre/post token checks. Keep 40 samples/five
+seconds, completion below six seconds, watchdog eight seconds, host capture
+20 seconds and focus 20 samples/two seconds; no product/UI action retry,
+global-idle wait, timer reset, deadline rescue or expanded bound.
+
+V4 receipt JSON alone may grow from 16,384 to 65,536 bytes for mandatory staged
+diagnostics. A measured compact 40-sample host fixture is 29,445 bytes; this is
+an observed fixture size, not an absolute mathematical maximum. Enforce the
+finite byte limit before parsing and test the actual 40-sample fixture through
+the bounded reader, plus oversized/partial/late refusal. XML remains 1 MiB;
+all sample, tree, native, focus and global deadlines stay unchanged. No retry,
+size/deadline rescue, new API or device qualification follows this adjustment.
+
+Run the actual compiled poller and window classifier for null-to-ready and each
+independent flag path, invalid/mismatched/changed identity/display/type despite
+unready flags, getter/security/same-message unrelated failure, known-fact stages,
+whole-candidate discard, repeated unready exhaustion and exact/late timing bounds.
+Run strict host receipt negatives, each affected complete Documents/CAP facade
+once, and one SDK compile/package check because native source changes. The
+historical sixth compound subcondition remains UNKNOWN; no host/source result
+establishes its cause, a demonstrated cold fix or lifecycle PASS.
+
+Preserve fifth/sixth stopped failed partials without resume or re-preparation.
+Independent design/source PASS is followed by a separate bounded coordinator
+decision before a fresh seventh campaign. Before its lifecycle/Docs timers,
+qualify a new fresh receiver driver at the final committed V4 source; preserve
+the older receiver stopped. The spec/capability-test changes exceed the existing
+receiving-restore source-transition allowance: do not broaden that allowlist or
+adopt its old driver through an exception. Source work authorizes no device run.
+
 T5 receiving-restore prerequisite fixture ownership covers
 `app/integration_test/android_documents_test.dart` and new
 `app/test/alkion/acceptance/android_documents_fixture_test.dart` only. Enrich the

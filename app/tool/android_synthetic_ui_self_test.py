@@ -70,7 +70,7 @@ elif cmd[:2]==["am","instrument"]:
  target=root/"device"/"files/observations"/values["run_id"]/values["request_id"]
  target.mkdir(parents=True)
  raw=(root/"tree.xml").read_bytes()
- receipt={"format":"alkion-android-ui-observation/1",**values,"complete":True,"result":"PASS",
+ receipt={"format":"alkion-android-ui-observation/1","diagnostic_schema":"alkion-ui-window-facts/1",**values,"complete":True,"result":"PASS",
   "observer_package":package,"observer_version":config["version"],"observer_uid":10222,
   "root_package":config["package"],"display_id":0,"window_id":7,"window_type":3,
   "window_active":True,"window_focused":True,"rotation":0,"width":1080,"height":2400,
@@ -128,8 +128,69 @@ elif cmd[:2]==["am","instrument"]:
   "xml_sha256":"0"*64,"node_count":999,"display_id":1,"window_active":False,
   "window_focused":False,"elapsed_ms":9000,"captured_at":"2000-01-01T00:00:00Z","result":"FAIL"}
  if mode in changes: receipt[mode]=changes[mode]
- (target/"receipt.json").write_text("{" if mode=="native-fail-malformed" else json.dumps(receipt));(target/"hierarchy.xml").write_bytes(raw)
- if mode in ("native-incomplete-no-xml","native-fail-foreign","native-fail-malformed"): (target/"hierarchy.xml").unlink()
+ if mode=="forty-samples":
+  sample["window_id"]=2147483647;receipt["window_id"]=2147483647
+  empty=dict(sample,ready=False,candidate_complete=True,outcome="content_not_ready",visible_label_count=0,
+   node_count=4096,xml_length=1048576,xml_sha256="a"*64)
+  receipt.update(samples=[dict(empty,index=i,elapsed_ms=(i-1)*100) for i in range(1,40)]+[dict(sample,index=40,elapsed_ms=3900)],
+   sample_count=40,candidate_sample=40,elapsed_ms=3901)
+ facts=("cache_cleared","root_available","root_package","node_window_id","window_present","window_id",
+        "window_type","display_id","window_active","window_focused")
+ for item in receipt["samples"]:
+  outcome=item.get("outcome"); item.update(stage=outcome,observed=list(facts),exception=None,exception_class=None,
+   root_package=config["package"],node_window_id=receipt.get("window_id",item.get("window_id")),window_present=True,window_type=3,display_id=0,
+   window_active=True,window_focused=True)
+  if outcome=="null_root":
+   item.update(observed=list(facts[:2]),root_available=False)
+   for key in facts[2:]: item[key]=None
+ if mode=="native-v3": receipt["observer_version"]=3
+ if mode=="live-v3": receipt["observer_version"]=3
+ if mode=="window-readiness":
+  final=receipt["samples"][-1]
+  absent=dict(final,index=1,stage="window_absent",outcome="window_absent",observed=list(facts[:5]),
+   window_present=False,window_id=None,window_type=None,display_id=None,window_active=None,window_focused=None,
+   candidate_complete=False,ready=False,node_count=0,visible_label_count=0,xml_length=0,xml_sha256="",elapsed_ms=1)
+  inactive=dict(final,index=2,stage="window_not_ready",outcome="window_not_ready",window_active=False,
+   candidate_complete=False,ready=False,node_count=0,visible_label_count=0,xml_length=0,xml_sha256="",elapsed_ms=2)
+  unfocused=dict(inactive,index=3,window_active=True,window_focused=False,elapsed_ms=3)
+  receipt.update(samples=[absent,inactive,unfocused,dict(final,index=4)],sample_count=4,candidate_sample=4)
+ if mode in ("diag-pinned-id","diag-pinned-type"):
+  final=receipt["samples"][-1]
+  prior=dict(final,index=1,ready=False,candidate_complete=False,node_count=0,visible_label_count=0,
+   xml_length=0,xml_sha256="",elapsed_ms=1)
+  if mode=="diag-pinned-id":
+   prior.update(outcome="window_absent",stage="window_absent",observed=list(facts[:5]),node_window_id=8,
+    window_present=False,window_id=None,window_type=None,display_id=None,window_active=None,window_focused=None)
+  else: prior.update(outcome="window_not_ready",stage="window_not_ready",window_type=1,window_active=False)
+  receipt.update(samples=[prior,dict(final,index=2)],sample_count=2,candidate_sample=2)
+ if mode in ("native-getter-fail","fail-diag-missing","fail-diag-unobserved"):
+  final=receipt["samples"][-1]
+  final.update(outcome="fatal",stage="window_focused",observed=list(facts[:9]),window_focused=None,
+   ready=False,candidate_complete=False,node_count=0,visible_label_count=0,xml_length=0,xml_sha256="",
+   exception="java.lang.SecurityException: window_not_ready",exception_class="java.lang.SecurityException")
+  receipt.update(result="FAIL",error=final["exception"])
+  if mode=="fail-diag-missing": del final["stage"]
+  if mode=="fail-diag-unobserved": final["window_focused"]=False
+ if mode.startswith("diag-"):
+  final=receipt["samples"][-1]
+  if mode=="diag-schema": del receipt["diagnostic_schema"]
+  elif mode=="diag-missing": del final["window_present"]
+  elif mode=="diag-missing-stage": del final["stage"]
+  elif mode=="diag-missing-observed": del final["observed"]
+  elif mode=="diag-unobserved": final["observed"]=list(facts[:2])
+  elif mode=="diag-stage": final["stage"]="window_absent"
+  elif mode=="diag-flag": final["window_active"]=False
+  elif mode=="diag-id": final["node_window_id"]=8
+  elif mode=="diag-type": final["window_type"]=1
+  elif mode=="diag-observed-order": final["observed"]=list(reversed(facts))
+  elif mode=="diag-fake-null": final.update(stage="window_absent",outcome="window_absent",candidate_complete=False,ready=False)
+  elif mode=="diag-fatal": final.update(outcome="fatal",stage="window_focused",candidate_complete=False,ready=False)
+ if mode=="receipt-oversize-fail": receipt["result"]="FAIL"
+ encoded=json.dumps(receipt,separators=(",",":"))
+ if mode in ("receipt-oversize-pass","receipt-oversize-fail"): encoded+= " "*(65537-len(encoded))
+ if mode=="receipt-partial": encoded="{"
+ (target/"receipt.json").write_text("{" if mode=="native-fail-malformed" else encoded);(target/"hierarchy.xml").write_bytes(raw)
+ if mode in ("native-incomplete-no-xml","native-fail-foreign","native-fail-malformed","native-getter-fail","fail-diag-missing","fail-diag-unobserved"): (target/"hierarchy.xml").unlink()
  if mode=="linked-output":
   (target/"hierarchy.xml").unlink();(target/"hierarchy.xml").symlink_to(root/"tree.xml")
  if mode=="missing-receipt": (target/"receipt.json").unlink()
@@ -205,7 +266,7 @@ class Protocol(unittest.TestCase):
 
     def configure(self):
         (self.root / "config").write_text(json.dumps({"mode": self.mode, "package": self.package, "hash": self.facts["apk_sha256"],
-            "version": observer.VERSION, "live_version": 1 if self.mode == "live-v1" else 2 if self.mode == "live-v2" else observer.VERSION,
+            "version": observer.VERSION, "live_version": 1 if self.mode == "live-v1" else 2 if self.mode == "live-v2" else 3 if self.mode == "live-v3" else observer.VERSION,
             "focus_sequence": self.focus_sequence}))
         (self.root / "tree.xml").write_bytes(ET.tostring(self.tree, encoding="utf-8", xml_declaration=True))
 
@@ -228,6 +289,11 @@ class Protocol(unittest.TestCase):
             raise
         if self.clock is not None:
             self.clock.advance(self.costs.get(tuple(native), 0))
+        is_receipt = native[:2] == ["run-as", PACKAGE] and any(str(value).endswith("/receipt.json") for value in native)
+        if self.mode == "receipt-late" and is_receipt:
+            self.clock.advance(20)
+        if self.mode == "receipt-overflow-transport" and is_receipt:
+            result = subprocess.CompletedProcess(result.args, 0, b"x" * 65537, b"")
         if check and result.returncode:
             raise ValueError(result.stderr)
         return result
@@ -640,6 +706,75 @@ class Protocol(unittest.TestCase):
                     self.assertNotIn("native_failure", trace)
                     self.assertNotIn("native_capture_failed:", trace["error"])
 
+    def test_v4_absent_inactive_and_unfocused_journal_then_complete(self):
+        self.mode = "window-readiness"; self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        self.assertEqual(self.observe()[0][0].get("text"), "Minimize")
+        report = json.loads((self.output / "capture.observation/receipt.json.stdout").read_bytes())
+        samples = report["samples"]
+        self.assertEqual([item["outcome"] for item in samples], ["window_absent", "window_not_ready", "window_not_ready", "complete"])
+        self.assertIsNone(samples[0]["window_id"])
+        self.assertFalse(samples[1]["window_active"]); self.assertTrue(samples[1]["window_focused"])
+        self.assertTrue(samples[2]["window_active"]); self.assertFalse(samples[2]["window_focused"])
+        self.assertTrue(all(not item["candidate_complete"] and item["xml_length"] == 0 for item in samples[:-1]))
+
+    def test_v4_diagnostic_identity_stage_and_type_forgery_refuses(self):
+        for mode in ("diag-schema", "diag-missing", "diag-missing-stage", "diag-missing-observed", "diag-unobserved",
+                     "diag-stage", "diag-flag", "diag-id", "diag-type", "diag-observed-order", "diag-fake-null",
+                     "diag-fatal", "diag-pinned-id", "diag-pinned-type"):
+            with self.subTest(mode=mode):
+                self.mode = mode; self.output = self.root / mode; self.output.mkdir()
+                self.refuses()
+                self.assertFalse((self.output / "capture.xml.raw").exists())
+
+    def test_v4_getter_failure_preserves_stage_and_unobserved_fact_without_xml(self):
+        for mode in ("native-getter-fail", "fail-diag-missing", "fail-diag-unobserved"):
+            with self.subTest(mode=mode):
+                self.mode = mode; self.output = self.root / mode; self.output.mkdir(); self.refuses()
+                report = json.loads((self.output / "capture.observation/receipt.json.stdout").read_bytes())
+                if mode == "native-getter-fail":
+                    self.assertEqual(self.trace()["native_failure"]["error"], "java.lang.SecurityException: window_not_ready")
+                    self.assertEqual(report["samples"][0]["stage"], "window_focused")
+                    self.assertIsNone(report["samples"][0]["window_focused"])
+                    self.assertTrue(report["samples"][0]["window_active"])
+                else: self.assertNotIn("native_failure", self.trace())
+                self.assertEqual((self.output / "capture.observation/hierarchy.xml.stdout").read_bytes(), b"")
+                self.assertFalse((self.output / "capture.xml.raw").exists())
+
+    def test_v4_forty_sample_fixture_passes_actual_bounded_reader(self):
+        self.mode = "forty-samples"; self.package = "dev.animusstudio.alkion.dev"; self.tree = hierarchy(self.package)
+        self.assertEqual(len(list(self.observe().iter("node"))), 3)
+        raw = (self.output / "capture.observation/receipt.json.stdout").read_bytes(); report = json.loads(raw)
+        self.assertEqual(report["sample_count"], 40)
+        self.assertTrue(16384 < len(raw) <= observer.RECEIPT_LIMIT)
+        self.assertEqual(report["samples"][-1]["outcome"], "complete")
+        self.assertEqual(report["samples"][0]["window_id"], 2147483647)
+        print("PASS forty_sample_receipt_bytes=" + str(len(raw)))
+
+    def test_v4_receipt_oversized_partial_and_late_inputs_refuse_before_admission(self):
+        for mode in ("receipt-oversize-pass", "receipt-oversize-fail", "receipt-overflow-transport", "receipt-partial", "receipt-late"):
+            with self.subTest(mode=mode):
+                self.mode = mode; self.output = self.root / mode; self.output.mkdir(); self.clock = ControlledClock()
+                original = json.loads
+                with patch.object(observer, "time", self.clock), patch.object(observer.json, "loads", wraps=original) as parse:
+                    self.refuses()
+                    calls = [call for call in parse.call_args_list if isinstance(call.args[0], bytes)]
+                if mode != "receipt-partial": self.assertEqual(calls, [])
+                self.assertFalse((self.output / "capture.xml.raw").exists())
+                if mode == "receipt-late": self.assertEqual(self.trace()["screenshot_skipped"], "capture_deadline")
+                if mode == "receipt-overflow-transport": self.assertIn("receipt_size_invalid", self.trace()["error"])
+
+    def test_v4_normal_binding_live_identity_and_receipt_reject_v3(self):
+        host, root, apk, record, receipt = self.retained()
+        invalid = copy.deepcopy(record); invalid["apk"]["version_code"] = 3
+        with self.assertRaises(observer.Refusal): observer.validate_build(host, self.args, root, invalid)
+        self.facts["version_code"] = 3; self.refuses()
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        self.facts["version_code"] = observer.VERSION
+        self.mode = "live-v3"; self.output = self.root / "live-v3"; self.output.mkdir(); self.refuses()
+        self.assertFalse(any(cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        self.mode = "native-v3"; self.output = self.root / "native-v3"; self.output.mkdir(); self.refuses()
+        self.assertIn("receipt_identity_changed", self.trace()["error"])
+
     def test_v3_normal_binding_live_identity_and_receipt_reject_v2(self):
         host, root, apk, record, receipt = self.retained()
         invalid = copy.deepcopy(record); invalid["apk"]["version_code"] = 2
@@ -793,6 +928,128 @@ public final class PollingControl {
 }
 """
 
+
+WINDOW_JAVA = r"""
+package dev.animusstudio.alkion.synthetic.uiobserver;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import dev.animusstudio.alkion.synthetic.uiobserver.HierarchyInstrumentation.Polling;
+import dev.animusstudio.alkion.synthetic.uiobserver.HierarchyInstrumentation.WindowAdmission;
+public final class WindowControl {
+    static void check(boolean value) { if (!value) throw new AssertionError("window_control_failed"); }
+    static final class Clock implements Polling.Clock {
+        long time;
+        public long now() { return time; }
+        public void pause(long value) { check(value > 0 && value <= 100); time += value; }
+    }
+    static final class Journal implements WindowAdmission.Journal {
+        String stage;
+        final Map<String,Object> known = new LinkedHashMap<>();
+        public void stage(String value) { stage = value; }
+        public void fact(String key, Object value) { check(!known.containsKey(key)); known.put(key, value); }
+    }
+    static final class Source implements WindowAdmission.Source {
+        String pkg = "expected", faultAt = "";
+        int node = 7, window = 7, type = 3, display = 0;
+        boolean present = true, active = true, focused = true;
+        RuntimeException fault;
+        final Map<String,Integer> calls = new LinkedHashMap<>();
+        Object read(String key, Object value) {
+            check(!calls.containsKey(key)); calls.put(key, 1);
+            if (key.equals(faultAt)) throw fault;
+            return value;
+        }
+        public String rootPackage() { return (String) read("root_package", pkg); }
+        public int nodeWindowId() { return (Integer) read("node_window_id", node); }
+        public boolean windowPresent() { return (Boolean) read("window_present", present); }
+        public int windowId() { return (Integer) read("window_id", window); }
+        public int windowType() { return (Integer) read("window_type", type); }
+        public int displayId() { return (Integer) read("display_id", display); }
+        public boolean active() { return (Boolean) read("window_active", active); }
+        public boolean focused() { return (Boolean) read("window_focused", focused); }
+    }
+    public static void main(String[] args) throws Exception {
+        String mode = args[0]; Clock clock = new Clock(); WindowAdmission admission = new WindowAdmission();
+        int[] calls = {0}, completed = {0}; Journal[] last = {null}; Source[] probe = {null};
+        RuntimeException injected = mode.equals("security") ? new SecurityException("window_absent")
+            : new IllegalStateException(mode.equals("getter-window_present") ? "window_absent" : "window_not_ready");
+        boolean positive = mode.equals("null-then-ready") || mode.equals("inactive-then-ready")
+            || mode.equals("unfocused-then-ready") || mode.equals("both-then-ready") || mode.equals("getters-once");
+        String expected = null;
+        if (mode.equals("null-bound") || mode.equals("flags-bound")) expected = "readiness_sample_limit";
+        if (mode.equals("null-deadline") || mode.equals("late-ready")) expected = "readiness_deadline";
+        if (mode.equals("invalid-node")) expected = "node_window_id_invalid";
+        if (mode.equals("wrong-id-flags")) expected = "window_id_mismatch";
+        if (mode.equals("wrong-type")) expected = "window_type_invalid";
+        if (mode.equals("wrong-display-flags")) expected = "window_display_changed";
+        if (mode.equals("foreign-flags")) expected = "root_package_changed";
+        if (mode.equals("id-after-null") || mode.equals("id-after-child")) expected = "sample_window_changed";
+        if (mode.equals("type-after-flags")) expected = "sample_window_type_changed";
+        if (mode.startsWith("getter-") || mode.equals("security")) expected = injected.getMessage();
+        final String reason = expected;
+        try {
+            int count = Polling.run(clock, index -> {
+                calls[0]++; Source source = new Source(); Journal journal = new Journal();
+                probe[0] = source; last[0] = journal;
+                if ((mode.equals("null-then-ready") || mode.equals("id-after-null")) && index == 1
+                        || mode.equals("null-bound") || mode.equals("null-deadline")) source.present = false;
+                if ((mode.equals("inactive-then-ready") || mode.equals("both-then-ready") || mode.equals("type-after-flags")) && index == 1
+                        || mode.equals("flags-bound")) source.active = false;
+                if ((mode.equals("unfocused-then-ready") || mode.equals("both-then-ready")) && index == 1
+                        || mode.equals("flags-bound")) source.focused = false;
+                if (mode.equals("invalid-node")) source.node = -1;
+                if (mode.equals("wrong-id-flags")) { source.window = 8; source.active = false; }
+                if (mode.equals("wrong-type")) source.type = 2;
+                if (mode.equals("wrong-display-flags")) { source.display = 1; source.active = false; }
+                if (mode.equals("foreign-flags")) { source.pkg = "foreign"; source.focused = false; }
+                if ((mode.equals("id-after-null") || mode.equals("id-after-child")) && index == 2) source.node = source.window = 8;
+                if (mode.equals("type-after-flags") && index == 2) source.type = 1;
+                if (mode.startsWith("getter-")) { source.faultAt = mode.substring(7); source.fault = injected; }
+                if (mode.equals("security")) { source.faultAt = "window_id"; source.fault = injected; }
+                try {
+                    WindowAdmission.Facts facts = admission.read(source, "expected", journal);
+                    check(facts.rootPackage.equals("expected") && facts.nodeWindowId == 7 && facts.windowId == 7
+                        && facts.windowType == 3 && facts.displayId == 0 && facts.active && facts.focused);
+                    check(journal.stage.equals("admitted") && journal.known.size() == 8 && source.calls.size() == 8);
+                    if (mode.equals("id-after-child") && index == 1) throw new Polling.IncompleteChild();
+                    completed[0]++;
+                    if (mode.equals("late-ready")) clock.time = 5000;
+                    return true;
+                } finally {
+                    if (mode.equals("null-deadline")) clock.time = 5000;
+                    if (source.present == false) {
+                        check(source.calls.size() == 3 && journal.known.size() == 3 && admission.pinnedId == 7);
+                        check(!journal.known.containsKey("window_id") && !journal.known.containsKey("window_active"));
+                    }
+                    if (journal.stage.equals("window_not_ready")) {
+                        check(journal.known.size() == 8 && source.calls.containsKey("window_focused"));
+                        check(admission.pinnedId == 7 && admission.pinnedType == 3);
+                    }
+                }
+            }, 0);
+            check(positive && reason == null && completed[0] == 1);
+            check(count == (mode.equals("getters-once") ? 1 : 2));
+        } catch (Exception failure) {
+            check(!positive && reason != null && reason.equals(failure.getMessage()));
+            if (mode.startsWith("getter-") || mode.equals("security")) {
+                check(failure == injected && last[0].stage.equals(probe[0].faultAt));
+                check(!last[0].known.containsKey(probe[0].faultAt));
+                check(probe[0].calls.size() == last[0].known.size() + 1 && calls[0] == 1);
+            }
+            if (mode.equals("wrong-display-flags")) check(!last[0].known.containsKey("window_active"));
+            if (mode.equals("id-after-null") || mode.equals("id-after-child")) {
+                check(calls[0] == 2 && !last[0].known.containsKey("window_present"));
+            }
+            if (mode.equals("type-after-flags")) check(calls[0] == 2 && !last[0].known.containsKey("display_id"));
+            if (mode.equals("null-bound") || mode.equals("flags-bound")) check(calls[0] == 40 && clock.time == 3900);
+            check(completed[0] == (mode.equals("late-ready") ? 1 : 0));
+        }
+        System.out.println("PASS " + mode + " calls=" + calls[0] + " elapsed_ms=" + clock.time
+            + " stage=" + last[0].stage + " known=" + last[0].known.keySet());
+    }
+}
+"""
+
 class ProductionPolling(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -801,8 +1058,9 @@ class ProductionPolling(unittest.TestCase):
         cls.java = Path(os.environ.get("JAVA_HOME", "/usr/lib/jvm/java-21-openjdk")) / "bin"
         cls.jar = Path(os.environ.get("ANDROID_SDK_ROOT", os.environ.get("ANDROID_HOME", str(Path.home() / "Android/Sdk")))) / "platforms/android-36/android.jar"
         source = cls.root / "PollingControl.java"; source.write_text(POLLING_JAVA)
+        window = cls.root / "WindowControl.java"; window.write_text(WINDOW_JAVA)
         result = subprocess.run([str(cls.java / "javac"), "--release", "17", "-classpath", str(cls.jar),
-            "-d", str(cls.root), str(TOOL / "android_synthetic_ui/HierarchyInstrumentation.java"), str(source)],
+            "-d", str(cls.root), str(TOOL / "android_synthetic_ui/HierarchyInstrumentation.java"), str(source), str(window)],
             capture_output=True, text=True, timeout=30)
         if result.returncode:
             cls.temporary.cleanup()
@@ -822,6 +1080,21 @@ class ProductionPolling(unittest.TestCase):
                     PACKAGE + ".PollingControl", mode], capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("PASS " + mode, result.stdout)
+
+
+    def test_actual_window_classifier_getters_facts_and_typed_polling(self):
+        modes = ("getters-once", "null-then-ready", "inactive-then-ready", "unfocused-then-ready", "both-then-ready",
+                 "null-bound", "flags-bound", "null-deadline", "late-ready", "invalid-node", "wrong-id-flags",
+                 "wrong-type", "wrong-display-flags", "foreign-flags", "id-after-null", "id-after-child", "type-after-flags",
+                 "getter-root_package", "getter-node_window_id", "getter-window_present", "getter-window_id",
+                 "getter-window_type", "getter-display_id", "getter-window_active", "getter-window_focused", "security")
+        for mode in modes:
+            with self.subTest(mode=mode):
+                result = subprocess.run([str(self.java / "java"), "-cp", str(self.root) + os.pathsep + str(self.jar),
+                    PACKAGE + ".WindowControl", mode], capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("PASS " + mode, result.stdout)
+                print(result.stdout.strip())
 
 
 if __name__ == "__main__":

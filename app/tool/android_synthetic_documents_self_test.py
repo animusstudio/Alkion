@@ -370,7 +370,7 @@ class FakeHost:
             assert arguments["serial"] == self.args.serial and arguments["avd"] == self.args.avd
             assert arguments["expected_package"] == self.front == "com.android.documentsui"
             tree = self.ui_xml().encode()
-            receipt = {"format": "alkion-android-ui-observation/1", **arguments, "complete": True, "result": "PASS",
+            receipt = {"format": "alkion-android-ui-observation/1", "diagnostic_schema": "alkion-ui-window-facts/1", **arguments, "complete": True, "result": "PASS",
                 "observer_package": observer.PACKAGE, "observer_uid": 10004, "observer_version": observer.VERSION,
                 "root_package": self.front, "display_id": 0, "window_id": 7, "window_type": 1,
                 "window_active": True, "window_focused": True, "rotation": 0, "width": 1080, "height": 2400,
@@ -381,7 +381,11 @@ class FakeHost:
                 for key in ("text", "content-desc")) for node in ET.fromstring(tree).iter("node"))
             receipt.update(readiness="structural", visible_label_count=labels, sample_count=1, candidate_sample=1)
             receipt["samples"] = [{"index": 1, "cache_cleared": True, "root_available": True, "ready": True,
-                "candidate_complete": True, "outcome": "complete",
+                "candidate_complete": True, "outcome": "complete", "stage": "complete", "exception": None, "exception_class": None,
+                "observed": ["cache_cleared", "root_available", "root_package", "node_window_id", "window_present",
+                    "window_id", "window_type", "display_id", "window_active", "window_focused"],
+                "root_package": self.front, "node_window_id": 7, "window_present": True, "window_type": 1,
+                "display_id": 0, "window_active": True, "window_focused": True,
                 "elapsed_ms": 15, **{key: receipt[key] for key in
                     ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")}}]
             if self.scenario == "observer-wrong-nonce": receipt["request_id"] = "f" * 32

@@ -212,6 +212,47 @@ diagnostics even when no XML exists. V3 binders reject V2 artifacts; qualify a
 fresh campaign with reviewed source/APK receipts. Preserve the failed partial
 campaign without resetting its deadline or re-preparing its mutated root.
 
+Observer V4 adds staged window diagnostics and two explicit non-admitting
+readiness classifications. Record actual root retrieval/package, node-window ID,
+window presence/ID/type, active, focused and display facts, with stage/observation
+markers and nullable unobserved values. Read each root/window admission getter
+once; use those same facts in both the journal and guard. Record known facts
+before refusal; getter/security/unrelated exceptions preserve their diagnostic
+stage and original failure and remain fatal. Unobserved does not mean false.
+
+Only an actual null window may be window-absent readiness, after the exact
+expected root and a valid nonnegative node-window ID have been observed and that
+ID pinned. A present window may be inactive/unfocused readiness only when its ID
+equals the node ID, display is primary display 0, package is exact and the same
+pinned ID/type persists. Pin present type before classifying flags, record active
+and focused independently, and never infer either flag from the other. Invalid or
+changed IDs, ID mismatch, wrong display, foreign root and changed window type
+remain fatal regardless of flags. Catch only dedicated owned readiness types at
+the bounded poller; do not classify exceptions by message or retry unknown errors.
+
+Discard each non-admitting candidate whole, with no candidate XML/hash/counts,
+`candidate_complete=false` and `ready=false`. Strict V4 receipts independently
+validate diagnostic fact types, observation stages and outcome invariants;
+identity/time-bound FAIL diagnostics never authorize interaction. Final admission
+still requires an active and focused expected root on the pinned primary window,
+a complete single-window tree, visible app labels and strict host pre/post token
+and native window/display attestation. Keep 40 samples/five seconds, completion
+below six seconds, watchdog eight seconds, host capture 20 seconds and host focus
+20 samples/two seconds unchanged. No UI/product-action retry, idle wait, new root,
+deadline reset or budget extension is introduced. V4 rejects V3 artifacts.
+
+For V4 staged diagnostics, receipt JSON has a separate finite limit of 65,536
+bytes, replacing the prior 16,384-byte metadata limit. Enforce this byte limit
+before JSON parsing, including failure receipts. XML remains limited to 1 MiB;
+every sample/tree/native/global timing bound remains unchanged. Oversized,
+partial, malformed or late inputs refuse without a retry, deadline or size rescue.
+
+The earlier compound window refusal does not identify its failed subcondition.
+Null/inactive/unfocused readiness is an explicit prospective classification, not
+a demonstrated explanation or fix of that historical failure. Preserve failed
+partials; independent design/source acceptance and a separate bounded campaign
+decision precede any fresh qualification.
+
 Authentication, Animus transport, real legacy capture/transfer, writer handoff,
 deployment and retirement remain separate work. This design grants no operational
 access or public publication. Related: [implementation plan](../plans/2026-10-17-android-owner-readiness.md).

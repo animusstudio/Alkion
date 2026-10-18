@@ -424,7 +424,7 @@ class CampaignHost(Host):
                 values = {remote[index + 1]: remote[index + 2] for index, value in enumerate(remote) if value == "-e"}
                 tree = self.document(self.args, None, None, expected_package=values["expected_package"])
                 raw = ET.tostring(tree)
-                receipt = {"format": "alkion-android-ui-observation/1", **values, "complete": True, "result": "PASS",
+                receipt = {"format": "alkion-android-ui-observation/1", "diagnostic_schema": "alkion-ui-window-facts/1", **values, "complete": True, "result": "PASS",
                     "observer_package": observer.PACKAGE, "observer_uid": 10004, "observer_version": observer.VERSION,
                     "root_package": values["expected_package"], "display_id": 0, "window_id": 7, "window_type": 3,
                     "window_active": True, "window_focused": True, "rotation": 0, "width": 1080, "height": 2400,
@@ -435,7 +435,11 @@ class CampaignHost(Host):
                 receipt.update(readiness="visible-label" if values["expected_package"] in capability.VARIANTS.values()
                     else "structural", visible_label_count=labels, sample_count=1, candidate_sample=1)
                 receipt["samples"] = [{"index": 1, "cache_cleared": True, "root_available": True, "ready": True,
-                "candidate_complete": True, "outcome": "complete",
+                "candidate_complete": True, "outcome": "complete", "stage": "complete", "exception": None, "exception_class": None,
+                "observed": ["cache_cleared", "root_available", "root_package", "node_window_id", "window_present",
+                    "window_id", "window_type", "display_id", "window_active", "window_focused"],
+                "root_package": values["expected_package"], "node_window_id": 7, "window_present": True, "window_type": 3,
+                "display_id": 0, "window_active": True, "window_focused": True,
                     "elapsed_ms": 15, **{key: receipt[key] for key in
                         ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")}}]
                 if self.observer_missing_readiness: del receipt["readiness"]

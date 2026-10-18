@@ -19,7 +19,8 @@ import zipfile
 
 PACKAGE = "dev.animusstudio.alkion.synthetic.uiobserver"
 COMPONENT = PACKAGE + "/.HierarchyInstrumentation"
-VERSION = 3
+VERSION = 4
+RECEIPT_LIMIT = 65536
 LIMIT = 1048576
 ROOTS = frozenset(("com.android.systemui", "com.android.documentsui", "com.android.permissioncontroller",
                    "dev.animusstudio.alkion.dev", "dev.animusstudio.alkion"))
@@ -232,6 +233,108 @@ def focus(raw, *, allow_null=False):
     return {"token": token, "user": int(user), "label": label, "package": package}
 
 
+FACTS = ("cache_cleared", "root_available", "root_package", "node_window_id", "window_present",
+         "window_id", "window_type", "display_id", "window_active", "window_focused")
+
+
+def validate_samples(receipt, expected):
+    require(receipt.get("diagnostic_schema") == "alkion-ui-window-facts/1", "diagnostic_schema_invalid")
+    passed = receipt["result"] == "PASS"
+    samples = receipt.get("samples")
+    require(type(receipt.get("sample_count")) is int and (1 if passed else 0) <= receipt["sample_count"] <= 40 and
+            isinstance(samples, list) and len(samples) == receipt["sample_count"], "sample_count_invalid")
+    elapsed = 0; pinned_id = None; pinned_type = None
+    needs_labels = expected in ("dev.animusstudio.alkion.dev", "dev.animusstudio.alkion")
+    checks = {"root_package_check": 3, "node_window_id_check": 4, "window_id_check": 6,
+              "window_type_check": 7, "display_id_check": 8}
+    endings = {"null_root": 2, "window_absent": 5, "window_not_ready": 10, "admitted": 10,
+               "display_geometry": 10, "serialize": 10, "incomplete_child": 10,
+               "complete": 10, "content_not_ready": 10}
+    for index, sample in enumerate(samples, 1):
+        require(isinstance(sample, dict) and type(sample.get("index")) is int and sample["index"] == index and
+                type(sample.get("elapsed_ms")) is int and elapsed <= sample["elapsed_ms"] < (5000 if passed else 8501) and
+                sample["elapsed_ms"] <= receipt["elapsed_ms"] and
+                all(type(sample.get(key)) is bool for key in ("candidate_complete", "ready")) and
+                all(type(sample.get(key)) is int for key in ("node_count", "visible_label_count", "xml_length")),
+                "sample_invalid")
+        elapsed = sample["elapsed_ms"]
+        observed = sample.get("observed")
+        require(isinstance(observed, list) and observed == list(FACTS[:len(observed)]) and len(observed) <= len(FACTS) and
+                all(key in sample for key in FACTS), "sample_observed_invalid")
+        for key in FACTS:
+            value = sample[key]
+            if key not in observed:
+                require(value is None, "unobserved_fact_not_null")
+            elif key == "root_package":
+                require(value is None or isinstance(value, str) and len(value) <= 100, "sample_fact_type_invalid")
+            elif key in ("cache_cleared", "root_available", "window_present", "window_active", "window_focused"):
+                require(type(value) is bool, "sample_fact_type_invalid")
+            else:
+                require(type(value) is int, "sample_fact_type_invalid")
+        count = len(observed); stage = sample.get("stage")
+        for key, terminal in (("root_available", 2), ("window_present", 5)):
+            require(key not in observed or sample[key] or count <= terminal, "facts_after_absence")
+        for key, valid, terminal in (
+                ("root_package", sample["root_package"] == expected, 3),
+                ("node_window_id", type(sample["node_window_id"]) is int and sample["node_window_id"] >= 0 and
+                    (pinned_id is None or sample["node_window_id"] == pinned_id), 4),
+                ("window_id", sample["window_id"] == sample["node_window_id"], 6),
+                ("window_type", sample["window_type"] in (1, 3) and
+                    (pinned_type is None or sample["window_type"] == pinned_type), 7),
+                ("display_id", sample["display_id"] == 0, 8)):
+            require(key not in observed or valid or count <= terminal, "facts_after_failed_guard")
+        require(isinstance(stage, str) and (
+            stage == "init" and count == 0 or stage in FACTS and count in (FACTS.index(stage), FACTS.index(stage) + 1) or
+            stage in checks and count == checks[stage] or stage in endings and count == endings[stage]),
+            "sample_stage_invalid")
+        require("exception" in sample and "exception_class" in sample, "sample_exception_missing")
+        outcome = sample.get("outcome")
+        if outcome in ("fatal", "pending"):
+            require(not passed and index == len(samples) and not sample["candidate_complete"] and not sample["ready"],
+                    "failure_sample_invalid")
+            if outcome == "fatal":
+                require(all(isinstance(sample[key], str) and 0 < len(sample[key]) <= 4096
+                            for key in ("exception", "exception_class")), "sample_exception_invalid")
+            else:
+                require(sample["exception"] is None and sample["exception_class"] is None, "sample_exception_invalid")
+        else:
+            require(outcome in ("null_root", "window_absent", "window_not_ready", "incomplete_child", "content_not_ready", "complete") and
+                    stage == outcome and sample["exception"] is None and sample["exception_class"] is None,
+                    "sample_outcome_invalid")
+            require(sample["cache_cleared"] is not None and sample["root_available"] == (outcome != "null_root") and
+                    count == (2 if outcome == "null_root" else 5 if outcome == "window_absent" else 10),
+                    "sample_facts_incomplete")
+            if outcome != "null_root":
+                require(sample["root_package"] == expected and sample["node_window_id"] >= 0, "sample_identity_invalid")
+                require(pinned_id is None or sample["node_window_id"] == pinned_id, "sample_pinned_id_changed")
+                pinned_id = sample["node_window_id"]
+                require(sample["window_present"] == (outcome != "window_absent"), "sample_presence_invalid")
+                if outcome != "window_absent":
+                    require(sample["window_id"] == pinned_id and sample["window_type"] in (1, 3) and sample["display_id"] == 0,
+                            "sample_window_invalid")
+                    require(pinned_type is None or sample["window_type"] == pinned_type, "sample_pinned_type_changed")
+                    pinned_type = sample["window_type"]
+                    require((not sample["window_active"] or not sample["window_focused"]) if outcome == "window_not_ready"
+                            else sample["window_active"] and sample["window_focused"], "sample_flags_invalid")
+        if sample["candidate_complete"]:
+            require(outcome in ("content_not_ready", "complete") and sample["ready"] == (outcome == "complete") and
+                    1 <= sample["node_count"] <= 4096 and 0 <= sample["visible_label_count"] <= sample["node_count"] and
+                    0 < sample["xml_length"] <= LIMIT and isinstance(sample.get("xml_sha256"), str) and
+                    re.fullmatch(r"[a-f0-9]{64}", sample["xml_sha256"]) and
+                    sample["ready"] == (not needs_labels or sample["visible_label_count"] > 0), "sample_tree_invalid")
+        else:
+            require(outcome not in ("content_not_ready", "complete") and not sample["ready"] and
+                    sample["node_count"] == sample["visible_label_count"] == sample["xml_length"] == 0 and
+                    sample.get("xml_sha256") == "", "discarded_sample_invalid")
+        require(not sample["ready"] or index == len(samples), "readiness_sequence_invalid")
+    if passed:
+        require(type(receipt.get("candidate_sample")) is int and receipt["candidate_sample"] == len(samples) and
+                samples[-1]["ready"] and samples[-1]["outcome"] == "complete" and
+                all(samples[-1].get(key) == receipt.get(key) for key in
+                    ("root_package", "window_id", "window_type", "display_id", "window_active", "window_focused",
+                     "node_count", "visible_label_count", "xml_length", "xml_sha256")), "final_sample_changed")
+
+
 def receipt_header(receipt, request, binding, expected, started, ended):
     require(isinstance(receipt, dict) and receipt.get("format") == "alkion-android-ui-observation/1" and
             receipt.get("complete") is True and receipt.get("result") in ("PASS", "FAIL"), "native_capture_failed")
@@ -247,6 +350,7 @@ def receipt_header(receipt, request, binding, expected, started, ended):
     require(isinstance(stamp, str) and stamp.endswith("Z"), "timestamp_not_utc")
     captured = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
     require(started - 5 <= captured <= ended + 5, "stale_capture")
+    validate_samples(receipt, expected)
 
 
 def parse_observation(raw, receipt, request, binding, expected, started, ended):
@@ -301,41 +405,6 @@ def parse_observation(raw, receipt, request, binding, expected, started, ended):
     require(receipt.get("readiness") == ("visible-label" if needs_labels else "structural") and
             type(receipt.get("visible_label_count")) is int and receipt["visible_label_count"] == labels and
             (not needs_labels or labels > 0), "content_not_ready")
-    samples = receipt.get("samples")
-    require(type(receipt.get("sample_count")) is int and 1 <= receipt["sample_count"] <= 40 and
-            isinstance(samples, list) and len(samples) == receipt["sample_count"] and
-            type(receipt.get("candidate_sample")) is int and receipt["candidate_sample"] == len(samples),
-            "sample_count_invalid")
-    elapsed = 0
-    for index, sample in enumerate(samples, 1):
-        require(isinstance(sample, dict) and type(sample.get("index")) is int and sample["index"] == index and
-                all(type(sample.get(key)) is bool for key in ("cache_cleared", "root_available", "candidate_complete", "ready")) and
-                type(sample.get("elapsed_ms")) is int and elapsed <= sample["elapsed_ms"] < 5000 and
-                sample["elapsed_ms"] <= receipt["elapsed_ms"] and
-                all(type(sample.get(key)) is int for key in
-                    ("node_count", "visible_label_count", "window_id", "xml_length")), "sample_invalid")
-        elapsed = sample["elapsed_ms"]
-        outcome = sample.get("outcome")
-        require(outcome in ("null_root", "incomplete_child", "content_not_ready", "complete"), "sample_outcome_invalid")
-        if sample["candidate_complete"]:
-            require(sample["root_available"] and outcome in ("content_not_ready", "complete") and
-                    sample["ready"] == (outcome == "complete") and 1 <= sample["node_count"] <= 4096 and
-                    0 <= sample["visible_label_count"] <= sample["node_count"] and
-                    sample["window_id"] == receipt["window_id"] and 0 < sample["xml_length"] <= LIMIT and
-                    isinstance(sample.get("xml_sha256"), str) and re.fullmatch(r"[a-f0-9]{64}", sample["xml_sha256"]) and
-                    sample["ready"] == (not needs_labels or sample["visible_label_count"] > 0),
-                    "sample_tree_invalid")
-        else:
-            require(outcome in ("null_root", "incomplete_child") and not sample["ready"] and
-                    sample["node_count"] == sample["visible_label_count"] == sample["xml_length"] == 0 and
-                    sample.get("xml_sha256") == "" and
-                    sample["root_available"] == (outcome == "incomplete_child") and
-                    sample["window_id"] == (receipt["window_id"] if outcome == "incomplete_child" else -1),
-                    "discarded_sample_invalid")
-        require(sample["ready"] == (index == len(samples)), "readiness_sequence_invalid")
-    require(all(samples[-1].get(key) == receipt[key] for key in
-                ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")),
-            "final_sample_changed")
     # Keep native off-screen/partly clipped bounds intact. The dispatcher must
     # validate only its selected semantic target against this attested display.
     for node in document.iter("node"):
@@ -419,12 +488,15 @@ def capture(host, args, output, name, expected_package=None):
                 'test ! -L "$2" && test ! -L "$3" && test -f "$3" && '
                 'test "$(wc -c < "$3")" -le "$4" && cat "$3"', "alkion-ui-read",
                 "files/observations/" + binding["run_id"], relative, relative + "/" + file, str(limit)])
-        report = receive("receipt.json", 16384)
+        report = receive("receipt.json", RECEIPT_LIMIT)
         tree = receive("hierarchy.xml", LIMIT)
         # Preserve screenshot even when instrumentation or its receipt failed.
         shot = execute("screenshot", ["exec-out", "screencap", "-p"], binary=True)
         after = execute("focus-after", ["shell", "dumpsys", "activity", "activities"])
-        observed_receipt = json.loads(report.stdout) if report.returncode == 0 else None
+        observed_receipt = None
+        if report.returncode == 0:
+            require(0 < len(report.stdout) <= RECEIPT_LIMIT, "receipt_size_invalid")
+            observed_receipt = json.loads(report.stdout)
         if isinstance(observed_receipt, dict) and observed_receipt.get("result") == "FAIL":
             receipt_header(observed_receipt, request, binding, expected, started, time.time())
             error = observed_receipt.get("error")
