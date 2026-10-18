@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import zipfile
 import xml.etree.ElementTree as ET
 
@@ -1740,13 +1741,55 @@ else: raise SystemExit("unexpected transport mutation: "+repr(cmd))
         print("PASS:",count,"fresh guards +3 raw-report +3 driver-contract +2 faithful shell-quoting +",continuation_count,
               "continuation/candidate cases; fake transport only; zero install/start/clear/uninstall.")
 
+def documents_module():
+    # The source candidate must remain clean; never cache imports in the checkout.
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(SCRIPT.parent))
+    import android_synthetic_documents
+    return android_synthetic_documents
+
+def documents_host():
+    names = ("APP", "command", "adb", "receipt_guard", "temporary_path", "read_json", "toolchain",
+             "apk_facts", "installed_matches", "package_metadata", "device_platform_guard",
+             "driver_continuation_contract", "lifecycle_contract", "driver_neighbor_bytes",
+             "closed_profile_fingerprint", "app_pid", "ordinary_kill", "ui_document", "click_node")
+    return SimpleNamespace(**{name: globals()[name] for name in names})
+
+def documents_action(args):
+    module = documents_module(); host = documents_host()
+    if args.action == "build-documents":
+        argv = module.documents_build_arguments(os.environ)
+        toolchain(args)
+        revision = os.environ["ALKION_PROOF_SOURCE"]
+        require(module.source(host) == revision, "documents_build_source_mismatch")
+        built = command(argv, check=False, timeout=600)
+        print(built.stdout, end=""); print(built.stderr, end="", file=sys.stderr)
+        require(module.source(host) == revision, "source_changed_during_documents_build")
+        raise SystemExit(built.returncode)
+    if args.action == "build-documents-provider":
+        revision = os.environ.get("ALKION_PROOF_SOURCE", "")
+        require(re.fullmatch(r"[a-f0-9]{40}", revision), "explicit_provider_build_source_required")
+        require(args.output is not None, "fresh_output_required")
+        require(module.source(host) == revision, "provider_build_source_mismatch")
+        apk, facts = module.build_provider(host, args, temporary_path(args.output))
+        require(module.source(host) == revision, "source_changed_during_provider_build")
+        print("Synthetic documents provider built:", apk)
+        return
+    prepared = module.prepare(host, args)
+    if args.action == "documents-check":
+        print("Recognized driver/A2/current-lifecycle installation verified; no install, enable, launch or picker action.")
+    else:
+        return module.run(host, prepared)
+
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","self-test"), default="check")
+parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","self-test","documents-check","documents","build-documents","build-documents-provider"), default="check")
 parser.add_argument("--avd")
 parser.add_argument("--serial")
 parser.add_argument("--receipt")
 parser.add_argument("--output")
 parser.add_argument("--base-run")
+parser.add_argument("--driver-run")
+parser.add_argument("--updates-run")
 args = parser.parse_args(sys.argv[2:])
 args.sdk = Path(os.environ.get("ANDROID_HOME",""))
 try:
@@ -1764,6 +1807,8 @@ try:
         require(args.output is not None,"fresh_output_required")
         apk, facts = build_neighbor(args,temporary_path(args.output))
         print("Synthetic neighbor built:",apk)
+    elif args.action in ("documents-check", "documents", "build-documents", "build-documents-provider"):
+        documents_action(args)
     else:
         receipt, output = receipt_guard(args)
         require((args.sdk / "platform-tools/adb").is_file(),"adb_required")

@@ -285,16 +285,41 @@ class FakeHost:
             return result("package:/data/app/fake/" + argv[2] + "/base.apk\n" if argv[2] in self.installed else "")
         if argv[:2] == ["pm", "list"]:
             package = argv[-1]
+            if "-s" in argv:
+                assert package in ("com.android.settings", "com.android.launcher3")
+                return result("package:" + package + " uid:" + str(1000 if package == "com.android.settings" else 10120) + "\n")
             return result("package:" + package + " uid:" + str(self.metadata[package]["uid"]) + "\n")
         if argv[:2] == ["dumpsys", "package"]:
             return result("versionCode=" + str(self.metadata[argv[2]]["version_code"]) + "\n")
+        if argv[:3] == ["dumpsys", "activity", "processes"]:
+            package = argv[3]; uid = self.metadata[package]["uid"]; pid = self.pids[package]
+            assert self.front == "com.android.launcher3"
+            return result("  *APP* UID " + str(uid) + " ProcessRecord{123 " + str(pid) + ":" + package + "/u0a" + str(uid - 10000) + "}\n"
+                "    user #0 uid=" + str(uid) + " gids={50000}\n    pid=" + str(pid) + "\n"
+                "    oom adj: max=1001 curRaw=900 setRaw=900 cur=900 set=900\n"
+                "    curProcState=15 mRepProcState=15 setProcState=15 lastStateTime=-1s\n"
+                "    cached=true empty=false\n")
         if argv[:2] == ["dumpsys", "activity"]:
-            return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + "/.picker.PickActivity t1}\n")
+            component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(self.front, "/.picker.PickActivity")
+            return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + component + " t1}\n")
         if argv[:1] == ["sha256sum"]:
             package = argv[1].split("/")[-2]
             return result(self.installed[package]["apk_sha256"] + "  " + argv[1] + "\n")
         if argv[:1] == ["pidof"]:
             return result(str(self.pids[argv[1]]) + "\n" if self.pids.get(argv[1]) else "", code=0 if self.pids.get(argv[1]) else 1)
+        if argv[:2] == ["sh", "-c"]:
+            assert argv[2] == self.namespace["PROCESS_IDENTITY_SCRIPT"]
+            pid = int(argv[-1])
+            owners = [package for package, observed in self.pids.items() if observed == pid]
+            if not owners:
+                return result("absent\n")
+            assert len(owners) == 1
+            uid = self.metadata[owners[0]]["uid"]
+            fields = ["0"] * 49; fields[18] = "100"
+            return result("Name: alkion\nPid: " + str(pid) + "\nUid: " + " ".join([str(uid)] * 4) +
+                          "\n\nalkion-proc-stat\n" + str(pid) + " (alkion (dev)) S " + " ".join(fields) + "\n")
+        if argv[:3] == ["cmd", "package", "resolve-activity"]:
+            return result("com.android.settings/.Settings\n" if "android.settings.SETTINGS" in argv else "com.android.launcher3/.Launcher\n")
         if argv[:3] == ["cmd", "package", "unstop"]:
             assert argv == ["cmd", "package", "unstop", "--user", "0", documents.PROVIDER]
             assert list((self.package_root(documents.PROVIDER) / "files/proof-runs").glob("*-dev/control.json"))
@@ -305,15 +330,22 @@ class FakeHost:
             self.mutations.append(("enable", argv[-1])); return result()
         if argv[:2] == ["am", "start"]:
             package = argv[-1].split("/")[0]
+            if package == "com.android.settings":
+                self.front = package
+                return result("Status: ok\n")
             self.pids[package] = 601
             self.start_adapter(package)
             self.mutations.append(("start", package)); return result()
         if argv[:2] == ["am", "kill"]:
             self.pids[argv[-1]] = None
             self.mutations.append(("kill", argv[-1])); return result()
+        if argv == ["am", "get-current-user"]:
+            return result("0\n")
         if argv[:2] == ["input", "keyevent"]:
             if argv[-1] == "KEYCODE_BACK":
                 self.complete_picker()
+            elif argv[-1] == "KEYCODE_HOME":
+                self.front = "com.android.launcher3"
             return result()
         if argv[:2] == ["input", "tap"]:
             y = int(argv[-1]); self.mutations.append(("tap", y))
@@ -507,7 +539,9 @@ class DocumentsControls(unittest.TestCase):
         return documents.prepare(self.host, self.host.args)
 
     def test_complete_actual_module_with_fake_transport_both_variants(self):
-        state = documents.run(self.host, self.prepared())
+        self.host.args.action = "documents"
+        self.host.pids[documents.PACKAGES[1]] = 600  # Exercise the pre-install kill call too.
+        state = self.host.documents_action(self.host.args)
         self.assertEqual(state["documents_phase"], "PASS")
         self.assertEqual(state["overall"], "IN_PROGRESS")
         self.assertEqual(set(state["documents"]), {"dev", "supported"})
@@ -519,6 +553,10 @@ class DocumentsControls(unittest.TestCase):
         self.assertIn("fresh_receiver_restore", state["unrun"])
         for flavor in documents.VARIANTS:
             self.assertTrue((self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-" + flavor + "/input.pin")).is_file())
+        kills = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*-ordinary-kill-*.json")]
+        self.assertEqual(len(kills), 3)
+        self.assertEqual({item["uid"] for item in kills}, {10001, 10002})
+        self.assertTrue(all(item["result"] == "PASS" and item["exact_pid_absent"] for item in kills))
 
     def test_real_guard_refusals_never_reach_mutation(self):
         changes = (("driver", "driver_phase", "FAIL"), ("updates", "updates_phase", "FAIL"),
@@ -777,6 +815,149 @@ class DocumentsControls(unittest.TestCase):
         outputs["save-readback-changed"]["sha256"] = "0" * 64
         with self.assertRaisesRegex(documents.Refusal, "completed_provider_output_changed"):
             documents.validate_outputs(outputs, control, observed)
+
+    def test_integrated_check_is_read_only_and_requires_explicit_receipts(self):
+        self.host.args.action = "documents-check"
+        self.host.documents_action(self.host.args)
+        self.assertFalse(self.host.mutations)
+        self.assertFalse((self.root / "output").exists())
+        for field in ("driver_run", "updates_run", "base_run"):
+            original = getattr(self.host.args, field)
+            setattr(self.host.args, field, "")
+            with self.assertRaisesRegex(documents.Refusal, "explicit_documents_receipt_chain_required"):
+                self.host.documents_action(self.host.args)
+            setattr(self.host.args, field, original)
+        self.assertFalse(self.host.mutations)
+
+    def test_provider_build_dispatch_uses_existing_guards_and_fake_builders(self):
+        self.host.args.action = "build-documents-provider"
+        self.host.args.output = str(self.root / "provider-route")
+        with patch.dict(os.environ, ALKION_PROOF_SOURCE=REVISION):
+            self.host.documents_action(self.host.args)
+        report = json.loads((self.root / "provider-route/build.json").read_bytes())
+        self.assertEqual(report["package"], documents.PROVIDER)
+        self.assertEqual(report["version_code"], 1)
+        self.assertFalse(self.host.mutations)
+        self.assertTrue(any(argv[0].endswith("/javac") for argv in self.host.calls))
+
+    def test_make_documents_apk_route_uses_pinned_fvm_and_source_guards(self):
+        tools = self.root / "fake-build-tools"
+        tools.mkdir()
+        log = self.root / "fake-fvm.json"
+        (tools / "fvm").write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_FVM_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+        (tools / "git").write_text('#!/usr/bin/env python3\nimport os,sys\nassert sys.argv[1]=="-C"\nif sys.argv[3:]==["rev-parse","HEAD"]: print(os.environ["FAKE_SOURCE"])\nelif sys.argv[3:]==["status","--porcelain","--untracked-files=normal"]: print(os.environ.get("FAKE_DIRTY",""),end="")\nelse: raise SystemExit("unexpected fake git arguments")\n')
+        for path in tools.iterdir():
+            path.chmod(0o700)
+        app = Path(__file__).parent.parent
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], ANDROID_HOME=str(self.host.sdk),
+                   FAKE_SOURCE=REVISION, FAKE_FVM_LOG=str(log), PYTHONDONTWRITEBYTECODE="1")
+        common = ["make", "-C", str(app), "android-synthetic-documents-apk", "ALKION_FLAVOR=dev",
+                  "ALKION_PROOF_RUN=" + RUN, "ALKION_PROOF_SOURCE=" + REVISION, "ALKION_PROOF_VERSION=82"]
+        completed = subprocess.run(common, env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        argv = json.loads(log.read_text())
+        self.assertEqual(argv[:4], ["flutter", "build", "apk", "--debug"])
+        self.assertIn("--no-pub", argv)
+        self.assertEqual(argv[argv.index("--target") + 1], "integration_test/android_documents_test.dart")
+        self.assertEqual(argv[argv.index("--target-platform") + 1], "android-x64")
+        self.assertEqual(argv[argv.index("--build-number") + 1], "82")
+        self.assertIn("--dart-define=ALKION_PROOF_SOURCE=" + REVISION, argv)
+        before = log.read_bytes()
+        invalid = ("ALKION_FLAVOR=foreign", "ALKION_PROOF_RUN=bad", "ALKION_PROOF_SOURCE=", "ALKION_PROOF_VERSION=0",
+                   "ALKION_PROOF_VERSION=82; touch " + str(self.root / "canary"))
+        for value in invalid:
+            completed = subprocess.run(common + [value], env=env, capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertEqual(log.read_bytes(), before)
+        for extra in ({"FAKE_SOURCE": "0" * 40}, {"FAKE_DIRTY": " M unreviewed-source"}):
+            completed = subprocess.run(common, env=dict(env, **extra), capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertEqual(log.read_bytes(), before)
+        self.assertFalse((self.root / "canary").exists())
+        self.assertFalse((Path(__file__).parent / "__pycache__").exists())
+
+    def test_make_forwards_explicit_document_receipts_and_provider_output(self):
+        tools = self.root / "fake-route-tools"
+        tools.mkdir()
+        fake = tools / "bash"
+        log = self.root / "make-route.json"
+        fake.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_ROUTE_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+        fake.chmod(0o700)
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], FAKE_ROUTE_LOG=str(log))
+        app = Path(__file__).parent.parent
+        values = {"ALKION_SYNTHETIC_ACTION": "documents-check", "ALKION_AVD": "documents-proof",
+                  "ALKION_SERIAL": "emulator-5560", "ALKION_RECEIPT": str(self.root / "disposable.json"),
+                  "ALKION_OUTPUT": str(self.root / "fresh output"), "ALKION_BASE_RUN": self.host.args.base_run,
+                  "ALKION_DRIVER_RUN": self.host.args.driver_run, "ALKION_UPDATES_RUN": self.host.args.updates_run}
+        completed = subprocess.run(["make", "-C", str(app), "android-synthetic", *(key + "=" + value for key, value in values.items())],
+                                   env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        argv = json.loads(log.read_text())
+        expected = {"--action": values["ALKION_SYNTHETIC_ACTION"], "--avd": values["ALKION_AVD"], "--serial": values["ALKION_SERIAL"],
+                    "--receipt": values["ALKION_RECEIPT"], "--output": values["ALKION_OUTPUT"], "--base-run": values["ALKION_BASE_RUN"],
+                    "--driver-run": values["ALKION_DRIVER_RUN"], "--updates-run": values["ALKION_UPDATES_RUN"]}
+        self.assertEqual(dict(zip(argv[1::2], argv[2::2])), expected)
+        completed = subprocess.run(["make", "-C", str(app), "android-synthetic-documents-provider", "ALKION_OUTPUT=" + values["ALKION_OUTPUT"]],
+                                   env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(log.read_text()), ["tool/android_synthetic.sh", "--action", "build-documents-provider", "--output", values["ALKION_OUTPUT"]])
+
+    def test_documents_cli_actions_refuse_implicit_targets(self):
+        script = Path(__file__).with_name("android_synthetic.sh")
+        for action in ("documents-check", "documents"):
+            completed = subprocess.run(["bash", str(script), "--action", action],
+                                       capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("explicit_emulator_serial_required", completed.stderr)
+        self.assertFalse(self.host.mutations)
+
+    def test_make_literal_transport_never_executes_quotes_backticks_or_dollars(self):
+        tools = self.root / "literal-route-tools"
+        tools.mkdir()
+        log = self.root / "literal-route.json"
+        fake = tools / "bash"
+        fake.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_ROUTE_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+        fake.chmod(0o700)
+        canaries = {name: self.root / ("canary-" + name) for name in ("quote", "backtick", "dollar", "make", "single", "driver", "provider")}
+        values = {
+            "ALKION_SYNTHETIC_ACTION": 'documents-check"; touch ' + str(canaries["quote"]) + '; echo "',
+            "ALKION_AVD": 'avd with spaces "double" and \'single\' \\ slash',
+            "ALKION_SERIAL": 'emulator-`touch ' + str(canaries["backtick"]) + '`',
+            "ALKION_RECEIPT": '/tmp/$(touch ' + str(canaries["dollar"]) + ')/receipt.json',
+            "ALKION_OUTPUT": '/tmp/$(shell touch ' + str(canaries["make"]) + ')/output',
+            "ALKION_BASE_RUN": "/tmp/lifecycle'; touch " + str(canaries["single"]) + "; echo '",
+            "ALKION_DRIVER_RUN": '/tmp/driver"; touch ' + str(canaries["driver"]) + '; echo "',
+            "ALKION_UPDATES_RUN": '/tmp/${ALKION_CANARY_VAR}/$(printf literal)/updates.json',
+        }
+        flags = ("--action", "--avd", "--serial", "--receipt", "--output", "--base-run", "--driver-run", "--updates-run")
+        expected = ["tool/android_synthetic.sh", *(part for flag, value in zip(flags, values.values()) for part in (flag, value))]
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], FAKE_ROUTE_LOG=str(log), ALKION_CANARY_VAR="must-stay-literal")
+        app = Path(__file__).parent.parent
+        for origin in ("command-line", "environment"):
+            with self.subTest(origin=origin):
+                argv = ["make", "-C", str(app), "android-synthetic"]
+                variables = dict(env)
+                if origin == "command-line":
+                    argv += [key + "=" + value for key, value in values.items()]
+                else:
+                    variables.update(values)
+                completed = subprocess.run(argv, env=variables, capture_output=True, text=True, timeout=10)
+                self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                self.assertEqual(json.loads(log.read_text()), expected)
+                self.assertFalse(any(path.exists() for path in canaries.values()))
+        provider = '/tmp/provider "quote" `touch ' + str(canaries["provider"]) + '` $(touch ' + str(canaries["dollar"]) + ') $(shell touch ' + str(canaries["make"]) + ') ${ALKION_CANARY_VAR}'
+        for origin in ("command-line", "environment"):
+            with self.subTest(provider_origin=origin):
+                argv = ["make", "-C", str(app), "android-synthetic-documents-provider"]
+                variables = dict(env)
+                if origin == "command-line":
+                    argv.append("ALKION_OUTPUT=" + provider)
+                else:
+                    variables["ALKION_OUTPUT"] = provider
+                completed = subprocess.run(argv, env=variables, capture_output=True, text=True, timeout=10)
+                self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                self.assertEqual(json.loads(log.read_text()), ["tool/android_synthetic.sh", "--action", "build-documents-provider", "--output", provider])
+                self.assertFalse(any(path.exists() for path in canaries.values()))
 
 
 if __name__ == "__main__":

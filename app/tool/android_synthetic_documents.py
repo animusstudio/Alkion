@@ -1,11 +1,12 @@
-"""Bounded SAF campaign, imported by android_synthetic.sh after its handoff.
+"""Bounded SAF campaign, imported by the guarded android_synthetic.sh routes.
 
 There is deliberately no executable device entry point. The harness supplies its
 reviewed helpers as an object with APP, command, adb, receipt_guard,
 temporary_path, read_json, toolchain, apk_facts, installed_matches,
 package_metadata, device_platform_guard, driver_continuation_contract,
 lifecycle_contract, driver_neighbor_bytes, closed_profile_fingerprint, app_pid,
-ordinary_kill, ui_document and click_node. No target/path/APK guard is copied here.
+ordinary_kill(args, package, uid, output), ui_document and click_node.
+No target/path/APK guard is copied here.
 prepare(host, args) is read-only on Android; run(host, prepared) is the separately
 authorized mutation route. args names the driver_run, updates_run and base_run
 (current lifecycle) receipts explicitly. All Flutter/Dart work remains via Make.
@@ -166,6 +167,7 @@ class Prepared:
 
 def prepare(host, args):
     receipt, output = host.receipt_guard(args)
+    require((args.sdk / "platform-tools/adb").is_file(), "adb_required")
     paths = []
     for name in ("driver_run", "updates_run", "base_run"):
         require(getattr(args, name, None), "explicit_documents_receipt_chain_required")
@@ -729,7 +731,7 @@ def run(host, prepared):
         for package in VARIANTS.values():
             absent(host, args, package, "files/android-documents-proof")
             if host.app_pid(args, package) is not None:
-                host.ordinary_kill(args, package)
+                host.ordinary_kill(args, package, prepared.metadata[package]["uid"], output)
         originals = host.driver_neighbor_bytes(args, receipt, prepared.driver)
         baseline = {package: host.closed_profile_fingerprint(args, package, prepared.lifecycle["lifecycle"][package]["finish"])
                     for package in VARIANTS.values()}
@@ -783,7 +785,7 @@ def run(host, prepared):
             validate_outputs(outputs, control, observed)
             receiving = receive_good(evidence, flavor, outputs, control)
             if host.app_pid(args, package) is not None:
-                host.ordinary_kill(args, package)
+                host.ordinary_kill(args, package, prepared.metadata[package]["uid"], output)
             require(host.driver_neighbor_bytes(args, receipt, prepared.driver) == originals, "documents_driver_or_neighbor_changed")
             for peer in VARIANTS.values():
                 require(host.closed_profile_fingerprint(args, peer, prepared.lifecycle["lifecycle"][peer]["finish"]) == baseline[peer],
