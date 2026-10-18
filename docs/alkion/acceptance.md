@@ -8,6 +8,16 @@ observed: 2026-10-18
 
 ## Current Android checkpoint (2026-10-18)
 
+Fresh driver and A2 runs at `3c04bed` passed both variants; independent evidence
+review passed. At `ef85e42`, the sixth lifecycle recorded fourteen successful
+captures, then failed during cold resume. Five explicit null-focus samples were
+followed by the expected app window at 0.6913 seconds; native window attestation
+then failed at 116 ms. Its compound guard does not identify the failed condition.
+The partial run and disks are retained without reset or re-preparation. Cold
+resume, closed-SQL rest, logging, finish and supported lifecycle remain unqualified.
+
+## Previous Android checkpoint
+
 At `0e4ec4d`, a fresh API 36 AOSP x86_64 campaign passed all eleven driver
 cases and A2 update/rejected-signer checks in both variants; evidence review is
 pending. Earlier V2 previews independently passed app and SystemUI observation.
