@@ -16,6 +16,14 @@ identities and requires fresh dual absence. Eligibility allows 14 seconds within
 the unchanged 30-second total; installed lifecycle retry remains unrun.
 The earlier retained native diagnostic passed on the cached branch only.
 
+Lifecycle retry at `a4499b8` passed development preparation and the actual
+ordinary-kill previous-process branch: exact PID/UID/start identity, stopped
+activity, platform kill and fresh process/package absence were observed. The
+subsequent notification-body step stopped with `ui_hierarchy_unavailable` after
+main version 41 installation. Preserve that partial state and all receipts;
+notification interaction, remaining lifecycle steps and the supported variant
+remain unrun. This run does not qualify lifecycle as a whole.
+
 ## Android preparation (2026-10-17, local work)
 
 The [Android plan](../superpowers/plans/2026-10-17-android-owner-readiness.md)
