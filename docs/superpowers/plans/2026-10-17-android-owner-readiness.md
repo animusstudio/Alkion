@@ -331,6 +331,10 @@ At `2274080`, fresh driver11 passed both variants (independent evidence PASS),
 then A2 update/rejected-signer checks passed. Lifecycle failed after development
 prepare40: native previous-app state stayed noncached. Retain receipts/data and
 replan the second ordinary-kill gate failure before another execution attempt.
+The bounded replan retains cached eligibility and adds only exact native
+previous-process 700/15 evidence with bound stopped/nonvisible activity.
+Independent source review PASS; retained 108 host controls and 67 ordinary-kill
+cases PASS. Native diagnostic and a fresh lifecycle campaign are still required.
 
 Fresh driver attempt at `e532a82` failed on Android child descriptor inheritance;
 nine development cases passed, with later cases and supported execution unreached.

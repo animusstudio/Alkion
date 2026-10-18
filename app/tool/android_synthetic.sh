@@ -685,16 +685,17 @@ def parse_process_identity(raw, pid, uid):
             re.fullmatch(r"[0-9]+", values[18]), "ordinary_kill_malformed_proc_stat")
     return {"pid":pid, "uid":uid, "start_ticks":int(values[18])}
 
-def parse_cached_process(raw, package, pid, uid):
+def parse_ordinary_kill_process(raw, package, pid, uid):
     require(len(raw.encode()) <= 1048576, "ordinary_kill_process_dump_too_large")
     headers = list(re.finditer(r"^( *)\*APP\* UID[^\n]*$", raw, re.MULTILINE))
     selected = [index for index, header in enumerate(headers)
                 if re.search(r":"+re.escape(package)+r"(?:[/:}\s]|$)", header[0])]
     require(len(selected) == 1, "ordinary_kill_process_record_ambiguous")
     index = selected[0]; header = headers[index]
-    expected = (r" *\*APP\* UID "+str(uid)+r" ProcessRecord\{[^{}\s]+ "+str(pid)+":"+
-                re.escape(package)+r"/u0a"+str(uid-10000)+r"\}")
-    require(re.fullmatch(expected, header[0]), "ordinary_kill_native_pid_or_uid_changed")
+    expected = (r" *\*APP\* UID "+str(uid)+r" (ProcessRecord\{[^{}\s]+ "+str(pid)+":"+
+                re.escape(package)+r"/u0a"+str(uid-10000)+r"\})")
+    record = re.fullmatch(expected, header[0])
+    require(record, "ordinary_kill_native_pid_or_uid_changed")
     block = raw[header.end():headers[index+1].start() if index+1 < len(headers) else len(raw)]
     prefix = re.escape(header[1]+"  ")
     def one(pattern):
@@ -714,11 +715,50 @@ def parse_cached_process(raw, package, pid, uid):
     foreground = re.fullmatch(r"foregroundActivities=(true|false) \(rep=(true|false)\)\s*",flags[0]) if flags else None
     require(not flags or foreground, "ordinary_kill_malformed_foreground_flags")
     activity_flags = foreground.groups() if foreground else None
-    # API 36 can retain LAST_ACTIVITY (15) after its adjustment becomes cached.
-    # State 15 alone is insufficient: PREVIOUS_APP_ADJ (700) must never pass.
-    return {"eligible":cached == "true" and activity_flags in (None,("false","false")) and
-            all(900 <= value <= 999 for value in adj) and all(15 <= value <= 19 for value in states),
-            "adj":adj, "states":states, "cached":cached, "empty":empty, "foreground":activity_flags}
+    own_lines = [line for line in block.splitlines() if line.startswith(header[1]+"  ") and
+                 not line.startswith(header[1]+"   ")]
+    protected = [flag for line in own_lines for flag in re.findall(
+        r"\b(persistent|mPersistent|hasForegroundServices|foregroundServices)=(\S+)",line)]
+    require(len({key for key,value in protected}) == len(protected) and
+            all(value in ("true","false") for key,value in protected),
+            "ordinary_kill_protected_flags_ambiguous")
+    background = activity_flags in (None,("false","false")) and all(value == "false" for key,value in protected)
+    branch = None; previous = []
+    if background and cached == "true" and all(900 <= value <= 999 for value in adj) and all(15 <= value <= 19 for value in states):
+        branch = "cached"
+    elif background and adj == (700,)*4 and states == (15,)*3 and cached == "false" and empty == "false":
+        previous = re.findall(r"^\s*mPreviousProcess:\s*([^\n]*)$",raw,re.MULTILINE)
+        require(previous and all(value == record[1] for value in previous),
+                "ordinary_kill_previous_process_mismatch")
+        branch = "previous"
+    return {"eligible":branch is not None, "branch":branch, "process_record":record[1],
+            "previous_references":previous, "adj":adj, "states":states, "cached":cached,
+            "empty":empty, "foreground":activity_flags, "protected":dict(protected)}
+
+def parse_stopped_activity(raw, package, process_record):
+    require(len(raw.encode()) <= 1048576, "ordinary_kill_activity_dump_too_large")
+    headers = list(re.finditer(r"^( *)\* Hist\s+#[0-9]+: ([^\n]+)$",raw,re.MULTILINE))
+    selected = [index for index,header in enumerate(headers)
+                if re.search(r" u[0-9]+ "+re.escape(package)+r"/",header[2])]
+    require(len(selected) == 1, "ordinary_kill_target_activity_ambiguous")
+    index = selected[0]; header = headers[index]
+    main = "dev.animusstudio.alkion.MainActivity"
+    classes = re.escape(main)+(r"|\.MainActivity" if package == PACKAGES[2] else "")
+    require(re.fullmatch(r"ActivityRecord\{[^{}\s]+ u0 "+re.escape(package)+r"/(?:"+classes+r") t[0-9]+\}",header[2]),
+            "ordinary_kill_target_activity_mismatch")
+    block = raw[header.end():headers[index+1].start() if index+1 < len(headers) else len(raw)]
+    prefix = re.escape(header[1]+"  ")
+    def one(pattern):
+        values = re.findall("^"+prefix+pattern,block,re.MULTILINE)
+        require(len(values) == 1, "ordinary_kill_target_activity_state_ambiguous")
+        return values[0]
+    require(one(r"packageName=(\S+) processName=(\S+)\s*$") == (package,package) and
+            one(r"app=([^\n]+)$") == process_record, "ordinary_kill_target_activity_process_mismatch")
+    state = one(r"state=([A-Z_]+)\b[^\n]*$")
+    visible = one(r"mVisibleRequested=(true|false) mVisible=(true|false) mClientVisible=(true|false) reportedDrawn=(true|false) reportedVisible=(true|false)\s*$")
+    now_visible = one(r"nowVisible=(true|false)\b[^\n]*$")
+    return {"stopped":state == "STOPPED" and all(value == "false" for value in visible) and now_visible == "false",
+            "state":state, "visibility":visible, "now_visible":now_visible, "process_record":process_record}
 
 def resumed_component(raw):
     require(len(raw.encode()) <= 1048576, "ordinary_kill_activity_dump_too_large")
@@ -790,7 +830,7 @@ def ordinary_kill(args, package, uid, output):
         require(native("am","get-current-user").stdout.strip() == "0", "ordinary_kill_primary_user_required")
         settings = resolve("com.android.settings","android.settings.SETTINGS")
         home = resolve("com.android.launcher3","android.intent.action.MAIN","-c","android.intent.category.HOME")
-        # Displace PREVIOUS_APP_ADJ through an observed native Settings foreground.
+        # Observe native foreground displacement; the previous slot may remain 700.
         evidence["settings_start"] = native("am","start","-W","--user","0","-n",settings).stdout
         wait_resumed(settings,"settings_resumed")
         native("input","keyevent","KEYCODE_HOME")
@@ -799,17 +839,34 @@ def ordinary_kill(args, package, uid, output):
         while True:
             owner()
             raw = native("dumpsys","activity","processes",package).stdout
-            evidence["eligibility"].append({"elapsed_seconds":time.monotonic()-started,"dump":raw})
-            cached = parse_cached_process(raw,package,before,uid)
-            evidence["eligibility"][-1]["state"] = cached
-            if cached["eligible"]:
+            sample = {"elapsed_seconds":time.monotonic()-started,"dump":raw}
+            evidence["eligibility"].append(sample)
+            state = parse_ordinary_kill_process(raw,package,before,uid)
+            sample["state"] = state; sample["eligible"] = state["eligible"]
+            if state["branch"] == "previous":
+                activities = native("dumpsys","activity","activities").stdout
+                sample["activities"] = activities
+                require(resumed_component(activities) == ("0",home), "ordinary_kill_home_no_longer_resumed")
+                sample["activity"] = parse_stopped_activity(activities,package,state["process_record"])
+                sample["eligible"] = sample["activity"]["stopped"]
+            if sample["eligible"]:
                 break
-            require(time.monotonic() < eligible_deadline, "ordinary_kill_never_became_cached")
+            require(time.monotonic() < eligible_deadline, "ordinary_kill_never_became_eligible")
             time.sleep(min(0.25,max(0,eligible_deadline-time.monotonic())))
-        # Recheck actual foreground and kernel identity immediately before am kill.
+        # Refresh process, activity, Home and kernel identity before the one command.
+        raw = native("dumpsys","activity","processes",package).stdout
+        evidence["before_kill_process_dump"] = raw
+        state = parse_ordinary_kill_process(raw,package,before,uid)
+        evidence["before_kill_state"] = state
+        require(state["eligible"], "ordinary_kill_process_no_longer_eligible")
+        require(state["process_record"] == sample["state"]["process_record"], "ordinary_kill_native_process_record_changed")
         raw = native("dumpsys","activity","activities").stdout
         evidence["before_kill_resumed"] = raw
         require(resumed_component(raw) == ("0",home), "ordinary_kill_home_no_longer_resumed")
+        if state["branch"] == "previous":
+            evidence["before_kill_activity"] = parse_stopped_activity(raw,package,state["process_record"])
+            require(evidence["before_kill_activity"]["stopped"], "ordinary_kill_activity_no_longer_stopped")
+        evidence["eligibility_branch"] = state["branch"]
         owner()
         path.write_text(json.dumps(evidence,indent=2)+chr(10))
         evidence["kill_command"] = native("am","kill","--user","0",package).stdout
@@ -1166,6 +1223,7 @@ command=[tool,*args]
 with open(os.environ["FAKE_REMOTE_LOG"],"a") as f: f.write(json.dumps(command)+chr(10))
 state_path=Path(os.environ["FAKE_STATE"]); state=json.loads(state_path.read_text())
 scenario=state["scenario"]; package="dev.animusstudio.alkion.dev"; pid=4220; uid=10151
+previous=scenario.startswith("previous-") and scenario!="previous-to-cached"
 settings="com.android.settings/.homepage.SettingsHomepageActivity"
 home="com.android.launcher3/.uioverrides.QuickstepLauncher"
 def save(): state_path.write_text(json.dumps(state))
@@ -1192,21 +1250,51 @@ elif command==["dumpsys","activity","activities"]:
  print("      topResumedActivity=ActivityRecord{223442197 u0 "+component+" t7}")
  if scenario=="ambiguous-resumed" and state["foreground"]=="home": component=package+"/.MainActivity"
  print("  ResumedActivity: "+("malformed" if scenario=="malformed-resumed" else "ActivityRecord{223442197 u0 "+component+" t7}"))
+ status="STOPPED" if previous or state.get("eligible") else "STOPPING"
+ if scenario=="previous-settles" and state.get("probes",0)<2: status="STOPPING"
+ if scenario=="previous-never-stopped" or (scenario=="previous-activity-drift" and state.get("probes",0)>1): status="STOPPING"
+ if scenario=="previous-resumed-target": status="RESUMED"
+ activity_package="other.package" if scenario=="previous-foreign-activity" else package
+ activity_user=10 if scenario=="previous-activity-user" else 0
+ record="otherrecord" if scenario=="previous-activity-process" else "7333d1f"
+ visibility=["false"]*5
+ for index,label in enumerate(("requested","visible","client","drawn","reported")):
+  if scenario=="previous-"+label: visibility[index]="true"
+ target="    * Hist  #0: ActivityRecord{aa222 u"+str(activity_user)+" "+activity_package+"/dev.animusstudio.alkion.MainActivity t8}"+chr(10)
+ target+="      packageName="+package+" processName="+package+chr(10)
+ target+="      app=ProcessRecord{"+record+" "+str(pid)+":"+package+"/u0a151}"+chr(10)
+ target+="      state="+("malformed" if scenario=="previous-malformed-activity" else status)+" delayedResume=false finishing=false"+chr(10)
+ target+="      mVisibleRequested="+visibility[0]+" mVisible="+visibility[1]+" mClientVisible="+visibility[2]+" reportedDrawn="+visibility[3]+" reportedVisible="+visibility[4]+chr(10)
+ target+="      nowVisible="+("true" if scenario=="previous-now-visible" else "false")+" lastVisibleTime=-1s"+chr(10)
+ print(target)
+ if scenario=="previous-duplicate-activity": print(target)
 elif command==["dumpsys","activity","processes",package]:
  assert state["foreground"]=="home"
  state["probes"]=state.get("probes",0)+1
  eligible=scenario=="already-cached" or state["probes"]>1
  if scenario=="never-cached": eligible=False
- state["eligible"]=eligible; save()
+ if previous: eligible=False
+ state["eligible"]=eligible or previous; save()
  observed_uid=uid+1 if scenario=="native-uid-change" else uid
  observed_pid=pid+1 if scenario=="native-pid-change" else pid
  adj=900 if eligible else 700; proc_state=16 if scenario=="already-cached" else 15
+ if scenario in ("previous-adj-500","previous-adj-600","previous-adj-800"): adj=int(scenario.rsplit("-",1)[1])
+ if scenario=="previous-cached-false-900": adj=900
+ if scenario=="previous-state-drift" and state["probes"]>1: proc_state=14
  if scenario=="protected-state": proc_state=14
  header="  *APP* UID "+str(observed_uid)+" ProcessRecord{7333d1f "+str(observed_pid)+":"+package+"/u0a"+str(observed_uid-10000)+"}"
  block=header+chr(10)+"    user #0 uid="+str(observed_uid)+" gids={50151}"+chr(10)+"    pid="+str(observed_pid)+chr(10)
  block+="    oom adj: max=1001 curRaw="+str(adj)+" setRaw="+str(adj)+" cur="+str(adj)+" set="+str(adj)+chr(10)
  block+="    curProcState="+str(proc_state)+" mRepProcState="+str(proc_state)+" setProcState="+str(proc_state)+" lastStateTime=-1s395ms"+chr(10)
  block+="    cached="+("true" if eligible else "false")+" empty=false"+chr(10)
+ if scenario=="previous-mixed-adj": block=block.replace("setRaw=700","setRaw=900")
+ if scenario=="previous-mixed-state": block=block.replace("mRepProcState=15","mRepProcState=16")
+ if scenario=="previous-empty": block=block.replace("empty=false","empty=true")
+ if scenario=="previous-record-drift" and state["probes"]>1: block=block.replace("7333d1f","newrecord")
+ if scenario=="previous-persistent": block+="    persistent=true"+chr(10)
+ if scenario=="previous-foreground-service": block+="    hasForegroundServices=true"+chr(10)
+ if scenario=="previous-malformed-protected": block+="    persistent=malformed"+chr(10)
+ if scenario=="previous-foreground" or (scenario=="previous-foreground-drift" and state["probes"]>1): block+="    foregroundActivities=true (rep=false)"+chr(10)
  if scenario=="already-cached": block+="    foregroundActivities=false (rep=false)"+chr(10)
  if scenario=="foreground-cached": block+="    foregroundActivities=true (rep=false)"+chr(10)
  if scenario=="reported-foreground": block+="    foregroundActivities=false (rep=true)"+chr(10)
@@ -1217,6 +1305,13 @@ elif command==["dumpsys","activity","processes",package]:
  if scenario=="malformed-header": block=block.replace("*APP* UID ","*APP* UID malformed ")
  print(block)
  if scenario=="duplicate-process": print(block)
+ reference="ProcessRecord{7333d1f "+str(pid)+":"+package+"/u0a151}"
+ if scenario in ("previous-foreign-reference","previous-conflicting-reference") or (scenario=="previous-reference-drift" and state["probes"]>1): reference="ProcessRecord{7333d1f 4221:other.package/u0a151}"
+ if scenario=="previous-record-drift" and state["probes"]>1: reference=reference.replace("7333d1f","newrecord")
+ if scenario=="previous-malformed-reference": reference="malformed"
+ if scenario!="previous-missing-reference": print("  mPreviousProcess: "+reference)
+ if scenario=="previous-exact": print("  mPreviousProcess: "+reference)
+ if scenario=="previous-conflicting-reference": print("  mPreviousProcess: ProcessRecord{7333d1f "+str(pid)+":"+package+"/u0a151}")
  # A real dump repeats cached flags in its later OOM summary, at deeper indent.
  print("  OOM levels:"+chr(10)+"        cached=false empty=false hasAboveClient=false")
 elif command==["pidof",package]:
@@ -1241,6 +1336,7 @@ elif command[:2]==["sh","-c"]:
   directory.mkdir(exist_ok=True)
   observed_uid=uid+1 if scenario=="uid-change" and state["foreground"]=="home" else uid
   ticks=101 if (scenario=="start-changed" and state["foreground"]=="home") or (scenario=="pid-reuse" and state.get("killed")) else 100
+  if scenario=="previous-late-start-change" and state.get("probes",0)>1: ticks=101
   (directory/"status").write_text("Name: alkion"+chr(10)+"Pid: "+str(pid)+chr(10)+"Uid: "+" ".join([str(observed_uid)]*4)+chr(10))
   fields=["0"]*49; fields[18]=str(ticks)
   (directory/"stat").write_text(str(pid)+" (alkion (dev)) S "+" ".join(fields)+chr(10))
@@ -1257,10 +1353,10 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
         target = argparse.Namespace(sdk=sdk,serial="emulator-5558")
         previous = dict(os.environ); count = 0
         scenarios = (("previous-to-cached",None,1),("already-cached",None,1),("delayed-death",None,1),
-            ("never-cached","ordinary_kill_never_became_cached",0),
-            ("protected-state","ordinary_kill_never_became_cached",0),
-            ("foreground-cached","ordinary_kill_never_became_cached",0),
-            ("reported-foreground","ordinary_kill_never_became_cached",0),
+            ("never-cached","ordinary_kill_never_became_eligible",0),
+            ("protected-state","ordinary_kill_never_became_eligible",0),
+            ("foreground-cached","ordinary_kill_never_became_eligible",0),
+            ("reported-foreground","ordinary_kill_never_became_eligible",0),
             ("malformed-foreground","ordinary_kill_malformed_foreground_flags",0),
             ("duplicate-foreground","ordinary_kill_foreground_flags_ambiguous",0),
             ("pid-change","ordinary_kill_package_pid_changed",0),
@@ -1284,7 +1380,28 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
             ("no-death","ordinary_kill_did_not_exit_no_force_stop_fallback",1),
             ("death-restart","ordinary_kill_package_restarted",1),
             ("pid-reuse","ordinary_kill_process_changed_after_kill",1),
-            ("pidof-only-absence","ordinary_kill_process_changed_after_kill",1))
+            ("pidof-only-absence","ordinary_kill_process_changed_after_kill",1),
+            ("previous-exact",None,1),("previous-settles",None,1),
+            *((scenario,"ordinary_kill_never_became_eligible",0) for scenario in
+                ("previous-never-stopped","previous-resumed-target","previous-visible","previous-requested",
+                 "previous-client","previous-drawn","previous-reported","previous-now-visible","previous-mixed-adj",
+                 "previous-mixed-state","previous-adj-500","previous-adj-600","previous-adj-800",
+                 "previous-cached-false-900","previous-empty","previous-persistent",
+                 "previous-foreground-service","previous-foreground")),
+            *((scenario,"ordinary_kill_previous_process_mismatch",0) for scenario in
+                ("previous-missing-reference","previous-foreign-reference","previous-conflicting-reference",
+                 "previous-malformed-reference","previous-reference-drift")),
+            ("previous-malformed-protected","ordinary_kill_protected_flags_ambiguous",0),
+            ("previous-activity-process","ordinary_kill_target_activity_process_mismatch",0),
+            ("previous-foreign-activity","ordinary_kill_target_activity_ambiguous",0),
+            ("previous-duplicate-activity","ordinary_kill_target_activity_ambiguous",0),
+            ("previous-activity-user","ordinary_kill_target_activity_mismatch",0),
+            ("previous-malformed-activity","ordinary_kill_target_activity_state_ambiguous",0),
+            ("previous-state-drift","ordinary_kill_process_no_longer_eligible",0),
+            ("previous-foreground-drift","ordinary_kill_process_no_longer_eligible",0),
+            ("previous-activity-drift","ordinary_kill_activity_no_longer_stopped",0),
+            ("previous-record-drift","ordinary_kill_native_process_record_changed",0),
+            ("previous-late-start-change","ordinary_kill_process_identity_changed",0))
         try:
             for scenario, expected, kills in scenarios:
                 directory = root/scenario; directory.mkdir(); (directory/"proc").mkdir()
@@ -1315,10 +1432,12 @@ else: raise SystemExit("unexpected remote command: "+repr(command))
                             ("force-stop","kill-all","clear","uninstall","install","rm","su","SIGKILL")),
                         "ordinary_kill_host_forbidden_fallback:"+scenario)
                 if expected is None:
-                    require(record.get("exact_pid_absent") is True and record["eligibility"][-1]["state"]["eligible"],
+                    require(record.get("exact_pid_absent") is True and record["eligibility"][-1]["eligible"] and
+                            record.get("eligibility_branch") == ("previous" if scenario.startswith("previous-") and
+                            scenario != "previous-to-cached" else "cached"),
                             "ordinary_kill_host_missing_native_proof")
-                    if scenario == "previous-to-cached":
-                        require(not record["eligibility"][0]["state"]["eligible"] and len(record["eligibility"]) >= 2,
+                    if scenario in ("previous-to-cached","previous-settles"):
+                        require(not record["eligibility"][0]["eligible"] and len(record["eligibility"]) >= 2,
                                 "ordinary_kill_host_previous_app_not_observed")
                 count += 1
         finally:
