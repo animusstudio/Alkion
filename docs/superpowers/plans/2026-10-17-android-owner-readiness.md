@@ -334,6 +334,9 @@ under that tool directory, plus narrow `app/tool/android_synthetic.sh` and
 `app/tool/android_synthetic_documents_self_test.py`. Use SDK-only builds, strict bounded observation and retained
 failure evidence. Independent source review and real synthetic observation precede
 one fresh driver/A2/lifecycle campaign; preserve the earlier partial failure.
+The observed empty Flutter tree requires observer V2 readiness in its manifest,
+Java, Python module and self-test only; update the affected documents fixture if
+needed. Review before a pinned in-place synthetic helper update and native proof.
 
 T5 receiving-restore prerequisite fixture ownership covers
 `app/integration_test/android_documents_test.dart` and new
