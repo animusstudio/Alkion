@@ -5,8 +5,11 @@ reviewed helpers as an object with APP, command, adb, receipt_guard,
 temporary_path, read_json, toolchain, apk_facts, installed_matches,
 package_metadata, device_platform_guard, driver_continuation_contract,
 lifecycle_contract, driver_neighbor_bytes, closed_profile_fingerprint, app_pid,
-ordinary_kill(args, package, uid, output), ui_document and click_node.
-No target/path/APK guard is copied here.
+ordinary_kill(args, package, uid, output), ui_document and click_node, and
+args._publisher is the reviewed publisher artifact the harness binds after
+preparation. Owned files are published by the shared no-replace publisher;
+namespace directories keep their existing rename. No target/path/APK guard is
+copied here.
 prepare(host, args) is read-only on Android; run(host, prepared) is the separately
 authorized mutation route. args names the driver_run, updates_run and base_run
 (current lifecycle) receipts explicitly. All Flutter/Dart work remains via Make.
@@ -23,6 +26,8 @@ import shutil
 import time
 import xml.etree.ElementTree as ET
 import zipfile
+
+import android_synthetic_publish as publish
 
 
 PROVIDER = "dev.animusstudio.alkion.synthetic.documents"
@@ -243,6 +248,8 @@ class Evidence:
         self.output = prepared.output
         self.counter = 0
         self.provider_pid = None
+        self.publisher = publish.Session(host, prepared.args, getattr(prepared.args, "_publisher", None),
+                                         prepared.receipt["run_id"], self.keep)
 
     def keep(self, name, data):
         self.counter += 1
@@ -264,11 +271,23 @@ class Evidence:
         require(result.returncode == 0 and not result.stderr, "documents_owned_read_failed:" + path)
         return result.stdout
 
+    def bind_publisher(self, package, uid=None):
+        """Bootstrap once after the package's qualified install; later calls are free."""
+        try:
+            return self.publisher.ensure(package, uid)
+        except publish.Refusal as error:
+            raise Refusal("documents_exclusive_write_failed:" + str(error)) from error
+
     def write(self, package, path, data, name):
         regular_relative(path)
         require(len(data) <= LIMIT, "documents_write_exceeded_bound")
         self.keep(name, data)
         partial = path + ".partial-" + os.urandom(16).hex()
+        try:
+            publish.relative_pair(partial, path)
+        except publish.Refusal as error:
+            raise Refusal("documents_exclusive_write_failed:" + str(error)) from error
+        self.bind_publisher(package, self.prepared.metadata.get(package, {}).get("uid"))
         result = remote(self.host, self.prepared.args, package, NO_LINKS +
                         'umask 077; set -C; cat > "$1"', partial, data=data)
         self.keep(name + ".transport", {"code": result.returncode, "stderr": result.stderr.decode(errors="replace"),
@@ -276,16 +295,13 @@ class Evidence:
         require(result.returncode == 0 and not result.stderr, "documents_exclusive_write_failed")
         require(self.read(package, partial, max(1, len(data)), name + "-closed-partial") == data,
                 "documents_closed_partial_changed")
-        # App-private same-directory hard-link publication is atomic and refuses
-        # an existing name. -T treats every destination as a file; never use -f.
-        # Keep the closed partial on success and failure as delivery evidence.
-        published = remote(self.host, self.prepared.args, package, NO_LINKS +
-                           'test -f "$1" && test ! -e "$2" && test ! -L "$2" || exit 4; '
-                           'ln -T "$1" "$2"', partial, path)
-        self.keep(name + ".publication", {"code": published.returncode,
-                                         "stderr": published.stderr.decode(errors="replace"),
-                                         "partial_relative": partial, "final_relative": path})
-        require(published.returncode == 0 and not published.stderr, "documents_exclusive_write_failed")
+        # Same-directory kernel no-replace rename of the closed partial. Success
+        # consumes it; a refused or uncertain publication keeps every remaining
+        # name. The publisher retains context, raw reply and final readback.
+        try:
+            self.publisher.publish(package, partial, path, data, name, self.read)
+        except publish.Refusal as error:
+            raise Refusal("documents_exclusive_write_failed:" + str(error)) from error
 
     def json(self, package, path, name, *, optional=False, bound=32768):
         raw = self.read(package, path, bound, name, optional=optional)
@@ -822,6 +838,7 @@ def run(host, prepared):
                 {v["uid"] for v in prepared.metadata.values()}, "provider_uid_or_version_invalid")
         state["provider"] = {**provider_facts, **provider_meta}; save()
         provider_installed(evidence, provider_facts, provider_meta["uid"])
+        evidence.bind_publisher(PROVIDER, provider_meta["uid"])
         for index, (flavor, package) in enumerate(VARIANTS.items()):
             host.installed_matches(args, state["installed"])
             for peer in PACKAGES:
@@ -834,6 +851,7 @@ def run(host, prepared):
             host.installed_matches(args, state["installed"])
             require(host.package_metadata(args, package) == {"uid": prepared.metadata[package]["uid"],
                     "version_code": facts["version_code"]}, "documents_update_changed_uid_or_version")
+            evidence.bind_publisher(package, prepared.metadata[package]["uid"])
             host.adb(args, "shell", "am", "start", "-W", "--user", "0", "-n", package + "/dev.animusstudio.alkion.MainActivity")
             phase = wait_phase(evidence, flavor, 0, "seed", "seed_provider")
             control = seed_provider(evidence, flavor, phase, first=index == 0)

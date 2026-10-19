@@ -2225,6 +2225,7 @@ def documents_action(args):
         print("Synthetic documents provider built:", apk)
         return
     prepared = module.prepare(host, args)
+    publisher_binding(args, prepared.revision)
     if args.action == "documents-check":
         print("Recognized driver/A2/current-lifecycle installation verified; no install, enable, launch or picker action.")
     else:
@@ -2265,6 +2266,7 @@ def restore_action(args):
             print("Retained paired restore APKs and exact build manifest:", Path(built["variants"]["dev"]["apk"]).parent / "build.json")
             return built
         prepared = module.prepare(host, args)
+        publisher_binding(args, prepared.revision)
         if args.action == "restore-check":
             print("Explicit fresh receiver, source chain, paired artifacts, ledger and fresh observer verified; no install or launch.")
             return

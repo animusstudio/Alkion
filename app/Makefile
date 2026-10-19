@@ -100,6 +100,7 @@ build-apk-supported:
 android-synthetic:
 	@set --; \
 	case "$${ALKION_SYNTHETIC_ACTION}" in \
+	documents-check|documents) set -- --publisher-build "$${ALKION_PUBLISHER_BUILD}" ;; \
 	capabilities-check|capabilities) set -- --version-ledger "$${ALKION_VERSION_LEDGER}" --source-review "$${ALKION_SOURCE_REVIEW}" --attempt-manifests-json "$${ALKION_ATTEMPT_MANIFESTS_JSON:-[]}" --jit-build-budget "$${ALKION_JIT_BUILD_BUDGET:-120}" ;; \
 	build-restore|restore-check|restore) set -- --source-manifest "$${ALKION_RESTORE_SOURCE_MANIFEST}" --receiver-driver "$${ALKION_RESTORE_RECEIVER_DRIVER}" --version-ledger "$${ALKION_VERSION_LEDGER}" --source-review "$${ALKION_SOURCE_REVIEW}" --attempt-manifests-json "$${ALKION_ATTEMPT_MANIFESTS_JSON:-[]}" --candidate-manifest "$${ALKION_RESTORE_CANDIDATE_MANIFEST}" --dev-apk "$${ALKION_RESTORE_DEV_APK}" --supported-apk "$${ALKION_RESTORE_SUPPORTED_APK}" --provider-apk "$${ALKION_RESTORE_PROVIDER_APK}" --ui-observer-build "$${ALKION_UI_OBSERVER_BUILD}" ;; \
 	esac; \
