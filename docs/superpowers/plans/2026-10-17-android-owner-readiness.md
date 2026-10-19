@@ -558,6 +558,13 @@ flags. A pre-install audit refusal preserves failed builds; a reviewed tooling
 fix can retain the accepted lifecycle/observer through existing guards and a
 fresh Documents output. Version math and native fixture/admission stay unchanged;
 failed candidate versions remain in the later complete attempt inventory.
+The synthetic provider package is test-only and installs only with `adb install -t`:
+Android lets the shell change a component's enabled state only for a test-only
+package, so the packaged audit also requires exactly one application `testOnly`
+true. Enabling after the first seed is accepted only on the exact shell-command
+output naming the component as enabled plus a `dumpsys package` readback listing it
+under enabled components; the raw command, status and bounded streams are retained
+first. Host command failures keep both the head and the tail of their diagnostics.
 
 Owner-only SAF transport uses non-PTY adb shell -T with binary streams and
 remote exit status, preserving strict missing-file versus empty-file checks.
