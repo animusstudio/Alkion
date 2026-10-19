@@ -55,6 +55,7 @@ PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/androi
       E: application (line=4)
         A: http://schemas.android.com/apk/res/android:label(0x01010001)="Alkion Synthetic Documents" (Raw: "Alkion Synthetic Documents")
         A: http://schemas.android.com/apk/res/android:debuggable(0x0101000f)=true
+        A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true
         A: http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=false
         A: http://schemas.android.com/apk/res/android:usesCleartextTraffic(0x010104ec)=false
           E: provider (line=7)
@@ -68,6 +69,15 @@ PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/androi
                   E: action (line=13)
                     A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.content.action.DOCUMENTS_PROVIDER" (Raw: "android.content.action.DOCUMENTS_PROVIDER")
 """
+
+
+TEST_ONLY = "A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true"
+
+
+def publisher_safe_test_only_line():
+    return "        " + TEST_ONLY + "\n"
+PROVIDER_CLASS = "dev.animusstudio.alkion.synthetic.documents.SyntheticDocumentsProvider"
+INCREMENTAL = "Serving...\nPerforming Incremental Install\n"
 
 
 def result(stdout="", stderr="", code=0):
@@ -159,6 +169,27 @@ class FakeHost:
         self.ack_objects = []
         self.delayed_ack_checks = []
         self.run_as_failures = set()
+        # Device package manager state for the synthetic provider.
+        self.provider_tree = PACKAGED_PROVIDER_TREE
+        self.provider_test_only = False
+        self.provider_enabled = False
+        self.provider_dump_hides_enabled = False
+        self.provider_enable_state = "enabled"
+        self.provider_enable_stderr = ""
+        self.variant_install_stdout = None
+        self.install_timing_stream = "stdout"
+        self.provider_dump_blocks = ("enabledComponents",)
+        self.null_focus = 0
+        # Device models: cached-app freezer, LastAccessed picker landing,
+        # caller focus during picker launch, disabled Save and cancel return lag.
+        self.provider_frozen = False
+        self.provider_sticky = False
+        self.pending_namespaces = []
+        self.last_accessed = set()
+        self.caller_focus = 0
+        self.caller_focus_samples = 0
+        self.save_captures = 0
+        self.cancel_lag = 0
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
             receipt=str(receipt_path), output=str(root / "output"), driver_run=str(root / "driver/run.json"),
@@ -260,6 +291,9 @@ class FakeHost:
                     peer: {"before": "f" * 64, "after": "f" * 64} for peer in documents.VARIANTS.values() if peer != package})
                 self.installed[package] = finished
                 self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/driver-report.json"), driver["driver"][flavor])
+                # The real driver also leaves a UTF-8 directory and SQLite sidecars in its tree.
+                self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/directory-\u00e8/sentinel"), b"sentinel")
+                self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/coherent.sqlite-wal"), b"wal bytes")
             else:
                 updates["installed"][package] = driver["installed"][package]
                 lifecycle["installed"][package] = driver["installed"][package]
@@ -341,11 +375,27 @@ class FakeHost:
                 stdout = value.stdout.encode() if isinstance(value.stdout, str) else value.stdout
                 stderr = value.stderr.encode() if isinstance(value.stderr, str) else value.stderr
                 value = result(stdout + stderr, b"", 0)
+            elif tail[0] == "install" and self.refuses_test_only_install(tail):
+                # InstallPackageHelper refuses a test-only APK without INSTALL_ALLOW_TEST.
+                failure = "Failure [INSTALL_FAILED_TEST_ONLY: Failed to install test-only apk. Did you forget to add -t?]"
+                value = result(INCREMENTAL + failure + "\nPerforming Streamed Install\n",
+                               "adb: failed to install " + tail[-1] + ": " + failure + "\n\n", 1)
             elif tail[0] == "install":
                 facts = self.fake_apk_facts(None, Path(tail[-1]), self.facts_for_file(Path(tail[-1]))["package"])
+                if facts["package"] == documents.PROVIDER:
+                    self.provider_test_only = TEST_ONLY in self.provider_tree and "-t" in tail[1:-1]
                 self.installed[facts["package"]] = facts
                 self.metadata.setdefault(facts["package"], {"uid": 10003})["version_code"] = facts["version_code"]
-                self.mutations.append(("install", facts["package"])); value = result("Success\n")
+                # The provider ships an .idsig and installs incrementally; others stream.
+                self.mutations.append(("install", facts["package"]))
+                if facts["package"] == documents.PROVIDER:
+                    timing = "Install command complete in 812 ms\n"
+                    value = result(INCREMENTAL + "Success\n" + (timing if self.install_timing_stream == "stdout" else ""),
+                                   timing if self.install_timing_stream == "stderr" else "")
+                else:
+                    value = result("Performing Streamed Install\nSuccess\n")
+                if self.variant_install_stdout is not None and facts["package"] in documents.VARIANTS.values():
+                    value = result(self.variant_install_stdout)
             elif tail == ["get-state"]:
                 value = result("device\n")
             elif tail == ["emu", "avd", "name"]:
@@ -359,6 +409,10 @@ class FakeHost:
                                value.stderr if isinstance(value.stderr, bytes) else value.stderr.encode(), value.returncode)
             return value
         raise AssertionError("Unexpected command: " + repr(argv))
+
+    def refuses_test_only_install(self, tail):
+        package = self.facts_for_file(Path(tail[-1]))["package"]
+        return package == documents.PROVIDER and TEST_ONLY in self.provider_tree and "-t" not in tail[1:-1]
 
     def facts_for_file(self, path):
         if str(path) not in self.facts:
@@ -379,7 +433,11 @@ class FakeHost:
                 return result("package:" + package + " uid:" + str(1000 if package == "com.android.settings" else 10120) + "\n")
             return result("package:" + package + " uid:" + str(self.metadata[package]["uid"]) + "\n")
         if argv[:2] == ["dumpsys", "package"]:
-            return result("versionCode=" + str(self.metadata[argv[2]]["version_code"]) + "\n")
+            dump = "versionCode=" + str(self.metadata[argv[2]]["version_code"]) + "\n"
+            if argv[2] == documents.PROVIDER and self.provider_enabled and not self.provider_dump_hides_enabled:
+                dump += "    User 0: installed=true hidden=false stopped=false notLaunched=false enabled=0\n"
+                dump += "".join("      " + block + ":\n        " + PROVIDER_CLASS + "\n" for block in self.provider_dump_blocks)
+            return result(dump)
         if argv[:3] == ["dumpsys", "activity", "processes"]:
             package = argv[3]; uid = self.metadata[package]["uid"]; pid = self.pids[package]
             assert self.front == "com.android.launcher3"
@@ -389,9 +447,23 @@ class FakeHost:
                 "    curProcState=15 mRepProcState=15 setProcState=15 lastStateTime=-1s\n"
                 "    cached=true empty=false\n")
         if argv[:2] == ["dumpsys", "activity"]:
-            component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(self.front, "/.picker.PickActivity")
-            return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + component + " t1}\n"
-                          "  mCurrentFocus=Window{abc u0 " + self.front + component + "}\n")
+            front = self.front
+            if self.cancel_lag:
+                # onActivityResult runs before the caller is recorded as resumed.
+                self.cancel_lag -= 1; front = "com.android.documentsui"
+            component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(front, "/.picker.PickActivity")
+            if front in documents.VARIANTS.values():
+                component = "/dev.animusstudio.alkion.MainActivity"
+            focus = "  mCurrentFocus=Window{abc u0 " + front + component + "}\n"
+            if self.caller_focus and front == "com.android.documentsui":
+                # The calling app keeps window focus while DocumentsUI cold-starts.
+                self.caller_focus -= 1
+                focus = "  mCurrentFocus=Window{abc u0 " + self.current + "/dev.animusstudio.alkion.MainActivity}\n"
+                return result("mResumedActivity: ActivityRecord{123 u0 " + self.current + "/dev.animusstudio.alkion.MainActivity t1}\n" + focus)
+            if self.null_focus and self.front == "com.android.documentsui":
+                # Window focus is transiently null while DocumentsUI is shown.
+                self.null_focus -= 1; focus = "  mCurrentFocus=null\n"
+            return result("mResumedActivity: ActivityRecord{123 u0 " + front + component + " t1}\n" + focus)
         if argv[:1] == ["sha256sum"]:
             package = argv[1].split("/")[-2]
             return result(self.installed[package]["apk_sha256"] + "  " + argv[1] + "\n")
@@ -415,9 +487,26 @@ class FakeHost:
             assert list((self.package_root(documents.PROVIDER) / "files/proof-runs").glob("*-dev/control.json"))
             self.mutations.append(("unstop", argv[-1])); return result()
         if argv[:2] == ["pm", "enable"]:
-            assert argv[-1] == documents.COMPONENT
-            self.pids[documents.PROVIDER] = 501
-            self.mutations.append(("enable", argv[-1])); return result()
+            assert argv == ["pm", "enable", "--user", "0", documents.COMPONENT]
+            if not self.provider_test_only:
+                # PackageManagerService.setEnabledSettings for the shell uid.
+                return result("", "\nException occurred while executing 'enable':\njava.lang.SecurityException: "
+                              "Shell cannot change component state for ComponentInfo{" + documents.PROVIDER + "/" +
+                              PROVIDER_CLASS + "} to 1\n\tat com.android.server.pm.PackageManagerService."
+                              "setEnabledSettings(PackageManagerService.java:3972)\n", 255)
+            self.provider_enabled = True  # Starts nothing; DocumentsUI's roots query starts the provider.
+            self.mutations.append(("enable", argv[-1]))
+            return result("Component {" + documents.PROVIDER + "/" + PROVIDER_CLASS + "} new state: " + self.provider_enable_state + "\n",
+                          self.provider_enable_stderr)
+        if argv[:2] == ["am", "unfreeze"]:
+            assert argv[:3] == ["am", "unfreeze", "--sticky"] and len(argv) == 4
+            assert int(argv[3]) == self.pids[documents.PROVIDER], argv
+            self.mutations.append(("unfreeze", argv[3]))
+            self.provider_frozen, self.provider_sticky = False, True
+            pending, self.pending_namespaces = self.pending_namespaces, []
+            for relative in pending:  # Deferred FileObserver delivery.
+                self.provider_load(relative)
+            return result("Unfreezing process " + documents.PROVIDER + " (" + argv[3] + ") sticky=true\n")
         if argv[:2] == ["am", "instrument"]:
             assert argv[-1] == observer.COMPONENT and argv[argv.index("--user") + 1] == "0"
             arguments = {argv[index + 1]: argv[index + 2] for index, value in enumerate(argv) if value == "-e"}
@@ -471,7 +560,8 @@ class FakeHost:
         if argv[:2] == ["input", "tap"]:
             y = int(argv[-1]); self.mutations.append(("tap", y))
             if y < 100:
-                self.selected = True; self.drawer = False
+                # Choosing a root reloads it; Save stays disabled until that load completes.
+                self.selected = True; self.drawer = False; self.save_captures = 0
             elif y >= 300:
                 self.drawer = True
             else:
@@ -522,6 +612,9 @@ class FakeHost:
                     partial.write_bytes(data[:-1] + b"x")
             else:
                 completed = subprocess.run(rest, cwd=directory, capture_output=True)
+            if (package == documents.PROVIDER and completed.returncode == 0 and rest[:2] == ["/system/bin/sh", "-c"] and
+                    'mv -n "$1" "$2"' in rest[2]):
+                self.namespace_published(rest[-1].rsplit("/", 1)[-1])
             return result(completed.stdout if binary else completed.stdout.decode(),
                           completed.stderr if binary else completed.stderr.decode(), completed.returncode)
         raise AssertionError("Unexpected Android command: " + repr(argv))
@@ -567,6 +660,9 @@ class FakeHost:
             self.phase("picker", value["sequence"], value["case"], **{key: item for key, item in phase.items() if key not in
                 ("format", "run_id", "source_commit", "application_id", "variant", "provider_package", "provider_authority")})
             self.front = "com.android.documentsui"
+            self.selected, self.drawer = self.flavor in self.last_accessed, False
+            # Only the campaign's first picker is a DocumentsUI cold start.
+            self.caller_focus, self.caller_focus_samples, self.save_captures = self.caller_focus_samples, 0, 0
         else:
             if value["provider_receipt"] is not None:
                 self.observed[value["case"]] = value["provider_receipt"]
@@ -585,31 +681,69 @@ class FakeHost:
             "enabled": "true", "visible-to-user": "true", "bounds": "[0,0][1080,2400]"})
         if self.front != "com.android.documentsui":
             return ET.tostring(root, encoding="unicode")
+        if self.provider_enabled and self.pids.get(documents.PROVIDER) is None:
+            # DocumentsUI's roots query starts the provider, which loads every namespace.
+            self.pids[documents.PROVIDER] = 501
+            parent = self.package_root(documents.PROVIDER) / "files/proof-runs"
+            for path in sorted(parent.iterdir()) if parent.is_dir() else []:
+                self.provider_load(path.name)
         namespace = RUN + "-" + self.flavor
-        prefix = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + namespace)
-        pin = (RUN + "\n" + self.flavor + "\n" + str(len(RAW)) + "\n" + documents.digest(RAW)).encode()
-        if not (prefix / "input.pin").exists():
-            self.write(prefix / "input.pin", pin)
         label = "Alkion synthetic " + namespace
         if self.scenario == "wrong-root":
             label = "Alkion synthetic " + "2" * 32 + "-" + self.flavor
-        def node(text, y, clickable=True, cls="android.widget.TextView", desc=""):
+        listed = (self.package_root(documents.PROVIDER) / ("files/proof-runs/" + namespace + "/input.pin")).is_file()
+        def node(text, y, clickable=True, cls="android.widget.TextView", desc="", resource="com.android.documentsui:id/item",
+                 enabled=True):
             ET.SubElement(container, "node", {"package": "com.android.documentsui", "text": text, "content-desc": desc,
-                "resource-id": "com.android.documentsui:id/item", "enabled": "true", "visible-to-user": "true",
+                "resource-id": resource, "enabled": str(enabled).lower(), "visible-to-user": "true",
                 "class": cls, "clickable": str(clickable).lower(), "bounds": "[0," + str(y) + "][100," + str(y + 100) + "]"})
-        node(label, 0, self.drawer)
-        if self.scenario == "duplicate-root" and self.drawer:
-            node(label, 0)
+        if self.drawer and listed:
+            node(label, 0, True, resource="android:id/title")
+            if self.scenario == "duplicate-root":
+                node(label, 0, True, resource="android:id/title")
         node("", 300, desc="Show roots")
-        if self.selected:
+        if self.selected and not self.drawer:
+            # Non-M3 DocumentsUI: Toolbar title (no id) plus the root breadcrumb item.
+            node(label, 400, False, resource="")
+            node(label, 500, self.scenario == "clickable-selected-label", resource=documents.BREADCRUMB)
+            if self.scenario == "duplicate-breadcrumb":
+                node(label, 600, False, resource=documents.BREADCRUMB)
+            if self.scenario == "foreign-label-id":
+                node(label, 700, False, resource="com.android.documentsui:id/foreign")
             name = self.current_phase["document_label"]
             if self.scenario == "wrong-file":
                 name = "foreign.alkionbackup"
             node(name, 100, not self.current_phase["case"].startswith("save-"),
                  "android.widget.EditText" if self.current_phase["case"].startswith("save-") else "android.widget.TextView")
             if self.current_phase["case"].startswith("save-"):
-                node("SAVE", 200)
+                # SaveFragment enables Save only after the root document loads.
+                node("SAVE", 200, enabled=self.save_captures > 0)
+                self.save_captures += 1
         return ET.tostring(root, encoding="unicode")
+
+    def provider_load(self, relative):
+        """The provider's own load(): bind a complete namespace and write its pin once."""
+        match = re.fullmatch(r"([a-f0-9]{32})-(dev|supported)", relative)
+        prefix = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + relative)
+        if match is None or not (prefix / "input.alkionbackup").is_file() or (prefix / "input.pin").exists():
+            return
+        data = (prefix / "input.alkionbackup").read_bytes()
+        self.write(prefix / "input.pin", (match[1] + "\n" + match[2] + "\n" + str(len(data)) + "\n" + documents.digest(data)).encode())
+
+    def namespace_published(self, relative):
+        if self.pids.get(documents.PROVIDER) is None:
+            return  # Not running: the next start loads it.
+        if self.provider_frozen:
+            self.pending_namespaces.append(relative)  # The freezer defers FileObserver delivery.
+        else:
+            self.provider_load(relative)
+
+    def picker_closed(self, cancelled=False):
+        self.last_accessed.add(self.flavor)
+        if self.pids.get(documents.PROVIDER) is not None and not self.provider_sticky:
+            self.provider_frozen = True  # Cached once no picker uses it.
+        if cancelled:
+            self.cancel_lag = 1
 
     def complete_picker(self):
         case, sequence = self.current_phase["case"], self.current_phase["sequence"]
@@ -621,6 +755,7 @@ class FakeHost:
                 self.write(prefix / ("outputs/" + case + "-12345678-1234-4234-8234-123456789abc.partial"), data)
             self.write(prefix / ("receipts/" + case + ".json"), receipt)
         self.front = self.current
+        self.picker_closed(cancelled=case.endswith("-cancel"))
         self.phase("awaiting_observed", sequence, case, production_outcome=documents.CASES[case])
 
 
@@ -751,6 +886,293 @@ class DocumentsControls(unittest.TestCase):
             with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "packaged_provider_not_default_disabled"):
                 documents.validate_packaged_provider(tree)
 
+    def test_packaged_and_source_provider_must_be_test_only(self):
+        line = next(line for line in PACKAGED_PROVIDER_TREE.splitlines() if ":testOnly(" in line)
+        wrong = {"missing": PACKAGED_PROVIDER_TREE.replace(line + "\n", ""),
+                 "false": PACKAGED_PROVIDER_TREE.replace(line, line.replace("=true", "=false")),
+                 "duplicate": PACKAGED_PROVIDER_TREE.replace(line, line + "\n" + line),
+                 "provider-scoped": PACKAGED_PROVIDER_TREE.replace(line + "\n", "").replace(
+                     "          E: intent-filter", "  " + line + "\n              E: intent-filter")}
+        for name, tree in wrong.items():
+            with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "packaged_provider_not|provider_not_test_only"):
+                documents.validate_packaged_provider(tree)
+        manifest = self.host.APP / "tool/android_synthetic_documents/AndroidManifest.xml"
+        manifest.write_text(manifest.read_text().replace(' android:testOnly="true"', ""))
+        with self.assertRaisesRegex(documents.Refusal, "provider_source_manifest_not_test_only"):
+            documents.build_provider(self.host, self.host.args, self.root / "not-test-only")
+        self.assertFalse((self.root / "not-test-only").exists())
+
+    def test_provider_install_requires_test_flag_and_retains_refusal(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        with self.assertRaisesRegex(documents.Refusal, "native_command_failed:install.*INSTALL_FAILED_TEST_ONLY"):
+            evidence.native("install", apk)
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual((record["argv"], record["code"]), (["install", str(apk)], 1))
+        self.assertIn("Did you forget to add -t?", record["stderr"])
+        self.assertNotIn(documents.PROVIDER, self.host.installed)
+        evidence.native("install", "-t", apk)
+        self.assertTrue(self.host.provider_test_only)
+
+    def test_provider_enable_requires_test_only_exact_output_and_readback(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        self.host.provider_tree = PACKAGED_PROVIDER_TREE.replace(publisher_safe_test_only_line(), "")
+        evidence.native("install", apk)  # A non-test-only package installs without -t.
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:Exception occurred while executing 'enable':"):
+            documents.enable_provider(evidence)
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual(record["argv"], ["shell", "pm", "enable", "--user", "0", documents.COMPONENT])
+        self.assertEqual(record["code"], 255)
+        self.assertIn("java.lang.SecurityException: Shell cannot change component state for ComponentInfo{", record["stderr"])
+        self.assertFalse(self.host.provider_enabled)
+        self.host.provider_tree = PACKAGED_PROVIDER_TREE
+        evidence.native("install", "-t", apk)
+        for state in ("default", "disabled", "enabled extra"):
+            with self.subTest(state=state):
+                self.host.provider_enable_state = state
+                with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:Component"):
+                    documents.enable_provider(evidence)
+        self.host.provider_enable_state = "enabled"
+        self.host.provider_dump_hides_enabled = True
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_not_observed"):
+            documents.enable_provider(evidence)
+        self.host.provider_dump_hides_enabled = False
+        self.host.provider_enable_stderr = "unexpected diagnostic\n"
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:unexpected diagnostic"):
+            documents.enable_provider(evidence)
+        self.host.provider_enable_stderr = ""
+        for blocks in (("disabledComponents",), ("enabledComponents", "disabledComponents"),
+                       ("disabledComponents", "enabledComponents"), ("enabledComponents", "enabledComponents")):
+            with self.subTest(blocks=blocks):
+                self.host.provider_dump_blocks = blocks
+                with self.assertRaisesRegex(documents.Refusal, "provider_enable_not_observed"):
+                    documents.enable_provider(evidence)
+        self.host.provider_dump_blocks = ("enabledComponents",)
+        documents.enable_provider(evidence)
+        records = [json.loads(path.read_bytes()) for path in sorted(self.root.glob("output/*native-command.json"))]
+        self.assertEqual(records[-2]["stdout"], documents.PROVIDER_ENABLED)
+        self.assertEqual(records[-1]["argv"], ["shell", "dumpsys", "package", documents.PROVIDER])
+        self.assertEqual(documents.enabled_components(records[-1]["stdout"])["enabled"], [documents.PROVIDER_CLASS])
+        self.assertEqual(documents.PROVIDER_ENABLED, "Component {dev.animusstudio.alkion.synthetic.documents/"
+                         "dev.animusstudio.alkion.synthetic.documents.SyntheticDocumentsProvider} new state: enabled\n")
+
+    def test_enabled_component_parser_rejects_disabled_or_foreign_blocks(self):
+        cls = documents.PROVIDER_CLASS
+        self.assertEqual(documents.enabled_components("    User 0: installed=true\n      enabledComponents:\n        " + cls + "\n"),
+                         {"enabled": [cls], "disabled": []})
+        both = "      disabledComponents:\n        " + cls + "\n      enabledComponents:\n        " + cls + "\n"
+        self.assertEqual(documents.enabled_components(both)["disabled"], [cls])
+        self.assertEqual(documents.enabled_components("      enabledComponents:\n    " + cls + "\n")["enabled"], [])
+        self.assertEqual(documents.enabled_components("  enabled: " + cls + "\n"), {"enabled": [], "disabled": []})
+
+    def test_picker_waits_through_transient_null_focus(self):
+        self.host.null_focus = 3
+        self.host.args.action = "documents"
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        self.assertEqual(self.host.null_focus, 0)
+        samples = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*.observation/host-receipt.json")]
+        self.assertTrue(any(sample["owner"] is None for trace in samples
+                            for sample in trace.get("focus_readiness", {}).get("samples", [])))
+
+    def test_picker_retries_only_a_wait_that_saw_no_focused_window(self):
+        evidence, _ = self.evidence_after_seed()
+        self.host.front = "com.android.documentsui"
+        self.host.pids[documents.PROVIDER] = 501
+        tree = ET.fromstring('<hierarchy><node package="com.android.documentsui" text="" /></hierarchy>')
+        outcomes = [observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, None, None]), tree]
+        calls = []
+        def capture(*args, **options):
+            calls.append(options.get("expected_package"))
+            value = outcomes.pop(0)
+            if isinstance(value, Exception):
+                raise value
+            return value
+        with patch.object(self.host, "ui_document", side_effect=capture):
+            self.assertIs(documents.picker_document(evidence, "null-then-ready"), tree)
+        self.assertEqual(calls, ["com.android.documentsui"] * 2)
+        failures = {"foreign-owner": observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, documents.PACKAGES[1]]),
+                    "no-samples": observer.FocusNotReady("ui_observer_expected_focus_not_ready", []),
+                    "other-refusal": observer.Refusal("ui_observer_focus_ambiguous"),
+                    "unrelated": ValueError("unrelated")}
+        for name, failure in failures.items():
+            with self.subTest(name=name):
+                calls.clear()
+                with patch.object(self.host, "ui_document", side_effect=lambda *args, **options: (calls.append(1), (_ for _ in ()).throw(failure))):
+                    with self.assertRaises(type(failure)) as caught:
+                        documents.picker_document(evidence, name)
+                self.assertIs(caught.exception, failure)
+                self.assertEqual(len(calls), 1)  # Propagated immediately, never retried.
+
+    def test_install_success_rule_follows_the_adb_client(self):
+        incremental = INCREMENTAL + "Success\nInstall command complete in 812 ms\n"
+        accepted = {"incremental-timing-stdout": (incremental, ""),
+                    "incremental-timing-stderr": (INCREMENTAL + "Success\n", "Install command complete in 812 ms\n"),
+                    "streamed": ("Performing Streamed Install\nSuccess\n", ""),
+                    "streamed-no-final-newline": ("Performing Streamed Install\nSuccess", ""),
+                    "reordered-progress": ("Performing Incremental Install\nServing...\nSuccess\n", "")}
+        observed = INCREMENTAL + "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package " \
+                   + documents.PACKAGES[1] + " signatures do not match newer version; ignoring!]\nPerforming Streamed Install\n"
+        refused = {"observed-failure": (observed, "adb: failed to install x: Failure [...]\n\n", 1),
+                   "fallback-after-failure": (observed + "Success\n", "", 0),
+                   "failure-on-stderr": ("Performing Streamed Install\nSuccess\n", "Failure [X]\n", 0),
+                   "missing-success": ("Performing Streamed Install\n", "", 0),
+                   "success-substring": ("Performing Streamed Install\nSuccessful\n", "", 0),
+                   "two-success": ("Success\nSuccess\n", "", 0),
+                   "nonzero": ("Performing Streamed Install\nSuccess\n", "", 1)}
+        for name, (stdout, stderr) in accepted.items():
+            with self.subTest(name=name):
+                self.assertTrue(documents.install_succeeded(result(stdout, stderr)))
+                self.assertTrue(documents.install_succeeded(result(stdout.encode(), stderr.encode())))
+        for name, (stdout, stderr, code) in refused.items():
+            with self.subTest(name=name):
+                self.assertFalse(documents.install_succeeded(result(stdout, stderr, code)))
+
+    def install_timing_route(self, stream):
+        self.host.install_timing_stream = stream
+        self.host.args.action = "documents"
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        records = [json.loads(path.read_bytes()) for path in sorted(self.root.glob("output/*native-command.json"))]
+        provider = next(item for item in records if item["argv"][:2] == ["install", "-t"])
+        self.assertIn("Install command complete in 812 ms", provider[stream])  # Retained as evidence.
+
+    def test_install_timing_line_on_stdout_passes_the_route(self):
+        self.install_timing_route("stdout")
+
+    def test_install_timing_line_on_stderr_passes_the_route(self):
+        self.install_timing_route("stderr")
+
+    def test_variant_install_needs_a_success_line(self):
+        self.host.variant_install_stdout = "Performing Streamed Install\nUnrecognized progress\n"
+        self.host.args.action = "documents"
+        with self.assertRaisesRegex(documents.Refusal, "documents_install_failed"):
+            self.host.documents_action(self.host.args)
+        state = json.loads((self.root / "output/run.json").read_bytes())
+        self.assertEqual(state["documents_phase"], "FAIL")
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual((record["argv"][:2], record["stdout"]), (["install", "-r"], self.host.variant_install_stdout))
+
+    def selected(self, *extra, drawer=False):
+        tree = ET.Element("hierarchy")
+        def add(resource, clickable="false", cls="android.widget.TextView"):
+            ET.SubElement(tree, "node", {"package": "com.android.documentsui", "text": "Root", "content-desc": "",
+                "resource-id": resource, "class": cls, "clickable": clickable, "visible-to-user": "true"})
+        add("")
+        add(documents.BREADCRUMB)
+        for resource, clickable in extra:
+            add(resource, clickable)
+        if drawer:
+            add("android:id/title", "true")
+        return tree
+
+    def test_selected_root_requires_one_breadcrumb_and_a_closed_drawer(self):
+        self.assertTrue(documents.selected_root(self.selected(), "Root"))
+        breadcrumb_only = self.selected()
+        breadcrumb_only.remove(breadcrumb_only[0])
+        self.assertTrue(documents.selected_root(breadcrumb_only, "Root"))
+        refused = {"two-breadcrumbs": self.selected((documents.BREADCRUMB, "false")),
+                   "two-titles": self.selected(("", "false")),
+                   "clickable-label": self.selected(("", "true")),
+                   "foreign-id": self.selected(("com.android.documentsui:id/foreign", "false")),
+                   "drawer-open": self.selected(drawer=True)}
+        for name, tree in refused.items():
+            with self.subTest(name=name):
+                self.assertFalse(documents.selected_root(tree, "Root"))
+        title_only = self.selected()
+        title_only.remove(title_only[1])
+        self.assertFalse(documents.selected_root(title_only, "Root"))
+
+    def test_selected_root_scenarios_refuse_on_the_route(self):
+        for scenario in ("duplicate-breadcrumb",):  # The other shapes are covered by the predicate control.
+            with self.subTest(scenario=scenario):
+                host = FakeHost(self.root / scenario)
+                host.scenario, host.args.action = scenario, "documents"
+                with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+                    with self.assertRaisesRegex(documents.Refusal, "documentsui_checkpoint_unavailable:dev-open-cancel-exact-root"):
+                        host.documents_action(host.args)
+
+    def frozen_supported(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501
+        evidence.provider_pid = 501
+        self.host.provider_frozen = True
+        phase = dict(phase, variant="dev")
+        return evidence, phase
+
+    def test_frozen_provider_never_sees_a_new_namespace_without_unfreeze(self):
+        evidence, phase = self.frozen_supported()
+        with self.assertRaisesRegex(documents.Refusal, "provider_namespace_not_observed"):
+            documents.seed_provider(evidence, "dev", phase, first=False)
+        pin = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev/input.pin")
+        self.assertFalse(pin.exists())
+        self.assertEqual(documents.unfreeze_provider(evidence)["pid"], 501)
+        self.assertTrue(pin.is_file())  # Deferred FileObserver delivery after the unfreeze.
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual(record["argv"], ["shell", "am", "unfreeze", "--sticky", "501"])
+
+    def test_unfreeze_requires_exact_output_and_the_same_pid(self):
+        evidence, _ = self.frozen_supported()
+        original = self.host.android
+        def wrong(argv, binary=False, data=None):
+            if argv[:2] == ["am", "unfreeze"]:
+                return result("Unfreezing process " + documents.PROVIDER + " (501) sticky=false\n")
+            return original(argv, binary, data)
+        with patch.object(self.host, "android", side_effect=wrong):
+            with self.assertRaisesRegex(documents.Refusal, "provider_unfreeze_refused"):
+                documents.unfreeze_provider(evidence)
+        self.host.pids[documents.PROVIDER] = 502
+        with self.assertRaisesRegex(documents.Refusal, "provider_process_changed_preserve_failed_campaign"):
+            documents.unfreeze_provider(evidence)
+        self.assertNotIn(("unfreeze", "502"), self.host.mutations)
+
+    def test_enable_starts_no_provider_process(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        evidence.native("install", "-t", apk)
+        documents.enable_provider(evidence)
+        self.assertIsNone(self.host.pids.get(documents.PROVIDER))
+
+    def test_picker_retries_while_the_calling_app_keeps_focus(self):
+        self.host.caller_focus_samples = 25  # Outlasts one bounded focus wait.
+        self.host.args.action = "documents"
+        self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        samples = [sample for path in (self.root / "output").glob("*.observation/host-receipt.json")
+                   for sample in json.loads(path.read_bytes()).get("focus_readiness", {}).get("samples", [])]
+        self.assertTrue(any(sample["owner"] and sample["owner"]["package"] in documents.VARIANTS.values() for sample in samples))
+
+    def test_picker_refuses_a_foreign_owner_and_the_case_budget(self):
+        evidence, _ = self.evidence_after_seed()
+        caller = documents.PACKAGES[1]
+        failure = observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, caller, "com.android.systemui"])
+        with patch.object(self.host, "ui_document", side_effect=failure):
+            with self.assertRaises(observer.FocusNotReady):
+                documents.picker_document(evidence, "foreign", caller=caller)
+        calls = []
+        def caller_focused(*args, **options):
+            calls.append(1)
+            raise observer.FocusNotReady("ui_observer_expected_focus_not_ready", [caller, None])
+        with patch.object(self.host, "ui_document", side_effect=caller_focused):
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_case_budget_exceeded:budget"):
+                documents.picker_document(evidence, "budget", caller=caller, deadline=documents.time.monotonic() + 5)
+        self.assertTrue(1 < len(calls) < 12)
+
+    def test_harness_command_failure_keeps_head_and_tail(self):
+        command = load_harness()["command"]
+        script = ("import sys; sys.stderr.write('Exception occurred while executing enable:\\n' + "
+                  "'\\tat frame\\n' * 400 + 'final cause line\\n'); sys.exit(255)")
+        with self.assertRaises(Exception) as caught:
+            command([sys.executable, "-c", script])
+        message = str(caught.exception)
+        self.assertIn("Exception occurred while executing enable:", message)
+        self.assertIn("final cause line", message)
+        self.assertIn("rc=255", message)
+        self.assertLess(len(message), 2400)
+
     def test_provider_build_rejects_packaged_flags_before_fact_audit_or_install(self):
         original = self.host.command
         bad = PACKAGED_PROVIDER_TREE.replace("enabled(0x0101000e)=false", "enabled(0x0101000e)=true")
@@ -777,6 +1199,11 @@ class DocumentsControls(unittest.TestCase):
         self.assertEqual(state["documents_phase"], "PASS")
         self.assertEqual(state["overall"], "IN_PROGRESS")
         self.assertEqual(set(state["documents"]), {"dev", "supported"})
+        # One deliberate, retained unfreeze of the same provider pid before the supported namespace.
+        self.assertEqual([item for item in self.host.mutations if item[0] == "unfreeze"], [("unfreeze", "501")])
+        self.assertEqual((state["provider_unfreeze"]["pid"], state["provider_unfreeze"]["stdout"]),
+                         (501, "Unfreezing process " + documents.PROVIDER + " (501) sticky=true\n"))
+        self.assertTrue(self.host.last_accessed >= {"dev", "supported"})  # Later pickers landed on LastAccessed.
         self.assertEqual([value["version_code"] for package, value in state["installed"].items() if package in documents.VARIANTS.values()], [45, 45])
         self.assertEqual(len(self.host.ack_objects), 54)
         # One bootstrap per package, each after its install and before any consumer.
@@ -1057,6 +1484,7 @@ class DocumentsControls(unittest.TestCase):
 
     def test_namespace_refuses_replacement_links_and_seventeenth(self):
         evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501  # Running and unfrozen: its observer loads new namespaces.
         documents.seed_provider(evidence, "dev", phase, first=False)
         namespace = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev")
         before = (namespace / "input.alkionbackup").read_bytes()
@@ -1110,6 +1538,7 @@ class DocumentsControls(unittest.TestCase):
 
     def test_changed_input_pin_cannot_ack_observed(self):
         evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501  # Running and unfrozen: its observer loads new namespaces.
         control = documents.seed_provider(evidence, "dev", phase, first=False)
         root = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev")
         self.host.write(root / "input.pin", b"interrupted or changed pin")

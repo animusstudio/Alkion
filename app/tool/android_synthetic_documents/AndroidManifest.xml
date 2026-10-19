@@ -2,8 +2,10 @@
     package="dev.animusstudio.alkion.synthetic.documents"
     android:versionCode="1" android:versionName="synthetic">
     <application android:label="Alkion Synthetic Documents" android:allowBackup="false"
-        android:debuggable="true" android:usesCleartextTraffic="false">
-        <!-- Setup/receipts are owner-only files via the guarded harness, never IPC. -->
+        android:debuggable="true" android:testOnly="true" android:usesCleartextTraffic="false">
+        <!-- Setup/receipts are owner-only files via the guarded harness, never IPC.
+             testOnly lets the shell enable this declared-disabled component after
+             seeding; it installs only with adb install -t. -->
         <provider android:name=".SyntheticDocumentsProvider"
             android:authorities="dev.animusstudio.alkion.synthetic.documents.provider"
             android:enabled="false"

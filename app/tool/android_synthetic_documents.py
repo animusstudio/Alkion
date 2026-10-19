@@ -23,16 +23,24 @@ from pathlib import Path, PurePosixPath
 import re
 import shlex
 import shutil
+import subprocess
 import time
 import xml.etree.ElementTree as ET
 import zipfile
 
 import android_synthetic_publish as publish
+import android_synthetic_ui as observer
 
 
 PROVIDER = "dev.animusstudio.alkion.synthetic.documents"
 AUTHORITY = PROVIDER + ".provider"
 COMPONENT = PROVIDER + "/.SyntheticDocumentsProvider"
+PROVIDER_CLASS = PROVIDER + ".SyntheticDocumentsProvider"
+# PackageManagerShellCommand.runSetEnabledSetting prints the unflattened
+# ComponentName.toShortString() (full class) and the resulting state.
+PROVIDER_ENABLED = "Component {" + PROVIDER + "/" + PROVIDER_CLASS + "} new state: enabled\n"
+TEST_ONLY = "A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true"
+EVIDENCE_TEXT = 1024 * 1024
 PACKAGES = ("io.github.psychonaut0.reps", "dev.animusstudio.alkion.dev",
             "dev.animusstudio.alkion")
 VARIANTS = {"dev": PACKAGES[1], "supported": PACKAGES[2]}
@@ -243,6 +251,96 @@ def quiet(result):
     return result.returncode == 0 and not result.stdout and not result.stderr
 
 
+def bounded(value):
+    """Evidence text that keeps both the head and the tail of a long stream."""
+    text = value.decode(errors="replace") if isinstance(value, bytes) else value if isinstance(value, str) else ""
+    if len(text) <= EVIDENCE_TEXT:
+        return text
+    half = EVIDENCE_TEXT // 2
+    return text[:half] + "\n[... " + str(len(text) - 2 * half) + " characters omitted ...]\n" + text[-half:]
+
+
+def summary(value, limit=1000):
+    text = bounded(value).strip()
+    return text if len(text) <= limit else text[:600] + " [...] " + text[-(limit - 607):]
+
+
+# adb client (packages/modules/adb client/adb_install.cpp and incremental.cpp):
+# a streamed install prints "Performing Streamed Install" and then the device's
+# status line, which must start with "Success" (the shell prints exactly that).
+# An incremental install prints "Performing Incremental Install", relays device
+# output until "Success" or "Failure [", then "Install command complete in N ms".
+# Line order and extra progress or timing lines are not pinned and stay in the
+# evidence: require exit 0, no "Failure" in either stream, and exactly one
+# stdout line equal to "Success". An incremental failure falling back to a
+# streamed install prints a Failure line and is refused.
+def install_succeeded(result):
+    stdout = result.stdout.decode(errors="replace") if isinstance(result.stdout, bytes) else result.stdout or ""
+    stderr = result.stderr.decode(errors="replace") if isinstance(result.stderr, bytes) else result.stderr or ""
+    return (result.returncode == 0 and "Failure" not in stdout and "Failure" not in stderr and
+            stdout.splitlines().count("Success") == 1)
+
+
+def enabled_components(dump):
+    """Components listed under dumpsys package enabledComponents/disabledComponents blocks."""
+    blocks, current = {"enabled": [], "disabled": []}, None
+    for line in dump.splitlines():
+        stripped, indent = line.strip(), len(line) - len(line.lstrip())
+        if stripped in ("enabledComponents:", "disabledComponents:"):
+            current = (blocks[stripped[:-len("Components:")]], indent)
+        elif current and stripped and indent > current[1] and re.fullmatch(r"[A-Za-z0-9_.$]+", stripped):
+            current[0].append(stripped)
+        else:
+            current = None
+    return blocks
+
+
+def namespace_pin(control, flavor):
+    return (control["run_id"] + "\n" + flavor + "\n" + str(control["length"]) + "\n" + control["sha256"]).encode()
+
+
+def unfreeze_provider(evidence):
+    """Keep the cached provider's FileObserver live for the next namespace.
+
+    The cached-app freezer defers its inotify delivery, so DocumentsUI would keep
+    stale roots. ActivityManagerShellCommand.runFreeze prints the process, pid
+    and sticky flag; sticky keeps it unfrozen for the process lifetime.
+    """
+    pid = evidence.host.app_pid(evidence.prepared.args, PROVIDER)
+    require(pid is not None and pid == evidence.provider_pid, "provider_process_changed_preserve_failed_campaign")
+    result = evidence.native("shell", "am", "unfreeze", "--sticky", str(pid), check=False)
+    expected = "Unfreezing process " + PROVIDER + " (" + str(pid) + ") sticky=true\n"
+    require(result.returncode == 0 and result.stdout == expected and not result.stderr,
+            "provider_unfreeze_refused:" + summary(result.stderr or result.stdout))
+    evidence.provider_alive()
+    return {"pid": pid, "argv": ["shell", "am", "unfreeze", "--sticky", str(pid)], "stdout": result.stdout,
+            "intervention": "deliberate harness unfreeze of the synthetic provider process"}
+
+
+def await_namespace(evidence, flavor, root, pin, timeout=15):
+    """The provider's own load writes input.pin before announcing a new root."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        observed = evidence.read(PROVIDER, root + "/input.pin", 4096, flavor + "-discovered-pin", optional=True)
+        if observed == pin:
+            return
+        # The pin is created, then written: only a strict prefix may still grow.
+        require(observed is None or pin.startswith(observed), "provider_namespace_input_changed")
+        time.sleep(0.1)
+    raise Refusal("provider_namespace_not_observed")
+
+
+def enable_provider(evidence):
+    """Shell enable of the test-only provider with retained raw output and a readback."""
+    result = evidence.native("shell", "pm", "enable", "--user", "0", COMPONENT, check=False)
+    require(result.returncode == 0 and result.stdout == PROVIDER_ENABLED and not result.stderr,
+            "provider_enable_refused:" + summary(result.stderr or result.stdout))
+    dump = evidence.native("shell", "dumpsys", "package", PROVIDER, check=False)
+    blocks = enabled_components(dump.stdout if dump.returncode == 0 and not dump.stderr.strip() else "")
+    require(blocks["enabled"].count(PROVIDER_CLASS) == 1 and PROVIDER_CLASS not in blocks["disabled"],
+            "provider_enable_not_observed")
+
+
 NO_LINKS = 'p=""; oldIFS="$IFS"; IFS=/; for part in $1; do p="${p:+$p/}$part"; test ! -L "$p" || exit 4; done; IFS="$oldIFS"; '
 
 
@@ -267,8 +365,8 @@ class Evidence:
         exclusive(path, data if isinstance(data, bytes) else encoded(data))
         return path
 
-    def read(self, package, path, bound, name, *, optional=False):
-        regular_relative(path)
+    def read(self, package, path, bound, name, *, optional=False, validator=None):
+        (validator or regular_relative)(path)
         require(type(bound) is int and 0 < bound <= LIMIT, "documents_read_bound_invalid")
         result = remote(self.host, self.prepared.args, package, NO_LINKS +
                         'test -e "$1" || exit 3; test -f "$1" || exit 4; '
@@ -281,6 +379,23 @@ class Evidence:
             return None
         require(result.returncode == 0 and not result.stderr, "documents_owned_read_failed:" + path)
         return result.stdout
+
+    def native(self, *tail, check=True, **options):
+        """Serial-scoped adb with argv, status and bounded streams retained before any check."""
+        argv = list(map(str, tail))
+        try:
+            result = self.host.adb(self.prepared.args, *tail, check=False, **options)
+        except subprocess.TimeoutExpired as error:
+            self.keep("native-command.json", {"argv": argv, "code": None, "timeout_seconds": error.timeout,
+                                              "stdout": bounded(error.stdout), "stderr": bounded(error.stderr),
+                                              "completion": "UNKNOWN; no retry"})
+            raise
+        self.keep("native-command.json", {"argv": argv, "code": result.returncode, "stdout": bounded(result.stdout),
+                                          "stderr": bounded(result.stderr), "stdout_length": len(result.stdout),
+                                          "stderr_length": len(result.stderr)})
+        require(not check or result.returncode == 0,
+                "native_command_failed:" + " ".join(argv[:4]) + ":" + summary(result.stderr or result.stdout))
+        return result
 
     def bind_publisher(self, package, uid=None):
         """Bootstrap once after the package's qualified install; later calls are free."""
@@ -413,8 +528,10 @@ def seed_provider(evidence, flavor, phase, *, first):
     evidence.keep(flavor + "-namespace-publish", {"code": publish.returncode, "stderr": publish.stderr.decode(errors="replace")})
     require(quiet(publish), "provider_namespace_publication_refused")
     if first:
-        evidence.host.adb(evidence.prepared.args, "shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
-        evidence.host.adb(evidence.prepared.args, "shell", "pm", "enable", "--user", "0", COMPONENT)
+        evidence.native("shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
+        enable_provider(evidence)
+    else:
+        await_namespace(evidence, flavor, root, namespace_pin(expected, flavor))
     ack(evidence, flavor, phase, "seeded", provider_input_sha256=expected["sha256"])
     return expected
 
@@ -460,10 +577,42 @@ def foreground(evidence, package, name):
     return bool(resumed) and set(resumed) == {package}
 
 
-def picker_document(evidence, name, ready=lambda document: True):
+CASE_BUDGET = 50  # Seconds after the picker phase, inside the adapter's 60-second wait.
+BREADCRUMB = "com.android.documentsui:id/breadcrumb_text"
+
+
+def selected_root(document, label):
+    """Drawer closed; the label shows once as the breadcrumb and at most once as the toolbar title."""
+    labelled = nodes(document, label)
+    breadcrumbs = [node for node in labelled if node.get("resource-id") == BREADCRUMB]
+    titles = [node for node in labelled if node.get("resource-id", "") == "" and node.get("class") == "android.widget.TextView"]
+    return (not click_targets(document, label) and len(breadcrumbs) == 1 and len(titles) <= 1 and
+            len(labelled) == len(breadcrumbs) + len(titles) and
+            all(node.get("visible-to-user") == "true" and node.get("clickable") == "false" for node in labelled))
+
+
+def save_ready(document):
+    labels = [label for label in ("SAVE", "Save") if nodes(document, label)]
+    targets = click_targets(document, labels[0]) if len(labels) == 1 else []
+    return (len(targets) == 1 and targets[0].get("enabled") == "true" and
+            targets[0].get("visible-to-user") == "true")
+
+
+def picker_document(evidence, name, ready=lambda document: True, *, caller=None, deadline=None):
     for attempt in range(12):
+        require(deadline is None or time.monotonic() < deadline, "documentsui_case_budget_exceeded:" + name)
         unique = str(evidence.counter + 1).zfill(4) + "-" + name + "-" + str(attempt)
-        document = evidence.host.ui_document(evidence.prepared.args, evidence.output, unique)
+        try:
+            # The observer's bounded readiness waits for DocumentsUI focus. Only a
+            # wait that saw no focus or the still-focused calling app is retried.
+            document = evidence.host.ui_document(evidence.prepared.args, evidence.output, unique,
+                                                 expected_package="com.android.documentsui")
+        except observer.FocusNotReady as error:
+            if not (error.transient_null or
+                    (caller is not None and error.owners and set(error.owners) <= {None, caller})):
+                raise
+            time.sleep(1)
+            continue
         if foreground(evidence, "com.android.documentsui", unique) and any(
                 node.get("package") == "com.android.documentsui" for node in document.iter("node")):
             if evidence.provider_pid is None and evidence.host.app_pid(evidence.prepared.args, PROVIDER) is None:
@@ -478,7 +627,8 @@ def picker_document(evidence, name, ready=lambda document: True):
 
 def drive_picker(evidence, phase):
     case, flavor = phase["case"], phase["variant"]
-    document = picker_document(evidence, flavor + "-" + case + "-picker")
+    bounds = {"caller": VARIANTS[flavor], "deadline": time.monotonic() + CASE_BUDGET}
+    document = picker_document(evidence, flavor + "-" + case + "-picker", **bounds)
     if not click_targets(document, phase["root_label"]):
         candidates = [node for node in document.iter("node") if node.get("package") == "com.android.documentsui" and
                       node.get("clickable") == "true" and node.get("content-desc") in
@@ -486,13 +636,13 @@ def drive_picker(evidence, phase):
         require(len(candidates) == 1, "documentsui_root_navigation_unavailable")
         evidence.host.click_node(evidence.prepared.args, candidates[0])
         document = picker_document(evidence, flavor + "-" + case + "-roots",
-                                   lambda doc: bool(click_targets(doc, phase["root_label"])))
+                                   lambda doc: bool(click_targets(doc, phase["root_label"])), **bounds)
     click_label(evidence, document, phase["root_label"])
     document = picker_document(evidence, flavor + "-" + case + "-exact-root", lambda doc:
-                               len(nodes(doc, phase["root_label"])) == 1 and
-                               not click_targets(doc, phase["root_label"]) and
-                               (case.endswith("-cancel") or bool(nodes(doc, phase["document_label"]))))
-    require(len(nodes(document, phase["root_label"])) == 1, "documentsui_selected_root_unproven")
+                               selected_root(doc, phase["root_label"]) and
+                               (case.endswith("-cancel") or bool(nodes(doc, phase["document_label"]))) and
+                               (not case.startswith("save-") or save_ready(doc)), **bounds)
+    require(selected_root(document, phase["root_label"]), "documentsui_selected_root_unproven")
     if case.endswith("-cancel"):
         evidence.host.adb(evidence.prepared.args, "shell", "input", "keyevent", "KEYCODE_BACK")
     elif case.startswith("open-"):
@@ -546,7 +696,7 @@ def validate_receipt(value, case, control):
 def provider_observation(evidence, flavor, phase, control):
     root = "files/proof-runs/" + control["run_id"] + "-" + flavor
     evidence.provider_alive()
-    pin = (control["run_id"] + "\n" + flavor + "\n" + str(control["length"]) + "\n" + control["sha256"]).encode()
+    pin = namespace_pin(control, flavor)
     require(evidence.read(PROVIDER, root + "/input.pin", 4096, flavor + "-input-pin") == pin and
             evidence.read(PROVIDER, root + "/control.json", 4096, flavor + "-immutable-control") == encoded(control) and
             digest(evidence.read(PROVIDER, root + "/input.alkionbackup", LIMIT, flavor + "-immutable-input")) == control["sha256"],
@@ -556,7 +706,10 @@ def provider_observation(evidence, flavor, phase, control):
     if case.endswith("-cancel"):
         require(evidence.json(PROVIDER, receipt_path, flavor + "-cancel-receipt", optional=True) is None,
                 "cancelled_picker_has_provider_operation")
-        require(foreground(evidence, VARIANTS[flavor], flavor + "-cancel-return"), "picker_cancellation_return_unproven")
+        deadline = time.monotonic() + 5
+        while not foreground(evidence, VARIANTS[flavor], flavor + "-cancel-return"):
+            require(time.monotonic() < deadline, "picker_cancellation_return_unproven")
+            time.sleep(0.25)
         return {"provider_input_sha256": control["sha256"], "picker_cancelled": True, "provider_receipt": None}
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
@@ -711,6 +864,9 @@ def validate_packaged_provider(tree):
     require(len(namespaces) == len(roots) == len(providers) == len(applications) == 1 and
             roots[0]["name"] == "manifest" and applications[0]["parent"] is roots[0] and
             providers[0]["parent"] is applications[0], reason)
+    # Only a test-only package lets the shell enable the declared-disabled component.
+    require([line for line in applications[0]["attrs"] if ":testOnly(" in line] == [TEST_ONLY],
+            "packaged_provider_not_test_only")
     package = 'A: package="' + PROVIDER + '" (Raw: "' + PROVIDER + '")'
     require([line for line in roots[0]["attrs"] if line.startswith("A: package=")] == [package], reason)
     prefix = "A: http://schemas.android.com/apk/res/android:"
@@ -732,6 +888,9 @@ def build_provider(host, args, output):
     manifest = ET.parse(fixture / "AndroidManifest.xml").getroot()
     android = "{http://schemas.android.com/apk/res/android}"
     providers = manifest.findall("application/provider")
+    applications = manifest.findall("application")
+    require(len(applications) == 1 and applications[0].get(android + "testOnly") == "true",
+            "provider_source_manifest_not_test_only")
     require(manifest.get("package") == PROVIDER and not manifest.findall("uses-permission") and len(providers) == 1 and
             providers[0].get(android + "enabled") == "false" and providers[0].get(android + "name") == ".SyntheticDocumentsProvider" and
             providers[0].get(android + "authorities") == AUTHORITY and
@@ -843,7 +1002,8 @@ def run(host, prepared):
         originals = host.driver_neighbor_bytes(args, receipt, prepared.driver)
         baseline = {package: host.closed_profile_fingerprint(args, package, prepared.lifecycle["lifecycle"][package]["finish"])
                     for package in VARIANTS.values()}
-        host.adb(args, "install", provider_apk)
+        installed = evidence.native("install", "-t", provider_apk, check=False)
+        require(install_succeeded(installed), "provider_install_failed:" + summary(installed.stderr or installed.stdout))
         provider_meta = host.package_metadata(args, PROVIDER)
         require(provider_meta["version_code"] == 1 and type(provider_meta.get("uid")) is int and
                 10000 <= provider_meta["uid"] < 100000 and provider_meta["uid"] not in
@@ -858,12 +1018,15 @@ def run(host, prepared):
                         "version_code": state["installed"][peer]["version_code"]}, "documents_peer_uid_or_version_changed")
             apk, facts = candidates[package]
             require(host.app_pid(args, package) is None, "documents_install_requires_absent_app_process")
-            host.adb(args, "install", "-r", apk)
+            installed = evidence.native("install", "-r", apk, check=False)
+            require(install_succeeded(installed), "documents_install_failed:" + summary(installed.stderr or installed.stdout))
             state["installed"][package] = facts; save()
             host.installed_matches(args, state["installed"])
             require(host.package_metadata(args, package) == {"uid": prepared.metadata[package]["uid"],
                     "version_code": facts["version_code"]}, "documents_update_changed_uid_or_version")
             evidence.bind_publisher(package, prepared.metadata[package]["uid"])
+            if index > 0 and "provider_unfreeze" not in state:
+                state["provider_unfreeze"] = unfreeze_provider(evidence); save()
             host.adb(args, "shell", "am", "start", "-W", "--user", "0", "-n", package + "/dev.animusstudio.alkion.MainActivity")
             phase = wait_phase(evidence, flavor, 0, "seed", "seed_provider")
             control = seed_provider(evidence, flavor, phase, first=index == 0)

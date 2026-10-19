@@ -601,12 +601,6 @@ class Evidence(documents.Evidence):
         raw = self.read(package, path, bound, name, optional=optional)
         return None if raw is None else parse(raw)
 
-    def native(self, *tail, **options):
-        result = self.host.adb(self.prepared.args, *tail, **options)
-        self.keep("native-command.json", {"argv": list(map(str, tail)), "code": result.returncode,
-                                          "stdout": result.stdout, "stderr": result.stderr})
-        return result
-
     def pointer(self, package, path, data):
         # Every pointer value also has an exclusive numbered archive. Only the
         # fixed current.json name is replaced; its previous bytes are checked.
@@ -633,6 +627,15 @@ def create_directory(evidence, package, path):
     require(documents.quiet(result), "restore_fresh_directory_refused")
 
 
+def tree_relative(root, path):
+    """Inventory paths under root: UTF-8 names allowed, never control characters or escapes."""
+    parts = path.split("/") if isinstance(path, str) else []
+    require(isinstance(path, str) and path.startswith(root + "/") and len(path.encode()) <= 512 and
+            all(part not in ("", ".", "..") and part.isprintable() and "\\" not in part for part in parts),
+            "restore_tree_path_invalid")
+    return path
+
+
 def tree_pin(evidence, package, root):
     documents.regular_relative(root)
     result = documents.remote(evidence.host, evidence.prepared.args, package, documents.NO_LINKS +
@@ -644,19 +647,24 @@ def tree_pin(evidence, package, root):
     if result.returncode == 3 and not result.stdout and not result.stderr:
         return None
     require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 65536, "restore_tree_inventory_failed")
-    files = result.stdout.decode().splitlines()
+    lines = result.stdout.split(b"\n")
+    require(lines[-1] == b"", "restore_tree_inventory_failed")
+    try:
+        files = [line.decode("utf-8") for line in lines[:-1]]
+    except UnicodeDecodeError as error:
+        raise Refusal("restore_tree_path_invalid") from error
     require(len(files) <= 512 and len(set(files)) == len(files), "restore_tree_inventory_bound")
     pins = {}
     for path in sorted(files):
-        documents.regular_relative(path)
         require(path.startswith(root + "/"), "restore_tree_path_escaped")
+        tree_relative(root, path)
         kind = documents.remote(evidence.host, evidence.prepared.args, package, documents.NO_LINKS +
                                 'if test -d "$1"; then printf directory; elif test -f "$1"; then printf file; else exit 4; fi', path)
         evidence.keep("tree-kind.json", {"path": path, "code": kind.returncode,
                                         "stdout": kind.stdout.decode(errors="replace"), "stderr": kind.stderr.decode(errors="replace")})
         require(kind.returncode == 0 and not kind.stderr and kind.stdout in (b"directory", b"file"), "restore_tree_type_invalid")
         pins[path[len(root) + 1:]] = "directory" if kind.stdout == b"directory" else digest(
-            evidence.read(package, path, LIMIT, "retained-tree-file"))
+            evidence.read(package, path, LIMIT, "retained-tree-file", validator=lambda value: tree_relative(root, value)))
     return pins
 
 
@@ -724,7 +732,9 @@ def seed_provider(evidence, flavor, *, first):
     require(documents.quiet(published), "receiver_provider_publication_refused")
     if first:
         evidence.native("shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
-        evidence.native("shell", "pm", "enable", "--user", "0", documents.COMPONENT)
+        documents.enable_provider(evidence)
+    else:
+        documents.await_namespace(evidence, flavor, root, documents.namespace_pin(control, flavor))
     return control
 
 
@@ -1066,8 +1076,8 @@ def run(host, prepared):
         save()
         query = evidence.native("shell", "pm", "path", PROVIDER, check=False)
         require(query.returncode in (0, 1) and not query.stdout.strip() and not query.stderr.strip(), "receiver_provider_appeared")
-        installed = evidence.native("install", provider_path, check=False)
-        require(installed.returncode == 0 and installed.stdout.strip() == "Success" and not installed.stderr.strip(), "restore_provider_install_failed")
+        installed = evidence.native("install", "-t", provider_path, check=False)
+        require(documents.install_succeeded(installed), "restore_provider_install_failed")
         provider_meta = host.package_metadata(args, PROVIDER)
         require(provider_meta["version_code"] == 1 and type(provider_meta["uid"]) is int and
                 10000 <= provider_meta["uid"] < 100000 and provider_meta["uid"] not in
@@ -1082,11 +1092,13 @@ def run(host, prepared):
                 documents.absent(host, args, package, root)
             candidate, facts = prepared.candidates[package]
             result = evidence.native("install", "-r", candidate, check=False)
-            require(result.returncode == 0 and result.stdout.strip() == "Success" and not result.stderr.strip(), "restore_adapter_install_failed")
+            require(documents.install_succeeded(result), "restore_adapter_install_failed")
             state["installed"][package] = facts
             save()
             identities()
             files = ingress(evidence, flavor)
+            if index > 0 and "provider_unfreeze" not in state:
+                state["provider_unfreeze"] = documents.unfreeze_provider(evidence); save()
             control = seed_provider(evidence, flavor, first=index == 0)
             state["variants"][flavor] = {"steps": [], "cuts": [], "build_contract": restore_build_arguments({
                 "ALKION_FLAVOR": flavor, "ALKION_PROOF_RUN": prepared.receipt["run_id"],
