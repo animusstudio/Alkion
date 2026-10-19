@@ -14,6 +14,7 @@ export ALKION_PROOF_SOURCE ALKION_UI_CASE
 .PHONY: android-synthetic-documents-apk android-synthetic-documents-provider android-synthetic-documents-self-test
 .PHONY: android-synthetic-capability-apk android-synthetic-capabilities-self-test
 .PHONY: android-synthetic-restore-apks android-synthetic-restore-check android-synthetic-restore-run android-synthetic-restore-self-test
+.PHONY: android-synthetic-publisher android-synthetic-publisher-self-test
 ALKION_SYNTHETIC_ACTION ?= check
 # Preserve raw operator inputs in the environment, including literal dollars.
 override export ALKION_SYNTHETIC_ACTION := $(value ALKION_SYNTHETIC_ACTION)
@@ -50,6 +51,7 @@ override export ALKION_RESTORE_DEV_APK := $(value ALKION_RESTORE_DEV_APK)
 override export ALKION_RESTORE_SUPPORTED_APK := $(value ALKION_RESTORE_SUPPORTED_APK)
 override export ALKION_RESTORE_PROVIDER_APK := $(value ALKION_RESTORE_PROVIDER_APK)
 override export ALKION_UI_OBSERVER_BUILD := $(value ALKION_UI_OBSERVER_BUILD)
+override export ALKION_PUBLISHER_BUILD := $(value ALKION_PUBLISHER_BUILD)
 help:
 	@echo "Alkion: get, analyze, test TEST=<path>, format, fmt FORMAT_FILES=<owned paths>, alkion-driver-qualification ALKION_OUTPUT=<fresh /tmp path>, alkion-transfer-recovery ALKION_OUTPUT=<fresh transfer-proof* path>, alkion-backup-recovery ALKION_OUTPUT=<fresh backup-proof* path>"
 get:
@@ -108,6 +110,7 @@ android-synthetic-self-test:
 	$(MAKE) android-synthetic-ui-observer-self-test
 	$(MAKE) android-synthetic-capabilities-self-test
 	$(MAKE) android-synthetic-restore-self-test
+	$(MAKE) android-synthetic-publisher-self-test
 android-synthetic-restore-apks:
 	$(MAKE) android-synthetic ALKION_SYNTHETIC_ACTION=build-restore
 android-synthetic-restore-check:
@@ -122,6 +125,11 @@ android-synthetic-capability-apk:
 	bash tool/android_synthetic.sh --action build-capability
 android-synthetic-documents-self-test:
 	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_documents_self_test.py
+# Host-only literal build of the test publisher; never invoked by a campaign route.
+android-synthetic-publisher:
+	bash tool/android_synthetic.sh --action build-publisher --output "$${ALKION_OUTPUT}"
+android-synthetic-publisher-self-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 tool/android_synthetic_publish_self_test.py
 android-synthetic-neighbor:
 	bash tool/android_synthetic.sh --action build-neighbor --output "$(ALKION_OUTPUT)"
 .PHONY: android-synthetic-ui-observer android-synthetic-ui-observer-self-test
