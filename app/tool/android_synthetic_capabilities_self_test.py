@@ -1092,6 +1092,45 @@ class Controls(unittest.TestCase):
         self.assertTrue(list(prepared.output.glob("*owned-read.stdout")))
         self.assertEqual(result["overall"], "IN_PROGRESS")
 
+    def test_stage_inputs_reservation_is_recorded_and_blocks_staging_when_short(self):
+        required = 60 + 15 + 2 * publish.PUBLISH_TIMEOUT
+        host = CampaignHost(self.root / "stage-budget")
+        with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+            prepared = capability.prepare(host, host.args)
+            clock = SimpleNamespace(monotonic=lambda: host.clock, sleep=lambda duration: setattr(host, "clock", host.clock + duration))
+            with patch.object(capability, "time", clock):
+                capability.run(host, prepared)
+        records = [json.loads(path.read_bytes()) for path in sorted(prepared.output.glob("*-remaining-budget.json"))]
+        stage = [item for item in records if item["operation"].startswith("stage-inputs-")]
+        self.assertEqual({item["operation"] for item in stage}, {"stage-inputs-preserve", "stage-inputs-logged"})
+        self.assertTrue(all(item["required_seconds"] == required for item in stage))
+        operations = [item["operation"] for item in records]
+        first = operations.index("stage-inputs-preserve")
+        # After the unchanged install (and kill) reservations, immediately before staging.
+        self.assertIn(operations[first - 1], ("install-preserve", "ordinary-kill-and-checkpoint"))
+        self.assertLess(operations.index("install-preserve"), first)
+        self.assertTrue(any(item["operation"] == "install-preserve" and item["required_seconds"] == 75 for item in records))
+        # Short of only the new reservation: the real budget refuses before any staging command.
+        host = CampaignHost(self.root / "stage-budget-short")
+        original = capability.LiveBudget.require
+        def short(budget, seconds, operation):
+            if operation.startswith("stage-inputs-"):
+                host.clock = budget.deadline - capability.instant(UTC) - (required - 20)
+            return original(budget, seconds, operation)
+        with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+            prepared = capability.prepare(host, host.args)
+            clock = SimpleNamespace(monotonic=lambda: host.clock, sleep=lambda duration: setattr(host, "clock", host.clock + duration))
+            with patch.object(capability, "time", clock), patch.object(capability.LiveBudget, "require", short):
+                with self.assertRaisesRegex(capability.Blocked, "insufficient_original_600s_budget:stage-inputs-preserve"):
+                    capability.run(host, prepared)
+        result = json.loads((prepared.output / "run.json").read_bytes())
+        self.assertEqual(result["cases"]["dev/denied"]["result"], "BLOCKED")
+        preserve = next(entry for entry in result["builds"] if entry["role"] == "denied/preserve")
+        self.assertEqual(preserve["state"], "built")  # Never installed.
+        root = host.package(capability.PACKAGES[1]) / ("files/android-capability/" + RUN + "/denied/v" + str(preserve["version_code"]))
+        self.assertFalse(root.exists())
+        self.assertEqual(len(list(prepared.output.glob("*.publication-request.json"))), 2)  # Only the prepare inputs.
+
     def test_real_route_stops_before_jit_allocation_when_original_budget_is_insufficient(self):
         host = CampaignHost(self.root / "slow-jit"); host.build_seconds = 180; host.args.jit_build_budget = 180
         with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):

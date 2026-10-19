@@ -255,6 +255,16 @@ def load_build(host, args, path, revision):
             isinstance(facts["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", facts["sha256"]),
             "publisher_build_receipt_invalid")
     artifact = receipt_path.parent / ARTIFACT_NAME
+    compiler, app = str(compiler_path(args.sdk)), Path(host.APP)
+    environment = receipt["env"]
+    require(receipt["argv"] == [compiler, *FLAGS, str(app / SHARED_SOURCE), str(app / CLI_SOURCE), "-o", str(artifact)] and
+            isinstance(receipt["compiler"], dict) and receipt["compiler"].get("path") == compiler and
+            receipt["syntax_checks"] == [{"source": name, "argv": [compiler, *SYNTAX_FLAGS, str(app / name)],
+                                          "returncode": 0, "stdout": "", "stderr": ""} for name in (SHARED_SOURCE, CLI_SOURCE)] and
+            isinstance(environment, dict) and set(environment) == {"PATH", "LANG", "HOME"} and
+            environment["PATH"] == "/usr/bin:/bin" and environment["LANG"] == "C.UTF-8" and
+            isinstance(environment["HOME"], str) and environment["HOME"].startswith("/"),
+            "publisher_build_recipe_mismatch")
     observed = os.lstat(artifact)
     require(stat.S_ISREG(observed.st_mode) and observed.st_uid == os.getuid() and observed.st_nlink == 1 and
             stat.S_IMODE(observed.st_mode) == 0o700 and 0 < observed.st_size <= ARTIFACT_BOUND,
@@ -474,11 +484,12 @@ class Session:
         try:
             observed = readback(package, final, max(1, len(data)), name + "-final")
         except Exception as error:
-            final_record.update(detail="final_readback_failed:" + str(error))
+            final_record.update(final_published="UNKNOWN", detail="final_readback_failed:" + str(error))
             self.keep(name + ".publication-final.json", final_record)
             raise Refusal("publication:UNKNOWN:final_readback_failed") from error
         verified = isinstance(observed, bytes) and observed == data
         final_record.update(state="PUBLISHED" if verified else "UNKNOWN",
+                            final_published=True if verified else "UNKNOWN",
                             basis="clean_reply+final_readback" if verified else "clean_reply",
                             final_length=len(observed) if isinstance(observed, bytes) else None,
                             final_sha256=digest(observed) if isinstance(observed, bytes) else None,

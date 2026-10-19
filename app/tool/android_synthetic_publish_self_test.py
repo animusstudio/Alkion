@@ -166,6 +166,7 @@ class FakeRunAs:
         self.programs = []
         self.uid_override = {}
         self.foreign_inode = None
+        self.context = CONTEXT
 
     @staticmethod
     def handles(rest):
@@ -199,7 +200,7 @@ class FakeRunAs:
         return completed.stdout, completed.stderr, completed.returncode
 
     def preflight(self, package, uid, directory, values):
-        stdout = (str(uid) + "\n/data/user/0/" + package + "\n" + CONTEXT + "\n").encode()
+        stdout = (str(uid) + "\n/data/user/0/" + package + "\n" + self.context + "\n").encode()
         cache = directory / "cache"
         if not cache.is_dir() or cache.is_symlink():
             return stdout, b"", 3
@@ -227,20 +228,27 @@ def copy_sources(app):
         shutil.copyfile(HERE.parent / name, target)
 
 
-def fake_build(directory, app, revision=REVISION, data=None):
-    """Write a synthetic receipt + artifact pair in the build route's layout."""
-    directory = Path(directory)
+def fake_build(directory, app, revision=REVISION, data=None, sdk=None):
+    """Write a synthetic receipt + artifact pair with the build route's literal recipe."""
+    directory, app = Path(directory), Path(app)
+    sdk = app.parent.parent / "sdk" if sdk is None else Path(sdk)
     directory.mkdir(mode=0o700, parents=True)
     data = synthetic_elf() if data is None else data
     artifact = directory / publish.ARTIFACT_NAME
     artifact.write_bytes(data)
     artifact.chmod(0o700)
+    compiler = str(publish.compiler_path(sdk))
     receipt = {"format": publish.BUILD_FORMAT, "source_commit": revision, "target": publish.TARGET, "api": 24,
                "abi": "x86_64", "ndk_revision": publish.NDK_REVISION,
-               "compiler": {"path": "synthetic", "sha256": "0" * 64, "resolved_path": "synthetic", "resolved_sha256": "0" * 64},
-               "cli_sha256": publish.digest((Path(app) / publish.CLI_SOURCE).read_bytes()),
-               "shared_c_sha256": publish.digest((Path(app) / publish.SHARED_SOURCE).read_bytes()),
-               "argv": [], "env": {}, "syntax_checks": [], "exit_code": 0, "stdout": "", "stderr": "",
+               "compiler": {"path": compiler, "sha256": "0" * 64, "resolved_path": "synthetic", "resolved_sha256": "0" * 64},
+               "cli_sha256": publish.digest((app / publish.CLI_SOURCE).read_bytes()),
+               "shared_c_sha256": publish.digest((app / publish.SHARED_SOURCE).read_bytes()),
+               "argv": publish.build_arguments(sdk, app, directory),
+               "env": {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": "/synthetic-home"},
+               "syntax_checks": [{"source": name, "argv": [compiler, *publish.SYNTAX_FLAGS, str(app / name)],
+                                  "returncode": 0, "stdout": "", "stderr": ""}
+                                 for name in (publish.SHARED_SOURCE, publish.CLI_SOURCE)],
+               "exit_code": 0, "stdout": "", "stderr": "",
                "artifact": {"name": publish.ARTIFACT_NAME, "sha256": publish.digest(data), "length": len(data),
                             "mode": "0700", "elf": publish.elf_facts(data)}}
     path = directory / "build.json"
@@ -664,8 +672,8 @@ class PublisherControls(unittest.TestCase):
         with self.assertRaisesRegex(publish.Refusal, "publication:UNKNOWN:final_readback_mismatch"):
             self.session.publish(PACKAGE, source, "files/proof/m", b"payload", "item", lambda *_: b"changed")
         final = self.record("item.publication-final.json")
-        self.assertEqual((final["state"], final["partial_consumed"], final["final_sha256"]),
-                         ("UNKNOWN", True, publish.digest(b"changed")))
+        self.assertEqual((final["state"], final["partial_consumed"], final["final_published"], final["final_sha256"]),
+                         ("UNKNOWN", True, "UNKNOWN", publish.digest(b"changed")))
         with self.assertRaisesRegex(publish.Refusal, "final_readback_failed"):
             self.session.publish(PACKAGE, self.stage("n.partial-1", b"p"), "files/proof/n", b"p", "other",
                                  lambda *_: (_ for _ in ()).throw(ValueError("unreadable")))
@@ -687,6 +695,94 @@ class PublisherControls(unittest.TestCase):
         self.assertEqual(self.host.calls, [])
         self.assertEqual(self.host.metadata_calls, 0)
         self.assertEqual(sorted(str(path) for path in self.base.rglob("*")), before)
+
+    # Direct reply classification with synthetic bound replies.
+    @staticmethod
+    def stat_record(**changes):
+        value = {"errno": 0, "dev": 7, "ino": 11, "uid": 10001, "gid": 10001, "mode": stat.S_IFREG | 0o600,
+                 "nlink": 1, "length": 3, "mtime_sec": 1, "mtime_nsec": 2, "ctime_sec": 3, "ctime_nsec": 4}
+        value.update(changes)
+        return value
+
+    def reply(self, **changes):
+        nonce = "c" * 32
+        value = {"format": publish.REPLY_FORMAT, "nonce": nonce, "expected_uid": 10001, "uid": 10001, "euid": 10001,
+                 "from": "files/proof/r.partial-1", "to": "files/proof/r", "stage": "complete", "precondition_errno": 0,
+                 "pre_fsync_errno": 0, "rename_errno": 0, "post_fsync_errno": 0, "published": True,
+                 "source_consumed": True, "source_before": self.stat_record(), "source_after": {"errno": 2},
+                 "final_before": {"errno": 2}, "final_after": self.stat_record(ctime_nsec=9), "exit_code": 0}
+        value.update(changes)
+        return json.dumps(value, separators=(",", ":")).encode() + b"\n"
+
+    def classify(self, returncode, stdout, stderr=b""):
+        return publish.classify(returncode, stdout, stderr, nonce="c" * 32, uid=10001,
+                                source="files/proof/r.partial-1", final="files/proof/r", length=3)
+
+    def test_classify_requires_every_consistency_rule(self):
+        complete = self.classify(0, self.reply())
+        self.assertEqual((complete["claimed"], complete["state"], complete["partial_consumed"]), ("PUBLISHED", "UNKNOWN", True))
+        collision = dict(stage="native", rename_errno=17, post_fsync_errno=None, published=False, source_consumed=False,
+                         exit_code=1, source_after=self.stat_record(), final_before=self.stat_record(ino=12, length=5),
+                         final_after=self.stat_record(ino=12, length=5))
+        self.assertEqual(self.classify(1, self.reply(**collision))["state"], "NOT_PUBLISHED")
+        cases = {
+            "guard exit with stderr": (71, b"", b"diagnostic"),
+            "guard exit with stdout": (75, b"partial", b""),
+            "complete but source still present": (0, self.reply(source_after=self.stat_record()), b""),
+            "complete but final identity differs": (0, self.reply(final_after=self.stat_record(ino=99)), b""),
+            "complete but final was present before": (0, self.reply(final_before=self.stat_record(ino=12)), b""),
+            "collision but source changed": (1, self.reply(**dict(collision, source_after=self.stat_record(length=4))), b""),
+            "collision but final changed": (1, self.reply(**dict(collision, final_after=self.stat_record(ino=13))), b""),
+            "collision without errno": (1, self.reply(**dict(collision, rename_errno=0)), b""),
+            "foreign source mode": (0, self.reply(source_before=self.stat_record(mode=stat.S_IFREG | 0o644),
+                                                   final_after=self.stat_record(mode=stat.S_IFREG | 0o644)), b""),
+            "boolean uid": (0, self.reply(uid=True), b""),
+        }
+        for name, (code, stdout, stderr) in cases.items():
+            with self.subTest(case=name):
+                outcome = self.classify(code, stdout, stderr)
+                self.assertEqual(outcome["state"], "UNKNOWN")
+                self.assertIsNone(outcome["claimed"])
+                self.assertEqual((outcome["partial_consumed"], outcome["final_published"]), ("UNKNOWN", "UNKNOWN"))
+        guard = self.classify(71, b"", b"")
+        self.assertEqual((guard["state"], guard["partial_consumed"]), ("NOT_ATTEMPTED", False))
+
+    def test_bootstrap_program_is_the_reviewed_exclusive_private_shape(self):
+        self.assertEqual(publish.BOOTSTRAP,
+            'set -eu; umask 077; if test "$(id -u)" != "$1"; then exit 71; fi; '
+            'if test ! -d cache || test -L cache; then exit 73; fi; '
+            'if test -e "$2" || test -L "$2"; then exit 74; fi; '
+            'mkdir -m 700 "$2"; set -C; cat > "$2/publisher"; chmod 700 "$2/publisher"')
+        self.assertTrue(publish.PUBLISH.endswith('exec "$h" "$1" "$6" "$7" "$8"'))
+
+    def test_preflight_foreign_context_refuses_before_bootstrap(self):
+        self.host.runas.context = "u:object_r:app_data_file:s0"
+        with self.assertRaisesRegex(publish.Refusal, "publisher_run_as_context_or_cache_invalid"):
+            self.session.ensure(PACKAGE)
+        self.assertEqual([index for _, index, _ in self.host.runas.programs], [0])
+        self.assertFalse(list((self.base / "cache").iterdir()))
+
+    def test_load_build_requires_the_literal_recipe(self):
+        receipt = json.loads(self.build.read_bytes())
+        compiler = receipt["argv"][0]
+        changes = {
+            "extra flag": ("argv", [*receipt["argv"][:1], "-DOTHER", *receipt["argv"][1:]]),
+            "other compiler": ("argv", ["/other/clang", *receipt["argv"][1:]]),
+            "other output": ("argv", [*receipt["argv"][:-1], "/tmp/elsewhere"]),
+            "syntax failure": ("syntax_checks", [dict(receipt["syntax_checks"][0], returncode=1), receipt["syntax_checks"][1]]),
+            "syntax warning": ("syntax_checks", [receipt["syntax_checks"][0], dict(receipt["syntax_checks"][1], stderr="warning")]),
+            "missing syntax check": ("syntax_checks", receipt["syntax_checks"][:1]),
+            "compiler record": ("compiler", dict(receipt["compiler"], path=compiler + "x")),
+            "inherited path": ("env", dict(receipt["env"], PATH="/opt/bin:/usr/bin:/bin")),
+        }
+        for name, (key, value) in changes.items():
+            with self.subTest(case=name):
+                build = fake_build(self.root / ("recipe-" + name.replace(" ", "-")), self.host.APP)
+                changed = json.loads(build.read_bytes())
+                changed[key] = value
+                build.write_bytes(publish._encoded(changed))
+                with self.assertRaisesRegex(publish.Refusal, "publisher_build_recipe_mismatch"):
+                    publish.load_build(self.host, self.host.args, str(build), REVISION)
 
     # Build receipt binding.
     def test_load_build_refuses_changed_cli_or_shared_source(self):
