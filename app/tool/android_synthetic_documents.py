@@ -265,18 +265,20 @@ def summary(value, limit=1000):
     return text if len(text) <= limit else text[:600] + " [...] " + text[-(limit - 607):]
 
 
-# adb install progress observed on this image before the final result: streamed,
-# or incremental for an APK with an .idsig. Anything else, any Failure line
-# included (an incremental failure falls back to streamed), refuses.
-INSTALL_PROGRESS = (("Performing Streamed Install",), ("Serving...", "Performing Incremental Install"))
-
-
+# adb client (packages/modules/adb client/adb_install.cpp and incremental.cpp):
+# a streamed install prints "Performing Streamed Install" and then the device's
+# status line, which must start with "Success" (the shell prints exactly that).
+# An incremental install prints "Performing Incremental Install", relays device
+# output until "Success" or "Failure [", then "Install command complete in N ms".
+# Line order and extra progress or timing lines are not pinned and stay in the
+# evidence: require exit 0, no "Failure" in either stream, and exactly one
+# stdout line equal to "Success". An incremental failure falling back to a
+# streamed install prints a Failure line and is refused.
 def install_succeeded(result):
-    stdout = result.stdout.decode(errors="replace") if isinstance(result.stdout, bytes) else result.stdout
-    stderr = result.stderr.decode(errors="replace") if isinstance(result.stderr, bytes) else result.stderr
-    lines = stdout[:-1].split("\n") if stdout.endswith("\n") else None
-    return (result.returncode == 0 and not stderr.strip() and lines is not None and
-            lines[-1] == "Success" and tuple(lines[:-1]) in INSTALL_PROGRESS)
+    stdout = result.stdout.decode(errors="replace") if isinstance(result.stdout, bytes) else result.stdout or ""
+    stderr = result.stderr.decode(errors="replace") if isinstance(result.stderr, bytes) else result.stderr or ""
+    return (result.returncode == 0 and "Failure" not in stdout and "Failure" not in stderr and
+            stdout.splitlines().count("Success") == 1)
 
 
 def enabled_components(dump):

@@ -177,6 +177,7 @@ class FakeHost:
         self.provider_enable_state = "enabled"
         self.provider_enable_stderr = ""
         self.variant_install_stdout = None
+        self.install_timing_stream = "stdout"
         self.provider_dump_blocks = ("enabledComponents",)
         self.null_focus = 0
         self.driver, self.updates, self.lifecycle = self.make_receipts()
@@ -373,8 +374,13 @@ class FakeHost:
                 self.installed[facts["package"]] = facts
                 self.metadata.setdefault(facts["package"], {"uid": 10003})["version_code"] = facts["version_code"]
                 # The provider ships an .idsig and installs incrementally; others stream.
-                progress = INCREMENTAL if facts["package"] == documents.PROVIDER else "Performing Streamed Install\n"
-                self.mutations.append(("install", facts["package"])); value = result(progress + "Success\n")
+                self.mutations.append(("install", facts["package"]))
+                if facts["package"] == documents.PROVIDER:
+                    timing = "Install command complete in 812 ms\n"
+                    value = result(INCREMENTAL + "Success\n" + (timing if self.install_timing_stream == "stdout" else ""),
+                                   timing if self.install_timing_stream == "stderr" else "")
+                else:
+                    value = result("Performing Streamed Install\nSuccess\n")
                 if self.variant_install_stdout is not None and facts["package"] in documents.VARIANTS.values():
                     value = result(self.variant_install_stdout)
             elif tail == ["get-state"]:
@@ -923,26 +929,47 @@ class DocumentsControls(unittest.TestCase):
                 self.assertIs(caught.exception, failure)
                 self.assertEqual(len(calls), 1)  # Propagated immediately, never retried.
 
-    def test_install_success_requires_known_progress_then_success(self):
-        observed = "Serving...\nPerforming Incremental Install\nFailure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package " \
+    def test_install_success_rule_follows_the_adb_client(self):
+        incremental = INCREMENTAL + "Success\nInstall command complete in 812 ms\n"
+        accepted = {"incremental-timing-stdout": (incremental, ""),
+                    "incremental-timing-stderr": (INCREMENTAL + "Success\n", "Install command complete in 812 ms\n"),
+                    "streamed": ("Performing Streamed Install\nSuccess\n", ""),
+                    "streamed-no-final-newline": ("Performing Streamed Install\nSuccess", ""),
+                    "reordered-progress": ("Performing Incremental Install\nServing...\nSuccess\n", "")}
+        observed = INCREMENTAL + "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package " \
                    + documents.PACKAGES[1] + " signatures do not match newer version; ignoring!]\nPerforming Streamed Install\n"
-        accepted = ("Serving...\nPerforming Incremental Install\nSuccess\n", "Performing Streamed Install\nSuccess\n")
-        refused = {"bare": ("Success\n", "", 0), "observed-failure": (observed, "adb: failed to install x: Failure [...]\n\n", 1),
-                   "fallback-after-failure": (observed + "Success\n", "", 0), "failure-rc0": ("Performing Streamed Install\nFailure [X]\n", "", 0),
-                   "unknown-progress": ("Performing Streamed Install\nInstalling...\nSuccess\n", "", 0),
-                   "reordered": ("Performing Incremental Install\nServing...\nSuccess\n", "", 0),
-                   "no-newline": ("Performing Streamed Install\nSuccess", "", 0), "crlf": ("Performing Streamed Install\r\nSuccess\r\n", "", 0),
-                   "stderr": (accepted[1], "warning\n", 0), "nonzero": (accepted[1], "", 1),
-                   "trailing": (accepted[1] + "\n", "", 0)}
-        for text in accepted:
-            self.assertTrue(documents.install_succeeded(result(text)))
-            self.assertTrue(documents.install_succeeded(result(text.encode(), b"")))
+        refused = {"observed-failure": (observed, "adb: failed to install x: Failure [...]\n\n", 1),
+                   "fallback-after-failure": (observed + "Success\n", "", 0),
+                   "failure-on-stderr": ("Performing Streamed Install\nSuccess\n", "Failure [X]\n", 0),
+                   "missing-success": ("Performing Streamed Install\n", "", 0),
+                   "success-substring": ("Performing Streamed Install\nSuccessful\n", "", 0),
+                   "two-success": ("Success\nSuccess\n", "", 0),
+                   "nonzero": ("Performing Streamed Install\nSuccess\n", "", 1)}
+        for name, (stdout, stderr) in accepted.items():
+            with self.subTest(name=name):
+                self.assertTrue(documents.install_succeeded(result(stdout, stderr)))
+                self.assertTrue(documents.install_succeeded(result(stdout.encode(), stderr.encode())))
         for name, (stdout, stderr, code) in refused.items():
             with self.subTest(name=name):
                 self.assertFalse(documents.install_succeeded(result(stdout, stderr, code)))
 
-    def test_variant_install_needs_known_progress_and_success(self):
-        self.host.variant_install_stdout = "Performing Streamed Install\nUnrecognized progress\nSuccess\n"
+    def install_timing_route(self, stream):
+        self.host.install_timing_stream = stream
+        self.host.args.action = "documents"
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        records = [json.loads(path.read_bytes()) for path in sorted(self.root.glob("output/*native-command.json"))]
+        provider = next(item for item in records if item["argv"][:2] == ["install", "-t"])
+        self.assertIn("Install command complete in 812 ms", provider[stream])  # Retained as evidence.
+
+    def test_install_timing_line_on_stdout_passes_the_route(self):
+        self.install_timing_route("stdout")
+
+    def test_install_timing_line_on_stderr_passes_the_route(self):
+        self.install_timing_route("stderr")
+
+    def test_variant_install_needs_a_success_line(self):
+        self.host.variant_install_stdout = "Performing Streamed Install\nUnrecognized progress\n"
         self.host.args.action = "documents"
         with self.assertRaisesRegex(documents.Refusal, "documents_install_failed"):
             self.host.documents_action(self.host.args)
