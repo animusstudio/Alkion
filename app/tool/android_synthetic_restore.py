@@ -719,6 +719,8 @@ def seed_provider(evidence, flavor, *, first):
     if first:
         evidence.native("shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
         documents.enable_provider(evidence)
+    else:
+        documents.await_namespace(evidence, flavor, root, documents.namespace_pin(control, flavor))
     return control
 
 
@@ -1081,6 +1083,8 @@ def run(host, prepared):
             save()
             identities()
             files = ingress(evidence, flavor)
+            if index > 0 and "provider_unfreeze" not in state:
+                state["provider_unfreeze"] = documents.unfreeze_provider(evidence); save()
             control = seed_provider(evidence, flavor, first=index == 0)
             state["variants"][flavor] = {"steps": [], "cuts": [], "build_contract": restore_build_arguments({
                 "ALKION_FLAVOR": flavor, "ALKION_PROOF_RUN": prepared.receipt["run_id"],

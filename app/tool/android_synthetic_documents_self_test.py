@@ -180,8 +180,11 @@ class FakeHost:
         self.install_timing_stream = "stdout"
         self.provider_dump_blocks = ("enabledComponents",)
         self.null_focus = 0
-        # Device models: LastAccessed picker landing,
+        # Device models: cached-app freezer, LastAccessed picker landing,
         # caller focus during picker launch, disabled Save and cancel return lag.
+        self.provider_frozen = False
+        self.provider_sticky = False
+        self.pending_namespaces = []
         self.last_accessed = set()
         self.caller_focus = 0
         self.caller_focus_samples = 0
@@ -488,11 +491,19 @@ class FakeHost:
                               "Shell cannot change component state for ComponentInfo{" + documents.PROVIDER + "/" +
                               PROVIDER_CLASS + "} to 1\n\tat com.android.server.pm.PackageManagerService."
                               "setEnabledSettings(PackageManagerService.java:3972)\n", 255)
-            self.provider_enabled = True
-            self.pids[documents.PROVIDER] = 501
+            self.provider_enabled = True  # Starts nothing; DocumentsUI's roots query starts the provider.
             self.mutations.append(("enable", argv[-1]))
             return result("Component {" + documents.PROVIDER + "/" + PROVIDER_CLASS + "} new state: " + self.provider_enable_state + "\n",
                           self.provider_enable_stderr)
+        if argv[:2] == ["am", "unfreeze"]:
+            assert argv[:3] == ["am", "unfreeze", "--sticky"] and len(argv) == 4
+            assert int(argv[3]) == self.pids[documents.PROVIDER], argv
+            self.mutations.append(("unfreeze", argv[3]))
+            self.provider_frozen, self.provider_sticky = False, True
+            pending, self.pending_namespaces = self.pending_namespaces, []
+            for relative in pending:  # Deferred FileObserver delivery.
+                self.provider_load(relative)
+            return result("Unfreezing process " + documents.PROVIDER + " (" + argv[3] + ") sticky=true\n")
         if argv[:2] == ["am", "instrument"]:
             assert argv[-1] == observer.COMPONENT and argv[argv.index("--user") + 1] == "0"
             arguments = {argv[index + 1]: argv[index + 2] for index, value in enumerate(argv) if value == "-e"}
@@ -598,6 +609,9 @@ class FakeHost:
                     partial.write_bytes(data[:-1] + b"x")
             else:
                 completed = subprocess.run(rest, cwd=directory, capture_output=True)
+            if (package == documents.PROVIDER and completed.returncode == 0 and rest[:2] == ["/system/bin/sh", "-c"] and
+                    'mv -n "$1" "$2"' in rest[2]):
+                self.namespace_published(rest[-1].rsplit("/", 1)[-1])
             return result(completed.stdout if binary else completed.stdout.decode(),
                           completed.stderr if binary else completed.stderr.decode(), completed.returncode)
         raise AssertionError("Unexpected Android command: " + repr(argv))
@@ -664,11 +678,13 @@ class FakeHost:
             "enabled": "true", "visible-to-user": "true", "bounds": "[0,0][1080,2400]"})
         if self.front != "com.android.documentsui":
             return ET.tostring(root, encoding="unicode")
+        if self.provider_enabled and self.pids.get(documents.PROVIDER) is None:
+            # DocumentsUI's roots query starts the provider, which loads every namespace.
+            self.pids[documents.PROVIDER] = 501
+            parent = self.package_root(documents.PROVIDER) / "files/proof-runs"
+            for path in sorted(parent.iterdir()) if parent.is_dir() else []:
+                self.provider_load(path.name)
         namespace = RUN + "-" + self.flavor
-        prefix = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + namespace)
-        pin = (RUN + "\n" + self.flavor + "\n" + str(len(RAW)) + "\n" + documents.digest(RAW)).encode()
-        if not (prefix / "input.pin").exists():
-            self.write(prefix / "input.pin", pin)
         label = "Alkion synthetic " + namespace
         if self.scenario == "wrong-root":
             label = "Alkion synthetic " + "2" * 32 + "-" + self.flavor
@@ -702,8 +718,27 @@ class FakeHost:
                 self.save_captures += 1
         return ET.tostring(root, encoding="unicode")
 
+    def provider_load(self, relative):
+        """The provider's own load(): bind a complete namespace and write its pin once."""
+        match = re.fullmatch(r"([a-f0-9]{32})-(dev|supported)", relative)
+        prefix = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + relative)
+        if match is None or not (prefix / "input.alkionbackup").is_file() or (prefix / "input.pin").exists():
+            return
+        data = (prefix / "input.alkionbackup").read_bytes()
+        self.write(prefix / "input.pin", (match[1] + "\n" + match[2] + "\n" + str(len(data)) + "\n" + documents.digest(data)).encode())
+
+    def namespace_published(self, relative):
+        if self.pids.get(documents.PROVIDER) is None:
+            return  # Not running: the next start loads it.
+        if self.provider_frozen:
+            self.pending_namespaces.append(relative)  # The freezer defers FileObserver delivery.
+        else:
+            self.provider_load(relative)
+
     def picker_closed(self, cancelled=False):
         self.last_accessed.add(self.flavor)
+        if self.pids.get(documents.PROVIDER) is not None and not self.provider_sticky:
+            self.provider_frozen = True  # Cached once no picker uses it.
         if cancelled:
             self.cancel_lag = 1
 
@@ -1057,6 +1092,48 @@ class DocumentsControls(unittest.TestCase):
                     with self.assertRaisesRegex(documents.Refusal, "documentsui_checkpoint_unavailable:dev-open-cancel-exact-root"):
                         host.documents_action(host.args)
 
+    def frozen_supported(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501
+        evidence.provider_pid = 501
+        self.host.provider_frozen = True
+        phase = dict(phase, variant="dev")
+        return evidence, phase
+
+    def test_frozen_provider_never_sees_a_new_namespace_without_unfreeze(self):
+        evidence, phase = self.frozen_supported()
+        with self.assertRaisesRegex(documents.Refusal, "provider_namespace_not_observed"):
+            documents.seed_provider(evidence, "dev", phase, first=False)
+        pin = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev/input.pin")
+        self.assertFalse(pin.exists())
+        self.assertEqual(documents.unfreeze_provider(evidence)["pid"], 501)
+        self.assertTrue(pin.is_file())  # Deferred FileObserver delivery after the unfreeze.
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual(record["argv"], ["shell", "am", "unfreeze", "--sticky", "501"])
+
+    def test_unfreeze_requires_exact_output_and_the_same_pid(self):
+        evidence, _ = self.frozen_supported()
+        original = self.host.android
+        def wrong(argv, binary=False, data=None):
+            if argv[:2] == ["am", "unfreeze"]:
+                return result("Unfreezing process " + documents.PROVIDER + " (501) sticky=false\n")
+            return original(argv, binary, data)
+        with patch.object(self.host, "android", side_effect=wrong):
+            with self.assertRaisesRegex(documents.Refusal, "provider_unfreeze_refused"):
+                documents.unfreeze_provider(evidence)
+        self.host.pids[documents.PROVIDER] = 502
+        with self.assertRaisesRegex(documents.Refusal, "provider_process_changed_preserve_failed_campaign"):
+            documents.unfreeze_provider(evidence)
+        self.assertNotIn(("unfreeze", "502"), self.host.mutations)
+
+    def test_enable_starts_no_provider_process(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        evidence.native("install", "-t", apk)
+        documents.enable_provider(evidence)
+        self.assertIsNone(self.host.pids.get(documents.PROVIDER))
+
     def test_picker_retries_while_the_calling_app_keeps_focus(self):
         self.host.caller_focus_samples = 25  # Outlasts one bounded focus wait.
         self.host.args.action = "documents"
@@ -1119,6 +1196,10 @@ class DocumentsControls(unittest.TestCase):
         self.assertEqual(state["documents_phase"], "PASS")
         self.assertEqual(state["overall"], "IN_PROGRESS")
         self.assertEqual(set(state["documents"]), {"dev", "supported"})
+        # One deliberate, retained unfreeze of the same provider pid before the supported namespace.
+        self.assertEqual([item for item in self.host.mutations if item[0] == "unfreeze"], [("unfreeze", "501")])
+        self.assertEqual((state["provider_unfreeze"]["pid"], state["provider_unfreeze"]["stdout"]),
+                         (501, "Unfreezing process " + documents.PROVIDER + " (501) sticky=true\n"))
         self.assertTrue(self.host.last_accessed >= {"dev", "supported"})  # Later pickers landed on LastAccessed.
         self.assertEqual([value["version_code"] for package, value in state["installed"].items() if package in documents.VARIANTS.values()], [45, 45])
         self.assertEqual(len(self.host.ack_objects), 54)

@@ -295,6 +295,41 @@ def enabled_components(dump):
     return blocks
 
 
+def namespace_pin(control, flavor):
+    return (control["run_id"] + "\n" + flavor + "\n" + str(control["length"]) + "\n" + control["sha256"]).encode()
+
+
+def unfreeze_provider(evidence):
+    """Keep the cached provider's FileObserver live for the next namespace.
+
+    The cached-app freezer defers its inotify delivery, so DocumentsUI would keep
+    stale roots. ActivityManagerShellCommand.runFreeze prints the process, pid
+    and sticky flag; sticky keeps it unfrozen for the process lifetime.
+    """
+    pid = evidence.host.app_pid(evidence.prepared.args, PROVIDER)
+    require(pid is not None and pid == evidence.provider_pid, "provider_process_changed_preserve_failed_campaign")
+    result = evidence.native("shell", "am", "unfreeze", "--sticky", str(pid), check=False)
+    expected = "Unfreezing process " + PROVIDER + " (" + str(pid) + ") sticky=true\n"
+    require(result.returncode == 0 and result.stdout == expected and not result.stderr,
+            "provider_unfreeze_refused:" + summary(result.stderr or result.stdout))
+    evidence.provider_alive()
+    return {"pid": pid, "argv": ["shell", "am", "unfreeze", "--sticky", str(pid)], "stdout": result.stdout,
+            "intervention": "deliberate harness unfreeze of the synthetic provider process"}
+
+
+def await_namespace(evidence, flavor, root, pin, timeout=15):
+    """The provider's own load writes input.pin before announcing a new root."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        observed = evidence.read(PROVIDER, root + "/input.pin", 4096, flavor + "-discovered-pin", optional=True)
+        if observed == pin:
+            return
+        # The pin is created, then written: only a strict prefix may still grow.
+        require(observed is None or pin.startswith(observed), "provider_namespace_input_changed")
+        time.sleep(0.1)
+    raise Refusal("provider_namespace_not_observed")
+
+
 def enable_provider(evidence):
     """Shell enable of the test-only provider with retained raw output and a readback."""
     result = evidence.native("shell", "pm", "enable", "--user", "0", COMPONENT, check=False)
@@ -495,6 +530,8 @@ def seed_provider(evidence, flavor, phase, *, first):
     if first:
         evidence.native("shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
         enable_provider(evidence)
+    else:
+        await_namespace(evidence, flavor, root, namespace_pin(expected, flavor))
     ack(evidence, flavor, phase, "seeded", provider_input_sha256=expected["sha256"])
     return expected
 
@@ -659,7 +696,7 @@ def validate_receipt(value, case, control):
 def provider_observation(evidence, flavor, phase, control):
     root = "files/proof-runs/" + control["run_id"] + "-" + flavor
     evidence.provider_alive()
-    pin = (control["run_id"] + "\n" + flavor + "\n" + str(control["length"]) + "\n" + control["sha256"]).encode()
+    pin = namespace_pin(control, flavor)
     require(evidence.read(PROVIDER, root + "/input.pin", 4096, flavor + "-input-pin") == pin and
             evidence.read(PROVIDER, root + "/control.json", 4096, flavor + "-immutable-control") == encoded(control) and
             digest(evidence.read(PROVIDER, root + "/input.alkionbackup", LIMIT, flavor + "-immutable-input")) == control["sha256"],
@@ -988,6 +1025,8 @@ def run(host, prepared):
             require(host.package_metadata(args, package) == {"uid": prepared.metadata[package]["uid"],
                     "version_code": facts["version_code"]}, "documents_update_changed_uid_or_version")
             evidence.bind_publisher(package, prepared.metadata[package]["uid"])
+            if index > 0 and "provider_unfreeze" not in state:
+                state["provider_unfreeze"] = unfreeze_provider(evidence); save()
             host.adb(args, "shell", "am", "start", "-W", "--user", "0", "-n", package + "/dev.animusstudio.alkion.MainActivity")
             phase = wait_phase(evidence, flavor, 0, "seed", "seed_provider")
             control = seed_provider(evidence, flavor, phase, first=index == 0)

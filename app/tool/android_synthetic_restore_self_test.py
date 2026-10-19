@@ -307,16 +307,6 @@ class FakeHost(saf.FakeHost):
     def source_bytes(self):
         return Path(self.source_manifest["variants"][self.flavor]["received"]).read_bytes()
 
-    def ui_xml(self):
-        raw = super().ui_xml()
-        # The SAF fixture helper uses RAW. The receiver pins the selected actual
-        # variant bytes instead, matching its real provider input format.
-        if self.front == "com.android.documentsui":
-            root = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + saf.RUN + "-" + self.flavor)
-            pin = (saf.RUN + "\n" + self.flavor + "\n" + str(len(self.source_bytes())) + "\n" + documents.digest(self.source_bytes())).encode()
-            self.write(root / "input.pin", pin)
-        return raw
-
     def complete_picker(self):
         root = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + saf.RUN + "-" + self.flavor)
         path = root / "receipts/open-good.json"
@@ -792,6 +782,8 @@ print("fake compiler only")
         self.assertFalse(self.host.mutations)
         state = restore.run(self.host, prepared)
         self.assertEqual(state["restore_phase"], "PASS")
+        self.assertEqual([item for item in self.host.mutations if item[0] == "unfreeze"], [("unfreeze", "501")])
+        self.assertEqual(state["provider_unfreeze"]["pid"], 501)
         self.assertEqual(state["overall"], "IN_PROGRESS")
         self.assertEqual((state["installed_floor"], state["allocation_floor"]), (37, 80))
         bindings = json.loads(next(prepared.output.glob("*-candidate-ledger-bindings.json")).read_bytes())
