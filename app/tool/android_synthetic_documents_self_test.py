@@ -190,6 +190,7 @@ class FakeHost:
         self.caller_focus_samples = 0
         self.save_captures = 0
         self.cancel_lag = 0
+        self.preview_taps = []
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
             receipt=str(receipt_path), output=str(root / "output"), driver_run=str(root / "driver/run.json"),
@@ -558,7 +559,12 @@ class FakeHost:
                 self.front = "com.android.launcher3"
             return result()
         if argv[:2] == ["input", "tap"]:
-            y = int(argv[-1]); self.mutations.append(("tap", y))
+            x, y = int(argv[-2]), int(argv[-1]); self.mutations.append(("tap", y))
+            # Hit-testing for the real-shaped grid card: its preview icon sits on top.
+            if 890 <= x < 1016 and 1180 <= y < 1306:
+                self.preview_taps.append((x, y)); return result()
+            if 551 <= x < 1016 and 1180 <= y < 1781:
+                self.complete_picker(); return result()
             if y < 100:
                 # Choosing a root reloads it; Save stays disabled until that load completes.
                 self.selected = True; self.drawer = False; self.save_captures = 0
@@ -713,13 +719,42 @@ class FakeHost:
             name = self.current_phase["document_label"]
             if self.scenario == "wrong-file":
                 name = "foreign.alkionbackup"
-            node(name, 100, not self.current_phase["case"].startswith("save-"),
-                 "android.widget.EditText" if self.current_phase["case"].startswith("save-") else "android.widget.TextView")
+            if self.current_phase["case"].startswith("save-"):
+                node(name, 100, False, "android.widget.EditText")
+            else:
+                self.grid_card(container, name)
             if self.current_phase["case"].startswith("save-"):
                 # SaveFragment enables Save only after the root document loads.
                 node("SAVE", 200, enabled=self.save_captures > 0)
                 self.save_captures += 1
         return ET.tostring(root, encoding="unicode")
+
+    def grid_card(self, container, name):
+        """Real API 36 grid card: the CardView reports bounds below the display while its title is on screen."""
+        def add(parent, attributes):
+            values = {"package": "com.android.documentsui", "text": "", "content-desc": "", "resource-id": "",
+                      "class": "android.widget.FrameLayout", "clickable": "false", "enabled": "true", "visible-to-user": "true"}
+            values.update(attributes)
+            return ET.SubElement(parent, "node", values)
+        holder = container
+        if self.scenario == "card-label-outside":
+            holder = add(container, {"bounds": "[551,1180][1016,1781]"})
+        card = add(container, {"class": "androidx.cardview.widget.CardView", "resource-id": "com.android.documentsui:id/item_root",
+                               "clickable": "true", "bounds": "[551,3454][1016,4055]"})
+        frame = add(card, {"bounds": "[551,1180][1016,1781]"})
+        add(card, {"resource-id": "com.android.documentsui:id/preview_icon", "clickable": "true", "bounds": "[890,1180][1016,1306]",
+                   "content-desc": "Preview the file " + name})
+        nameplate = add(frame, {"resource-id": "com.android.documentsui:id/nameplate", "bounds": "[551,1645][1016,1781]"})
+        title = {"class": "android.widget.TextView", "resource-id": "android:id/title", "text": name, "bounds": "[683,1666][984,1717]"}
+        if self.scenario == "card-label-offscreen":
+            title.update(bounds="[683,2289][984,2340]", **{"visible-to-user": "false"})
+        if self.scenario == "card-preview-over-label":
+            title.update(bounds="[900,1200][1010,1260]")
+        add(holder if self.scenario == "card-label-outside" else nameplate, title)
+        if self.scenario == "two-cards":
+            twin = add(container, {"class": "androidx.cardview.widget.CardView", "resource-id": "com.android.documentsui:id/item_root",
+                                   "clickable": "true", "bounds": "[64,3454][529,4055]"})
+            add(twin, {"class": "android.widget.TextView", "resource-id": "android:id/title", "text": name, "bounds": "[196,1666][497,1717]"})
 
     def provider_load(self, relative):
         """The provider's own load(): bind a complete namespace and write its pin once."""
@@ -1160,6 +1195,57 @@ class DocumentsControls(unittest.TestCase):
             with self.assertRaisesRegex(documents.Refusal, "documentsui_case_budget_exceeded:budget"):
                 documents.picker_document(evidence, "budget", caller=caller, deadline=documents.time.monotonic() + 5)
         self.assertTrue(1 < len(calls) < 12)
+
+    def test_grid_card_with_offscreen_bounds_is_selected_through_its_visible_title(self):
+        self.host.args.action = "documents"
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        self.assertEqual(self.host.preview_taps, [])  # The preview icon is never tapped.
+        records = [json.loads(path.read_bytes()) for path in sorted((self.root / "output").glob("*-click-target.json"))]
+        cards = [item for item in records if item["target_resource_id"] == "com.android.documentsui:id/item_root"]
+        self.assertTrue(cards)
+        self.assertTrue(all((item["tapped"], item["target_bounds"], item["tapped_bounds"]) ==
+                            ("label", "[551,3454][1016,4055]", "[683,1666][984,1717]") for item in cards))
+        self.assertTrue(all(item["tapped"] == "target" for item in records if item not in cards))
+
+    def test_grid_card_fallback_refuses_unusable_shapes_on_the_route(self):
+        for scenario, reason in (("card-label-offscreen", "ui_target_bounds_unusable"),
+                                 ("card-preview-over-label", "ui_tap_point_ambiguous"),
+                                 ("two-cards", "unique_native_documents_label_missing"),
+                                 ("card-label-outside", "unique_native_documents_label_missing")):
+            with self.subTest(scenario=scenario):
+                host = FakeHost(self.root / scenario)
+                host.scenario, host.args.action = scenario, "documents"
+                with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+                    with self.assertRaisesRegex(documents.Refusal, reason):
+                        host.documents_action(host.args)
+                self.assertEqual(host.preview_taps, [])
+                self.assertFalse([item for item in host.mutations if item[0] == "tap" and item[1] > 1000])
+
+    def test_label_tap_requires_a_visible_descendant_of_the_unique_target(self):
+        def tree(title_parent="card", title_bounds="[683,1666][984,1717]", visible="true", card_visible="true"):
+            root = ET.Element("hierarchy")
+            def add(parent, **attributes):
+                values = {"package": "com.android.documentsui", "text": "", "clickable": "false", "enabled": "true",
+                          "visible-to-user": "true", "observer-display-width": "1080", "observer-display-height": "2400"}
+                values.update(attributes)
+                return ET.SubElement(parent, "node", values)
+            card = add(root, clickable="true", bounds="[551,3454][1016,4055]", **{"visible-to-user": card_visible})
+            other = add(root, clickable="true", bounds="[0,0][100,100]")
+            add(card, clickable="true", bounds="[890,1180][1016,1306]")
+            add(card if title_parent == "card" else other, text="name", bounds=title_bounds, **{"visible-to-user": visible})
+            return root, card, other
+        document, card, _ = tree()
+        self.assertEqual(documents.label_tap(document, "name", card).get("bounds"), "[683,1666][984,1717]")
+        self.assertFalse(documents.on_display(card))
+        refused = {"not-descendant": (tree(title_parent="other"), lambda value: value[1]),
+                   "label-offscreen": (tree(title_bounds="[683,2389][984,2440]"), lambda value: value[1]),
+                   "label-hidden": (tree(visible="false"), lambda value: value[1]),
+                   "target-hidden": (tree(card_visible="false"), lambda value: value[1]),
+                   "preview-under-point": (tree(title_bounds="[900,1200][1010,1260]"), lambda value: value[1])}
+        for name, (value, target) in refused.items():
+            with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "ui_target_bounds_unusable|ui_tap_point_ambiguous"):
+                documents.label_tap(value[0], "name", target(value))
 
     def test_harness_command_failure_keeps_head_and_tail(self):
         command = load_harness()["command"]

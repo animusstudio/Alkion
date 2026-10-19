@@ -563,10 +563,55 @@ def click_targets(document, label):
     return targets
 
 
+def node_box(node):
+    match = re.fullmatch(r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]", node.get("bounds", ""))
+    return tuple(map(int, match.groups())) if match else None
+
+
+def on_display(node):
+    """Visible, valid bounds fully inside the attested display (the observer annotates each node)."""
+    box = node_box(node)
+    def size(key):
+        value = node.get(key, "")
+        return int(value) if value.isdigit() else 0
+    width, height = size("observer-display-width"), size("observer-display-height")
+    return (box is not None and node.get("visible-to-user") == "true" and
+            box[2] > box[0] >= 0 and box[3] > box[1] >= 0 and box[2] <= width and box[3] <= height)
+
+
+def label_tap(document, label, target):
+    """The visible label inside the unique target, when the target's own bounds are unusable.
+
+    A DocumentsUI grid card can report accessibility bounds outside the display
+    while its title is on screen; a tap on the title is routed to the card. The
+    tap point must hit no other clickable node, such as the card's preview icon.
+    """
+    parents = {child: parent for parent in document.iter() for child in parent}
+    def inside_target(node):
+        while node is not None and node is not target:
+            node = parents.get(node)
+        return node is target
+    labelled = [node for node in nodes(document, label) if node is not target and inside_target(node)]
+    require(len(labelled) == 1 and on_display(labelled[0]) and target.get("enabled") == "true" and
+            target.get("visible-to-user") == "true" and labelled[0].get("enabled") == "true",
+            "ui_target_bounds_unusable:" + label)
+    x1, y1, x2, y2 = node_box(labelled[0])
+    x, y = (x1 + x2) // 2, (y1 + y2) // 2
+    others = [node for node in document.iter("node") if node is not target and node.get("clickable") == "true" and
+              node_box(node) and node_box(node)[0] <= x < node_box(node)[2] and node_box(node)[1] <= y < node_box(node)[3]]
+    require(not others, "ui_tap_point_ambiguous:" + label)
+    return labelled[0]
+
+
 def click_label(evidence, document, label):
     choices = click_targets(document, label)
     require(len(choices) == 1, "unique_native_documents_label_missing:" + label)
-    evidence.host.click_node(evidence.prepared.args, choices[0])
+    target = choices[0]
+    tapped = target if on_display(target) else label_tap(document, label, target)
+    evidence.keep("click-target.json", {"label": label, "target_bounds": target.get("bounds"),
+        "target_resource_id": target.get("resource-id"), "tapped": "target" if tapped is target else "label",
+        "tapped_bounds": tapped.get("bounds")})
+    evidence.host.click_node(evidence.prepared.args, tapped)
 
 
 def foreground(evidence, package, name):
