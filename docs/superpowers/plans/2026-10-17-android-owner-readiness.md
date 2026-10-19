@@ -33,7 +33,7 @@ Linux hard links, directory flush/readback and published-final preservation.
 Focused filesystem and backup-checkpoint tests cover collision, concurrent
 publication and consumed-temporary cleanup. Update the backup/export guides,
 this specification/plan and acceptance record. Host Documents/CAP proof writers
-need a separately reviewed atomic publisher before another campaign; this
+use the separately reviewed host publisher recorded below; this
 product correction grants no host-helper, provider or A5 ownership. Compile and
 host checks establish no Android runtime PASS; schedule fresh exact-source
 native publication and downstream document/restore proof after source review.
@@ -578,6 +578,29 @@ preservation/logging oracles only; native permission, alarm and UI proof is unru
 T5 capability host-route ownership additionally covers new
 `app/tool/android_synthetic_capabilities{,_self_test}.py`; keep this isolated
 module separate from later serialized Make/harness wiring and device execution.
+
+T5 host publisher ownership (2026-10-19): new `app/tool/android_synthetic_publish.c`
+(the reviewed test-only CLI, byte-identical), `app/tool/android_synthetic_publish{,_self_test}.py`,
+plus `app/tool/android_synthetic_documents{,_self_test}.py`,
+`app/tool/android_synthetic_capabilities{,_self_test}.py`, `app/tool/android_synthetic.sh`,
+`app/Makefile` and this specification/plan. The receiving-restore route inherits the
+documents writer unchanged; its Make forwarding and any restore consumer adjustment
+need a separate serialized handoff, and until then that route refuses without an
+explicit publisher build. A literal `android-synthetic-publisher` target builds the
+CLI from committed source; run it, and compare the artifact with the reviewed
+feasibility artifact, only at the final common-source campaign revision. Campaign
+routes take only the literal `ALKION_PUBLISHER_BUILD` receipt and validate it after
+read-only preflight and before any device mutation; its source commit must equal
+the clean HEAD. Capability owned reads and input writes move from `exec-out`, which
+neither forwards stdin nor carries the remote status, to binary `shell -T` with
+strict status; its original 600-second budgets, ledger and provenance guards are
+unchanged, a stricter-only reservation precedes input staging, and no build or
+bootstrap runs inside them. No product, provider, Dart, native or CMake edit, and
+no runtime/source allowlist widening. Checks: publisher host controls, one complete
+Documents and one complete capability fake facade, the unchanged receiving-restore
+suite and the affected Make-boundary controls; host-only, no Android PASS. Fresh
+common-source driver/A2/lifecycle/Documents and a fresh matching receiver precede
+native publication proof.
 
 Ordinary-kill harness fix, base `7e21216`: independent full-lane source review PASS.
 `make -C app android-synthetic-self-test` passed the retained 108 controls and
