@@ -291,6 +291,9 @@ class FakeHost:
                     peer: {"before": "f" * 64, "after": "f" * 64} for peer in documents.VARIANTS.values() if peer != package})
                 self.installed[package] = finished
                 self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/driver-report.json"), driver["driver"][flavor])
+                # The real driver also leaves a UTF-8 directory and SQLite sidecars in its tree.
+                self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/directory-\u00e8/sentinel"), b"sentinel")
+                self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/coherent.sqlite-wal"), b"wal bytes")
             else:
                 updates["installed"][package] = driver["installed"][package]
                 lifecycle["installed"][package] = driver["installed"][package]

@@ -365,8 +365,8 @@ class Evidence:
         exclusive(path, data if isinstance(data, bytes) else encoded(data))
         return path
 
-    def read(self, package, path, bound, name, *, optional=False):
-        regular_relative(path)
+    def read(self, package, path, bound, name, *, optional=False, validator=None):
+        (validator or regular_relative)(path)
         require(type(bound) is int and 0 < bound <= LIMIT, "documents_read_bound_invalid")
         result = remote(self.host, self.prepared.args, package, NO_LINKS +
                         'test -e "$1" || exit 3; test -f "$1" || exit 4; '

@@ -627,6 +627,15 @@ def create_directory(evidence, package, path):
     require(documents.quiet(result), "restore_fresh_directory_refused")
 
 
+def tree_relative(root, path):
+    """Inventory paths under root: UTF-8 names allowed, never control characters or escapes."""
+    parts = path.split("/") if isinstance(path, str) else []
+    require(isinstance(path, str) and path.startswith(root + "/") and len(path.encode()) <= 512 and
+            all(part not in ("", ".", "..") and part.isprintable() and "\\" not in part for part in parts),
+            "restore_tree_path_invalid")
+    return path
+
+
 def tree_pin(evidence, package, root):
     documents.regular_relative(root)
     result = documents.remote(evidence.host, evidence.prepared.args, package, documents.NO_LINKS +
@@ -638,19 +647,24 @@ def tree_pin(evidence, package, root):
     if result.returncode == 3 and not result.stdout and not result.stderr:
         return None
     require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 65536, "restore_tree_inventory_failed")
-    files = result.stdout.decode().splitlines()
+    lines = result.stdout.split(b"\n")
+    require(lines[-1] == b"", "restore_tree_inventory_failed")
+    try:
+        files = [line.decode("utf-8") for line in lines[:-1]]
+    except UnicodeDecodeError as error:
+        raise Refusal("restore_tree_path_invalid") from error
     require(len(files) <= 512 and len(set(files)) == len(files), "restore_tree_inventory_bound")
     pins = {}
     for path in sorted(files):
-        documents.regular_relative(path)
         require(path.startswith(root + "/"), "restore_tree_path_escaped")
+        tree_relative(root, path)
         kind = documents.remote(evidence.host, evidence.prepared.args, package, documents.NO_LINKS +
                                 'if test -d "$1"; then printf directory; elif test -f "$1"; then printf file; else exit 4; fi', path)
         evidence.keep("tree-kind.json", {"path": path, "code": kind.returncode,
                                         "stdout": kind.stdout.decode(errors="replace"), "stderr": kind.stderr.decode(errors="replace")})
         require(kind.returncode == 0 and not kind.stderr and kind.stdout in (b"directory", b"file"), "restore_tree_type_invalid")
         pins[path[len(root) + 1:]] = "directory" if kind.stdout == b"directory" else digest(
-            evidence.read(package, path, LIMIT, "retained-tree-file"))
+            evidence.read(package, path, LIMIT, "retained-tree-file", validator=lambda value: tree_relative(root, value)))
     return pins
 
 

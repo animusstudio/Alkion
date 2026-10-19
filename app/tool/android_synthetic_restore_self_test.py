@@ -784,6 +784,8 @@ print("fake compiler only")
         self.assertEqual(state["restore_phase"], "PASS")
         self.assertEqual([item for item in self.host.mutations if item[0] == "unfreeze"], [("unfreeze", "501")])
         self.assertEqual(state["provider_unfreeze"]["pid"], 501)
+        retained = [json.loads(path.read_bytes()) for path in prepared.output.glob("*tree-kind.json")]
+        self.assertIn("files/android-proof/" + saf.RUN + "/directory-\u00e8/sentinel", {item["path"] for item in retained})
         self.assertEqual(state["overall"], "IN_PROGRESS")
         self.assertEqual((state["installed_floor"], state["allocation_floor"]), (37, 80))
         bindings = json.loads(next(prepared.output.glob("*-candidate-ledger-bindings.json")).read_bytes())
@@ -1210,6 +1212,29 @@ print("fake compiler only")
         self.assertEqual(caught.exception.restore_timeout_receipt["phase"], "prepare")
         self.assertFalse(Path(self.host.args.output).exists())
         self.assertFalse(self.host.mutations)
+
+    def test_tree_paths_accept_utf8_names_but_refuse_controls_and_escapes(self):
+        root = "files/android-proof/" + saf.RUN
+        for name in ("directory-\u00e8/sentinel", "coherent.sqlite-wal", "\u65e5\u672c/\u8a9e"):
+            self.assertEqual(restore.tree_relative(root, root + "/" + name), root + "/" + name)
+        for name in ("bad\nname", "tab\tname", "nul\x00name", "c1\x85name", "../escape", "a/./b", "a//b", "back\\slash",
+                     "x" * 600):
+            with self.subTest(name=repr(name)), self.assertRaisesRegex(restore.Refusal, "restore_tree_path_invalid"):
+                restore.tree_relative(root, root + "/" + name)
+        with self.assertRaisesRegex(restore.Refusal, "restore_tree_path_invalid"):
+            restore.tree_relative(root, "files/elsewhere/file")
+        prepared = self.prepare()
+        prepared.output.mkdir(mode=0o700)
+        evidence = restore.Evidence(self.host, prepared)
+        package = documents.PACKAGES[1]
+        pins = restore.tree_pin(evidence, package, root)
+        self.assertEqual(pins["directory-\u00e8"], "directory")
+        self.assertEqual(pins["directory-\u00e8/sentinel"], documents.digest(b"sentinel"))
+        (self.host.package_root(package) / root / "ctl\x01name").write_bytes(b"x")
+        with self.assertRaisesRegex(restore.Refusal, "restore_tree_path_invalid"):
+            restore.tree_pin(evidence, package, root)
+        with self.assertRaisesRegex(documents.Refusal, "unrecognized_owned_relative_path"):
+            evidence.read(package, root + "/directory-\u00e8/sentinel", 64, "strict-default")
 
     def test_exclusive_real_files_refuse_replay_and_link(self):
         prepared = self.prepare()
