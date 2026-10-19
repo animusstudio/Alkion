@@ -233,13 +233,23 @@ def remote(host, args, package, program, *arguments, data=None):
                         binary=True, input=data, check=False, timeout=60)
 
 
+# A run-as refusal never runs the program. Programs that print nothing on
+# success must therefore also have empty stdout, and printed content beginning
+# with run-as's own diagnostic prefix is refused rather than parsed.
+RUN_AS_DIAGNOSTIC = b"run-as: "
+
+
+def quiet(result):
+    return result.returncode == 0 and not result.stdout and not result.stderr
+
+
 NO_LINKS = 'p=""; oldIFS="$IFS"; IFS=/; for part in $1; do p="${p:+$p/}$part"; test ! -L "$p" || exit 4; done; IFS="$oldIFS"; '
 
 
 def absent(host, args, package, path):
     regular_relative(path)
     result = remote(host, args, package, NO_LINKS + 'test ! -e "$1" && test ! -L "$1"', path)
-    require(result.returncode == 0 and not result.stderr, "documents_owned_path_already_present")
+    require(quiet(result), "documents_owned_path_already_present")
 
 
 class Evidence:
@@ -265,6 +275,7 @@ class Evidence:
                         'test "$(wc -c < "$1")" -le "$2" || exit 5; cat "$1"', path, bound)
         self.keep(name + ".stdout", result.stdout)
         self.keep(name + ".stderr", result.stderr)
+        require(not result.stdout.startswith(RUN_AS_DIAGNOSTIC), "documents_run_as_diagnostic:" + path)
         require(len(result.stdout) <= bound, "documents_remote_read_exceeded_bound")
         if optional and result.returncode == 3 and not result.stdout and not result.stderr:
             return None
@@ -292,7 +303,7 @@ class Evidence:
                         'umask 077; set -C; cat > "$1"', partial, data=data)
         self.keep(name + ".transport", {"code": result.returncode, "stderr": result.stderr.decode(errors="replace"),
                                        "partial_relative": partial, "final_relative": path})
-        require(result.returncode == 0 and not result.stderr, "documents_exclusive_write_failed")
+        require(quiet(result), "documents_exclusive_write_failed")
         require(self.read(package, partial, max(1, len(data)), name + "-closed-partial") == data,
                 "documents_closed_partial_changed")
         # Same-directory kernel no-replace rename of the closed partial. Success
@@ -386,7 +397,7 @@ def seed_provider(evidence, flavor, phase, *, first):
                    'test "$(stat -c %u "$p")" = "$(id -u)" || exit 4; done; '
                    'test ! -e "$2" && test ! -L "$2" || exit 4; mkdir -m 700 "$1"', stage, root)
     evidence.keep(flavor + "-namespace-stage", {"code": setup.returncode, "stderr": setup.stderr.decode(errors="replace")})
-    require(setup.returncode == 0 and not setup.stderr, "provider_namespace_not_fresh_owned")
+    require(quiet(setup), "provider_namespace_not_fresh_owned")
     evidence.write(PROVIDER, stage + "/control.json", encoded(expected), flavor + "-control.json")
     evidence.write(PROVIDER, stage + "/input.alkionbackup", data, flavor + "-provider-input")
     require(evidence.read(PROVIDER, stage + "/control.json", 4096, flavor + "-control-readback") == encoded(expected) and
@@ -400,7 +411,7 @@ def seed_provider(evidence, flavor, phase, *, first):
                      'name="${p##*/}"; case "$name" in *-dev|*-supported) n=$((n+1));; *) exit 4;; esac; done; '
                      'test "$n" -lt 16 || exit 6; mv -n "$1" "$2" && test ! -e "$1" && test -d "$2"', stage, root)
     evidence.keep(flavor + "-namespace-publish", {"code": publish.returncode, "stderr": publish.stderr.decode(errors="replace")})
-    require(publish.returncode == 0 and not publish.stderr, "provider_namespace_publication_refused")
+    require(quiet(publish), "provider_namespace_publication_refused")
     if first:
         evidence.host.adb(evidence.prepared.args, "shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
         evidence.host.adb(evidence.prepared.args, "shell", "pm", "enable", "--user", "0", COMPONENT)
@@ -590,6 +601,7 @@ def collect_outputs(evidence, flavor):
                     'test -e "$1" || exit 3; test -d "$1" || exit 4; ls -1A "$1"', root)
     evidence.keep(flavor + "-outputs-list.stdout", result.stdout)
     evidence.keep(flavor + "-outputs-list.stderr", result.stderr)
+    require(not result.stdout.startswith(RUN_AS_DIAGNOSTIC), "documents_run_as_diagnostic:" + root)
     if result.returncode == 3 and not result.stdout and not result.stderr:
         return {}
     require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096, "provider_outputs_listing_invalid")

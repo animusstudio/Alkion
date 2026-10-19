@@ -616,7 +616,7 @@ class Evidence(documents.Evidence):
                                   'test -f "$1" && test ! -L "$2" && '
                                   '(test ! -e "$2" || test -f "$2") || exit 4; mv -T "$1" "$2"', partial, path)
         self.keep("pointer-publication.json", {"code": result.returncode, "stderr": result.stderr.decode(errors="replace")})
-        require(result.returncode == 0 and not result.stderr, "restore_pointer_publication_failed")
+        require(documents.quiet(result), "restore_pointer_publication_failed")
         require(self.read(package, path, 1024, "pointer-readback") == data, "restore_pointer_changed")
 
 
@@ -630,7 +630,7 @@ def create_directory(evidence, package, path):
                               'umask 077; test ! -e "$1" && test ! -L "$1" || exit 4; mkdir -p -m 700 "$1"', path)
     evidence.keep("directory-publication.json", {"path": path, "code": result.returncode,
                                                 "stderr": result.stderr.decode(errors="replace")})
-    require(result.returncode == 0 and not result.stderr, "restore_fresh_directory_refused")
+    require(documents.quiet(result), "restore_fresh_directory_refused")
 
 
 def tree_pin(evidence, package, root):
@@ -640,6 +640,7 @@ def tree_pin(evidence, package, root):
                               'test -z "$(find "$1" -type l -print)" || exit 4; find "$1" -mindepth 1 -print', root)
     evidence.keep("tree-list.stdout", result.stdout)
     evidence.keep("tree-list.stderr", result.stderr)
+    require(not result.stdout.startswith(documents.RUN_AS_DIAGNOSTIC), "restore_run_as_diagnostic:" + root)
     if result.returncode == 3 and not result.stdout and not result.stderr:
         return None
     require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 65536, "restore_tree_inventory_failed")
@@ -720,7 +721,7 @@ def seed_provider(evidence, flavor, *, first):
         'test "$n" -lt 16 || exit 6; mv -n "$1" "$2" && test ! -e "$1" && test -d "$2"', stage, root)
     evidence.keep("receiver-provider-publication.json", {"code": published.returncode,
         "stderr": published.stderr.decode(errors="replace"), "stage_relative": stage, "final_relative": root})
-    require(published.returncode == 0 and not published.stderr, "receiver_provider_publication_refused")
+    require(documents.quiet(published), "receiver_provider_publication_refused")
     if first:
         evidence.native("shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
         evidence.native("shell", "pm", "enable", "--user", "0", documents.COMPONENT)

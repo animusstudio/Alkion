@@ -145,6 +145,7 @@ class Host:
     def __init__(self, root):
         self.root = root; self.calls = []; self.mutations = []; self.unknown_after_grant = False
         self.grant_becomes_unknown = True; self.fail_build = False; self.publish_collision = False
+        self.run_as_failures = set()
         self.APP = root / "checkout/app"
         (self.APP / "integration_test").mkdir(parents=True)
         producer = Path(__file__).parent.parent / capability.HELPER
@@ -324,6 +325,10 @@ class Host:
                 if remote[:1] == ["pidof"]: return response("", code=1)
                 if remote[:1] == ["run-as"]:
                     directory = self.package(remote[1]); program = remote[2:]
+                    if remote[1] in self.run_as_failures:
+                        # Pessimistic device model: exit 0 with the diagnostic on stdout.
+                        text = b"run-as: unknown package: " + remote[1].encode() + b"\n"
+                        return response(text if binary else text.decode(), b"" if binary else "", 0)
                     assert not any(re.search(r"(?:^|[;&|(\s])ln\s", word) for word in program), program
                     if self.runas.handles(program):
                         if self.publish_collision and program[2] == publish.PUBLISH:
@@ -937,6 +942,20 @@ class Controls(unittest.TestCase):
         exec_out = [call for call in calls if call[0].endswith("/adb") and call[3] == "exec-out"]
         self.assertTrue(all(call[4:] == ["screencap", "-p"] for call in exec_out), exec_out)
         self.assertTrue(any(call[3:5] == ["shell", "-T"] for call in calls))
+
+    def test_run_as_stdout_diagnostic_refuses_reads_stage_and_bootstrap(self):
+        prepared = capability.prepare(self.host, self.host.args); prepared.output.mkdir(mode=0o700)
+        evidence = capability.Evidence(self.host, prepared); package = capability.PACKAGES[1]
+        evidence.publisher.ensure(package)
+        self.host.run_as_failures = {package}
+        with self.assertRaisesRegex(capability.Refusal, "capability_run_as_diagnostic"):
+            evidence.read(package, "files/absent.json", optional=True)
+        with self.assertRaisesRegex(capability.Refusal, "capability_stage_root_refused"):
+            evidence.stage(package, "files/android-capability/" + RUN + "/denied/v87", {"prior-report.json": b"x"})
+        self.host.run_as_failures.add(capability.PACKAGES[2])
+        with self.assertRaisesRegex(publish.Refusal, "publisher_run_as_context_or_cache_invalid"):
+            evidence.publisher.ensure(capability.PACKAGES[2])
+        self.assertFalse((self.host.package(package) / "files/android-capability").exists())
 
     def test_stage_requires_bootstrapped_publisher_with_zero_commands(self):
         prepared = capability.prepare(self.host, self.host.args); prepared.output.mkdir(mode=0o700)

@@ -178,9 +178,11 @@ class FakeRunAs:
         uid = self.uid_override.get(package, uid)
         self.programs.append((package, publish.PROGRAMS.index(program), list(values)))
         directory = Path(directory)
-        # Fixture: Android creates every app data directory with its cache root.
+        # Fixture: installd creates every app cache root setgid 02771, so the
+        # host kernel makes each new directory inside it inherit S_ISGID.
         if not (directory / "cache").exists() and not (directory / "cache").is_symlink():
             (directory / "cache").mkdir(mode=0o771)
+            (directory / "cache").chmod(0o2771)
         if program == publish.PREFLIGHT:
             return self.preflight(package, uid, directory, values)
         text = program
@@ -549,9 +551,64 @@ class PublisherControls(unittest.TestCase):
         self.assertTrue(re.fullmatch(r"cache/alkion-publish-[a-f0-9]{32}", namespace))
         helper = self.base / namespace / "publisher"
         self.assertEqual((helper.read_bytes(), stat.S_IMODE(helper.stat().st_mode)), (self.artifact.data, 0o700))
-        self.assertEqual(stat.S_IMODE((self.base / namespace).stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE((self.base / namespace).stat().st_mode), 0o2700)  # Inherited from the setgid cache.
         bound = self.record(PACKAGE + ".bound.json")
         self.assertEqual(bound["preflight"][1], "/data/user/0/" + PACKAGE)
+
+    def test_namespace_mode_admits_only_inherited_setgid(self):
+        cases = {"700": (0o771, None, True), "2700": (0o2771, None, True), "1700": (0o2771, 0o1700, False),
+                 "4700": (0o2771, 0o4700, False), "2710": (0o2771, 0o2710, False), "2750": (0o2771, 0o2750, False),
+                 "2701": (0o2771, 0o2701, False), "6700": (0o2771, 0o6700, False)}
+        original = self.host.runas.run
+        for name, (cache_mode, namespace_mode, admitted) in cases.items():
+            with self.subTest(mode=name):
+                shutil.rmtree(self.base / "cache", ignore_errors=True)
+                (self.base / "cache").mkdir(mode=0o700)
+                (self.base / "cache").chmod(cache_mode)
+                session = publish.Session(self.host, self.host.args, self.artifact, RUN, self.keep)
+                def changed(package, uid, directory, rest, data):
+                    result = original(package, uid, directory, rest, data)
+                    if rest[2] == publish.BOOTSTRAP and namespace_mode is not None:
+                        next((Path(directory) / "cache").iterdir()).chmod(namespace_mode)
+                    return result
+                with patch.object(self.host.runas, "run", changed):
+                    if admitted:
+                        self.assertEqual(session.ensure(PACKAGE), 10001)
+                        namespace = self.base / session.packages[PACKAGE]["namespace"]
+                        self.assertEqual(format(stat.S_IMODE(namespace.stat().st_mode), "o"), name)
+                        self.assertEqual(stat.S_IMODE((namespace / "publisher").stat().st_mode), 0o700)
+                    else:
+                        with self.assertRaisesRegex(publish.Refusal, "publisher_helper_readback_invalid"):
+                            session.ensure(PACKAGE)
+                        self.assertFalse(session.bound(PACKAGE))
+                        with self.assertRaisesRegex(publish.Refusal, "publisher_bootstrap_failed_not_repeatable"):
+                            session.ensure(PACKAGE)
+
+    def test_foreign_owned_namespace_readback_refuses(self):
+        original = self.host.runas.run
+        def foreign(package, uid, directory, rest, data):
+            result = original(package, uid, directory, rest, data)
+            if rest[2] == publish.BOOTSTRAP:
+                self.host.runas.foreign_inode = next((Path(directory) / "cache").iterdir()).stat().st_ino
+            return result
+        with patch.object(self.host.runas, "run", foreign):
+            with self.assertRaisesRegex(publish.Refusal, "publisher_helper_readback_invalid"):
+                self.session.ensure(PACKAGE)
+        rows = sorted(self.output.glob("*-readback.stdout"))[-1].read_bytes().decode().splitlines()
+        self.assertEqual(rows[0], "10999 2700")
+        self.assertFalse(self.session.bound(PACKAGE))
+
+    def test_setgid_namespace_publishes_and_helper_file_never_inherits_setgid(self):
+        self.bootstrapped()
+        namespace = self.base / self.session.packages[PACKAGE]["namespace"]
+        self.assertTrue(namespace.stat().st_mode & stat.S_ISGID)
+        helper = namespace / "publisher"
+        self.assertEqual(stat.S_IMODE(helper.stat().st_mode), 0o700)  # The helper guard keeps exact 700.
+        source = self.stage("s.partial-1", b"payload")
+        self.assertEqual(self.publish_item(source, "files/proof/s", b"payload")["state"], "PUBLISHED")
+        helper.chmod(0o2700)
+        with self.assertRaisesRegex(publish.Refusal, "NOT_ATTEMPTED:guard_exit_75"):
+            self.publish_item(self.stage("t.partial-1", b"x"), "files/proof/t", b"x")
 
     def test_failed_bootstrap_is_refused_and_never_reissued(self):
         (self.base / "cache").mkdir(mode=0o771)
