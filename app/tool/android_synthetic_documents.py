@@ -23,6 +23,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shlex
 import shutil
+import subprocess
 import time
 import xml.etree.ElementTree as ET
 import zipfile
@@ -33,6 +34,12 @@ import android_synthetic_publish as publish
 PROVIDER = "dev.animusstudio.alkion.synthetic.documents"
 AUTHORITY = PROVIDER + ".provider"
 COMPONENT = PROVIDER + "/.SyntheticDocumentsProvider"
+PROVIDER_CLASS = PROVIDER + ".SyntheticDocumentsProvider"
+# PackageManagerShellCommand.runSetEnabledSetting prints the unflattened
+# ComponentName.toShortString() (full class) and the resulting state.
+PROVIDER_ENABLED = "Component {" + PROVIDER + "/" + PROVIDER_CLASS + "} new state: enabled\n"
+TEST_ONLY = "A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true"
+EVIDENCE_TEXT = 1024 * 1024
 PACKAGES = ("io.github.psychonaut0.reps", "dev.animusstudio.alkion.dev",
             "dev.animusstudio.alkion")
 VARIANTS = {"dev": PACKAGES[1], "supported": PACKAGES[2]}
@@ -243,6 +250,45 @@ def quiet(result):
     return result.returncode == 0 and not result.stdout and not result.stderr
 
 
+def bounded(value):
+    """Evidence text that keeps both the head and the tail of a long stream."""
+    text = value.decode(errors="replace") if isinstance(value, bytes) else value if isinstance(value, str) else ""
+    if len(text) <= EVIDENCE_TEXT:
+        return text
+    half = EVIDENCE_TEXT // 2
+    return text[:half] + "\n[... " + str(len(text) - 2 * half) + " characters omitted ...]\n" + text[-half:]
+
+
+def summary(value, limit=1000):
+    text = bounded(value).strip()
+    return text if len(text) <= limit else text[:600] + " [...] " + text[-(limit - 607):]
+
+
+def enabled_components(dump):
+    """Components listed under dumpsys package enabledComponents/disabledComponents blocks."""
+    blocks, current = {"enabled": [], "disabled": []}, None
+    for line in dump.splitlines():
+        stripped, indent = line.strip(), len(line) - len(line.lstrip())
+        if stripped in ("enabledComponents:", "disabledComponents:"):
+            current = (blocks[stripped[:-len("Components:")]], indent)
+        elif current and stripped and indent > current[1] and re.fullmatch(r"[A-Za-z0-9_.$]+", stripped):
+            current[0].append(stripped)
+        else:
+            current = None
+    return blocks
+
+
+def enable_provider(evidence):
+    """Shell enable of the test-only provider with retained raw output and a readback."""
+    result = evidence.native("shell", "pm", "enable", "--user", "0", COMPONENT, check=False)
+    require(result.returncode == 0 and result.stdout == PROVIDER_ENABLED and not result.stderr,
+            "provider_enable_refused:" + summary(result.stderr or result.stdout))
+    dump = evidence.native("shell", "dumpsys", "package", PROVIDER, check=False)
+    blocks = enabled_components(dump.stdout if dump.returncode == 0 and not dump.stderr.strip() else "")
+    require(blocks["enabled"].count(PROVIDER_CLASS) == 1 and PROVIDER_CLASS not in blocks["disabled"],
+            "provider_enable_not_observed")
+
+
 NO_LINKS = 'p=""; oldIFS="$IFS"; IFS=/; for part in $1; do p="${p:+$p/}$part"; test ! -L "$p" || exit 4; done; IFS="$oldIFS"; '
 
 
@@ -281,6 +327,23 @@ class Evidence:
             return None
         require(result.returncode == 0 and not result.stderr, "documents_owned_read_failed:" + path)
         return result.stdout
+
+    def native(self, *tail, check=True, **options):
+        """Serial-scoped adb with argv, status and bounded streams retained before any check."""
+        argv = list(map(str, tail))
+        try:
+            result = self.host.adb(self.prepared.args, *tail, check=False, **options)
+        except subprocess.TimeoutExpired as error:
+            self.keep("native-command.json", {"argv": argv, "code": None, "timeout_seconds": error.timeout,
+                                              "stdout": bounded(error.stdout), "stderr": bounded(error.stderr),
+                                              "completion": "UNKNOWN; no retry"})
+            raise
+        self.keep("native-command.json", {"argv": argv, "code": result.returncode, "stdout": bounded(result.stdout),
+                                          "stderr": bounded(result.stderr), "stdout_length": len(result.stdout),
+                                          "stderr_length": len(result.stderr)})
+        require(not check or result.returncode == 0,
+                "native_command_failed:" + " ".join(argv[:4]) + ":" + summary(result.stderr or result.stdout))
+        return result
 
     def bind_publisher(self, package, uid=None):
         """Bootstrap once after the package's qualified install; later calls are free."""
@@ -413,8 +476,8 @@ def seed_provider(evidence, flavor, phase, *, first):
     evidence.keep(flavor + "-namespace-publish", {"code": publish.returncode, "stderr": publish.stderr.decode(errors="replace")})
     require(quiet(publish), "provider_namespace_publication_refused")
     if first:
-        evidence.host.adb(evidence.prepared.args, "shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
-        evidence.host.adb(evidence.prepared.args, "shell", "pm", "enable", "--user", "0", COMPONENT)
+        evidence.native("shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
+        enable_provider(evidence)
     ack(evidence, flavor, phase, "seeded", provider_input_sha256=expected["sha256"])
     return expected
 
@@ -711,6 +774,9 @@ def validate_packaged_provider(tree):
     require(len(namespaces) == len(roots) == len(providers) == len(applications) == 1 and
             roots[0]["name"] == "manifest" and applications[0]["parent"] is roots[0] and
             providers[0]["parent"] is applications[0], reason)
+    # Only a test-only package lets the shell enable the declared-disabled component.
+    require([line for line in applications[0]["attrs"] if ":testOnly(" in line] == [TEST_ONLY],
+            "packaged_provider_not_test_only")
     package = 'A: package="' + PROVIDER + '" (Raw: "' + PROVIDER + '")'
     require([line for line in roots[0]["attrs"] if line.startswith("A: package=")] == [package], reason)
     prefix = "A: http://schemas.android.com/apk/res/android:"
@@ -732,6 +798,9 @@ def build_provider(host, args, output):
     manifest = ET.parse(fixture / "AndroidManifest.xml").getroot()
     android = "{http://schemas.android.com/apk/res/android}"
     providers = manifest.findall("application/provider")
+    applications = manifest.findall("application")
+    require(len(applications) == 1 and applications[0].get(android + "testOnly") == "true",
+            "provider_source_manifest_not_test_only")
     require(manifest.get("package") == PROVIDER and not manifest.findall("uses-permission") and len(providers) == 1 and
             providers[0].get(android + "enabled") == "false" and providers[0].get(android + "name") == ".SyntheticDocumentsProvider" and
             providers[0].get(android + "authorities") == AUTHORITY and
@@ -843,7 +912,7 @@ def run(host, prepared):
         originals = host.driver_neighbor_bytes(args, receipt, prepared.driver)
         baseline = {package: host.closed_profile_fingerprint(args, package, prepared.lifecycle["lifecycle"][package]["finish"])
                     for package in VARIANTS.values()}
-        host.adb(args, "install", provider_apk)
+        evidence.native("install", "-t", provider_apk)
         provider_meta = host.package_metadata(args, PROVIDER)
         require(provider_meta["version_code"] == 1 and type(provider_meta.get("uid")) is int and
                 10000 <= provider_meta["uid"] < 100000 and provider_meta["uid"] not in

@@ -55,6 +55,7 @@ PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/androi
       E: application (line=4)
         A: http://schemas.android.com/apk/res/android:label(0x01010001)="Alkion Synthetic Documents" (Raw: "Alkion Synthetic Documents")
         A: http://schemas.android.com/apk/res/android:debuggable(0x0101000f)=true
+        A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true
         A: http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=false
         A: http://schemas.android.com/apk/res/android:usesCleartextTraffic(0x010104ec)=false
           E: provider (line=7)
@@ -68,6 +69,14 @@ PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/androi
                   E: action (line=13)
                     A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.content.action.DOCUMENTS_PROVIDER" (Raw: "android.content.action.DOCUMENTS_PROVIDER")
 """
+
+
+TEST_ONLY = "A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true"
+
+
+def publisher_safe_test_only_line():
+    return "        " + TEST_ONLY + "\n"
+PROVIDER_CLASS = "dev.animusstudio.alkion.synthetic.documents.SyntheticDocumentsProvider"
 
 
 def result(stdout="", stderr="", code=0):
@@ -159,6 +168,12 @@ class FakeHost:
         self.ack_objects = []
         self.delayed_ack_checks = []
         self.run_as_failures = set()
+        # Device package manager state for the synthetic provider.
+        self.provider_tree = PACKAGED_PROVIDER_TREE
+        self.provider_test_only = False
+        self.provider_enabled = False
+        self.provider_dump_hides_enabled = False
+        self.provider_enable_state = "enabled"
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
             receipt=str(receipt_path), output=str(root / "output"), driver_run=str(root / "driver/run.json"),
@@ -341,8 +356,14 @@ class FakeHost:
                 stdout = value.stdout.encode() if isinstance(value.stdout, str) else value.stdout
                 stderr = value.stderr.encode() if isinstance(value.stderr, str) else value.stderr
                 value = result(stdout + stderr, b"", 0)
+            elif tail[0] == "install" and self.refuses_test_only_install(tail):
+                # InstallPackageHelper refuses a test-only APK without INSTALL_ALLOW_TEST.
+                value = result("Performing Streamed Install\n", "adb: failed to install " + tail[-1] +
+                               ": Failure [INSTALL_FAILED_TEST_ONLY: Failed to install test-only apk. Did you forget to add -t?]\n", 1)
             elif tail[0] == "install":
                 facts = self.fake_apk_facts(None, Path(tail[-1]), self.facts_for_file(Path(tail[-1]))["package"])
+                if facts["package"] == documents.PROVIDER:
+                    self.provider_test_only = TEST_ONLY in self.provider_tree and "-t" in tail[1:-1]
                 self.installed[facts["package"]] = facts
                 self.metadata.setdefault(facts["package"], {"uid": 10003})["version_code"] = facts["version_code"]
                 self.mutations.append(("install", facts["package"])); value = result("Success\n")
@@ -359,6 +380,10 @@ class FakeHost:
                                value.stderr if isinstance(value.stderr, bytes) else value.stderr.encode(), value.returncode)
             return value
         raise AssertionError("Unexpected command: " + repr(argv))
+
+    def refuses_test_only_install(self, tail):
+        package = self.facts_for_file(Path(tail[-1]))["package"]
+        return package == documents.PROVIDER and TEST_ONLY in self.provider_tree and "-t" not in tail[1:-1]
 
     def facts_for_file(self, path):
         if str(path) not in self.facts:
@@ -379,7 +404,11 @@ class FakeHost:
                 return result("package:" + package + " uid:" + str(1000 if package == "com.android.settings" else 10120) + "\n")
             return result("package:" + package + " uid:" + str(self.metadata[package]["uid"]) + "\n")
         if argv[:2] == ["dumpsys", "package"]:
-            return result("versionCode=" + str(self.metadata[argv[2]]["version_code"]) + "\n")
+            dump = "versionCode=" + str(self.metadata[argv[2]]["version_code"]) + "\n"
+            if argv[2] == documents.PROVIDER and self.provider_enabled and not self.provider_dump_hides_enabled:
+                dump += ("    User 0: installed=true hidden=false stopped=false notLaunched=false enabled=0\n"
+                         "      enabledComponents:\n        " + PROVIDER_CLASS + "\n")
+            return result(dump)
         if argv[:3] == ["dumpsys", "activity", "processes"]:
             package = argv[3]; uid = self.metadata[package]["uid"]; pid = self.pids[package]
             assert self.front == "com.android.launcher3"
@@ -390,8 +419,8 @@ class FakeHost:
                 "    cached=true empty=false\n")
         if argv[:2] == ["dumpsys", "activity"]:
             component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(self.front, "/.picker.PickActivity")
-            return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + component + " t1}\n"
-                          "  mCurrentFocus=Window{abc u0 " + self.front + component + "}\n")
+            focus = "  mCurrentFocus=Window{abc u0 " + self.front + component + "}\n"
+            return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + component + " t1}\n" + focus)
         if argv[:1] == ["sha256sum"]:
             package = argv[1].split("/")[-2]
             return result(self.installed[package]["apk_sha256"] + "  " + argv[1] + "\n")
@@ -415,9 +444,17 @@ class FakeHost:
             assert list((self.package_root(documents.PROVIDER) / "files/proof-runs").glob("*-dev/control.json"))
             self.mutations.append(("unstop", argv[-1])); return result()
         if argv[:2] == ["pm", "enable"]:
-            assert argv[-1] == documents.COMPONENT
+            assert argv == ["pm", "enable", "--user", "0", documents.COMPONENT]
+            if not self.provider_test_only:
+                # PackageManagerService.setEnabledSettings for the shell uid.
+                return result("", "\nException occurred while executing 'enable':\njava.lang.SecurityException: "
+                              "Shell cannot change component state for ComponentInfo{" + documents.PROVIDER + "/" +
+                              PROVIDER_CLASS + "} to 1\n\tat com.android.server.pm.PackageManagerService."
+                              "setEnabledSettings(PackageManagerService.java:3972)\n", 255)
+            self.provider_enabled = True
             self.pids[documents.PROVIDER] = 501
-            self.mutations.append(("enable", argv[-1])); return result()
+            self.mutations.append(("enable", argv[-1]))
+            return result("Component {" + documents.PROVIDER + "/" + PROVIDER_CLASS + "} new state: " + self.provider_enable_state + "\n")
         if argv[:2] == ["am", "instrument"]:
             assert argv[-1] == observer.COMPONENT and argv[argv.index("--user") + 1] == "0"
             arguments = {argv[index + 1]: argv[index + 2] for index, value in enumerate(argv) if value == "-e"}
@@ -750,6 +787,89 @@ class DocumentsControls(unittest.TestCase):
             self.assertNotEqual(tree, PACKAGED_PROVIDER_TREE, name)
             with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "packaged_provider_not_default_disabled"):
                 documents.validate_packaged_provider(tree)
+
+    def test_packaged_and_source_provider_must_be_test_only(self):
+        line = next(line for line in PACKAGED_PROVIDER_TREE.splitlines() if ":testOnly(" in line)
+        wrong = {"missing": PACKAGED_PROVIDER_TREE.replace(line + "\n", ""),
+                 "false": PACKAGED_PROVIDER_TREE.replace(line, line.replace("=true", "=false")),
+                 "duplicate": PACKAGED_PROVIDER_TREE.replace(line, line + "\n" + line),
+                 "provider-scoped": PACKAGED_PROVIDER_TREE.replace(line + "\n", "").replace(
+                     "          E: intent-filter", "  " + line + "\n              E: intent-filter")}
+        for name, tree in wrong.items():
+            with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "packaged_provider_not|provider_not_test_only"):
+                documents.validate_packaged_provider(tree)
+        manifest = self.host.APP / "tool/android_synthetic_documents/AndroidManifest.xml"
+        manifest.write_text(manifest.read_text().replace(' android:testOnly="true"', ""))
+        with self.assertRaisesRegex(documents.Refusal, "provider_source_manifest_not_test_only"):
+            documents.build_provider(self.host, self.host.args, self.root / "not-test-only")
+        self.assertFalse((self.root / "not-test-only").exists())
+
+    def test_provider_install_requires_test_flag_and_retains_refusal(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        with self.assertRaisesRegex(documents.Refusal, "native_command_failed:install.*INSTALL_FAILED_TEST_ONLY"):
+            evidence.native("install", apk)
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual((record["argv"], record["code"]), (["install", str(apk)], 1))
+        self.assertIn("Did you forget to add -t?", record["stderr"])
+        self.assertNotIn(documents.PROVIDER, self.host.installed)
+        evidence.native("install", "-t", apk)
+        self.assertTrue(self.host.provider_test_only)
+
+    def test_provider_enable_requires_test_only_exact_output_and_readback(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        self.host.provider_tree = PACKAGED_PROVIDER_TREE.replace(publisher_safe_test_only_line(), "")
+        evidence.native("install", apk)  # A non-test-only package installs without -t.
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:Exception occurred while executing 'enable':"):
+            documents.enable_provider(evidence)
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual(record["argv"], ["shell", "pm", "enable", "--user", "0", documents.COMPONENT])
+        self.assertEqual(record["code"], 255)
+        self.assertIn("java.lang.SecurityException: Shell cannot change component state for ComponentInfo{", record["stderr"])
+        self.assertFalse(self.host.provider_enabled)
+        self.host.provider_tree = PACKAGED_PROVIDER_TREE
+        evidence.native("install", "-t", apk)
+        for state in ("default", "disabled", "enabled extra"):
+            with self.subTest(state=state):
+                self.host.provider_enable_state = state
+                with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:Component"):
+                    documents.enable_provider(evidence)
+        self.host.provider_enable_state = "enabled"
+        self.host.provider_dump_hides_enabled = True
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_not_observed"):
+            documents.enable_provider(evidence)
+        self.host.provider_dump_hides_enabled = False
+        documents.enable_provider(evidence)
+        records = [json.loads(path.read_bytes()) for path in sorted(self.root.glob("output/*native-command.json"))]
+        self.assertEqual(records[-2]["stdout"], documents.PROVIDER_ENABLED)
+        self.assertEqual(records[-1]["argv"], ["shell", "dumpsys", "package", documents.PROVIDER])
+        self.assertEqual(documents.enabled_components(records[-1]["stdout"])["enabled"], [documents.PROVIDER_CLASS])
+        self.assertEqual(documents.PROVIDER_ENABLED, "Component {dev.animusstudio.alkion.synthetic.documents/"
+                         "dev.animusstudio.alkion.synthetic.documents.SyntheticDocumentsProvider} new state: enabled\n")
+
+    def test_enabled_component_parser_rejects_disabled_or_foreign_blocks(self):
+        cls = documents.PROVIDER_CLASS
+        self.assertEqual(documents.enabled_components("    User 0: installed=true\n      enabledComponents:\n        " + cls + "\n"),
+                         {"enabled": [cls], "disabled": []})
+        both = "      disabledComponents:\n        " + cls + "\n      enabledComponents:\n        " + cls + "\n"
+        self.assertEqual(documents.enabled_components(both)["disabled"], [cls])
+        self.assertEqual(documents.enabled_components("      enabledComponents:\n    " + cls + "\n")["enabled"], [])
+        self.assertEqual(documents.enabled_components("  enabled: " + cls + "\n"), {"enabled": [], "disabled": []})
+
+    def test_harness_command_failure_keeps_head_and_tail(self):
+        command = load_harness()["command"]
+        script = ("import sys; sys.stderr.write('Exception occurred while executing enable:\\n' + "
+                  "'\\tat frame\\n' * 400 + 'final cause line\\n'); sys.exit(255)")
+        with self.assertRaises(Exception) as caught:
+            command([sys.executable, "-c", script])
+        message = str(caught.exception)
+        self.assertIn("Exception occurred while executing enable:", message)
+        self.assertIn("final cause line", message)
+        self.assertIn("rc=255", message)
+        self.assertLess(len(message), 2400)
 
     def test_provider_build_rejects_packaged_flags_before_fact_audit_or_install(self):
         original = self.host.command

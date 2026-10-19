@@ -37,8 +37,13 @@ def command(argv, *, timeout=30, check=True, env=None, input=None, binary=False)
     result = subprocess.run([str(x) for x in argv], text=not binary, capture_output=True,
                             timeout=timeout, env=env, input=input)
     if check and result.returncode:
-        detail = result.stderr.decode(errors="replace") if binary else result.stderr
-        raise Refusal("command_failed: " + str(argv[0]) + ": " + detail.strip()[-400:])
+        # Keep both ends: an exception's first line and the stack tail both matter.
+        detail = (result.stderr.decode(errors="replace") if binary else result.stderr).strip()
+        if len(detail) > 1000:
+            detail = detail[:600] + " [...] " + detail[-400:]
+        words = " ".join(map(str, argv))
+        raise Refusal("command_failed: " + (words if len(words) <= 600 else words[:600] + " [...]") +
+                      ": rc=" + str(result.returncode) + ": " + detail)
     return result
 
 def temporary_path(value, *, must_exist=False):

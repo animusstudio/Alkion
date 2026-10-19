@@ -601,12 +601,6 @@ class Evidence(documents.Evidence):
         raw = self.read(package, path, bound, name, optional=optional)
         return None if raw is None else parse(raw)
 
-    def native(self, *tail, **options):
-        result = self.host.adb(self.prepared.args, *tail, **options)
-        self.keep("native-command.json", {"argv": list(map(str, tail)), "code": result.returncode,
-                                          "stdout": result.stdout, "stderr": result.stderr})
-        return result
-
     def pointer(self, package, path, data):
         # Every pointer value also has an exclusive numbered archive. Only the
         # fixed current.json name is replaced; its previous bytes are checked.
@@ -724,7 +718,7 @@ def seed_provider(evidence, flavor, *, first):
     require(documents.quiet(published), "receiver_provider_publication_refused")
     if first:
         evidence.native("shell", "cmd", "package", "unstop", "--user", "0", PROVIDER)
-        evidence.native("shell", "pm", "enable", "--user", "0", documents.COMPONENT)
+        documents.enable_provider(evidence)
     return control
 
 
@@ -1066,7 +1060,7 @@ def run(host, prepared):
         save()
         query = evidence.native("shell", "pm", "path", PROVIDER, check=False)
         require(query.returncode in (0, 1) and not query.stdout.strip() and not query.stderr.strip(), "receiver_provider_appeared")
-        installed = evidence.native("install", provider_path, check=False)
+        installed = evidence.native("install", "-t", provider_path, check=False)
         require(installed.returncode == 0 and installed.stdout.strip() == "Success" and not installed.stderr.strip(), "restore_provider_install_failed")
         provider_meta = host.package_metadata(args, PROVIDER)
         require(provider_meta["version_code"] == 1 and type(provider_meta["uid"]) is int and
