@@ -6,6 +6,10 @@ prepare(host, args) is read-only. run(host, prepared) performs only the separate
 authorized synthetic permission/appop, update, launch and precise logging cases.
 Unknown native formats stop the case and retain evidence. Appops and the plugin
 preference mirror never substitute for the real plugin capability query.
+Owned reads and input writes use binary non-PTY `adb shell -T`, which carries
+the remote exit status and stdin; raw exec-out does neither. Staged inputs are
+published by the shared no-replace publisher (args._publisher, bound by the
+harness after preparation), bootstrapped once per variant before any timed case.
 
 args explicitly names driver_run, updates_run, base_run (initial lifecycle),
 version_ledger and, for changed sources, source_review. The ledger is an owned
@@ -25,6 +29,8 @@ import shutil
 import subprocess
 import time
 import xml.etree.ElementTree as ET
+
+import android_synthetic_publish as publish
 
 
 PACKAGES = ("io.github.psychonaut0.reps", "dev.animusstudio.alkion.dev", "dev.animusstudio.alkion")
@@ -254,7 +260,7 @@ def owned_read(host, args, package, path, bound=LIMIT):
                'test -e "$1" || exit 3; test -f "$1" || exit 4; test "$(wc -c < "$1")" -le "$2" || exit 5; cat "$1"')
     argv = shlex.join(["run-as", package, "/system/bin/sh", "-c", program, "alkion-capability-read", path, str(bound)])
     try:
-        result = host.command([args.sdk / "platform-tools/adb", "-s", args.serial, "exec-out", argv], binary=True, check=False, timeout=30)
+        result = host.command([args.sdk / "platform-tools/adb", "-s", args.serial, "shell", "-T", argv], binary=True, check=False, timeout=30)
     except subprocess.TimeoutExpired as error:
         # Read-only preflight has no claimed output directory. Preserve a typed
         # receipt and original bytes on the exception for its caller; Evidence
@@ -554,6 +560,8 @@ class Evidence:
     def __init__(self, host, prepared):
         self.host, self.prepared = host, prepared
         self.count = 0
+        self.publisher = publish.Session(host, prepared.args, getattr(prepared.args, "_publisher", None),
+                                         prepared.receipt["run_id"], self.keep)
 
     def keep(self, name, data):
         self.count += 1
@@ -601,6 +609,8 @@ class Evidence:
 
     def stage(self, package, root, files):
         require(re.fullmatch(r"files/android-capability/[a-f0-9]{32}/(?:denied|revoked|exact|inexact)/v[0-9]+", root), "capability_stage_root_unbound")
+        # The publisher is bootstrapped before any timed case; never lazily here.
+        require(self.publisher.bound(package), "capability_publisher_not_bootstrapped")
         result = self.adb("shell", "run-as", package, "/system/bin/sh", "-c",
             'umask 077; p=""; oldIFS="$IFS"; IFS=/; for part in $1; do p="${p:+$p/}$part"; test ! -L "$p" || exit 4; '
             'if test "$p" != "$1" && test ! -e "$p"; then mkdir -m 700 "$p" || exit 4; fi; done; IFS="$oldIFS"; '
@@ -609,11 +619,15 @@ class Evidence:
             require(name in ("prior-report.json", "prior-snapshot.json") and len(raw) <= LIMIT, "capability_input_unbounded")
             path = root + "/" + name
             partial = path + ".partial-" + os.urandom(16).hex()
+            try:
+                publish.relative_pair(partial, path)
+            except publish.Refusal as error:
+                raise Refusal("capability_input_publication_refused:" + str(error)) from error
             script = 'umask 077; set -C; cat > "$1"'
             argv = shlex.join(["run-as", package, "/system/bin/sh", "-c", script, "alkion-capability-input", partial])
             try:
                 written = self.host.command([self.prepared.args.sdk / "platform-tools/adb", "-s", self.prepared.args.serial,
-                                             "exec-out", argv], binary=True, input=raw, check=False, timeout=30)
+                                             "shell", "-T", argv], binary=True, input=raw, check=False, timeout=30)
             except subprocess.TimeoutExpired as error:
                 self.retain_timeout(error, {"operation": "stage-input", "serial": self.prepared.args.serial,
                     "avd": self.prepared.args.avd, "package": package, "path": partial,
@@ -623,8 +637,11 @@ class Evidence:
                                                  "stderr": written.stderr.decode(errors="replace")})
             require(written.returncode == 0 and not written.stderr and self.read(package, partial) == raw,
                     "capability_closed_input_changed")
-            self.adb("shell", "run-as", package, "/system/bin/sh", "-c", 'ln -T "$1" "$2"',
-                     "alkion-capability-input-publish", partial, path)
+            try:
+                self.publisher.publish(package, partial, path, raw, "capability-input-" + name,
+                                       lambda target, relative, bound, label: self.read(target, relative))
+            except publish.Refusal as error:
+                raise Refusal("capability_input_publication_refused:" + str(error)) from error
 
 
 class LiveBudget:
@@ -843,7 +860,11 @@ def run(host, prepared):
         require(candidate["facts"]["version_code"] > state["installed"][package]["version_code"], "capability_install_version_not_monotonic")
         if candidate["identity"]["phase"] != "main":
             root = "files/android-capability/" + receipt["run_id"] + "/" + candidate["identity"]["case_id"] + "/v" + str(candidate["facts"]["version_code"])
-            evidence.stage(package, root, {"prior-report.json": predecessor, "prior-snapshot.json": canonical(snapshot)})
+            # Stricter-only: one publication timeout per staged input on top of
+            # the unchanged install reservation. No amount above is changed.
+            inputs = {"prior-report.json": predecessor, "prior-snapshot.json": canonical(snapshot)}
+            if budget: budget.require(60 + 15 + len(inputs) * publish.PUBLISH_TIMEOUT, "stage-inputs-" + candidate["identity"]["phase"])
+            evidence.stage(package, root, inputs)
         before = permission_observation(evidence, package)
         require(current_source(host) == prepared.revision and host.apk_facts(args, candidate["apk"], package) == candidate["facts"],
                 "capability_candidate_or_source_changed_before_install")
@@ -894,6 +915,13 @@ def run(host, prepared):
         for package, before in prepared.baselines.items():
             require(host.closed_profile_fingerprint(args, package, prepared.lifecycle["lifecycle"][package]["finish"]) == before,
                     "capability_closed_baseline_changed_after_preflight")
+        # Bootstrap the reviewed publisher once per variant, before any case and
+        # outside every original 600-second budget.
+        for package in VARIANTS.values():
+            try:
+                evidence.publisher.ensure(package, prepared.metadata[package]["uid"])
+            except publish.Refusal as error:
+                raise Refusal("capability_publisher_bootstrap_refused:" + str(error)) from error
         for flavor, package in VARIANTS.items():
             args.ui_expected_package = package
             predecessor, snapshot = prepared.lifecycle_raw, prepared.snapshots[package]

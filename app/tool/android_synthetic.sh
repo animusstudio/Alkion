@@ -2198,6 +2198,7 @@ def capabilities_action(args):
     require(isinstance(args.attempt_manifests, list) and all(isinstance(value, str) for value in args.attempt_manifests),
             "explicit_attempt_manifest_list_required")
     prepared = module.prepare(host, args)
+    publisher_binding(args, prepared.revision)
     ui_module().bind_previous(ui_host(), args, prepared.receipt, prepared.lifecycle, Path(args.base_run).parent, prepared.revision)
     if args.action == "capabilities-check":
         print("Recognized driver/A2/current lifecycle, version ledger and accepted UI observer verified; no mutation or allocation.")
