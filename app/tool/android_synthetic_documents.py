@@ -540,16 +540,39 @@ def foreground(evidence, package, name):
     return bool(resumed) and set(resumed) == {package}
 
 
-def picker_document(evidence, name, ready=lambda document: True):
+CASE_BUDGET = 50  # Seconds after the picker phase, inside the adapter's 60-second wait.
+BREADCRUMB = "com.android.documentsui:id/breadcrumb_text"
+
+
+def selected_root(document, label):
+    """Drawer closed; the label shows once as the breadcrumb and at most once as the toolbar title."""
+    labelled = nodes(document, label)
+    breadcrumbs = [node for node in labelled if node.get("resource-id") == BREADCRUMB]
+    titles = [node for node in labelled if node.get("resource-id", "") == "" and node.get("class") == "android.widget.TextView"]
+    return (not click_targets(document, label) and len(breadcrumbs) == 1 and len(titles) <= 1 and
+            len(labelled) == len(breadcrumbs) + len(titles) and
+            all(node.get("visible-to-user") == "true" and node.get("clickable") == "false" for node in labelled))
+
+
+def save_ready(document):
+    labels = [label for label in ("SAVE", "Save") if nodes(document, label)]
+    targets = click_targets(document, labels[0]) if len(labels) == 1 else []
+    return (len(targets) == 1 and targets[0].get("enabled") == "true" and
+            targets[0].get("visible-to-user") == "true")
+
+
+def picker_document(evidence, name, ready=lambda document: True, *, caller=None, deadline=None):
     for attempt in range(12):
+        require(deadline is None or time.monotonic() < deadline, "documentsui_case_budget_exceeded:" + name)
         unique = str(evidence.counter + 1).zfill(4) + "-" + name + "-" + str(attempt)
         try:
-            # The observer's bounded readiness waits for DocumentsUI focus; only
-            # a wait that saw no focused window at all is retried here.
+            # The observer's bounded readiness waits for DocumentsUI focus. Only a
+            # wait that saw no focus or the still-focused calling app is retried.
             document = evidence.host.ui_document(evidence.prepared.args, evidence.output, unique,
                                                  expected_package="com.android.documentsui")
         except observer.FocusNotReady as error:
-            if not error.transient_null:
+            if not (error.transient_null or
+                    (caller is not None and error.owners and set(error.owners) <= {None, caller})):
                 raise
             time.sleep(1)
             continue
@@ -567,7 +590,8 @@ def picker_document(evidence, name, ready=lambda document: True):
 
 def drive_picker(evidence, phase):
     case, flavor = phase["case"], phase["variant"]
-    document = picker_document(evidence, flavor + "-" + case + "-picker")
+    bounds = {"caller": VARIANTS[flavor], "deadline": time.monotonic() + CASE_BUDGET}
+    document = picker_document(evidence, flavor + "-" + case + "-picker", **bounds)
     if not click_targets(document, phase["root_label"]):
         candidates = [node for node in document.iter("node") if node.get("package") == "com.android.documentsui" and
                       node.get("clickable") == "true" and node.get("content-desc") in
@@ -575,13 +599,13 @@ def drive_picker(evidence, phase):
         require(len(candidates) == 1, "documentsui_root_navigation_unavailable")
         evidence.host.click_node(evidence.prepared.args, candidates[0])
         document = picker_document(evidence, flavor + "-" + case + "-roots",
-                                   lambda doc: bool(click_targets(doc, phase["root_label"])))
+                                   lambda doc: bool(click_targets(doc, phase["root_label"])), **bounds)
     click_label(evidence, document, phase["root_label"])
     document = picker_document(evidence, flavor + "-" + case + "-exact-root", lambda doc:
-                               len(nodes(doc, phase["root_label"])) == 1 and
-                               not click_targets(doc, phase["root_label"]) and
-                               (case.endswith("-cancel") or bool(nodes(doc, phase["document_label"]))))
-    require(len(nodes(document, phase["root_label"])) == 1, "documentsui_selected_root_unproven")
+                               selected_root(doc, phase["root_label"]) and
+                               (case.endswith("-cancel") or bool(nodes(doc, phase["document_label"]))) and
+                               (not case.startswith("save-") or save_ready(doc)), **bounds)
+    require(selected_root(document, phase["root_label"]), "documentsui_selected_root_unproven")
     if case.endswith("-cancel"):
         evidence.host.adb(evidence.prepared.args, "shell", "input", "keyevent", "KEYCODE_BACK")
     elif case.startswith("open-"):
@@ -645,7 +669,10 @@ def provider_observation(evidence, flavor, phase, control):
     if case.endswith("-cancel"):
         require(evidence.json(PROVIDER, receipt_path, flavor + "-cancel-receipt", optional=True) is None,
                 "cancelled_picker_has_provider_operation")
-        require(foreground(evidence, VARIANTS[flavor], flavor + "-cancel-return"), "picker_cancellation_return_unproven")
+        deadline = time.monotonic() + 5
+        while not foreground(evidence, VARIANTS[flavor], flavor + "-cancel-return"):
+            require(time.monotonic() < deadline, "picker_cancellation_return_unproven")
+            time.sleep(0.25)
         return {"provider_input_sha256": control["sha256"], "picker_cancelled": True, "provider_receipt": None}
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:

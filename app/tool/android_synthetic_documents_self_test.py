@@ -180,6 +180,13 @@ class FakeHost:
         self.install_timing_stream = "stdout"
         self.provider_dump_blocks = ("enabledComponents",)
         self.null_focus = 0
+        # Device models: LastAccessed picker landing,
+        # caller focus during picker launch, disabled Save and cancel return lag.
+        self.last_accessed = set()
+        self.caller_focus = 0
+        self.caller_focus_samples = 0
+        self.save_captures = 0
+        self.cancel_lag = 0
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
             receipt=str(receipt_path), output=str(root / "output"), driver_run=str(root / "driver/run.json"),
@@ -434,12 +441,23 @@ class FakeHost:
                 "    curProcState=15 mRepProcState=15 setProcState=15 lastStateTime=-1s\n"
                 "    cached=true empty=false\n")
         if argv[:2] == ["dumpsys", "activity"]:
-            component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(self.front, "/.picker.PickActivity")
-            focus = "  mCurrentFocus=Window{abc u0 " + self.front + component + "}\n"
+            front = self.front
+            if self.cancel_lag:
+                # onActivityResult runs before the caller is recorded as resumed.
+                self.cancel_lag -= 1; front = "com.android.documentsui"
+            component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(front, "/.picker.PickActivity")
+            if front in documents.VARIANTS.values():
+                component = "/dev.animusstudio.alkion.MainActivity"
+            focus = "  mCurrentFocus=Window{abc u0 " + front + component + "}\n"
+            if self.caller_focus and front == "com.android.documentsui":
+                # The calling app keeps window focus while DocumentsUI cold-starts.
+                self.caller_focus -= 1
+                focus = "  mCurrentFocus=Window{abc u0 " + self.current + "/dev.animusstudio.alkion.MainActivity}\n"
+                return result("mResumedActivity: ActivityRecord{123 u0 " + self.current + "/dev.animusstudio.alkion.MainActivity t1}\n" + focus)
             if self.null_focus and self.front == "com.android.documentsui":
                 # Window focus is transiently null while DocumentsUI is shown.
                 self.null_focus -= 1; focus = "  mCurrentFocus=null\n"
-            return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + component + " t1}\n" + focus)
+            return result("mResumedActivity: ActivityRecord{123 u0 " + front + component + " t1}\n" + focus)
         if argv[:1] == ["sha256sum"]:
             package = argv[1].split("/")[-2]
             return result(self.installed[package]["apk_sha256"] + "  " + argv[1] + "\n")
@@ -528,7 +546,8 @@ class FakeHost:
         if argv[:2] == ["input", "tap"]:
             y = int(argv[-1]); self.mutations.append(("tap", y))
             if y < 100:
-                self.selected = True; self.drawer = False
+                # Choosing a root reloads it; Save stays disabled until that load completes.
+                self.selected = True; self.drawer = False; self.save_captures = 0
             elif y >= 300:
                 self.drawer = True
             else:
@@ -624,6 +643,9 @@ class FakeHost:
             self.phase("picker", value["sequence"], value["case"], **{key: item for key, item in phase.items() if key not in
                 ("format", "run_id", "source_commit", "application_id", "variant", "provider_package", "provider_authority")})
             self.front = "com.android.documentsui"
+            self.selected, self.drawer = self.flavor in self.last_accessed, False
+            # Only the campaign's first picker is a DocumentsUI cold start.
+            self.caller_focus, self.caller_focus_samples, self.save_captures = self.caller_focus_samples, 0, 0
         else:
             if value["provider_receipt"] is not None:
                 self.observed[value["case"]] = value["provider_receipt"]
@@ -650,23 +672,40 @@ class FakeHost:
         label = "Alkion synthetic " + namespace
         if self.scenario == "wrong-root":
             label = "Alkion synthetic " + "2" * 32 + "-" + self.flavor
-        def node(text, y, clickable=True, cls="android.widget.TextView", desc=""):
+        listed = (self.package_root(documents.PROVIDER) / ("files/proof-runs/" + namespace + "/input.pin")).is_file()
+        def node(text, y, clickable=True, cls="android.widget.TextView", desc="", resource="com.android.documentsui:id/item",
+                 enabled=True):
             ET.SubElement(container, "node", {"package": "com.android.documentsui", "text": text, "content-desc": desc,
-                "resource-id": "com.android.documentsui:id/item", "enabled": "true", "visible-to-user": "true",
+                "resource-id": resource, "enabled": str(enabled).lower(), "visible-to-user": "true",
                 "class": cls, "clickable": str(clickable).lower(), "bounds": "[0," + str(y) + "][100," + str(y + 100) + "]"})
-        node(label, 0, self.drawer)
-        if self.scenario == "duplicate-root" and self.drawer:
-            node(label, 0)
+        if self.drawer and listed:
+            node(label, 0, True, resource="android:id/title")
+            if self.scenario == "duplicate-root":
+                node(label, 0, True, resource="android:id/title")
         node("", 300, desc="Show roots")
-        if self.selected:
+        if self.selected and not self.drawer:
+            # Non-M3 DocumentsUI: Toolbar title (no id) plus the root breadcrumb item.
+            node(label, 400, False, resource="")
+            node(label, 500, self.scenario == "clickable-selected-label", resource=documents.BREADCRUMB)
+            if self.scenario == "duplicate-breadcrumb":
+                node(label, 600, False, resource=documents.BREADCRUMB)
+            if self.scenario == "foreign-label-id":
+                node(label, 700, False, resource="com.android.documentsui:id/foreign")
             name = self.current_phase["document_label"]
             if self.scenario == "wrong-file":
                 name = "foreign.alkionbackup"
             node(name, 100, not self.current_phase["case"].startswith("save-"),
                  "android.widget.EditText" if self.current_phase["case"].startswith("save-") else "android.widget.TextView")
             if self.current_phase["case"].startswith("save-"):
-                node("SAVE", 200)
+                # SaveFragment enables Save only after the root document loads.
+                node("SAVE", 200, enabled=self.save_captures > 0)
+                self.save_captures += 1
         return ET.tostring(root, encoding="unicode")
+
+    def picker_closed(self, cancelled=False):
+        self.last_accessed.add(self.flavor)
+        if cancelled:
+            self.cancel_lag = 1
 
     def complete_picker(self):
         case, sequence = self.current_phase["case"], self.current_phase["sequence"]
@@ -678,6 +717,7 @@ class FakeHost:
                 self.write(prefix / ("outputs/" + case + "-12345678-1234-4234-8234-123456789abc.partial"), data)
             self.write(prefix / ("receipts/" + case + ".json"), receipt)
         self.front = self.current
+        self.picker_closed(cancelled=case.endswith("-cancel"))
         self.phase("awaiting_observed", sequence, case, production_outcome=documents.CASES[case])
 
 
@@ -978,6 +1018,69 @@ class DocumentsControls(unittest.TestCase):
         record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
         self.assertEqual((record["argv"][:2], record["stdout"]), (["install", "-r"], self.host.variant_install_stdout))
 
+    def selected(self, *extra, drawer=False):
+        tree = ET.Element("hierarchy")
+        def add(resource, clickable="false", cls="android.widget.TextView"):
+            ET.SubElement(tree, "node", {"package": "com.android.documentsui", "text": "Root", "content-desc": "",
+                "resource-id": resource, "class": cls, "clickable": clickable, "visible-to-user": "true"})
+        add("")
+        add(documents.BREADCRUMB)
+        for resource, clickable in extra:
+            add(resource, clickable)
+        if drawer:
+            add("android:id/title", "true")
+        return tree
+
+    def test_selected_root_requires_one_breadcrumb_and_a_closed_drawer(self):
+        self.assertTrue(documents.selected_root(self.selected(), "Root"))
+        breadcrumb_only = self.selected()
+        breadcrumb_only.remove(breadcrumb_only[0])
+        self.assertTrue(documents.selected_root(breadcrumb_only, "Root"))
+        refused = {"two-breadcrumbs": self.selected((documents.BREADCRUMB, "false")),
+                   "two-titles": self.selected(("", "false")),
+                   "clickable-label": self.selected(("", "true")),
+                   "foreign-id": self.selected(("com.android.documentsui:id/foreign", "false")),
+                   "drawer-open": self.selected(drawer=True)}
+        for name, tree in refused.items():
+            with self.subTest(name=name):
+                self.assertFalse(documents.selected_root(tree, "Root"))
+        title_only = self.selected()
+        title_only.remove(title_only[1])
+        self.assertFalse(documents.selected_root(title_only, "Root"))
+
+    def test_selected_root_scenarios_refuse_on_the_route(self):
+        for scenario in ("duplicate-breadcrumb",):  # The other shapes are covered by the predicate control.
+            with self.subTest(scenario=scenario):
+                host = FakeHost(self.root / scenario)
+                host.scenario, host.args.action = scenario, "documents"
+                with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+                    with self.assertRaisesRegex(documents.Refusal, "documentsui_checkpoint_unavailable:dev-open-cancel-exact-root"):
+                        host.documents_action(host.args)
+
+    def test_picker_retries_while_the_calling_app_keeps_focus(self):
+        self.host.caller_focus_samples = 25  # Outlasts one bounded focus wait.
+        self.host.args.action = "documents"
+        self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        samples = [sample for path in (self.root / "output").glob("*.observation/host-receipt.json")
+                   for sample in json.loads(path.read_bytes()).get("focus_readiness", {}).get("samples", [])]
+        self.assertTrue(any(sample["owner"] and sample["owner"]["package"] in documents.VARIANTS.values() for sample in samples))
+
+    def test_picker_refuses_a_foreign_owner_and_the_case_budget(self):
+        evidence, _ = self.evidence_after_seed()
+        caller = documents.PACKAGES[1]
+        failure = observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, caller, "com.android.systemui"])
+        with patch.object(self.host, "ui_document", side_effect=failure):
+            with self.assertRaises(observer.FocusNotReady):
+                documents.picker_document(evidence, "foreign", caller=caller)
+        calls = []
+        def caller_focused(*args, **options):
+            calls.append(1)
+            raise observer.FocusNotReady("ui_observer_expected_focus_not_ready", [caller, None])
+        with patch.object(self.host, "ui_document", side_effect=caller_focused):
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_case_budget_exceeded:budget"):
+                documents.picker_document(evidence, "budget", caller=caller, deadline=documents.time.monotonic() + 5)
+        self.assertTrue(1 < len(calls) < 12)
+
     def test_harness_command_failure_keeps_head_and_tail(self):
         command = load_harness()["command"]
         script = ("import sys; sys.stderr.write('Exception occurred while executing enable:\\n' + "
@@ -1016,6 +1119,7 @@ class DocumentsControls(unittest.TestCase):
         self.assertEqual(state["documents_phase"], "PASS")
         self.assertEqual(state["overall"], "IN_PROGRESS")
         self.assertEqual(set(state["documents"]), {"dev", "supported"})
+        self.assertTrue(self.host.last_accessed >= {"dev", "supported"})  # Later pickers landed on LastAccessed.
         self.assertEqual([value["version_code"] for package, value in state["installed"].items() if package in documents.VARIANTS.values()], [45, 45])
         self.assertEqual(len(self.host.ack_objects), 54)
         # One bootstrap per package, each after its install and before any consumer.
@@ -1296,6 +1400,7 @@ class DocumentsControls(unittest.TestCase):
 
     def test_namespace_refuses_replacement_links_and_seventeenth(self):
         evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501  # Running and unfrozen: its observer loads new namespaces.
         documents.seed_provider(evidence, "dev", phase, first=False)
         namespace = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev")
         before = (namespace / "input.alkionbackup").read_bytes()
@@ -1349,6 +1454,7 @@ class DocumentsControls(unittest.TestCase):
 
     def test_changed_input_pin_cannot_ack_observed(self):
         evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501  # Running and unfrozen: its observer loads new namespaces.
         control = documents.seed_provider(evidence, "dev", phase, first=False)
         root = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev")
         self.host.write(root / "input.pin", b"interrupted or changed pin")

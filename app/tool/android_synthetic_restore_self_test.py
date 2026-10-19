@@ -325,6 +325,7 @@ class FakeHost(saf.FakeHost):
             receipt["events"] = json.loads(path.read_bytes())["events"] + receipt["events"]
         self.write(path, receipt)
         self.front = self.current
+        self.picker_closed()
         self.publish_receipt()
 
     def fresh(self):
