@@ -432,8 +432,13 @@ class Session:
         require(installed.returncode == 0 and not installed.stdout and not installed.stderr, "publisher_bootstrap_failed")
         readback = self._command(label + "-readback", package, READBACK, [uid, namespace])
         rows = raw(readback.stdout).decode(errors="replace").split("\n")
+        # Android's cache root is setgid 02771, so the exclusive mkdir -m 700
+        # namespace inherits S_ISGID only: 2700 or, without it, 700. Any other
+        # special, group or other bit refuses. The gid is not compared: mode 2700
+        # grants the group nothing, and the helper file below stays exactly 700.
         require(readback.returncode == 0 and not readback.stderr and len(rows) == 4 and rows[3] == "" and
-                rows[0] == str(uid) + " 700" and rows[2] == self.artifact.sha256 + "  " + namespace + "/publisher",
+                rows[0] in (str(uid) + " 700", str(uid) + " 2700") and
+                rows[2] == self.artifact.sha256 + "  " + namespace + "/publisher",
                 "publisher_helper_readback_invalid")
         helper = rows[1].split(" ")
         require(len(helper) == 5 and helper[:4] == [str(uid), "700", "1", str(self.artifact.length)] and
