@@ -174,6 +174,7 @@ class FakeHost:
         self.provider_enabled = False
         self.provider_dump_hides_enabled = False
         self.provider_enable_state = "enabled"
+        self.null_focus = 0
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
             receipt=str(receipt_path), output=str(root / "output"), driver_run=str(root / "driver/run.json"),
@@ -420,6 +421,9 @@ class FakeHost:
         if argv[:2] == ["dumpsys", "activity"]:
             component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(self.front, "/.picker.PickActivity")
             focus = "  mCurrentFocus=Window{abc u0 " + self.front + component + "}\n"
+            if self.null_focus and self.front == "com.android.documentsui":
+                # Window focus is transiently null while DocumentsUI is shown.
+                self.null_focus -= 1; focus = "  mCurrentFocus=null\n"
             return result("mResumedActivity: ActivityRecord{123 u0 " + self.front + component + " t1}\n" + focus)
         if argv[:1] == ["sha256sum"]:
             package = argv[1].split("/")[-2]
@@ -858,6 +862,16 @@ class DocumentsControls(unittest.TestCase):
         self.assertEqual(documents.enabled_components(both)["disabled"], [cls])
         self.assertEqual(documents.enabled_components("      enabledComponents:\n    " + cls + "\n")["enabled"], [])
         self.assertEqual(documents.enabled_components("  enabled: " + cls + "\n"), {"enabled": [], "disabled": []})
+
+    def test_picker_waits_through_transient_null_focus(self):
+        self.host.null_focus = 3
+        self.host.args.action = "documents"
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        self.assertEqual(self.host.null_focus, 0)
+        samples = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*.observation/host-receipt.json")]
+        self.assertTrue(any(sample["owner"] is None for trace in samples
+                            for sample in trace.get("focus_readiness", {}).get("samples", [])))
 
     def test_harness_command_failure_keeps_head_and_tail(self):
         command = load_harness()["command"]

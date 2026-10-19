@@ -29,6 +29,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 import android_synthetic_publish as publish
+import android_synthetic_ui as observer
 
 
 PROVIDER = "dev.animusstudio.alkion.synthetic.documents"
@@ -526,7 +527,14 @@ def foreground(evidence, package, name):
 def picker_document(evidence, name, ready=lambda document: True):
     for attempt in range(12):
         unique = str(evidence.counter + 1).zfill(4) + "-" + name + "-" + str(attempt)
-        document = evidence.host.ui_document(evidence.prepared.args, evidence.output, unique)
+        try:
+            # The observer's bounded readiness tolerates a transiently null or
+            # foreign focus while DocumentsUI appears; only that outcome retries.
+            document = evidence.host.ui_document(evidence.prepared.args, evidence.output, unique,
+                                                 expected_package="com.android.documentsui")
+        except observer.FocusNotReady:
+            time.sleep(1)
+            continue
         if foreground(evidence, "com.android.documentsui", unique) and any(
                 node.get("package") == "com.android.documentsui" for node in document.iter("node")):
             if evidence.provider_pid is None and evidence.host.app_pid(evidence.prepared.args, PROVIDER) is None:

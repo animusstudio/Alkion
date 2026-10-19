@@ -31,9 +31,18 @@ class Refusal(ValueError):
     pass
 
 
+class FocusNotReady(Refusal):
+    """The bounded expected-focus wait ended without the exact expected owner."""
+
+
 def require(value, reason):
     if not value:
         raise Refusal("ui_observer_" + reason)
+
+
+def ready_or_wait(value):
+    if not value:
+        raise FocusNotReady("ui_observer_expected_focus_not_ready")
 
 
 def encoded(value):
@@ -456,7 +465,7 @@ def capture(host, args, output, name, expected_package=None):
         trace["focus_readiness"] = focus_trace
         for attempt in range(20 if expected_package is not None else 1):
             remaining = focus_deadline - time.monotonic()
-            require(remaining > 0, "expected_focus_not_ready")
+            ready_or_wait(remaining > 0)
             label = "focus-before" if attempt == 0 else "focus-before-" + str(attempt)
             before = execute(label, ["shell", "dumpsys", "activity", "activities"], timeout=min(5, remaining))
             require(before.returncode == 0, "focus_query_failed")
@@ -464,17 +473,17 @@ def capture(host, args, output, name, expected_package=None):
             ready = owner is not None and (expected_package is None or owner["package"] == expected_package)
             focus_trace["samples"].append({"label": label, "owner": owner, "ready": ready,
                                             "elapsed_seconds": time.monotonic() - focus_started})
-            require(time.monotonic() < focus_deadline, "expected_focus_not_ready")
+            ready_or_wait(time.monotonic() < focus_deadline)
             if ready:
                 trace["focus_before"] = owner
                 expected = expected_package or owner["package"]
                 break
-            require(attempt < 19, "expected_focus_not_ready")
+            ready_or_wait(attempt < 19)
             remaining = focus_deadline - time.monotonic()
-            require(remaining > 0, "expected_focus_not_ready")
+            ready_or_wait(remaining > 0)
             time.sleep(min(0.1, remaining))
         else:
-            raise Refusal("ui_observer_expected_focus_not_ready")
+            raise FocusNotReady("ui_observer_expected_focus_not_ready")
         arguments = {**request, **{k: binding[k] for k in ("run_id", "serial", "avd")}, "expected_package": expected}
         tail = ["shell", "am", "instrument", "-w", "-r", "--user", "0"]
         for key, value in arguments.items():
