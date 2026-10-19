@@ -1061,7 +1061,7 @@ def run(host, prepared):
         query = evidence.native("shell", "pm", "path", PROVIDER, check=False)
         require(query.returncode in (0, 1) and not query.stdout.strip() and not query.stderr.strip(), "receiver_provider_appeared")
         installed = evidence.native("install", "-t", provider_path, check=False)
-        require(installed.returncode == 0 and installed.stdout.strip() == "Success" and not installed.stderr.strip(), "restore_provider_install_failed")
+        require(documents.install_succeeded(installed), "restore_provider_install_failed")
         provider_meta = host.package_metadata(args, PROVIDER)
         require(provider_meta["version_code"] == 1 and type(provider_meta["uid"]) is int and
                 10000 <= provider_meta["uid"] < 100000 and provider_meta["uid"] not in
@@ -1076,7 +1076,7 @@ def run(host, prepared):
                 documents.absent(host, args, package, root)
             candidate, facts = prepared.candidates[package]
             result = evidence.native("install", "-r", candidate, check=False)
-            require(result.returncode == 0 and result.stdout.strip() == "Success" and not result.stderr.strip(), "restore_adapter_install_failed")
+            require(documents.install_succeeded(result), "restore_adapter_install_failed")
             state["installed"][package] = facts
             save()
             identities()

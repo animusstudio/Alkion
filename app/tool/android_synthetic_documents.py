@@ -265,6 +265,20 @@ def summary(value, limit=1000):
     return text if len(text) <= limit else text[:600] + " [...] " + text[-(limit - 607):]
 
 
+# adb install progress observed on this image before the final result: streamed,
+# or incremental for an APK with an .idsig. Anything else, any Failure line
+# included (an incremental failure falls back to streamed), refuses.
+INSTALL_PROGRESS = (("Performing Streamed Install",), ("Serving...", "Performing Incremental Install"))
+
+
+def install_succeeded(result):
+    stdout = result.stdout.decode(errors="replace") if isinstance(result.stdout, bytes) else result.stdout
+    stderr = result.stderr.decode(errors="replace") if isinstance(result.stderr, bytes) else result.stderr
+    lines = stdout[:-1].split("\n") if stdout.endswith("\n") else None
+    return (result.returncode == 0 and not stderr.strip() and lines is not None and
+            lines[-1] == "Success" and tuple(lines[:-1]) in INSTALL_PROGRESS)
+
+
 def enabled_components(dump):
     """Components listed under dumpsys package enabledComponents/disabledComponents blocks."""
     blocks, current = {"enabled": [], "disabled": []}, None
@@ -528,11 +542,13 @@ def picker_document(evidence, name, ready=lambda document: True):
     for attempt in range(12):
         unique = str(evidence.counter + 1).zfill(4) + "-" + name + "-" + str(attempt)
         try:
-            # The observer's bounded readiness tolerates a transiently null or
-            # foreign focus while DocumentsUI appears; only that outcome retries.
+            # The observer's bounded readiness waits for DocumentsUI focus; only
+            # a wait that saw no focused window at all is retried here.
             document = evidence.host.ui_document(evidence.prepared.args, evidence.output, unique,
                                                  expected_package="com.android.documentsui")
-        except observer.FocusNotReady:
+        except observer.FocusNotReady as error:
+            if not error.transient_null:
+                raise
             time.sleep(1)
             continue
         if foreground(evidence, "com.android.documentsui", unique) and any(
@@ -920,7 +936,8 @@ def run(host, prepared):
         originals = host.driver_neighbor_bytes(args, receipt, prepared.driver)
         baseline = {package: host.closed_profile_fingerprint(args, package, prepared.lifecycle["lifecycle"][package]["finish"])
                     for package in VARIANTS.values()}
-        evidence.native("install", "-t", provider_apk)
+        installed = evidence.native("install", "-t", provider_apk, check=False)
+        require(install_succeeded(installed), "provider_install_failed:" + summary(installed.stderr or installed.stdout))
         provider_meta = host.package_metadata(args, PROVIDER)
         require(provider_meta["version_code"] == 1 and type(provider_meta.get("uid")) is int and
                 10000 <= provider_meta["uid"] < 100000 and provider_meta["uid"] not in
@@ -935,7 +952,8 @@ def run(host, prepared):
                         "version_code": state["installed"][peer]["version_code"]}, "documents_peer_uid_or_version_changed")
             apk, facts = candidates[package]
             require(host.app_pid(args, package) is None, "documents_install_requires_absent_app_process")
-            host.adb(args, "install", "-r", apk)
+            installed = evidence.native("install", "-r", apk, check=False)
+            require(install_succeeded(installed), "documents_install_failed:" + summary(installed.stderr or installed.stdout))
             state["installed"][package] = facts; save()
             host.installed_matches(args, state["installed"])
             require(host.package_metadata(args, package) == {"uid": prepared.metadata[package]["uid"],

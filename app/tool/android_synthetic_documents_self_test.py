@@ -77,6 +77,7 @@ TEST_ONLY = "A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=
 def publisher_safe_test_only_line():
     return "        " + TEST_ONLY + "\n"
 PROVIDER_CLASS = "dev.animusstudio.alkion.synthetic.documents.SyntheticDocumentsProvider"
+INCREMENTAL = "Serving...\nPerforming Incremental Install\n"
 
 
 def result(stdout="", stderr="", code=0):
@@ -174,6 +175,9 @@ class FakeHost:
         self.provider_enabled = False
         self.provider_dump_hides_enabled = False
         self.provider_enable_state = "enabled"
+        self.provider_enable_stderr = ""
+        self.variant_install_stdout = None
+        self.provider_dump_blocks = ("enabledComponents",)
         self.null_focus = 0
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
@@ -359,15 +363,20 @@ class FakeHost:
                 value = result(stdout + stderr, b"", 0)
             elif tail[0] == "install" and self.refuses_test_only_install(tail):
                 # InstallPackageHelper refuses a test-only APK without INSTALL_ALLOW_TEST.
-                value = result("Performing Streamed Install\n", "adb: failed to install " + tail[-1] +
-                               ": Failure [INSTALL_FAILED_TEST_ONLY: Failed to install test-only apk. Did you forget to add -t?]\n", 1)
+                failure = "Failure [INSTALL_FAILED_TEST_ONLY: Failed to install test-only apk. Did you forget to add -t?]"
+                value = result(INCREMENTAL + failure + "\nPerforming Streamed Install\n",
+                               "adb: failed to install " + tail[-1] + ": " + failure + "\n\n", 1)
             elif tail[0] == "install":
                 facts = self.fake_apk_facts(None, Path(tail[-1]), self.facts_for_file(Path(tail[-1]))["package"])
                 if facts["package"] == documents.PROVIDER:
                     self.provider_test_only = TEST_ONLY in self.provider_tree and "-t" in tail[1:-1]
                 self.installed[facts["package"]] = facts
                 self.metadata.setdefault(facts["package"], {"uid": 10003})["version_code"] = facts["version_code"]
-                self.mutations.append(("install", facts["package"])); value = result("Success\n")
+                # The provider ships an .idsig and installs incrementally; others stream.
+                progress = INCREMENTAL if facts["package"] == documents.PROVIDER else "Performing Streamed Install\n"
+                self.mutations.append(("install", facts["package"])); value = result(progress + "Success\n")
+                if self.variant_install_stdout is not None and facts["package"] in documents.VARIANTS.values():
+                    value = result(self.variant_install_stdout)
             elif tail == ["get-state"]:
                 value = result("device\n")
             elif tail == ["emu", "avd", "name"]:
@@ -407,8 +416,8 @@ class FakeHost:
         if argv[:2] == ["dumpsys", "package"]:
             dump = "versionCode=" + str(self.metadata[argv[2]]["version_code"]) + "\n"
             if argv[2] == documents.PROVIDER and self.provider_enabled and not self.provider_dump_hides_enabled:
-                dump += ("    User 0: installed=true hidden=false stopped=false notLaunched=false enabled=0\n"
-                         "      enabledComponents:\n        " + PROVIDER_CLASS + "\n")
+                dump += "    User 0: installed=true hidden=false stopped=false notLaunched=false enabled=0\n"
+                dump += "".join("      " + block + ":\n        " + PROVIDER_CLASS + "\n" for block in self.provider_dump_blocks)
             return result(dump)
         if argv[:3] == ["dumpsys", "activity", "processes"]:
             package = argv[3]; uid = self.metadata[package]["uid"]; pid = self.pids[package]
@@ -458,7 +467,8 @@ class FakeHost:
             self.provider_enabled = True
             self.pids[documents.PROVIDER] = 501
             self.mutations.append(("enable", argv[-1]))
-            return result("Component {" + documents.PROVIDER + "/" + PROVIDER_CLASS + "} new state: " + self.provider_enable_state + "\n")
+            return result("Component {" + documents.PROVIDER + "/" + PROVIDER_CLASS + "} new state: " + self.provider_enable_state + "\n",
+                          self.provider_enable_stderr)
         if argv[:2] == ["am", "instrument"]:
             assert argv[-1] == observer.COMPONENT and argv[argv.index("--user") + 1] == "0"
             arguments = {argv[index + 1]: argv[index + 2] for index, value in enumerate(argv) if value == "-e"}
@@ -846,6 +856,17 @@ class DocumentsControls(unittest.TestCase):
         with self.assertRaisesRegex(documents.Refusal, "provider_enable_not_observed"):
             documents.enable_provider(evidence)
         self.host.provider_dump_hides_enabled = False
+        self.host.provider_enable_stderr = "unexpected diagnostic\n"
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:unexpected diagnostic"):
+            documents.enable_provider(evidence)
+        self.host.provider_enable_stderr = ""
+        for blocks in (("disabledComponents",), ("enabledComponents", "disabledComponents"),
+                       ("disabledComponents", "enabledComponents"), ("enabledComponents", "enabledComponents")):
+            with self.subTest(blocks=blocks):
+                self.host.provider_dump_blocks = blocks
+                with self.assertRaisesRegex(documents.Refusal, "provider_enable_not_observed"):
+                    documents.enable_provider(evidence)
+        self.host.provider_dump_blocks = ("enabledComponents",)
         documents.enable_provider(evidence)
         records = [json.loads(path.read_bytes()) for path in sorted(self.root.glob("output/*native-command.json"))]
         self.assertEqual(records[-2]["stdout"], documents.PROVIDER_ENABLED)
@@ -872,6 +893,63 @@ class DocumentsControls(unittest.TestCase):
         samples = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*.observation/host-receipt.json")]
         self.assertTrue(any(sample["owner"] is None for trace in samples
                             for sample in trace.get("focus_readiness", {}).get("samples", [])))
+
+    def test_picker_retries_only_a_wait_that_saw_no_focused_window(self):
+        evidence, _ = self.evidence_after_seed()
+        self.host.front = "com.android.documentsui"
+        self.host.pids[documents.PROVIDER] = 501
+        tree = ET.fromstring('<hierarchy><node package="com.android.documentsui" text="" /></hierarchy>')
+        outcomes = [observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, None, None]), tree]
+        calls = []
+        def capture(*args, **options):
+            calls.append(options.get("expected_package"))
+            value = outcomes.pop(0)
+            if isinstance(value, Exception):
+                raise value
+            return value
+        with patch.object(self.host, "ui_document", side_effect=capture):
+            self.assertIs(documents.picker_document(evidence, "null-then-ready"), tree)
+        self.assertEqual(calls, ["com.android.documentsui"] * 2)
+        failures = {"foreign-owner": observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, documents.PACKAGES[1]]),
+                    "no-samples": observer.FocusNotReady("ui_observer_expected_focus_not_ready", []),
+                    "other-refusal": observer.Refusal("ui_observer_focus_ambiguous"),
+                    "unrelated": ValueError("unrelated")}
+        for name, failure in failures.items():
+            with self.subTest(name=name):
+                calls.clear()
+                with patch.object(self.host, "ui_document", side_effect=lambda *args, **options: (calls.append(1), (_ for _ in ()).throw(failure))):
+                    with self.assertRaises(type(failure)) as caught:
+                        documents.picker_document(evidence, name)
+                self.assertIs(caught.exception, failure)
+                self.assertEqual(len(calls), 1)  # Propagated immediately, never retried.
+
+    def test_install_success_requires_known_progress_then_success(self):
+        observed = "Serving...\nPerforming Incremental Install\nFailure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package " \
+                   + documents.PACKAGES[1] + " signatures do not match newer version; ignoring!]\nPerforming Streamed Install\n"
+        accepted = ("Serving...\nPerforming Incremental Install\nSuccess\n", "Performing Streamed Install\nSuccess\n")
+        refused = {"bare": ("Success\n", "", 0), "observed-failure": (observed, "adb: failed to install x: Failure [...]\n\n", 1),
+                   "fallback-after-failure": (observed + "Success\n", "", 0), "failure-rc0": ("Performing Streamed Install\nFailure [X]\n", "", 0),
+                   "unknown-progress": ("Performing Streamed Install\nInstalling...\nSuccess\n", "", 0),
+                   "reordered": ("Performing Incremental Install\nServing...\nSuccess\n", "", 0),
+                   "no-newline": ("Performing Streamed Install\nSuccess", "", 0), "crlf": ("Performing Streamed Install\r\nSuccess\r\n", "", 0),
+                   "stderr": (accepted[1], "warning\n", 0), "nonzero": (accepted[1], "", 1),
+                   "trailing": (accepted[1] + "\n", "", 0)}
+        for text in accepted:
+            self.assertTrue(documents.install_succeeded(result(text)))
+            self.assertTrue(documents.install_succeeded(result(text.encode(), b"")))
+        for name, (stdout, stderr, code) in refused.items():
+            with self.subTest(name=name):
+                self.assertFalse(documents.install_succeeded(result(stdout, stderr, code)))
+
+    def test_variant_install_needs_known_progress_and_success(self):
+        self.host.variant_install_stdout = "Performing Streamed Install\nUnrecognized progress\nSuccess\n"
+        self.host.args.action = "documents"
+        with self.assertRaisesRegex(documents.Refusal, "documents_install_failed"):
+            self.host.documents_action(self.host.args)
+        state = json.loads((self.root / "output/run.json").read_bytes())
+        self.assertEqual(state["documents_phase"], "FAIL")
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual((record["argv"][:2], record["stdout"]), (["install", "-r"], self.host.variant_install_stdout))
 
     def test_harness_command_failure_keeps_head_and_tail(self):
         command = load_harness()["command"]
