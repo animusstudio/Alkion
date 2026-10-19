@@ -22,6 +22,7 @@ from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 import android_synthetic_documents as documents
+import android_synthetic_publish as publish
 import android_synthetic_documents_self_test as saf
 import android_synthetic_restore as restore
 import android_synthetic_ui as observer
@@ -595,7 +596,8 @@ class RestoreControls(unittest.TestCase):
             "ALKION_SOURCE_REVIEW": args.source_review, "ALKION_ATTEMPT_MANIFESTS_JSON": "[]",
             "ALKION_RESTORE_CANDIDATE_MANIFEST": args.candidate_manifest, "ALKION_RESTORE_DEV_APK": args.dev_apk,
             "ALKION_RESTORE_SUPPORTED_APK": args.supported_apk, "ALKION_RESTORE_PROVIDER_APK": args.provider_apk,
-            "ALKION_UI_OBSERVER_BUILD": args.ui_observer_build, **self.build_environment()}
+            "ALKION_UI_OBSERVER_BUILD": args.ui_observer_build, "ALKION_PUBLISHER_BUILD": args.publisher_build,
+            **self.build_environment()}
 
     def parse_captured_cli(self, captured):
         body = Path(__file__).with_name("android_synthetic.sh").read_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
@@ -616,7 +618,8 @@ class RestoreControls(unittest.TestCase):
             "--version-ledger": "ALKION_VERSION_LEDGER", "--source-review": "ALKION_SOURCE_REVIEW",
             "--attempt-manifests-json": "ALKION_ATTEMPT_MANIFESTS_JSON", "--candidate-manifest": "ALKION_RESTORE_CANDIDATE_MANIFEST",
             "--dev-apk": "ALKION_RESTORE_DEV_APK", "--supported-apk": "ALKION_RESTORE_SUPPORTED_APK",
-            "--provider-apk": "ALKION_RESTORE_PROVIDER_APK", "--ui-observer-build": "ALKION_UI_OBSERVER_BUILD"}
+            "--provider-apk": "ALKION_RESTORE_PROVIDER_APK", "--ui-observer-build": "ALKION_UI_OBSERVER_BUILD",
+            "--publisher-build": "ALKION_PUBLISHER_BUILD"}
         for origin in ("command-line", "environment"):
             for target, action in (("android-synthetic-restore-apks", "build-restore"),
                                    ("android-synthetic-restore-check", "restore-check"), ("android-synthetic-restore-run", "restore")):
@@ -808,6 +811,52 @@ print("fake compiler only")
                 self.assertEqual(call[1:3], ["-s", self.host.args.serial])
             self.assertFalse(any(token in ("force-stop", "clear", "uninstall", "kill-all", "reboot") for token in call))
         self.assertIn("same_profile_replacement", state["unrun"])
+        # Every inherited write went through the no-replace publisher: one
+        # bootstrap per package after its install and before its first launch.
+        self.assertEqual([package for package, index, _ in self.host.runas.programs if index == 1],
+                         [documents.PACKAGES[1], documents.PROVIDER, documents.PACKAGES[2]])
+        def first(predicate):
+            return next(index for index, call in enumerate(self.host.calls) if predicate(call))
+        for package in documents.VARIANTS.values():
+            installed = first(lambda call: call[3:5] == ["install", "-r"] and
+                              self.host.facts_for_file(Path(call[-1]))["package"] == package)
+            bootstrap = first(lambda call: len(call) == 6 and shlex.split(call[5])[:2] == ["run-as", package] and
+                              publish.BOOTSTRAP in shlex.split(call[5]))
+            started = first(lambda call: call[3] == "shell" and "am start" in call[-1] and package + "/" in call[-1])
+            self.assertLess(installed, bootstrap)
+            self.assertLess(bootstrap, started)
+        finals = [json.loads(path.read_bytes()) for path in prepared.output.glob("*.publication-final.json")]
+        # Per variant: five ingress files, two provider stage files, twelve requests and twelve pointer values.
+        self.assertEqual(len(finals), 2 * (5 + 2 + 12 + 12))
+        self.assertTrue(all(item["state"] == "PUBLISHED" and item["partial_consumed"] is True and
+                            item["basis"] == "clean_reply+final_readback" for item in finals))
+        self.assertFalse(list(prepared.output.glob("*.publication.timeout-stdout")))
+        for package in documents.VARIANTS.values():
+            root = self.host.package_root(package) / restore.protocol_root(prepared)
+            self.assertFalse([path.name for path in root.iterdir() if ".partial-" in path.name and
+                              not path.name.startswith(("receipt-", "claim-", "picker-"))])
+            self.assertEqual(len(list(root.glob("request-*.json"))), len(restore.STEPS))
+        provider = self.host.package_root(documents.PROVIDER) / "files/proof-runs"
+        self.assertFalse(list(provider.rglob("*.partial-*")))
+        self.assertFalse(any(len(call) == 6 and "ln" in shlex.split(shlex.split(call[5])[4])
+                             for call in self.host.calls if call[0].endswith("/adb") and call[3:5] == ["shell", "-T"] and
+                             shlex.split(call[5])[2:4] == ["/system/bin/sh", "-c"]))
+
+    def test_actual_make_restore_check_binds_the_literal_publisher_build(self):
+        captured = self.make_capture("android-synthetic-restore-check", self.restore_make_inputs())
+        argv = captured["argv"]
+        self.assertEqual(argv[argv.index("--publisher-build") + 1], self.host.args.publisher_build)
+        with patch.dict(os.environ, ANDROID_HOME=str(self.host.sdk)):
+            args = self.parse_captured_cli(captured)
+        self.host.restore_action(args)
+        self.assertEqual(args._publisher.source_commit, saf.REVISION)
+        self.assertFalse(self.host.mutations)
+        self.assertFalse(self.host.runas.programs)
+        self.assertFalse(Path(args.output).exists())
+        args.publisher_build = ""
+        with self.assertRaisesRegex(self.host.Refusal, "explicit_publisher_build_required"):
+            self.host.restore_action(args)
+        self.assertFalse(self.host.mutations)
 
     def test_flat_documents_case_refused_before_mutation(self):
         path = self.host.source_manifest["variants"]["dev"]["report"]

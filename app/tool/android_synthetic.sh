@@ -2154,6 +2154,24 @@ def documents_host():
              "closed_profile_fingerprint", "app_pid", "ordinary_kill", "ui_document", "click_node")
     return SimpleNamespace(**{name: globals()[name] for name in names})
 
+def publish_module():
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(SCRIPT.parent))
+    import android_synthetic_publish
+    return android_synthetic_publish
+
+def publish_host():
+    names = ("APP", "command", "temporary_path", "read_json", "package_metadata")
+    return SimpleNamespace(**{name: globals()[name] for name in names})
+
+def publisher_binding(args, revision):
+    # After the read-only preparation and before any device mutation: bind the
+    # explicit receipt to the clean HEAD that preparation just attested.
+    require(getattr(args, "publisher_build", None), "explicit_publisher_build_required")
+    require(documents_module().source(documents_host()) == revision, "publisher_binding_source_changed")
+    args._publisher = publish_module().load_build(publish_host(), args, args.publisher_build, revision)
+    return args._publisher
+
 def capabilities_module():
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(SCRIPT.parent))
@@ -2180,6 +2198,7 @@ def capabilities_action(args):
     require(isinstance(args.attempt_manifests, list) and all(isinstance(value, str) for value in args.attempt_manifests),
             "explicit_attempt_manifest_list_required")
     prepared = module.prepare(host, args)
+    publisher_binding(args, prepared.revision)
     ui_module().bind_previous(ui_host(), args, prepared.receipt, prepared.lifecycle, Path(args.base_run).parent, prepared.revision)
     if args.action == "capabilities-check":
         print("Recognized driver/A2/current lifecycle, version ledger and accepted UI observer verified; no mutation or allocation.")
@@ -2207,6 +2226,7 @@ def documents_action(args):
         print("Synthetic documents provider built:", apk)
         return
     prepared = module.prepare(host, args)
+    publisher_binding(args, prepared.revision)
     if args.action == "documents-check":
         print("Recognized driver/A2/current-lifecycle installation verified; no install, enable, launch or picker action.")
     else:
@@ -2247,6 +2267,7 @@ def restore_action(args):
             print("Retained paired restore APKs and exact build manifest:", Path(built["variants"]["dev"]["apk"]).parent / "build.json")
             return built
         prepared = module.prepare(host, args)
+        publisher_binding(args, prepared.revision)
         if args.action == "restore-check":
             print("Explicit fresh receiver, source chain, paired artifacts, ledger and fresh observer verified; no install or launch.")
             return
@@ -2262,7 +2283,7 @@ def restore_action(args):
         raise
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","build-ui-observer","self-test","documents-check","documents","build-documents","build-documents-provider","capabilities-check","capabilities","build-capability","build-restore","restore-check","restore"), default="check")
+parser.add_argument("--action", choices=("check","driver","updates-check","updates","lifecycle-check","lifecycle","build-lifecycle","build-neighbor","build-ui-observer","self-test","documents-check","documents","build-documents","build-documents-provider","capabilities-check","capabilities","build-capability","build-restore","restore-check","restore","build-publisher"), default="check")
 parser.add_argument("--avd")
 parser.add_argument("--serial")
 parser.add_argument("--receipt")
@@ -2281,6 +2302,7 @@ parser.add_argument("--dev-apk")
 parser.add_argument("--supported-apk")
 parser.add_argument("--provider-apk")
 parser.add_argument("--ui-observer-build")
+parser.add_argument("--publisher-build")
 args = parser.parse_args(sys.argv[2:])
 args.sdk = Path(os.environ.get("ANDROID_HOME",""))
 try:
@@ -2306,6 +2328,14 @@ try:
         apk,facts=ui_module().build(ui_host(),args,temporary_path(args.output),revision)
         require(ui_module().source(ui_host()) == revision,"source_changed_during_ui_build")
         print("Synthetic UI observer built:",apk)
+    elif args.action == "build-publisher":
+        revision = os.environ.get("ALKION_PROOF_SOURCE", "")
+        require(re.fullmatch(r"[a-f0-9]{40}", revision), "explicit_publisher_build_source_required")
+        require(args.output is not None, "fresh_output_required")
+        require(documents_module().source(documents_host()) == revision, "publisher_build_source_mismatch")
+        publish_module().build(publish_host(), args, temporary_path(args.output), revision)
+        require(documents_module().source(documents_host()) == revision, "source_changed_during_publisher_build")
+        print("Test publisher built:", temporary_path(args.output) / "build.json")
     elif args.action in ("capabilities-check", "capabilities", "build-capability"):
         capabilities_action(args)
     elif args.action in ("build-restore", "restore-check", "restore"):

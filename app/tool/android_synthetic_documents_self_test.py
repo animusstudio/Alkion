@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -27,6 +28,8 @@ import zipfile
 
 sys.dont_write_bytecode = True
 import android_synthetic_documents as documents
+import android_synthetic_publish as publish
+import android_synthetic_publish_self_test as publisher_fake
 import android_synthetic_ui as observer
 
 
@@ -169,10 +172,23 @@ class FakeHost:
         self.namespace = namespace
         self.apk_facts = self.fake_apk_facts
         self.namespace["apk_facts"] = self.fake_apk_facts
+        # Synthetic reviewed-publisher receipt; the real binder admits it.
+        publisher_fake.copy_sources(self.APP)
+        # Installed later by the route; direct module controls need its live UID.
+        self.metadata.setdefault(documents.PROVIDER, {"uid": 10003, "version_code": 1})
+        self.runas = publisher_fake.FakeRunAs(root)
+        self.args.publisher_build = str(publisher_fake.fake_build(root / "publisher-build", self.APP, REVISION))
+        self.args._publisher = publish.load_build(self, self.args, self.args.publisher_build, REVISION)
 
     @staticmethod
     def write(path, value):
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # Fixture directories follow the Android app process umask (077), so an
+        # adapter-created parent is private as the no-replace publisher requires.
+        previous = os.umask(0o077)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        finally:
+            os.umask(previous)
         path.write_bytes(documents.encoded(value) if not isinstance(value, bytes) else value)
         path.chmod(0o600)
 
@@ -467,6 +483,13 @@ class FakeHost:
         if argv[:1] == ["run-as"]:
             package = argv[1]; directory = self.package_root(package)
             rest = argv[2:]
+            # Every inherited owned-file writer must use the no-replace publisher.
+            assert not any(re.search(r"(?:^|[;&|(\s])ln\s", word) for word in rest), rest
+            if self.runas.handles(rest):
+                stdout, stderr, code = self.runas.run(package, self.metadata[package]["uid"], directory, rest, data)
+                if code == 0 and rest[2] == publish.PUBLISH and "/ack-" in rest[-1]:
+                    self.consume_ack(json.loads((directory / rest[-1]).read_bytes()))
+                return result(stdout if binary else stdout.decode(), stderr if binary else stderr.decode(), code)
             if rest[:2] == ["/system/bin/sh", "-c"]:
                 if data is not None and "ack-" in rest[-1] and ".json.partial-" in rest[-1] and self.scenario == "delayed-ack":
                     process = subprocess.Popen(["/bin/sh", *rest[1:]], cwd=directory,
@@ -493,8 +516,6 @@ class FakeHost:
                     partial.write_bytes(data[:-1] + b"x")
             else:
                 completed = subprocess.run(rest, cwd=directory, capture_output=True)
-            if completed.returncode == 0 and rest[:2] == ["/system/bin/sh", "-c"] and 'ln -T "$1" "$2"' in rest[2] and "ack-" in rest[-1]:
-                self.consume_ack(json.loads((directory / rest[-1]).read_bytes()))
             return result(completed.stdout if binary else completed.stdout.decode(),
                           completed.stderr if binary else completed.stderr.decode(), completed.returncode)
         raise AssertionError("Unexpected Android command: " + repr(argv))
@@ -752,6 +773,26 @@ class DocumentsControls(unittest.TestCase):
         self.assertEqual(set(state["documents"]), {"dev", "supported"})
         self.assertEqual([value["version_code"] for package, value in state["installed"].items() if package in documents.VARIANTS.values()], [45, 45])
         self.assertEqual(len(self.host.ack_objects), 54)
+        # One bootstrap per package, each after its install and before any consumer.
+        bootstraps = [package for package, index, _ in self.host.runas.programs if index == 1]
+        self.assertEqual(bootstraps, [documents.PROVIDER, documents.PACKAGES[1], documents.PACKAGES[2]])
+        def first(predicate):
+            return next(index for index, call in enumerate(self.host.calls) if predicate(call))
+        for package in (documents.PACKAGES[1], documents.PACKAGES[2]):
+            installed = first(lambda call: call[3:5] == ["install", "-r"] and
+                              self.host.facts_for_file(Path(call[-1]))["package"] == package)
+            bootstrap = first(lambda call: len(call) == 6 and shlex.split(call[5])[:2] == ["run-as", package] and
+                              publish.BOOTSTRAP in shlex.split(call[5]))
+            started = first(lambda call: call[3] == "shell" and "am start" in call[-1] and package + "/" in call[-1])
+            self.assertLess(installed, bootstrap); self.assertLess(bootstrap, started)
+        records = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*.publication-final.json")]
+        self.assertEqual(len(records), 54 + 4)  # Every ack plus both provider stage files per variant.
+        self.assertTrue(all(item["state"] == "PUBLISHED" and item["partial_consumed"] is True for item in records))
+        for package in documents.VARIANTS.values():
+            proof = self.host.package_root(package) / ("files/android-documents-proof/" + RUN)
+            self.assertEqual(len(list(proof.glob("ack-*.json"))), 27)
+            self.assertFalse(list(proof.glob("ack-*.partial-*")))
+        self.assertFalse(any("ln" in shlex.split(call[5]) for call in self.host.calls if len(call) == 6 and call[3:5] == ["shell", "-T"]))
         self.assertEqual([item[0] for item in self.host.mutations].count("enable"), 1)
         self.assertEqual([item[0] for item in self.host.mutations].count("unstop"), 1)
         self.assertEqual((self.root / "output/dev-received.alkionbackup").read_bytes(), RAW)
@@ -909,7 +950,7 @@ class DocumentsControls(unittest.TestCase):
         self.assertGreater(len(absent_polls), 2)
         self.assertEqual(len(self.host.delayed_ack_checks), 1)
         partial, expected = self.host.delayed_ack_checks[0]
-        self.assertEqual(Path(partial).read_bytes(), expected)
+        self.assertFalse(Path(partial).exists())  # Consumed by the no-replace rename.
         self.assertEqual(final.read_bytes(), expected)
         self.assertTrue(all(value == json.loads(expected) for value in seen))
 
@@ -924,6 +965,71 @@ class DocumentsControls(unittest.TestCase):
         self.assertEqual(len(partials), 1)
         self.assertTrue(partials[0].read_bytes().endswith(b"x"))
         self.assertFalse(self.host.ack_objects)
+
+    def test_provider_stage_collision_retains_stage_partial_and_existing_final(self):
+        evidence, phase = self.evidence_after_seed()
+        stage = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/.stage-" + RUN + "-dev")
+        original = self.host.android
+        def occupy(argv, binary=False, data=None):
+            if argv[:1] == ["run-as"] and argv[4:5] == [publish.PUBLISH] and argv[-1].endswith("/control.json"):
+                (stage / "control.json").write_bytes(b"existing final must survive")
+            return original(argv, binary, data)
+        with patch.object(self.host, "android", side_effect=occupy):
+            with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed:publication:NOT_PUBLISHED:rename_errno_17"):
+                documents.seed_provider(evidence, "dev", phase, first=False)
+        self.assertEqual((stage / "control.json").read_bytes(), b"existing final must survive")
+        partials = list(stage.glob("control.json.partial-*"))
+        self.assertEqual(len(partials), 1)
+        self.assertEqual(json.loads(partials[0].read_bytes())["run_id"], RUN)
+        outcome = json.loads(next((self.root / "output").glob("*-dev-control.json.publication.json")).read_bytes())
+        self.assertEqual((outcome["state"], outcome["partial_consumed"]), ("NOT_PUBLISHED", False))
+        self.assertFalse((self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev")).exists())
+
+    def test_ack_publication_timeout_is_unknown_and_keeps_binary_partials(self):
+        evidence, phase = self.evidence_after_seed()
+        evidence.bind_publisher(documents.PACKAGES[1], 10001)
+        self.host.runas.timeout_after = True
+        with self.assertRaises(subprocess.TimeoutExpired):
+            documents.ack(evidence, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        outcome = json.loads(next((self.root / "output").glob("*-ack-seeded.json.publication.json")).read_bytes())
+        self.assertEqual((outcome["state"], outcome["partial_consumed"]), ("UNKNOWN", "UNKNOWN"))
+        self.assertEqual(next((self.root / "output").glob("*publication.timeout-stderr")).read_bytes(), b"\x00partial\xff")
+        self.assertEqual(len(self.host.ack_objects), 0)  # The fake consumer only sees a reported success.
+
+    def test_bound_publisher_is_reused_and_failed_bootstrap_refuses_every_write(self):
+        evidence, phase = self.evidence_after_seed()
+        package = documents.PACKAGES[1]
+        evidence.bind_publisher(package, 10001)
+        count = len(self.host.runas.programs)
+        evidence.bind_publisher(package, 10001)
+        self.assertEqual(len(self.host.runas.programs), count)
+        with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed:publisher_bound_uid_mismatch"):
+            evidence.bind_publisher(package, 10002)
+        other = documents.Evidence(self.host, evidence.prepared)
+        (self.host.package_root(package) / "cache").chmod(0o777)
+        with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed:publisher_cache_root_invalid"):
+            documents.ack(other, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        count = len(self.host.runas.programs)
+        with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed:publisher_bootstrap_failed_not_repeatable"):
+            documents.ack(other, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        self.assertEqual(len(self.host.runas.programs), count)
+        proof = self.host.package_root(package) / ("files/android-documents-proof/" + RUN)
+        self.assertFalse(list(proof.glob("ack-*")))
+
+    def test_routes_bind_publisher_after_read_only_preparation_and_to_head(self):
+        self.host.args.action = "documents-check"
+        for value, reason in (("", "explicit_publisher_build_required"),
+                              (str(publisher_fake.fake_build(self.root / "other-build", self.host.APP, "b" * 40)),
+                               "publisher_build_source_commit_mismatch")):
+            with self.subTest(reason=reason):
+                self.host.args.publisher_build = value
+                self.host.calls.clear()
+                with self.assertRaisesRegex((documents.Refusal, publish.Refusal, self.host.Refusal), reason):
+                    self.host.documents_action(self.host.args)
+                self.assertTrue(any(call[0] == "git" for call in self.host.calls))  # Preparation ran first.
+        self.assertFalse(self.host.mutations)
+        self.assertFalse(self.host.runas.programs)
+        self.assertFalse((self.root / "output").exists())
 
     def test_namespace_refuses_replacement_links_and_seventeenth(self):
         evidence, phase = self.evidence_after_seed()
@@ -1169,12 +1275,40 @@ class DocumentsControls(unittest.TestCase):
         argv = json.loads(log.read_text())
         expected = {"--action": values["ALKION_SYNTHETIC_ACTION"], "--avd": values["ALKION_AVD"], "--serial": values["ALKION_SERIAL"],
                     "--receipt": values["ALKION_RECEIPT"], "--output": values["ALKION_OUTPUT"], "--base-run": values["ALKION_BASE_RUN"],
-                    "--driver-run": values["ALKION_DRIVER_RUN"], "--updates-run": values["ALKION_UPDATES_RUN"]}
+                    "--driver-run": values["ALKION_DRIVER_RUN"], "--updates-run": values["ALKION_UPDATES_RUN"],
+                    "--publisher-build": ""}
         self.assertEqual(dict(zip(argv[1::2], argv[2::2])), expected)
         completed = subprocess.run(["make", "-C", str(app), "android-synthetic-documents-provider", "ALKION_OUTPUT=" + values["ALKION_OUTPUT"]],
                                    env=env, capture_output=True, text=True, timeout=10)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(json.loads(log.read_text()), ["tool/android_synthetic.sh", "--action", "build-documents-provider", "--output", values["ALKION_OUTPUT"]])
+
+    def test_make_forwards_literal_publisher_build_for_documents_actions(self):
+        tools = self.root / "publisher-route-tools"
+        tools.mkdir()
+        log = self.root / "publisher-route.json"
+        fake = tools / "bash"
+        fake.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_ROUTE_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+        fake.chmod(0o700)
+        canary = self.root / "publisher-canary"
+        receipt = '/tmp/build "q" `touch ' + str(canary) + '` $(touch ' + str(canary) + ') $(shell touch ' + str(canary) + ") ${HOME} '; touch " + str(canary) + "; '"
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], FAKE_ROUTE_LOG=str(log))
+        app = Path(__file__).parent.parent
+        for action in ("documents-check", "documents"):
+            for origin in ("command-line", "environment"):
+                with self.subTest(action=action, origin=origin):
+                    values = {"ALKION_SYNTHETIC_ACTION": action, "ALKION_PUBLISHER_BUILD": receipt}
+                    argv = ["make", "-C", str(app), "android-synthetic"]
+                    variables = dict(env)
+                    if origin == "command-line":
+                        argv += [key + "=" + value for key, value in values.items()]
+                    else:
+                        variables.update(values)
+                    completed = subprocess.run(argv, env=variables, capture_output=True, text=True, timeout=10)
+                    self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                    forwarded = json.loads(log.read_text())
+                    self.assertEqual(forwarded[-2:], ["--publisher-build", receipt])
+                    self.assertFalse(canary.exists())
 
     def test_documents_cli_actions_refuse_implicit_targets(self):
         script = Path(__file__).with_name("android_synthetic.sh")

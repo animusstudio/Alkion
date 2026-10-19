@@ -40,6 +40,27 @@ remains. Linux retains its existing hard-link route. API24 compilation does not
 qualify API24–29 runtime support; actual Android publication, collision and
 receiving-file gates remain required.
 
+Host publication amendment (2026-10-19): synthetic host proof writers no longer
+publish owned files through hard links. A test-only command-line publisher links
+the same unchanged native no-replace operation. It is built from committed source
+with a literal NDK API24 x86_64 argv before any campaign, at the final campaign
+revision, and runs only as the exact debuggable package from a fresh private
+cache namespace bootstrapped once after that package's qualified install. Every
+publication binds the reviewed artifact, source revision, run, serial, package,
+full UID and helper identity, and records the AVD; a missing or replaced helper
+or a changed UID stops without recopy, reinstall, retry or fallback. Success
+consumes the closed temporary and is accepted only after a bound complete reply,
+clean transport and exact final readback. Collisions, rename without directory
+durability, timeouts and malformed replies retain the host input, closed-temporary
+readback, command context, raw reply and every remaining device file, and are
+never treated as success. Documents and receiving-restore writes share this
+publisher; capability inputs use it too, and capability owned reads and inputs use
+binary non-PTY `adb shell -T` with remote exit status. Directory namespace
+publication and the receiving restore's intentional current-pointer replacement
+are unchanged. This is host tooling only: it grants no product, provider or Dart
+change and qualifies no Android publication, API24–29 runtime or other ABI; fresh
+common-source campaigns remain required.
+
 `WorkoutNotification` is not initialized by production startup; native scheduled
 and action receivers are disabled. Its shown notification carries no fenced
 payload, and its background helper changes SQL without refreshing the OS mirror.

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -23,6 +24,8 @@ import xml.etree.ElementTree as ET
 
 sys.dont_write_bytecode = True
 import android_synthetic_capabilities as capability
+import android_synthetic_publish as publish
+import android_synthetic_publish_self_test as publisher_fake
 import android_synthetic_ui as observer
 
 
@@ -168,6 +171,11 @@ class Host:
             if callable(value) and name != "command": setattr(self, name, value)
         self.namespace = namespace
         self.make_chain()
+        # Synthetic reviewed-publisher receipt; the real binder admits it.
+        publisher_fake.copy_sources(self.APP)
+        self.runas = publisher_fake.FakeRunAs(root)
+        self.args.publisher_build = str(publisher_fake.fake_build(root / "publisher-build", self.APP, SOURCE))
+        self.args._publisher = publish.load_build(self, self.args, self.args.publisher_build, SOURCE)
 
     @staticmethod
     def write(path, value):
@@ -282,7 +290,18 @@ class Host:
             tail = argv[3:]
             if tail == ["get-state"]: return response("device\n")
             if tail == ["emu", "avd", "name"]: return response(self.args.avd + "\nOK\n")
-            if tail[0] in ("shell", "exec-out"):
+            if tail[:2] == ["shell", "-T"]:
+                assert len(tail) == 3, tail
+                tail = ["shell", tail[2]]
+            elif tail[0] == "exec-out":
+                # Raw exec-out never forwards host stdin and merges stderr into
+                # stdout with exit status 0. A blocked input write times out.
+                value = self.command([*argv[:3], "shell", tail[1]], binary=True, input=b"", check=False, timeout=timeout)
+                if input:
+                    raise subprocess.TimeoutExpired(argv, timeout, output=value.stdout + value.stderr, stderr=b"")
+                merged = value.stdout + value.stderr
+                return response(merged if binary else merged.decode(), b"" if binary else "", 0)
+            if tail[0] == "shell":
                 remote = shlex.split(tail[1])
                 if remote[0] == "getprop":
                     return response({"ro.kernel.qemu": "1", "ro.build.version.sdk": "36", "ro.product.cpu.abi": "x86_64", "sys.boot_completed": "1"}[remote[1]] + "\n")
@@ -305,9 +324,13 @@ class Host:
                 if remote[:1] == ["pidof"]: return response("", code=1)
                 if remote[:1] == ["run-as"]:
                     directory = self.package(remote[1]); program = remote[2:]
-                    if program[:2] == ["/system/bin/sh", "-c"]:
-                        if self.publish_collision and program[2] == 'ln -T "$1" "$2"':
+                    assert not any(re.search(r"(?:^|[;&|(\s])ln\s", word) for word in program), program
+                    if self.runas.handles(program):
+                        if self.publish_collision and program[2] == publish.PUBLISH:
                             self.write(directory / program[-1], b"existing final must survive")
+                        stdout, stderr, code = self.runas.run(remote[1], self.metadata[remote[1]]["uid"], directory, program, input)
+                        return response(stdout if binary else stdout.decode(), stderr if binary else stderr.decode(), code)
+                    if program[:2] == ["/system/bin/sh", "-c"]:
                         completed = subprocess.run(["/bin/sh", *program[1:]], cwd=directory, input=input, capture_output=True)
                     else:
                         completed = subprocess.run(program, cwd=directory, input=input, capture_output=True)
@@ -660,6 +683,7 @@ class Controls(unittest.TestCase):
         evidence = capability.Evidence(self.host, prepared); original = self.host.command
         package = capability.PACKAGES[1]; root = "files/android-capability/" + RUN + "/denied/v81"
         raw = b"input\x00\xff"
+        evidence.publisher.ensure(package)  # Before the timed case, as the route does.
         def interrupted(argv, **options):
             result = original(argv, **options)
             if options.get("input") is not None:
@@ -830,18 +854,110 @@ class Controls(unittest.TestCase):
         package = capability.PACKAGES[1]
         root = "files/android-capability/" + RUN + "/denied/v81"
         raw = b'original\x00\xff\n`literal` $(literal) "quoted"'
+        evidence.publisher.ensure(package)
         evidence.stage(package, root, {"prior-report.json": raw})
         directory = self.host.package(package) / root
         self.assertEqual((directory / "prior-report.json").read_bytes(), raw)
-        self.assertEqual(next(directory.glob("prior-report.json.partial-*")).read_bytes(), raw)
+        self.assertFalse(list(directory.glob("prior-report.json.partial-*")))  # Consumed by the no-replace rename.
+        final = json.loads(next(prepared.output.glob("*capability-input-prior-report.json.publication-final.json")).read_bytes())
+        self.assertEqual((final["state"], final["partial_consumed"], final["final_sha256"]), ("PUBLISHED", True, capability.sha(raw)))
         self.assertTrue(all(call[1:3] == ["-s", self.host.args.serial] for call in self.host.calls if call[0].endswith("/adb")))
         self.host.publish_collision = True
         other = "files/android-capability/" + RUN + "/denied/v82"
-        with self.assertRaisesRegex(capability.Refusal, "native_command_failed"):
+        with self.assertRaisesRegex(capability.Refusal, "capability_input_publication_refused:publication:NOT_PUBLISHED:rename_errno_17"):
             evidence.stage(package, other, {"prior-report.json": raw})
         directory = self.host.package(package) / other
         self.assertEqual((directory / "prior-report.json").read_bytes(), b"existing final must survive")
         self.assertEqual(next(directory.glob("prior-report.json.partial-*")).read_bytes(), raw)
+
+    def test_owned_read_uses_shell_T_and_distinguishes_missing_empty_and_diagnostics(self):
+        prepared = capability.prepare(self.host, self.host.args); prepared.output.mkdir(mode=0o700)
+        evidence = capability.Evidence(self.host, prepared); package = capability.PACKAGES[1]
+        directory = self.host.package(package) / "files/reads"; directory.mkdir(parents=True)
+        (directory / "empty.json").write_bytes(b"")
+        self.host.calls.clear()
+        self.assertIsNone(evidence.read(package, "files/reads/absent.json", optional=True))
+        self.assertEqual(evidence.read(package, "files/reads/empty.json", optional=True), b"")
+        argv = self.host.calls[-1]
+        self.assertEqual(argv[3:5], ["shell", "-T"])
+        self.assertEqual(shlex.split(argv[5])[:4], ["run-as", package, "/system/bin/sh", "-c"])
+        (directory / "linked.json").symlink_to(directory / "empty.json")
+        with self.assertRaisesRegex(capability.Refusal, "capability_owned_read_failed"):
+            evidence.read(package, "files/reads/linked.json", optional=True)
+        with self.assertRaisesRegex(capability.Refusal, "capability_owned_read_failed"):
+            evidence.read(package, "files/reads/absent.json")
+        with patch.object(self.host, "command", return_value=response(b"", b"diagnostic", 3)):
+            with self.assertRaisesRegex(capability.Refusal, "capability_owned_read_failed"):
+                evidence.read(package, "files/reads/absent.json", optional=True)
+        # The replaced raw exec-out transport could not tell absence from an empty file.
+        raw = self.host.command([self.host.sdk / "platform-tools/adb", "-s", self.host.args.serial, "exec-out", argv[5]],
+                                binary=True, check=False, timeout=30)
+        self.assertEqual((raw.returncode, raw.stdout, raw.stderr), (0, b"", b""))
+
+    def test_stage_input_uses_shell_T_stdin_and_strict_status(self):
+        prepared = capability.prepare(self.host, self.host.args); prepared.output.mkdir(mode=0o700)
+        evidence = capability.Evidence(self.host, prepared); package = capability.PACKAGES[1]
+        evidence.publisher.ensure(package)
+        raw = bytes(range(256)) * 5
+        root = "files/android-capability/" + RUN + "/denied/v83"
+        self.host.calls.clear()
+        evidence.stage(package, root, {"prior-snapshot.json": raw})
+        writes = [call for call in self.host.calls if call[0].endswith("/adb") and "alkion-capability-input" in call[-1]]
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0][3:5], ["shell", "-T"])
+        self.assertEqual((self.host.package(package) / root / "prior-snapshot.json").read_bytes(), raw)
+        # Raw exec-out never delivers host stdin: the old write could only time out.
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.host.command([*writes[0][:3], "exec-out", writes[0][-1]], binary=True, input=raw, check=False, timeout=30)
+        original = self.host.command
+        def failing(argv, **options):
+            if options.get("input") is not None and "alkion-capability-input" in str(argv[-1]):
+                original(argv, **options)
+                return response(b"", b"synthetic write diagnostic", 1)
+            return original(argv, **options)
+        other = "files/android-capability/" + RUN + "/denied/v84"
+        before = len(self.host.runas.programs)
+        with patch.object(self.host, "command", failing), self.assertRaisesRegex(capability.Refusal, "capability_closed_input_changed"):
+            evidence.stage(package, other, {"prior-report.json": raw})
+        self.assertEqual(len(self.host.runas.programs), before)  # No publication after a failed write.
+        self.assertFalse((self.host.package(package) / other / "prior-report.json").exists())
+
+    def test_no_owned_capability_path_uses_exec_out(self):
+        host = CampaignHost(self.root / "transport")
+        with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+            prepared = capability.prepare(host, host.args)
+            clock = SimpleNamespace(monotonic=lambda: host.clock, sleep=lambda duration: setattr(host, "clock", host.clock + duration))
+            calls = []
+            original = host.command
+            def record(argv, **options):
+                calls.append(list(map(str, argv)))
+                return original(argv, **options)
+            with patch.object(host, "command", record), patch.object(capability, "time", clock):
+                capability.run(host, prepared)
+        exec_out = [call for call in calls if call[0].endswith("/adb") and call[3] == "exec-out"]
+        self.assertTrue(all(call[4:] == ["screencap", "-p"] for call in exec_out), exec_out)
+        self.assertTrue(any(call[3:5] == ["shell", "-T"] for call in calls))
+
+    def test_stage_requires_bootstrapped_publisher_with_zero_commands(self):
+        prepared = capability.prepare(self.host, self.host.args); prepared.output.mkdir(mode=0o700)
+        evidence = capability.Evidence(self.host, prepared); package = capability.PACKAGES[1]
+        self.host.calls.clear()
+        with self.assertRaisesRegex(capability.Refusal, "capability_publisher_not_bootstrapped"):
+            evidence.stage(package, "files/android-capability/" + RUN + "/denied/v85", {"prior-report.json": b"x"})
+        self.assertEqual(self.host.calls, [])
+        self.assertFalse((self.host.package(package) / "files/android-capability").exists())
+
+    def test_helper_replaced_after_update_stops_without_recopy(self):
+        prepared = capability.prepare(self.host, self.host.args); prepared.output.mkdir(mode=0o700)
+        evidence = capability.Evidence(self.host, prepared); package = capability.PACKAGES[1]
+        evidence.publisher.ensure(package)
+        helper = self.host.package(package) / evidence.publisher.packages[package]["namespace"] / "publisher"
+        helper.write_bytes(helper.read_bytes()[:-1] + b"?")
+        root = "files/android-capability/" + RUN + "/denied/v86"
+        with self.assertRaisesRegex(capability.Refusal, "publication:NOT_ATTEMPTED:guard_exit_76"):
+            evidence.stage(package, root, {"prior-report.json": b"payload"})
+        self.assertEqual(next((self.host.package(package) / root).glob("prior-report.json.partial-*")).read_bytes(), b"payload")
+        self.assertEqual([index for _, index, _ in self.host.runas.programs].count(1), 1)  # Never recopied.
 
     def test_failed_builder_keeps_attempted_code_and_output_without_install(self):
         self.host.grant_becomes_unknown = False; self.host.fail_build = True
@@ -948,6 +1064,16 @@ class Controls(unittest.TestCase):
         self.assertTrue(all(case["peer_and_neighbor_preserved"] for case in result["cases"].values()))
         self.assertEqual(result["cases"]["dev/inexact"]["native"]["mode"], "inexactAllowWhileIdle")
         self.assertTrue(all(call[1:3] == ["-s", host.args.serial] for call in host.calls if call[0].endswith("/adb")))
+        # One bootstrap per variant, before the first live budget record.
+        self.assertEqual([package for package, index, _ in host.runas.programs if index == 1], list(capability.VARIANTS.values()))
+        names = sorted(path.name for path in prepared.output.iterdir())
+        bound = [name for name in names if name.endswith(".bound.json")]
+        budgets = [name for name in names if name.endswith("-remaining-budget.json")]
+        self.assertEqual(len(bound), 2)
+        self.assertLess(max(bound), min(budgets))
+        finals = [json.loads(path.read_bytes()) for path in prepared.output.glob("*.publication-final.json")]
+        self.assertTrue(finals and all(item["state"] == "PUBLISHED" for item in finals))
+        self.assertEqual(len(finals), 2 * len([entry for entry in result["builds"] if not entry["role"].endswith("/main")]))
 
     def test_real_route_refuses_foreign_alarm_uid_and_keeps_closed_predecessor(self):
         host = CampaignHost(self.root / "foreign-native"); host.intent_uid_delta = 1
@@ -965,6 +1091,45 @@ class Controls(unittest.TestCase):
         self.assertNotIn("preserve", result["cases"]["dev/revoked"])
         self.assertTrue(list(prepared.output.glob("*owned-read.stdout")))
         self.assertEqual(result["overall"], "IN_PROGRESS")
+
+    def test_stage_inputs_reservation_is_recorded_and_blocks_staging_when_short(self):
+        required = 60 + 15 + 2 * publish.PUBLISH_TIMEOUT
+        host = CampaignHost(self.root / "stage-budget")
+        with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+            prepared = capability.prepare(host, host.args)
+            clock = SimpleNamespace(monotonic=lambda: host.clock, sleep=lambda duration: setattr(host, "clock", host.clock + duration))
+            with patch.object(capability, "time", clock):
+                capability.run(host, prepared)
+        records = [json.loads(path.read_bytes()) for path in sorted(prepared.output.glob("*-remaining-budget.json"))]
+        stage = [item for item in records if item["operation"].startswith("stage-inputs-")]
+        self.assertEqual({item["operation"] for item in stage}, {"stage-inputs-preserve", "stage-inputs-logged"})
+        self.assertTrue(all(item["required_seconds"] == required for item in stage))
+        operations = [item["operation"] for item in records]
+        first = operations.index("stage-inputs-preserve")
+        # After the unchanged install (and kill) reservations, immediately before staging.
+        self.assertIn(operations[first - 1], ("install-preserve", "ordinary-kill-and-checkpoint"))
+        self.assertLess(operations.index("install-preserve"), first)
+        self.assertTrue(any(item["operation"] == "install-preserve" and item["required_seconds"] == 75 for item in records))
+        # Short of only the new reservation: the real budget refuses before any staging command.
+        host = CampaignHost(self.root / "stage-budget-short")
+        original = capability.LiveBudget.require
+        def short(budget, seconds, operation):
+            if operation.startswith("stage-inputs-"):
+                host.clock = budget.deadline - capability.instant(UTC) - (required - 20)
+            return original(budget, seconds, operation)
+        with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+            prepared = capability.prepare(host, host.args)
+            clock = SimpleNamespace(monotonic=lambda: host.clock, sleep=lambda duration: setattr(host, "clock", host.clock + duration))
+            with patch.object(capability, "time", clock), patch.object(capability.LiveBudget, "require", short):
+                with self.assertRaisesRegex(capability.Blocked, "insufficient_original_600s_budget:stage-inputs-preserve"):
+                    capability.run(host, prepared)
+        result = json.loads((prepared.output / "run.json").read_bytes())
+        self.assertEqual(result["cases"]["dev/denied"]["result"], "BLOCKED")
+        preserve = next(entry for entry in result["builds"] if entry["role"] == "denied/preserve")
+        self.assertEqual(preserve["state"], "built")  # Never installed.
+        root = host.package(capability.PACKAGES[1]) / ("files/android-capability/" + RUN + "/denied/v" + str(preserve["version_code"]))
+        self.assertFalse(root.exists())
+        self.assertEqual(len(list(prepared.output.glob("*.publication-request.json"))), 2)  # Only the prepare inputs.
 
     def test_real_route_stops_before_jit_allocation_when_original_budget_is_insufficient(self):
         host = CampaignHost(self.root / "slow-jit"); host.build_seconds = 180; host.args.jit_build_budget = 180
@@ -1057,9 +1222,9 @@ class Controls(unittest.TestCase):
         values={'ALKION_SYNTHETIC_ACTION':'capabilities-check','ALKION_AVD':literal,'ALKION_SERIAL':literal,
                 'ALKION_RECEIPT':literal,'ALKION_OUTPUT':literal,'ALKION_BASE_RUN':literal,'ALKION_DRIVER_RUN':literal,
                 'ALKION_UPDATES_RUN':literal,'ALKION_VERSION_LEDGER':literal,'ALKION_SOURCE_REVIEW':literal,
-                'ALKION_ATTEMPT_MANIFESTS_JSON':json.dumps([literal]),'ALKION_JIT_BUILD_BUDGET':'120'}
+                'ALKION_ATTEMPT_MANIFESTS_JSON':json.dumps([literal]),'ALKION_JIT_BUILD_BUDGET':'120','ALKION_PUBLISHER_BUILD':literal}
         flags=('--action','--avd','--serial','--receipt','--output','--base-run','--driver-run','--updates-run',
-               '--version-ledger','--source-review','--attempt-manifests-json','--jit-build-budget')
+               '--version-ledger','--source-review','--attempt-manifests-json','--jit-build-budget','--publisher-build')
         expected=['tool/android_synthetic.sh',*(part for flag,value in zip(flags,values.values()) for part in (flag,value))]
         env=dict(os.environ,PATH=str(tools)+os.pathsep+os.environ['PATH'],FAKE_ARGV_LOG=str(log))
         for origin in ('command-line','environment'):
