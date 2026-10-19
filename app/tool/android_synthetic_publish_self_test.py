@@ -584,6 +584,20 @@ class PublisherControls(unittest.TestCase):
                         with self.assertRaisesRegex(publish.Refusal, "publisher_bootstrap_failed_not_repeatable"):
                             session.ensure(PACKAGE)
 
+    def test_foreign_owned_namespace_readback_refuses(self):
+        original = self.host.runas.run
+        def foreign(package, uid, directory, rest, data):
+            result = original(package, uid, directory, rest, data)
+            if rest[2] == publish.BOOTSTRAP:
+                self.host.runas.foreign_inode = next((Path(directory) / "cache").iterdir()).stat().st_ino
+            return result
+        with patch.object(self.host.runas, "run", foreign):
+            with self.assertRaisesRegex(publish.Refusal, "publisher_helper_readback_invalid"):
+                self.session.ensure(PACKAGE)
+        rows = sorted(self.output.glob("*-readback.stdout"))[-1].read_bytes().decode().splitlines()
+        self.assertEqual(rows[0], "10999 2700")
+        self.assertFalse(self.session.bound(PACKAGE))
+
     def test_setgid_namespace_publishes_and_helper_file_never_inherits_setgid(self):
         self.bootstrapped()
         namespace = self.base / self.session.packages[PACKAGE]["namespace"]

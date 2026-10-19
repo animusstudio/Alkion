@@ -158,6 +158,7 @@ class FakeHost:
         self.scenario = "valid"
         self.ack_objects = []
         self.delayed_ack_checks = []
+        self.run_as_failures = set()
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
             receipt=str(receipt_path), output=str(root / "output"), driver_run=str(root / "driver/run.json"),
@@ -483,6 +484,11 @@ class FakeHost:
         if argv[:1] == ["run-as"]:
             package = argv[1]; directory = self.package_root(package)
             rest = argv[2:]
+            if package in self.run_as_failures:
+                # Pessimistic device model: run-as refuses before running the
+                # program, exits 0 and reports on stdout with empty stderr.
+                diagnostic = b"run-as: unknown package: " + package.encode() + b"\n"
+                return result(diagnostic if binary else diagnostic.decode(), b"" if binary else "", 0)
             # Every inherited owned-file writer must use the no-replace publisher.
             assert not any(re.search(r"(?:^|[;&|(\s])ln\s", word) for word in rest), rest
             if self.runas.handles(rest):
@@ -1030,6 +1036,24 @@ class DocumentsControls(unittest.TestCase):
         self.assertFalse(self.host.mutations)
         self.assertFalse(self.host.runas.programs)
         self.assertFalse((self.root / "output").exists())
+
+    def test_run_as_stdout_diagnostic_is_never_success(self):
+        evidence, phase = self.evidence_after_seed()
+        package = documents.PACKAGES[1]
+        documents.absent(self.host, self.host.args, package, "files/not-present")
+        self.host.run_as_failures = {package}
+        with self.assertRaisesRegex(documents.Refusal, "documents_owned_path_already_present"):
+            documents.absent(self.host, self.host.args, package, "files/not-present")
+        with self.assertRaisesRegex(documents.Refusal, "documents_run_as_diagnostic"):
+            evidence.read(package, "files/not-present", 64, "diagnostic", optional=True)
+        with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed"):
+            documents.ack(evidence, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        self.host.run_as_failures = {documents.PROVIDER}
+        with self.assertRaisesRegex(documents.Refusal, "provider_namespace_not_fresh_owned|exclusive_write_failed"):
+            documents.seed_provider(evidence, "dev", phase, first=False)
+        with self.assertRaisesRegex(documents.Refusal, "documents_run_as_diagnostic"):
+            documents.collect_outputs(evidence, "dev")
+        self.assertFalse(self.host.ack_objects)
 
     def test_namespace_refuses_replacement_links_and_seventeenth(self):
         evidence, phase = self.evidence_after_seed()

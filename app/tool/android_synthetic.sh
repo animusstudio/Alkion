@@ -360,7 +360,7 @@ def continuation_device_guard(args, receipt, base, local_facts):
         for relative in ("files/" + package, "files/android-update/" + receipt["run_id"]):
             query = adb(args, "shell", "run-as", package, "/system/bin/sh", "-c",
                         'test ! -e "$1" && test ! -L "$1"', "alkion-absent-root", relative, check=False)
-            require(query.returncode == 0 and not query.stderr.strip(), "unexpected_existing_update_profile")
+            require(query.returncode == 0 and not query.stdout.strip() and not query.stderr.strip(), "unexpected_existing_update_profile")
     return metadata
 
 def audit_update_candidate(facts, package, before, version, *, wrong_signer=False):
@@ -653,7 +653,7 @@ def prepare_lifecycle(args, receipt, output):
         query = adb(args, "shell", "run-as", package, "/system/bin/sh", "-c",
                     'test ! -e "$1" && test ! -L "$1"', "alkion-absent-root",
                     "files/android-lifecycle/"+receipt["run_id"], check=False)
-        require(query.returncode == 0, "lifecycle_run_already_present")
+        require(query.returncode == 0 and not query.stdout.strip() and not query.stderr.strip(), "lifecycle_run_already_present")
     return base, original, local, metadata
 
 def app_pid(args, package, *, timeout=60):
@@ -1087,9 +1087,11 @@ def wait_summary_ui(args, output, name, package, run, prepared):
 def stage_native_evidence(args, package, run, value):
     raw = json.dumps(value, separators=(",", ":"))
     require(len(raw) <= 65536, "native_evidence_too_large")
-    adb(args, "shell", "run-as", package, "/system/bin/sh", "-c",
+    staged = adb(args, "shell", "run-as", package, "/system/bin/sh", "-c",
         'umask 077; set -C; cat > "$1"', "alkion-native-evidence",
         "files/android-lifecycle/"+run+"/native-evidence.json", input=raw)
+    # A run-as refusal exits before cat; success prints nothing.
+    require(not staged.stdout.strip() and not staged.stderr.strip(), "native_evidence_stage_failed")
 
 def wait_notification_absent(args, package, uid, output):
     key="0|"+package+"|4101|null|"+str(uid)

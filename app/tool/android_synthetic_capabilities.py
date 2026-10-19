@@ -268,6 +268,8 @@ def owned_read(host, args, package, path, bound=LIMIT):
         timeout_receipt(error, {"operation": "owned-read", "serial": args.serial, "avd": args.avd,
                                 "package": package, "path": path, "bound": bound, "mutation_requested": False})
         raise
+    # A run-as refusal never runs the program; never parse its diagnostic.
+    require(not result.stdout.startswith(b"run-as: "), "capability_run_as_diagnostic")
     require(len(result.stdout) <= bound, "owned_capability_read_exceeded_bound")
     return result
 
@@ -615,6 +617,7 @@ class Evidence:
             'umask 077; p=""; oldIFS="$IFS"; IFS=/; for part in $1; do p="${p:+$p/}$part"; test ! -L "$p" || exit 4; '
             'if test "$p" != "$1" && test ! -e "$p"; then mkdir -m 700 "$p" || exit 4; fi; done; IFS="$oldIFS"; '
             'mkdir -m 700 "$1"', "alkion-capability-stage", root)
+        require(not result.stdout.strip() and not result.stderr.strip(), "capability_stage_root_refused")
         for name, raw in files.items():
             require(name in ("prior-report.json", "prior-snapshot.json") and len(raw) <= LIMIT, "capability_input_unbounded")
             path = root + "/" + name
@@ -635,7 +638,7 @@ class Evidence:
                 raise
             self.keep("staged-input.transport", {"path": partial, "returncode": written.returncode,
                                                  "stderr": written.stderr.decode(errors="replace")})
-            require(written.returncode == 0 and not written.stderr and self.read(package, partial) == raw,
+            require(written.returncode == 0 and not written.stdout and not written.stderr and self.read(package, partial) == raw,
                     "capability_closed_input_changed")
             try:
                 self.publisher.publish(package, partial, path, raw, "capability-input-" + name,

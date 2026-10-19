@@ -986,6 +986,38 @@ print("fake compiler only")
         self.assertFalse(list(parent.glob(".stage-*")))
         self.assertEqual(self.host.pids[documents.PROVIDER], 501)
 
+    def test_run_as_stdout_diagnostic_never_counts_as_quiet_success(self):
+        prepared = self.prepare()
+        prepared.output.mkdir(mode=0o700)
+        evidence = restore.Evidence(self.host, prepared)
+        original = self.host.android
+        def diagnose(marker):
+            def android(argv, binary=False, data=None):
+                if argv[:1] == ["run-as"] and len(argv) > 4 and marker in argv[4]:
+                    text = b"run-as: package not debuggable: " + argv[1].encode() + b"\n"
+                    return saf.result(text if binary else text.decode(), b"" if binary else "", 0)
+                return original(argv, binary, data)
+            return android
+        package = documents.PACKAGES[1]
+        root = restore.protocol_root(prepared)
+        with patch.object(self.host, "android", side_effect=diagnose("mkdir -p -m 700")):
+            with self.assertRaisesRegex(restore.Refusal, "restore_fresh_directory_refused"):
+                restore.create_directory(evidence, package, root)
+        self.assertFalse((self.host.package_root(package) / root).exists())
+        files = restore.ingress(evidence, "dev")
+        with patch.object(self.host, "android", side_effect=diagnose('mv -T "$1" "$2"')):
+            with self.assertRaisesRegex(restore.Refusal, "restore_pointer_publication_failed"):
+                restore.request(evidence, "dev", 1, files)
+        self.assertFalse((self.host.package_root(package) / root / "current.json").exists())
+        with patch.object(self.host, "android", side_effect=diagnose('mv -n "$1" "$2"')):
+            with self.assertRaisesRegex(restore.Refusal, "receiver_provider_publication_refused"):
+                restore.seed_provider(evidence, "dev", first=False)
+        self.host.run_as_failures = {package}
+        with self.assertRaisesRegex(restore.Refusal, "restore_run_as_diagnostic"):
+            restore.tree_pin(evidence, package, root)
+        with self.assertRaisesRegex(restore.Refusal, "documents_owned_path_already_present"):
+            documents.absent(self.host, self.host.args, package, root + "/missing")
+
     def test_failed_provider_input_retains_nonmatching_stage_and_partial(self):
         prepared = self.prepare()
         prepared.output.mkdir(mode=0o700)
