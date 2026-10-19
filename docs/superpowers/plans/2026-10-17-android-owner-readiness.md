@@ -584,9 +584,9 @@ T5 host publisher ownership (2026-10-19): new `app/tool/android_synthetic_publis
 plus `app/tool/android_synthetic_documents{,_self_test}.py`,
 `app/tool/android_synthetic_capabilities{,_self_test}.py`, `app/tool/android_synthetic.sh`,
 `app/Makefile` and this specification/plan. The receiving-restore route inherits the
-documents writer unchanged; its Make forwarding and any restore consumer adjustment
-need a separate serialized handoff, and until then that route refuses without an
-explicit publisher build. A literal `android-synthetic-publisher` target builds the
+documents writer unchanged; a serialized follow-up forwards the same literal publisher
+build through its Make route and adds receiving-restore self-test assertions that
+every inherited write publishes through the facade without a hard link. A literal `android-synthetic-publisher` target builds the
 CLI from committed source; run it, and compare the artifact with the reviewed
 feasibility artifact, only at the final common-source campaign revision. Campaign
 routes take only the literal `ALKION_PUBLISHER_BUILD` receipt and validate it after
@@ -597,8 +597,8 @@ strict status; its original 600-second budgets, ledger and provenance guards are
 unchanged, a stricter-only reservation precedes input staging, and no build or
 bootstrap runs inside them. No product, provider, Dart, native or CMake edit, and
 no runtime/source allowlist widening. Checks: publisher host controls, one complete
-Documents and one complete capability fake facade, the unchanged receiving-restore
-suite and the affected Make-boundary controls; host-only, no Android PASS. Fresh
+Documents, one complete capability and one complete receiving-restore fake facade,
+and the affected Make-boundary controls; host-only, no Android PASS. Fresh
 common-source driver/A2/lifecycle/Documents and a fresh matching receiver precede
 native publication proof.
 
