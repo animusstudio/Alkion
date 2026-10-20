@@ -72,6 +72,177 @@ def captured_shade():
     return tree
 
 
+# Full native API 36 DocumentsUI capture: 154 nodes, including the hidden
+# bottom divider. Only the synthetic run token is normalized; no bounds repair.
+CAPTURED_HIDDEN_DIVIDER = (
+    (None, '', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (0, '', 'android.widget.LinearLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (1, '', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (2, 'com.android.documentsui:id/action_bar_root', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (3, 'android:id/content', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (4, 'com.android.documentsui:id/coordinator_layout', 'android.view.ViewGroup', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (5, 'com.android.documentsui:id/drawer_layout', 'androidx.drawerlayout.widget.DrawerLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (6, '', 'android.widget.ScrollView', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (7, 'com.android.documentsui:id/app_bar', 'android.widget.LinearLayout', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/collapsing_toolbar', 'android.widget.FrameLayout', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (9, '', 'android.widget.ScrollView', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (10, 'com.android.documentsui:id/directory_header', 'android.widget.LinearLayout', '[0,262][1080,546]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/horizontal_breadcrumb', 'androidx.recyclerview.widget.RecyclerView', '[0,262][1080,388]', '', '', 'false', 'true', 'true'),
+    (12, '', 'android.widget.LinearLayout', '[0,262][722,388]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/breadcrumb_text', 'android.widget.TextView', '[0,262][722,388]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (11, '', 'android.widget.HorizontalScrollView', '[0,388][1080,388]', '', '', 'false', 'true', 'false'),
+    (15, '', 'android.widget.FrameLayout', '[0,388][0,388]', '', '', 'false', 'true', 'false'),
+    (11, 'com.android.documentsui:id/header_container', 'android.widget.LinearLayout', '[63,388][1017,546]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/header_title', 'android.widget.TextView', '[63,388][890,546]', 'Files from Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/sub_menu', 'androidx.appcompat.widget.LinearLayoutCompat', '[890,404][1017,530]', '', '', 'false', 'true', 'true'),
+    (19, 'com.android.documentsui:id/sub_menu_grid', 'android.widget.Button', '[890,404][1017,530]', '', 'Grid view', 'true', 'true', 'true'),
+    (9, 'com.android.documentsui:id/toolbar', 'android.view.ViewGroup', '[0,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (21, '', 'android.widget.ImageButton', '[0,136][147,262]', '', 'Show roots', 'true', 'true', 'true'),
+    (21, '', 'android.widget.TextView', '[189,163][807,234]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (21, '', 'androidx.appcompat.widget.LinearLayoutCompat', '[827,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (24, 'com.android.documentsui:id/option_menu_create_dir', 'android.widget.Button', '[827,136][954,262]', '', 'New folder', 'true', 'true', 'true'),
+    (24, '', 'android.widget.ImageView', '[954,136][1080,262]', '', 'More options', 'true', 'true', 'true'),
+    (7, '', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (27, 'com.android.documentsui:id/container_search_fragment', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (27, 'com.android.documentsui:id/container_directory', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (29, '', 'android.widget.LinearLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (30, 'com.android.documentsui:id/refresh_layout', 'android.view.ViewGroup', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (31, 'com.android.documentsui:id/dir_list', 'android.widget.GridView', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,546][1080,738]', '', '', 'true', 'false', 'true'),
+    (33, '', 'android.widget.LinearLayout', '[0,546][1080,735]', '', '', 'false', 'false', 'true'),
+    (34, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,546][189,735]', '', '', 'false', 'false', 'true'),
+    (35, '', 'androidx.cardview.widget.CardView', '[42,588][147,693]', '', '', 'false', 'false', 'true'),
+    (36, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,588][147,693]', '', '', 'false', 'false', 'true'),
+    (36, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,601][134,680]', '', '', 'false', 'false', 'false'),
+    (36, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,609][126,672]', '', '', 'false', 'false', 'true'),
+    (34, '', 'android.widget.LinearLayout', '[189,612][1038,669]', '', '', 'false', 'false', 'true'),
+    (40, '', 'android.widget.LinearLayout', '[189,612][1038,669]', '', '', 'false', 'false', 'true'),
+    (41, 'android:id/title', 'android.widget.TextView', '[189,612][1038,669]', '$RUN-dev-open-corrupt.alkionbackup', '', 'false', 'false', 'true'),
+    (33, '', 'android.view.View', '[189,735][1059,738]', '', '', 'false', 'false', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,738][1080,930]', '', '', 'true', 'false', 'true'),
+    (44, '', 'android.widget.LinearLayout', '[0,738][1080,927]', '', '', 'false', 'false', 'true'),
+    (45, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,738][189,927]', '', '', 'false', 'false', 'true'),
+    (46, '', 'androidx.cardview.widget.CardView', '[42,780][147,885]', '', '', 'false', 'false', 'true'),
+    (47, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,780][147,885]', '', '', 'false', 'false', 'true'),
+    (47, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,793][134,872]', '', '', 'false', 'false', 'false'),
+    (47, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,801][126,864]', '', '', 'false', 'false', 'true'),
+    (45, '', 'android.widget.LinearLayout', '[189,804][1038,861]', '', '', 'false', 'false', 'true'),
+    (51, '', 'android.widget.LinearLayout', '[189,804][1038,861]', '', '', 'false', 'false', 'true'),
+    (52, 'android:id/title', 'android.widget.TextView', '[189,804][1038,861]', '$RUN-dev-open-denied.alkionbackup', '', 'false', 'false', 'true'),
+    (44, '', 'android.view.View', '[189,927][1059,930]', '', '', 'false', 'false', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,930][1080,1122]', '', '', 'true', 'false', 'true'),
+    (55, '', 'android.widget.LinearLayout', '[0,930][1080,1119]', '', '', 'false', 'false', 'true'),
+    (56, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,930][189,1119]', '', '', 'false', 'false', 'true'),
+    (57, '', 'androidx.cardview.widget.CardView', '[42,972][147,1077]', '', '', 'false', 'false', 'true'),
+    (58, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,972][147,1077]', '', '', 'false', 'false', 'true'),
+    (58, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,985][134,1064]', '', '', 'false', 'false', 'false'),
+    (58, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,993][126,1056]', '', '', 'false', 'false', 'true'),
+    (56, '', 'android.widget.LinearLayout', '[189,996][1038,1053]', '', '', 'false', 'false', 'true'),
+    (62, '', 'android.widget.LinearLayout', '[189,996][1038,1053]', '', '', 'false', 'false', 'true'),
+    (63, 'android:id/title', 'android.widget.TextView', '[189,996][1038,1053]', '$RUN-dev-open-error.alkionbackup', '', 'false', 'false', 'true'),
+    (55, '', 'android.view.View', '[189,1119][1059,1122]', '', '', 'false', 'false', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1122][1080,1314]', '', '', 'true', 'false', 'true'),
+    (66, '', 'android.widget.LinearLayout', '[0,1122][1080,1311]', '', '', 'false', 'false', 'true'),
+    (67, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1122][189,1311]', '', '', 'false', 'false', 'true'),
+    (68, '', 'androidx.cardview.widget.CardView', '[42,1164][147,1269]', '', '', 'false', 'false', 'true'),
+    (69, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1164][147,1269]', '', '', 'false', 'false', 'true'),
+    (69, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1177][134,1256]', '', '', 'false', 'false', 'false'),
+    (69, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1185][126,1248]', '', '', 'false', 'false', 'true'),
+    (67, '', 'android.widget.LinearLayout', '[189,1188][1038,1245]', '', '', 'false', 'false', 'true'),
+    (73, '', 'android.widget.LinearLayout', '[189,1188][1038,1245]', '', '', 'false', 'false', 'true'),
+    (74, 'android:id/title', 'android.widget.TextView', '[189,1188][1038,1245]', '$RUN-dev-open-good.alkionbackup', '', 'false', 'false', 'true'),
+    (66, '', 'android.view.View', '[189,1311][1059,1314]', '', '', 'false', 'false', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1314][1080,1506]', '', '', 'true', 'false', 'true'),
+    (77, '', 'android.widget.LinearLayout', '[0,1314][1080,1503]', '', '', 'false', 'false', 'true'),
+    (78, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1314][189,1503]', '', '', 'false', 'false', 'true'),
+    (79, '', 'androidx.cardview.widget.CardView', '[42,1356][147,1461]', '', '', 'false', 'false', 'true'),
+    (80, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1356][147,1461]', '', '', 'false', 'false', 'true'),
+    (80, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1369][134,1448]', '', '', 'false', 'false', 'false'),
+    (80, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1377][126,1440]', '', '', 'false', 'false', 'true'),
+    (78, '', 'android.widget.LinearLayout', '[189,1380][1038,1437]', '', '', 'false', 'false', 'true'),
+    (84, '', 'android.widget.LinearLayout', '[189,1380][1038,1437]', '', '', 'false', 'false', 'true'),
+    (85, 'android:id/title', 'android.widget.TextView', '[189,1380][1038,1437]', '$RUN-dev-open-over-limit.alkionbackup', '', 'false', 'false', 'true'),
+    (77, '', 'android.view.View', '[189,1503][1059,1506]', '', '', 'false', 'false', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1506][1080,1698]', '', '', 'true', 'false', 'true'),
+    (88, '', 'android.widget.LinearLayout', '[0,1506][1080,1695]', '', '', 'false', 'false', 'true'),
+    (89, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1506][189,1695]', '', '', 'false', 'false', 'true'),
+    (90, '', 'androidx.cardview.widget.CardView', '[42,1548][147,1653]', '', '', 'false', 'false', 'true'),
+    (91, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1548][147,1653]', '', '', 'false', 'false', 'true'),
+    (91, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1561][134,1640]', '', '', 'false', 'false', 'false'),
+    (91, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1569][126,1632]', '', '', 'false', 'false', 'true'),
+    (89, '', 'android.widget.LinearLayout', '[189,1545][1038,1656]', '', '', 'false', 'false', 'true'),
+    (95, '', 'android.widget.LinearLayout', '[189,1545][1038,1602]', '', '', 'false', 'false', 'true'),
+    (96, 'android:id/title', 'android.widget.TextView', '[189,1545][1038,1602]', '$RUN-dev-open-short.alkionbackup', '', 'false', 'false', 'true'),
+    (95, 'com.android.documentsui:id/line2', 'android.widget.LinearLayout', '[189,1613][1038,1656]', '', '', 'false', 'false', 'true'),
+    (98, 'com.android.documentsui:id/metadata', 'android.widget.TextView', '[189,1613][404,1656]', '595 kB, BIN file', '', 'false', 'false', 'true'),
+    (88, '', 'android.view.View', '[189,1695][1059,1698]', '', '', 'false', 'false', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1698][1080,1890]', '', '', 'true', 'true', 'true'),
+    (101, '', 'android.widget.LinearLayout', '[0,1698][1080,1887]', '', '', 'false', 'true', 'true'),
+    (102, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1698][189,1887]', '', '', 'false', 'true', 'true'),
+    (103, '', 'androidx.cardview.widget.CardView', '[42,1740][147,1845]', '', '', 'false', 'true', 'true'),
+    (104, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1740][147,1845]', '', '', 'false', 'true', 'true'),
+    (104, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1753][134,1832]', '', '', 'false', 'true', 'false'),
+    (104, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1761][126,1824]', '', '', 'false', 'true', 'true'),
+    (102, '', 'android.widget.LinearLayout', '[189,1764][1038,1821]', '', '', 'false', 'true', 'true'),
+    (108, '', 'android.widget.LinearLayout', '[189,1764][1038,1821]', '', '', 'false', 'true', 'true'),
+    (109, 'android:id/title', 'android.widget.TextView', '[189,1764][1038,1821]', '$RUN-dev-save-good.alkionbackup', '', 'false', 'true', 'true'),
+    (101, '', 'android.view.View', '[189,1887][1059,1890]', '', '', 'false', 'true', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1890][1080,2082]', '', '', 'true', 'true', 'true'),
+    (112, '', 'android.widget.LinearLayout', '[0,1890][1080,2079]', '', '', 'false', 'true', 'true'),
+    (113, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1890][189,2079]', '', '', 'false', 'true', 'true'),
+    (114, '', 'androidx.cardview.widget.CardView', '[42,1932][147,2037]', '', '', 'false', 'true', 'true'),
+    (115, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1932][147,2037]', '', '', 'false', 'true', 'true'),
+    (115, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1945][134,2024]', '', '', 'false', 'true', 'false'),
+    (115, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1953][126,2016]', '', '', 'false', 'true', 'true'),
+    (113, '', 'android.widget.LinearLayout', '[189,1956][1038,2013]', '', '', 'false', 'true', 'true'),
+    (119, '', 'android.widget.LinearLayout', '[189,1956][1038,2013]', '', '', 'false', 'true', 'true'),
+    (120, 'android:id/title', 'android.widget.TextView', '[189,1956][1038,2013]', '$RUN-dev-save-readback-denied.alkionbackup', '', 'false', 'true', 'true'),
+    (112, '', 'android.view.View', '[189,2079][1059,2082]', '', '', 'false', 'true', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,2082][1080,2274]', '', '', 'true', 'true', 'true'),
+    (123, '', 'android.widget.LinearLayout', '[0,2082][1080,2271]', '', '', 'false', 'true', 'true'),
+    (124, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,2082][189,2271]', '', '', 'false', 'true', 'true'),
+    (125, '', 'androidx.cardview.widget.CardView', '[42,2124][147,2229]', '', '', 'false', 'true', 'true'),
+    (126, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,2124][147,2229]', '', '', 'false', 'true', 'true'),
+    (126, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,2137][134,2216]', '', '', 'false', 'true', 'false'),
+    (126, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,2145][126,2208]', '', '', 'false', 'true', 'true'),
+    (124, '', 'android.widget.LinearLayout', '[189,2148][1038,2205]', '', '', 'false', 'true', 'true'),
+    (130, '', 'android.widget.LinearLayout', '[189,2148][1038,2205]', '', '', 'false', 'true', 'true'),
+    (131, 'android:id/title', 'android.widget.TextView', '[189,2148][1038,2205]', '$RUN-dev-save-write-denied.alkionbackup', '', 'false', 'true', 'true'),
+    (123, '', 'android.view.View', '[189,2271][1059,2274]', '', '', 'false', 'true', 'true'),
+    (32, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,2274][1080,2400]', '', '', 'true', 'true', 'false'),
+    (134, '', 'android.widget.LinearLayout', '[0,2274][1080,2400]', '', '', 'false', 'true', 'false'),
+    (135, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,2274][189,2400]', '', '', 'false', 'true', 'false'),
+    (136, '', 'androidx.cardview.widget.CardView', '[42,2316][147,2400]', '', '', 'false', 'true', 'false'),
+    (137, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,2316][147,2400]', '', '', 'false', 'true', 'false'),
+    (137, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,2329][134,2400]', '', '', 'false', 'true', 'false'),
+    (137, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,2337][126,2400]', '', '', 'false', 'true', 'false'),
+    (135, '', 'android.widget.LinearLayout', '[189,2340][1038,2397]', '', '', 'false', 'true', 'false'),
+    (141, '', 'android.widget.LinearLayout', '[189,2340][1038,2397]', '', '', 'false', 'true', 'false'),
+    (142, 'android:id/title', 'android.widget.TextView', '[189,2340][1038,2397]', '$RUN-dev-save-write-interrupted.alkionbackup', '', 'false', 'true', 'false'),
+    (134, '', 'android.view.View', '[189,2463][1059,2400]', '', '', 'false', 'true', 'false'),
+    (27, 'com.android.documentsui:id/drawer_edge', 'android.view.View', '[0,136][32,2400]', '', '', 'false', 'true', 'true'),
+    (7, 'com.android.documentsui:id/container_save', 'android.view.ViewGroup', '[0,2148][1080,2400]', '', '', 'false', 'true', 'true'),
+    (146, '', 'android.widget.LinearLayout', '[0,2148][1080,2274]', '', '', 'false', 'true', 'true'),
+    (147, '', 'android.widget.FrameLayout', '[42,2158][147,2263]', '', '', 'false', 'true', 'true'),
+    (148, 'android:id/icon', 'android.widget.ImageView', '[42,2158][105,2263]', '', '', 'false', 'true', 'true'),
+    (147, 'android:id/title', 'android.widget.EditText', '[189,2152][801,2270]', '$RUN-dev-save-readback-changed.alkionbackup', '', 'true', 'true', 'true'),
+    (147, '', 'android.widget.FrameLayout', '[801,2148][1054,2274]', '', '', 'false', 'true', 'true'),
+    (151, 'android:id/button1', 'android.widget.Button', '[812,2148][1043,2274]', 'SAVE', '', 'true', 'true', 'true'),
+    (0, 'android:id/navigationBarBackground', 'android.view.View', '[0,2274][1080,2400]', '', '', 'false', 'true', 'false'),
+)
+
+
+def captured_hidden_divider():
+    tree, nodes = ET.Element("hierarchy", rotation="0"), []
+    for parent, resource, cls, bounds, text, desc, clickable, enabled, visible in CAPTURED_HIDDEN_DIVIDER:
+        node = ET.SubElement(tree if parent is None else nodes[parent], "node", {
+            "package": "com.android.documentsui", "resource-id": resource, "class": cls, "bounds": bounds,
+            "text": text.replace("$RUN", RUN), "content-desc": desc.replace("$RUN", RUN),
+            "clickable": clickable, "enabled": enabled, "visible-to-user": visible})
+        nodes.append(node)
+    return tree
+
+
 ADB = r'''#!/usr/bin/env python3
 import datetime,hashlib,json,os,shlex,subprocess,sys,time,xml.etree.ElementTree as ET
 from pathlib import Path
@@ -690,6 +861,62 @@ class Protocol(unittest.TestCase):
                 if mode == "missing-attribute": del self.tree[0][0].attrib["bounds"]
                 self.output = self.root / mode; self.output.mkdir()
                 self.refuses()
+
+    def test_full_captured_hidden_bottom_divider_retains_every_native_attribute(self):
+        self.package = "com.android.documentsui"; self.tree = captured_hidden_divider()
+        original = [dict(node.attrib) for node in self.tree.iter("node")]
+        document = self.observe(); nodes = list(document.iter("node"))
+        self.assertEqual(len(nodes), 154)
+        self.assertEqual([{key: node.get(key) for key in attrs} for node, attrs in zip(nodes, original)], original)
+        self.assertEqual(nodes[144].get("bounds"), "[189,2463][1059,2400]")
+        raw = (self.root / "tree.xml").read_bytes()
+        self.assertEqual((self.output / "capture.xml.raw").read_bytes(), raw)
+        receipt = json.loads((self.output / "capture.observation/receipt.json.stdout").read_bytes())
+        self.assertEqual((receipt["node_count"], receipt["xml_sha256"]), (154, hashlib.sha256(raw).hexdigest()))
+        with self.assertRaises(self.main["Refusal"]): self.main["click_node"](self.args, nodes[144])
+        self.assertFalse(any(cmd[:1] == ["input"] for cmd in self.commands()))
+        # Actual preceding capture differs in these two attributes only.
+        self.tree[0].set("bounds", "[0,0][1079,2400]")
+        list(self.tree.iter("node"))[144].set("bounds", "[189,2400][1059,2463]")
+        self.output = self.root / "preceding"; self.output.mkdir()
+        self.assertEqual(len(list(self.observe().iter("node"))), 154)
+
+    def test_captured_hidden_divider_exception_qualifier_mutations_refuse(self):
+        def attribute(index, key, value): return lambda tree, ns: ns[index].set(key, value)
+        changes = {}
+        for key, value in (("visible-to-user", "true"), ("clickable", "true"), ("enabled", "false"),
+                           ("text", "unknown"), ("content-desc", "unknown"), ("resource-id", "foreign:id/view"),
+                           ("resource-id", "android:id/navigationBarBackground"), ("class", "android.widget.TextView"),
+                           ("package", "foreign.package")):
+            changes["leaf-" + key + "-" + value] = attribute(144, key, value)
+        for bounds in ("[-1,2463][1059,2400]", "[189,2463][1081,2400]", "[1059,2463][189,2400]",
+                       "[189,2463][189,2400]", "[189,2400][1059,2300]", "[189,2463][1059,2399]",
+                       "[189,2463][1059,2401]", "[1059,2300][189,2400]", "[189,2399][1059,2300]"):
+            changes["leaf-" + bounds] = attribute(144, "bounds", bounds)
+        for index, name in ((134, "parent"), (32, "directory")):
+            for key, value in (("package", "foreign.package"), ("class", "android.view.View"),
+                               ("resource-id", "foreign:id/parent"), ("enabled", "false")):
+                changes[name + "-" + key] = attribute(index, key, value)
+        changes.update({
+            "visible-parent": attribute(134, "visible-to-user", "true"),
+            "nonclickable-parent": attribute(134, "clickable", "false"),
+            "hidden-directory": attribute(32, "visible-to-user", "false"),
+            "clickable-directory": attribute(32, "clickable", "true"),
+            "parent-not-bottom": attribute(134, "bounds", "[0,2274][1080,2399]"),
+            "parent-empty": attribute(134, "bounds", "[0,2400][1080,2400]"),
+            "parent-offdisplay": attribute(134, "bounds", "[-1,2274][1080,2400]"),
+            "directory-not-containing-parent": attribute(32, "bounds", "[0,136][1079,2400]"),
+            "directory-not-bottom": attribute(32, "bounds", "[0,136][1080,2399]"),
+            "nonleaf": lambda tree, ns: ET.SubElement(ns[144], "node", dict(ns[144].attrib, bounds="[0,0][1,1]")),
+            "different-parent": lambda tree, ns: (ns[134].remove(ns[144]), ns[32].append(ns[144])),
+            "different-expected-package": lambda tree, ns: [n.set("package", "dev.animusstudio.alkion.dev") for n in ns],
+        })
+        for index, (name, change) in enumerate(changes.items()):
+            self.package = "com.android.documentsui"; self.tree = captured_hidden_divider()
+            ns = list(self.tree.iter("node")); change(self.tree, ns)
+            if name == "different-expected-package": self.package = "dev.animusstudio.alkion.dev"
+            self.output = self.root / ("divider-refused-" + str(index)); self.output.mkdir()
+            with self.subTest(name=name): self.refuses()
 
     def test_native_offscreen_nodes_retained_but_selected_offscreen_target_never_taps(self):
         self.tree[0][1].set("bounds", "[200,2300][320,2450]")
