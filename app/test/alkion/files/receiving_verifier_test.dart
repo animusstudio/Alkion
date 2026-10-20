@@ -41,6 +41,8 @@ void main() {
               '-C',
               Directory.current.path,
               'alkion-verify-backup',
+              if (Platform.environment['ALKION_TEST_DART'] case final dart?)
+                'DART=$dart',
               'ALKION_BACKUP=$input',
               'ALKION_OUTPUT=$out',
             ]);

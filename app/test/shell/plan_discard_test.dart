@@ -528,7 +528,7 @@ void main() {
       await scrollIntoView(tester, find.byType(DayEditor), save);
       final pullSave = find.descendant(
         of: find.byWidgetPredicate((w) => w is DayEditor && w.id == 'd2'),
-        matching: find.byType(PrimaryBtn),
+        matching: find.ancestor(of: save, matching: find.byType(PrimaryBtn)),
       );
       bool pullSaveEnabled() => tester.widget<PrimaryBtn>(pullSave).enabled;
 

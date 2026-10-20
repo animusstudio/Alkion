@@ -44,6 +44,7 @@ Future<void> _pump(
   required double width,
   double scale = 1.0,
   Locale locale = const Locale('en'),
+  bool customOnly = false,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1;
@@ -59,7 +60,7 @@ Future<void> _pump(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SplitCard(
-              days: _days,
+              days: customOnly ? const [] : _days,
               nextIndex: 0,
               selectedIndex: page,
               onStart: (_) {},
@@ -75,6 +76,18 @@ Future<void> _pump(
 
 void main() {
   setUpAll(preloadAppFonts);
+
+  testWidgets('the German Custom-only slide fits a 320dp card', (tester) async {
+    await _pump(
+      tester,
+      page: 0,
+      width: 320,
+      locale: const Locale('de'),
+      customOnly: true,
+    );
+    expect(tester.takeException(), isNull);
+    expectNoSplitWords(tester, within: find.byType(SplitCard));
+  });
 
   testWidgets('the Custom slide fits a 320dp card', (tester) async {
     await _pump(tester, page: 2, width: 320);

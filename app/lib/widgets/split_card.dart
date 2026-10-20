@@ -364,7 +364,10 @@ class _SplitCardState extends State<SplitCard> {
     final scaler = MediaQuery.textScalerOf(context);
     double labelHeight(String text, TextStyle style, int lines, double space) {
       final painter = TextPainter(
-        text: TextSpan(text: text, style: style),
+        text: TextSpan(
+          text: text,
+          style: DefaultTextStyle.of(context).style.merge(style),
+        ),
         textDirection: Directionality.of(context),
         textScaler: scaler,
         maxLines: lines,
@@ -377,6 +380,8 @@ class _SplitCardState extends State<SplitCard> {
     final title = WorkoutType.display(size: 28, weight: FontWeight.w700);
     final body = WorkoutType.body(size: 16);
     final caption = WorkoutType.body(size: 12);
+    final eyebrow = WorkoutType.body(size: 12, weight: FontWeight.w700);
+    final hint = WorkoutType.body(size: 12, weight: FontWeight.w600);
     final statWidth = (width - 24) / 3;
     final statHeight =
         scaler.scale(16) * 1.4 +
@@ -389,11 +394,11 @@ class _SplitCardState extends State<SplitCard> {
     var tallest =
         labelHeight(l.todayCustomSession, title, 2, width) +
         8 +
-        labelHeight(l.splitNoTemplate, caption, 1, width) +
+        labelHeight(l.splitNoTemplate, eyebrow, 1, width) +
         4 +
         labelHeight(l.splitBuildAsYouGo, body, 2, width) +
         18 +
-        max(17, labelHeight(l.splitAddExercisesLive, caption, 2, width - 26));
+        max(17, labelHeight(l.splitAddExercisesLive, hint, 2, width - 26));
     for (final entry in widget.days) {
       final focus = entry.day.focus;
       final height =

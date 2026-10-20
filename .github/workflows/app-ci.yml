@@ -30,4 +30,7 @@ jobs:
 
       - name: Test
         working-directory: app
+        env:
+          # Child Make CLI checks use the Dart shipped by flutter-action.
+          ALKION_TEST_DART: dart
         run: flutter test
