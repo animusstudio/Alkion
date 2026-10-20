@@ -122,34 +122,35 @@ class _RecoveryBodyState extends State<_RecoveryBody> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                title,
-                style: WorkoutType.body(
-                  size: 20,
-                  weight: FontWeight.w600,
-                  color: tokens.text,
+              Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  style: WorkoutType.display(size: 32, color: tokens.text),
                 ),
               ),
               const SizedBox(height: 12),
-              Text(body, style: WorkoutType.body(size: 14, color: tokens.text)),
+              Text(body, style: WorkoutType.body(size: 16, color: tokens.dim)),
               if (pending != null) ...[
                 const SizedBox(height: 12),
                 Text(
                   '${pending.restoreId} · ${(pending.intent['backup'] as Map)['created_at']}',
-                  style: WorkoutType.mono(size: 11, color: tokens.faint),
+                  style: WorkoutType.mono(size: 12, color: tokens.dim),
                 ),
               ],
               if (_failure != null) ...[
                 const SizedBox(height: 12),
-                Text(
-                  l.alkionRestoreFailedBody(_failure!),
-                  style: WorkoutType.body(size: 14, color: tokens.text),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    l.alkionRestoreFailedBody(_failure!),
+                    style: WorkoutType.body(size: 14, color: tokens.danger),
+                  ),
                 ),
               ],
               const SizedBox(height: 20),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (app._kind == _Kind.interrupted && pending != null) ...[
                     button(
@@ -160,6 +161,7 @@ class _RecoveryBodyState extends State<_RecoveryBody> {
                         await app.relaunch();
                       },
                     ),
+                    const SizedBox(height: 12),
                     button(
                       l.alkionRestoreKeepCurrent,
                       const Key('restore-keep-current'),
@@ -204,12 +206,12 @@ class AlkionRestoringApp extends StatelessWidget {
         backgroundColor: context.tokens.bg,
         body: SafeArea(
           child: Center(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Text(
                 AppLocalizations.of(context).alkionRestoreRunning,
                 textAlign: TextAlign.center,
-                style: WorkoutType.body(size: 14, color: context.tokens.text),
+                style: WorkoutType.body(size: 16, color: context.tokens.dim),
               ),
             ),
           ),

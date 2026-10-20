@@ -7,21 +7,21 @@ import '../support/text_theme_slots.dart';
 
 /// The theme's size and weight per text slot.
 const _hankenScale = <String, (double, FontWeight)>{
-  'displayLarge': (57, FontWeight.w400),
-  'displayMedium': (45, FontWeight.w400),
-  'displaySmall': (36, FontWeight.w400),
-  'headlineLarge': (32, FontWeight.w600),
-  'headlineMedium': (28, FontWeight.w600),
-  'headlineSmall': (24, FontWeight.w600),
-  'titleLarge': (22, FontWeight.w600),
-  'titleMedium': (16, FontWeight.w500),
-  'titleSmall': (14, FontWeight.w500),
+  'displayLarge': (40, FontWeight.w700),
+  'displayMedium': (36, FontWeight.w700),
+  'displaySmall': (32, FontWeight.w700),
+  'headlineLarge': (32, FontWeight.w700),
+  'headlineMedium': (28, FontWeight.w700),
+  'headlineSmall': (22, FontWeight.w700),
+  'titleLarge': (22, FontWeight.w700),
+  'titleMedium': (16, FontWeight.w700),
+  'titleSmall': (14, FontWeight.w700),
   'bodyLarge': (16, FontWeight.w400),
   'bodyMedium': (14, FontWeight.w400),
   'bodySmall': (12, FontWeight.w400),
-  'labelLarge': (14, FontWeight.w600),
-  'labelMedium': (12, FontWeight.w500),
-  'labelSmall': (11, FontWeight.w500),
+  'labelLarge': (14, FontWeight.w700),
+  'labelMedium': (12, FontWeight.w700),
+  'labelSmall': (12, FontWeight.w700),
 };
 
 void main() {
@@ -34,14 +34,68 @@ void main() {
     final light = buildTheme(Brightness.light, const Color(0xFF5ce6a4));
     final d = dark.extension<WorkoutTokens>()!;
     final l = light.extension<WorkoutTokens>()!;
-    expect(d.bg, const Color(0xFF0b0b0c));
-    expect(l.bg, const Color(0xFFf3f2ec));
+    expect(d.bg, const Color(0xFF11100E));
+    expect(l.bg, const Color(0xFFF3EFE8));
     expect(d.accent, const Color(0xFFc2f53a));
     expect(l.accent, const Color(0xFF5ce6a4));
-    expect(d.accentInk, const Color(0xFF0b0c08)); // constant in both modes
+    expect(
+      d.accentInk,
+      const Color(0xFF11100E),
+    ); // readable on the preserved bright fills
   });
 
+  test(
+    'unset default is coral and every explicit legacy choice remains valid',
+    () {
+      expect(accents.first, defaultWorkoutAccent);
+      expect(
+        accents,
+        containsAll(const [
+          Color(0xFFc2f53a),
+          Color(0xFF5ce6a4),
+          Color(0xFFffc24b),
+          Color(0xFF5cc8ff),
+          Color(0xFFc084fc),
+        ]),
+      );
+    },
+  );
+
   for (final b in Brightness.values) {
+    test('${b.name} semantic foregrounds remain readable and distinct', () {
+      final theme = buildTheme(b, defaultWorkoutAccent);
+      final t = theme.extension<WorkoutTokens>()!;
+      final surfaces = [t.bg, t.surface, t.surface2, t.surface3, t.sunken];
+      for (final foreground in [
+        t.text,
+        t.dim,
+        t.faint,
+        t.accentText,
+        t.info,
+        t.caution,
+        t.danger,
+        t.success,
+      ]) {
+        for (final surface in surfaces) {
+          expect(contrastRatio(foreground, surface), greaterThanOrEqualTo(4.5));
+        }
+      }
+      final scheme = theme.colorScheme;
+      for (final pair in [
+        (scheme.primary, scheme.onPrimary),
+        (scheme.secondary, scheme.onSecondary),
+        (scheme.tertiary, scheme.onTertiary),
+        (scheme.error, scheme.onError),
+      ]) {
+        expect(contrastRatio(pair.$1, pair.$2), greaterThanOrEqualTo(4.5));
+      }
+      expect(t.action, isNot(t.accentText));
+      expect(t.focus, isNot(t.accentText));
+      expect({t.caution, t.danger, t.success, t.info}.length, 4);
+      expect(theme.useMaterial3, isTrue);
+      expect(theme.textSelectionTheme.cursorColor, t.focus);
+    });
+
     test(
       '${b.name} theme text keeps the token colour and the Hanken scale',
       () {

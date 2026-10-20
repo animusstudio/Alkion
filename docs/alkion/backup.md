@@ -64,8 +64,10 @@ lifecycle flush barrier. The writer:
 2. converts the private snapshot copy to rollback-journal mode and inspects it
    READONLY (schema, integrity, foreign keys, metadata, inventory);
 3. writes the container to a hidden `.<name>.partial-<nonce>` file and flushes it;
-4. publishes it with an exclusive libc `link(2)` (never replaces a name), removes
-   the temporary name and fsyncs the directory;
+4. publishes it atomically without replacing an existing name: Android uses the
+   min24 NDK `renameat2(RENAME_NOREPLACE)` shim, which consumes the temporary
+   name; Linux retains libc `link(2)` and removes its remaining temporary name.
+   The writer then fsyncs the directory;
 5. re-reads and verifies the published file like any received copy.
 
 A failure removes only the writer's own unpublished temporary files. A published

@@ -235,6 +235,15 @@ final class VerifiedBackup {
   String get installationId => facts.profile['installation_id'] as String;
   int get generation => facts.profile['generation'] as int;
   String get createdAt => manifest['created_at'] as String;
+
+  /// Receiving inspection is variant-neutral; actual restore is same-variant.
+  void requireWriterVariant() {
+    final tool = manifest['tool'];
+    if (tool is! Map ||
+        tool['application_id'] != AlkionIdentity.applicationId) {
+      throw const StoreException('backup_foreign_variant');
+    }
+  }
 }
 
 /// Receiving-side verification of a backup file at any location.
@@ -469,11 +478,11 @@ Future<BackupReceipt> createBackup(
       await handle.close();
     }
     await checkpoint?.call('backup-before-publish');
-    if (!linkExclusive(partial.path, target)) {
+    if (!publishExclusive(partial.path, target)) {
       throw const StoreException('backup_destination_exists');
     }
     await checkpoint?.call('backup-published');
-    await partial.delete();
+    if (await partial.exists()) await partial.delete();
     flushDirectory(directory);
     final verified = await verifyBackupFile(
       File(target),

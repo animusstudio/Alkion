@@ -5,7 +5,7 @@ class Motion {
   static const fast = Duration(milliseconds: 120);
   static const base = Duration(milliseconds: 200);
   static const slow = Duration(milliseconds: 300);
-  static const curve = Curves.easeOutCubic;
+  static const curve = Cubic(0.23, 1, 0.32, 1);
 
   /// Honors the platform reduced-motion setting.
   static Duration of(BuildContext context, Duration d) =>

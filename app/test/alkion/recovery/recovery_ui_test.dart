@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:alkion/domain/evidence.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/main.dart';
+import 'package:alkion/files/document_access.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/backup.dart' as backup show createBackup;
 import 'package:alkion/recovery/recovery_host.dart';
@@ -19,9 +21,10 @@ import 'package:provider/provider.dart';
 
 import '../../../tool/alkion_backup_recovery.dart' as proof;
 import '../domains/local_screen_harness.dart';
+import '../files/fake_documents.dart';
 import 'abandon_retry_test.dart' show interrupted, AbandonFixture;
 import '../transfer/transfer_screen_test.dart'
-    show dismissDialog, press, settleUntil;
+    show dismissDialog, press, settleUntil, expectCompleteTextAndActions;
 
 /// Real backup/verification in the real zone; restore is only recorded here
 /// (the runtime path is exercised separately below).
@@ -60,6 +63,78 @@ Future<void> _seedReview(LocalStore store) => store.writeTransaction(
 );
 
 void main() {
+  testWidgets(
+    'phone backup saves and fully checks a provider copy; cancelled/changed copies retain local backup and profile',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 760);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final h = ScreenHarness();
+      await h.open(tester, seed: _seedReview);
+      late Directory out;
+      late FakeDocuments documents;
+      late _Host host;
+      await tester.runAsync(() async {
+        out = await Directory.systemTemp.createTemp('alkion-backup-picker-');
+        documents = FakeDocuments(out);
+        host = _Host(h.database, Zone.current, out);
+      });
+      try {
+        await tester.pumpWidget(
+          h.wrap(
+            AlkionRecoveryScreen(documents: documents),
+            extra: [Provider<RecoveryHost?>.value(value: host)],
+          ),
+        );
+        await settleUntil(tester, find.byKey(const Key('backup-create')));
+        expect(find.byKey(const Key('backup-path')), findsNothing);
+        await press(tester, find.byKey(const Key('backup-create')));
+        await dismissDialog(
+          tester,
+          find.textContaining('Backup copy fully checked here'),
+        );
+        final first = documents.sources.single;
+        final expectedProfile = h.database.profileId;
+        documents.cancelSave = true;
+        await press(tester, find.byKey(const Key('backup-create')));
+        await dismissDialog(tester, find.text('Save cancelled'));
+        documents.cancelSave = false;
+        documents.corruptReadback = true;
+        await press(tester, find.byKey(const Key('backup-create')));
+        await dismissDialog(
+          tester,
+          find.textContaining('Any external copy may be incomplete'),
+        );
+        expect(h.database.profileId, expectedProfile);
+        expect(host.restored, isEmpty);
+        await tester.runAsync(() async {
+          expect(await File(first).exists(), isTrue);
+          for (final path in documents.sources) {
+            expect((await host.verifyBackup(path)).profileId, expectedProfile);
+          }
+          documents.selection = await inspectDocument(
+            File(first),
+            name: 'backup.alkionbackup',
+            maxBytes: maxBackupBytes,
+          );
+        });
+        await press(tester, find.byKey(const Key('backup-check')));
+        await dismissDialog(tester, find.text('Backup verified'));
+        expect(documents.openedLimit, maxBackupBytes);
+        await press(tester, find.byKey(const Key('backup-restore')));
+        await settleUntil(tester, find.text('Restore this backup?'));
+        await tester.tap(find.text('Cancel').last);
+        await settleReal(tester, ticks: 4);
+        expect(host.restored, isEmpty);
+        await h.unmount(tester);
+      } finally {
+        await h.close();
+        await tester.runAsync(() => out.delete(recursive: true));
+      }
+    },
+  );
   testWidgets(
     'recovery screen backs up, checks, asks before restoring and keeps reviews at 320dp and 2x text',
     (tester) async {
@@ -195,7 +270,32 @@ void main() {
           );
           await settleUntil(tester, find.byKey(const Key('backup-path')));
           await settleReal(tester, ticks: 3);
+          expectCompleteTextAndActions(
+            tester,
+            toolbarTitle: AppLocalizations.of(
+              tester.element(find.byType(AlkionRecoveryScreen)),
+            ).alkionBackupTitle,
+          );
           expect(tester.takeException(), isNull, reason: locale);
+          await tester.pumpWidget(
+            h.wrap(
+              AlkionRecoveryScreen(
+                key: ValueKey('phone-$locale'),
+                documents: FakeDocuments(Directory.systemTemp),
+              ),
+              locale: Locale(locale),
+            ),
+          );
+          await settleUntil(tester, find.byKey(const Key('backup-create')));
+          await settleReal(tester, ticks: 3);
+          expect(find.byKey(const Key('backup-path')), findsNothing);
+          expectCompleteTextAndActions(
+            tester,
+            toolbarTitle: AppLocalizations.of(
+              tester.element(find.byType(AlkionRecoveryScreen)),
+            ).alkionBackupTitle,
+          );
+          expect(tester.takeException(), isNull, reason: 'phone $locale');
         }
         await h.unmount(tester);
       } finally {
@@ -221,6 +321,7 @@ void main() {
       ]) {
         await tester.pumpWidget(app);
         await tester.pump();
+        expectCompleteTextAndActions(tester);
         expect(tester.takeException(), isNull, reason: '$app');
         if (identical(app, interrupted)) {
           expect(find.byKey(const Key('restore-complete')), findsOneWidget);

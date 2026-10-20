@@ -1,0 +1,2731 @@
+"""Host-only controls; no FVM, Android tools, Git, build or device is executed.
+
+The existing harness definitions are loaded without its entry point. Its actual
+receipt, platform, installed-byte, UID, A2 and source command paths run against
+the fake command transport below. Owned-file programs execute in private /tmp
+directories, including exclusive writes and namespace publication.
+"""
+
+import copy
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+import xml.etree.ElementTree as ET
+import zipfile
+
+sys.dont_write_bytecode = True
+import android_synthetic_documents as documents
+import android_synthetic_publish as publish
+import android_synthetic_publish_self_test as publisher_fake
+import android_synthetic_ui as observer
+
+
+RUN = "1" * 32
+REVISION = "a" * 40
+CERT = "b" * 64
+RAW = bytes(range(256)) * 1025
+SOURCE_NAME = "alkion-backup-12345678-20261018T121314Z-abcdef.alkionbackup"
+# Captured API 36 DocumentsUI on a 1080x2400 display: the navigation bar covers y >= 2274.
+DUI = "com.android.documentsui:id/"
+NAVIGATION_TOP = 2274
+
+# Captured whole-tree shift, projected to labelled/clickable nodes and their
+# ancestors. Bounds, classes, flags and ancestry are retained; identifiers are synthetic.
+SHIFTED_DIRECTORY = (
+    (0, '', 'android.widget.FrameLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (1, '', 'android.widget.LinearLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (2, '', 'android.widget.FrameLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (3, 'com.android.documentsui:id/action_bar_root', 'android.widget.FrameLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (4, 'android:id/content', 'android.widget.FrameLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (5, 'com.android.documentsui:id/coordinator_layout', 'android.view.ViewGroup', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (6, 'com.android.documentsui:id/drawer_layout', 'androidx.drawerlayout.widget.DrawerLayout', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (7, '', 'android.widget.ScrollView', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/app_bar', 'android.widget.LinearLayout', '[0,2410][1080,2820]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/collapsing_toolbar', 'android.widget.FrameLayout', '[0,2410][1080,2820]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.ScrollView', '[0,2410][1080,2820]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/directory_header', 'android.widget.LinearLayout', '[0,2536][1080,2820]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/horizontal_breadcrumb', 'androidx.recyclerview.widget.RecyclerView', '[0,2536][1080,2662]', '', '', 'false', 'true', 'true'),
+    (13, '', 'android.widget.LinearLayout', '[0,2536][722,2662]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/breadcrumb_text', 'android.widget.TextView', '[0,2536][722,2662]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/header_container', 'android.widget.LinearLayout', '[63,2662][1017,2820]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/header_title', 'android.widget.TextView', '[63,2662][890,2820]', 'Files from Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/sub_menu', 'androidx.appcompat.widget.LinearLayoutCompat', '[890,2678][1017,2804]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/sub_menu_list', 'android.widget.Button', '[890,2678][1017,2804]', '', 'List view', 'true', 'true', 'true'),
+    (10, 'com.android.documentsui:id/toolbar', 'android.view.ViewGroup', '[0,2410][1080,2536]', '', '', 'false', 'true', 'true'),
+    (11, '', 'android.widget.ImageButton', '[0,2410][147,2536]', '', 'Show roots', 'true', 'true', 'true'),
+    (11, '', 'android.widget.TextView', '[189,2437][934,2508]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (11, '', 'androidx.appcompat.widget.LinearLayoutCompat', '[954,2410][1080,2536]', '', '', 'false', 'true', 'true'),
+    (12, '', 'android.widget.ImageView', '[954,2410][1080,2536]', '', 'More options', 'true', 'true', 'true'),
+    (8, '', 'android.widget.FrameLayout', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/container_directory', 'android.widget.FrameLayout', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.LinearLayout', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/refresh_layout', 'android.view.ViewGroup', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/dir_list', 'android.widget.GridView', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[64,2831][529,3432]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[64,2831][529,3432]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[64,2831][529,3432]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[403,2831][529,2957]', '', 'Preview the file $RUN-dev-open-corrupt.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[64,3296][529,3432]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[196,1022][529,1158]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[196,1043][497,1094]', '$RUN-dev-open-corrupt.alkionbackup', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[551,2831][1016,3432]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[551,557][1016,1158]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[551,557][1016,1158]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[890,557][1016,683]', '', 'Preview the file $RUN-dev-open-denied.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[551,1022][1016,1158]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[683,1022][1016,1158]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[683,1043][984,1094]', '$RUN-dev-open-denied.alkionbackup', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[64,3454][529,4055]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[64,1180][529,1781]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[64,1180][529,1781]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[403,1180][529,1306]', '', 'Preview the file $RUN-dev-open-error.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[64,1645][529,1781]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[196,1645][529,1781]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[196,1666][497,1717]', '$RUN-dev-open-error.alkionbackup', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[551,3454][1016,4055]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[551,1180][1016,1781]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[551,1180][1016,1781]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[890,1180][1016,1306]', '', 'Preview the file $RUN-dev-open-good.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[551,1645][1016,1781]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[683,1645][1016,1781]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[683,1666][984,1717]', '$RUN-dev-open-good.alkionbackup', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[64,4077][529,4674]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[64,1803][529,2400]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[64,1803][529,2400]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[403,1803][529,1929]', '', 'Preview the file $RUN-dev-open-over-limit.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[64,2268][529,2400]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[196,2268][529,2400]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[196,2289][497,2340]', '$RUN-dev-open-over-limit.alkionbackup', '', 'false', 'true', 'false'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[551,4077][1016,4674]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[551,1803][1016,2400]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[551,1803][1016,2400]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[890,1803][1016,1929]', '', 'Preview the file $RUN-dev-open-short.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[551,2268][1016,2400]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[683,2268][1016,2400]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[683,2289][984,2340]', '$RUN-dev-open-short.alkionbackup', '', 'false', 'true', 'false'),
+    (18, 'com.android.documentsui:id/details', 'android.widget.TextView', '[683,2340][781,2383]', '595 kB', '', 'false', 'true', 'false'),
+    (1, 'android:id/navigationBarBackground', 'android.view.View', '[0,4548][1080,4674]', '', '', 'false', 'true', 'true'),
+)
+
+
+def shifted_directory():
+    root, stack = ET.Element("hierarchy", rotation="0"), []
+    for depth, resource, cls, bounds, text, desc, clickable, enabled, visible in SHIFTED_DIRECTORY:
+        parent = root if depth == 0 else stack[depth - 1]
+        node = ET.SubElement(parent, "node", {"package": "com.android.documentsui", "resource-id": resource,
+            "class": cls, "bounds": bounds, "text": text.replace("$RUN", RUN), "content-desc": desc.replace("$RUN", RUN),
+            "clickable": clickable, "enabled": enabled, "visible-to-user": visible,
+            "observer-display-width": "1080", "observer-display-height": "2400"})
+        stack[depth:] = [node]
+    return root
+
+
+# Captured resumed list before and after native bounds settled. All other fields
+# are identical in the captures; both settled samples are byte-identical. Keep
+# labelled/clickable nodes and ancestry, replacing only the synthetic run identifier.
+RESUMED_LIST = (
+    (0, '', 'android.widget.FrameLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (1, '', 'android.widget.LinearLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (2, '', 'android.widget.FrameLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (3, 'com.android.documentsui:id/action_bar_root', 'android.widget.FrameLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (4, 'android:id/content', 'android.widget.FrameLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (5, 'com.android.documentsui:id/coordinator_layout', 'android.view.ViewGroup', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (6, 'com.android.documentsui:id/drawer_layout', 'androidx.drawerlayout.widget.DrawerLayout', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (7, '', 'android.widget.ScrollView', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/app_bar', 'android.widget.LinearLayout', '[-3,136][1076,546]', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/collapsing_toolbar', 'android.widget.FrameLayout', '[-3,136][1076,546]', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.ScrollView', '[-3,136][1076,546]', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/directory_header', 'android.widget.LinearLayout', '[-3,262][1076,546]', '[0,262][1080,546]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/horizontal_breadcrumb', 'androidx.recyclerview.widget.RecyclerView', '[-3,262][1076,388]', '[0,262][1080,388]', '', '', 'false', 'true', 'true'),
+    (13, '', 'android.widget.LinearLayout', '[-3,262][718,388]', '[0,262][722,388]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/breadcrumb_text', 'android.widget.TextView', '[-3,262][718,388]', '[0,262][722,388]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/header_container', 'android.widget.LinearLayout', '[59,388][1013,546]', '[63,388][1017,546]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/header_title', 'android.widget.TextView', '[59,388][886,546]', '[63,388][890,546]', 'Files from Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/sub_menu', 'androidx.appcompat.widget.LinearLayoutCompat', '[886,404][1013,530]', '[890,404][1017,530]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/sub_menu_grid', 'android.widget.Button', '[886,404][1013,530]', '[890,404][1017,530]', '', 'Grid view', 'true', 'true', 'true'),
+    (10, 'com.android.documentsui:id/toolbar', 'android.view.ViewGroup', '[-3,136][1076,262]', '[0,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (11, '', 'android.widget.ImageButton', '[-3,136][143,262]', '[0,136][147,262]', '', 'Show roots', 'true', 'true', 'true'),
+    (11, '', 'android.widget.TextView', '[185,163][930,234]', '[189,163][934,234]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (11, '', 'androidx.appcompat.widget.LinearLayoutCompat', '[950,136][1076,262]', '[954,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (12, '', 'android.widget.ImageView', '[950,136][1076,262]', '[954,136][1080,262]', '', 'More options', 'true', 'true', 'true'),
+    (8, '', 'android.widget.FrameLayout', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/container_directory', 'android.widget.FrameLayout', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.LinearLayout', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/refresh_layout', 'android.view.ViewGroup', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/dir_list', 'android.widget.GridView', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,546][1076,738]', '[0,546][1080,738]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,546][1076,735]', '[0,546][1080,735]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,612][845,669]', '[189,612][849,669]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,612][845,669]', '[189,612][849,669]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,612][845,669]', '[189,612][849,669]', '$RUN-dev-open-corrupt.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,546][1076,735]', '[891,546][1080,735]', '', 'Preview the file $RUN-dev-open-corrupt.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,738][1076,930]', '[0,738][1080,930]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,738][1076,927]', '[0,738][1080,927]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,804][845,861]', '[189,804][849,861]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,804][845,861]', '[189,804][849,861]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,804][845,861]', '[189,804][849,861]', '$RUN-dev-open-denied.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,738][1076,927]', '[891,738][1080,927]', '', 'Preview the file $RUN-dev-open-denied.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,930][1076,1122]', '[0,930][1080,1122]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,930][1076,1119]', '[0,930][1080,1119]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,996][845,1053]', '[189,996][849,1053]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,996][845,1053]', '[189,996][849,1053]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,996][845,1053]', '[189,996][849,1053]', '$RUN-dev-open-error.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,930][1076,1119]', '[891,930][1080,1119]', '', 'Preview the file $RUN-dev-open-error.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,1122][1076,1314]', '[0,1122][1080,1314]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,1122][1076,1311]', '[0,1122][1080,1311]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,1188][845,1245]', '[189,1188][849,1245]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,1188][845,1245]', '[189,1188][849,1245]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,1188][845,1245]', '[189,1188][849,1245]', '$RUN-dev-open-good.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,1122][1076,1311]', '[891,1122][1080,1311]', '', 'Preview the file $RUN-dev-open-good.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,1314][1076,1506]', '[0,1314][1080,1506]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,1314][1076,1503]', '[0,1314][1080,1503]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,1380][845,1437]', '[189,1380][849,1437]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,1380][845,1437]', '[189,1380][849,1437]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,1380][845,1437]', '[189,1380][849,1437]', '$RUN-dev-open-over-limit.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,1314][1076,1503]', '[891,1314][1080,1503]', '', 'Preview the file $RUN-dev-open-over-limit.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,1506][1076,1698]', '[0,1506][1080,1698]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-2,1506][1077,1695]', '[0,1506][1080,1695]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[186,1545][846,1656]', '[189,1545][849,1656]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[186,1545][846,1602]', '[189,1545][849,1602]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[186,1545][846,1602]', '[189,1545][849,1602]', '$RUN-dev-open-short.alkionbackup', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/line2', 'android.widget.LinearLayout', '[186,1613][846,1656]', '[189,1613][849,1656]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/metadata', 'android.widget.TextView', '[186,1613][401,1656]', '[189,1613][404,1656]', '595 kB, BIN file', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[888,1506][1077,1695]', '[891,1506][1080,1695]', '', 'Preview the file $RUN-dev-open-short.alkionbackup', 'true', 'true', 'true'),
+    (1, 'android:id/navigationBarBackground', 'android.view.View', '[-2,2274][1077,2400]', '[0,2274][1080,2400]', '', '', 'false', 'true', 'false'),
+)
+
+
+def resumed_list(settled):
+    root, stack = ET.Element("hierarchy", rotation="0"), []
+    for depth, resource, cls, before, after, text, desc, clickable, enabled, visible in RESUMED_LIST:
+        parent = root if depth == 0 else stack[depth - 1]
+        node = ET.SubElement(parent, "node", {"package": "com.android.documentsui", "resource-id": resource,
+            "class": cls, "bounds": after if settled else before, "text": text.replace("$RUN", RUN),
+            "content-desc": desc.replace("$RUN", RUN), "clickable": clickable, "enabled": enabled, "visible-to-user": visible,
+            "observer-display-width": "1080", "observer-display-height": "2400"})
+        stack[depth:] = [node]
+    return root
+
+
+# Faithful pinned SDK 36 aapt2 xmltree output for the synthetic fixture.
+PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/android (line=1)
+  E: manifest (line=1)
+    A: http://schemas.android.com/apk/res/android:versionCode(0x0101021b)=1
+    A: http://schemas.android.com/apk/res/android:versionName(0x0101021c)="synthetic" (Raw: "synthetic")
+    A: http://schemas.android.com/apk/res/android:compileSdkVersion(0x01010572)=36
+    A: http://schemas.android.com/apk/res/android:compileSdkVersionCodename(0x01010573)="16" (Raw: "16")
+    A: package="dev.animusstudio.alkion.synthetic.documents" (Raw: "dev.animusstudio.alkion.synthetic.documents")
+    A: platformBuildVersionCode=36
+    A: platformBuildVersionName=16
+      E: uses-sdk (line=0)
+        A: http://schemas.android.com/apk/res/android:minSdkVersion(0x0101020c)=24
+        A: http://schemas.android.com/apk/res/android:targetSdkVersion(0x01010270)=36
+      E: application (line=4)
+        A: http://schemas.android.com/apk/res/android:label(0x01010001)="Alkion Synthetic Documents" (Raw: "Alkion Synthetic Documents")
+        A: http://schemas.android.com/apk/res/android:debuggable(0x0101000f)=true
+        A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true
+        A: http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=false
+        A: http://schemas.android.com/apk/res/android:usesCleartextTraffic(0x010104ec)=false
+          E: provider (line=7)
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)=".SyntheticDocumentsProvider" (Raw: ".SyntheticDocumentsProvider")
+            A: http://schemas.android.com/apk/res/android:permission(0x01010006)="android.permission.MANAGE_DOCUMENTS" (Raw: "android.permission.MANAGE_DOCUMENTS")
+            A: http://schemas.android.com/apk/res/android:enabled(0x0101000e)=false
+            A: http://schemas.android.com/apk/res/android:exported(0x01010010)=true
+            A: http://schemas.android.com/apk/res/android:authorities(0x01010018)="dev.animusstudio.alkion.synthetic.documents.provider" (Raw: "dev.animusstudio.alkion.synthetic.documents.provider")
+            A: http://schemas.android.com/apk/res/android:grantUriPermissions(0x0101001b)=true
+              E: intent-filter (line=12)
+                  E: action (line=13)
+                    A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.content.action.DOCUMENTS_PROVIDER" (Raw: "android.content.action.DOCUMENTS_PROVIDER")
+"""
+
+
+# API 36 native SAVE tree (143 nodes), replayed after a synthetic footer hit/create
+# rehearsal at (927,2211) with nine rows. Only the synthetic run token is normalized.
+CAPTURED_SAVE_FOOTER = (
+    (0, '', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (1, '', 'android.widget.LinearLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (2, '', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (3, 'com.android.documentsui:id/action_bar_root', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (4, 'android:id/content', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (5, 'com.android.documentsui:id/coordinator_layout', 'android.view.ViewGroup', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (6, 'com.android.documentsui:id/drawer_layout', 'androidx.drawerlayout.widget.DrawerLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (7, '', 'android.widget.ScrollView', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/app_bar', 'android.widget.LinearLayout', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/collapsing_toolbar', 'android.widget.FrameLayout', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.ScrollView', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/directory_header', 'android.widget.LinearLayout', '[0,262][1080,546]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/horizontal_breadcrumb', 'androidx.recyclerview.widget.RecyclerView', '[0,262][1080,388]', '', '', 'false', 'true', 'true'),
+    (13, '', 'android.widget.LinearLayout', '[0,262][722,388]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/breadcrumb_text', 'android.widget.TextView', '[0,262][722,388]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (12, '', 'android.widget.HorizontalScrollView', '[0,388][1080,388]', '', '', 'false', 'true', 'false'),
+    (13, '', 'android.widget.FrameLayout', '[0,388][0,388]', '', '', 'false', 'true', 'false'),
+    (12, 'com.android.documentsui:id/header_container', 'android.widget.LinearLayout', '[63,388][1017,546]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/header_title', 'android.widget.TextView', '[63,388][890,546]', 'Files from Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/sub_menu', 'androidx.appcompat.widget.LinearLayoutCompat', '[890,404][1017,530]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/sub_menu_grid', 'android.widget.Button', '[890,404][1017,530]', '', 'Grid view', 'true', 'true', 'true'),
+    (10, 'com.android.documentsui:id/toolbar', 'android.view.ViewGroup', '[0,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (11, '', 'android.widget.ImageButton', '[0,136][147,262]', '', 'Show roots', 'true', 'true', 'true'),
+    (11, '', 'android.widget.TextView', '[189,163][807,234]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (11, '', 'androidx.appcompat.widget.LinearLayoutCompat', '[827,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/option_menu_create_dir', 'android.widget.Button', '[827,136][954,262]', '', 'New folder', 'true', 'true', 'true'),
+    (12, '', 'android.widget.ImageView', '[954,136][1080,262]', '', 'More options', 'true', 'true', 'true'),
+    (8, '', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/container_search_fragment', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/container_directory', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.LinearLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/refresh_layout', 'android.view.ViewGroup', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/dir_list', 'android.widget.GridView', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,546][1080,738]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,546][1080,735]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,546][189,735]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,588][147,693]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,588][147,693]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,601][134,680]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,609][126,672]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,612][1038,669]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,612][1038,669]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,612][1038,669]', '$RUN-dev-open-corrupt.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,735][1059,738]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,738][1080,930]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,738][1080,927]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,738][189,927]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,780][147,885]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,780][147,885]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,793][134,872]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,801][126,864]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,804][1038,861]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,804][1038,861]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,804][1038,861]', '$RUN-dev-open-denied.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,927][1059,930]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,930][1080,1122]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,930][1080,1119]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,930][189,1119]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,972][147,1077]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,972][147,1077]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,985][134,1064]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,993][126,1056]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,996][1038,1053]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,996][1038,1053]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,996][1038,1053]', '$RUN-dev-open-error.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,1119][1059,1122]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1122][1080,1314]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1122][1080,1311]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1122][189,1311]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1164][147,1269]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1164][147,1269]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1177][134,1256]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1185][126,1248]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1188][1038,1245]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1188][1038,1245]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1188][1038,1245]', '$RUN-dev-open-good.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,1311][1059,1314]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1314][1080,1506]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1314][1080,1503]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1314][189,1503]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1356][147,1461]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1356][147,1461]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1369][134,1448]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1377][126,1440]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1380][1038,1437]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1380][1038,1437]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1380][1038,1437]', '$RUN-dev-open-over-limit.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,1503][1059,1506]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1506][1080,1698]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1506][1080,1695]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1506][189,1695]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1548][147,1653]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1548][147,1653]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1561][134,1640]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1569][126,1632]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1545][1038,1656]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1545][1038,1602]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1545][1038,1602]', '$RUN-dev-open-short.alkionbackup', '', 'false', 'false', 'true'),
+    (16, 'com.android.documentsui:id/line2', 'android.widget.LinearLayout', '[189,1613][1038,1656]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/metadata', 'android.widget.TextView', '[189,1613][404,1656]', '595 kB, BIN file', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,1695][1059,1698]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1698][1080,1890]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1698][1080,1887]', '', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1698][189,1887]', '', '', 'false', 'true', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1740][147,1845]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1740][147,1845]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1753][134,1832]', '', '', 'false', 'true', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1761][126,1824]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1764][1038,1821]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1764][1038,1821]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1764][1038,1821]', '$RUN-dev-save-good.alkionbackup', '', 'false', 'true', 'true'),
+    (14, '', 'android.view.View', '[189,1887][1059,1890]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1890][1080,2082]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1890][1080,2079]', '', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1890][189,2079]', '', '', 'false', 'true', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1932][147,2037]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1932][147,2037]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1945][134,2024]', '', '', 'false', 'true', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1953][126,2016]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1956][1038,2013]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1956][1038,2013]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1956][1038,2013]', '$RUN-dev-save-write-denied.alkionbackup', '', 'false', 'true', 'true'),
+    (14, '', 'android.view.View', '[189,2079][1059,2082]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,2082][1080,2274]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,2082][1080,2271]', '', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,2082][189,2271]', '', '', 'false', 'true', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,2124][147,2229]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,2124][147,2229]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,2137][134,2216]', '', '', 'false', 'true', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,2145][126,2208]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,2148][1038,2205]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,2148][1038,2205]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,2148][1038,2205]', '$RUN-dev-save-write-interrupted.alkionbackup', '', 'false', 'true', 'true'),
+    (14, '', 'android.view.View', '[189,2271][1059,2274]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/drawer_edge', 'android.view.View', '[0,136][32,2400]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/container_save', 'android.view.ViewGroup', '[0,2148][1080,2400]', '', '', 'false', 'true', 'true'),
+    (9, '', 'android.widget.LinearLayout', '[0,2148][1080,2274]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.FrameLayout', '[42,2158][147,2263]', '', '', 'false', 'true', 'true'),
+    (11, 'android:id/icon', 'android.widget.ImageView', '[42,2158][105,2263]', '', '', 'false', 'true', 'true'),
+    (10, 'android:id/title', 'android.widget.EditText', '[189,2152][801,2270]', '$RUN-dev-save-readback-denied.alkionbackup', '', 'true', 'true', 'true'),
+    (10, '', 'android.widget.FrameLayout', '[801,2148][1054,2274]', '', '', 'false', 'true', 'true'),
+    (11, 'android:id/button1', 'android.widget.Button', '[812,2148][1043,2274]', 'SAVE', '', 'true', 'true', 'true'),
+    (1, 'android:id/navigationBarBackground', 'android.view.View', '[0,2274][1080,2400]', '', '', 'false', 'true', 'false'),
+)
+
+
+def captured_save_footer():
+    tree, stack = ET.Element("hierarchy", rotation="0"), []
+    for depth, resource, cls, bounds, text, desc, clickable, enabled, visible in CAPTURED_SAVE_FOOTER:
+        parent = tree if depth == 0 else stack[depth - 1]
+        node = ET.SubElement(parent, "node", {"package": "com.android.documentsui", "resource-id": resource,
+            "class": cls, "bounds": bounds, "text": text.replace("$RUN", RUN),
+            "content-desc": desc.replace("$RUN", RUN), "clickable": clickable, "enabled": enabled,
+            "visible-to-user": visible, "observer-display-width": "1080", "observer-display-height": "2400"})
+        stack[depth:] = [node]
+    return tree
+
+
+TEST_ONLY = "A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true"
+
+
+def publisher_safe_test_only_line():
+    return "        " + TEST_ONLY + "\n"
+PROVIDER_CLASS = "dev.animusstudio.alkion.synthetic.documents.SyntheticDocumentsProvider"
+INCREMENTAL = "Serving...\nPerforming Incremental Install\n"
+
+
+def result(stdout="", stderr="", code=0):
+    return SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
+
+
+def receiving_report(data):
+    tables = {name: {"rows": 3 if name == "schema_migrations" else 1 if name == "profile_state" else 0,
+                     "sha256": hashlib.sha256((name + " synthetic rows").encode()).hexdigest()}
+              for name in documents.RECEIVING_TABLES}
+    inventory = {"tables": tables, "rows": sum(table["rows"] for table in tables.values()),
+                 "sha256": hashlib.sha256(json.dumps({name: table["sha256"] for name, table in tables.items()},
+                                                        sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+    return {"format": "alkion-receiving-verification/1", "result": "verified",
+        "schema": {"user_version": 3, "application_id": 0x414C4B31,
+                   "migrations": [{"version": version, "digest": "e" * 64} for version in (1, 2, 3)], "sql_sha256": "f" * 64},
+        "container": {"sha256": documents.digest(data), "length": len(data), "format": "alkion-backup", "version": 1},
+        "tool": {"writer": "alkion-backup-writer/1", "application_id": documents.PACKAGES[1],
+                 "sqlite_async": "0.14.2", "sqlite3_package": "3.3.2", "sqlite_native": "host-only-synthetic"},
+        "created_at": "2026-10-18T12:13:14Z", "inventory": inventory, "inventory_result": "all_covered_rows_match",
+        "storage_claim": "receiving_file_verified; physically_off_device_location_requires_owner_evidence"}
+
+
+def load_harness():
+    script = Path(__file__).with_name("android_synthetic.sh")
+    body = script.read_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    body = body[:body.index("\nparser = argparse.ArgumentParser")]
+    namespace = {"__name__": "documents_host_control"}
+    with patch.object(sys, "argv", [str(script), str(script)]):
+        exec(compile(body, str(script), "exec"), namespace)
+    return namespace
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += max(seconds, 1)
+
+
+class FakeHost:
+    def __init__(self, root):
+        self.root = root
+        self.APP = root / "checkout/app"
+        self.APP.mkdir(parents=True)
+        fixture = self.APP / "tool/android_synthetic_documents"
+        fixture.mkdir(parents=True)
+        original = Path(__file__).parent / "android_synthetic_documents"
+        for name in ("AndroidManifest.xml", "SyntheticDocumentsProvider.java"):
+            shutil.copyfile(original / name, fixture / name)
+        ui_fixture = self.APP / "tool/android_synthetic_ui"
+        ui_fixture.mkdir()
+        for name in ("AndroidManifest.xml", "HierarchyInstrumentation.java"):
+            shutil.copyfile(Path(__file__).parent / "android_synthetic_ui" / name, ui_fixture / name)
+        self.sdk = root / "sdk"
+        (self.sdk / "platform-tools").mkdir(parents=True)
+        (self.sdk / "platform-tools/adb").touch()
+        (self.sdk / "platforms/android-36").mkdir(parents=True)
+        (self.sdk / "platforms/android-36/android.jar").touch()
+        self.user = root / "user"
+        self.user.mkdir()
+        (self.user / "debug.keystore").write_bytes(b"synthetic test placeholder, not a key")
+        avds = root / "avds"
+        avd = avds / "documents-proof.avd"
+        avd.mkdir(parents=True)
+        (avds / "documents-proof.ini").write_text("path=" + str(avd) + "\n")
+        (avd / "config.ini").write_text("abi.type=x86_64\ntag.id=default\nimage.sysdir.1=system-images/android-36/default/x86_64/\n")
+        self.receipt = {"format": "alkion-android-disposable/1", "purpose": "synthetic-only", "fresh": True,
+            "serial": "emulator-5560", "avd": "documents-proof", "run_id": RUN, "api": 36,
+            "abi": "x86_64", "system_image": "system-images;android-36;default;x86_64",
+            "avd_home": str(avds), "android_user_home": str(self.user)}
+        receipt_path = root / "disposable.json"
+        self.write(receipt_path, self.receipt)
+        self.installed = {}
+        self.facts = {}
+        self.metadata = {}
+        self.pids = {}
+        self.calls = []
+        self.mutations = []
+        self.current = None
+        self.front = documents.PACKAGES[1]
+        self.drawer = False
+        self.selected = False
+        self.scenario = "valid"
+        self.ack_objects = []
+        self.delayed_ack_checks = []
+        self.run_as_failures = set()
+        # Device package manager state for the synthetic provider.
+        self.provider_tree = PACKAGED_PROVIDER_TREE
+        self.provider_test_only = False
+        self.provider_enabled = False
+        self.provider_dump_hides_enabled = False
+        self.provider_enable_state = "enabled"
+        self.provider_enable_stderr = ""
+        self.variant_install_stdout = None
+        self.install_timing_stream = "stdout"
+        self.provider_dump_blocks = ("enabledComponents",)
+        self.null_focus = 0
+        # Device models: cached-app freezer, LastAccessed picker landing,
+        # caller focus during picker launch, disabled Save and cancel return lag.
+        self.provider_frozen = False
+        self.provider_sticky = False
+        self.pending_namespaces = []
+        self.last_accessed = set()
+        self.caller_focus = 0
+        self.caller_focus_samples = 0
+        self.save_captures = 0
+        self.cancel_lag = 0
+        self.preview_taps = []
+        # DocumentsUI directory model: view mode per root, a card bounds shift and the rendered tap geometry.
+        self.views, self.view_lag, self.card_shift, self.list_drift = {}, 0, 0, 0
+        self.early_list = True
+        self.hits, self.bar_taps, self.wrong_taps, self.toggle_taps = [], [], [], []
+        self.driver, self.updates, self.lifecycle = self.make_receipts()
+        self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
+            receipt=str(receipt_path), output=str(root / "output"), driver_run=str(root / "driver/run.json"),
+            updates_run=str(root / "updates/run.json"), base_run=str(root / "lifecycle/run.json"))
+        self.save_receipts()
+        namespace = load_harness()
+        namespace.update(APP=self.APP, command=self.command)
+        # Functions retain the same globals as the reviewed harness functions.
+        for name, value in namespace.items():
+            if callable(value) and name not in ("command",):
+                setattr(self, name, value)
+        self.namespace = namespace
+        self.apk_facts = self.fake_apk_facts
+        self.namespace["apk_facts"] = self.fake_apk_facts
+        # Synthetic reviewed-publisher receipt; the real binder admits it.
+        publisher_fake.copy_sources(self.APP)
+        # Installed later by the route; direct module controls need its live UID.
+        self.metadata.setdefault(documents.PROVIDER, {"uid": 10003, "version_code": 1})
+        self.runas = publisher_fake.FakeRunAs(root)
+        self.args.publisher_build = str(publisher_fake.fake_build(root / "publisher-build", self.APP, REVISION))
+        self.args._publisher = publish.load_build(self, self.args, self.args.publisher_build, REVISION)
+
+    @staticmethod
+    def write(path, value):
+        # Fixture directories follow the Android app process umask (077), so an
+        # adapter-created parent is private as the no-replace publisher requires.
+        previous = os.umask(0o077)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        finally:
+            os.umask(previous)
+        path.write_bytes(documents.encoded(value) if not isinstance(value, bytes) else value)
+        path.chmod(0o600)
+
+    def package_root(self, package):
+        directory = self.root / "packages" / package
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        return directory
+
+    def artifact(self, path, package, version):
+        self.write(path, {"package": package, "version": version})
+        facts = {"package": package, "version_code": version,
+                 "certificate_sha256": CERT, "apk_sha256": documents.digest(path.read_bytes())}
+        self.facts[str(path)] = facts
+        return facts
+
+    def fake_apk_facts(self, args, path, package):
+        facts = copy.deepcopy(self.facts_for_file(Path(path)))
+        documents.require(facts["package"] == package, "apk_package_mismatch")
+        facts["apk_sha256"] = documents.digest(Path(path).read_bytes())
+        return facts
+
+    def make_receipts(self):
+        driver = {"format": "alkion-android-run/1", "phase": "driver", "driver_phase": "PASS",
+            "overall": "IN_PROGRESS", "pending": {}, "source_commit": REVISION, "driver_contract": "alkion-driver/2",
+            **{key: self.receipt[key] for key in ("run_id", "serial", "avd", "api", "abi")}, "installed": {}, "driver": {}}
+        updates = {"format": "alkion-android-run/1", "phase": "updates", "updates_phase": "PASS",
+            "overall": "IN_PROGRESS", "pending": {}, "source_commit": REVISION, "base_source_commit": REVISION,
+            "base_driver_contract": "alkion-driver/2", **{key: self.receipt[key] for key in ("run_id", "serial", "avd")},
+            "installed": {}, "updates": {}}
+        lifecycle = {"format": "alkion-android-run/1", "phase": "lifecycle-initial", "initial_lifecycle_phase": "PASS",
+            "overall": "IN_PROGRESS", "pending": {"documents_provider_restore": "UNRUN"},
+            "source_commit": REVISION, "base_source_commit": REVISION,
+            **{key: self.receipt[key] for key in ("run_id", "serial", "avd")}, "installed": {}, "lifecycle": {}}
+        for index, package in enumerate(documents.PACKAGES):
+            flavor = "neighbor" if index == 0 else "dev" if index == 1 else "supported"
+            path = self.root / "driver" / ("neighbor-build/synthetic-neighbor.apk" if not index else "driver-" + flavor + ".apk")
+            driver["installed"][package] = self.artifact(path, package, 1 if not index else 37)
+            self.metadata[package] = {"uid": 10000 + index, "version_code": 1 if not index else 44}
+            self.installed[package] = driver["installed"][package]
+            if index:
+                driver["driver"][flavor] = {"format": "alkion-android-driver-proof/1", "run_id": RUN,
+                    "application_id": package, "complete": True, "result": "PASS",
+                    "cases": {name: "PASS" for name in load_harness()["CASES"]}}
+                normal = self.package_root(package) / ("files/" + package)
+                normal.mkdir(parents=True, mode=0o700)
+                profile = "12345678-1234-4234-8234-123456789abc"
+                relative = "profiles/" + profile + "/alkion.sqlite"
+                for name in (relative, "local-profile.json", "original-source.bin"):
+                    self.write(normal / name, b"exact synthetic existing bytes\x00\xff")
+                report = {"format": "alkion-android-update-proof/1", "run_id": RUN, "application_id": package,
+                    "complete": True, "closed": True, "result": "PASS", "state_digest": "c" * 64,
+                    "installation_id": "installation-" + flavor, "profile_id": profile, "generation": 1,
+                    "database_relative": relative}
+                verified = self.artifact(self.root / "updates" / (flavor + "-verify.apk"), package, 39)
+                meta = {"version_code": 39, "uid": 10000 + index}
+                updates["installed"][package] = verified
+                updates["updates"][package] = {"seed": dict(report, phase="seed"), "verify": dict(report, phase="verify"),
+                    "seed_metadata": dict(meta, version_code=38), "verify_metadata": meta, "verify_apk": verified,
+                    "driver_and_neighbor_bytes_unchanged": True,
+                    "wrong_signer": {"exit_code": 1, "stderr": "INSTALL_FAILED_UPDATE_INCOMPATIBLE",
+                        "metadata_before": meta, "metadata_after": meta, "covered_bytes_before": "d" * 64, "covered_bytes_after": "d" * 64,
+                        "candidate": dict(verified, version_code=40, certificate_sha256="e" * 64)}}
+                finished = self.artifact(self.root / "lifecycle" / (flavor + "-finish.apk"), package, 44)
+                lifecycle["installed"][package] = finished
+                checkpoints = {phase: dict(report, format="alkion-android-lifecycle-checkpoint/1", phase=phase, draft=None)
+                               for phase in ("prepare", "rest", "finish")}
+                lifecycle["lifecycle"][package] = dict(checkpoints, initial_lifecycle="PASS", peer_covered_bytes={
+                    peer: {"before": "f" * 64, "after": "f" * 64} for peer in documents.VARIANTS.values() if peer != package})
+                self.installed[package] = finished
+                self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/driver-report.json"), driver["driver"][flavor])
+                # The real driver also leaves a UTF-8 directory and SQLite sidecars in its tree.
+                self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/directory-\u00e8/sentinel"), b"sentinel")
+                self.write(self.package_root(package) / ("files/android-proof/" + RUN + "/coherent.sqlite-wal"), b"wal bytes")
+            else:
+                updates["installed"][package] = driver["installed"][package]
+                lifecycle["installed"][package] = driver["installed"][package]
+                self.write(self.package_root(package) / "files/synthetic-neighbor.json",
+                    {"format": "alkion-synthetic-neighbor/1", "run_id": RUN, "sentinel": "synthetic-only-keep-exact"})
+        ui_apk = self.root / "lifecycle/ui-observer/synthetic-ui-observer.apk"
+        ui_facts = self.artifact(ui_apk, observer.PACKAGE, observer.VERSION)
+        ui_build = {"format": "alkion-android-ui-build/1", "source_commit": REVISION,
+                    "native_source_sha256": observer.native_digest(self), "apk": ui_facts}
+        self.write(ui_apk.parent / "build.json", ui_build)
+        lifecycle["ui_observer"] = {"format": "alkion-android-ui-binding/1", "run_id": RUN,
+            "serial": self.receipt["serial"], "avd": self.receipt["avd"], "build": ui_build, "uid": 10004}
+        self.installed[observer.PACKAGE] = ui_facts
+        self.metadata[observer.PACKAGE] = {"version_code": observer.VERSION, "uid": 10004}
+        return driver, updates, lifecycle
+
+    def save_receipts(self):
+        for name in ("driver", "updates", "lifecycle"):
+            self.write(self.root / name / "run.json", getattr(self, name))
+
+    def command(self, argv, *, binary=False, input=None, check=True, timeout=30, env=None):
+        argv = list(map(str, argv))
+        self.calls.append(argv)
+        if argv[0] == "git":
+            return result(REVISION + "\n" if argv[-1] == "HEAD" else "")
+        if argv[0] == "make":
+            if "alkion-verify-backup" in argv:
+                options = dict(value.split("=", 1) for value in argv if value.startswith("ALKION_"))
+                if self.scenario == "receiving-failure":
+                    self.write(Path(options["ALKION_OUTPUT"]) / "failure.json", {"result": "failed"})
+                    return result(stderr="synthetic verifier refusal", code=1)
+                data = Path(options["ALKION_BACKUP"]).read_bytes()
+                report = receiving_report(data)
+                if self.scenario == "receiving-digest":
+                    report["container"]["sha256"] = "0" * 64
+                if self.scenario == "receiving-schema-int":
+                    report["schema"] = 1
+                self.write(Path(options["ALKION_OUTPUT"]) / "verification.json", report)
+                return result(json.dumps(report))
+            options = dict(value.split("=", 1) for value in argv if value.startswith("ALKION_"))
+            flavor = options["ALKION_FLAVOR"]
+            path = self.APP / ("build/app/outputs/flutter-apk/app-" + flavor + "-debug.apk")
+            self.artifact(path, documents.VARIANTS[flavor], int(options["ALKION_PROOF_VERSION"]))
+            return result("fake Make only\n")
+        if argv[0].endswith("/javac"):
+            directory = Path(argv[argv.index("-d") + 1])
+            (directory / "Fixture.class").write_bytes(b"not bytecode")
+            return result()
+        if argv[0].endswith("/d8"):
+            (Path(argv[argv.index("--output") + 1]) / "classes.dex").write_bytes(b"not dex")
+            return result()
+        if argv[0].endswith("/aapt2"):
+            if argv[1] == "link":
+                with zipfile.ZipFile(argv[argv.index("-o") + 1], "w"):
+                    pass
+                return result()
+            return result(PACKAGED_PROVIDER_TREE)
+        if argv[0].endswith("/zipalign"):
+            shutil.copyfile(argv[-2], argv[-1]); return result()
+        if argv[0].endswith("/java"):
+            target = Path(argv[argv.index("--out") + 1])
+            shutil.copyfile(argv[-1], target)
+            self.facts[str(target)] = {"package": documents.PROVIDER, "version_code": 1,
+                "certificate_sha256": CERT, "apk_sha256": documents.digest(target.read_bytes())}
+            return result()
+        if argv[0].endswith("/adb"):
+            assert argv[1:3] == ["-s", "emulator-5560"], argv
+            tail = argv[3:]
+            if tail[0] == "shell":
+                if tail[1:2] == ["-T"]:
+                    assert len(tail) == 3, tail
+                    value = self.android(shlex.split(tail[2]), binary, input)
+                else:
+                    value = self.android(shlex.split(tail[1]), binary)
+            elif tail[0] == "exec-out":
+                value = self.android(shlex.split(tail[1]) if len(tail) == 2 else tail[1:], binary, input)
+                # Match actual raw ADB exec: it merges diagnostics and loses the
+                # remote program's exit status. Optional reads must not use it.
+                stdout = value.stdout.encode() if isinstance(value.stdout, str) else value.stdout
+                stderr = value.stderr.encode() if isinstance(value.stderr, str) else value.stderr
+                value = result(stdout + stderr, b"", 0)
+            elif tail[0] == "install" and self.refuses_test_only_install(tail):
+                # InstallPackageHelper refuses a test-only APK without INSTALL_ALLOW_TEST.
+                failure = "Failure [INSTALL_FAILED_TEST_ONLY: Failed to install test-only apk. Did you forget to add -t?]"
+                value = result(INCREMENTAL + failure + "\nPerforming Streamed Install\n",
+                               "adb: failed to install " + tail[-1] + ": " + failure + "\n\n", 1)
+            elif tail[0] == "install":
+                facts = self.fake_apk_facts(None, Path(tail[-1]), self.facts_for_file(Path(tail[-1]))["package"])
+                if facts["package"] == documents.PROVIDER:
+                    self.provider_test_only = TEST_ONLY in self.provider_tree and "-t" in tail[1:-1]
+                self.installed[facts["package"]] = facts
+                self.metadata.setdefault(facts["package"], {"uid": 10003})["version_code"] = facts["version_code"]
+                # The provider ships an .idsig and installs incrementally; others stream.
+                self.mutations.append(("install", facts["package"]))
+                if facts["package"] == documents.PROVIDER:
+                    timing = "Install command complete in 812 ms\n"
+                    value = result(INCREMENTAL + "Success\n" + (timing if self.install_timing_stream == "stdout" else ""),
+                                   timing if self.install_timing_stream == "stderr" else "")
+                else:
+                    value = result("Performing Streamed Install\nSuccess\n")
+                if self.variant_install_stdout is not None and facts["package"] in documents.VARIANTS.values():
+                    value = result(self.variant_install_stdout)
+            elif tail == ["get-state"]:
+                value = result("device\n")
+            elif tail == ["emu", "avd", "name"]:
+                value = result("documents-proof\nOK\n")
+            else:
+                raise AssertionError(tail)
+            if check and value.returncode:
+                raise documents.Refusal("fake_transport_failed:" + repr(tail))
+            if binary:
+                value = result(value.stdout if isinstance(value.stdout, bytes) else value.stdout.encode(),
+                               value.stderr if isinstance(value.stderr, bytes) else value.stderr.encode(), value.returncode)
+            return value
+        raise AssertionError("Unexpected command: " + repr(argv))
+
+    def refuses_test_only_install(self, tail):
+        package = self.facts_for_file(Path(tail[-1]))["package"]
+        return package == documents.PROVIDER and TEST_ONLY in self.provider_tree and "-t" not in tail[1:-1]
+
+    def facts_for_file(self, path):
+        if str(path) not in self.facts:
+            value = json.loads(path.read_bytes())
+            self.facts[str(path)] = {"package": value["package"], "version_code": value["version"],
+                "certificate_sha256": CERT, "apk_sha256": documents.digest(path.read_bytes())}
+        return self.facts[str(path)]
+
+    def android(self, argv, binary=False, data=None):
+        if argv[:1] == ["getprop"]:
+            return result({"ro.kernel.qemu": "1", "ro.build.version.sdk": "36", "ro.product.cpu.abi": "x86_64", "sys.boot_completed": "1"}[argv[1]] + "\n")
+        if argv[:2] == ["pm", "path"]:
+            return result("package:/data/app/fake/" + argv[2] + "/base.apk\n" if argv[2] in self.installed else "")
+        if argv[:2] == ["pm", "list"]:
+            package = argv[-1]
+            if "-s" in argv:
+                assert package in ("com.android.settings", "com.android.launcher3")
+                return result("package:" + package + " uid:" + str(1000 if package == "com.android.settings" else 10120) + "\n")
+            return result("package:" + package + " uid:" + str(self.metadata[package]["uid"]) + "\n")
+        if argv[:2] == ["dumpsys", "package"]:
+            dump = "versionCode=" + str(self.metadata[argv[2]]["version_code"]) + "\n"
+            if argv[2] == documents.PROVIDER and self.provider_enabled and not self.provider_dump_hides_enabled:
+                dump += "    User 0: installed=true hidden=false stopped=false notLaunched=false enabled=0\n"
+                dump += "".join("      " + block + ":\n        " + PROVIDER_CLASS + "\n" for block in self.provider_dump_blocks)
+            return result(dump)
+        if argv[:3] == ["dumpsys", "activity", "processes"]:
+            package = argv[3]; uid = self.metadata[package]["uid"]; pid = self.pids[package]
+            assert self.front == "com.android.launcher3"
+            return result("  *APP* UID " + str(uid) + " ProcessRecord{123 " + str(pid) + ":" + package + "/u0a" + str(uid - 10000) + "}\n"
+                "    user #0 uid=" + str(uid) + " gids={50000}\n    pid=" + str(pid) + "\n"
+                "    oom adj: max=1001 curRaw=900 setRaw=900 cur=900 set=900\n"
+                "    curProcState=15 mRepProcState=15 setProcState=15 lastStateTime=-1s\n"
+                "    cached=true empty=false\n")
+        if argv[:2] == ["dumpsys", "activity"]:
+            front = self.front
+            if self.cancel_lag:
+                # onActivityResult runs before the caller is recorded as resumed.
+                self.cancel_lag -= 1; front = "com.android.documentsui"
+            component = {"com.android.settings": "/.Settings", "com.android.launcher3": "/.Launcher"}.get(front, "/.picker.PickActivity")
+            if front in documents.VARIANTS.values():
+                component = "/dev.animusstudio.alkion.MainActivity"
+            focus = "  mCurrentFocus=Window{abc u0 " + front + component + "}\n"
+            if self.caller_focus and front == "com.android.documentsui":
+                # The calling app keeps window focus while DocumentsUI cold-starts.
+                self.caller_focus -= 1
+                focus = "  mCurrentFocus=Window{abc u0 " + self.current + "/dev.animusstudio.alkion.MainActivity}\n"
+                return result("mResumedActivity: ActivityRecord{123 u0 " + self.current + "/dev.animusstudio.alkion.MainActivity t1}\n" + focus)
+            if self.null_focus and self.front == "com.android.documentsui":
+                # Window focus is transiently null while DocumentsUI is shown.
+                self.null_focus -= 1; focus = "  mCurrentFocus=null\n"
+            return result("mResumedActivity: ActivityRecord{123 u0 " + front + component + " t1}\n" + focus)
+        if argv[:1] == ["sha256sum"]:
+            package = argv[1].split("/")[-2]
+            return result(self.installed[package]["apk_sha256"] + "  " + argv[1] + "\n")
+        if argv[:1] == ["pidof"]:
+            return result(str(self.pids[argv[1]]) + "\n" if self.pids.get(argv[1]) else "", code=0 if self.pids.get(argv[1]) else 1)
+        if argv[:2] == ["sh", "-c"]:
+            assert argv[2] == self.namespace["PROCESS_IDENTITY_SCRIPT"]
+            pid = int(argv[-1])
+            owners = [package for package, observed in self.pids.items() if observed == pid]
+            if not owners:
+                return result("absent\n")
+            assert len(owners) == 1
+            uid = self.metadata[owners[0]]["uid"]
+            fields = ["0"] * 49; fields[18] = "100"
+            return result("Name: alkion\nPid: " + str(pid) + "\nUid: " + " ".join([str(uid)] * 4) +
+                          "\n\nalkion-proc-stat\n" + str(pid) + " (alkion (dev)) S " + " ".join(fields) + "\n")
+        if argv[:3] == ["cmd", "package", "resolve-activity"]:
+            return result("com.android.settings/.Settings\n" if "android.settings.SETTINGS" in argv else "com.android.launcher3/.Launcher\n")
+        if argv[:3] == ["cmd", "package", "unstop"]:
+            assert argv == ["cmd", "package", "unstop", "--user", "0", documents.PROVIDER]
+            assert list((self.package_root(documents.PROVIDER) / "files/proof-runs").glob("*-dev/control.json"))
+            self.mutations.append(("unstop", argv[-1])); return result()
+        if argv[:2] == ["pm", "enable"]:
+            assert argv == ["pm", "enable", "--user", "0", documents.COMPONENT]
+            if not self.provider_test_only:
+                # PackageManagerService.setEnabledSettings for the shell uid.
+                return result("", "\nException occurred while executing 'enable':\njava.lang.SecurityException: "
+                              "Shell cannot change component state for ComponentInfo{" + documents.PROVIDER + "/" +
+                              PROVIDER_CLASS + "} to 1\n\tat com.android.server.pm.PackageManagerService."
+                              "setEnabledSettings(PackageManagerService.java:3972)\n", 255)
+            self.provider_enabled = True  # Starts nothing; DocumentsUI's roots query starts the provider.
+            self.mutations.append(("enable", argv[-1]))
+            return result("Component {" + documents.PROVIDER + "/" + PROVIDER_CLASS + "} new state: " + self.provider_enable_state + "\n",
+                          self.provider_enable_stderr)
+        if argv[:2] == ["am", "unfreeze"]:
+            assert argv[:3] == ["am", "unfreeze", "--sticky"] and len(argv) == 4
+            assert int(argv[3]) == self.pids[documents.PROVIDER], argv
+            self.mutations.append(("unfreeze", argv[3]))
+            self.provider_frozen, self.provider_sticky = False, True
+            pending, self.pending_namespaces = self.pending_namespaces, []
+            for relative in pending:  # Deferred FileObserver delivery.
+                self.provider_load(relative)
+            return result("Unfreezing process " + documents.PROVIDER + " (" + argv[3] + ") sticky=true\n")
+        if argv[:2] == ["am", "instrument"]:
+            assert argv[-1] == observer.COMPONENT and argv[argv.index("--user") + 1] == "0"
+            arguments = {argv[index + 1]: argv[index + 2] for index, value in enumerate(argv) if value == "-e"}
+            assert arguments["run_id"] == RUN and arguments["source_commit"] == REVISION
+            assert arguments["serial"] == self.args.serial and arguments["avd"] == self.args.avd
+            assert arguments["expected_package"] == self.front == "com.android.documentsui"
+            tree = self.ui_xml().encode()
+            receipt = {"format": "alkion-android-ui-observation/1", "diagnostic_schema": "alkion-ui-window-facts/1", **arguments, "complete": True, "result": "PASS",
+                "observer_package": observer.PACKAGE, "observer_uid": 10004, "observer_version": observer.VERSION,
+                "root_package": self.front, "display_id": 0, "window_id": 7, "window_type": 1,
+                "window_active": True, "window_focused": True, "rotation": 0, "width": 1080, "height": 2400,
+                "elapsed_ms": 20, "node_count": len(list(ET.fromstring(tree).iter("node"))),
+                "xml_length": len(tree), "xml_sha256": observer.digest(tree),
+                "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")}
+            labels = sum(node.get("visible-to-user") == "true" and any(node.get(key, "").strip(" \t\r\n")
+                for key in ("text", "content-desc")) for node in ET.fromstring(tree).iter("node"))
+            receipt.update(readiness="structural", visible_label_count=labels, sample_count=1, candidate_sample=1)
+            receipt["samples"] = [{"index": 1, "cache_cleared": True, "root_available": True, "ready": True,
+                "candidate_complete": True, "outcome": "complete", "stage": "complete", "exception": None, "exception_class": None,
+                "observed": ["cache_cleared", "root_available", "root_package", "node_window_id", "window_present",
+                    "window_id", "window_type", "display_id", "window_active", "window_focused"],
+                "root_package": self.front, "node_window_id": 7, "window_present": True, "window_type": 1,
+                "display_id": 0, "window_active": True, "window_focused": True,
+                "elapsed_ms": 15, **{key: receipt[key] for key in
+                    ("node_count", "visible_label_count", "window_id", "xml_length", "xml_sha256")}}]
+            if self.scenario == "observer-wrong-nonce": receipt["request_id"] = "f" * 32
+            directory = self.package_root(observer.PACKAGE) / ("files/observations/" + RUN + "/" + arguments["request_id"])
+            assert not directory.exists()
+            self.write(directory / "hierarchy.xml", tree)
+            self.write(directory / "receipt.json", receipt)
+            return result("INSTRUMENTATION_CODE: -1\n")
+        if argv[:2] == ["am", "start"]:
+            package = argv[-1].split("/")[0]
+            if package == "com.android.settings":
+                self.front = package
+                return result("Status: ok\n")
+            self.pids[package] = 601
+            self.start_adapter(package)
+            self.mutations.append(("start", package)); return result()
+        if argv[:2] == ["am", "kill"]:
+            self.pids[argv[-1]] = None
+            self.mutations.append(("kill", argv[-1])); return result()
+        if argv == ["am", "get-current-user"]:
+            return result("0\n")
+        if argv[:2] == ["input", "keyevent"]:
+            if argv[-1] == "KEYCODE_BACK":
+                self.complete_picker()
+            elif argv[-1] == "KEYCODE_HOME":
+                self.front = "com.android.launcher3"
+            return result()
+        if argv[:2] == ["input", "tap"]:
+            x, y = int(argv[-2]), int(argv[-1]); self.mutations.append(("tap", y))
+            # Hit-testing against the last rendered directory: the navigation bar, then its toggle, previews and items.
+            if self.front == "com.android.documentsui" and y >= NAVIGATION_TOP:
+                self.bar_taps.append((x, y)); return result()
+            hit = next((action for box, action in self.hits if box[0] <= x < box[2] and box[1] <= y < box[3]), None)
+            if hit is not None:
+                hit(x, y); return result()
+            if y < 100:
+                # Choosing a root reloads it; Save stays disabled until that load completes.
+                self.selected = True; self.drawer = False; self.save_captures = 0
+            elif y >= 300:
+                self.drawer = True
+            else:
+                self.complete_picker()
+            return result()
+        if argv[:1] == ["uiautomator"]:
+            return result('<?xml version="1.0" encoding="UTF-8"?>' + self.ui_xml())
+        if argv[:1] == ["screencap"]:
+            return result(b"\x89PNG\r\n\x1a\nsynthetic host image" if binary else "")
+        if argv[:1] == ["run-as"]:
+            package = argv[1]; directory = self.package_root(package)
+            rest = argv[2:]
+            if package in self.run_as_failures:
+                # Pessimistic device model: run-as refuses before running the
+                # program, exits 0 and reports on stdout with empty stderr.
+                diagnostic = b"run-as: unknown package: " + package.encode() + b"\n"
+                return result(diagnostic if binary else diagnostic.decode(), b"" if binary else "", 0)
+            # Every inherited owned-file writer must use the no-replace publisher.
+            assert not any(re.search(r"(?:^|[;&|(\s])ln\s", word) for word in rest), rest
+            if self.runas.handles(rest):
+                stdout, stderr, code = self.runas.run(package, self.metadata[package]["uid"], directory, rest, data)
+                if code == 0 and rest[2] == publish.PUBLISH and "/ack-" in rest[-1]:
+                    self.consume_ack(json.loads((directory / rest[-1]).read_bytes()))
+                return result(stdout if binary else stdout.decode(), stderr if binary else stderr.decode(), code)
+            if rest[:2] == ["/system/bin/sh", "-c"]:
+                if data is not None and "ack-" in rest[-1] and ".json.partial-" in rest[-1] and self.scenario == "delayed-ack":
+                    process = subprocess.Popen(["/bin/sh", *rest[1:]], cwd=directory,
+                                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    split = len(data) // 2
+                    process.stdin.write(data[:split]); process.stdin.flush()
+                    partial = directory / rest[-1]
+                    final = Path(str(partial).rsplit(".partial-", 1)[0])
+                    deadline = time.monotonic() + 2
+                    while (not partial.exists() or partial.stat().st_size < split) and time.monotonic() < deadline:
+                        time.sleep(0.001)
+                    assert partial.read_bytes() == data[:split]
+                    assert not final.exists(), "Final ack visible while payload is incomplete"
+                    time.sleep(0.02)  # Give the exists/read/parse consumer several polls.
+                    assert not final.exists(), "Final ack appeared before the writer closed"
+                    self.delayed_ack_checks.append((str(partial), bytes(data)))
+                    stdout, stderr = process.communicate(data[split:], timeout=2)
+                    completed = subprocess.CompletedProcess(rest, process.returncode, stdout, stderr)
+                    assert partial.read_bytes() == data and not final.exists()
+                else:
+                    completed = subprocess.run(["/bin/sh", *rest[1:]], cwd=directory, input=data, capture_output=True)
+                if completed.returncode == 0 and data is not None and "ack-" in rest[-1] and self.scenario == "changed-ack-partial":
+                    partial = directory / rest[-1]
+                    partial.write_bytes(data[:-1] + b"x")
+            else:
+                completed = subprocess.run(rest, cwd=directory, capture_output=True)
+            if (package == documents.PROVIDER and completed.returncode == 0 and rest[:2] == ["/system/bin/sh", "-c"] and
+                    'mv -n "$1" "$2"' in rest[2]):
+                self.namespace_published(rest[-1].rsplit("/", 1)[-1])
+            return result(completed.stdout if binary else completed.stdout.decode(),
+                          completed.stderr if binary else completed.stderr.decode(), completed.returncode)
+        raise AssertionError("Unexpected Android command: " + repr(argv))
+
+    def phase(self, state, sequence, case, **detail):
+        value = {"format": "alkion-android-documents-phase/1", "run_id": RUN, "source_commit": REVISION,
+            "application_id": self.current, "variant": self.flavor, "provider_package": documents.PROVIDER,
+            "provider_authority": documents.AUTHORITY, "sequence": sequence, "case": case, "state": state, **detail}
+        self.current_phase = value
+        self.write(self.package_root(self.current) / ("files/android-documents-proof/" + RUN + "/phase.json"), value)
+        return value
+
+    def start_adapter(self, package):
+        self.current = self.front = package
+        self.flavor = next(flavor for flavor, candidate in documents.VARIANTS.items() if candidate == package)
+        self.control = {"format": "alkion-synthetic-documents/1", "run_id": RUN, "variant": self.flavor,
+                        "length": len(RAW), "sha256": documents.digest(RAW)}
+        self.observed = {}
+        relative = "android-documents-proof/" + RUN + "/backups/" + SOURCE_NAME
+        self.write(self.package_root(package) / ("files/" + relative), RAW)
+        namespace = RUN + "-" + self.flavor
+        self.phase("seed_provider", 0, "seed", source_relative=relative, length=len(RAW), sha256=documents.digest(RAW),
+            provider_control_relative="files/proof-runs/" + namespace + "/control.json",
+            provider_input_relative="files/proof-runs/" + namespace + "/input.alkionbackup", provider_control=self.control)
+
+    def next_case(self, sequence):
+        case = list(documents.CASES)[sequence - 1]
+        namespace = RUN + "-" + self.flavor
+        self.selected = False; self.drawer = False
+        self.phase("awaiting_arm", sequence, case,
+            intent="ACTION_OPEN_DOCUMENT" if case.startswith("open-") else "ACTION_CREATE_DOCUMENT",
+            root_label="Alkion synthetic " + namespace, document_label=namespace + "-" + case + ".alkionbackup",
+            picker_action="cancel" if case.endswith("-cancel") else "select", mime_type="application/octet-stream",
+            provider_receipt_relative="files/proof-runs/" + namespace + "/receipts/" + case + ".json")
+
+    def consume_ack(self, value):
+        self.ack_objects.append(value)
+        if value["action"] == "seeded":
+            self.next_case(1)
+        elif value["action"] == "armed":
+            phase = dict(self.current_phase)
+            phase.pop("state"); phase.pop("sequence"); phase.pop("case")
+            self.phase("picker", value["sequence"], value["case"], **{key: item for key, item in phase.items() if key not in
+                ("format", "run_id", "source_commit", "application_id", "variant", "provider_package", "provider_authority")})
+            self.front = "com.android.documentsui"
+            self.selected, self.drawer = self.flavor in self.last_accessed, False
+            # Only the campaign's first picker is a DocumentsUI cold start.
+            self.caller_focus, self.caller_focus_samples, self.save_captures = self.caller_focus_samples, 0, 0
+        else:
+            if value["provider_receipt"] is not None:
+                self.observed[value["case"]] = value["provider_receipt"]
+            if value["sequence"] == len(documents.CASES):
+                report = terminal(self.flavor, self.observed)
+                if self.scenario == "flat-terminal":
+                    report["cases"]["open-good"] = "PASS"
+                self.write(self.package_root(self.current) / ("files/android-documents-proof/" + RUN + "/documents-report.json"), report)
+            else:
+                self.next_case(value["sequence"] + 1)
+
+    def ui_xml(self):
+        self.hits = []
+        root = ET.Element("hierarchy", rotation="0")
+        container = ET.SubElement(root, "node", {"package": self.front, "resource-id": self.front + ":id/content",
+            "class": "android.widget.FrameLayout", "text": "", "content-desc": "", "clickable": "false",
+            "enabled": "true", "visible-to-user": "true", "bounds": "[0,0][1080,2400]"})
+        if self.front != "com.android.documentsui":
+            return ET.tostring(root, encoding="unicode")
+        if self.provider_enabled and self.pids.get(documents.PROVIDER) is None:
+            # DocumentsUI's roots query starts the provider, which loads every namespace.
+            self.pids[documents.PROVIDER] = 501
+            parent = self.package_root(documents.PROVIDER) / "files/proof-runs"
+            for path in sorted(parent.iterdir()) if parent.is_dir() else []:
+                self.provider_load(path.name)
+        namespace = RUN + "-" + self.flavor
+        label = "Alkion synthetic " + namespace
+        if self.scenario == "wrong-root":
+            label = "Alkion synthetic " + "2" * 32 + "-" + self.flavor
+        if self.scenario == "list-foreign-root" and self.views.get(self.flavor) == "list":
+            label = "Alkion synthetic " + "3" * 32 + "-" + self.flavor
+        listed = (self.package_root(documents.PROVIDER) / ("files/proof-runs/" + namespace + "/input.pin")).is_file()
+        def node(text, y, clickable=True, cls="android.widget.TextView", desc="", resource="com.android.documentsui:id/item",
+                 enabled=True):
+            ET.SubElement(container, "node", {"package": "com.android.documentsui", "text": text, "content-desc": desc,
+                "resource-id": resource, "enabled": str(enabled).lower(), "visible-to-user": "true",
+                "class": cls, "clickable": str(clickable).lower(), "bounds": "[0," + str(y) + "][100," + str(y + 100) + "]"})
+        if self.drawer and listed:
+            node(label, 0, True, resource="android:id/title")
+            if self.scenario == "duplicate-root":
+                node(label, 0, True, resource="android:id/title")
+        node("", 300, desc="Show roots")
+        if self.selected and not self.drawer:
+            # Non-M3 DocumentsUI: Toolbar title (no id) plus the root breadcrumb item.
+            node(label, 400, False, resource="")
+            node(label, 500, self.scenario == "clickable-selected-label", resource=documents.BREADCRUMB)
+            if self.scenario == "duplicate-breadcrumb":
+                node(label, 600, False, resource=documents.BREADCRUMB)
+            if self.scenario == "foreign-label-id":
+                node(label, 700, False, resource="com.android.documentsui:id/foreign")
+            name = self.current_phase["document_label"]
+            if self.scenario == "wrong-file":
+                name = "foreign.alkionbackup"
+            if self.current_phase["case"].startswith("save-"):
+                node(name, 100, False, "android.widget.EditText")
+            else:
+                self.directory(container, name)
+            if self.current_phase["case"].startswith("save-"):
+                # SaveFragment enables Save only after the root document loads.
+                node("SAVE", 200, enabled=self.save_captures > 0)
+                self.save_captures += 1
+        return ET.tostring(root, encoding="unicode")
+
+    def directory(self, container, current):
+        """Captured API 36 DocumentsUI directory of the six open documents, in grid or list view.
+
+        The header offers only the other view mode, and the directory stays a
+        GridView in both. Taps resolve against this rendered geometry.
+        """
+        mode = self.views.get(self.flavor, "grid")
+        if self.view_lag:  # A switch not yet drawn.
+            self.view_lag -= 1
+            mode = {"grid": "list", "list": "grid"}[mode]
+        toggle, description = {"grid": ("sub_menu_list", "List view"), "list": ("sub_menu_grid", "Grid view")}[mode]
+        if self.scenario != "toggle-missing" and (self.early_list or self.current_phase["case"] != "open-cancel"):
+            menu = self.add(container, (890, 404, 1017, 530), "androidx.appcompat.widget.LinearLayoutCompat", resource_id=DUI + "sub_menu")
+            for _ in range(2 if self.scenario == "toggle-duplicate" else 1):
+                self.add(menu, (890, 404, 1017, 530), "android.widget.Button", resource_id=DUI + toggle,
+                         content_desc=description, clickable="true")
+            self.hits.append(((890, 404, 1017, 530), lambda x, y: self.switch_view()))
+        grid = self.add(container, (0, 136, 1080, 2400), "android.widget.GridView", resource_id=DUI + "dir_list")
+        self.add(container, (0, NAVIGATION_TOP, 1080, 2400), "android.view.View",
+                 resource_id="android:id/navigationBarBackground", visible_to_user="false")
+        names = sorted(RUN + "-" + self.flavor + "-" + case + ".alkionbackup" for case in documents.CASES
+                       if case.startswith("open-") and case != "open-cancel")
+        names = [current if name == self.current_phase["document_label"] else name for name in names]
+        if mode == "list" and self.scenario == "list-duplicate-row":
+            names.append(current)
+        if mode == "list" and self.scenario == "list-unsettled":
+            self.list_drift += 1
+        for index, name in enumerate(names):
+            def select(x, y, name=name):
+                if name == self.current_phase["document_label"]:
+                    self.complete_picker()
+                else:
+                    self.wrong_taps.append(name)
+            (self.grid_card if mode == "grid" else self.list_row)(grid, index, name, select)
+
+    def switch_view(self):
+        self.toggle_taps.append(self.current_phase["case"])
+        if self.scenario != "list-stale":
+            self.views[self.flavor] = {"grid": "list", "list": "grid"}[self.views.get(self.flavor, "grid")]
+            self.view_lag = 1 if self.scenario == "list-lag" else 0
+
+    @staticmethod
+    def add(parent, bounds, cls="android.widget.FrameLayout", **attributes):
+        values = {"package": "com.android.documentsui", "text": "", "content-desc": "", "resource-id": "", "class": cls,
+                  "clickable": "false", "enabled": "true", "visible-to-user": "true", "bounds": "[%d,%d][%d,%d]" % bounds}
+        values.update({key.replace("_", "-"): value for key, value in attributes.items()})
+        return ET.SubElement(parent, "node", values)
+
+    def grid_card(self, parent, index, name, select):
+        """Captured grid card in rows of two.
+
+        A third-row nameplate's contents start under the navigation bar and
+        report not visible. With card_shift the card reports its own bounds
+        shifted while its contents keep display bounds, as another capture did.
+        """
+        add, image = self.add, "android.widget.ImageView"
+        left, top = (64, 551)[index % 2], 557 + 623 * (index // 2)
+        right, bottom = left + 465, min(top + 601, 2400)
+        def shown(y):
+            return str(y < NAVIGATION_TOP).lower()
+        current = name == self.current_phase["document_label"]
+        card = add(parent, (left, top + self.card_shift, right, bottom + self.card_shift), "androidx.cardview.widget.CardView",
+                   resource_id=DUI + "item_root", clickable="true")
+        add(card, (left, top, right, bottom), "android.view.View")
+        frame = add(add(card, (left, top, right, bottom), "androidx.cardview.widget.CardView"),
+                    (left, top, right, bottom), "android.widget.RelativeLayout")
+        thumbnail = add(frame, (left, top, right, top + 465), resource_id=DUI + "thumbnail")
+        add(thumbnail, (left, top, right, top + 465), image, resource_id=DUI + "icon_thumb")
+        add(thumbnail, (left + 180, top + 180, left + 285, top + 285), image, resource_id=DUI + "icon_mime_lg")
+        preview = add(frame, (left + 339, top, right, top + 126), resource_id=DUI + "preview_icon",
+                      content_desc="Preview the file " + name, clickable="true")
+        add(preview, (left + 370, top + 31, left + 433, top + 94), image)
+        nameplate = add(frame, (left, top + 465, right, bottom), "android.widget.LinearLayout", resource_id=DUI + "nameplate")
+        icon = add(nameplate, (left, top + 465, left + 132, bottom), resource_id=DUI + "icon")
+        for resource, visible in (("icon_mime_sm", shown(top + 493)), ("icon_check", "false")):
+            add(icon, (left + 32, top + 493, left + 111, top + 572), image, resource_id=DUI + resource, visible_to_user=visible)
+        texts = add(nameplate, (left + 132, top + 465, right, bottom), "android.widget.RelativeLayout")
+        holder, title = texts, (left + 132, top + 486, left + 433, top + 537)
+        if current and self.scenario == "card-label-outside":
+            holder = add(parent, (left, top, right, bottom))
+        if current and self.scenario == "card-preview-over-label":
+            title = (left + 349, top + 20, left + 459, top + 80)
+        add(holder, title, "android.widget.TextView", resource_id="android:id/title", text=name, visible_to_user=shown(title[1]))
+        date = left + 132
+        if name.endswith("-open-short.alkionbackup"):
+            add(texts, (left + 132, top + 537, left + 196, top + 580), "android.widget.TextView", resource_id=DUI + "details",
+                text="27 B", visible_to_user=shown(top + 537))
+            date = left + 207
+        add(texts, (date, top + 537, date, top + 580), "android.widget.TextView", resource_id=DUI + "date", visible_to_user="false")
+        if current and self.scenario == "two-cards":
+            twin = add(parent, (64, 3454, 529, 4055), "androidx.cardview.widget.CardView", resource_id=DUI + "item_root", clickable="true")
+            add(twin, (196, 1666, 497, 1717), "android.widget.TextView", resource_id="android:id/title", text=name)
+        self.hits += [((left + 339, top, right, top + 126), lambda x, y: self.preview_taps.append((x, y))),
+                      ((left, top, right, bottom), select)]
+
+    def list_row(self, parent, index, name, select):
+        """Captured list row; the short document's row adds a metadata line under its title."""
+        add, image, line = self.add, "android.widget.ImageView", "android.widget.LinearLayout"
+        top = 546 + 192 * index + self.list_drift
+        row = add(parent, (0, top, 1080, top + 192), line, resource_id=DUI + "item_root", clickable="true")
+        body = add(row, (0, top, 1080, top + 189), line)
+        icon = add(add(body, (0, top, 189, top + 189), resource_id=DUI + "icon"), (42, top + 42, 147, top + 147),
+                   "androidx.cardview.widget.CardView")
+        add(icon, (42, top + 42, 147, top + 147), image, resource_id=DUI + "icon_thumb")
+        add(icon, (55, top + 55, 134, top + 134), image, resource_id=DUI + "icon_check", visible_to_user="false")
+        add(icon, (63, top + 63, 126, top + 126), image, resource_id=DUI + "icon_mime")
+        short = name.endswith("-open-short.alkionbackup")
+        first = top + (39 if short else 66)
+        texts = add(body, (189, first, 849, top + (150 if short else 123)), line)
+        hidden = self.scenario == "list-row-hidden" and name == self.current_phase["document_label"]
+        add(add(texts, (189, first, 849, first + 57), line), (189, first, 849, first + 57), "android.widget.TextView",
+            resource_id="android:id/title", text=name, visible_to_user=str(not hidden).lower())
+        if short:
+            add(add(texts, (189, top + 107, 849, top + 150), line, resource_id=DUI + "line2"), (189, top + 107, 370, top + 150),
+                "android.widget.TextView", resource_id=DUI + "metadata", text="27 B, BIN file")
+        preview = add(body, (891, top, 1080, top + 189), resource_id=DUI + "preview_icon",
+                      content_desc="Preview the file " + name, clickable="true")
+        add(preview, (946, top + 55, 1025, top + 134), image)
+        add(row, (189, top + 189, 1059, top + 192), "android.view.View")
+        self.hits += [((891, top, 1080, top + 189), lambda x, y: self.preview_taps.append((x, y))),
+                      ((0, top, 1080, top + 192), select)]
+
+    def provider_load(self, relative):
+        """The provider's own load(): bind a complete namespace and write its pin once."""
+        match = re.fullmatch(r"([a-f0-9]{32})-(dev|supported)", relative)
+        prefix = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + relative)
+        if match is None or not (prefix / "input.alkionbackup").is_file() or (prefix / "input.pin").exists():
+            return
+        data = (prefix / "input.alkionbackup").read_bytes()
+        self.write(prefix / "input.pin", (match[1] + "\n" + match[2] + "\n" + str(len(data)) + "\n" + documents.digest(data)).encode())
+
+    def namespace_published(self, relative):
+        if self.pids.get(documents.PROVIDER) is None:
+            return  # Not running: the next start loads it.
+        if self.provider_frozen:
+            self.pending_namespaces.append(relative)  # The freezer defers FileObserver delivery.
+        else:
+            self.provider_load(relative)
+
+    def picker_closed(self, cancelled=False):
+        self.last_accessed.add(self.flavor)
+        if self.pids.get(documents.PROVIDER) is not None and not self.provider_sticky:
+            self.provider_frozen = True  # Cached once no picker uses it.
+        if cancelled:
+            self.cancel_lag = 1
+
+    def complete_picker(self):
+        case, sequence = self.current_phase["case"], self.current_phase["sequence"]
+        if not case.endswith("-cancel"):
+            receipt = provider_receipt(case, self.control)
+            prefix = self.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-" + self.flavor)
+            if case.startswith("save-"):
+                data = b"" if case == "save-write-denied" else b"\x00" if case == "save-write-interrupted" else RAW
+                self.write(prefix / ("outputs/" + case + "-12345678-1234-4234-8234-123456789abc.partial"), data)
+            self.write(prefix / ("receipts/" + case + ".json"), receipt)
+        self.front = self.current
+        self.picker_closed(cancelled=case.endswith("-cancel"))
+        self.phase("awaiting_observed", sequence, case, production_outcome=documents.CASES[case])
+
+
+def provider_receipt(case, control):
+    events = []
+    def event(operation, state, length=0, sha=None):
+        events.append({"operation": operation, "state": state, "length": length, "sha256": sha,
+                       "error": None, "reliable_pipe": operation in ("read", "write") and state != "denied"})
+    if case.startswith("save-"):
+        event("create", "created", sha=documents.digest(b""))
+        if case == "save-write-denied": event("write", "denied")
+        elif case == "save-write-interrupted": event("write", "interrupted", 1)
+        else:
+            event("write", "complete", control["length"], control["sha256"])
+            if case == "save-readback-denied": event("read", "denied")
+            else: event("read", "complete", control["length"], "0" * 64 if case == "save-readback-changed" else control["sha256"])
+    elif case == "open-denied": event("read", "denied")
+    elif case == "open-error": event("read", "interrupted", 4096)
+    elif case == "open-short": event("read", "complete", control["length"] - 1, "0" * 64)
+    else: event("read", "complete", control["length"], "0" * 64 if case == "open-corrupt" else control["sha256"])
+    value = {"format": "alkion-synthetic-document-receipt/1", "run_id": RUN, "variant": control["variant"],
+             "case": case, "input_sha256": control["sha256"], "input_length": control["length"], "events": events}
+    if case.startswith("save-"):
+        value.update(output_retained=True, output_length=0 if case == "save-write-denied" else 1 if case == "save-write-interrupted" else len(RAW))
+    return value
+
+
+def terminal(flavor, observed):
+    return {"format": "alkion-android-documents-proof/1", "phase": "documents-provider", "run_id": RUN,
+        "source_commit": REVISION, "application_id": documents.VARIANTS[flavor], "variant": flavor,
+        "provider_package": documents.PROVIDER, "provider_authority": documents.AUTHORITY, "complete": True, "result": "PASS",
+        "cases": {name: {"result": "PASS", "outcome": outcome, "originals_preserved": True,
+                         "selected_generation_unchanged": True} for name, outcome in documents.CASES.items()},
+        "provider_receipts": observed, "unrun": list(documents.UNRUN)}
+
+
+class DocumentsControls(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="alkion-documents-host-")
+        self.root = Path(self.temp.name)
+        self.host = FakeHost(self.root)
+        self.environment = patch.dict(os.environ, JAVA_HOME="/usr/lib/jvm/java-21-openjdk", ANDROID_USER_HOME=str(self.host.user))
+        self.environment.start()
+        self.clock = patch.object(documents, "time", Clock())
+        self.clock.start()
+
+    def tearDown(self):
+        self.clock.stop(); self.environment.stop(); self.temp.cleanup()
+
+    def prepared(self):
+        return documents.prepare(self.host, self.host.args)
+
+    def test_remote_shell_T_preserves_binary_input_output_stderr_exit_and_quoting(self):
+        data = bytes(range(256)) + b"\r\n\x00\xfftail"
+        diagnostic = 'literal "quotes" \'single\' $(never-run) ' + chr(96) + "also-literal" + chr(96)
+        program = r'cat; printf "%s" "$1" >&2; printf "\000\377\r\n" >&2; exit "$2"'
+        with patch.object(self.host, "command", wraps=self.host.command) as command:
+            for code in (0, 3, 4, 5):
+                with self.subTest(code=code):
+                    observed = documents.remote(self.host, self.host.args, documents.PACKAGES[1],
+                                                program, diagnostic, str(code), data=data)
+                    self.assertEqual(observed.stdout, data)
+                    self.assertEqual(observed.stderr, diagnostic.encode() + b"\x00\xff\r\n")
+                    self.assertEqual(observed.returncode, code)
+                    self.assertEqual(command.call_args.kwargs,
+                                     {"binary": True, "input": data, "check": False, "timeout": 60})
+                    argv = self.host.calls[-1]
+                    self.assertEqual(argv[:5], [str(self.host.sdk / "platform-tools/adb"), "-s",
+                                               self.host.args.serial, "shell", "-T"])
+                    self.assertEqual(shlex.split(argv[5]), ["run-as", documents.PACKAGES[1],
+                        "/system/bin/sh", "-c", program, "alkion-documents", diagnostic, str(code)])
+        self.assertFalse(self.host.mutations)
+
+    def test_optional_read_requires_remote_absence_not_empty_or_invalid_file(self):
+        prepared = self.prepared()
+        prepared.output.mkdir()
+        evidence = documents.Evidence(self.host, prepared)
+        package = documents.PACKAGES[1]
+        self.assertIsNone(evidence.json(package, "files/not-present.json", "absent", optional=True))
+        directory = self.host.package_root(package) / "files/reads"
+        directory.mkdir(parents=True)
+        (directory / "empty.json").touch()
+        with self.assertRaises(json.JSONDecodeError):
+            evidence.json(package, "files/reads/empty.json", "empty", optional=True)
+        (directory / "malformed.json").write_bytes(b"{")
+        with self.assertRaises(json.JSONDecodeError):
+            evidence.json(package, "files/reads/malformed.json", "malformed", optional=True)
+        (directory / "linked.json").symlink_to(directory / "empty.json")
+        with self.assertRaisesRegex(documents.Refusal, "documents_owned_read_failed"):
+            evidence.read(package, "files/reads/linked.json", 4, "linked", optional=True)
+        with self.assertRaisesRegex(documents.Refusal, "documents_owned_read_failed"):
+            evidence.read(package, "files/reads", 4, "directory", optional=True)
+        (directory / "oversize.json").write_bytes(b"12345")
+        with self.assertRaisesRegex(documents.Refusal, "documents_owned_read_failed"):
+            evidence.read(package, "files/reads/oversize.json", 4, "oversize", optional=True)
+        with patch.object(self.host, "command", return_value=result(b"", b"diagnostic", 3)):
+            with self.assertRaisesRegex(documents.Refusal, "documents_owned_read_failed"):
+                evidence.read(package, "files/not-present.json", 4, "bad-absence", optional=True)
+        self.assertEqual(next(prepared.output.glob("*-empty.stdout")).read_bytes(), b"")
+        self.assertFalse(self.host.mutations)
+
+    def test_packaged_provider_accepts_sdk36_scoped_literal_false_only(self):
+        self.assertIsNone(documents.validate_packaged_provider(PACKAGED_PROVIDER_TREE))
+        enabled = next(line for line in PACKAGED_PROVIDER_TREE.splitlines() if ":enabled(" in line)
+        provider = PACKAGED_PROVIDER_TREE[PACKAGED_PROVIDER_TREE.index("          E: provider"):]
+        wrong = {
+            "enabled-true": PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=true")),
+            "missing-enabled": PACKAGED_PROVIDER_TREE.replace(enabled + "\n", ""),
+            "duplicate-enabled": PACKAGED_PROVIDER_TREE.replace(enabled, enabled + "\n" + enabled),
+            "conflicting-enabled": PACKAGED_PROVIDER_TREE.replace(enabled, enabled + "\n" + enabled.replace("=false", "=true")),
+            "foreign-name": PACKAGED_PROVIDER_TREE.replace(".SyntheticDocumentsProvider", ".ForeignProvider"),
+            "foreign-authority": PACKAGED_PROVIDER_TREE.replace(documents.AUTHORITY, documents.AUTHORITY + ".foreign"),
+            "wrong-permission": PACKAGED_PROVIDER_TREE.replace("android.permission.MANAGE_DOCUMENTS", "android.permission.INTERNET"),
+            "wrong-exported": PACKAGED_PROVIDER_TREE.replace("exported(0x01010010)=true", "exported(0x01010010)=false"),
+            "wrong-grant": PACKAGED_PROVIDER_TREE.replace("grantUriPermissions(0x0101001b)=true", "grantUriPermissions(0x0101001b)=false"),
+            "foreign-namespace": PACKAGED_PROVIDER_TREE.replace("http://schemas.android.com/apk/res/android", "http://foreign.invalid/android"),
+            "legacy-fake-boolean": PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=(type 0x12)0x0")),
+            "wrong-resource-id": PACKAGED_PROVIDER_TREE.replace("enabled(0x0101000e)", "enabled(0x0101000f)"),
+            "wrong-package": PACKAGED_PROVIDER_TREE.replace('package="' + documents.PROVIDER + '"', 'package="foreign.provider"'),
+            "duplicate-provider": PACKAGED_PROVIDER_TREE + provider,
+            "foreign-provider-false": PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=true")) + provider.replace(".SyntheticDocumentsProvider", ".ForeignProvider"),
+            "application-false-only": PACKAGED_PROVIDER_TREE.replace(enabled, enabled[4:]),
+            "application-false-provider-true": PACKAGED_PROVIDER_TREE.replace("          E: provider", enabled[4:] + "\n          E: provider").replace(enabled + "\n", enabled.replace("=false", "=true") + "\n"),
+            "child-false-provider-true": PACKAGED_PROVIDER_TREE.replace(enabled, enabled.replace("=false", "=true")) + "                    " + enabled.lstrip() + "\n",
+        }
+        for name, tree in wrong.items():
+            self.assertNotEqual(tree, PACKAGED_PROVIDER_TREE, name)
+            with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "packaged_provider_not_default_disabled"):
+                documents.validate_packaged_provider(tree)
+
+    def test_packaged_and_source_provider_must_be_test_only(self):
+        line = next(line for line in PACKAGED_PROVIDER_TREE.splitlines() if ":testOnly(" in line)
+        wrong = {"missing": PACKAGED_PROVIDER_TREE.replace(line + "\n", ""),
+                 "false": PACKAGED_PROVIDER_TREE.replace(line, line.replace("=true", "=false")),
+                 "duplicate": PACKAGED_PROVIDER_TREE.replace(line, line + "\n" + line),
+                 "provider-scoped": PACKAGED_PROVIDER_TREE.replace(line + "\n", "").replace(
+                     "          E: intent-filter", "  " + line + "\n              E: intent-filter")}
+        for name, tree in wrong.items():
+            with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "packaged_provider_not|provider_not_test_only"):
+                documents.validate_packaged_provider(tree)
+        manifest = self.host.APP / "tool/android_synthetic_documents/AndroidManifest.xml"
+        manifest.write_text(manifest.read_text().replace(' android:testOnly="true"', ""))
+        with self.assertRaisesRegex(documents.Refusal, "provider_source_manifest_not_test_only"):
+            documents.build_provider(self.host, self.host.args, self.root / "not-test-only")
+        self.assertFalse((self.root / "not-test-only").exists())
+
+    def test_provider_install_requires_test_flag_and_retains_refusal(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        with self.assertRaisesRegex(documents.Refusal, "native_command_failed:install.*INSTALL_FAILED_TEST_ONLY"):
+            evidence.native("install", apk)
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual((record["argv"], record["code"]), (["install", str(apk)], 1))
+        self.assertIn("Did you forget to add -t?", record["stderr"])
+        self.assertNotIn(documents.PROVIDER, self.host.installed)
+        evidence.native("install", "-t", apk)
+        self.assertTrue(self.host.provider_test_only)
+
+    def test_provider_enable_requires_test_only_exact_output_and_readback(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        self.host.provider_tree = PACKAGED_PROVIDER_TREE.replace(publisher_safe_test_only_line(), "")
+        evidence.native("install", apk)  # A non-test-only package installs without -t.
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:Exception occurred while executing 'enable':"):
+            documents.enable_provider(evidence)
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual(record["argv"], ["shell", "pm", "enable", "--user", "0", documents.COMPONENT])
+        self.assertEqual(record["code"], 255)
+        self.assertIn("java.lang.SecurityException: Shell cannot change component state for ComponentInfo{", record["stderr"])
+        self.assertFalse(self.host.provider_enabled)
+        self.host.provider_tree = PACKAGED_PROVIDER_TREE
+        evidence.native("install", "-t", apk)
+        for state in ("default", "disabled", "enabled extra"):
+            with self.subTest(state=state):
+                self.host.provider_enable_state = state
+                with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:Component"):
+                    documents.enable_provider(evidence)
+        self.host.provider_enable_state = "enabled"
+        self.host.provider_dump_hides_enabled = True
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_not_observed"):
+            documents.enable_provider(evidence)
+        self.host.provider_dump_hides_enabled = False
+        self.host.provider_enable_stderr = "unexpected diagnostic\n"
+        with self.assertRaisesRegex(documents.Refusal, "provider_enable_refused:unexpected diagnostic"):
+            documents.enable_provider(evidence)
+        self.host.provider_enable_stderr = ""
+        for blocks in (("disabledComponents",), ("enabledComponents", "disabledComponents"),
+                       ("disabledComponents", "enabledComponents"), ("enabledComponents", "enabledComponents")):
+            with self.subTest(blocks=blocks):
+                self.host.provider_dump_blocks = blocks
+                with self.assertRaisesRegex(documents.Refusal, "provider_enable_not_observed"):
+                    documents.enable_provider(evidence)
+        self.host.provider_dump_blocks = ("enabledComponents",)
+        documents.enable_provider(evidence)
+        records = [json.loads(path.read_bytes()) for path in sorted(self.root.glob("output/*native-command.json"))]
+        self.assertEqual(records[-2]["stdout"], documents.PROVIDER_ENABLED)
+        self.assertEqual(records[-1]["argv"], ["shell", "dumpsys", "package", documents.PROVIDER])
+        self.assertEqual(documents.enabled_components(records[-1]["stdout"])["enabled"], [documents.PROVIDER_CLASS])
+        self.assertEqual(documents.PROVIDER_ENABLED, "Component {dev.animusstudio.alkion.synthetic.documents/"
+                         "dev.animusstudio.alkion.synthetic.documents.SyntheticDocumentsProvider} new state: enabled\n")
+
+    def test_enabled_component_parser_rejects_disabled_or_foreign_blocks(self):
+        cls = documents.PROVIDER_CLASS
+        self.assertEqual(documents.enabled_components("    User 0: installed=true\n      enabledComponents:\n        " + cls + "\n"),
+                         {"enabled": [cls], "disabled": []})
+        both = "      disabledComponents:\n        " + cls + "\n      enabledComponents:\n        " + cls + "\n"
+        self.assertEqual(documents.enabled_components(both)["disabled"], [cls])
+        self.assertEqual(documents.enabled_components("      enabledComponents:\n    " + cls + "\n")["enabled"], [])
+        self.assertEqual(documents.enabled_components("  enabled: " + cls + "\n"), {"enabled": [], "disabled": []})
+
+    def test_picker_waits_through_transient_null_focus(self):
+        self.host.null_focus = 3
+        self.host.args.action = "documents"
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        self.assertEqual(self.host.null_focus, 0)
+        samples = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*.observation/host-receipt.json")]
+        self.assertTrue(any(sample["owner"] is None for trace in samples
+                            for sample in trace.get("focus_readiness", {}).get("samples", [])))
+
+    def test_picker_retries_only_a_wait_that_saw_no_focused_window(self):
+        evidence, _ = self.evidence_after_seed()
+        self.host.front = "com.android.documentsui"
+        self.host.pids[documents.PROVIDER] = 501
+        tree = ET.fromstring('<hierarchy><node package="com.android.documentsui" text="" /></hierarchy>')
+        outcomes = [observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, None, None]), tree]
+        calls = []
+        def capture(*args, **options):
+            calls.append(options.get("expected_package"))
+            value = outcomes.pop(0)
+            if isinstance(value, Exception):
+                raise value
+            return value
+        with patch.object(self.host, "ui_document", side_effect=capture):
+            self.assertIs(documents.picker_document(evidence, "null-then-ready"), tree)
+        self.assertEqual(calls, ["com.android.documentsui"] * 2)
+        failures = {"foreign-owner": observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, documents.PACKAGES[1]]),
+                    "no-samples": observer.FocusNotReady("ui_observer_expected_focus_not_ready", []),
+                    "other-refusal": observer.Refusal("ui_observer_focus_ambiguous"),
+                    "unrelated": ValueError("unrelated")}
+        for name, failure in failures.items():
+            with self.subTest(name=name):
+                calls.clear()
+                with patch.object(self.host, "ui_document", side_effect=lambda *args, **options: (calls.append(1), (_ for _ in ()).throw(failure))):
+                    with self.assertRaises(type(failure)) as caught:
+                        documents.picker_document(evidence, name)
+                self.assertIs(caught.exception, failure)
+                self.assertEqual(len(calls), 1)  # Propagated immediately, never retried.
+
+    def test_install_success_rule_follows_the_adb_client(self):
+        incremental = INCREMENTAL + "Success\nInstall command complete in 812 ms\n"
+        accepted = {"incremental-timing-stdout": (incremental, ""),
+                    "incremental-timing-stderr": (INCREMENTAL + "Success\n", "Install command complete in 812 ms\n"),
+                    "streamed": ("Performing Streamed Install\nSuccess\n", ""),
+                    "streamed-no-final-newline": ("Performing Streamed Install\nSuccess", ""),
+                    "reordered-progress": ("Performing Incremental Install\nServing...\nSuccess\n", "")}
+        observed = INCREMENTAL + "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package " \
+                   + documents.PACKAGES[1] + " signatures do not match newer version; ignoring!]\nPerforming Streamed Install\n"
+        refused = {"observed-failure": (observed, "adb: failed to install x: Failure [...]\n\n", 1),
+                   "fallback-after-failure": (observed + "Success\n", "", 0),
+                   "failure-on-stderr": ("Performing Streamed Install\nSuccess\n", "Failure [X]\n", 0),
+                   "missing-success": ("Performing Streamed Install\n", "", 0),
+                   "success-substring": ("Performing Streamed Install\nSuccessful\n", "", 0),
+                   "two-success": ("Success\nSuccess\n", "", 0),
+                   "nonzero": ("Performing Streamed Install\nSuccess\n", "", 1)}
+        for name, (stdout, stderr) in accepted.items():
+            with self.subTest(name=name):
+                self.assertTrue(documents.install_succeeded(result(stdout, stderr)))
+                self.assertTrue(documents.install_succeeded(result(stdout.encode(), stderr.encode())))
+        for name, (stdout, stderr, code) in refused.items():
+            with self.subTest(name=name):
+                self.assertFalse(documents.install_succeeded(result(stdout, stderr, code)))
+
+    def install_timing_route(self, stream):
+        self.host.install_timing_stream = stream
+        self.host.args.action = "documents"
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        records = [json.loads(path.read_bytes()) for path in sorted(self.root.glob("output/*native-command.json"))]
+        provider = next(item for item in records if item["argv"][:2] == ["install", "-t"])
+        self.assertIn("Install command complete in 812 ms", provider[stream])  # Retained as evidence.
+
+    def test_install_timing_line_on_stdout_passes_the_route(self):
+        self.install_timing_route("stdout")
+
+    def test_install_timing_line_on_stderr_passes_the_route(self):
+        self.install_timing_route("stderr")
+
+    def test_variant_install_needs_a_success_line(self):
+        self.host.variant_install_stdout = "Performing Streamed Install\nUnrecognized progress\n"
+        self.host.args.action = "documents"
+        with self.assertRaisesRegex(documents.Refusal, "documents_install_failed"):
+            self.host.documents_action(self.host.args)
+        state = json.loads((self.root / "output/run.json").read_bytes())
+        self.assertEqual(state["documents_phase"], "FAIL")
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual((record["argv"][:2], record["stdout"]), (["install", "-r"], self.host.variant_install_stdout))
+
+    def selected(self, *extra, drawer=False):
+        tree = ET.Element("hierarchy")
+        def add(resource, clickable="false", cls="android.widget.TextView"):
+            ET.SubElement(tree, "node", {"package": "com.android.documentsui", "text": "Root", "content-desc": "",
+                "resource-id": resource, "class": cls, "clickable": clickable, "visible-to-user": "true"})
+        add("")
+        add(documents.BREADCRUMB)
+        for resource, clickable in extra:
+            add(resource, clickable)
+        if drawer:
+            add("android:id/title", "true")
+        return tree
+
+    def test_selected_root_requires_one_breadcrumb_and_a_closed_drawer(self):
+        self.assertTrue(documents.selected_root(self.selected(), "Root"))
+        breadcrumb_only = self.selected()
+        breadcrumb_only.remove(breadcrumb_only[0])
+        self.assertTrue(documents.selected_root(breadcrumb_only, "Root"))
+        refused = {"two-breadcrumbs": self.selected((documents.BREADCRUMB, "false")),
+                   "two-titles": self.selected(("", "false")),
+                   "clickable-label": self.selected(("", "true")),
+                   "foreign-id": self.selected(("com.android.documentsui:id/foreign", "false")),
+                   "drawer-open": self.selected(drawer=True)}
+        for name, tree in refused.items():
+            with self.subTest(name=name):
+                self.assertFalse(documents.selected_root(tree, "Root"))
+        title_only = self.selected()
+        title_only.remove(title_only[1])
+        self.assertFalse(documents.selected_root(title_only, "Root"))
+
+    def test_selected_root_scenarios_refuse_on_the_route(self):
+        for scenario in ("duplicate-breadcrumb",):  # The other shapes are covered by the predicate control.
+            with self.subTest(scenario=scenario):
+                host = FakeHost(self.root / scenario)
+                host.scenario, host.args.action = scenario, "documents"
+                with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+                    with self.assertRaisesRegex(documents.Refusal, "documentsui_checkpoint_unavailable:dev-open-cancel-exact-root"):
+                        host.documents_action(host.args)
+
+    def frozen_supported(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501
+        evidence.provider_pid = 501
+        self.host.provider_frozen = True
+        phase = dict(phase, variant="dev")
+        return evidence, phase
+
+    def test_frozen_provider_never_sees_a_new_namespace_without_unfreeze(self):
+        evidence, phase = self.frozen_supported()
+        with self.assertRaisesRegex(documents.Refusal, "provider_namespace_not_observed"):
+            documents.seed_provider(evidence, "dev", phase, first=False)
+        pin = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev/input.pin")
+        self.assertFalse(pin.exists())
+        self.assertEqual(documents.unfreeze_provider(evidence)["pid"], 501)
+        self.assertTrue(pin.is_file())  # Deferred FileObserver delivery after the unfreeze.
+        record = json.loads(sorted(self.root.glob("output/*native-command.json"))[-1].read_bytes())
+        self.assertEqual(record["argv"], ["shell", "am", "unfreeze", "--sticky", "501"])
+
+    def test_unfreeze_requires_exact_output_and_the_same_pid(self):
+        evidence, _ = self.frozen_supported()
+        original = self.host.android
+        def wrong(argv, binary=False, data=None):
+            if argv[:2] == ["am", "unfreeze"]:
+                return result("Unfreezing process " + documents.PROVIDER + " (501) sticky=false\n")
+            return original(argv, binary, data)
+        with patch.object(self.host, "android", side_effect=wrong):
+            with self.assertRaisesRegex(documents.Refusal, "provider_unfreeze_refused"):
+                documents.unfreeze_provider(evidence)
+        self.host.pids[documents.PROVIDER] = 502
+        with self.assertRaisesRegex(documents.Refusal, "provider_process_changed_preserve_failed_campaign"):
+            documents.unfreeze_provider(evidence)
+        self.assertNotIn(("unfreeze", "502"), self.host.mutations)
+
+    def test_enable_starts_no_provider_process(self):
+        evidence, _ = self.evidence_after_seed()
+        apk = self.root / "provider.apk"
+        self.host.artifact(apk, documents.PROVIDER, 1)
+        evidence.native("install", "-t", apk)
+        documents.enable_provider(evidence)
+        self.assertIsNone(self.host.pids.get(documents.PROVIDER))
+
+    def test_picker_retries_while_the_calling_app_keeps_focus(self):
+        self.host.caller_focus_samples = 25  # Outlasts one bounded focus wait.
+        self.host.args.action = "documents"
+        self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        samples = [sample for path in (self.root / "output").glob("*.observation/host-receipt.json")
+                   for sample in json.loads(path.read_bytes()).get("focus_readiness", {}).get("samples", [])]
+        self.assertTrue(any(sample["owner"] and sample["owner"]["package"] in documents.VARIANTS.values() for sample in samples))
+
+    def test_picker_refuses_a_foreign_owner_and_the_case_budget(self):
+        evidence, _ = self.evidence_after_seed()
+        caller = documents.PACKAGES[1]
+        failure = observer.FocusNotReady("ui_observer_expected_focus_not_ready", [None, caller, "com.android.systemui"])
+        with patch.object(self.host, "ui_document", side_effect=failure):
+            with self.assertRaises(observer.FocusNotReady):
+                documents.picker_document(evidence, "foreign", caller=caller)
+        calls = []
+        def caller_focused(*args, **options):
+            calls.append(1)
+            raise observer.FocusNotReady("ui_observer_expected_focus_not_ready", [caller, None])
+        with patch.object(self.host, "ui_document", side_effect=caller_focused):
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_case_budget_exceeded:budget"):
+                documents.picker_document(evidence, "budget", caller=caller, deadline=documents.time.monotonic() + 5)
+        self.assertTrue(1 < len(calls) < 12)
+
+    def open_records(self):
+        """Click records of open documents, by case, from both variants in route order."""
+        records = {}
+        for path in sorted((self.root / "output").glob("*-click-target.json")):
+            item = json.loads(path.read_bytes())
+            if item["target_resource_id"] == DUI + "item_root":
+                # Labels are <run>-<variant>-<case>.alkionbackup.
+                records.setdefault(item["label"].split("-", 2)[-1].rsplit(".", 1)[0], []).append(item)
+        return records
+
+    def assert_clean_taps(self, host):
+        # The preview icons, the navigation bar and other documents are never tapped.
+        self.assertEqual((host.preview_taps, host.bar_taps, host.wrong_taps), ([], [], []))
+
+    def test_first_open_root_switches_before_cancel_and_the_root_stays_listed(self):
+        self.host.args.action = "documents"
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        self.assert_clean_taps(self.host)
+        self.assertEqual(self.host.toggle_taps, ["open-cancel", "open-cancel"])
+        self.assertEqual(self.host.views, {"dev": "list", "supported": "list"})
+        self.assertEqual(self.host.mutations.count(("tap", 467)), 2)
+        switches = [json.loads(path.read_bytes()) for path in sorted((self.root / "output").glob("*-view-switch.json"))]
+        self.assertEqual([(item["toggle_resource_id"], item["toggle_bounds"]) for item in switches],
+                         [(DUI + "sub_menu_list", "[890,404][1017,530]")] * 2)
+        # Every selected target and view toggle has a retained native receipt immediately after its semantic record.
+        for path in sorted((self.root / "output").glob("*.json")):
+            if not path.name.endswith(("-click-target.json", "-view-switch.json")):
+                continue
+            item = json.loads(path.read_bytes())
+            box = item.get("tapped_bounds", item.get("toggle_bounds"))
+            x1, y1, x2, y2 = map(int, re.findall(r"-?\d+", box))
+            next_path = path.with_name(str(int(path.name.split("-", 1)[0]) + 1).zfill(4) + "-native-command.json")
+            native = json.loads(next_path.read_bytes())
+            self.assertEqual(native["argv"], ["shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2)])
+            self.assertEqual((native["code"], native["stdout"], native["stderr"], native["stdout_length"], native["stderr_length"]),
+                             (0, "", "", 0, 0))
+        native_records = [json.loads(path.read_bytes()) for path in sorted((self.root / "output").glob("*-native-command.json"))]
+        taps = [item for item in native_records if item["argv"][:3] == ["shell", "input", "tap"]]
+        self.assertEqual([int(item["argv"][-1]) for item in taps], [y for action, y in self.host.mutations if action == "tap"])
+        records = self.open_records()
+        self.assertEqual(set(records), {case for case in documents.CASES if case.startswith("open-") and case != "open-cancel"})
+        for items in records.values():
+            self.assertEqual([(item["view"], item["switched"], item["tapped"]) for item in items], [("list", False, "target")] * 2)
+        observed = sorted(path.name.split("-", 1)[1].rsplit("-", 1)[0] for path in (self.root / "output").glob("*list-view-*.observation"))
+        self.assertEqual(observed, ["dev-open-cancel-list-view-0", "dev-open-cancel-list-view-1",
+                                    "supported-open-cancel-list-view-0", "supported-open-cancel-list-view-1"])
+
+    def captured_resume(self, persistent=False):
+        """Replay the captured picker and its actual read-only settled follow-up."""
+        original = self.host.ui_xml
+        samples, taps = [], []
+        original_android = self.host.android
+        def capture():
+            tree = original()  # Keep hit testing from the existing captured list fixture.
+            if self.host.flavor == "dev" and self.host.current_phase["case"] == "open-denied" and self.host.selected and not self.host.drawer:
+                settled = bool(samples) and not persistent
+                samples.append(settled)
+                return ET.tostring(resumed_list(settled), encoding="unicode")
+            return tree
+        def android(argv, binary=False, data=None):
+            if argv[:2] == ["input", "tap"] and self.host.current_phase and self.host.current_phase["case"] == "open-denied":
+                taps.append(tuple(argv[-2:]))
+            return original_android(argv, binary, data)
+        return samples, taps, patch.object(self.host, "ui_xml", side_effect=capture), patch.object(self.host, "android", side_effect=android)
+
+    def test_captured_resumed_root_reobserves_shifted_list_without_reopening_drawer(self):
+        self.host.args.action = "documents"
+        samples, taps, capture, android = self.captured_resume()
+        with capture, android:
+            self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        self.assertEqual(samples, [False, True])
+        self.assertEqual(taps, [("540", "834"), ("540", "834")])
+        # Different-root cold starts still open the drawer and select the exact root.
+        self.assertEqual(self.host.mutations.count(("tap", 350)), 2)
+        roots = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*-click-target.json")
+                 if json.loads(path.read_bytes())["label"].startswith("Alkion synthetic ")]
+        self.assertEqual(len(roots), 2)
+        self.assert_clean_taps(self.host)
+
+    def test_captured_resumed_list_persistent_bad_bounds_refuse_bounded_without_tap(self):
+        self.host.args.action = "documents"
+        samples, taps, capture, android = self.captured_resume(persistent=True)
+        with capture, android:
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_checkpoint_unavailable:dev-open-denied-exact-root"):
+                self.host.documents_action(self.host.args)
+        self.assertEqual(samples, [False] * 13)
+        self.assertEqual(taps, [])
+        self.assertEqual((self.host.current_phase["case"], self.host.current_phase["state"]), ("open-denied", "picker"))
+        self.assertNotIn("open-denied", self.host.observed)
+        self.assert_clean_taps(self.host)
+
+    def test_list_readiness_waits_for_bounds_without_accepting_semantic_failures(self):
+        label = RUN + "-dev-open-denied.alkionbackup"
+        shifted, settled = resumed_list(False), resumed_list(True)
+        root_label = "Alkion synthetic " + RUN + "-dev"
+        self.assertTrue(documents.root_access_ready(shifted, root_label))
+        self.assertTrue(documents.selected_root(shifted, root_label))
+        self.assertFalse(documents.root_access_ready(shifted, "different root"))
+        self.assertTrue(documents.root_access_ready(settled, "different root"))
+        self.assertFalse(documents.list_bounds_ready(shifted, label))
+        self.assertTrue(documents.list_bounds_ready(settled, label))
+        for key, value in (("enabled", "false"), ("visible-to-user", "false"), ("class", "android.widget.FrameLayout")):
+            tree = resumed_list(False); row = documents.click_targets(tree, label)[0]; row.set(key, value)
+            self.assertTrue(documents.list_bounds_ready(tree, label))
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_list_row_unusable"):
+                documents.list_row(tree, label)
+
+    def test_grid_cards_reporting_shifted_bounds_keep_the_visible_title_tap(self):
+        self.host.card_shift, self.host.args.action = NAVIGATION_TOP, "documents"
+        self.host.early_list = False
+        self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        self.assert_clean_taps(self.host)
+        records = {case: {(item["tapped"], item["target_bounds"], item["tapped_bounds"]) for item in items}
+                   for case, items in self.open_records().items()}
+        self.assertEqual({case: records[case] for case in ("open-good", "open-denied", "open-error")}, {
+            "open-good": {("label", "[551,3454][1016,4055]", "[683,1666][984,1717]")},
+            "open-denied": {("label", "[551,2831][1016,3432]", "[683,1043][984,1094]")},
+            "open-error": {("label", "[64,3454][529,4055]", "[196,1666][497,1717]")}})
+        self.assertEqual(records["open-short"], {("target", "[0,1506][1080,1698]", "[0,1506][1080,1698]")})
+        self.assertEqual(self.host.toggle_taps, ["open-short", "open-short"])
+
+    def test_list_switch_not_yet_drawn_is_reobserved(self):
+        self.host.scenario, self.host.args.action = "list-lag", "documents"
+        self.host.early_list = False
+        self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        self.assert_clean_taps(self.host)
+        self.assertEqual(self.host.toggle_taps, ["open-short", "open-short"])
+        attempts = sorted(path.name for path in (self.root / "output").glob("*-dev-open-short-list-view-0-*.observation"))
+        self.assertEqual(len(attempts), 2)  # The grid still drawn, then the list.
+
+    def test_open_document_refuses_unusable_view_states_on_the_route(self):
+        stale = "documentsui_(checkpoint_unavailable|case_budget_exceeded):dev-open-short-list-view-0"
+        for scenario, reason, switches in (("toggle-missing", "documentsui_list_view_unavailable", 0),
+                                           ("toggle-duplicate", "documentsui_list_view_unavailable", 0),
+                                           ("list-stale", stale, 1),
+                                           ("list-foreign-root", stale, 1),
+                                           ("list-duplicate-row", "unique_native_documents_label_missing", 1),
+                                           ("list-row-hidden", "documentsui_list_row_unusable", 1),
+                                           ("list-unsettled", "documentsui_list_view_not_settled", 1),
+                                           ("card-preview-over-label", "ui_tap_point_ambiguous", 0),
+                                           ("two-cards", "unique_native_documents_label_missing", 0),
+                                           ("card-label-outside", "unique_native_documents_label_missing", 0)):
+            with self.subTest(scenario=scenario):
+                host = FakeHost(self.root / scenario)
+                host.scenario, host.args.action = scenario, "documents"
+                host.early_list = False
+                if scenario.startswith(("card-", "two-")):
+                    host.card_shift = NAVIGATION_TOP  # These shapes reach the visible-title tap.
+                with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
+                    with self.assertRaisesRegex(documents.Refusal, reason):
+                        host.documents_action(host.args)
+                self.assert_clean_taps(host)
+                self.assertEqual(len(host.toggle_taps), switches)
+                # The refused case's document is never selected.
+                self.assertEqual((host.flavor, host.current_phase["state"]), ("dev", "picker"))
+                self.assertEqual(host.current_phase["case"], "open-good" if host.card_shift else "open-short")
+                self.assertNotIn(host.current_phase["case"], host.observed)
+
+    def test_captured_save_footer_route_attests_native_overlap_and_retains_tap(self):
+        evidence, _ = self.evidence_after_seed()
+        tree = captured_save_footer()
+        native_nodes = list(tree.iter("node"))
+        self.assertEqual(len(native_nodes), 143)
+        self.assertEqual([row.get("enabled") for row in native_nodes[32] if row.get("resource-id") == documents.ITEM_ROOT],
+                         ["false"] * 6 + ["true"] * 3)
+        phase = {"case": "save-readback-denied", "variant": "dev", "root_label": "Alkion synthetic " + RUN + "-dev",
+                 "document_label": RUN + "-dev-save-readback-denied.alkionbackup"}
+        self.assertFalse(documents.centre_clear(tree, native_nodes[141], native_nodes[141]))
+        def observed(evidence, name, ready, **bounds):
+            self.assertTrue(ready(tree))
+            return tree
+        with patch.object(documents, "picker_document", side_effect=observed) as observe, \
+                patch.object(self.host, "adb", return_value=result()) as adb:
+            documents.drive_picker(evidence, phase)
+        self.assertEqual(observe.call_count, 2)
+        self.assertEqual(adb.call_args.args[1:], ("shell", "input", "tap", "927", "2211"))
+        attestation = json.loads(next((self.root / "output").glob("*-save-footer-attestation.json")).read_bytes())
+        self.assertEqual(attestation["point"], [927, 2211])
+        self.assertEqual([row["bounds"] for row in attestation["overlaps"]], ["[0,2082][1080,2274]"])
+        record = json.loads(sorted((self.root / "output").glob("*-native-command.json"))[-1].read_bytes())
+        self.assertEqual(record["argv"], ["shell", "input", "tap", "927", "2211"])
+        self.assertEqual((record["code"], record["stdout"], record["stderr"], record["stdout_length"], record["stderr_length"]),
+                         (0, "", "", 0, 0))
+        # The actual read-only follow-up differs only in this native visibility flag.
+        native_nodes[142].set("visible-to-user", "true")
+        with patch.object(self.host, "adb", return_value=result()):
+            documents.click_save(evidence, tree, "SAVE", phase["root_label"], phase["document_label"])
+        self.assertFalse(documents.centre_clear(tree, native_nodes[141], native_nodes[141]))
+
+    def test_captured_save_footer_mutations_refuse_without_tap(self):
+        evidence, _ = self.evidence_after_seed()
+        root_label, filename = "Alkion synthetic " + RUN + "-dev", RUN + "-dev-save-readback-denied.alkionbackup"
+        def set_attr(index, key, value):
+            return lambda tree, ns: ns[index].set(key, value)
+        def move(index, destination):
+            def changed(tree, ns):
+                parents = {child: parent for parent in tree.iter() for child in parent}
+                parents[ns[index]].remove(ns[index]); ns[destination].append(ns[index])
+            return changed
+        def duplicate(index):
+            return lambda tree, ns: ns[0].append(copy.deepcopy(ns[index]))
+        changes = {}
+        for index, name in ((141, "save"), (135, "footer"), (32, "directory"), (123, "row"), (139, "filename")):
+            for key, value in (("package", "foreign.package"), ("class", "android.view.View"),
+                               ("resource-id", "foreign:id/control"), ("enabled", "false"), ("visible-to-user", "false")):
+                changes[name + "-" + key] = set_attr(index, key, value)
+        changes.update({
+            "save-off-display": set_attr(141, "bounds", "[812,2148][1081,2274]"),
+            "footer-off-display": set_attr(135, "bounds", "[-1,2148][1080,2400]"),
+            "directory-off-display": set_attr(32, "bounds", "[-1,136][1080,2400]"),
+            "row-off-display": set_attr(123, "bounds", "[-1,2082][1080,2274]"),
+            "duplicate-save": duplicate(141), "duplicate-footer": duplicate(135),
+            "duplicate-directory": duplicate(32), "duplicate-filename": duplicate(139),
+            "missing-footer": set_attr(135, "resource-id", ""),
+            "missing-directory": set_attr(32, "resource-id", ""),
+            "foreign-filename": set_attr(139, "text", "foreign.alkionbackup"),
+            "foreign-root": set_attr(14, "text", "Alkion synthetic foreign"),
+            "save-outside-footer": move(141, 7), "filename-outside-footer": move(139, 7),
+            "row-outside-directory": move(123, 27), "row-inside-footer": move(123, 136),
+            "footer-inside-directory": move(135, 32), "directory-inside-footer": move(32, 135),
+            "unknown-signed-overlay": lambda tree, ns: ns[0].append(ET.Element("node", dict(ns[123].attrib,
+                **{"resource-id": "foreign:id/overlay", "bounds": "[-3,2082][1080,2274]"}))),
+            "preview-child-claimant": lambda tree, ns: ns[123].append(ET.Element("node", dict(ns[123].attrib,
+                **{"resource-id": DUI + "preview_icon", "class": "android.widget.FrameLayout"}))),
+            "hidden-nav-claimant": set_attr(142, "bounds", "[0,2200][1080,2400]"),
+            "hidden-status-claimant": lambda tree, ns: ns[0].append(ET.Element("node", dict(ns[142].attrib,
+                **{"resource-id": "android:id/statusBarBackground", "bounds": "[0,2200][1080,2400]"}))),
+            "footer-order": lambda tree, ns: (ns[7].remove(ns[135]), ns[7].insert(0, ns[135])),
+            "foreign-common-class": set_attr(7, "class", "android.widget.FrameLayout"),
+            "directory-path": set_attr(31, "resource-id", "foreign:id/refresh"),
+            "footer-path": set_attr(140, "class", "android.widget.LinearLayout"),
+        })
+        for name, change in changes.items():
+            tree = captured_save_footer(); ns = list(tree.iter("node")); change(tree, ns)
+            with self.subTest(name=name), patch.object(evidence, "native") as native:
+                with self.assertRaises(documents.Refusal):
+                    documents.click_save(evidence, tree, "SAVE", root_label, filename)
+                native.assert_not_called()
+
+    def test_node_tap_keeps_refused_command_output_before_failing(self):
+        evidence, _ = self.evidence_after_seed()
+        node = self.host.add(ET.Element("hierarchy"), (890, 404, 1017, 530), clickable="true")
+        node.set("observer-display-width", "1080"); node.set("observer-display-height", "2400")
+        for response, reason in ((result("unexpected"), "documentsui_tap_output_invalid"),
+                                 (result("", "diagnostic"), "documentsui_tap_output_invalid"),
+                                 (result("", "tap failed", 1), "native_command_failed")):
+            with self.subTest(reason=reason), patch.object(self.host, "adb", return_value=response):
+                with self.assertRaisesRegex(documents.Refusal, reason):
+                    documents.tap_node(evidence, node)
+                record = json.loads(sorted((self.root / "output").glob("*-native-command.json"))[-1].read_bytes())
+                self.assertEqual(record["argv"], ["shell", "input", "tap", "953", "467"])
+                self.assertEqual((record["code"], record["stdout"], record["stderr"]),
+                                 (response.returncode, response.stdout, response.stderr))
+        for key, value in (("enabled", "false"), ("visible-to-user", "false"), ("bounds", "[890,2678][1017,2804]")):
+            refused = copy.deepcopy(node); refused.set(key, value)
+            with self.subTest(key=key), patch.object(evidence, "native") as native:
+                with self.assertRaisesRegex(documents.Refusal, "ui_node_outside_attested_display"):
+                    documents.tap_node(evidence, refused)
+                native.assert_not_called()
+
+    def test_captured_whole_shift_reobserves_then_refuses_without_tapping(self):
+        evidence, _ = self.evidence_after_seed()
+        tree = shifted_directory()
+        label = RUN + "-dev-open-short.alkionbackup"
+        self.assertTrue(documents.selected_root(tree, "Alkion synthetic " + RUN + "-dev"))
+        self.assertEqual(documents.view_mode(tree), (None, None))
+        toggle, mode = documents.view_mode(tree, allow_off_display=True)
+        self.assertEqual((mode, toggle.get("bounds")), ("grid", "[890,2678][1017,2804]"))
+        observed = []
+        def observe(name):
+            observed.append(name)
+            return shifted_directory()  # No captured shifted-to-normal transition is assumed.
+        with patch.object(evidence, "native") as click:
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_list_toggle_off_display"):
+                documents.open_document(evidence, tree, label, observe)
+            click.assert_not_called()
+        self.assertEqual(observed, ["list-toggle-0", "list-toggle-1", "list-toggle-2"])
+
+    def test_first_open_cancel_refuses_a_persistently_shifted_toggle(self):
+        self.host.args.action = "documents"
+        original = self.host.ui_xml
+        def captured():
+            if self.host.selected and not self.host.drawer:
+                return ET.tostring(shifted_directory(), encoding="unicode")
+            return original()
+        with patch.object(self.host, "ui_xml", side_effect=captured):
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_list_toggle_off_display"):
+                self.host.documents_action(self.host.args)
+        self.assertEqual(self.host.toggle_taps, [])
+        self.assertEqual(self.host.current_phase["case"], "open-cancel")
+        self.assertEqual(self.host.current_phase["state"], "picker")
+        observed = list((self.root / "output").glob("*-dev-open-cancel-list-toggle-*.observation"))
+        self.assertEqual(len(observed), 3)
+        self.assert_clean_taps(self.host)
+
+    def test_captured_whole_shift_keeps_the_visible_title_fallback(self):
+        evidence, _ = self.evidence_after_seed()
+        for case in ("open-good", "open-denied", "open-error"):
+            with self.subTest(case=case), patch.object(evidence, "native", return_value=result()) as click:
+                documents.open_document(evidence, shifted_directory(), RUN + "-dev-" + case + ".alkionbackup",
+                                        lambda name: self.fail("visible title needs no view switch"))
+                self.assertEqual(click.call_count, 1)
+                self.assertEqual(click.call_args.args[:3], ("shell", "input", "tap"))
+                self.assertEqual(click.call_args.args[3:], ("833", "1691") if case == "open-good" else
+                                 ("833", "1068") if case == "open-denied" else ("346", "1691"))
+
+    def test_off_display_toggle_reobservation_keeps_exact_root_and_case_budget(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.provider_enabled = True
+        self.host.front, self.host.selected, self.host.drawer = "com.android.documentsui", True, False
+        tree = shifted_directory()
+        phase = dict(phase, variant="dev", case="open-short")
+        foreign = copy.deepcopy(tree)
+        for node in documents.nodes(foreign, "Alkion synthetic " + RUN + "-dev"):
+            node.set("text", "foreign root")
+        for document, reason in ((foreign, "documentsui_checkpoint_unavailable"), (tree, "documentsui_case_budget_exceeded")):
+            with self.subTest(reason=reason), patch.object(self.host, "ui_document", return_value=document):
+                with self.assertRaisesRegex(documents.Refusal, reason):
+                    documents.picker_document(evidence, "toggle-root", lambda doc: documents.selected_root(doc, "Alkion synthetic " + RUN + "-dev"),
+                                              deadline=documents.time.monotonic() + (0 if document is tree else 50))
+
+    def test_list_row_direct_refusals_and_navigation_band(self):
+        def tree():
+            root = ET.Element("hierarchy")
+            row = self.host.add(root, (0, 1506, 1080, 1698), "android.widget.LinearLayout", resource_id=DUI + "item_root", clickable="true")
+            title = self.host.add(row, (189, 1545, 849, 1602), "android.widget.TextView", resource_id="android:id/title", text="name")
+            bar = self.host.add(root, (0, NAVIGATION_TOP, 1080, 2400), "android.view.View", resource_id="android:id/navigationBarBackground", visible_to_user="false")
+            for node in root.iter("node"):
+                node.set("observer-display-width", "1080"); node.set("observer-display-height", "2400")
+            return root, row, title, bar
+        root, row, _, _ = tree()
+        self.assertIs(documents.list_row(root, "name"), row)
+        for target, key, value in ((1, "enabled", "false"), (1, "visible-to-user", "false"),
+                                   (1, "resource-id", DUI + "foreign"), (1, "class", "androidx.cardview.widget.CardView"),
+                                   (2, "enabled", "false"), (2, "visible-to-user", "false")):
+            with self.subTest(target=target, key=key):
+                parts = tree(); parts[target].set(key, value)
+                with self.assertRaisesRegex(documents.Refusal, "documentsui_list_row_unusable"):
+                    documents.list_row(parts[0], "name")
+        for bounds in ("[500,1550][600,1650]", "[-40,1500][1080,1700]"):
+            root, row, _, _ = tree()
+            overlay = self.host.add(root, tuple(map(int, re.findall(r"-?\d+", bounds))), clickable="true")
+            self.assertEqual(documents.node_box(overlay)[0], int(re.findall(r"-?\d+", bounds)[0]))
+            overlay.set("observer-display-width", "1080"); overlay.set("observer-display-height", "2400")
+            self.assertEqual(documents.on_display(overlay), not bounds.startswith("[-"))
+            with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+                documents.list_row(root, "name")
+        # Row and title stay on-display and visible; only the row centre enters the bar.
+        root, row, title, bar = tree()
+        row.set("bounds", "[0,2200][1080,2400]")
+        title.set("bounds", "[189,2210][849,2267]")
+        self.assertTrue(documents.on_display(row))
+        with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+            documents.list_row(root, "name")
+        row.set("bounds", "[0,2178][1080,2370]")  # Centre exactly at the captured bar top.
+        with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+            documents.list_row(root, "name")
+        row.set("bounds", "[0,2176][1080,2368]")  # Two pixels higher is a clear centre.
+        self.assertIs(documents.list_row(root, "name"), row)
+
+    def test_view_mode_needs_one_usable_toggle_with_its_captured_description(self):
+        def tree(*toggles):
+            root = ET.Element("hierarchy")
+            for resource, description, bounds, visible in toggles:
+                ET.SubElement(root, "node", {"package": "com.android.documentsui", "text": "", "content-desc": description,
+                    "resource-id": DUI + resource, "clickable": "true", "enabled": "true", "visible-to-user": visible,
+                    "bounds": bounds, "observer-display-width": "1080", "observer-display-height": "2400"})
+            return root
+        captured = "[890,404][1017,530]"
+        self.assertEqual(documents.view_mode(tree(("sub_menu_list", "List view", captured, "true")))[1], "grid")
+        self.assertEqual(documents.view_mode(tree(("sub_menu_grid", "Grid view", captured, "true")))[1], "list")
+        for name, shape in {"none": tree(),
+                            "both": tree(("sub_menu_list", "List view", captured, "true"), ("sub_menu_grid", "Grid view", captured, "true")),
+                            "swapped-description": tree(("sub_menu_list", "Grid view", captured, "true")),
+                            "hidden": tree(("sub_menu_list", "List view", captured, "false")),
+                            "off-display": tree(("sub_menu_list", "List view", "[890,2404][1017,2530]", "true")),
+                            "covered": tree(("sub_menu_list", "List view", captured, "true"), ("item", "", "[900,410][1000,520]", "true"))}.items():
+            with self.subTest(shape=name):
+                self.assertEqual(documents.view_mode(shape), (None, None))
+
+    def test_label_tap_requires_a_visible_descendant_of_the_unique_target(self):
+        def tree(title_parent="card", title_bounds="[683,1666][984,1717]", visible="true", card_visible="true"):
+            root = ET.Element("hierarchy")
+            def add(parent, **attributes):
+                values = {"package": "com.android.documentsui", "text": "", "clickable": "false", "enabled": "true",
+                          "visible-to-user": "true", "observer-display-width": "1080", "observer-display-height": "2400"}
+                values.update(attributes)
+                return ET.SubElement(parent, "node", values)
+            card = add(root, clickable="true", bounds="[551,3454][1016,4055]", **{"visible-to-user": card_visible})
+            other = add(root, clickable="true", bounds="[0,0][100,100]")
+            add(card, clickable="true", bounds="[890,1180][1016,1306]")
+            add(card if title_parent == "card" else other, text="name", bounds=title_bounds, **{"visible-to-user": visible})
+            return root, card, other
+        document, card, _ = tree()
+        self.assertEqual(documents.label_tap(document, "name", card).get("bounds"), "[683,1666][984,1717]")
+        self.assertFalse(documents.on_display(card))
+        refused = {"not-descendant": (tree(title_parent="other"), lambda value: value[1]),
+                   "label-offscreen": (tree(title_bounds="[683,2389][984,2440]"), lambda value: value[1]),
+                   "label-hidden": (tree(visible="false"), lambda value: value[1]),
+                   "target-hidden": (tree(card_visible="false"), lambda value: value[1]),
+                   "preview-under-point": (tree(title_bounds="[900,1200][1010,1260]"), lambda value: value[1])}
+        for name, (value, target) in refused.items():
+            with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "ui_target_bounds_unusable|ui_tap_point_ambiguous"):
+                documents.label_tap(value[0], "name", target(value))
+
+    def test_label_tap_refuses_signed_overlay_and_navigation_band(self):
+        root = ET.Element("hierarchy")
+        card = self.host.add(root, (551, 3454, 1016, 4055), clickable="true")
+        title = self.host.add(card, (683, 1666, 984, 1717), text="name")
+        for node in root.iter("node"):
+            node.set("observer-display-width", "1080"); node.set("observer-display-height", "2400")
+        self.assertIs(documents.label_tap(root, "name", card), title)
+        overlay = self.host.add(root, (-40, 1500, 1080, 1700), clickable="true")
+        with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+            documents.label_tap(root, "name", card)
+        root.remove(overlay)
+        self.host.add(root, (0, NAVIGATION_TOP, 1080, 2400), resource_id="android:id/navigationBarBackground", visible_to_user="false")
+        title.set("bounds", "[683,2289][984,2340]")
+        self.assertTrue(documents.on_display(title))
+        with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+            documents.label_tap(root, "name", card)
+        title.set("bounds", "[683,2220][984,2270]")
+        self.assertIs(documents.label_tap(root, "name", card), title)
+
+    def test_harness_command_failure_keeps_head_and_tail(self):
+        command = load_harness()["command"]
+        script = ("import sys; sys.stderr.write('Exception occurred while executing enable:\\n' + "
+                  "'\\tat frame\\n' * 400 + 'final cause line\\n'); sys.exit(255)")
+        with self.assertRaises(Exception) as caught:
+            command([sys.executable, "-c", script])
+        message = str(caught.exception)
+        self.assertIn("Exception occurred while executing enable:", message)
+        self.assertIn("final cause line", message)
+        self.assertIn("rc=255", message)
+        self.assertLess(len(message), 2400)
+
+    def test_provider_build_rejects_packaged_flags_before_fact_audit_or_install(self):
+        original = self.host.command
+        bad = PACKAGED_PROVIDER_TREE.replace("enabled(0x0101000e)=false", "enabled(0x0101000e)=true")
+
+        def transport(argv, **kwargs):
+            if str(argv[0]).endswith("/aapt2") and argv[1] == "dump":
+                return result(bad)
+            return original(argv, **kwargs)
+
+        output = self.root / "rejected-provider"
+        with patch.object(self.host, "command", side_effect=transport), patch.object(self.host, "apk_facts", wraps=self.host.apk_facts) as facts:
+            with self.assertRaisesRegex(documents.Refusal, "packaged_provider_not_default_disabled"):
+                documents.build_provider(self.host, self.host.args, output)
+            facts.assert_not_called()
+        self.assertEqual((output / "packaged-manifest.txt").read_text(), bad)
+        self.assertTrue((output / "synthetic-documents.apk").is_file())
+        self.assertFalse((output / "build.json").exists())
+        self.assertFalse(self.host.mutations)
+
+    def test_complete_actual_module_with_fake_transport_both_variants(self):
+        self.host.args.action = "documents"
+        self.host.pids[documents.PACKAGES[1]] = 600  # Exercise the pre-install kill call too.
+        state = self.host.documents_action(self.host.args)
+        self.assertEqual(state["documents_phase"], "PASS")
+        self.assertEqual(state["overall"], "IN_PROGRESS")
+        self.assertEqual(set(state["documents"]), {"dev", "supported"})
+        # One deliberate, retained unfreeze of the same provider pid before the supported namespace.
+        self.assertEqual([item for item in self.host.mutations if item[0] == "unfreeze"], [("unfreeze", "501")])
+        self.assertEqual((state["provider_unfreeze"]["pid"], state["provider_unfreeze"]["stdout"]),
+                         (501, "Unfreezing process " + documents.PROVIDER + " (501) sticky=true\n"))
+        self.assertTrue(self.host.last_accessed >= {"dev", "supported"})  # Later pickers landed on LastAccessed.
+        self.assertEqual([value["version_code"] for package, value in state["installed"].items() if package in documents.VARIANTS.values()], [45, 45])
+        self.assertEqual(len(self.host.ack_objects), 54)
+        # One bootstrap per package, each after its install and before any consumer.
+        bootstraps = [package for package, index, _ in self.host.runas.programs if index == 1]
+        self.assertEqual(bootstraps, [documents.PROVIDER, documents.PACKAGES[1], documents.PACKAGES[2]])
+        def first(predicate):
+            return next(index for index, call in enumerate(self.host.calls) if predicate(call))
+        for package in (documents.PACKAGES[1], documents.PACKAGES[2]):
+            installed = first(lambda call: call[3:5] == ["install", "-r"] and
+                              self.host.facts_for_file(Path(call[-1]))["package"] == package)
+            bootstrap = first(lambda call: len(call) == 6 and shlex.split(call[5])[:2] == ["run-as", package] and
+                              publish.BOOTSTRAP in shlex.split(call[5]))
+            started = first(lambda call: call[3] == "shell" and "am start" in call[-1] and package + "/" in call[-1])
+            self.assertLess(installed, bootstrap); self.assertLess(bootstrap, started)
+        records = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*.publication-final.json")]
+        self.assertEqual(len(records), 54 + 4)  # Every ack plus both provider stage files per variant.
+        self.assertTrue(all(item["state"] == "PUBLISHED" and item["partial_consumed"] is True for item in records))
+        for package in documents.VARIANTS.values():
+            proof = self.host.package_root(package) / ("files/android-documents-proof/" + RUN)
+            self.assertEqual(len(list(proof.glob("ack-*.json"))), 27)
+            self.assertFalse(list(proof.glob("ack-*.partial-*")))
+        self.assertFalse(any("ln" in shlex.split(call[5]) for call in self.host.calls if len(call) == 6 and call[3:5] == ["shell", "-T"]))
+        self.assertEqual([item[0] for item in self.host.mutations].count("enable"), 1)
+        self.assertEqual([item[0] for item in self.host.mutations].count("unstop"), 1)
+        self.assertEqual((self.root / "output/dev-received.alkionbackup").read_bytes(), RAW)
+        self.assertIn("fresh_receiver_restore", state["unrun"])
+        for flavor in documents.VARIANTS:
+            self.assertTrue((self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-" + flavor + "/input.pin")).is_file())
+        kills = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*-ordinary-kill-*.json")]
+        self.assertEqual(len(kills), 3)
+        self.assertEqual({item["uid"] for item in kills}, {10001, 10002})
+        self.assertTrue(all(item["result"] == "PASS" and item["exact_pid_absent"] for item in kills))
+        self.assertEqual(self.host.args._ui_observer[0], self.host.lifecycle["ui_observer"])
+        observations = list((self.root / "output").glob("*.observation/host-receipt.json"))
+        self.assertTrue(observations)
+        for path in observations:
+            retained = json.loads(path.read_bytes())
+            native = json.loads((path.parent / "receipt.json.stdout").read_bytes())
+            self.assertEqual(retained["result"], "PASS")
+            self.assertEqual(retained["binding"], self.host.lifecycle["ui_observer"])
+            self.assertEqual(native["root_package"], "com.android.documentsui")
+            self.assertEqual(native["source_commit"], REVISION)
+            self.assertEqual(native["xml_sha256"], observer.digest((path.parent / "hierarchy.xml.stdout").read_bytes()))
+
+    def test_real_guard_refusals_never_reach_mutation(self):
+        changes = (("driver", "driver_phase", "FAIL"), ("updates", "updates_phase", "FAIL"),
+                   ("lifecycle", "initial_lifecycle_phase", "FAIL"), ("lifecycle", "serial", "emulator-5562"),
+                   ("lifecycle", "base_source_commit", "0" * 40))
+        for name, key, value in changes:
+            with self.subTest(name=name, key=key):
+                original = getattr(self.host, name)[key]
+                getattr(self.host, name)[key] = value; self.host.save_receipts()
+                with self.assertRaises((documents.Refusal, self.host.Refusal)):
+                    self.prepared()
+                self.assertFalse(self.host.mutations)
+                getattr(self.host, name)[key] = original; self.host.save_receipts()
+
+    def test_live_uid_and_saved_apk_change_are_refused(self):
+        package = documents.PACKAGES[1]
+        self.host.metadata[package]["uid"] += 20
+        with self.assertRaisesRegex(documents.Refusal, "uid_changed"):
+            self.prepared()
+        self.host.metadata[package]["uid"] -= 20
+        (self.root / "lifecycle/dev-finish.apk").write_bytes(b"changed")
+        with self.assertRaisesRegex(documents.Refusal, "retained_campaign_apk_changed"):
+            self.prepared()
+        self.assertFalse(self.host.mutations)
+
+    def test_build_arguments_reject_injection_and_missing_binding(self):
+        base = {"ALKION_FLAVOR": "dev", "ALKION_PROOF_RUN": RUN, "ALKION_PROOF_SOURCE": REVISION, "ALKION_PROOF_VERSION": "82"}
+        argv = documents.documents_build_arguments(base)
+        self.assertEqual(argv[argv.index("--build-number") + 1], "82")
+        for key, value in (("ALKION_FLAVOR", "foreign"), ("ALKION_PROOF_RUN", ""), ("ALKION_PROOF_SOURCE", "bad"),
+                           ("ALKION_PROOF_VERSION", "0"), ("ALKION_PROOF_VERSION", "2100000000"),
+                           ("ALKION_PROOF_VERSION", "45; touch /tmp/canary")):
+            with self.assertRaises(documents.Refusal):
+                documents.documents_build_arguments(dict(base, **{key: value}))
+
+    def test_actual_producer_case_objects_and_receipts(self):
+        control = {"run_id": RUN, "variant": "dev", "length": len(RAW), "sha256": documents.digest(RAW)}
+        observed = {case: provider_receipt(case, control) for case in documents.CASES if not case.endswith("-cancel")}
+        value = terminal("dev", observed)
+        documents.validate_report(value, RUN, REVISION, "dev", control, observed)
+        for change in (lambda v: v["cases"].__setitem__("open-good", "PASS"),
+                       lambda v: v["cases"]["open-good"].__setitem__("originals_preserved", False),
+                       lambda v: v["cases"]["open-good"].__setitem__("outcome", "cancelled"),
+                       lambda v: v["provider_receipts"].pop("open-denied"),
+                       lambda v: v.__setitem__("complete", False)):
+            changed = copy.deepcopy(value); change(changed)
+            with self.assertRaises(documents.Refusal):
+                documents.validate_report(changed, RUN, REVISION, "dev", control, observed)
+        for field, changed in (("input_sha256", "0" * 64), ("variant", "supported"), ("case", "open-good")):
+            receipt = provider_receipt("save-good", control); receipt[field] = changed
+            with self.assertRaisesRegex(documents.Refusal, "identity_mismatch"):
+                documents.validate_receipt(receipt, "save-good", control)
+
+    def test_picker_negative_preserves_raw_and_never_observes_case(self):
+        self.host.scenario = "wrong-root"
+        self.host.args.action = "documents"
+        with self.assertRaisesRegex(documents.Refusal, "documentsui_checkpoint_unavailable"):
+            self.host.documents_action(self.host.args)
+        self.assertEqual([value["action"] for value in self.host.ack_objects], ["seeded", "armed"])
+        self.assertTrue(list((self.root / "output").glob("*.xml.raw")))
+        self.assertEqual(json.loads((self.root / "output/run.json").read_bytes())["documents_phase"], "FAIL")
+
+    def test_receiving_failure_retains_every_provider_output(self):
+        self.host.scenario = "receiving-failure"
+        self.host.args.action = "documents"
+        with self.assertRaisesRegex(documents.Refusal, "host_receiving_verifier_failed"):
+            self.host.documents_action(self.host.args)
+        outputs = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev/outputs")
+        self.assertEqual(len(list(outputs.iterdir())), 5)
+        self.assertEqual((self.root / "output/dev-received.alkionbackup").read_bytes(), RAW)
+        self.assertTrue((self.root / "output/dev-receiving-inspection/failure.json").is_file())
+        self.assertFalse(any("clear" in str(call) or "uninstall" in str(call) for call in self.host.calls))
+
+    def evidence_after_seed(self):
+        prepared = self.prepared()
+        prepared.output.mkdir(mode=0o700)
+        evidence = documents.Evidence(self.host, prepared)
+        self.host.start_adapter(documents.PACKAGES[1])
+        phase = self.host.current_phase
+        return evidence, phase
+
+    def test_exclusive_ack_and_stale_phase_refusal(self):
+        evidence, phase = self.evidence_after_seed()
+        documents.ack(evidence, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        directory = self.host.package_root(documents.PACKAGES[1]) / ("files/android-documents-proof/" + RUN)
+        final = directory / "ack-000-seeded.json"
+        original = final.read_bytes()
+        prior_partials = list(directory.glob("ack-000-seeded.json.partial-*"))
+        with self.assertRaisesRegex(documents.Refusal, "exclusive_write_failed"):
+            documents.ack(evidence, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        self.assertEqual(final.read_bytes(), original)
+        self.assertEqual(len(self.host.ack_objects), 1)
+        partials = list(directory.glob("ack-000-seeded.json.partial-*"))
+        self.assertEqual(len(partials), len(prior_partials) + 1)
+        self.assertTrue(all(path.read_bytes() == original for path in partials))
+        with self.assertRaisesRegex(documents.Refusal, "phase_reordered"):
+            documents.wait_phase(evidence, "dev", 2, "open-good", "awaiting_arm")
+        phase["source_commit"] = "0" * 40
+        with self.assertRaisesRegex(documents.Refusal, "identity_mismatch"):
+            documents.validate_phase(phase, RUN, REVISION, "dev")
+        before = len(self.host.ack_objects)
+        with self.assertRaisesRegex(documents.Refusal, "identity_mismatch"):
+            documents.ack(evidence, "dev", phase, "seeded")
+        self.assertEqual(len(self.host.ack_objects), before)
+
+    def test_delayed_ack_is_invisible_until_complete_publication(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.scenario = "delayed-ack"
+        final = self.host.package_root(documents.PACKAGES[1]) / ("files/android-documents-proof/" + RUN + "/ack-000-seeded.json")
+        stop = threading.Event()
+        seen, errors, absent_polls = [], [], []
+        def consumer():
+            while not stop.is_set():
+                if final.exists():
+                    try:
+                        seen.append(json.loads(final.read_bytes()))
+                    except Exception as error:
+                        errors.append(str(error))
+                else:
+                    absent_polls.append(True)
+                time.sleep(0.001)
+        reader = threading.Thread(target=consumer)
+        reader.start()
+        try:
+            documents.ack(evidence, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+            deadline = time.monotonic() + 2
+            while not seen and time.monotonic() < deadline:
+                time.sleep(0.001)
+        finally:
+            stop.set(); reader.join(timeout=2)
+        self.assertFalse(reader.is_alive())
+        self.assertFalse(errors)
+        self.assertTrue(seen)
+        self.assertGreater(len(absent_polls), 2)
+        self.assertEqual(len(self.host.delayed_ack_checks), 1)
+        partial, expected = self.host.delayed_ack_checks[0]
+        self.assertFalse(Path(partial).exists())  # Consumed by the no-replace rename.
+        self.assertEqual(final.read_bytes(), expected)
+        self.assertTrue(all(value == json.loads(expected) for value in seen))
+
+    def test_changed_closed_ack_partial_retained_without_publication(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.scenario = "changed-ack-partial"
+        with self.assertRaisesRegex(documents.Refusal, "closed_partial_changed"):
+            documents.ack(evidence, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        directory = self.host.package_root(documents.PACKAGES[1]) / ("files/android-documents-proof/" + RUN)
+        self.assertFalse((directory / "ack-000-seeded.json").exists())
+        partials = list(directory.glob("ack-000-seeded.json.partial-*"))
+        self.assertEqual(len(partials), 1)
+        self.assertTrue(partials[0].read_bytes().endswith(b"x"))
+        self.assertFalse(self.host.ack_objects)
+
+    def test_provider_stage_collision_retains_stage_partial_and_existing_final(self):
+        evidence, phase = self.evidence_after_seed()
+        stage = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/.stage-" + RUN + "-dev")
+        original = self.host.android
+        def occupy(argv, binary=False, data=None):
+            if argv[:1] == ["run-as"] and argv[4:5] == [publish.PUBLISH] and argv[-1].endswith("/control.json"):
+                (stage / "control.json").write_bytes(b"existing final must survive")
+            return original(argv, binary, data)
+        with patch.object(self.host, "android", side_effect=occupy):
+            with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed:publication:NOT_PUBLISHED:rename_errno_17"):
+                documents.seed_provider(evidence, "dev", phase, first=False)
+        self.assertEqual((stage / "control.json").read_bytes(), b"existing final must survive")
+        partials = list(stage.glob("control.json.partial-*"))
+        self.assertEqual(len(partials), 1)
+        self.assertEqual(json.loads(partials[0].read_bytes())["run_id"], RUN)
+        outcome = json.loads(next((self.root / "output").glob("*-dev-control.json.publication.json")).read_bytes())
+        self.assertEqual((outcome["state"], outcome["partial_consumed"]), ("NOT_PUBLISHED", False))
+        self.assertFalse((self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev")).exists())
+
+    def test_ack_publication_timeout_is_unknown_and_keeps_binary_partials(self):
+        evidence, phase = self.evidence_after_seed()
+        evidence.bind_publisher(documents.PACKAGES[1], 10001)
+        self.host.runas.timeout_after = True
+        with self.assertRaises(subprocess.TimeoutExpired):
+            documents.ack(evidence, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        outcome = json.loads(next((self.root / "output").glob("*-ack-seeded.json.publication.json")).read_bytes())
+        self.assertEqual((outcome["state"], outcome["partial_consumed"]), ("UNKNOWN", "UNKNOWN"))
+        self.assertEqual(next((self.root / "output").glob("*publication.timeout-stderr")).read_bytes(), b"\x00partial\xff")
+        self.assertEqual(len(self.host.ack_objects), 0)  # The fake consumer only sees a reported success.
+
+    def test_bound_publisher_is_reused_and_failed_bootstrap_refuses_every_write(self):
+        evidence, phase = self.evidence_after_seed()
+        package = documents.PACKAGES[1]
+        evidence.bind_publisher(package, 10001)
+        count = len(self.host.runas.programs)
+        evidence.bind_publisher(package, 10001)
+        self.assertEqual(len(self.host.runas.programs), count)
+        with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed:publisher_bound_uid_mismatch"):
+            evidence.bind_publisher(package, 10002)
+        other = documents.Evidence(self.host, evidence.prepared)
+        (self.host.package_root(package) / "cache").chmod(0o777)
+        with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed:publisher_cache_root_invalid"):
+            documents.ack(other, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        count = len(self.host.runas.programs)
+        with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed:publisher_bootstrap_failed_not_repeatable"):
+            documents.ack(other, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        self.assertEqual(len(self.host.runas.programs), count)
+        proof = self.host.package_root(package) / ("files/android-documents-proof/" + RUN)
+        self.assertFalse(list(proof.glob("ack-*")))
+
+    def test_routes_bind_publisher_after_read_only_preparation_and_to_head(self):
+        self.host.args.action = "documents-check"
+        for value, reason in (("", "explicit_publisher_build_required"),
+                              (str(publisher_fake.fake_build(self.root / "other-build", self.host.APP, "b" * 40)),
+                               "publisher_build_source_commit_mismatch")):
+            with self.subTest(reason=reason):
+                self.host.args.publisher_build = value
+                self.host.calls.clear()
+                with self.assertRaisesRegex((documents.Refusal, publish.Refusal, self.host.Refusal), reason):
+                    self.host.documents_action(self.host.args)
+                self.assertTrue(any(call[0] == "git" for call in self.host.calls))  # Preparation ran first.
+        self.assertFalse(self.host.mutations)
+        self.assertFalse(self.host.runas.programs)
+        self.assertFalse((self.root / "output").exists())
+
+    def test_run_as_stdout_diagnostic_is_never_success(self):
+        evidence, phase = self.evidence_after_seed()
+        package = documents.PACKAGES[1]
+        documents.absent(self.host, self.host.args, package, "files/not-present")
+        self.host.run_as_failures = {package}
+        with self.assertRaisesRegex(documents.Refusal, "documents_owned_path_already_present"):
+            documents.absent(self.host, self.host.args, package, "files/not-present")
+        with self.assertRaisesRegex(documents.Refusal, "documents_run_as_diagnostic"):
+            evidence.read(package, "files/not-present", 64, "diagnostic", optional=True)
+        with self.assertRaisesRegex(documents.Refusal, "documents_exclusive_write_failed"):
+            documents.ack(evidence, "dev", phase, "seeded", provider_input_sha256=documents.digest(RAW))
+        self.host.run_as_failures = {documents.PROVIDER}
+        with self.assertRaisesRegex(documents.Refusal, "provider_namespace_not_fresh_owned|exclusive_write_failed"):
+            documents.seed_provider(evidence, "dev", phase, first=False)
+        with self.assertRaisesRegex(documents.Refusal, "documents_run_as_diagnostic"):
+            documents.collect_outputs(evidence, "dev")
+        self.assertFalse(self.host.ack_objects)
+
+    def test_namespace_refuses_replacement_links_and_seventeenth(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501  # Running and unfrozen: its observer loads new namespaces.
+        documents.seed_provider(evidence, "dev", phase, first=False)
+        namespace = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev")
+        before = (namespace / "input.alkionbackup").read_bytes()
+        with self.assertRaisesRegex(documents.Refusal, "namespace_not_fresh_owned"):
+            documents.seed_provider(evidence, "dev", phase, first=False)
+        self.assertEqual((namespace / "input.alkionbackup").read_bytes(), before)
+        # A separate append-only run at the same immutable provider parent.
+        stage = namespace.parent / (".stage-" + RUN + "-dev")
+        self.assertFalse(stage.exists())
+        namespace.rename(namespace.parent / ("2" * 32 + "-dev"))
+        for number in range(3, 18):
+            (namespace.parent / (format(number, "032x") + "-dev")).mkdir(mode=0o700)
+        with self.assertRaisesRegex(documents.Refusal, "publication_refused"):
+            documents.seed_provider(evidence, "dev", phase, first=False)
+        self.assertTrue(stage.is_dir())
+        self.assertTrue((stage / "input.alkionbackup").is_file())
+
+    def test_linked_input_and_changed_pin_refuse_without_cleanup(self):
+        evidence, phase = self.evidence_after_seed()
+        source = self.host.package_root(documents.PACKAGES[1]) / ("files/" + phase["source_relative"])
+        target = source.with_name("retained-original")
+        source.rename(target); source.symlink_to(target)
+        with self.assertRaisesRegex(documents.Refusal, "owned_read_failed"):
+            documents.seed_provider(evidence, "dev", phase, first=False)
+        self.assertTrue(source.is_symlink()); self.assertEqual(target.read_bytes(), RAW)
+
+    def test_provider_restart_and_missing_output_are_not_repaired(self):
+        evidence, phase = self.evidence_after_seed()
+        evidence.provider_pid = 501
+        self.host.pids[documents.PROVIDER] = 502
+        with self.assertRaisesRegex(documents.Refusal, "provider_process_changed"):
+            evidence.provider_alive()
+        with self.assertRaisesRegex(documents.Refusal, "failed_outputs_missing"):
+            documents.receive_good(evidence, "dev", {}, {"length": len(RAW), "sha256": documents.digest(RAW)})
+        self.assertFalse(self.host.mutations)
+
+    def test_dynamic_floor_uses_accepted_artifacts_and_rejects_exhaustion(self):
+        package = documents.PACKAGES[1]
+        facts = self.host.artifact(self.root / "lifecycle/dev-finish.apk", package, 81)
+        self.host.lifecycle["installed"][package] = facts
+        self.host.installed[package] = facts
+        self.host.metadata[package]["version_code"] = 81
+        self.host.save_receipts()
+        prepared = self.prepared()
+        self.assertEqual(prepared.installed[package]["version_code"] + 1, 82)
+        self.host.lifecycle["installed"][package]["version_code"] = 2099999999
+        self.host.save_receipts()
+        with self.assertRaisesRegex(documents.Refusal, "artifact_binding_missing"):
+            self.prepared()
+        self.assertFalse(self.host.mutations)
+
+    def test_changed_input_pin_cannot_ack_observed(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.pids[documents.PROVIDER] = 501  # Running and unfrozen: its observer loads new namespaces.
+        control = documents.seed_provider(evidence, "dev", phase, first=False)
+        root = self.host.package_root(documents.PROVIDER) / ("files/proof-runs/" + RUN + "-dev")
+        self.host.write(root / "input.pin", b"interrupted or changed pin")
+        self.host.pids[documents.PROVIDER] = 501
+        before = len(self.host.ack_objects)
+        with self.assertRaisesRegex(documents.Refusal, "namespace_input_changed"):
+            documents.provider_observation(evidence, "dev", {"case": "open-good"}, control)
+        self.assertEqual(len(self.host.ack_objects), before)
+        self.assertEqual((root / "input.pin").read_bytes(), b"interrupted or changed pin")
+
+    def test_changed_receiving_report_is_retained_and_refused(self):
+        evidence, phase = self.evidence_after_seed()
+        control = phase["provider_control"]
+        outputs = {case: {"name": case, "length": len(RAW), "sha256": documents.digest(RAW), "bytes": RAW}
+                   for case in documents.OUTPUT_CASES}
+        self.host.scenario = "receiving-digest"
+        with self.assertRaisesRegex(documents.Refusal, "host_receiving_report_mismatch"):
+            documents.receive_good(evidence, "dev", outputs, control)
+        self.assertEqual((self.root / "output/dev-received.alkionbackup").read_bytes(), RAW)
+        self.assertTrue((self.root / "output/dev-receiving-inspection/verification.json").is_file())
+
+    def test_receiving_structured_schema_and_complete_inventory_are_accepted(self):
+        evidence, phase = self.evidence_after_seed()
+        control = phase["provider_control"]
+        outputs = {case: {"name": case, "length": len(RAW), "sha256": documents.digest(RAW), "bytes": RAW}
+                   for case in documents.OUTPUT_CASES}
+        report = documents.receive_good(evidence, "dev", outputs, control)
+        self.assertEqual(report, receiving_report(RAW))
+        self.assertEqual(set(report["inventory"]["tables"]), documents.RECEIVING_TABLES)
+        self.assertEqual((evidence.output / "dev-received.alkionbackup").read_bytes(), RAW)
+
+    def test_integer_receiving_schema_is_retained_and_refused(self):
+        evidence, phase = self.evidence_after_seed()
+        outputs = {case: {"length": len(RAW), "sha256": documents.digest(RAW), "bytes": RAW} for case in documents.OUTPUT_CASES}
+        self.host.scenario = "receiving-schema-int"
+        with self.assertRaisesRegex(documents.Refusal, "host_receiving_schema_mismatch"):
+            documents.receive_good(evidence, "dev", outputs, phase["provider_control"])
+        self.assertEqual((evidence.output / "dev-received.alkionbackup").read_bytes(), RAW)
+        report = json.loads((evidence.output / "dev-receiving-inspection/verification.json").read_bytes())
+        self.assertEqual(report["schema"], 1)
+
+    def test_malformed_unsupported_or_boolean_receiving_fields_refuse(self):
+        control = {"length": len(RAW), "sha256": documents.digest(RAW)}
+        good = receiving_report(RAW)
+        changes = [
+            lambda report: report.update(schema=True),
+            lambda report: report.update(schema=[]),
+            lambda report: report["schema"].pop("sql_sha256"),
+            lambda report: report["schema"].update(user_version=True, migrations=[{"version": 1, "digest": "e" * 64}]),
+            lambda report: report["schema"].update(user_version=4, migrations=[{"version": version, "digest": "e" * 64} for version in range(1, 5)]),
+            lambda report: report["schema"].update(application_id=True),
+            lambda report: report["schema"].update(application_id=0),
+            lambda report: report["schema"].update(sql_sha256="bad"),
+            lambda report: report["schema"].update(migrations={}),
+            lambda report: report["schema"]["migrations"][0].update(version=True),
+            lambda report: report["schema"]["migrations"][0].update(digest=7),
+            lambda report: report["schema"]["migrations"].append({"version": 2, "digest": "e" * 64}),
+            lambda report: report.update(inventory=[]),
+            lambda report: report["inventory"].update(rows=True),
+            lambda report: report["inventory"].update(rows=-1),
+            lambda report: report["inventory"].update(rows=1),
+            lambda report: report["inventory"].update(sha256="0" * 64),
+            lambda report: report["inventory"]["tables"].pop("operations"),
+            lambda report: report["inventory"]["tables"].update(foreign={"rows": 0, "sha256": "e" * 64}),
+            lambda report: report["inventory"]["tables"]["operations"].update(rows=True),
+            lambda report: report["inventory"]["tables"]["operations"].update(sha256=7),
+            lambda report: report["container"].update(version=True),
+            lambda report: report["container"].update(length=True),
+            lambda report: report["container"].update(format="alkion-backup/1"),
+        ]
+        for number, change in enumerate(changes):
+            with self.subTest(case=number):
+                report = copy.deepcopy(good); change(report)
+                with self.assertRaisesRegex(documents.Refusal, "host_receiving_(?:schema|inventory|report)_mismatch"):
+                    documents.validate_receiving_report(report, control)
+        self.assertEqual(good, receiving_report(RAW))
+
+    def test_incomplete_receipt_cannot_satisfy_failed_stream_case(self):
+        control = {"run_id": RUN, "variant": "dev", "length": len(RAW), "sha256": documents.digest(RAW)}
+        for case in ("open-error", "save-write-interrupted", "save-readback-changed"):
+            receipt = provider_receipt(case, control)
+            for event in receipt["events"]:
+                if event["operation"] in ("read", "write"):
+                    event["reliable_pipe"] = False
+            with self.assertRaisesRegex(documents.Refusal, "trace_incomplete"):
+                documents.validate_receipt(receipt, case, control)
+
+    def test_case_names_match_the_real_dart_producer(self):
+        text = (Path(__file__).parent.parent / "integration_test/android_documents_test.dart").read_text()
+        body = text.split("const _caseNames = [", 1)[1].split("];", 1)[0]
+        import re
+        self.assertEqual(tuple(re.findall(r"'([^']+)'", body)), tuple(documents.CASES))
+        self.assertIn("'cases': <String, Object?>{}", text)
+        self.assertIn("'originals_preserved': true", text)
+        self.assertIn("'selected_generation_unchanged': true", text)
+
+    def test_output_files_must_match_actual_provider_receipts(self):
+        control = {"run_id": RUN, "variant": "dev", "length": len(RAW), "sha256": documents.digest(RAW)}
+        observed = {case: provider_receipt(case, control) for case in documents.OUTPUT_CASES}
+        outputs = {case: {"length": observed[case]["output_length"], "sha256": control["sha256"]}
+                   for case in documents.OUTPUT_CASES}
+        documents.validate_outputs(outputs, control, observed)
+        outputs["save-write-interrupted"]["length"] = 0
+        with self.assertRaisesRegex(documents.Refusal, "output_receipt_length_mismatch"):
+            documents.validate_outputs(outputs, control, observed)
+        outputs["save-write-interrupted"]["length"] = 1
+        outputs["save-readback-changed"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(documents.Refusal, "completed_provider_output_changed"):
+            documents.validate_outputs(outputs, control, observed)
+
+    def test_integrated_check_is_read_only_and_requires_explicit_receipts(self):
+        self.host.args.action = "documents-check"
+        self.host.documents_action(self.host.args)
+        self.assertFalse(self.host.mutations)
+        self.assertFalse((self.root / "output").exists())
+        for field in ("driver_run", "updates_run", "base_run"):
+            original = getattr(self.host.args, field)
+            setattr(self.host.args, field, "")
+            with self.assertRaisesRegex(documents.Refusal, "explicit_documents_receipt_chain_required"):
+                self.host.documents_action(self.host.args)
+            setattr(self.host.args, field, original)
+        self.assertFalse(self.host.mutations)
+
+    def test_provider_build_dispatch_uses_existing_guards_and_fake_builders(self):
+        self.host.args.action = "build-documents-provider"
+        self.host.args.output = str(self.root / "provider-route")
+        with patch.dict(os.environ, ALKION_PROOF_SOURCE=REVISION):
+            self.host.documents_action(self.host.args)
+        report = json.loads((self.root / "provider-route/build.json").read_bytes())
+        self.assertEqual(report["package"], documents.PROVIDER)
+        self.assertEqual(report["version_code"], 1)
+        self.assertFalse(self.host.mutations)
+        self.assertTrue(any(argv[0].endswith("/javac") for argv in self.host.calls))
+
+    def test_make_documents_apk_route_uses_pinned_fvm_and_source_guards(self):
+        tools = self.root / "fake-build-tools"
+        tools.mkdir()
+        log = self.root / "fake-fvm.json"
+        (tools / "fvm").write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_FVM_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+        (tools / "git").write_text('#!/usr/bin/env python3\nimport os,sys\nassert sys.argv[1]=="-C"\nif sys.argv[3:]==["rev-parse","HEAD"]: print(os.environ["FAKE_SOURCE"])\nelif sys.argv[3:]==["status","--porcelain","--untracked-files=normal"]: print(os.environ.get("FAKE_DIRTY",""),end="")\nelse: raise SystemExit("unexpected fake git arguments")\n')
+        for path in tools.iterdir():
+            path.chmod(0o700)
+        app = Path(__file__).parent.parent
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], ANDROID_HOME=str(self.host.sdk),
+                   FAKE_SOURCE=REVISION, FAKE_FVM_LOG=str(log), PYTHONDONTWRITEBYTECODE="1")
+        common = ["make", "-C", str(app), "android-synthetic-documents-apk", "ALKION_FLAVOR=dev",
+                  "ALKION_PROOF_RUN=" + RUN, "ALKION_PROOF_SOURCE=" + REVISION, "ALKION_PROOF_VERSION=82"]
+        completed = subprocess.run(common, env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        argv = json.loads(log.read_text())
+        self.assertEqual(argv[:4], ["flutter", "build", "apk", "--debug"])
+        self.assertIn("--no-pub", argv)
+        self.assertEqual(argv[argv.index("--target") + 1], "integration_test/android_documents_test.dart")
+        self.assertEqual(argv[argv.index("--target-platform") + 1], "android-x64")
+        self.assertEqual(argv[argv.index("--build-number") + 1], "82")
+        self.assertIn("--dart-define=ALKION_PROOF_SOURCE=" + REVISION, argv)
+        before = log.read_bytes()
+        invalid = ("ALKION_FLAVOR=foreign", "ALKION_PROOF_RUN=bad", "ALKION_PROOF_SOURCE=", "ALKION_PROOF_VERSION=0",
+                   "ALKION_PROOF_VERSION=82; touch " + str(self.root / "canary"))
+        for value in invalid:
+            completed = subprocess.run(common + [value], env=env, capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertEqual(log.read_bytes(), before)
+        for extra in ({"FAKE_SOURCE": "0" * 40}, {"FAKE_DIRTY": " M unreviewed-source"}):
+            completed = subprocess.run(common, env=dict(env, **extra), capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertEqual(log.read_bytes(), before)
+        self.assertFalse((self.root / "canary").exists())
+        self.assertFalse((Path(__file__).parent / "__pycache__").exists())
+
+    def test_make_forwards_explicit_document_receipts_and_provider_output(self):
+        tools = self.root / "fake-route-tools"
+        tools.mkdir()
+        fake = tools / "bash"
+        log = self.root / "make-route.json"
+        fake.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_ROUTE_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+        fake.chmod(0o700)
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], FAKE_ROUTE_LOG=str(log))
+        app = Path(__file__).parent.parent
+        values = {"ALKION_SYNTHETIC_ACTION": "documents-check", "ALKION_AVD": "documents-proof",
+                  "ALKION_SERIAL": "emulator-5560", "ALKION_RECEIPT": str(self.root / "disposable.json"),
+                  "ALKION_OUTPUT": str(self.root / "fresh output"), "ALKION_BASE_RUN": self.host.args.base_run,
+                  "ALKION_DRIVER_RUN": self.host.args.driver_run, "ALKION_UPDATES_RUN": self.host.args.updates_run}
+        completed = subprocess.run(["make", "-C", str(app), "android-synthetic", *(key + "=" + value for key, value in values.items())],
+                                   env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        argv = json.loads(log.read_text())
+        expected = {"--action": values["ALKION_SYNTHETIC_ACTION"], "--avd": values["ALKION_AVD"], "--serial": values["ALKION_SERIAL"],
+                    "--receipt": values["ALKION_RECEIPT"], "--output": values["ALKION_OUTPUT"], "--base-run": values["ALKION_BASE_RUN"],
+                    "--driver-run": values["ALKION_DRIVER_RUN"], "--updates-run": values["ALKION_UPDATES_RUN"],
+                    "--publisher-build": ""}
+        self.assertEqual(dict(zip(argv[1::2], argv[2::2])), expected)
+        completed = subprocess.run(["make", "-C", str(app), "android-synthetic-documents-provider", "ALKION_OUTPUT=" + values["ALKION_OUTPUT"]],
+                                   env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(log.read_text()), ["tool/android_synthetic.sh", "--action", "build-documents-provider", "--output", values["ALKION_OUTPUT"]])
+
+    def test_make_forwards_literal_publisher_build_for_documents_actions(self):
+        tools = self.root / "publisher-route-tools"
+        tools.mkdir()
+        log = self.root / "publisher-route.json"
+        fake = tools / "bash"
+        fake.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_ROUTE_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+        fake.chmod(0o700)
+        canary = self.root / "publisher-canary"
+        receipt = '/tmp/build "q" `touch ' + str(canary) + '` $(touch ' + str(canary) + ') $(shell touch ' + str(canary) + ") ${HOME} '; touch " + str(canary) + "; '"
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], FAKE_ROUTE_LOG=str(log))
+        app = Path(__file__).parent.parent
+        for action in ("documents-check", "documents"):
+            for origin in ("command-line", "environment"):
+                with self.subTest(action=action, origin=origin):
+                    values = {"ALKION_SYNTHETIC_ACTION": action, "ALKION_PUBLISHER_BUILD": receipt}
+                    argv = ["make", "-C", str(app), "android-synthetic"]
+                    variables = dict(env)
+                    if origin == "command-line":
+                        argv += [key + "=" + value for key, value in values.items()]
+                    else:
+                        variables.update(values)
+                    completed = subprocess.run(argv, env=variables, capture_output=True, text=True, timeout=10)
+                    self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                    forwarded = json.loads(log.read_text())
+                    self.assertEqual(forwarded[-2:], ["--publisher-build", receipt])
+                    self.assertFalse(canary.exists())
+
+    def test_documents_cli_actions_refuse_implicit_targets(self):
+        script = Path(__file__).with_name("android_synthetic.sh")
+        for action in ("documents-check", "documents"):
+            completed = subprocess.run(["bash", str(script), "--action", action],
+                                       capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("explicit_emulator_serial_required", completed.stderr)
+        self.assertFalse(self.host.mutations)
+
+    def test_make_literal_transport_never_executes_quotes_backticks_or_dollars(self):
+        tools = self.root / "literal-route-tools"
+        tools.mkdir()
+        log = self.root / "literal-route.json"
+        fake = tools / "bash"
+        fake.write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FAKE_ROUTE_LOG"]).write_text(json.dumps(sys.argv[1:]))\n')
+        fake.chmod(0o700)
+        canaries = {name: self.root / ("canary-" + name) for name in ("quote", "backtick", "dollar", "make", "single", "driver", "provider")}
+        values = {
+            "ALKION_SYNTHETIC_ACTION": 'documents-check"; touch ' + str(canaries["quote"]) + '; echo "',
+            "ALKION_AVD": 'avd with spaces "double" and \'single\' \\ slash',
+            "ALKION_SERIAL": 'emulator-`touch ' + str(canaries["backtick"]) + '`',
+            "ALKION_RECEIPT": '/tmp/$(touch ' + str(canaries["dollar"]) + ')/receipt.json',
+            "ALKION_OUTPUT": '/tmp/$(shell touch ' + str(canaries["make"]) + ')/output',
+            "ALKION_BASE_RUN": "/tmp/lifecycle'; touch " + str(canaries["single"]) + "; echo '",
+            "ALKION_DRIVER_RUN": '/tmp/driver"; touch ' + str(canaries["driver"]) + '; echo "',
+            "ALKION_UPDATES_RUN": '/tmp/${ALKION_CANARY_VAR}/$(printf literal)/updates.json',
+        }
+        flags = ("--action", "--avd", "--serial", "--receipt", "--output", "--base-run", "--driver-run", "--updates-run")
+        expected = ["tool/android_synthetic.sh", *(part for flag, value in zip(flags, values.values()) for part in (flag, value))]
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], FAKE_ROUTE_LOG=str(log), ALKION_CANARY_VAR="must-stay-literal")
+        app = Path(__file__).parent.parent
+        for origin in ("command-line", "environment"):
+            with self.subTest(origin=origin):
+                argv = ["make", "-C", str(app), "android-synthetic"]
+                variables = dict(env)
+                if origin == "command-line":
+                    argv += [key + "=" + value for key, value in values.items()]
+                else:
+                    variables.update(values)
+                completed = subprocess.run(argv, env=variables, capture_output=True, text=True, timeout=10)
+                self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                self.assertEqual(json.loads(log.read_text()), expected)
+                self.assertFalse(any(path.exists() for path in canaries.values()))
+        provider = '/tmp/provider "quote" `touch ' + str(canaries["provider"]) + '` $(touch ' + str(canaries["dollar"]) + ') $(shell touch ' + str(canaries["make"]) + ') ${ALKION_CANARY_VAR}'
+        for origin in ("command-line", "environment"):
+            with self.subTest(provider_origin=origin):
+                argv = ["make", "-C", str(app), "android-synthetic-documents-provider"]
+                variables = dict(env)
+                if origin == "command-line":
+                    argv.append("ALKION_OUTPUT=" + provider)
+                else:
+                    variables["ALKION_OUTPUT"] = provider
+                completed = subprocess.run(argv, env=variables, capture_output=True, text=True, timeout=10)
+                self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                self.assertEqual(json.loads(log.read_text()), ["tool/android_synthetic.sh", "--action", "build-documents-provider", "--output", provider])
+                self.assertFalse(any(path.exists() for path in canaries.values()))
+
+
+if __name__ == "__main__":
+    print("Host-only SAF controls: fake command transport and synthetic /tmp files; no Android qualification.", flush=True)
+    unittest.main(verbosity=2)

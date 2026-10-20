@@ -40,10 +40,14 @@ class FaultDatabase implements LocalDatabase {
     failed = true;
     StreamSubscription<RecoveryPhase>? subscription;
     if (fault && closeRecovery) {
+      // Capture a complete SQLite image while the store is healthy: the WAL
+      // may still hold schema/data when poolClosed releases worker leases.
+      preserved = File('${store.path}.test-preserved');
+      await store.backupTo(preserved!.path);
+      var corrupted = false;
       subscription = store.recoveryEvents.listen((phase) {
-        if (phase == RecoveryPhase.poolClosed && preserved == null) {
-          preserved = File('${store.path}.test-preserved');
-          File(store.path).copySync(preserved!.path);
+        if (phase == RecoveryPhase.poolClosed && !corrupted) {
+          corrupted = true;
           File(store.path).writeAsBytesSync([0, 255, 1, 2], flush: true);
         }
       });

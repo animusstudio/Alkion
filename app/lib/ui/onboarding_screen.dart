@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../theme/motion.dart';
+import '../theme/app_theme.dart';
+import '../theme/typography.dart';
+import '../widgets/plan_form.dart';
 
 enum OnboardingChoice { empty, starter }
 
@@ -35,52 +38,79 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
+    final tokens = context.tokens;
     final l = AppLocalizations.of(context);
     return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: Text(
+          'Alkion',
+          style: WorkoutType.body(
+            size: 18,
+            weight: FontWeight.w700,
+            color: tokens.text,
+          ),
+        ),
+      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              StaggeredEntrance(
-                index: 0,
-                child: Text(l.onboardingWelcome, style: t.headlineMedium),
-              ),
-              const SizedBox(height: 12),
-              StaggeredEntrance(
-                index: 1,
-                child: Text(l.onboardingIntro, style: t.bodyMedium),
-              ),
-              const SizedBox(height: 32),
-              StaggeredEntrance(
-                index: 2,
-                child: FilledButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _choose(OnboardingChoice.starter),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Text(l.onboardingAddStarter),
-                  ),
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, box) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: box.maxHeight),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    StaggeredEntrance(
+                      index: 0,
+                      child: Text(
+                        l.onboardingWelcome,
+                        style: WorkoutType.display(
+                          size: 28,
+                          weight: FontWeight.w700,
+                          color: tokens.text,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    StaggeredEntrance(
+                      index: 1,
+                      child: Text(
+                        l.onboardingIntro,
+                        style: WorkoutType.body(size: 16, color: tokens.dim),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      l.alkionLocalOnly,
+                      style: WorkoutType.body(size: 14, color: tokens.dim),
+                    ),
+                    const SizedBox(height: 32),
+                    StaggeredEntrance(
+                      index: 2,
+                      child: PrimaryBtn(
+                        l.onboardingAddStarter,
+                        enabled: !_busy,
+                        onTap: () => _choose(OnboardingChoice.starter),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    StaggeredEntrance(
+                      index: 3,
+                      child: PrimaryBtn(
+                        l.onboardingStartEmpty,
+                        enabled: !_busy,
+                        secondary: true,
+                        onTap: () => _choose(OnboardingChoice.empty),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 12),
-              StaggeredEntrance(
-                index: 3,
-                child: OutlinedButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _choose(OnboardingChoice.empty),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Text(l.onboardingStartEmpty),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

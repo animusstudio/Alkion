@@ -465,7 +465,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
             child: AbsorbPointer(
               absorbing: controller.finishPending,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 children: [
                   if (draft.blocks.isEmpty) ...[
                     const SizedBox(height: 40),
@@ -596,7 +596,7 @@ class _EmptySessionPlaceholder extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           l.sessionEmptySubtitle,
-          style: WorkoutType.mono(size: 12, color: tokens.faint),
+          style: WorkoutType.body(size: 14, color: tokens.dim),
         ),
       ],
     );
@@ -620,36 +620,34 @@ class _DashedButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: tokens.lineStrong,
-            style: BorderStyle.solid,
-          ),
-          borderRadius: BorderRadius.circular(AppRadius.radius),
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        minimumSize: Size(double.infinity, height),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        foregroundColor: tokens.text,
+        side: BorderSide(color: tokens.lineStrong),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: tokens.dim),
-            const SizedBox(width: 7),
-            // Shrinks, then ellipsizes, rather than pushing past the button
-            // on a narrow phone at large text.
-            Flexible(
-              child: FitLabel(
-                label,
-                style: WorkoutType.mono(
-                  size: 13,
-                  weight: FontWeight.w600,
-                  color: tokens.dim,
-                ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20, color: tokens.dim),
+          const SizedBox(width: 8),
+          Flexible(
+            child: FitLabel(
+              label,
+              maxLines: 2,
+              style: WorkoutType.body(
+                size: 14,
+                weight: FontWeight.w700,
+                color: tokens.text,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

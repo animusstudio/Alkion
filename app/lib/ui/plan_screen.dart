@@ -13,7 +13,6 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
-import '../widgets/pressable.dart';
 import '../widgets/w_dialog.dart';
 import 'day_editor.dart';
 import 'editor_guard.dart';
@@ -182,7 +181,7 @@ class PlanScreenState extends State<PlanScreen> {
                         child: Text(
                           _titleOf(l),
                           style: WorkoutType.display(
-                            size: 19,
+                            size: 22,
                             weight: FontWeight.w700,
                             color: tokens.text,
                           ),
@@ -194,25 +193,19 @@ class PlanScreenState extends State<PlanScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      StreamBuilder<int>(
-                        stream: _dayCountStream,
-                        builder: (context, snap) => Text(
-                          planEyebrow(l, snap.data),
-                          style: WorkoutType.mono(
-                            size: 11.5,
-                            color: tokens.faint,
-                            letterSpacing: 0.06 * 11.5,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 5),
                       Text(
                         l.planTitle,
                         style: WorkoutType.display(
                           size: 28,
-                          weight: FontWeight.w700,
                           color: tokens.text,
-                          letterSpacing: 28 * -0.02,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      StreamBuilder<int>(
+                        stream: _dayCountStream,
+                        builder: (context, snap) => Text(
+                          planEyebrow(l, snap.data),
+                          style: WorkoutType.body(size: 14, color: tokens.dim),
                         ),
                       ),
                     ],
@@ -328,14 +321,10 @@ class _BackButton extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: tokens.line),
-                color: tokens.surface,
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                color: tokens.surface2,
               ),
-              child: Transform.rotate(
-                angle: 3.14159, // 180° = point left
-                child: Icon(WIcons.chevron, size: 18, color: tokens.dim),
-              ),
+              child: Icon(WIcons.back, size: 20, color: tokens.text),
             ),
           ),
         ),
@@ -368,14 +357,14 @@ class _SegmentedToggle extends StatelessWidget {
             tokens: tokens,
             onTap: () => onSelect('split'),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _SegBtn(
             label: l.planTabExercises,
             active: activeTab == 'exercises',
             tokens: tokens,
             onTap: () => onSelect('exercises'),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _SegBtn(
             label: l.planTabTargets,
             active: activeTab == 'targets',
@@ -404,41 +393,32 @@ class _SegBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: PressableScale(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Center(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                // 36 tall at 1.0×; grows with a large text size.
-                constraints: const BoxConstraints(minHeight: 36),
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(36 * 0.6),
-                  color: active ? tokens.surface3 : Colors.transparent,
-                  border: Border.all(
-                    color: active ? tokens.lineStrong : tokens.line,
-                  ),
-                  boxShadow: active
-                      ? [
-                          BoxShadow(
-                            color: tokens.lineStrong,
-                            blurRadius: 0,
-                            spreadRadius: 0,
-                          ),
-                        ]
-                      : null,
-                ),
-                alignment: Alignment.center,
-                child: FitLabel(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: WorkoutType.mono(
-                    size: 12.5,
-                    weight: FontWeight.w700,
-                    color: active ? tokens.text : tokens.faint,
+      child: Semantics(
+        button: true,
+        selected: active,
+        child: Material(
+          color: active ? tokens.surface2 : tokens.sunken,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            side: BorderSide(color: active ? tokens.lineStrong : tokens.line),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            focusColor: tokens.focus.withValues(alpha: .16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Center(
+                  child: FitLabel(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: WorkoutType.body(
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: active ? tokens.text : tokens.dim,
+                    ),
                   ),
                 ),
               ),

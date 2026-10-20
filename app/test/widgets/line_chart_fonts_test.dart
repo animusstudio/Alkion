@@ -53,7 +53,7 @@ void main() {
   // JetBrains Mono advances every glyph 0.6 em; a family that never loaded
   // falls back to the test font's 1 em squares.
   test('axis labels draw in JetBrains Mono', () {
-    expect(_width('0000000000', chartLabelStyle(Colors.white)), closeTo(54, 1));
+    expect(_width('0000000000', chartLabelStyle(Colors.white)), closeTo(72, 1));
   });
 
   test('the value chip draws in JetBrains Mono', () {
@@ -72,10 +72,10 @@ void main() {
         return true;
       }),
     );
-    // Four y labels ("78" to "84") and "Jun" at 9px, then "82.5kg ×5" at
+    // Four y labels ("78" to "84") and "Jun" at 12px, then "82.5kg ×5" at
     // 12px, each 0.6 em per glyph. The test font draws 18, 27 and 108.
     expect(widths, [
-      for (final w in [10.8, 10.8, 10.8, 10.8, 16.2, 64.8]) closeTo(w, 0.1),
+      for (final w in [14.4, 14.4, 14.4, 14.4, 21.6, 64.8]) closeTo(w, 0.1),
     ]);
   });
 

@@ -1,10 +1,229 @@
 ---
 app: alkion
 stage: development
-observed: 2026-10-17
+observed: 2026-10-18
 ---
 
 # Alkion integrated acceptance (T7)
+
+## Current Android checkpoint (2026-10-18)
+
+Fresh driver and A2 runs at `3c04bed` passed both variants; independent evidence
+review passed. At `ef85e42`, the sixth lifecycle recorded fourteen successful
+captures, then failed during cold resume. Five explicit null-focus samples were
+followed by the expected app window at 0.6913 seconds; native window attestation
+then failed at 116 ms. Its compound guard does not identify the failed condition.
+The partial run and disks are retained without reset or re-preparation. Cold
+resume, closed-SQL rest, logging, finish and supported lifecycle remain unqualified.
+
+V4 source at `b1e4cfd` passed independent review, 43 compiled controller/window
+scenarios, 20 resolved protocol methods, both affected consumer facades and SDK
+packaging. Staged diagnostics distinguish narrowly bound readiness from fatal
+identity failures; only receipt metadata grows to 64 KiB. Native V4 remains unrun.
+
+## Previous Android checkpoint
+
+At `0e4ec4d`, a fresh API 36 AOSP x86_64 campaign passed all eleven driver
+cases and A2 update/rejected-signer checks in both variants; evidence review is
+pending. Earlier V2 previews independently passed app and SystemUI observation.
+In the fourth campaign, ordinary kill, notification-body routing, visible +30s
+routing and seven captures completed before an `incomplete_child` observer failure.
+That run remains FAIL; the post-action SQL oracle, cold actions, logging, finish
+and the supported variant were not reached.
+
+V3 source at `1ec85db` independently passed review, 17 compiled controller cases,
+30 protocol tests, affected consumer facades and SDK packaging. It retries only
+typed null-child samples within unchanged bounds; native V3 proof is unrun.
+File/provider, permission, restore and owner-device qualification remain unrun.
+
+## Earlier Android checkpoints
+
+Fresh campaign at `2566979` (API 36 AOSP x86_64): eleven driver cases and A2
+updates/rejected-signer checks passed in both variants. Lifecycle stopped before
+preparation installation when the killed process disappeared between `/proc`
+reads. Both apps remain at the accepted A2 version 39; its recognized preflight
+passes without clearing or rollback. Failed receipts/APKs/data are retained.
+The reviewed sampler/death-loop fix discards partial reads, polls terminating
+identities and requires fresh dual absence. Eligibility allows 14 seconds within
+the unchanged 30-second total; installed lifecycle retry remains unrun.
+The earlier retained native diagnostic passed on the cached branch only.
+
+Lifecycle retry at `a4499b8` passed development preparation and the actual
+ordinary-kill previous-process branch: exact PID/UID/start identity, stopped
+activity, platform kill and fresh process/package absence were observed. The
+subsequent notification-body step stopped with `ui_hierarchy_unavailable` after
+main version 41 installation. Preserve that partial state and all receipts;
+notification interaction, remaining lifecycle steps and the supported variant
+remain unrun. This run does not qualify lifecycle as a whole.
+
+A fresh campaign at `33ad6be` passed eleven driver cases and A2 in both variants;
+independent evidence review passed. Its lifecycle remains unrun. A separate
+observer preview at `1e5c449` captured the real dynamic notification shade with
+bound XML and screenshot. After an explicit Back, the app capture returned only
+five empty native containers despite visible workout UI. App semantics remain
+unqualified; bounded readiness is required before the fresh lifecycle run.
+
+## Android preparation (2026-10-17, local work)
+
+The [Android plan](../superpowers/plans/2026-10-17-android-owner-readiness.md)
+is in progress; these changes are local, with publication pending. T1 and its
+bounded startup fix at `0781189` passed independent code review, 23 focused tests
+(0 skips), analysis, formatting and both debug APK builds. Direct-Dart recovery
+checks passed on the earlier T1 inputs. Both variants coexist on the named
+disposable API 36 x86_64 emulator and reach account-free Welcome after in-place
+updates, without clearing storage. Native attestation handles the OS-owned
+`/data/user/0` alias while retaining owned-path link refusals. Full workout,
+lifecycle, document-provider and the remaining Android gates below remain unrun.
+
+The reviewed portable directory-flush fix at `69596ba` removes the ARM flag
+mismatch. Initial T5 driver phase **PASS** at `708b4f7` on a fresh named API 36
+AOSP x86_64 emulator, native SQLite 3.53.1: both development and supported
+installations completed all ten cases; the synthetic legacy-package neighbor's
+bytes remained unchanged. Cases cover directory fsync, atomic domain/outbox and
+replay, real deferred-COMMIT 787 recovery, watches/relisten, serialized production
+admission plus actual SQLite concurrent snapshots, coherent WAL backup with a
+hot-main negative control, native-handle/isolate ownership, two reopens and stale
+generation fencing. Handle/isolate ownership is within one OS process.
+
+The executed route used pinned FVM 3.44.0, selected JDK 21, a disposable debug key,
+an explicit emulator serial, and a coordinator-owned fresh receipt/output:
+`make -C app android-synthetic ALKION_SYNTHETIC_ACTION=driver` with those required
+`ALKION_AVD`, `ALKION_SERIAL`, `ALKION_RECEIPT` and `ALKION_OUTPUT` inputs.
+The historical receipt recorded the exact command, target details and APK bytes:
+
+| Installation at `708b4f7` | APK SHA-256 |
+| --- | --- |
+| `dev.animusstudio.alkion.dev` | `98d43d71cd343dad5a193f58ace7383d8a7ac334fd989338fa7ad03ca73e1ca8` |
+| `dev.animusstudio.alkion` | `2dfeab01db63757313aa2f84b0820c7835cf41e153717bcbd9676e8c73f69e69` |
+
+Two earlier development-only runs stopped on test setup: a new-record revision
+conflicted with the shared draft before COMMIT, then a writer inherited the
+reader's locked zone. Reviewed fixes preceded the fresh successful run; failed
+reports and installation data were retained at that time. Neither failed run
+qualifies its unreached cases or the supported variant. An added OS-process
+ownership case now passes in the same-source native Linux batch (11 cases,
+1 test, 0 skips); it checks a distinct child blocked while the native owner holds
+its lock, then succeeding after release with exact lock bytes and inventory preserved.
+Fresh Android attempt at `e532a82` failed on the development OS-process case:
+the child reported `flock: Bad file descriptor`; nine earlier cases passed,
+generation fencing and the supported variant were unreached. Raw receipts and
+installation data are retained. The reviewed direct-redirection test fix rejects
+unexpected child output; format, analysis and the existing host driver test pass.
+A fresh Android retry is required; this does not change the historical receipt.
+
+T5 overall remains **IN_PROGRESS**. OS-process ownership on Android, process-kill
+recovery, lifecycle/notifications
+and permission changes, actual document-provider failures, off-device delivery
+verification and separate fresh receiving restore remain unrun. ARM-device,
+physical-power-loss and the final signed installed-candidate gates
+remain open. Results apply to the recorded inputs; relevant source, signing or
+platform changes require affected checks again.
+
+The SAF proof adapter and isolated namespaced provider fixture passed independent
+source review, API 36 Java compilation, analysis and 12 host document tests. This
+prepares real picker/fault cases; installed provider behavior remains UNRUN.
+The guarded host route passed independent review after matching the receiving
+CLI's structured schema/inventory. Six affected controls and a real synthetic
+receiving verification passed (schema 3, 30 tables, 99 rows). This is host-file
+compatibility evidence; provider and physically off-device proof remain unrun.
+
+A2 preparation checkpoint, before the executed run below: source/host only.
+Shared helpers seed the normal
+variant app root with real repository/outbox, draft/timer, settings and original
+source evidence, close fully, then verify two host reopens. Seven native Linux
+scenarios pass, including changed domain, draft, source bytes, identity and
+generation refusals with exact database/identity/source bytes preserved. The
+explicit continuation harness accepts recognized complete driver receipts and
+audited same-run APKs; its fresh-driver guard still refuses existing packages.
+Same-signer higher-version installs, wrong-signer rejection and peer isolation
+on Android remain **UNRUN**, pending integrated source and execution. Independent
+source review passed after correcting ADB remote-argument quoting; faithful
+join-and-shell host controls cover guards, fingerprints and adversarial literals.
+Read-only inspection left a zero-byte WAL and 32 KiB SHM on the host; the rejected
+strict-absence control is retained. Peer evidence covers exact sidecar presence
+and bytes during a quiescent interval instead of omitting the WAL or deleting
+files. At this preparation checkpoint, no update APK or negative-signing key has
+been built or created. The initial Android preflight refused API 36 metadata
+that uses `appId`; the independently reviewed fix binds full UIDs through exact
+package results. Retained metadata fixtures and 66 host guard cases pass; the
+actual update retry remains unrun.
+
+Executed A2 phase at `920d8e1`: **PASS**, including independent evidence review.
+`make -C app android-synthetic ALKION_SYNTHETIC_ACTION=updates-check` and the
+recognized-base `updates` route both passed on the same named API 36 emulator.
+Both variants preserved covered state, profile/installation identity, generation
+and UID through versions 38 → 39. Higher-version wrong-signer APKs (40) returned
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE`; installed APK/metadata/data remained exact.
+Peer, prior-driver and synthetic neighbor checks passed. The historical receipt
+recorded all six APKs, audits and raw reports as retained. Only disposable signing
+material was used. This is the
+initial update phase; the final functional candidate still needs affected proof.
+
+Artifact availability (2026-10-18): the temporary APKs, emulator data and raw
+execution receipts from these Android campaigns are unavailable. The accepted
+driver and A2 PASS results remain recorded as historical results above; they are
+not fresh proof and cannot be re-executed from those artifacts. Any new
+qualification must use a fresh campaign and its own receipts.
+
+Lifecycle source preparation, 2026-10-18 (base `6a3b756`): a recognized-A2 route
+alternates versions 40–44 between closed normal-root helper checkpoints and the
+literal `lib/main.dart` APK. Real shade/body/cold `+30s` taps are distinguished
+from injected native-route replay/fence controls. The native scheduled-payload
+mirror and exact package/UID notification record provide routing evidence only;
+the closed-store checkpoint verifies the committed +60 total. Real UI logging,
+minimize, ordinary kill/reopen, one finish and another reopen have a separate
+closed checkpoint, with old operations, identity and original source preserved.
+At this preparation checkpoint, source/host checks were preparation only and no
+lifecycle APK build or Android execution had run. The later candidate attempt
+and its guard refusal are recorded below. Permission denial/revocation,
+exact/inexact capability, force-stop, provider/receiving restore and the final
+candidate remain **UNRUN**.
+The visual screenshot target is deferred; visual QA is not a prerequisite for
+functional offline or final device qualification. Accessibility and functional
+layout checks remain required as part of workflow acceptance.
+The shared native SQLite checkpoint suite passes 9 tests, 0 skips; it includes
+bad timer/logged value, extra-workout and changed-identity/source refusals without
+repair. Shell controls pass 108 host cases using fake transport/FVM, including
+current native-mirror binding and exclusive marker publication. Analysis and
+formatting pass (349 files, 0 changes). These checks qualify the helper/guard
+source only; they provide no installed UI, PendingIntent or process-death PASS.
+
+First-start restore source passed independent review, including same-variant
+checks and changed/linked staging refusal before identity publication. Recovery
+tests passed 71 cases; Linux process proof passed 26, including six fresh-restore
+SIGKILL boundaries. Installed Android restore remains unrun.
+Runtime-owned notification actions passed independent review after two ordering
+fixes: uncertain COMMITs reconcile before later saves/token issuance, and logging
+retains queued rest commands with their original timestamps. The focused suite
+passed 77 tests, 0 skips; analysis and formatting passed. Actions are issued to
+the visible selected owner, with atomic receipt/draft/timer fencing and no headless
+writer. Denied/inexact scheduling is explicit. These are host/source results; the
+fixed installed plugin/action, permission and lifecycle checks remain T5 UNRUN.
+Owner signing custody, the final functional candidate, owner device/storage,
+real transfer and sync remain unqualified. The selected owner route is a dedicated
+Alkion key with manual signed APK updates. Preserve the committed UI baseline and
+completed UI work; no rollback is implied. Functional behavior, accessibility and
+functional layout checks remain required. New visual studies, wireframes,
+components, styling and visual QA are deferred until functional offline flows and
+the functional R3 Animus auth/sync integration are complete.
+
+Lifecycle execution update (2026-10-18): a candidate attempt built APK versions
+40–44 and completed the development preparation step at version 40. The
+ordinary-kill guard then refused before notification actions or reopen/logging
+checks ran. This is a failed attempt, not a lifecycle PASS. T5 remains
+**IN_PROGRESS**; prior temporary execution receipts are unavailable, so the next
+campaign must be fresh and cannot continue from that attempt. No process-death,
+notification-action or reopen/logging result is established by it.
+
+Android publication correction (2026-10-18): the ninth backup attempt failed
+before SAF in the old hard-link publisher. A separate bounded cache probe
+observed hard-link permission denial; the original backup's errno and cause
+remain unknown. The correction uses a min24 NDK atomic no-replace rename on
+Android and retains Linux hard links, with consumed-temporary cleanup and
+published-final preservation. Focused host filesystem/checkpoint tests and
+min24 ABI compilation qualify source behavior only. Actual app-context
+publication, API24–29 execution and the new Documents/receiving/CAP campaign
+remain **UNRUN**. Host proof publication is a separate dependency.
 
 ## History numeric overflow (2026-10-17)
 
@@ -192,7 +411,7 @@ remainder is UNRUN or a finding. **UNRUN/BLOCKED**, nothing ran.
 | AC-13 | PASS | `transfer/import_test.dart`: AC-13 changed source with overlay, absence kept or successor-deleted, absent slot, exercise and sets, repeated imports, and D2 supersession. Integrated changed reimport yields one absence review. | — |
 | AC-14 | PASS (synthetic) | `transfer/correspondence_test.dart`. | Real lookup and verification are **UNRUN** (R3). |
 | AC-15 | PASS (synthetic seam) | `transfer/quarantine_test.dart` (exact malformed, expired, temp and unknown bytes; ordered uncertain queue; failed read is not empty); `recovery/backup_restore_test.dart` (AC-15 evidence survives backup and separate restore). The integrated flow leaves decoys untouched. There is no app loader by decision ([owner gates](owner-gates.md#incoming-quarantine-wiring-t5t6-carry)). | A complete legacy backup is not claimed. Owner legacy capture is **UNRUN**. |
-| AC-16 | PASS | `transfer/export_test.dart` (domain exactness and coverage, history exclusions and non-importability, compatibility round trip, exact originals with atomic publication, coherence under concurrent writes). All four integrated exports. | Without hard links, export fails generically (known limit). |
+| AC-16 | PASS | `transfer/export_test.dart` (domain exactness and coverage, history exclusions and non-importability, compatibility round trip, exact originals with atomic publication, coherence under concurrent writes). All four integrated exports. | Android no-replace publication runtime qualification remains **UNRUN**; unsupported native operations fail closed. |
 | AC-17 | PASS (process-crash and injected scope) | `alkion-backup-recovery`: WAL-tail backup and receiving copy; flipped, truncated, missing-line, tampered-inventory, unsupported-version and missing-file refusal; newer schema; foreign profile; SIGKILL during publication; separate-storage restore and its interruption; two reopens; stale process; `profile_in_use`; hot-copy negative control. `recovery/backup_restore_test.dart` (WAL-only commit, injected `ENOSPC` while writing and staging). Integrated backup, restore and separate restore. | Physical `ENOSPC` and power loss **UNRUN**; Android/off-device media **UNRUN**. |
 | AC-18 | PASS (owned synthetic installation) | Backup proof: post-backup edit, delete, draft change, pending attempt, rejected and acknowledged outcomes, and a reimport are reconciled as reviews; unreadable previous generation gives an explicit unknown loss boundary; interruption and abandon cases; the naive replacement negative control. `recovery_ui_test.dart` (in-app restore and interrupted launch). The integrated flow keeps newer work as a review with transport blocked. | Global multi-device writer handoff is **UNRUN** (milestone O). |
 | AC-19 | PASS (Linux) | Integrated flows, layout and focused regression tests (above), with no tolerated exception or split; FVM format, analyze, full suite and Linux build (receipts below). | Android is **UNRUN** (outside this Linux claim; see AC-2/AC-8 and [owner gates](owner-gates.md)). |

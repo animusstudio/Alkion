@@ -116,8 +116,8 @@ class _AppShellState extends State<AppShell> {
   Future<void> _openProfile() async {
     await Navigator.of(context, rootNavigator: true).push<void>(
       PageRouteBuilder<void>(
-        transitionDuration: const Duration(milliseconds: 250),
-        reverseTransitionDuration: const Duration(milliseconds: 200),
+        transitionDuration: Motion.of(context, Motion.base),
+        reverseTransitionDuration: Motion.of(context, Motion.base),
         pageBuilder: (_, __, ___) => ProfileScreen(
           onClose: () => Navigator.of(context, rootNavigator: true).pop(),
           onLogout: widget.onLogout,
@@ -157,6 +157,9 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final manager = context.watch<SessionManager>();
+    final reserveIndicator =
+        manager.active != null && !manager.screenOpen && _index != 0;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -188,26 +191,29 @@ class _AppShellState extends State<AppShell> {
           children: [
             _TabFade(
               index: _index,
-              child: IndexedStack(
-                index: _index,
-                children: [
-                  TodayScreen(
-                    onStart: _start,
-                    onOpenExercise: _openExercise,
-                    onOpenProfile: _openProfile,
-                    onResume: () {
-                      final m = context.read<SessionManager>();
-                      launcher.openActiveSession(context, m);
-                    },
-                    auth: widget.auth,
-                  ),
-                  ProgressScreen(
-                    key: ValueKey(_progressTarget),
-                    initialTarget: _progressTarget,
-                  ),
-                  const HistoryScreen(),
-                  PlanScreen(key: _planKey),
-                ],
+              child: Padding(
+                padding: EdgeInsets.only(top: reserveIndicator ? 60 : 0),
+                child: IndexedStack(
+                  index: _index,
+                  children: [
+                    TodayScreen(
+                      onStart: _start,
+                      onOpenExercise: _openExercise,
+                      onOpenProfile: _openProfile,
+                      onResume: () {
+                        final m = context.read<SessionManager>();
+                        launcher.openActiveSession(context, m);
+                      },
+                      auth: widget.auth,
+                    ),
+                    ProgressScreen(
+                      key: ValueKey(_progressTarget),
+                      initialTarget: _progressTarget,
+                    ),
+                    const HistoryScreen(),
+                    PlanScreen(key: _planKey),
+                  ],
+                ),
               ),
             ),
             // An opaque strip under the status bar, so scrolled content

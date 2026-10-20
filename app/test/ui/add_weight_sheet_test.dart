@@ -99,63 +99,73 @@ void main() {
     expect(find.text('81.4'), findsOneWidget);
   });
 
-  testWidgets(
-    'tapping Save while a field is open persists the typed value, not '
-    'the pre-edit one',
-    (tester) async {
-      // THE critical regression: nothing on Android unfocuses a TextField from
-      // a tap outside it (tap-outside-to-unfocus only fires for touch on web),
-      // and Save's own tap handler never requests focus either — so without
-      // flushing the in-flight edit as the FIRST statement of _save, this
-      // writes the seeded 70.0 instead of what was typed.
-      addTearDown(() async {
-        await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-      });
-      await tester.pumpWidget(wrapped());
-      await tester.pumpAndSettle();
-      await tester.runAsync(() => tester.tap(find.text('open')));
-      await tester.pumpAndSettle();
+  for (final reducedMotion in [false, true]) {
+    testWidgets(
+      reducedMotion
+          ? 'reduced motion direct Save commits 81.4 before close'
+          : 'tapping Save while a field is open persists the typed value, not the pre-edit one',
+      (tester) async {
+        if (reducedMotion) {
+          tester.platformDispatcher.accessibilityFeaturesTestValue =
+              FakeAccessibilityFeatures(disableAnimations: true);
+          addTearDown(
+            tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+          );
+        }
+        // THE critical regression: nothing on Android unfocuses a TextField from
+        // a tap outside it (tap-outside-to-unfocus only fires for touch on web),
+        // and Save's own tap handler never requests focus either — so without
+        // flushing the in-flight edit as the FIRST statement of _save, this
+        // writes the seeded 70.0 instead of what was typed.
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+        });
+        await tester.pumpWidget(wrapped());
+        await tester.pumpAndSettle();
+        await tester.runAsync(() => tester.tap(find.text('open')));
+        await tester.pumpAndSettle();
 
-      await pumpUntilFound(tester, find.text('70.0'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('70.0'));
-      await tester.pumpAndSettle();
+        await pumpUntilFound(tester, find.text('70.0'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('70.0'));
+        await tester.pumpAndSettle();
 
-      // Type but do NOT submit or blur — tap Save directly while the field is
-      // still focused and open.
-      await tester.enterText(find.byType(TextField), '81.4');
-      await tester.pump();
+        // Type but do NOT submit or blur — tap Save directly while the field is
+        // still focused and open.
+        await tester.enterText(find.byType(TextField), '81.4');
+        await tester.pump();
 
-      await tester.runAsync(() => tester.tap(find.text('Save entry')));
-      await tester.pump();
+        await tester.runAsync(() => tester.tap(find.text('Save entry')));
+        await tester.pump();
 
-      // Observe the UI's post-COMMIT close before querying the ordered owner.
-      for (
-        var i = 0;
-        i < 100 && find.text('Save entry').evaluate().isNotEmpty;
-        i++
-      ) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 25)),
-        );
-        await tester.pump(const Duration(milliseconds: 25));
-      }
-      expect(find.text('Save entry'), findsNothing);
-      final rows = (await tester.runAsync(
-        () => database
-            .getAll(
-              'SELECT CAST(weight_kg AS REAL) AS weight FROM bodyweight_logs',
-            )
-            .timeout(const Duration(seconds: 5)),
-      ))!;
+        // Observe the UI's post-COMMIT close before querying the ordered owner.
+        for (
+          var i = 0;
+          i < 100 && find.text('Save entry').evaluate().isNotEmpty;
+          i++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 25)),
+          );
+          await tester.pump(const Duration(milliseconds: 25));
+        }
+        expect(find.text('Save entry'), findsNothing);
+        final rows = (await tester.runAsync(
+          () => database
+              .getAll(
+                'SELECT CAST(weight_kg AS REAL) AS weight FROM bodyweight_logs',
+              )
+              .timeout(const Duration(seconds: 5)),
+        ))!;
 
-      expect(rows, hasLength(1));
-      expect((rows.first['weight'] as num).toDouble(), closeTo(81.4, 0.005));
-    },
-  );
+        expect(rows, hasLength(1));
+        expect((rows.first['weight'] as num).toDouble(), closeTo(81.4, 0.005));
+      },
+    );
+  }
 
   testWidgets(
     'tapping + while a differing edit is open builds on the typed value',

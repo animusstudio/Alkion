@@ -8,11 +8,15 @@ import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/active_session_screen.dart';
 import 'package:alkion/session/session_manager.dart';
 import 'package:alkion/session/set_line.dart';
+import 'package:alkion/session/exercise_picker_sheet.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
+import '../support/l10n_harness.dart';
+import '../support/app_fonts.dart';
+import '../support/layout_expect.dart';
 
 /// Mounts [ActiveSessionScreen] with only the providers it reads. It never
 /// touches `db` unless a test taps "Add exercise" or finishes the workout,
@@ -100,6 +104,74 @@ Future<void> _teardown(WidgetTester tester) =>
     tester.pumpWidget(const SizedBox());
 
 void main() {
+  setUpAll(preloadAppFonts);
+  for (final code in ['en', 'de', 'es', 'it']) {
+    testWidgets(
+      'live exercise picker keeps clear, keyboard targets and exact identity in $code at 320dp 2x',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 800);
+        tester.view.devicePixelRatio = 1;
+        tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        Exercise? picked;
+        await tester.pumpWidget(
+          wrapL10n(
+            Builder(
+              builder: (context) => TextButton(
+                onPressed: () async {
+                  picked = await showExercisePicker(
+                    context,
+                    exercises: [_bench, _compound],
+                  );
+                },
+                child: const Text('Open'),
+              ),
+            ),
+            locale: Locale(code),
+          ),
+        );
+        await tester.tap(find.text('Open'));
+        await tester.pumpAndSettle();
+        final field = find.byType(TextField);
+        await tester.enterText(field, 'Bench');
+        await tester.pumpAndSettle();
+        expect(find.text('Bench'), findsWidgets);
+        expect(find.text('Squat'), findsNothing);
+        final focus = tester
+            .widget<EditableText>(find.byType(EditableText))
+            .focusNode;
+        final clear = find.byTooltip(
+          MaterialLocalizations.of(tester.element(field)).clearButtonTooltip,
+        );
+        expect(tester.getSize(clear).width, greaterThanOrEqualTo(48));
+        expect(tester.getSize(clear).height, greaterThanOrEqualTo(48));
+        expect(tester.getRect(clear).bottom, lessThanOrEqualTo(560));
+        await tester.tap(clear);
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+        expect(
+          tester.widget<EditableText>(find.byType(EditableText)).focusNode,
+          same(focus),
+        );
+        expect(focus.hasFocus, isTrue);
+        expect(find.text('Bench'), findsOneWidget);
+        expect(find.text('Squat'), findsOneWidget);
+        expectNoSplitWords(tester);
+        await tester.ensureVisible(find.text('Squat'));
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(find.text('Squat')).bottom,
+          lessThanOrEqualTo(560),
+        );
+        await tester.tap(find.text('Squat'));
+        await tester.pumpAndSettle();
+        expect(picked, same(_compound));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets('logging a warm-up starts no rest', (tester) async {
     final controller = ActiveSessionController();
     final warm = SetState(

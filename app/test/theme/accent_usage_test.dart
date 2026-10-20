@@ -44,7 +44,7 @@ void main() {
   );
 
   testWidgets(
-    'light theme: a focused text field draws its floating label in accentText',
+    'light theme: a focused text field draws its floating label in focus blue',
     (tester) async {
       final theme = buildTheme(Brightness.light, accents[3]);
       final t = theme.extension<WorkoutTokens>()!;
@@ -66,7 +66,7 @@ void main() {
                 .first,
           )
           .style;
-      expect(style.color, t.accentText);
+      expect(style.color, t.focus);
       expect(t.accentText, isNot(t.accent));
     },
   );
@@ -116,7 +116,7 @@ void main() {
     return b is WidgetStateInputBorder ? b.resolve(states) : b;
   }
 
-  testWidgets('light theme: a default focused field has an accentText border', (
+  testWidgets('light theme: a default focused field has a focus-blue border', (
     tester,
   ) async {
     final t = buildTheme(
@@ -127,11 +127,11 @@ void main() {
       tester,
       const InputDecoration(labelText: 'Email'),
     );
-    expect(b!.borderSide.color, t.accentText);
+    expect(b!.borderSide.color, t.focus);
     expect(b.borderSide.width, 2);
     expect(
       (b as OutlineInputBorder).borderRadius,
-      BorderRadius.circular(AppRadius.radius),
+      BorderRadius.circular(AppRadius.control),
     );
   });
 

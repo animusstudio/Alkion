@@ -171,9 +171,9 @@ class _TargetRow extends StatelessWidget {
     final labelColor = hasGoal ? tokens.text : tokens.faint;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: tokens.surface,
           border: Border.all(color: tokens.line),
@@ -189,7 +189,7 @@ class _TargetRow extends StatelessWidget {
                   localizedMuscle(context, muscle),
                   style: WorkoutType.body(
                     size: 15.5,
-                    weight: FontWeight.w600,
+                    weight: FontWeight.w700,
                     color: labelColor,
                   ),
                 ),
@@ -197,7 +197,7 @@ class _TargetRow extends StatelessWidget {
                 FitLabel(
                   hasGoal ? l.targetsSetsPerWeek : l.targetsNoGoal,
                   maxLines: 2,
-                  style: WorkoutType.mono(size: 11, color: tokens.faint),
+                  style: WorkoutType.body(size: 12, color: tokens.faint),
                 ),
               ],
             );

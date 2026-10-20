@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -10,11 +11,11 @@ import 'fit_label.dart';
 /// A horizontal row of day chips showing the weekly rotation state.
 ///
 /// Each chip shows the weekday label, the day name, and a status indicator:
-///   • `isNext` → accent background + 'NEXT' label
+///   • `isNext` → coral 'NEXT' label
 ///   • `done`   → surface-3 pill with a check icon
 ///   • else     → a 5px dot in `lineStrong`
 ///
-/// The fill (accent background) follows the current selection, not `isNext`:
+/// The neutral selected surface follows the current selection, not `isNext`:
 /// with no [selectedIndex] given it defaults to the `isNext` chip, matching
 /// the previous non-interactive behaviour.
 ///
@@ -24,7 +25,7 @@ import 'fit_label.dart';
 /// trailing Custom chip calls it with `days.length`.
 ///
 /// Visual spec: `screen-today.jsx` → `WeekStrip`.
-class WeekStrip extends StatelessWidget {
+class WeekStrip extends StatefulWidget {
   const WeekStrip({
     super.key,
     required this.days,
@@ -50,40 +51,110 @@ class WeekStrip extends StatelessWidget {
   final ValueChanged<int>? onSelect;
 
   @override
+  State<WeekStrip> createState() => _WeekStripState();
+}
+
+class _WeekStripState extends State<WeekStrip> {
+  final _scroll = ScrollController();
+  (int, double, double, int)? _reveal;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final chipRadius = AppRadius.radius * 0.7;
-    final filled = selectedIndex ?? days.indexWhere((d) => d.isNext);
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < days.length; i++) ...[
-            if (i > 0) const SizedBox(width: 7),
-            Expanded(
-              child: _DayChip(
-                key: ValueKey('week-chip-$i'),
-                day: days[i],
-                filled: i == filled,
-                onTap: onSelect == null ? null : () => onSelect!(i),
-                tokens: tokens,
-                chipRadius: chipRadius,
+    final filled =
+        widget.selectedIndex ?? widget.days.indexWhere((d) => d.isNext);
+    return LayoutBuilder(
+      builder: (context, box) {
+        final width = math.max(
+          64.0,
+          MediaQuery.textScalerOf(context).scale(52),
+        );
+        final count = widget.days.length + (widget.onSelect == null ? 0 : 1);
+        final total =
+            widget.days.length * width +
+            (widget.onSelect == null ? 0 : 48) +
+            math.max(0, count - 1) * 8;
+        final overflow = total > box.maxWidth;
+        final signature = (filled, box.maxWidth, width, count);
+        if (overflow && _reveal != signature) {
+          _reveal = signature;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted ||
+                !_scroll.hasClients ||
+                _reveal != signature ||
+                filled < 0) {
+              return;
+            }
+            final selectedWidth = filled == widget.days.length ? 48.0 : width;
+            final offset =
+                filled * (width + 8) + selectedWidth / 2 - box.maxWidth / 2;
+            _scroll.jumpTo(offset.clamp(0.0, _scroll.position.maxScrollExtent));
+          });
+        } else if (!overflow) {
+          _reveal = null;
+        }
+        final children = <Widget>[
+          for (var i = 0; i < widget.days.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            if (overflow)
+              SizedBox(
+                width: width,
+                child: _DayChip(
+                  key: ValueKey('week-chip-$i'),
+                  day: widget.days[i],
+                  filled: i == filled,
+                  onTap: widget.onSelect == null
+                      ? null
+                      : () => widget.onSelect!(i),
+                  tokens: tokens,
+                  chipRadius: AppRadius.control,
+                ),
+              )
+            else
+              Expanded(
+                child: _DayChip(
+                  key: ValueKey('week-chip-$i'),
+                  day: widget.days[i],
+                  filled: i == filled,
+                  onTap: widget.onSelect == null
+                      ? null
+                      : () => widget.onSelect!(i),
+                  tokens: tokens,
+                  chipRadius: AppRadius.control,
+                ),
               ),
-            ),
           ],
-          if (onSelect != null) ...[
-            const SizedBox(width: 7),
+          if (widget.onSelect != null) ...[
+            if (widget.days.isNotEmpty) const SizedBox(width: 8),
             _CustomChip(
               key: const ValueKey('week-chip-custom'),
-              filled: filled == days.length,
-              onTap: () => onSelect!(days.length),
+              filled: filled == widget.days.length,
+              onTap: () => widget.onSelect!(widget.days.length),
               tokens: tokens,
-              chipRadius: chipRadius,
+              chipRadius: AppRadius.control,
             ),
           ],
-        ],
-      ),
+        ];
+        final row = IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        );
+        return overflow
+            ? SingleChildScrollView(
+                controller: _scroll,
+                scrollDirection: Axis.horizontal,
+                child: row,
+              )
+            : row;
+      },
     );
   }
 }
@@ -108,8 +179,8 @@ class _DayChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDone = day.done;
 
-    final bgColor = filled ? tokens.accent : tokens.surface;
-    final borderColor = filled ? Colors.transparent : tokens.line;
+    final bgColor = filled ? tokens.surface2 : tokens.surface;
+    final borderColor = filled ? tokens.lineStrong : tokens.line;
     final weekdayLabel = day.weekday != null
         ? weekdayShort(
             day.weekday!,
@@ -117,64 +188,63 @@ class _DayChip extends StatelessWidget {
           )
         : '';
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Container(
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(chipRadius),
-            border: Border.all(color: borderColor),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Weekday label — a 2–3 letter code: scales down, never wraps.
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  weekdayLabel,
-                  maxLines: 1,
-                  softWrap: false,
-                  style: WorkoutType.mono(
-                    size: 9.5,
-                    color: filled
-                        ? tokens.accentInk.withValues(alpha: 0.7)
-                        : tokens.faint,
+    return Semantics(
+      button: onTap != null,
+      selected: filled,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Container(
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(chipRadius),
+              border: Border.all(color: borderColor),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Weekday label — a 2–3 letter code: scales down, never wraps.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    weekdayLabel,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: WorkoutType.body(size: 12, color: tokens.dim),
+                    textAlign: TextAlign.center,
                   ),
+                ),
+                const SizedBox(height: 4),
+                // Day name — two lines, shrinks a little, then ellipsizes.
+                FitLabel(
+                  day.name,
+                  maxLines: 2,
                   textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 4),
-              // Day name — two lines, shrinks a little, then ellipsizes.
-              FitLabel(
-                day.name,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                style: WorkoutType.display(
-                  size: 13,
-                  weight: FontWeight.w700,
-                  color: filled ? tokens.accentInk : tokens.text,
-                  letterSpacing: 0,
-                ),
-              ),
-              // Status slot — 14 tall at 1.0×, growing with the text size so
-              // NEXT is never clipped.
-              SizedBox(
-                height: MediaQuery.textScalerOf(context).scale(14),
-                child: Center(
-                  child: _StatusIndicator(
-                    isNext: day.isNext,
-                    isDone: isDone,
-                    filled: filled,
-                    tokens: tokens,
+                  style: WorkoutType.body(
+                    size: 14,
+                    weight: FontWeight.w700,
+                    color: tokens.text,
+                    letterSpacing: 0,
                   ),
                 ),
-              ),
-            ],
+                // Status slot — 14 tall at 1.0×, growing with the text size so
+                // NEXT is never clipped.
+                SizedBox(
+                  height: MediaQuery.textScalerOf(context).scale(18),
+                  child: Center(
+                    child: _StatusIndicator(
+                      isNext: day.isNext,
+                      isDone: isDone,
+                      filled: filled,
+                      tokens: tokens,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -202,11 +272,10 @@ class _StatusIndicator extends StatelessWidget {
         AppLocalizations.of(context).weekStripNext,
         maxLines: 1,
         softWrap: false,
-        style: WorkoutType.mono(
-          size: 9,
+        style: WorkoutType.body(
+          size: 12,
           weight: FontWeight.w700,
-          color: filled ? tokens.accentInk : tokens.accentText,
-          letterSpacing: 0.06 * 9,
+          color: tokens.accentText,
         ),
       );
       // One line always: a narrow chip scales it down rather than wrapping.
@@ -220,11 +289,7 @@ class _StatusIndicator extends StatelessWidget {
           children: [
             next,
             const SizedBox(width: 3),
-            Icon(
-              WIcons.check,
-              size: 10,
-              color: filled ? tokens.accentInk : tokens.accentText,
-            ),
+            Icon(WIcons.check, size: 10, color: tokens.accentText),
           ],
         ),
       );
@@ -270,8 +335,10 @@ class _CustomChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
+      selected: filled,
       label: AppLocalizations.of(context).weekStripCustom,
       excludeSemantics: true,
+      onTap: onTap,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
@@ -279,17 +346,11 @@ class _CustomChip extends StatelessWidget {
           width: 48,
           constraints: const BoxConstraints(minHeight: 48),
           decoration: BoxDecoration(
-            color: filled ? tokens.accent : tokens.surface,
+            color: filled ? tokens.surface2 : tokens.surface,
             borderRadius: BorderRadius.circular(chipRadius),
-            border: Border.all(
-              color: filled ? Colors.transparent : tokens.line,
-            ),
+            border: Border.all(color: filled ? tokens.lineStrong : tokens.line),
           ),
-          child: Icon(
-            WIcons.plus,
-            size: 20,
-            color: filled ? tokens.accentInk : tokens.dim,
-          ),
+          child: Icon(WIcons.plus, size: 20, color: tokens.dim),
         ),
       ),
     );

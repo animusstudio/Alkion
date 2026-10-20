@@ -38,15 +38,12 @@ class SetValuesEditor extends StatelessWidget {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
 
-    TextStyle caption() => WorkoutType.mono(
-      size: 10,
-      color: tokens.faint,
-      letterSpacing: 0.08 * 10,
-    );
+    TextStyle caption() =>
+        WorkoutType.body(size: 12, weight: FontWeight.w700, color: tokens.dim);
     // Text keeps the card's inset; the rulers run the card's full width so
     // their ruled edge reads as part of the card, fading into its sides.
     Widget inset(Widget child) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: child,
     );
 

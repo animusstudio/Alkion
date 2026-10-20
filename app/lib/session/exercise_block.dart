@@ -8,6 +8,7 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../widgets/pr_badge.dart';
+import '../widgets/fit_label.dart';
 import '../widgets/w_dialog.dart';
 import 'active_session_controller.dart';
 import 'live_set_card.dart';
@@ -117,7 +118,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         '${ex.muscleGroup} · ${resolved.workSets}×${resolved.repLow}–${resolved.repHigh} @ RIR $rirStr';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: tokens.surface,
         borderRadius: BorderRadius.circular(AppRadius.radius),
@@ -130,17 +131,15 @@ class _ExerciseBlockState extends State<ExerciseBlock>
           // ── Header ─────────────────────────────────────────────────────
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            // The block holding the live set stays open.
             onTap: containsLive
                 ? null
                 : () => setState(() => block.expanded = !block.expanded),
             onLongPress: widget.onLongPressHeader,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+              padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Completion badge — sizes to its count (min 40dp), so
-                  // "2/3" stays whole at large text.
                   Container(
                     key: ValueKey('block-badge-${ex.id}'),
                     constraints: const BoxConstraints(
@@ -149,14 +148,12 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     decoration: BoxDecoration(
-                      color: allDone ? tokens.accent : tokens.surface3,
-                      borderRadius: BorderRadius.circular(
-                        AppRadius.radius * 0.5,
-                      ),
+                      color: allDone ? tokens.accent : tokens.surface2,
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     alignment: Alignment.center,
                     child: allDone
-                        ? Icon(Icons.check, size: 18, color: tokens.accentInk)
+                        ? Icon(WIcons.check, size: 18, color: tokens.accentInk)
                         : Text(
                             '$doneWorking/${working.length}',
                             maxLines: 1,
@@ -173,75 +170,76 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        FitLabel(
                           ex.name,
+                          maxLines: 2,
                           style: WorkoutType.body(
-                            size: 15,
-                            weight: FontWeight.w600,
+                            size: 16,
+                            weight: FontWeight.w700,
                             color: tokens.text,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
+                        const SizedBox(height: 4),
+                        FitLabel(
                           subLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: WorkoutType.mono(
-                            size: 10.5,
-                            color: tokens.faint,
-                          ),
+                          maxLines: 3,
+                          style: WorkoutType.body(size: 12, color: tokens.dim),
                         ),
-                      ],
-                    ),
-                  ),
-                  if (top.topKg > 0) ...[
-                    const SizedBox(width: 4),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text.rich(
-                          TextSpan(
+                        if (top.topKg > 0) ...[
+                          const SizedBox(height: 8),
+                          Row(
                             children: [
-                              TextSpan(
-                                text: unit.fmtWt(top.topKg),
-                                style: WorkoutType.mono(
-                                  size: 14,
-                                  weight: FontWeight.w700,
-                                  color: tokens.text,
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text.rich(
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: unit.fmtWt(top.topKg),
+                                          style: WorkoutType.mono(
+                                            size: 14,
+                                            weight: FontWeight.w700,
+                                            color: tokens.text,
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: unit.uLabel,
+                                          style: WorkoutType.mono(
+                                            size: 12,
+                                            color: tokens.dim,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    maxLines: 1,
+                                    softWrap: false,
+                                  ),
                                 ),
                               ),
-                              TextSpan(
-                                text: unit.uLabel,
-                                style: WorkoutType.mono(
-                                  size: 10,
-                                  color: tokens.faint,
-                                ),
-                              ),
+                              if (top.isPr) ...[
+                                const SizedBox(width: 8),
+                                const PRBadge(small: true),
+                              ],
                             ],
                           ),
-                        ),
-                        if (top.isPr) ...[
-                          const SizedBox(height: 2),
-                          const PRBadge(small: true),
                         ],
                       ],
                     ),
-                  ],
+                  ),
                   Semantics(
                     button: true,
                     label: l.sessionExerciseOptions,
                     excludeSemantics: true,
-                    child: GestureDetector(
+                    child: IconButton(
                       key: ValueKey('block-menu-${ex.id}'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => widget.onMenu(block),
-                      child: SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: Icon(WIcons.more, size: 20, color: tokens.dim),
+                      onPressed: () => widget.onMenu(block),
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
                       ),
+                      icon: Icon(WIcons.more, size: 20, color: tokens.dim),
                     ),
                   ),
                 ],
@@ -345,10 +343,11 @@ class _RemoveSetBackground extends StatelessWidget {
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.only(right: 14),
       decoration: BoxDecoration(
-        color: tokens.danger,
-        borderRadius: BorderRadius.circular(AppRadius.radius * 0.5),
+        color: tokens.surface2,
+        border: Border.all(color: tokens.danger),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
-      child: Icon(WIcons.trash, size: 18, color: tokens.bg),
+      child: Icon(WIcons.trash, size: 18, color: tokens.danger),
     );
   }
 }

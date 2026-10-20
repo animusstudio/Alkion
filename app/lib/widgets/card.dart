@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 
-/// A styled card with `surface` background, `line` border, and radius 15.
+/// A styled card with `surface` background, `line` border, and 16dp plate corners.
 ///
-/// Visual spec: `docs/design_handoff_workout_tracker/design/app/ui.jsx` `Card`.
+/// Flat tonal plate shared by the existing app surfaces.
 class WCard extends StatelessWidget {
   const WCard({super.key, required this.child, this.padding, this.onTap});
 
@@ -24,7 +24,7 @@ class WCard extends StatelessWidget {
     Widget card = Container(
       decoration: BoxDecoration(
         color: tokens.surface,
-        borderRadius: BorderRadius.circular(AppRadius.radius),
+        borderRadius: BorderRadius.circular(AppRadius.panel),
         border: Border.all(color: tokens.line),
       ),
       padding: effectivePadding,

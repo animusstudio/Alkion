@@ -207,18 +207,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
         Text(
           l.alkionCompatibility,
-          style: WorkoutType.mono(size: 10, color: tokens.faint),
+          style: WorkoutType.body(size: 12, color: tokens.faint),
         ),
         if (volume != null && volume.known != volume.total)
           Text(
             l.alkionKnownSubtotal(volume.known, volume.total),
-            style: WorkoutType.mono(size: 10, color: tokens.faint),
+            style: WorkoutType.body(size: 12, color: tokens.faint),
           ),
         if (volumeNote != null)
           FitLabel(
             volumeNote,
             maxLines: 4,
-            style: WorkoutType.mono(size: 10, color: tokens.faint),
+            style: WorkoutType.mono(size: 12, color: tokens.faint),
           ),
         const SizedBox(height: 24),
 
@@ -227,14 +227,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
             AppLocalizations.of(context).alkionDateWindowUnavailable(
               sessions.where((s) => !s.dateAvailable).length,
             ),
-            style: WorkoutType.mono(size: 10, color: tokens.faint),
+            style: WorkoutType.mono(size: 12, color: tokens.faint),
           ),
         // Empty state
         if (sessions.isEmpty)
           Center(
             child: Text(
               AppLocalizations.of(context).historyEmpty,
-              style: WorkoutType.mono(size: 13, color: tokens.faint),
+              style: WorkoutType.body(size: 13, color: tokens.faint),
             ),
           ),
 
@@ -245,7 +245,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           for (final session in groups[wk]!)
             Padding(
               key: ValueKey(session.id),
-              padding: const EdgeInsets.only(bottom: 9),
+              padding: const EdgeInsets.only(bottom: 12),
               child: SessionCard(
                 session: session,
                 catalogMap: catalogMap,
@@ -352,22 +352,13 @@ class _Header extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          l.historySessionsLogged(sessionCount),
-          style: WorkoutType.mono(
-            size: 11.5,
-            color: tokens.faint,
-            letterSpacing: 0.06 * 11.5,
-          ),
-        ),
-        const SizedBox(height: 5),
-        Text(
           l.historyTitle,
-          style: WorkoutType.display(
-            size: 28,
-            weight: FontWeight.w700,
-            color: tokens.text,
-            letterSpacing: 28 * -0.02,
-          ),
+          style: WorkoutType.display(size: 28, color: tokens.text),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          l.historySessionsLogged(sessionCount),
+          style: WorkoutType.body(size: 14, color: tokens.dim),
         ),
       ],
     );
@@ -465,11 +456,10 @@ class _SummaryCard extends StatelessWidget {
               semanticsLabel: semanticsLabel,
               maxLines: 1,
               softWrap: false,
-              style: WorkoutType.display(
-                size: 23,
+              style: WorkoutType.mono(
+                size: 22,
                 weight: FontWeight.w700,
                 color: tokens.text,
-                letterSpacing: 23 * -0.025,
               ),
             ),
           ),
@@ -478,7 +468,7 @@ class _SummaryCard extends StatelessWidget {
             AppLocalizations.of(context).historySummarySuffix(label),
             maxLines: 2,
             style: WorkoutType.mono(
-              size: 9.5,
+              size: 12,
               color: tokens.faint,
               letterSpacing: 0.07 * 9.5,
             ),
@@ -517,13 +507,13 @@ class _WeekHeader extends StatelessWidget {
               Localizations.localeOf(context).toLanguageTag(),
             ).toUpperCase(),
           );
-    final weekStyle = WorkoutType.mono(
-      size: 11,
-      weight: FontWeight.w600,
+    final weekStyle = WorkoutType.body(
+      size: 12,
+      weight: FontWeight.w700,
       color: tokens.faint,
       letterSpacing: 0.08 * 11,
     );
-    final countStyle = WorkoutType.mono(size: 10.5, color: tokens.dim);
+    final countStyle = WorkoutType.body(size: 12, color: tokens.dim);
 
     return Padding(
       padding: const EdgeInsets.only(left: 2, right: 2),
@@ -709,7 +699,7 @@ class _SessionCardState extends State<SessionCard> {
                                     date?.day.toString() ?? '—',
                                     maxLines: 1,
                                     softWrap: false,
-                                    style: WorkoutType.display(
+                                    style: WorkoutType.mono(
                                       size: 20,
                                       weight: FontWeight.w700,
                                       color: tokens.text,
@@ -725,7 +715,7 @@ class _SessionCardState extends State<SessionCard> {
                                     maxLines: 1,
                                     softWrap: false,
                                     style: WorkoutType.mono(
-                                      size: 9.5,
+                                      size: 12,
                                       color: tokens.faint,
                                       letterSpacing: 0.04 * 9.5,
                                     ),
@@ -755,7 +745,7 @@ class _SessionCardState extends State<SessionCard> {
                                     '—',
                                     style: WorkoutType.body(
                                       size: 14.5,
-                                      weight: FontWeight.w600,
+                                      weight: FontWeight.w700,
                                       color: tokens.text,
                                     ),
                                   )
@@ -767,7 +757,7 @@ class _SessionCardState extends State<SessionCard> {
                                           text: labelName,
                                           style: WorkoutType.body(
                                             size: 14.5,
-                                            weight: FontWeight.w600,
+                                            weight: FontWeight.w700,
                                             color: tokens.text,
                                           ),
                                         ),
@@ -790,16 +780,16 @@ class _SessionCardState extends State<SessionCard> {
                                     l.alkionDateUnavailable(
                                       session.date.isEmpty ? '—' : session.date,
                                     ),
-                                    style: WorkoutType.mono(
-                                      size: 10.5,
+                                    style: WorkoutType.body(
+                                      size: 12,
                                       color: tokens.faint,
                                     ),
                                   ),
                                 if (session.orderUncertain)
                                   Text(
                                     l.alkionOrderUncertain,
-                                    style: WorkoutType.mono(
-                                      size: 10.5,
+                                    style: WorkoutType.body(
+                                      size: 12,
                                       color: tokens.faint,
                                     ),
                                   ),
@@ -816,7 +806,7 @@ class _SessionCardState extends State<SessionCard> {
                                         session.exerciseCount,
                                       ),
                                       style: WorkoutType.mono(
-                                        size: 10.5,
+                                        size: 12,
                                         color: tokens.faint,
                                       ),
                                     ),
@@ -824,14 +814,14 @@ class _SessionCardState extends State<SessionCard> {
                                       Text(
                                         '${session.durationMin}m',
                                         style: WorkoutType.mono(
-                                          size: 10.5,
+                                          size: 12,
                                           color: tokens.faint,
                                         ),
                                       ),
                                     Text(
                                       localizedDaysAgo(l, session.date),
                                       style: WorkoutType.mono(
-                                        size: 10.5,
+                                        size: 12,
                                         color: tokens.faint,
                                       ),
                                     ),
@@ -870,8 +860,8 @@ class _SessionCardState extends State<SessionCard> {
                         FitLabel(
                           coverageLine,
                           maxLines: 2,
-                          style: WorkoutType.mono(
-                            size: 10.5,
+                          style: WorkoutType.body(
+                            size: 12,
                             color: tokens.faint,
                           ),
                         ),
@@ -1169,7 +1159,7 @@ class SessionCardBody extends StatelessWidget {
               child: FitLabel(
                 l.alkionLoadUnavailable,
                 maxLines: 6,
-                style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                style: WorkoutType.body(size: 12, color: tokens.faint),
               ),
             ),
           const SizedBox(height: 6),
@@ -1178,7 +1168,7 @@ class SessionCardBody extends StatelessWidget {
               key: const ValueKey('history-resume'),
               icon: WIcons.resume,
               label: l.historyResumeWorkout,
-              color: tokens.accentText,
+              color: tokens.text,
               onTap: onResume,
             ),
           if (resumeState != SessionResumeState.inProgress) ...[
@@ -1186,7 +1176,7 @@ class SessionCardBody extends StatelessWidget {
               key: const ValueKey('history-add-exercise'),
               icon: WIcons.plus,
               label: l.sessionAddExercise,
-              color: tokens.accentText,
+              color: tokens.text,
               onTap: onAddExercise,
             ),
             const SizedBox(height: 8),
@@ -1242,9 +1232,9 @@ class _InlineAction extends StatelessWidget {
                 Flexible(
                   child: FitLabel(
                     label,
-                    style: WorkoutType.mono(
-                      size: 11,
-                      weight: FontWeight.w600,
+                    style: WorkoutType.body(
+                      size: 12,
+                      weight: FontWeight.w700,
                       color: color,
                     ),
                   ),
@@ -1288,78 +1278,96 @@ class _BlockRow extends StatelessWidget {
       color: tokens.text,
     );
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Compound dot
-              Container(
-                width: 5,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // Exercise name
-              Expanded(
-                child: Text(
-                  name,
-                  style: WorkoutType.body(size: 13, color: tokens.dim),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-              ),
-
-              // PR bolt
-              if (top.isPr) ...[
-                const SizedBox(width: 6),
-                Icon(WIcons.bolt, size: 13, color: tokens.accentText),
-              ],
-
-              // Weight × reps
-              const SizedBox(width: 8),
-              RichText(
-                text: TextSpan(
+    return Semantics(
+      button: onTap != null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    if (topKg == null)
-                      TextSpan(
-                        text: '—',
-                        semanticsLabel: l.alkionLoadUnavailableLabel,
-                        style: loadStyle,
-                      )
-                    else ...[
-                      TextSpan(text: units.fmtWt(topKg), style: loadStyle),
-                      TextSpan(
-                        text: units.uLabel,
-                        style: WorkoutType.mono(size: 9.5, color: tokens.faint),
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
                       ),
-                    ],
-                    TextSpan(
-                      text: top.repsAvailable ? ' ×${top.reps}' : ' ×—',
-                      semanticsLabel: top.repsAvailable
-                          ? null
-                          : ', ${l.alkionRepsUnavailableLabel}',
-                      style: WorkoutType.mono(size: 12.5, color: tokens.faint),
                     ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FitLabel(
+                        name,
+                        maxLines: 2,
+                        style: WorkoutType.body(
+                          size: 14,
+                          weight: FontWeight.w700,
+                          color: tokens.text,
+                        ),
+                      ),
+                    ),
+                    if (top.isPr) ...[
+                      const SizedBox(width: 8),
+                      Icon(WIcons.bolt, size: 16, color: tokens.accentText),
+                    ],
+                    if (onTap != null) ...[
+                      const SizedBox(width: 8),
+                      Icon(WIcons.chevron, size: 16, color: tokens.dim),
+                    ],
                   ],
                 ),
-              ),
-
-              // Edit chevron affordance
-              if (onTap != null) ...[
-                const SizedBox(width: 8),
-                Icon(WIcons.chevron, size: 13, color: tokens.faint),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: RichText(
+                      textScaler: MediaQuery.textScalerOf(context),
+                      text: TextSpan(
+                        children: [
+                          if (topKg == null)
+                            TextSpan(
+                              text: '—',
+                              semanticsLabel: l.alkionLoadUnavailableLabel,
+                              style: loadStyle,
+                            )
+                          else ...[
+                            TextSpan(
+                              text: units.fmtWt(topKg),
+                              style: loadStyle,
+                            ),
+                            TextSpan(
+                              text: units.uLabel,
+                              style: WorkoutType.mono(
+                                size: 12,
+                                color: tokens.faint,
+                              ),
+                            ),
+                          ],
+                          TextSpan(
+                            text: top.repsAvailable ? ' ×${top.reps}' : ' ×—',
+                            semanticsLabel: top.repsAvailable
+                                ? null
+                                : ', ${l.alkionRepsUnavailableLabel}',
+                            style: WorkoutType.mono(
+                              size: 12.5,
+                              color: tokens.faint,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ],
-            ],
+            ),
           ),
         ),
       ),

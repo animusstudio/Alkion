@@ -117,8 +117,8 @@ class SetLine extends StatelessWidget {
                                     TextSpan(
                                       text: unit.uLabel,
                                       style: WorkoutType.mono(
-                                        size: 11,
-                                        color: tokens.faint,
+                                        size: 12,
+                                        color: tokens.dim,
                                       ),
                                     ),
                                     TextSpan(
@@ -152,8 +152,8 @@ class SetLine extends StatelessWidget {
                                 child: FitLabel(
                                   l.sessionRir(rir),
                                   style: WorkoutType.mono(
-                                    size: 10.5,
-                                    color: tokens.faint,
+                                    size: 12,
+                                    color: tokens.dim,
                                   ),
                                 ),
                               ),
@@ -195,10 +195,9 @@ class SetLine extends StatelessWidget {
                               child: Center(
                                 child: Text(
                                   l.sessionColRir,
-                                  style: WorkoutType.mono(
-                                    size: 10.5,
-                                    color: tokens.faint,
-                                    letterSpacing: 0.08 * 10.5,
+                                  style: WorkoutType.body(
+                                    size: 12,
+                                    color: tokens.dim,
                                   ),
                                 ),
                               ),

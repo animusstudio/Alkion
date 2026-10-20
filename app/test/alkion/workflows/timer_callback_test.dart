@@ -1,5 +1,5 @@
 import 'package:alkion/domain/evidence.dart';
-import 'package:alkion/session/workout_notification.dart';
+import 'package:alkion/session/notification_action.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -81,7 +81,7 @@ Future<LocalStore> reopen(AlkionProfile p) => LocalStore.open(
 
 void main() {
   test(
-    'production background +30 uses same owner and generation/session/rest fences; SQL timer survives two reopens',
+    'visible +30 uses the selected owner and consumes once; SQL timer survives two reopens',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'alkion-workflow-timer-',
@@ -105,49 +105,16 @@ void main() {
             0,
           ),
         );
-        final generation = store.token.generation;
-        Future<void> extend({int? gen, String id = 'draft', String? rest}) =>
-            extendRestInBackground(
-              supportRoot: support,
-              expectedProfileId: profile.profileId,
-              generation: gen ?? generation,
-              draftId: id,
-              restStart: rest ?? start,
-            );
+        final action = (await issueNotificationAction(store))!;
         final before = await store.inventory();
-        await expectLater(
-          extend(),
-          throwsA(
-            isA<StoreException>().having(
-              (e) => e.category,
-              'same profile owner',
-              'profile_in_use',
-            ),
-          ),
-        );
+        await expectLater(reopen(profile), throwsA(isA<StoreException>()));
         expect(await store.inventory(), before);
-        await store.close();
-        await expectLater(
-          extend(gen: generation + 1),
-          throwsA(isA<StoreException>()),
-        );
-        await expectLater(
-          extend(id: 'stale-session'),
-          throwsA(isA<StoreException>()),
-        );
-        await expectLater(
-          extend(
-            rest: DateTime.now()
-                .subtract(const Duration(seconds: 1))
-                .toUtc()
-                .toIso8601String(),
-          ),
-          throwsA(isA<StoreException>()),
-        );
-        await extend();
-        store = await reopen(profile);
+        expect(await consumeNotificationAction(store, action), isNotNull);
+        final committed = await store.inventory();
+        expect(await consumeNotificationAction(store, action), isNotNull);
+        expect(await store.inventory(), committed);
         final rows = await store.getAll(
-          "SELECT * FROM local_state WHERE state_kind IN ('draft','timer')",
+          "SELECT * FROM local_state WHERE state_kind IN ('draft','timer') AND state_key='active'",
         );
         expect(rows.length, 2);
         for (final row in rows) {

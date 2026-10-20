@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../domain/local_action.dart';
 import '../../export/export_service.dart';
+import '../../files/android_documents.dart';
+import '../../files/document_access.dart';
 import '../../l10n/app_localizations.dart';
 import '../../settings/settings_service.dart';
 import '../../store/local_store.dart';
@@ -19,11 +21,17 @@ import '../../widgets/w_dialog.dart';
 /// exact original bytes or a limits-stating compatibility file. Nothing here
 /// discovers legacy roots, connects an account or starts a transport.
 class AlkionTransferScreen extends StatefulWidget {
-  const AlkionTransferScreen({super.key, this.flush, this.delivery});
+  const AlkionTransferScreen({
+    super.key,
+    this.flush,
+    this.delivery,
+    this.documents,
+  });
 
   /// Owned lifecycle barrier: flush durable input before import/export.
   final Future<void> Function()? flush;
   final ExportDelivery? delivery;
+  final DocumentAccess? documents;
 
   @override
   State<AlkionTransferScreen> createState() => _AlkionTransferScreenState();
@@ -38,6 +46,8 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
   List<Map<String, dynamic>> _measurements = const [];
 
   LocalDatabase get _db => context.read<LocalDatabase>();
+  late final DocumentAccess? _documents =
+      widget.documents ?? platformDocumentAccess();
 
   @override
   void initState() {
@@ -84,7 +94,11 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
         await showWDialog<bool>(
           context,
           title: l.alkionTransferFailed,
-          message: e is StoreException ? e.category : '$e',
+          message: e is DocumentException
+              ? l.alkionDocumentFailureMessage(e.category)
+              : e is StoreException
+              ? e.category
+              : '$e',
           actions: [WDialogAction(label: l.commonOk, value: true)],
         );
       }
@@ -108,9 +122,18 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
   }
 
   Future<void> _import() => _run((db, l) async {
-    final outcome = await TransferService(
-      db,
-    ).importFile(_path.text.trim(), namespace: _namespace.text.trim());
+    final documents = _documents;
+    final selected = documents == null
+        ? null
+        : await documents.open(
+            maxBytes: defaultMaxRawBytes,
+            mimeTypes: const ['application/json', 'application/octet-stream'],
+          );
+    if (documents != null && selected == null) return;
+    final outcome = await TransferService(db).importFile(
+      selected?.path ?? _path.text.trim(),
+      namespace: _namespace.text.trim(),
+    );
     final title = switch (outcome.status) {
       ImportStatus.selected => l.alkionTransferImportSelected,
       ImportStatus.alreadySelected => l.alkionTransferImportAlreadySelected,
@@ -128,9 +151,29 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
 
   Future<void> _exportResult(Future<ExportResult> export) async {
     final result = await export;
-    if (!mounted || result.outcome != ExportOutcome.saved) return;
+    if (!mounted) return;
     final l = AppLocalizations.of(context);
-    await _message(l.exportSavedTitle, l.exportSavedMessage(result.path ?? ''));
+    switch (result.outcome) {
+      case ExportOutcome.saved:
+        await _message(
+          l.exportSavedTitle,
+          l.exportSavedMessage(result.path ?? ''),
+        );
+      case ExportOutcome.providerVerified:
+        await _message(
+          l.alkionDocumentSaved,
+          l.alkionDocumentSavedMessage(documentLabel(result.path ?? '')),
+        );
+      case ExportOutcome.shared:
+        await _message(l.alkionDocumentShared, l.alkionDocumentSharedMessage);
+      case ExportOutcome.cancelled:
+        await _message(
+          l.alkionDocumentCancelled,
+          l.alkionDocumentCancelledMessage,
+        );
+      case ExportOutcome.empty:
+        return;
+    }
   }
 
   ExportService _exports(LocalDatabase db) =>
@@ -192,59 +235,117 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
     Widget header(String text) => Padding(
-      padding: const EdgeInsets.fromLTRB(2, 20, 2, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: WorkoutType.mono(
-          size: 10.5,
-          weight: FontWeight.w600,
-          color: tokens.faint,
+      padding: const EdgeInsets.fromLTRB(0, 32, 0, 12),
+      child: Semantics(
+        header: true,
+        child: Text(
+          text,
+          style: WorkoutType.body(
+            size: 18,
+            weight: FontWeight.w600,
+            color: tokens.text,
+          ),
         ),
       ),
     );
-    Widget line(String text) => Text(
-      text,
-      style: WorkoutType.mono(size: 11, color: tokens.faint),
-      overflow: TextOverflow.ellipsis,
-      maxLines: 2,
+    Widget line(String text) =>
+        Text(text, style: WorkoutType.body(size: 14, color: tokens.dim));
+    Widget metadata(String text) =>
+        Text(text, style: WorkoutType.mono(size: 12, color: tokens.dim));
+    Widget actions(List<Widget> children) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < children.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          children[i],
+        ],
+      ],
     );
-    Widget actions(List<Widget> children) =>
-        Wrap(spacing: 8, runSpacing: 4, children: children);
+    final titleStyle = WorkoutType.body(
+      size: 20,
+      weight: FontWeight.w600,
+      color: tokens.text,
+    );
+    final titleLayout = TextPainter(
+      text: TextSpan(text: l.alkionTransferTitle, style: titleStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: MediaQuery.sizeOf(context).width - 88);
+    final titleHeight = titleLayout.height + 16;
+    titleLayout.dispose();
     return Scaffold(
       backgroundColor: tokens.bg,
       appBar: AppBar(
         backgroundColor: tokens.bg,
-        title: Text(l.alkionTransferTitle),
+        toolbarHeight: titleHeight < kToolbarHeight
+            ? kToolbarHeight
+            : titleHeight,
+        title: MediaQuery(
+          data: MediaQuery.of(context),
+          child: Text(
+            l.alkionTransferTitle,
+            style: titleStyle,
+            softWrap: true,
+            overflow: TextOverflow.visible,
+          ),
+        ),
       ),
       body: SafeArea(
         // Small, eagerly built content: a non-lazy scroll view keeps every
         // row's state stable while dialogs and imports rebuild the screen.
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               header(l.alkionTransferImportSection),
-              TextField(
-                key: const Key('transfer-path'),
-                controller: _path,
-                decoration: InputDecoration(
-                  labelText: l.alkionTransferPathLabel,
+              if (_documents == null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      l.alkionTransferPathLabel,
+                      style: WorkoutType.body(size: 14, color: tokens.dim),
+                    ),
+                    const SizedBox(height: 8),
+                    Semantics(
+                      label: l.alkionTransferPathLabel,
+                      child: TextField(
+                        key: const Key('transfer-path'),
+                        controller: _path,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              TextField(
-                key: const Key('transfer-namespace'),
-                controller: _namespace,
-                decoration: InputDecoration(
-                  labelText: l.alkionTransferNamespaceLabel,
-                ),
+              if (_documents != null) line(l.alkionDocumentSelectExplain),
+              const SizedBox(height: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    l.alkionTransferNamespaceLabel,
+                    style: WorkoutType.body(size: 14, color: tokens.dim),
+                  ),
+                  const SizedBox(height: 8),
+                  Semantics(
+                    label: l.alkionTransferNamespaceLabel,
+                    child: TextField(
+                      key: const Key('transfer-namespace'),
+                      controller: _namespace,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               actions([
                 FilledButton(
                   key: const Key('transfer-import'),
                   onPressed: _busy ? null : _import,
-                  child: Text(l.alkionTransferImportAction),
+                  child: Text(
+                    _documents == null
+                        ? l.alkionTransferImportAction
+                        : l.alkionTransferImportDocument,
+                  ),
                 ),
                 OutlinedButton(
                   key: const Key('transfer-export-compat'),
@@ -261,7 +362,7 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
               header(l.alkionTransferGenerations),
               for (final g in _generations)
                 ListTile(
-                  contentPadding: EdgeInsets.zero,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
                   title: Text(
                     '${g['namespace']} · ${g['status']}',
                     style: WorkoutType.body(size: 14, color: tokens.text),
@@ -269,7 +370,7 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      line(
+                      metadata(
                         'sha256 ${(g['digest'] as String).substring(0, 16)}… · ${g['byte_length']} B',
                       ),
                       actions([
@@ -298,7 +399,7 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
               if (_reviews.isEmpty) line(l.alkionTransferNoReviews),
               for (final r in _reviews)
                 ListTile(
-                  contentPadding: EdgeInsets.zero,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
                   title: Text(switch (r['category']) {
                     'absence' => l.alkionTransferAbsence,
                     'source_changed_under_overlay' => l.alkionTransferOverlay,
@@ -307,7 +408,7 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      line(
+                      metadata(
                         '${((r['evidence'] as Map)['origin'] as Map)['source_kind']} · ${((r['evidence'] as Map)['origin'] as Map)['external_id']}',
                       ),
                       actions([
@@ -334,21 +435,33 @@ class _AlkionTransferScreenState extends State<AlkionTransferScreen> {
                 header(l.alkionTransferMeasurements),
                 for (final m in _measurements)
                   ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      '${m['weight_kg'] ?? '—'} kg',
-                      style: WorkoutType.body(size: 14, color: tokens.text),
-                    ),
-                    subtitle: line('${m['date'] ?? '—'} · r${m['revision']}'),
-                    trailing: TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => _measurement(m, m['deleted'] == 1),
-                      child: Text(
-                        m['deleted'] == 1
-                            ? l.alkionTransferRestore
-                            : l.alkionTransferDelete,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    title: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Text(
+                          '${m['weight_kg'] ?? '—'} kg',
+                          softWrap: false,
+                          style: WorkoutType.mono(size: 18, color: tokens.text),
+                        ),
                       ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        metadata('${m['date'] ?? '—'} · r${m['revision']}'),
+                        TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => _measurement(m, m['deleted'] == 1),
+                          child: Text(
+                            m['deleted'] == 1
+                                ? l.alkionTransferRestore
+                                : l.alkionTransferDelete,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],
