@@ -35,6 +35,7 @@ only an emulator run proves device behavior.
 | API 36 synthetic rehearsal (2026-10-20): `am unfreeze --sticky PID` prints `Unfreezing process PACKAGE (PID) sticky=true` and preserves the provider PID | require the exact line and unchanged PID; namespace discovery and the full supported flow remain separate checks |
 | API 36 synthetic hit/create rehearsal (2026-10-20), backed by the native DocumentsUI layout: the fixed SAVE footer receives its native centre even when directory-row accessibility bounds overlap it | only a SAVE-specific footer/list topology attestation may permit exact row overlap; unknown claimants and system bars still refuse |
 | API 36 blank-AVD native rehearsal (2026-10-20): expand, repeated expand while open, collapse and expand again each return rc0 with empty streams; canonical shade focus is observed after expansion | retain each request result first; one caller-only reissue may establish readiness, while the unchanged observer must still prove SystemUI before any notification tap |
+| API 36 native DocumentsUI captures (2026-10-20) persistently expose an invisible, nonclickable, unlabeled divider leaf with an empty inverted Rect below a hidden bottom row; Android Rect permits negative height for empty geometry | preserve raw nodes and bounds; admit only the attested bottom-divider geometry and ancestry, while visible, clickable, semantic and selected-target bounds remain strict |
 
 Add a row, with its source, whenever a device run teaches a new fact.
 
