@@ -243,6 +243,74 @@ def captured_hidden_divider():
     return tree
 
 
+# Full second native capture: a horizontally empty hidden app icon below a
+# visible clickable parent. Only the synthetic run token is normalized.
+CAPTURED_EMPTY_APP_ICON = (
+    (None, '', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (0, '', 'android.widget.LinearLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (1, '', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (2, 'com.android.documentsui:id/action_bar_root', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (3, 'android:id/content', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (4, 'com.android.documentsui:id/coordinator_layout', 'android.view.ViewGroup', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (5, 'com.android.documentsui:id/drawer_layout', 'androidx.drawerlayout.widget.DrawerLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (6, '', 'android.widget.ScrollView', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (7, 'com.android.documentsui:id/app_bar', 'android.widget.LinearLayout', '[0,136][1080,857]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/collapsing_toolbar', 'android.widget.FrameLayout', '[0,136][1080,857]', '', '', 'false', 'true', 'true'),
+    (9, '', 'android.widget.ScrollView', '[0,136][1080,857]', '', '', 'false', 'true', 'true'),
+    (10, 'com.android.documentsui:id/directory_header', 'android.widget.LinearLayout', '[0,262][1080,857]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/horizontal_breadcrumb', 'androidx.recyclerview.widget.RecyclerView', '[0,262][1080,262]', '', '', 'false', 'true', 'false'),
+    (11, '', 'android.widget.HorizontalScrollView', '[0,262][1080,388]', '', '', 'false', 'true', 'true'),
+    (13, '', 'android.widget.FrameLayout', '[0,262][754,388]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/search_chip_group', 'android.widget.LinearLayout', '[53,262][701,388]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.Button', '[64,262][368,388]', 'Large files', '', 'true', 'true', 'true'),
+    (15, '', 'android.widget.Button', '[390,262][690,388]', 'This week', '', 'true', 'true', 'true'),
+    (11, 'com.android.documentsui:id/apps_row', 'android.widget.LinearLayout', '[0,388][1080,699]', '', '', 'false', 'true', 'true'),
+    (18, '', 'android.widget.TextView', '[0,388][487,514]', 'BROWSE FILES IN OTHER APPS', '', 'false', 'true', 'true'),
+    (18, '', 'android.widget.HorizontalScrollView', '[0,514][1080,699]', '', '', 'false', 'true', 'true'),
+    (20, 'com.android.documentsui:id/apps_group', 'android.widget.LinearLayout', '[0,514][1080,699]', '', '', 'false', 'true', 'true'),
+    (21, '', 'android.widget.LinearLayout', '[0,514][946,699]', '', '', 'true', 'true', 'true'),
+    (22, 'com.android.documentsui:id/app_icon', 'android.widget.ImageView', '[431,530][515,614]', '', '', 'false', 'true', 'true'),
+    (22, 'android:id/title', 'android.widget.TextView', '[44,640][901,683]', 'Alkion synthetic $RUN-dev', 'Alkion synthetic $RUN-dev', 'false', 'true', 'true'),
+    (21, '', 'android.widget.LinearLayout', '[946,514][1080,699]', '', '', 'true', 'true', 'true'),
+    (25, 'com.android.documentsui:id/app_icon', 'android.widget.ImageView', '[1377,530][1080,614]', '', '', 'false', 'true', 'false'),
+    (25, 'android:id/title', 'android.widget.TextView', '[967,640][1080,683]', 'Alkion synthetic $RUN-supported', 'Alkion synthetic $RUN-supported', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/header_container', 'android.widget.LinearLayout', '[63,699][1017,857]', '', '', 'false', 'true', 'true'),
+    (28, 'com.android.documentsui:id/header_title', 'android.widget.TextView', '[63,699][890,857]', 'Recent files', '', 'false', 'true', 'true'),
+    (28, 'com.android.documentsui:id/sub_menu', 'androidx.appcompat.widget.LinearLayoutCompat', '[890,715][1017,841]', '', '', 'false', 'true', 'true'),
+    (30, 'com.android.documentsui:id/sub_menu_grid', 'android.widget.Button', '[890,715][1017,841]', '', 'Grid view', 'true', 'true', 'true'),
+    (9, 'com.android.documentsui:id/toolbar', 'android.view.ViewGroup', '[0,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (32, '', 'android.widget.ImageButton', '[0,136][147,262]', '', 'Show roots', 'true', 'true', 'true'),
+    (32, '', 'android.widget.TextView', '[189,163][354,234]', 'Recent', '', 'false', 'true', 'true'),
+    (32, '', 'androidx.appcompat.widget.LinearLayoutCompat', '[827,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (35, 'com.android.documentsui:id/option_menu_search', 'android.widget.Button', '[827,136][954,262]', '', 'Search', 'true', 'true', 'true'),
+    (35, '', 'android.widget.ImageView', '[954,136][1080,262]', '', 'More options', 'true', 'true', 'true'),
+    (7, '', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (38, 'com.android.documentsui:id/container_search_fragment', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (38, 'com.android.documentsui:id/container_directory', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (40, '', 'android.widget.LinearLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (41, 'com.android.documentsui:id/refresh_layout', 'android.view.ViewGroup', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (42, 'com.android.documentsui:id/dir_list', 'android.widget.GridView', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (43, 'android:id/empty', 'android.widget.FrameLayout', '[0,857][1080,1768]', '', '', 'false', 'true', 'true'),
+    (44, 'com.android.documentsui:id/content', 'android.widget.LinearLayout', '[0,857][1080,1768]', '', '', 'false', 'true', 'true'),
+    (45, 'com.android.documentsui:id/artwork', 'android.widget.ImageView', '[0,923][1080,1579]', '', '', 'false', 'true', 'true'),
+    (45, 'com.android.documentsui:id/message', 'android.widget.TextView', '[0,1645][1080,1702]', 'No items', '', 'false', 'true', 'true'),
+    (38, 'com.android.documentsui:id/drawer_edge', 'android.view.View', '[0,136][32,2400]', '', '', 'false', 'true', 'true'),
+    (7, 'com.android.documentsui:id/container_save', 'android.view.ViewGroup', '[0,2274][1080,2400]', '', '', 'false', 'true', 'false'),
+    (0, 'android:id/navigationBarBackground', 'android.view.View', '[0,2327][1080,2453]', '', '', 'false', 'true', 'true'),
+)
+
+
+def captured_empty_app_icon():
+    tree, nodes = ET.Element("hierarchy", rotation="0"), []
+    for parent, resource, cls, bounds, text, desc, clickable, enabled, visible in CAPTURED_EMPTY_APP_ICON:
+        node = ET.SubElement(tree if parent is None else nodes[parent], "node", {
+            "package": "com.android.documentsui", "resource-id": resource, "class": cls, "bounds": bounds,
+            "text": text.replace("$RUN", RUN), "content-desc": desc.replace("$RUN", RUN),
+            "clickable": clickable, "enabled": enabled, "visible-to-user": visible})
+        nodes.append(node)
+    return tree
+
+
 ADB = r'''#!/usr/bin/env python3
 import datetime,hashlib,json,os,shlex,subprocess,sys,time,xml.etree.ElementTree as ET
 from pathlib import Path
@@ -881,42 +949,71 @@ class Protocol(unittest.TestCase):
         self.output = self.root / "preceding"; self.output.mkdir()
         self.assertEqual(len(list(self.observe().iter("node"))), 154)
 
-    def test_captured_hidden_divider_exception_qualifier_mutations_refuse(self):
-        def attribute(index, key, value): return lambda tree, ns: ns[index].set(key, value)
-        changes = {}
-        for key, value in (("visible-to-user", "true"), ("clickable", "true"), ("enabled", "false"),
-                           ("text", "unknown"), ("content-desc", "unknown"), ("resource-id", "foreign:id/view"),
-                           ("resource-id", "android:id/navigationBarBackground"), ("class", "android.widget.TextView"),
-                           ("package", "foreign.package")):
-            changes["leaf-" + key + "-" + value] = attribute(144, key, value)
-        for bounds in ("[-1,2463][1059,2400]", "[189,2463][1081,2400]", "[1059,2463][189,2400]",
-                       "[189,2463][189,2400]", "[189,2400][1059,2300]", "[189,2463][1059,2399]",
-                       "[189,2463][1059,2401]", "[1059,2300][189,2400]", "[189,2399][1059,2300]"):
-            changes["leaf-" + bounds] = attribute(144, "bounds", bounds)
-        for index, name in ((134, "parent"), (32, "directory")):
-            for key, value in (("package", "foreign.package"), ("class", "android.view.View"),
-                               ("resource-id", "foreign:id/parent"), ("enabled", "false")):
-                changes[name + "-" + key] = attribute(index, key, value)
-        changes.update({
-            "visible-parent": attribute(134, "visible-to-user", "true"),
-            "nonclickable-parent": attribute(134, "clickable", "false"),
-            "hidden-directory": attribute(32, "visible-to-user", "false"),
-            "clickable-directory": attribute(32, "clickable", "true"),
-            "parent-not-bottom": attribute(134, "bounds", "[0,2274][1080,2399]"),
-            "parent-empty": attribute(134, "bounds", "[0,2400][1080,2400]"),
-            "parent-offdisplay": attribute(134, "bounds", "[-1,2274][1080,2400]"),
-            "directory-not-containing-parent": attribute(32, "bounds", "[0,136][1079,2400]"),
-            "directory-not-bottom": attribute(32, "bounds", "[0,136][1080,2399]"),
-            "nonleaf": lambda tree, ns: ET.SubElement(ns[144], "node", dict(ns[144].attrib, bounds="[0,0][1,1]")),
-            "different-parent": lambda tree, ns: (ns[134].remove(ns[144]), ns[32].append(ns[144])),
-            "different-expected-package": lambda tree, ns: [n.set("package", "dev.animusstudio.alkion.dev") for n in ns],
-        })
-        for index, (name, change) in enumerate(changes.items()):
-            self.package = "com.android.documentsui"; self.tree = captured_hidden_divider()
-            ns = list(self.tree.iter("node")); change(self.tree, ns)
-            if name == "different-expected-package": self.package = "dev.animusstudio.alkion.dev"
-            self.output = self.root / ("divider-refused-" + str(index)); self.output.mkdir()
-            with self.subTest(name=name): self.refuses()
+    def test_full_captured_empty_icon_retains_native_tree_and_cannot_tap(self):
+        self.package = "com.android.documentsui"; self.tree = captured_empty_app_icon()
+        original = [dict(node.attrib) for node in self.tree.iter("node")]
+        nodes = list(self.observe().iter("node"))
+        self.assertEqual(len(nodes), 51)
+        self.assertEqual([{key: node.get(key) for key in attrs} for node, attrs in zip(nodes, original)], original)
+        self.assertEqual(nodes[26].get("bounds"), "[1377,530][1080,614]")
+        self.assertEqual((nodes[25].get("clickable"), nodes[25].get("visible-to-user")), ("true", "true"))
+        raw = (self.root / "tree.xml").read_bytes()
+        self.assertEqual((self.output / "capture.xml.raw").read_bytes(), raw)
+        receipt = json.loads((self.output / "capture.observation/receipt.json.stdout").read_bytes())
+        self.assertEqual((receipt["node_count"], receipt["xml_sha256"]), (51, hashlib.sha256(raw).hexdigest()))
+        with self.assertRaises(self.main["Refusal"]): self.main["click_node"](self.args, nodes[26])
+        self.assertFalse(any(cmd[:1] == ["input"] for cmd in self.commands()))
+
+    def test_inert_empty_capture_qualifiers_and_invalid_ancestors_refuse(self):
+        for fixture, index, parent in ((captured_hidden_divider, 144, 134), (captured_empty_app_icon, 26, 25)):
+            changes = [("visible-to-user", "true"), ("clickable", "true"), ("text", "label"),
+                       ("text", " "), ("content-desc", "label"), ("content-desc", " "),
+                       ("enabled", "unknown"), ("clickable", "unknown"), ("visible-to-user", "unknown"),
+                       ("package", "foreign.package"), ("bounds", "not a rectangle")]
+            for number, (key, value) in enumerate(changes):
+                self.package = "com.android.documentsui"; self.tree = fixture()
+                list(self.tree.iter("node"))[index].set(key, value)
+                self.output = self.root / (fixture.__name__ + "-refused-" + str(number)); self.output.mkdir()
+                with self.subTest(fixture=fixture.__name__, key=key, value=value): self.refuses()
+            for name in ("nonleaf", "invalid-parent"):
+                self.tree = fixture(); ns = list(self.tree.iter("node"))
+                if name == "nonleaf": ET.SubElement(ns[index], "node", dict(ns[index].attrib, bounds="[0,0][1,1]"))
+                else: ns[parent].set("bounds", "[100,100][0,0]")
+                self.output = self.root / (fixture.__name__ + "-" + name); self.output.mkdir()
+                with self.subTest(fixture=fixture.__name__, name=name): self.refuses()
+
+    def test_inert_empty_resource_selectors_never_authorize_target_taps(self):
+        import android_synthetic_documents as documents
+        # All resource roles used by the harness: presence/structure may refuse
+        # ambiguity, but a resource name never makes an inert empty leaf tappable.
+        resources = ["android:id/expand_button", "android:id/status_bar_latest_event_content",
+                     "android:id/navigationBarBackground", "android:id/statusBarBackground", "android:id/button1", "android:id/title",
+                     "com.android.documentsui:id/breadcrumb_text", "com.android.documentsui:id/item_root",
+                     "com.android.documentsui:id/container_save", "com.android.documentsui:id/dir_list",
+                     "com.android.documentsui:id/refresh_layout", "com.android.documentsui:id/container_directory",
+                     "com.android.documentsui:id/app_bar", "com.android.documentsui:id/sub_menu_list",
+                     "com.android.documentsui:id/sub_menu_grid", "com.android.permissioncontroller:id/permission_message",
+                     "com.android.permissioncontroller:id/permission_deny_button"]
+        for number, resource in enumerate(resources):
+            self.package = "com.android.documentsui"; self.tree = captured_empty_app_icon()
+            empty = list(self.tree.iter("node"))[26]; empty.set("resource-id", resource)
+            # Class/resource/enabled are not evidence of a tap target. These host
+            # mutations test the invariant; they are not new device captures.
+            empty.set("class", "android.widget.Button"); empty.set("enabled", "false" if number % 2 else "true")
+            self.output = self.root / ("empty-selector-" + str(number)); self.output.mkdir()
+            document = self.observe(); nodes = list(document.iter("node")); empty = nodes[26]
+            with self.subTest(resource=resource):
+                self.assertFalse(documents.on_display(empty))
+                self.assertEqual(documents.nodes(document, "SAVE"), [])
+                self.assertEqual(documents.target_labels(document, "Grid view", empty), [])
+                with self.assertRaises(self.main["Refusal"]): self.main["click_node"](self.args, empty)
+                evidence = SimpleNamespace(native=lambda *args: self.fail("inert empty target must never tap"))
+                with self.assertRaises(documents.Refusal): documents.tap_node(evidence, empty)
+                if resource in documents.VIEW_TOGGLES: self.assertEqual(documents.view_mode(document), (None, None))
+                # Even the native Rect's arithmetic centre cannot be an occluder.
+                x1, y1, x2, y2 = documents.node_box(empty)
+                self.assertFalse(x1 <= (x1 + x2) // 2 < x2 and y1 <= (y1 + y2) // 2 < y2)
+        self.assertFalse(any(cmd[:1] == ["input"] for cmd in self.commands()))
 
     def test_native_offscreen_nodes_retained_but_selected_offscreen_target_never_taps(self):
         self.tree[0][1].set("bounds", "[200,2300][320,2450]")
