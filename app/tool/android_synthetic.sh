@@ -969,10 +969,47 @@ def wait_session_ui(args, output, name):
         time.sleep(1)
     raise Refusal("real_session_route_not_visible")
 
+def shade_expand(args, output, name, attempt):
+    """Keep the native request result before checking its strict quiet contract."""
+    tail = ("shell", "cmd", "statusbar", "expand-notifications")
+    receipt = {"argv": [str(args.sdk / "platform-tools/adb"), "-s", args.serial,
+                        "shell", shlex.join(tail[1:])], "timeout_seconds": 5}
+    def stream(key, value):
+        raw = value if isinstance(value, bytes) else (value or "").encode()
+        receipt[key] = raw[:4096].decode(errors="replace")
+        receipt[key + "_length"] = len(raw)
+        receipt[key + "_truncated"] = len(raw) > 4096
+    def keep():
+        with open(output / (name + "-expand-" + str(attempt) + ".json"), "x",
+                  opener=lambda path, flags: os.open(path, flags, 0o600)) as target:
+            target.write(json.dumps(receipt, indent=2) + chr(10))
+    try:
+        result = adb(args, *tail, check=False, timeout=5)
+    except subprocess.TimeoutExpired as error:
+        receipt.update(code=None, timeout=True, error=str(error).splitlines()[0][:4096])
+        stream("stdout", error.stdout); stream("stderr", error.stderr); keep()
+        raise
+    receipt.update(code=result.returncode, timeout=False)
+    stream("stdout", result.stdout); stream("stderr", result.stderr); keep()
+    require(result.returncode == 0 and not result.stdout and not result.stderr,
+            "notification_shade_expand_not_quiet_success")
+
 def shade_tap(args, output, name, title, *, action):
-    adb(args, "shell", "cmd", "statusbar", "expand-notifications")
+    for opening in range(2):
+        shade_expand(args, output, name, opening)
+        try:
+            document = ui_document(args, output, name + ("-0" if opening == 0 else "-reissue-0"),
+                                   expected_package="com.android.systemui")
+            break
+        except ui_module().FocusNotReady as error:
+            caller = getattr(args, "ui_expected_package", None)
+            if (type(error) is not ui_module().FocusNotReady or str(error) != "ui_observer_expected_focus_not_ready" or
+                    caller not in PACKAGES[1:] or not error.owners or any(owner != caller for owner in error.owners)):
+                raise
+            require(opening == 0, "notification_shade_focus_not_ready_after_reissue")
     for attempt in range(2):
-        document = ui_document(args, output, name+"-"+str(attempt),expected_package="com.android.systemui")
+        if attempt:
+            document = ui_document(args, output, name+"-"+str(attempt), expected_package="com.android.systemui")
         titles = semantic_nodes(document, title)
         require(len(titles) == 1, "run_specific_notification_title_missing")
         parents = {child: parent for parent in document.iter() for child in parent}
