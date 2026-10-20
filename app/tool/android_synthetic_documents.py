@@ -758,6 +758,92 @@ def selected_root(document, label):
             all(node.get("visible-to-user") == "true" and node.get("clickable") == "false" for node in labelled))
 
 
+def click_save(evidence, document, label, root_label, filename):
+    """Keep ordinary clear taps; attest only the captured fixed SAVE footer overlap.
+
+    API 36 native-layout and synthetic hit/create rehearsal prove this footer
+    receives its unmodified centre above directory rows. No other claimant is
+    exempted from the ordinary overlap rule.
+    """
+    choices = click_targets(document, label)
+    require(len(choices) == 1, "documentsui_save_action_ambiguous")
+    target = choices[0]
+    if on_display(target) and centre_clear(document, target, target):
+        return click_label(evidence, document, label)
+    reason = "documentsui_save_footer_unproven"
+    parents = {child: parent for parent in document.iter() for child in parent}
+    prefix = "com.android.documentsui:id/"
+    def identity(node, resource, cls, clickable="false"):
+        return (node is not None and node.get("package") == "com.android.documentsui" and
+                node.get("resource-id") == resource and node.get("class") == cls and
+                node.get("clickable") == clickable and node.get("enabled") == "true" and on_display(node))
+    def unique(resource):
+        found = [node for node in document.iter("node") if node.get("resource-id") == resource]
+        require(len(found) == 1, reason)
+        return found[0]
+    def path(node, expected):
+        result = []
+        for resource, cls in expected:
+            node = parents.get(node)
+            require(identity(node, resource, cls), reason)
+            result.append(node)
+        return result
+    require(selected_root(document, root_label) and nodes(document, label) == [target] and
+            label in ("SAVE", "Save") and identity(target, "android:id/button1", "android.widget.Button", "true"), reason)
+    require(unique("android:id/button1") is target and
+            [node for node in document.iter("node") if node.get("text") in ("SAVE", "Save") or
+             node.get("content-desc") in ("SAVE", "Save")] == [target], reason)
+    footer = unique(prefix + "container_save")
+    directory = unique(prefix + "dir_list")
+    require(identity(footer, prefix + "container_save", "android.view.ViewGroup") and
+            identity(directory, prefix + "dir_list", "android.widget.GridView"), reason)
+    button_path = path(target, [("", "android.widget.FrameLayout"), ("", "android.widget.LinearLayout"),
+                               (prefix + "container_save", "android.view.ViewGroup"), ("", "android.widget.ScrollView")])
+    require(button_path[2] is footer, reason)
+    common = button_path[-1]
+    directory_path = path(directory, [(prefix + "refresh_layout", "android.view.ViewGroup"),
+        ("", "android.widget.LinearLayout"), (prefix + "container_directory", "android.widget.FrameLayout"),
+        ("", "android.widget.FrameLayout"), ("", "android.widget.ScrollView")])
+    branch = directory_path[-2]
+    siblings = list(common)
+    require(directory_path[-1] is common and len(siblings) == 3 and siblings[1:] == [branch, footer] and
+            identity(siblings[0], prefix + "app_bar", "android.widget.LinearLayout"), reason)
+    # The directory fills the common viewport; the fixed footer spans its bottom.
+    viewport, footer_box = node_box(common), node_box(footer)
+    require(node_box(directory) == node_box(branch) == viewport and
+            footer_box[0] == viewport[0] and footer_box[2:] == viewport[2:] and
+            viewport[1] < footer_box[1] < footer_box[3], reason)
+    titles = [node for node in document.iter("node") if node.get("class") == "android.widget.EditText"]
+    require(len(titles) == 1 and nodes(document, filename) == titles and titles[0].get("text") == filename and
+            identity(titles[0], "android:id/title", "android.widget.EditText", "true") and
+            parents.get(titles[0]) is button_path[1], reason)
+    def contained(node, container):
+        box, outer = node_box(node), node_box(container)
+        return outer[0] <= box[0] < box[2] <= outer[2] and outer[1] <= box[1] < box[3] <= outer[3]
+    require(contained(target, footer) and contained(titles[0], footer), reason)
+    box = node_box(target)
+    x, y = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
+    overlaps = []
+    for other in document.iter("node"):
+        other_box = node_box(other)
+        system_bar = other.get("resource-id") in ("android:id/navigationBarBackground", "android:id/statusBarBackground")
+        if other.get("clickable") == "true" or system_bar:
+            require(other_box is not None, reason)
+            if other is not target and other_box[0] <= x < other_box[2] and other_box[1] <= y < other_box[3]:
+                require(not system_bar and identity(other, ITEM_ROOT, "android.widget.LinearLayout", "true") and
+                        parents.get(other) is directory, reason)
+                overlaps.append(other)
+    require(overlaps, reason)
+    def describe(node):
+        return {key: node.get(key) for key in ("resource-id", "class", "package", "bounds", "clickable", "enabled", "visible-to-user")}
+    evidence.keep("save-footer-attestation.json", {"root_label": root_label, "filename": filename,
+        "target": describe(target), "footer": describe(footer), "directory": describe(directory),
+        "button_ancestors": [describe(node) for node in button_path],
+        "directory_ancestors": [describe(node) for node in directory_path],
+        "siblings": [describe(node) for node in siblings], "overlaps": [describe(node) for node in overlaps], "point": [x, y]})
+    tap_node(evidence, target)
+
+
 def save_ready(document):
     labels = [label for label in ("SAVE", "Save") if nodes(document, label)]
     targets = click_targets(document, labels[0]) if len(labels) == 1 else []
@@ -858,7 +944,7 @@ def drive_picker(evidence, phase):
         require(len(titles) == 1, "documentsui_exact_create_filename_missing")
         save = [label for label in ("SAVE", "Save") if nodes(document, label)]
         require(len(save) == 1, "documentsui_save_action_ambiguous")
-        click_label(evidence, document, save[0])
+        click_save(evidence, document, save[0], phase["root_label"], phase["document_label"])
 
 
 def validate_receipt(value, case, control):

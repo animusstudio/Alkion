@@ -33,6 +33,7 @@ only an emulator run proves device behavior.
 | adb scans emulator ports up to 5585 by default | higher ports work only by registering with a running adb server |
 | API 36 synthetic captures (2026-10-20) show DocumentsUI can shift outer/card/toggle bounds off-display while child titles retain display coordinates; its observed List view control exposes all six fixture inputs | prefer list mode at the first usable OPEN root; re-observe unusable toggles boundedly, never guess a coordinate offset |
 | API 36 synthetic rehearsal (2026-10-20): `am unfreeze --sticky PID` prints `Unfreezing process PACKAGE (PID) sticky=true` and preserves the provider PID | require the exact line and unchanged PID; namespace discovery and the full supported flow remain separate checks |
+| API 36 synthetic hit/create rehearsal (2026-10-20), backed by the native DocumentsUI layout: the fixed SAVE footer receives its native centre even when directory-row accessibility bounds overlap it | only a SAVE-specific footer/list topology attestation may permit exact row overlap; unknown claimants and system bars still refuse |
 
 Add a row, with its source, whenever a device run teaches a new fact.
 
