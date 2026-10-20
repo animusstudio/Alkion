@@ -42,6 +42,97 @@ SOURCE_NAME = "alkion-backup-12345678-20261018T121314Z-abcdef.alkionbackup"
 DUI = "com.android.documentsui:id/"
 NAVIGATION_TOP = 2274
 
+# Captured whole-tree shift, projected to labelled/clickable nodes and their
+# ancestors. Bounds, classes, flags and ancestry are retained; identifiers are synthetic.
+SHIFTED_DIRECTORY = (
+    (0, '', 'android.widget.FrameLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (1, '', 'android.widget.LinearLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (2, '', 'android.widget.FrameLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (3, 'com.android.documentsui:id/action_bar_root', 'android.widget.FrameLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (4, 'android:id/content', 'android.widget.FrameLayout', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (5, 'com.android.documentsui:id/coordinator_layout', 'android.view.ViewGroup', '[0,2274][1080,4674]', '', '', 'false', 'true', 'true'),
+    (6, 'com.android.documentsui:id/drawer_layout', 'androidx.drawerlayout.widget.DrawerLayout', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (7, '', 'android.widget.ScrollView', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/app_bar', 'android.widget.LinearLayout', '[0,2410][1080,2820]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/collapsing_toolbar', 'android.widget.FrameLayout', '[0,2410][1080,2820]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.ScrollView', '[0,2410][1080,2820]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/directory_header', 'android.widget.LinearLayout', '[0,2536][1080,2820]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/horizontal_breadcrumb', 'androidx.recyclerview.widget.RecyclerView', '[0,2536][1080,2662]', '', '', 'false', 'true', 'true'),
+    (13, '', 'android.widget.LinearLayout', '[0,2536][722,2662]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/breadcrumb_text', 'android.widget.TextView', '[0,2536][722,2662]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/header_container', 'android.widget.LinearLayout', '[63,2662][1017,2820]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/header_title', 'android.widget.TextView', '[63,2662][890,2820]', 'Files from Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/sub_menu', 'androidx.appcompat.widget.LinearLayoutCompat', '[890,2678][1017,2804]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/sub_menu_list', 'android.widget.Button', '[890,2678][1017,2804]', '', 'List view', 'true', 'true', 'true'),
+    (10, 'com.android.documentsui:id/toolbar', 'android.view.ViewGroup', '[0,2410][1080,2536]', '', '', 'false', 'true', 'true'),
+    (11, '', 'android.widget.ImageButton', '[0,2410][147,2536]', '', 'Show roots', 'true', 'true', 'true'),
+    (11, '', 'android.widget.TextView', '[189,2437][934,2508]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (11, '', 'androidx.appcompat.widget.LinearLayoutCompat', '[954,2410][1080,2536]', '', '', 'false', 'true', 'true'),
+    (12, '', 'android.widget.ImageView', '[954,2410][1080,2536]', '', 'More options', 'true', 'true', 'true'),
+    (8, '', 'android.widget.FrameLayout', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/container_directory', 'android.widget.FrameLayout', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.LinearLayout', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/refresh_layout', 'android.view.ViewGroup', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/dir_list', 'android.widget.GridView', '[0,2410][1080,4674]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[64,2831][529,3432]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[64,2831][529,3432]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[64,2831][529,3432]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[403,2831][529,2957]', '', 'Preview the file $RUN-dev-open-corrupt.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[64,3296][529,3432]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[196,1022][529,1158]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[196,1043][497,1094]', '$RUN-dev-open-corrupt.alkionbackup', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[551,2831][1016,3432]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[551,557][1016,1158]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[551,557][1016,1158]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[890,557][1016,683]', '', 'Preview the file $RUN-dev-open-denied.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[551,1022][1016,1158]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[683,1022][1016,1158]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[683,1043][984,1094]', '$RUN-dev-open-denied.alkionbackup', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[64,3454][529,4055]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[64,1180][529,1781]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[64,1180][529,1781]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[403,1180][529,1306]', '', 'Preview the file $RUN-dev-open-error.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[64,1645][529,1781]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[196,1645][529,1781]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[196,1666][497,1717]', '$RUN-dev-open-error.alkionbackup', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[551,3454][1016,4055]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[551,1180][1016,1781]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[551,1180][1016,1781]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[890,1180][1016,1306]', '', 'Preview the file $RUN-dev-open-good.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[551,1645][1016,1781]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[683,1645][1016,1781]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[683,1666][984,1717]', '$RUN-dev-open-good.alkionbackup', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[64,4077][529,4674]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[64,1803][529,2400]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[64,1803][529,2400]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[403,1803][529,1929]', '', 'Preview the file $RUN-dev-open-over-limit.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[64,2268][529,2400]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[196,2268][529,2400]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[196,2289][497,2340]', '$RUN-dev-open-over-limit.alkionbackup', '', 'false', 'true', 'false'),
+    (13, 'com.android.documentsui:id/item_root', 'androidx.cardview.widget.CardView', '[551,4077][1016,4674]', '', '', 'true', 'true', 'true'),
+    (14, '', 'androidx.cardview.widget.CardView', '[551,1803][1016,2400]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.RelativeLayout', '[551,1803][1016,2400]', '', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[890,1803][1016,1929]', '', 'Preview the file $RUN-dev-open-short.alkionbackup', 'true', 'true', 'true'),
+    (16, 'com.android.documentsui:id/nameplate', 'android.widget.LinearLayout', '[551,2268][1016,2400]', '', '', 'false', 'true', 'true'),
+    (17, '', 'android.widget.RelativeLayout', '[683,2268][1016,2400]', '', '', 'false', 'true', 'true'),
+    (18, 'android:id/title', 'android.widget.TextView', '[683,2289][984,2340]', '$RUN-dev-open-short.alkionbackup', '', 'false', 'true', 'false'),
+    (18, 'com.android.documentsui:id/details', 'android.widget.TextView', '[683,2340][781,2383]', '595 kB', '', 'false', 'true', 'false'),
+    (1, 'android:id/navigationBarBackground', 'android.view.View', '[0,4548][1080,4674]', '', '', 'false', 'true', 'true'),
+)
+
+
+def shifted_directory():
+    root, stack = ET.Element("hierarchy", rotation="0"), []
+    for depth, resource, cls, bounds, text, desc, clickable, enabled, visible in SHIFTED_DIRECTORY:
+        parent = root if depth == 0 else stack[depth - 1]
+        node = ET.SubElement(parent, "node", {"package": "com.android.documentsui", "resource-id": resource,
+            "class": cls, "bounds": bounds, "text": text.replace("$RUN", RUN), "content-desc": desc.replace("$RUN", RUN),
+            "clickable": clickable, "enabled": enabled, "visible-to-user": visible,
+            "observer-display-width": "1080", "observer-display-height": "2400"})
+        stack[depth:] = [node]
+    return root
+
+
 # Faithful pinned SDK 36 aapt2 xmltree output for the synthetic fixture.
 PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/android (line=1)
   E: manifest (line=1)
@@ -196,6 +287,7 @@ class FakeHost:
         self.preview_taps = []
         # DocumentsUI directory model: view mode per root, a card bounds shift and the rendered tap geometry.
         self.views, self.view_lag, self.card_shift, self.list_drift = {}, 0, 0, 0
+        self.early_list = True
         self.hits, self.bar_taps, self.wrong_taps, self.toggle_taps = [], [], [], []
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
@@ -750,7 +842,7 @@ class FakeHost:
             self.view_lag -= 1
             mode = {"grid": "list", "list": "grid"}[mode]
         toggle, description = {"grid": ("sub_menu_list", "List view"), "list": ("sub_menu_grid", "Grid view")}[mode]
-        if self.scenario != "toggle-missing":
+        if self.scenario != "toggle-missing" and (self.early_list or self.current_phase["case"] != "open-cancel"):
             menu = self.add(container, (890, 404, 1017, 530), "androidx.appcompat.widget.LinearLayoutCompat", resource_id=DUI + "sub_menu")
             for _ in range(2 if self.scenario == "toggle-duplicate" else 1):
                 self.add(menu, (890, 404, 1017, 530), "android.widget.Button", resource_id=DUI + toggle,
@@ -1315,34 +1407,28 @@ class DocumentsControls(unittest.TestCase):
         # The preview icons, the navigation bar and other documents are never tapped.
         self.assertEqual((host.preview_taps, host.bar_taps, host.wrong_taps), ([], [], []))
 
-    def test_hidden_grid_title_switches_once_to_list_view_and_the_root_stays_listed(self):
+    def test_first_open_root_switches_before_cancel_and_the_root_stays_listed(self):
         self.host.args.action = "documents"
         state = self.host.documents_action(self.host.args)
         self.assertEqual(state["documents_phase"], "PASS")
         self.assert_clean_taps(self.host)
-        # Cases run good, denied, error, short, over-limit, corrupt; short is the first in the third grid row.
-        self.assertEqual(self.host.toggle_taps, ["open-short", "open-short"])
+        self.assertEqual(self.host.toggle_taps, ["open-cancel", "open-cancel"])
         self.assertEqual(self.host.views, {"dev": "list", "supported": "list"})
-        self.assertEqual(self.host.mutations.count(("tap", 467)), 2)  # The centre of the captured toggle.
+        self.assertEqual(self.host.mutations.count(("tap", 467)), 2)
         switches = [json.loads(path.read_bytes()) for path in sorted((self.root / "output").glob("*-view-switch.json"))]
         self.assertEqual([(item["toggle_resource_id"], item["toggle_bounds"]) for item in switches],
                          [(DUI + "sub_menu_list", "[890,404][1017,530]")] * 2)
-        records = {case: [(item["tapped"], item["target_bounds"], item["tapped_bounds"], item.get("view"), item.get("switched"))
-                          for item in items] for case, items in self.open_records().items()}
-        self.assertEqual(records, {
-            "open-good": [("target", "[551,1180][1016,1781]", "[551,1180][1016,1781]", None, None)] * 2,
-            "open-denied": [("target", "[551,557][1016,1158]", "[551,557][1016,1158]", None, None)] * 2,
-            "open-error": [("target", "[64,1180][529,1781]", "[64,1180][529,1781]", None, None)] * 2,
-            "open-short": [("target", "[0,1506][1080,1698]", "[0,1506][1080,1698]", "list", True)] * 2,
-            "open-over-limit": [("target", "[0,1314][1080,1506]", "[0,1314][1080,1506]", "list", False)] * 2,
-            "open-corrupt": [("target", "[0,546][1080,738]", "[0,546][1080,738]", "list", False)] * 2})
-        # The switch is re-observed until the row repeats, then never again.
+        records = self.open_records()
+        self.assertEqual(set(records), {case for case in documents.CASES if case.startswith("open-") and case != "open-cancel"})
+        for items in records.values():
+            self.assertEqual([(item["view"], item["switched"], item["tapped"]) for item in items], [("list", False, "target")] * 2)
         observed = sorted(path.name.split("-", 1)[1].rsplit("-", 1)[0] for path in (self.root / "output").glob("*list-view-*.observation"))
-        self.assertEqual(observed, ["dev-open-short-list-view-0", "dev-open-short-list-view-1",
-                                    "supported-open-short-list-view-0", "supported-open-short-list-view-1"])
+        self.assertEqual(observed, ["dev-open-cancel-list-view-0", "dev-open-cancel-list-view-1",
+                                    "supported-open-cancel-list-view-0", "supported-open-cancel-list-view-1"])
 
     def test_grid_cards_reporting_shifted_bounds_keep_the_visible_title_tap(self):
         self.host.card_shift, self.host.args.action = NAVIGATION_TOP, "documents"
+        self.host.early_list = False
         self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
         self.assert_clean_taps(self.host)
         records = {case: {(item["tapped"], item["target_bounds"], item["tapped_bounds"]) for item in items}
@@ -1356,6 +1442,7 @@ class DocumentsControls(unittest.TestCase):
 
     def test_list_switch_not_yet_drawn_is_reobserved(self):
         self.host.scenario, self.host.args.action = "list-lag", "documents"
+        self.host.early_list = False
         self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
         self.assert_clean_taps(self.host)
         self.assertEqual(self.host.toggle_taps, ["open-short", "open-short"])
@@ -1377,6 +1464,7 @@ class DocumentsControls(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 host = FakeHost(self.root / scenario)
                 host.scenario, host.args.action = scenario, "documents"
+                host.early_list = False
                 if scenario.startswith(("card-", "two-")):
                     host.card_shift = NAVIGATION_TOP  # These shapes reach the visible-title tap.
                 with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
@@ -1388,6 +1476,104 @@ class DocumentsControls(unittest.TestCase):
                 self.assertEqual((host.flavor, host.current_phase["state"]), ("dev", "picker"))
                 self.assertEqual(host.current_phase["case"], "open-good" if host.card_shift else "open-short")
                 self.assertNotIn(host.current_phase["case"], host.observed)
+
+    def test_captured_whole_shift_reobserves_then_refuses_without_tapping(self):
+        evidence, _ = self.evidence_after_seed()
+        tree = shifted_directory()
+        label = RUN + "-dev-open-short.alkionbackup"
+        self.assertTrue(documents.selected_root(tree, "Alkion synthetic " + RUN + "-dev"))
+        self.assertEqual(documents.view_mode(tree), (None, None))
+        toggle, mode = documents.view_mode(tree, allow_off_display=True)
+        self.assertEqual((mode, toggle.get("bounds")), ("grid", "[890,2678][1017,2804]"))
+        observed = []
+        def observe(name):
+            observed.append(name)
+            return shifted_directory()  # No captured shifted-to-normal transition is assumed.
+        with patch.object(self.host, "click_node") as click:
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_list_toggle_off_display"):
+                documents.open_document(evidence, tree, label, observe)
+            click.assert_not_called()
+        self.assertEqual(observed, ["list-toggle-0", "list-toggle-1", "list-toggle-2"])
+
+    def test_first_open_cancel_refuses_a_persistently_shifted_toggle(self):
+        self.host.args.action = "documents"
+        original = self.host.ui_xml
+        def captured():
+            if self.host.selected and not self.host.drawer:
+                return ET.tostring(shifted_directory(), encoding="unicode")
+            return original()
+        with patch.object(self.host, "ui_xml", side_effect=captured):
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_list_toggle_off_display"):
+                self.host.documents_action(self.host.args)
+        self.assertEqual(self.host.toggle_taps, [])
+        self.assertEqual(self.host.current_phase["case"], "open-cancel")
+        self.assertEqual(self.host.current_phase["state"], "picker")
+        observed = list((self.root / "output").glob("*-dev-open-cancel-list-toggle-*.observation"))
+        self.assertEqual(len(observed), 3)
+        self.assert_clean_taps(self.host)
+
+    def test_captured_whole_shift_keeps_the_visible_title_fallback(self):
+        evidence, _ = self.evidence_after_seed()
+        for case in ("open-good", "open-denied", "open-error"):
+            with self.subTest(case=case), patch.object(self.host, "click_node") as click:
+                documents.open_document(evidence, shifted_directory(), RUN + "-dev-" + case + ".alkionbackup",
+                                        lambda name: self.fail("visible title needs no view switch"))
+                self.assertEqual(click.call_count, 1)
+                self.assertTrue(documents.on_display(click.call_args.args[1]))
+
+    def test_off_display_toggle_reobservation_keeps_exact_root_and_case_budget(self):
+        evidence, phase = self.evidence_after_seed()
+        self.host.provider_enabled = True
+        self.host.front, self.host.selected, self.host.drawer = "com.android.documentsui", True, False
+        tree = shifted_directory()
+        phase = dict(phase, variant="dev", case="open-short")
+        foreign = copy.deepcopy(tree)
+        for node in documents.nodes(foreign, "Alkion synthetic " + RUN + "-dev"):
+            node.set("text", "foreign root")
+        for document, reason in ((foreign, "documentsui_checkpoint_unavailable"), (tree, "documentsui_case_budget_exceeded")):
+            with self.subTest(reason=reason), patch.object(self.host, "ui_document", return_value=document):
+                with self.assertRaisesRegex(documents.Refusal, reason):
+                    documents.picker_document(evidence, "toggle-root", lambda doc: documents.selected_root(doc, "Alkion synthetic " + RUN + "-dev"),
+                                              deadline=documents.time.monotonic() + (0 if document is tree else 50))
+
+    def test_list_row_direct_refusals_and_navigation_band(self):
+        def tree():
+            root = ET.Element("hierarchy")
+            row = self.host.add(root, (0, 1506, 1080, 1698), "android.widget.LinearLayout", resource_id=DUI + "item_root", clickable="true")
+            title = self.host.add(row, (189, 1545, 849, 1602), "android.widget.TextView", resource_id="android:id/title", text="name")
+            bar = self.host.add(root, (0, NAVIGATION_TOP, 1080, 2400), "android.view.View", resource_id="android:id/navigationBarBackground", visible_to_user="false")
+            for node in root.iter("node"):
+                node.set("observer-display-width", "1080"); node.set("observer-display-height", "2400")
+            return root, row, title, bar
+        root, row, _, _ = tree()
+        self.assertIs(documents.list_row(root, "name"), row)
+        for target, key, value in ((1, "enabled", "false"), (1, "visible-to-user", "false"),
+                                   (1, "resource-id", DUI + "foreign"), (1, "class", "androidx.cardview.widget.CardView"),
+                                   (2, "enabled", "false"), (2, "visible-to-user", "false")):
+            with self.subTest(target=target, key=key):
+                parts = tree(); parts[target].set(key, value)
+                with self.assertRaisesRegex(documents.Refusal, "documentsui_list_row_unusable"):
+                    documents.list_row(parts[0], "name")
+        for bounds in ("[500,1550][600,1650]", "[-40,1500][1080,1700]"):
+            root, row, _, _ = tree()
+            overlay = self.host.add(root, tuple(map(int, re.findall(r"-?\d+", bounds))), clickable="true")
+            self.assertEqual(documents.node_box(overlay)[0], int(re.findall(r"-?\d+", bounds)[0]))
+            overlay.set("observer-display-width", "1080"); overlay.set("observer-display-height", "2400")
+            self.assertEqual(documents.on_display(overlay), not bounds.startswith("[-"))
+            with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+                documents.list_row(root, "name")
+        # Row and title stay on-display and visible; only the row centre enters the bar.
+        root, row, title, bar = tree()
+        row.set("bounds", "[0,2200][1080,2400]")
+        title.set("bounds", "[189,2210][849,2267]")
+        self.assertTrue(documents.on_display(row))
+        with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+            documents.list_row(root, "name")
+        row.set("bounds", "[0,2178][1080,2370]")  # Centre exactly at the captured bar top.
+        with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+            documents.list_row(root, "name")
+        row.set("bounds", "[0,2176][1080,2368]")  # Two pixels higher is a clear centre.
+        self.assertIs(documents.list_row(root, "name"), row)
 
     def test_view_mode_needs_one_usable_toggle_with_its_captured_description(self):
         def tree(*toggles):
@@ -1433,6 +1619,25 @@ class DocumentsControls(unittest.TestCase):
         for name, (value, target) in refused.items():
             with self.subTest(name=name), self.assertRaisesRegex(documents.Refusal, "ui_target_bounds_unusable|ui_tap_point_ambiguous"):
                 documents.label_tap(value[0], "name", target(value))
+
+    def test_label_tap_refuses_signed_overlay_and_navigation_band(self):
+        root = ET.Element("hierarchy")
+        card = self.host.add(root, (551, 3454, 1016, 4055), clickable="true")
+        title = self.host.add(card, (683, 1666, 984, 1717), text="name")
+        for node in root.iter("node"):
+            node.set("observer-display-width", "1080"); node.set("observer-display-height", "2400")
+        self.assertIs(documents.label_tap(root, "name", card), title)
+        overlay = self.host.add(root, (-40, 1500, 1080, 1700), clickable="true")
+        with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+            documents.label_tap(root, "name", card)
+        root.remove(overlay)
+        self.host.add(root, (0, NAVIGATION_TOP, 1080, 2400), resource_id="android:id/navigationBarBackground", visible_to_user="false")
+        title.set("bounds", "[683,2289][984,2340]")
+        self.assertTrue(documents.on_display(title))
+        with self.assertRaisesRegex(documents.Refusal, "ui_tap_point_ambiguous"):
+            documents.label_tap(root, "name", card)
+        title.set("bounds", "[683,2220][984,2270]")
+        self.assertIs(documents.label_tap(root, "name", card), title)
 
     def test_harness_command_failure_keeps_head_and_tail(self):
         command = load_harness()["command"]

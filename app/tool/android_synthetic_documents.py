@@ -564,7 +564,7 @@ def click_targets(document, label):
 
 
 def node_box(node):
-    match = re.fullmatch(r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]", node.get("bounds", ""))
+    match = re.fullmatch(r"\[(-?[0-9]+),(-?[0-9]+)\]\[(-?[0-9]+),(-?[0-9]+)\]", node.get("bounds", ""))
     return tuple(map(int, match.groups())) if match else None
 
 
@@ -590,9 +590,15 @@ def target_labels(document, label, target):
 
 
 def centre_clear(document, node, target):
-    """Whether the centre of node hits no clickable node other than target."""
+    """Whether the centre avoids system bars and clickable nodes other than target."""
     x1, y1, x2, y2 = node_box(node)
     x, y = (x1 + x2) // 2, (y1 + y2) // 2
+    # A system bar can obscure the point even when its visibility flag is false.
+    for other in document.iter("node"):
+        box = node_box(other)
+        if (other.get("resource-id") == "android:id/navigationBarBackground" and box and
+                box[0] <= x < box[2] and box[1] <= y < box[3]):
+            return False
     return not [other for other in document.iter("node") if other is not target and other.get("clickable") == "true" and
                 node_box(other) and node_box(other)[0] <= x < node_box(other)[2] and node_box(other)[1] <= y < node_box(other)[3]]
 
@@ -617,6 +623,7 @@ def click_label(evidence, document, label):
     require(len(choices) == 1, "unique_native_documents_label_missing:" + label)
     target = choices[0]
     tapped = target if on_display(target) else label_tap(document, label, target)
+    require(centre_clear(document, tapped, target), "ui_tap_point_ambiguous:" + label)
     evidence.keep("click-target.json", {"label": label, "target_bounds": target.get("bounds"),
         "target_resource_id": target.get("resource-id"), "tapped": "target" if tapped is target else "label",
         "tapped_bounds": tapped.get("bounds")})
@@ -630,15 +637,16 @@ VIEW_TOGGLES = {"com.android.documentsui:id/sub_menu_list": ("List view", "grid"
 LIST_SAMPLES = 3  # Observations after the switch until the document's row repeats.
 
 
-def view_mode(document):
-    """The unique usable view toggle and the mode it proves, or (None, None)."""
+def view_mode(document, *, allow_off_display=False):
+    """The unique safe toggle and mode, optionally retaining off-display bounds for re-observation."""
     toggles = [node for node in document.iter("node") if node.get("resource-id") in VIEW_TOGGLES]
     if len(toggles) != 1:
         return None, None
     toggle = toggles[0]
     description, mode = VIEW_TOGGLES[toggle.get("resource-id")]
     usable = (toggle.get("package") == "com.android.documentsui" and nodes(document, description) == [toggle] and
-              toggle.get("clickable") == "true" and toggle.get("enabled") == "true" and on_display(toggle) and
+              toggle.get("clickable") == "true" and toggle.get("enabled") == "true" and
+              (on_display(toggle) or (allow_off_display and toggle.get("visible-to-user") == "true" and node_box(toggle))) and
               centre_clear(document, toggle, toggle))
     return (toggle, mode) if usable else (None, None)
 
@@ -669,12 +677,33 @@ def settled_list(observe, label):
     previous = None
     for sample in range(LIST_SAMPLES):
         document = observe("list-view-" + str(sample))
-        require(view_mode(document)[1] == "list", "documentsui_list_view_unproven:" + label)
-        shape = [(node.get("bounds"), node.get("visible-to-user")) for node in nodes(document, label) + click_targets(document, label)]
+        require(view_mode(document)[1] == "list", "documentsui_list_view_unproven:" + str(label))
+        tracked = (nodes(document, label) + click_targets(document, label)) if label is not None else [
+            node for node in document.iter("node") if node.get("resource-id") in (ITEM_ROOT, "android:id/title")]
+        shape = [(node.get("bounds"), node.get("visible-to-user")) for node in tracked]
         if shape == previous:
             return document
         previous = shape
-    raise Refusal("documentsui_list_view_not_settled:" + label)
+    raise Refusal("documentsui_list_view_not_settled:" + str(label))
+
+
+def prefer_list(evidence, document, label, observe, *, optional=False):
+    """Switch at a proven root; an off-display toggle is only re-observed, never tapped."""
+    for sample in range(LIST_SAMPLES + 1):
+        toggle, mode = view_mode(document, allow_off_display=True)
+        if toggle is None or on_display(toggle):
+            break
+        require(sample < LIST_SAMPLES, "documentsui_list_toggle_off_display:" + str(label))
+        document = observe("list-toggle-" + str(sample))
+    if mode == "list":
+        return document, False
+    if mode != "grid" and optional:
+        return document, False
+    require(mode == "grid", "documentsui_list_view_unavailable:" + str(label))
+    evidence.keep("view-switch.json", {"label": label, "toggle_resource_id": toggle.get("resource-id"),
+                                       "toggle_bounds": toggle.get("bounds")})
+    evidence.host.click_node(evidence.prepared.args, toggle)
+    return settled_list(observe, label), True
 
 
 def open_document(evidence, document, label, observe):
@@ -691,11 +720,7 @@ def open_document(evidence, document, label, observe):
     if mode != "list":
         if not title_hidden(document, label):
             return click_label(evidence, document, label)
-        require(mode == "grid", "documentsui_list_view_unavailable:" + label)
-        evidence.keep("view-switch.json", {"label": label, "toggle_resource_id": toggle.get("resource-id"),
-                                           "toggle_bounds": toggle.get("bounds")})
-        evidence.host.click_node(evidence.prepared.args, toggle)
-        document, switched = settled_list(observe, label), True
+        document, switched = prefer_list(evidence, document, label, observe)
     row = list_row(document, label)
     evidence.keep("click-target.json", {"label": label, "target_bounds": row.get("bounds"),
         "target_resource_id": row.get("resource-id"), "tapped": "target", "tapped_bounds": row.get("bounds"),
@@ -777,12 +802,19 @@ def drive_picker(evidence, phase):
                                (case.endswith("-cancel") or bool(nodes(doc, phase["document_label"]))) and
                                (not case.startswith("save-") or save_ready(doc)), **bounds)
     require(selected_root(document, phase["root_label"]), "documentsui_selected_root_unproven")
+    def observe(name):
+        return picker_document(evidence, flavor + "-" + case + "-" + name, lambda doc:
+            selected_root(doc, phase["root_label"]) and
+            (not name.startswith("list-view-") or view_mode(doc)[1] == "list") and
+            (case.endswith("-cancel") or bool(nodes(doc, phase["document_label"]))), **bounds)
+    if case == "open-cancel":
+        # The first OPEN root has a captured on-display toggle; prefer list before
+        # cancelling so later cases can use the persisted, compact directory rows.
+        document, _ = prefer_list(evidence, document, None, observe, optional=True)
     if case.endswith("-cancel"):
         evidence.host.adb(evidence.prepared.args, "shell", "input", "keyevent", "KEYCODE_BACK")
     elif case.startswith("open-"):
-        open_document(evidence, document, phase["document_label"], lambda name: picker_document(
-            evidence, flavor + "-" + case + "-" + name, lambda doc: selected_root(doc, phase["root_label"]) and
-            view_mode(doc)[1] == "list" and bool(nodes(doc, phase["document_label"])), **bounds))
+        open_document(evidence, document, phase["document_label"], observe)
     else:
         titles = [node for node in nodes(document, phase["document_label"]) if node.get("class") == "android.widget.EditText"]
         require(len(titles) == 1, "documentsui_exact_create_filename_missing")
