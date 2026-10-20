@@ -39,6 +39,39 @@ def hierarchy(package="com.android.systemui"):
     return tree
 
 
+# Separate captured states used by the host reissue simulation, not a captured
+# app recovery: caller-only focus, settled shade title/action and their ancestors.
+CAPTURED_CALLER_FOCUS = "  mCurrentFocus=Window{a74c3ba u0 dev.animusstudio.alkion.dev/dev.animusstudio.alkion.MainActivity}\n"
+CAPTURED_SHADE_FOCUS = "  mCurrentFocus=Window{c4ee37 u0 NotificationShade}\n"
+CAPTURED_SHADE = (
+    (None, 'com.android.systemui:id/legacy_window_root', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (0, 'com.android.systemui:id/shared_notification_container', 'android.view.ViewGroup', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (1, 'com.android.systemui:id/notification_stack_scroller', 'android.widget.ScrollView', '[0,0][1080,2190]', '', '', 'false', 'true', 'true'),
+    (2, 'com.android.systemui:id/expandableNotificationRow', 'android.widget.FrameLayout', '[42,716][1038,1180]', '', '', 'true', 'true', 'true'),
+    (3, 'com.android.systemui:id/expanded', 'android.widget.FrameLayout', '[42,716][1038,1180]', '', '', 'false', 'true', 'true'),
+    (4, 'android:id/status_bar_latest_event_content', 'android.widget.FrameLayout', '[42,716][1038,1180]', '', '', 'false', 'true', 'true'),
+    (5, 'android:id/notification_action_list_margin_target', 'android.widget.LinearLayout', '[42,716][1038,1180]', '', '', 'false', 'true', 'true'),
+    (6, '', 'android.widget.FrameLayout', '[42,716][1038,1022]', '', '', 'false', 'true', 'true'),
+    (7, 'android:id/notification_main_column', 'android.widget.LinearLayout', '[179,847][996,1022]', '', '', 'false', 'true', 'true'),
+    (8, 'android:id/title', 'android.widget.TextView', '[179,847][996,953]', 'Synthetic lifecycle $RUN dev.animusstudio.alkion.dev', '', 'false', 'true', 'true'),
+    (6, 'android:id/actions_container', 'android.widget.FrameLayout', '[42,1022][1038,1180]', '', '', 'false', 'true', 'true'),
+    (10, 'android:id/actions_container_layout', 'android.widget.LinearLayout', '[42,1022][1038,1180]', '', '', 'false', 'true', 'true'),
+    (11, 'android:id/actions', 'android.widget.LinearLayout', '[42,1022][1006,1180]', '', '', 'false', 'true', 'true'),
+    (12, 'android:id/action0', 'android.widget.Button', '[147,1038][294,1164]', '+30S', '+30s', 'true', 'true', 'true'),
+)
+
+
+def captured_shade():
+    tree, nodes = ET.Element("hierarchy", rotation="0"), []
+    for parent, resource, cls, bounds, text, desc, clickable, enabled, visible in CAPTURED_SHADE:
+        node = ET.SubElement(tree if parent is None else nodes[parent], "node", {
+            "package": "com.android.systemui", "resource-id": resource, "class": cls, "bounds": bounds,
+            "text": text.replace("$RUN", RUN), "content-desc": desc, "clickable": clickable,
+            "enabled": enabled, "visible-to-user": visible})
+        nodes.append(node)
+    return tree
+
+
 ADB = r'''#!/usr/bin/env python3
 import datetime,hashlib,json,os,shlex,subprocess,sys,time,xml.etree.ElementTree as ET
 from pathlib import Path
@@ -323,6 +356,97 @@ class Protocol(unittest.TestCase):
         self.main["shade_tap"](self.args, self.output, "shade", TITLE, action=True)
         self.assertEqual([command for command in self.commands() if command[:2] == ["input", "tap"]], [["input", "tap", "260", "50"]])
 
+    def test_shade_reissue_host_simulation_replays_captured_caller_then_settled_shade(self):
+        # Actual states from separate runs; this does not claim observed app recovery.
+        self.args.ui_expected_package = "dev.animusstudio.alkion.dev"
+        self.tree = captured_shade()
+        self.focus_sequence = [CAPTURED_CALLER_FOCUS] * 18 + [CAPTURED_SHADE_FOCUS] * 2
+        self.clock = ControlledClock(); self.costs[("dumpsys", "activity", "activities")] = 0.014
+        title = "Synthetic lifecycle " + RUN + " dev.animusstudio.alkion.dev"
+        with patch.object(observer, "time", self.clock):
+            self.main["shade_tap"](self.args, self.output, "shade", title, action=True)
+        self.assertEqual(sum(cmd == ["cmd", "statusbar", "expand-notifications"] for cmd in self.commands()), 2)
+        self.assertEqual([cmd for cmd in self.commands() if cmd[:2] == ["input", "tap"]], [["input", "tap", "220", "1101"]])
+        first = json.loads((self.output / "shade-0.observation/host-receipt.json").read_bytes())
+        second = json.loads((self.output / "shade-reissue-0.observation/host-receipt.json").read_bytes())
+        self.assertEqual((first["result"], len(first["focus_readiness"]["samples"])), ("FAIL", 18))
+        self.assertFalse(any(cmd["label"] == "instrument" for cmd in first["commands"]))
+        self.assertEqual((second["result"], second["focus_before"]["package"]), ("PASS", "com.android.systemui"))
+        for index in range(2):
+            path = self.output / ("shade-expand-" + str(index) + ".json")
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            value = json.loads(path.read_bytes())
+            self.assertEqual(value["argv"], [str(self.adb), "-s", "emulator-5558", "shell", "cmd statusbar expand-notifications"])
+            self.assertEqual((value["code"], value["stdout"], value["stderr"], value["stdout_length"], value["stderr_length"], value["timeout"]),
+                             (0, "", "", 0, 0, False))
+
+    def test_shade_persistent_captured_caller_refuses_after_one_reissue_without_tap(self):
+        self.args.ui_expected_package = "dev.animusstudio.alkion.dev"
+        self.focus_sequence = [CAPTURED_CALLER_FOCUS]
+        self.clock = ControlledClock(); self.costs[("dumpsys", "activity", "activities")] = 0.014
+        with patch.object(observer, "time", self.clock), self.assertRaisesRegex(self.main["Refusal"], "after_reissue"):
+            self.main["shade_tap"](self.args, self.output, "persistent", TITLE, action=True)
+        self.assertEqual(sum(cmd == ["cmd", "statusbar", "expand-notifications"] for cmd in self.commands()), 2)
+        self.assertFalse(any(cmd[:1] == ["input"] or cmd[:2] == ["am", "instrument"] for cmd in self.commands()))
+        self.assertTrue((self.output / "persistent-0.observation/host-receipt.json").is_file())
+        self.assertTrue((self.output / "persistent-reissue-0.observation/host-receipt.json").is_file())
+
+    def test_shade_reissues_only_exact_typed_nonempty_known_caller_focus(self):
+        caller = "dev.animusstudio.alkion.dev"
+        class DerivedFocus(observer.FocusNotReady): pass
+        cases = [(observer.FocusNotReady("ui_observer_expected_focus_not_ready", owners), caller)
+                 for owners in ((), (None,), (caller, None), (caller, "foreign.package"), ("foreign.package",))]
+        cases += [(observer.FocusNotReady("other", (caller,)), caller),
+                  (DerivedFocus("ui_observer_expected_focus_not_ready", (caller,)), caller),
+                  (observer.Refusal("ui_observer_expected_focus_not_ready"), caller),
+                  (observer.FocusNotReady("ui_observer_expected_focus_not_ready", (caller,)), None),
+                  (observer.FocusNotReady("ui_observer_expected_focus_not_ready", (caller,)), "foreign.package"),
+                  (observer.FocusNotReady("ui_observer_expected_focus_not_ready", (caller,)), "dev.animusstudio.alkion"),
+                  (ValueError("malformed"), caller), (subprocess.TimeoutExpired("observer", 2), caller)]
+        for index, (error, expected) in enumerate(cases):
+            output = self.root / ("refused-" + str(index)); output.mkdir()
+            self.args.ui_expected_package = expected
+            def failed(*args, **kwargs): raise error
+            before = len(self.commands())
+            with self.subTest(index=index), patch.dict(self.main, ui_document=failed), self.assertRaises(type(error)):
+                self.main["shade_tap"](self.args, output, "shade", TITLE, action=True)
+            self.assertEqual(self.commands()[before:], [["cmd", "statusbar", "expand-notifications"]])
+
+    def test_shade_expansion_failure_receipts_precede_refusal_and_bound_streams(self):
+        caller = "dev.animusstudio.alkion.dev"; self.args.ui_expected_package = caller
+        def unavailable(*args, **kwargs):
+            raise observer.FocusNotReady("ui_observer_expected_focus_not_ready", (caller,) * 18)
+        responses = [subprocess.CompletedProcess([], 0, "unexpected", ""),
+                     subprocess.CompletedProcess([], 0, "", "diagnostic"),
+                     subprocess.CompletedProcess([], 1, "", "failed"),
+                     subprocess.CompletedProcess([], 0, "x" * 5000, ""),
+                     subprocess.TimeoutExpired("native expand", 5, output=b"partial-stdout", stderr=b"first error\nstack tail")]
+        for second in (False, True):
+            for index, response in enumerate(responses):
+                output = self.root / ("native-" + str(second) + "-" + str(index)); output.mkdir()
+                calls = []
+                def native(args, *tail, **kwargs):
+                    calls.append(tail)
+                    self.assertEqual(kwargs, {"check": False, "timeout": 5})
+                    if second and len(calls) == 1: return subprocess.CompletedProcess([], 0, "", "")
+                    if isinstance(response, Exception): raise response
+                    return response
+                with self.subTest(second=second, index=index), patch.dict(self.main, adb=native, ui_document=unavailable):
+                    with self.assertRaises((self.main["Refusal"], subprocess.TimeoutExpired)):
+                        self.main["shade_tap"](self.args, output, "shade", TITLE, action=True)
+                self.assertEqual(len(calls), 2 if second else 1)
+                receipt = json.loads((output / ("shade-expand-" + str(int(second)) + ".json")).read_bytes())
+                self.assertEqual(receipt["argv"], [str(self.adb), "-s", "emulator-5558", "shell", "cmd statusbar expand-notifications"])
+                self.assertLessEqual(len(receipt["stdout"]), 4096); self.assertLessEqual(len(receipt["stderr"]), 4096)
+                if isinstance(response, subprocess.TimeoutExpired):
+                    self.assertIsNone(receipt["code"]); self.assertTrue(receipt["timeout"])
+                    self.assertEqual((receipt["stdout"], receipt["stderr"]), ("partial-stdout", "first error\nstack tail"))
+                else:
+                    self.assertEqual(receipt["code"], response.returncode)
+                    self.assertEqual(receipt["stdout_length"], len(response.stdout))
+                    self.assertEqual(receipt["stderr_length"], len(response.stderr))
+                    self.assertEqual(receipt["stdout_truncated"], len(response.stdout) > 4096)
+
     def test_explicit_variant_and_three_argument_documents_capture(self):
         for index, package in enumerate(("dev.animusstudio.alkion.dev", "com.android.documentsui", "com.android.permissioncontroller")):
             self.package = package; self.tree = hierarchy(package)
@@ -551,8 +675,10 @@ class Protocol(unittest.TestCase):
                 if mode == "missing-action": root.remove(root[1])
                 if mode == "duplicate-action": root.append(copy.deepcopy(root[1]))
                 self.output = self.root / mode; self.output.mkdir()
+                before = len(self.commands())
                 with self.assertRaises((observer.Refusal, self.main["Refusal"])):
                     self.main["shade_tap"](self.args, self.output, "capture", TITLE, action=True)
+                self.assertEqual(sum(cmd == ["cmd", "statusbar", "expand-notifications"] for cmd in self.commands()[before:]), 1)
                 self.assertFalse(any(cmd[:1] == ["input"] for cmd in self.commands()))
 
     def test_malformed_foreign_oversize_and_bounds_tree(self):
