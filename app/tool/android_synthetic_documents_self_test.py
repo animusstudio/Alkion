@@ -252,6 +252,167 @@ PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/androi
 """
 
 
+# API 36 native SAVE tree (143 nodes), replayed after a synthetic footer hit/create
+# rehearsal at (927,2211) with nine rows. Only the synthetic run token is normalized.
+CAPTURED_SAVE_FOOTER = (
+    (0, '', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (1, '', 'android.widget.LinearLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (2, '', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (3, 'com.android.documentsui:id/action_bar_root', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (4, 'android:id/content', 'android.widget.FrameLayout', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (5, 'com.android.documentsui:id/coordinator_layout', 'android.view.ViewGroup', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (6, 'com.android.documentsui:id/drawer_layout', 'androidx.drawerlayout.widget.DrawerLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (7, '', 'android.widget.ScrollView', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/app_bar', 'android.widget.LinearLayout', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/collapsing_toolbar', 'android.widget.FrameLayout', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.ScrollView', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/directory_header', 'android.widget.LinearLayout', '[0,262][1080,546]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/horizontal_breadcrumb', 'androidx.recyclerview.widget.RecyclerView', '[0,262][1080,388]', '', '', 'false', 'true', 'true'),
+    (13, '', 'android.widget.LinearLayout', '[0,262][722,388]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/breadcrumb_text', 'android.widget.TextView', '[0,262][722,388]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (12, '', 'android.widget.HorizontalScrollView', '[0,388][1080,388]', '', '', 'false', 'true', 'false'),
+    (13, '', 'android.widget.FrameLayout', '[0,388][0,388]', '', '', 'false', 'true', 'false'),
+    (12, 'com.android.documentsui:id/header_container', 'android.widget.LinearLayout', '[63,388][1017,546]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/header_title', 'android.widget.TextView', '[63,388][890,546]', 'Files from Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/sub_menu', 'androidx.appcompat.widget.LinearLayoutCompat', '[890,404][1017,530]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/sub_menu_grid', 'android.widget.Button', '[890,404][1017,530]', '', 'Grid view', 'true', 'true', 'true'),
+    (10, 'com.android.documentsui:id/toolbar', 'android.view.ViewGroup', '[0,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (11, '', 'android.widget.ImageButton', '[0,136][147,262]', '', 'Show roots', 'true', 'true', 'true'),
+    (11, '', 'android.widget.TextView', '[189,163][807,234]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (11, '', 'androidx.appcompat.widget.LinearLayoutCompat', '[827,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/option_menu_create_dir', 'android.widget.Button', '[827,136][954,262]', '', 'New folder', 'true', 'true', 'true'),
+    (12, '', 'android.widget.ImageView', '[954,136][1080,262]', '', 'More options', 'true', 'true', 'true'),
+    (8, '', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/container_search_fragment', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/container_directory', 'android.widget.FrameLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.LinearLayout', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/refresh_layout', 'android.view.ViewGroup', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/dir_list', 'android.widget.GridView', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,546][1080,738]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,546][1080,735]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,546][189,735]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,588][147,693]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,588][147,693]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,601][134,680]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,609][126,672]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,612][1038,669]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,612][1038,669]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,612][1038,669]', '$RUN-dev-open-corrupt.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,735][1059,738]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,738][1080,930]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,738][1080,927]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,738][189,927]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,780][147,885]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,780][147,885]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,793][134,872]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,801][126,864]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,804][1038,861]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,804][1038,861]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,804][1038,861]', '$RUN-dev-open-denied.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,927][1059,930]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,930][1080,1122]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,930][1080,1119]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,930][189,1119]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,972][147,1077]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,972][147,1077]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,985][134,1064]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,993][126,1056]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,996][1038,1053]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,996][1038,1053]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,996][1038,1053]', '$RUN-dev-open-error.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,1119][1059,1122]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1122][1080,1314]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1122][1080,1311]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1122][189,1311]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1164][147,1269]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1164][147,1269]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1177][134,1256]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1185][126,1248]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1188][1038,1245]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1188][1038,1245]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1188][1038,1245]', '$RUN-dev-open-good.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,1311][1059,1314]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1314][1080,1506]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1314][1080,1503]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1314][189,1503]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1356][147,1461]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1356][147,1461]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1369][134,1448]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1377][126,1440]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1380][1038,1437]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1380][1038,1437]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1380][1038,1437]', '$RUN-dev-open-over-limit.alkionbackup', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,1503][1059,1506]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1506][1080,1698]', '', '', 'true', 'false', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1506][1080,1695]', '', '', 'false', 'false', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1506][189,1695]', '', '', 'false', 'false', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1548][147,1653]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1548][147,1653]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1561][134,1640]', '', '', 'false', 'false', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1569][126,1632]', '', '', 'false', 'false', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1545][1038,1656]', '', '', 'false', 'false', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1545][1038,1602]', '', '', 'false', 'false', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1545][1038,1602]', '$RUN-dev-open-short.alkionbackup', '', 'false', 'false', 'true'),
+    (16, 'com.android.documentsui:id/line2', 'android.widget.LinearLayout', '[189,1613][1038,1656]', '', '', 'false', 'false', 'true'),
+    (17, 'com.android.documentsui:id/metadata', 'android.widget.TextView', '[189,1613][404,1656]', '595 kB, BIN file', '', 'false', 'false', 'true'),
+    (14, '', 'android.view.View', '[189,1695][1059,1698]', '', '', 'false', 'false', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1698][1080,1890]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1698][1080,1887]', '', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1698][189,1887]', '', '', 'false', 'true', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1740][147,1845]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1740][147,1845]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1753][134,1832]', '', '', 'false', 'true', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1761][126,1824]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1764][1038,1821]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1764][1038,1821]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1764][1038,1821]', '$RUN-dev-save-good.alkionbackup', '', 'false', 'true', 'true'),
+    (14, '', 'android.view.View', '[189,1887][1059,1890]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,1890][1080,2082]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,1890][1080,2079]', '', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,1890][189,2079]', '', '', 'false', 'true', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,1932][147,2037]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,1932][147,2037]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,1945][134,2024]', '', '', 'false', 'true', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,1953][126,2016]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,1956][1038,2013]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,1956][1038,2013]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,1956][1038,2013]', '$RUN-dev-save-write-denied.alkionbackup', '', 'false', 'true', 'true'),
+    (14, '', 'android.view.View', '[189,2079][1059,2082]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[0,2082][1080,2274]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[0,2082][1080,2271]', '', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/icon', 'android.widget.FrameLayout', '[0,2082][189,2271]', '', '', 'false', 'true', 'true'),
+    (16, '', 'androidx.cardview.widget.CardView', '[42,2124][147,2229]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_thumb', 'android.widget.ImageView', '[42,2124][147,2229]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/icon_check', 'android.widget.ImageView', '[55,2137][134,2216]', '', '', 'false', 'true', 'false'),
+    (17, 'com.android.documentsui:id/icon_mime', 'android.widget.ImageView', '[63,2145][126,2208]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[189,2148][1038,2205]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[189,2148][1038,2205]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[189,2148][1038,2205]', '$RUN-dev-save-write-interrupted.alkionbackup', '', 'false', 'true', 'true'),
+    (14, '', 'android.view.View', '[189,2271][1059,2274]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/drawer_edge', 'android.view.View', '[0,136][32,2400]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/container_save', 'android.view.ViewGroup', '[0,2148][1080,2400]', '', '', 'false', 'true', 'true'),
+    (9, '', 'android.widget.LinearLayout', '[0,2148][1080,2274]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.FrameLayout', '[42,2158][147,2263]', '', '', 'false', 'true', 'true'),
+    (11, 'android:id/icon', 'android.widget.ImageView', '[42,2158][105,2263]', '', '', 'false', 'true', 'true'),
+    (10, 'android:id/title', 'android.widget.EditText', '[189,2152][801,2270]', '$RUN-dev-save-readback-denied.alkionbackup', '', 'true', 'true', 'true'),
+    (10, '', 'android.widget.FrameLayout', '[801,2148][1054,2274]', '', '', 'false', 'true', 'true'),
+    (11, 'android:id/button1', 'android.widget.Button', '[812,2148][1043,2274]', 'SAVE', '', 'true', 'true', 'true'),
+    (1, 'android:id/navigationBarBackground', 'android.view.View', '[0,2274][1080,2400]', '', '', 'false', 'true', 'false'),
+)
+
+
+def captured_save_footer():
+    tree, stack = ET.Element("hierarchy", rotation="0"), []
+    for depth, resource, cls, bounds, text, desc, clickable, enabled, visible in CAPTURED_SAVE_FOOTER:
+        parent = tree if depth == 0 else stack[depth - 1]
+        node = ET.SubElement(parent, "node", {"package": "com.android.documentsui", "resource-id": resource,
+            "class": cls, "bounds": bounds, "text": text.replace("$RUN", RUN),
+            "content-desc": desc.replace("$RUN", RUN), "clickable": clickable, "enabled": enabled,
+            "visible-to-user": visible, "observer-display-width": "1080", "observer-display-height": "2400"})
+        stack[depth:] = [node]
+    return tree
+
+
 TEST_ONLY = "A: http://schemas.android.com/apk/res/android:testOnly(0x01010272)=true"
 
 
@@ -1638,6 +1799,87 @@ class DocumentsControls(unittest.TestCase):
                 self.assertEqual((host.flavor, host.current_phase["state"]), ("dev", "picker"))
                 self.assertEqual(host.current_phase["case"], "open-good" if host.card_shift else "open-short")
                 self.assertNotIn(host.current_phase["case"], host.observed)
+
+    def test_captured_save_footer_route_attests_native_overlap_and_retains_tap(self):
+        evidence, _ = self.evidence_after_seed()
+        tree = captured_save_footer()
+        native_nodes = list(tree.iter("node"))
+        self.assertEqual(len(native_nodes), 143)
+        self.assertEqual([row.get("enabled") for row in native_nodes[32] if row.get("resource-id") == documents.ITEM_ROOT],
+                         ["false"] * 6 + ["true"] * 3)
+        phase = {"case": "save-readback-denied", "variant": "dev", "root_label": "Alkion synthetic " + RUN + "-dev",
+                 "document_label": RUN + "-dev-save-readback-denied.alkionbackup"}
+        self.assertFalse(documents.centre_clear(tree, native_nodes[141], native_nodes[141]))
+        def observed(evidence, name, ready, **bounds):
+            self.assertTrue(ready(tree))
+            return tree
+        with patch.object(documents, "picker_document", side_effect=observed) as observe, \
+                patch.object(self.host, "adb", return_value=result()) as adb:
+            documents.drive_picker(evidence, phase)
+        self.assertEqual(observe.call_count, 2)
+        self.assertEqual(adb.call_args.args[1:], ("shell", "input", "tap", "927", "2211"))
+        attestation = json.loads(next((self.root / "output").glob("*-save-footer-attestation.json")).read_bytes())
+        self.assertEqual(attestation["point"], [927, 2211])
+        self.assertEqual([row["bounds"] for row in attestation["overlaps"]], ["[0,2082][1080,2274]"])
+        record = json.loads(sorted((self.root / "output").glob("*-native-command.json"))[-1].read_bytes())
+        self.assertEqual(record["argv"], ["shell", "input", "tap", "927", "2211"])
+        self.assertEqual((record["code"], record["stdout"], record["stderr"], record["stdout_length"], record["stderr_length"]),
+                         (0, "", "", 0, 0))
+        # The actual read-only follow-up differs only in this native visibility flag.
+        native_nodes[142].set("visible-to-user", "true")
+        with patch.object(self.host, "adb", return_value=result()):
+            documents.click_save(evidence, tree, "SAVE", phase["root_label"], phase["document_label"])
+        self.assertFalse(documents.centre_clear(tree, native_nodes[141], native_nodes[141]))
+
+    def test_captured_save_footer_mutations_refuse_without_tap(self):
+        evidence, _ = self.evidence_after_seed()
+        root_label, filename = "Alkion synthetic " + RUN + "-dev", RUN + "-dev-save-readback-denied.alkionbackup"
+        def set_attr(index, key, value):
+            return lambda tree, ns: ns[index].set(key, value)
+        def move(index, destination):
+            def changed(tree, ns):
+                parents = {child: parent for parent in tree.iter() for child in parent}
+                parents[ns[index]].remove(ns[index]); ns[destination].append(ns[index])
+            return changed
+        def duplicate(index):
+            return lambda tree, ns: ns[0].append(copy.deepcopy(ns[index]))
+        changes = {}
+        for index, name in ((141, "save"), (135, "footer"), (32, "directory"), (123, "row"), (139, "filename")):
+            for key, value in (("package", "foreign.package"), ("class", "android.view.View"),
+                               ("resource-id", "foreign:id/control"), ("enabled", "false"), ("visible-to-user", "false")):
+                changes[name + "-" + key] = set_attr(index, key, value)
+        changes.update({
+            "save-off-display": set_attr(141, "bounds", "[812,2148][1081,2274]"),
+            "footer-off-display": set_attr(135, "bounds", "[-1,2148][1080,2400]"),
+            "directory-off-display": set_attr(32, "bounds", "[-1,136][1080,2400]"),
+            "row-off-display": set_attr(123, "bounds", "[-1,2082][1080,2274]"),
+            "duplicate-save": duplicate(141), "duplicate-footer": duplicate(135),
+            "duplicate-directory": duplicate(32), "duplicate-filename": duplicate(139),
+            "missing-footer": set_attr(135, "resource-id", ""),
+            "missing-directory": set_attr(32, "resource-id", ""),
+            "foreign-filename": set_attr(139, "text", "foreign.alkionbackup"),
+            "foreign-root": set_attr(14, "text", "Alkion synthetic foreign"),
+            "save-outside-footer": move(141, 7), "filename-outside-footer": move(139, 7),
+            "row-outside-directory": move(123, 27), "row-inside-footer": move(123, 136),
+            "footer-inside-directory": move(135, 32), "directory-inside-footer": move(32, 135),
+            "unknown-signed-overlay": lambda tree, ns: ns[0].append(ET.Element("node", dict(ns[123].attrib,
+                **{"resource-id": "foreign:id/overlay", "bounds": "[-3,2082][1080,2274]"}))),
+            "preview-child-claimant": lambda tree, ns: ns[123].append(ET.Element("node", dict(ns[123].attrib,
+                **{"resource-id": DUI + "preview_icon", "class": "android.widget.FrameLayout"}))),
+            "hidden-nav-claimant": set_attr(142, "bounds", "[0,2200][1080,2400]"),
+            "hidden-status-claimant": lambda tree, ns: ns[0].append(ET.Element("node", dict(ns[142].attrib,
+                **{"resource-id": "android:id/statusBarBackground", "bounds": "[0,2200][1080,2400]"}))),
+            "footer-order": lambda tree, ns: (ns[7].remove(ns[135]), ns[7].insert(0, ns[135])),
+            "foreign-common-class": set_attr(7, "class", "android.widget.FrameLayout"),
+            "directory-path": set_attr(31, "resource-id", "foreign:id/refresh"),
+            "footer-path": set_attr(140, "class", "android.widget.LinearLayout"),
+        })
+        for name, change in changes.items():
+            tree = captured_save_footer(); ns = list(tree.iter("node")); change(tree, ns)
+            with self.subTest(name=name), patch.object(evidence, "native") as native:
+                with self.assertRaises(documents.Refusal):
+                    documents.click_save(evidence, tree, "SAVE", root_label, filename)
+                native.assert_not_called()
 
     def test_node_tap_keeps_refused_command_output_before_failing(self):
         evidence, _ = self.evidence_after_seed()
