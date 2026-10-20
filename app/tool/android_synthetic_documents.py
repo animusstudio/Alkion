@@ -792,29 +792,59 @@ def picker_document(evidence, name, ready=lambda document: True, *, caller=None,
     raise Refusal("documentsui_checkpoint_unavailable:" + name)
 
 
+def root_navigation(document):
+    return [node for node in document.iter("node") if node.get("package") == "com.android.documentsui" and
+            node.get("clickable") == "true" and node.get("content-desc") in ("Show roots", "Open navigation drawer")]
+
+
+def root_access_ready(document, label):
+    """An already selected root needs no drawer tap; otherwise wait only for its navigation bounds."""
+    if selected_root(document, label) or click_targets(document, label):
+        return True
+    choices = root_navigation(document)
+    return (len(choices) != 1 or choices[0].get("enabled") != "true" or
+            choices[0].get("visible-to-user") != "true" or on_display(choices[0]))
+
+
+def list_bounds_ready(document, label):
+    """Re-observe otherwise usable list targets whose native bounds are still off-display."""
+    choices = click_targets(document, label)
+    if view_mode(document)[1] != "list" or len(choices) != 1:
+        return True
+    row = choices[0]
+    titles = target_labels(document, label, row)
+    # Semantic and ambiguity failures stay with list_row; only geometry waits.
+    usable = (row.get("resource-id") == ITEM_ROOT and row.get("class") == "android.widget.LinearLayout" and
+              len(titles) == 1 and all(node.get("enabled") == "true" and node.get("visible-to-user") == "true"
+                                      for node in [row, *titles]))
+    return not usable or (on_display(row) and on_display(titles[0]))
+
+
 def drive_picker(evidence, phase):
     case, flavor = phase["case"], phase["variant"]
     bounds = {"caller": VARIANTS[flavor], "deadline": time.monotonic() + CASE_BUDGET}
-    document = picker_document(evidence, flavor + "-" + case + "-picker", **bounds)
-    if not click_targets(document, phase["root_label"]):
-        candidates = [node for node in document.iter("node") if node.get("package") == "com.android.documentsui" and
-                      node.get("clickable") == "true" and node.get("content-desc") in
-                      ("Show roots", "Open navigation drawer")]
-        require(len(candidates) == 1, "documentsui_root_navigation_unavailable")
-        tap_node(evidence, candidates[0])
-        document = picker_document(evidence, flavor + "-" + case + "-roots",
-                                   lambda doc: bool(click_targets(doc, phase["root_label"])), **bounds)
-    click_label(evidence, document, phase["root_label"])
+    document = picker_document(evidence, flavor + "-" + case + "-picker",
+                               lambda doc: root_access_ready(doc, phase["root_label"]), **bounds)
+    if not selected_root(document, phase["root_label"]):
+        if not click_targets(document, phase["root_label"]):
+            candidates = root_navigation(document)
+            require(len(candidates) == 1, "documentsui_root_navigation_unavailable")
+            require(centre_clear(document, candidates[0], candidates[0]), "ui_tap_point_ambiguous:root-navigation")
+            tap_node(evidence, candidates[0])
+            document = picker_document(evidence, flavor + "-" + case + "-roots",
+                                       lambda doc: bool(click_targets(doc, phase["root_label"])), **bounds)
+        click_label(evidence, document, phase["root_label"])
     document = picker_document(evidence, flavor + "-" + case + "-exact-root", lambda doc:
                                selected_root(doc, phase["root_label"]) and
                                (case.endswith("-cancel") or bool(nodes(doc, phase["document_label"]))) and
-                               (not case.startswith("save-") or save_ready(doc)), **bounds)
+                               (not case.startswith("save-") or save_ready(doc)) and
+                               (not case.startswith("open-") or case.endswith("-cancel") or list_bounds_ready(doc, phase["document_label"])), **bounds)
     require(selected_root(document, phase["root_label"]), "documentsui_selected_root_unproven")
     def observe(name):
         return picker_document(evidence, flavor + "-" + case + "-" + name, lambda doc:
             selected_root(doc, phase["root_label"]) and
             (not name.startswith("list-view-") or view_mode(doc)[1] == "list") and
-            (case.endswith("-cancel") or bool(nodes(doc, phase["document_label"]))), **bounds)
+            (case.endswith("-cancel") or (bool(nodes(doc, phase["document_label"])) and list_bounds_ready(doc, phase["document_label"]))), **bounds)
     if case == "open-cancel":
         # The first OPEN root has a captured on-display toggle; prefer list before
         # cancelling so later cases can use the persisted, compact directory rows.

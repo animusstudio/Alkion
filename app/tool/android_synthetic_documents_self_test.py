@@ -133,6 +133,93 @@ def shifted_directory():
     return root
 
 
+# Captured resumed list before and after native bounds settled. All other fields
+# are identical in the captures; both settled samples are byte-identical. Keep
+# labelled/clickable nodes and ancestry, replacing only the synthetic run identifier.
+RESUMED_LIST = (
+    (0, '', 'android.widget.FrameLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (1, '', 'android.widget.LinearLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (2, '', 'android.widget.FrameLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (3, 'com.android.documentsui:id/action_bar_root', 'android.widget.FrameLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (4, 'android:id/content', 'android.widget.FrameLayout', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (5, 'com.android.documentsui:id/coordinator_layout', 'android.view.ViewGroup', '[-3,0][1076,2400]', '[0,0][1080,2400]', '', '', 'false', 'true', 'true'),
+    (6, 'com.android.documentsui:id/drawer_layout', 'androidx.drawerlayout.widget.DrawerLayout', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (7, '', 'android.widget.ScrollView', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (8, 'com.android.documentsui:id/app_bar', 'android.widget.LinearLayout', '[-3,136][1076,546]', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/collapsing_toolbar', 'android.widget.FrameLayout', '[-3,136][1076,546]', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.ScrollView', '[-3,136][1076,546]', '[0,136][1080,546]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/directory_header', 'android.widget.LinearLayout', '[-3,262][1076,546]', '[0,262][1080,546]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/horizontal_breadcrumb', 'androidx.recyclerview.widget.RecyclerView', '[-3,262][1076,388]', '[0,262][1080,388]', '', '', 'false', 'true', 'true'),
+    (13, '', 'android.widget.LinearLayout', '[-3,262][718,388]', '[0,262][722,388]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/breadcrumb_text', 'android.widget.TextView', '[-3,262][718,388]', '[0,262][722,388]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/header_container', 'android.widget.LinearLayout', '[59,388][1013,546]', '[63,388][1017,546]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/header_title', 'android.widget.TextView', '[59,388][886,546]', '[63,388][890,546]', 'Files from Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/sub_menu', 'androidx.appcompat.widget.LinearLayoutCompat', '[886,404][1013,530]', '[890,404][1017,530]', '', '', 'false', 'true', 'true'),
+    (14, 'com.android.documentsui:id/sub_menu_grid', 'android.widget.Button', '[886,404][1013,530]', '[890,404][1017,530]', '', 'Grid view', 'true', 'true', 'true'),
+    (10, 'com.android.documentsui:id/toolbar', 'android.view.ViewGroup', '[-3,136][1076,262]', '[0,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (11, '', 'android.widget.ImageButton', '[-3,136][143,262]', '[0,136][147,262]', '', 'Show roots', 'true', 'true', 'true'),
+    (11, '', 'android.widget.TextView', '[185,163][930,234]', '[189,163][934,234]', 'Alkion synthetic $RUN-dev', '', 'false', 'true', 'true'),
+    (11, '', 'androidx.appcompat.widget.LinearLayoutCompat', '[950,136][1076,262]', '[954,136][1080,262]', '', '', 'false', 'true', 'true'),
+    (12, '', 'android.widget.ImageView', '[950,136][1076,262]', '[954,136][1080,262]', '', 'More options', 'true', 'true', 'true'),
+    (8, '', 'android.widget.FrameLayout', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (9, 'com.android.documentsui:id/container_directory', 'android.widget.FrameLayout', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (10, '', 'android.widget.LinearLayout', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (11, 'com.android.documentsui:id/refresh_layout', 'android.view.ViewGroup', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (12, 'com.android.documentsui:id/dir_list', 'android.widget.GridView', '[-3,136][1076,2400]', '[0,136][1080,2400]', '', '', 'false', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,546][1076,738]', '[0,546][1080,738]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,546][1076,735]', '[0,546][1080,735]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,612][845,669]', '[189,612][849,669]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,612][845,669]', '[189,612][849,669]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,612][845,669]', '[189,612][849,669]', '$RUN-dev-open-corrupt.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,546][1076,735]', '[891,546][1080,735]', '', 'Preview the file $RUN-dev-open-corrupt.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,738][1076,930]', '[0,738][1080,930]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,738][1076,927]', '[0,738][1080,927]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,804][845,861]', '[189,804][849,861]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,804][845,861]', '[189,804][849,861]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,804][845,861]', '[189,804][849,861]', '$RUN-dev-open-denied.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,738][1076,927]', '[891,738][1080,927]', '', 'Preview the file $RUN-dev-open-denied.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,930][1076,1122]', '[0,930][1080,1122]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,930][1076,1119]', '[0,930][1080,1119]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,996][845,1053]', '[189,996][849,1053]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,996][845,1053]', '[189,996][849,1053]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,996][845,1053]', '[189,996][849,1053]', '$RUN-dev-open-error.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,930][1076,1119]', '[891,930][1080,1119]', '', 'Preview the file $RUN-dev-open-error.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,1122][1076,1314]', '[0,1122][1080,1314]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,1122][1076,1311]', '[0,1122][1080,1311]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,1188][845,1245]', '[189,1188][849,1245]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,1188][845,1245]', '[189,1188][849,1245]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,1188][845,1245]', '[189,1188][849,1245]', '$RUN-dev-open-good.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,1122][1076,1311]', '[891,1122][1080,1311]', '', 'Preview the file $RUN-dev-open-good.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,1314][1076,1506]', '[0,1314][1080,1506]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-3,1314][1076,1503]', '[0,1314][1080,1503]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[185,1380][845,1437]', '[189,1380][849,1437]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[185,1380][845,1437]', '[189,1380][849,1437]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[185,1380][845,1437]', '[189,1380][849,1437]', '$RUN-dev-open-over-limit.alkionbackup', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[887,1314][1076,1503]', '[891,1314][1080,1503]', '', 'Preview the file $RUN-dev-open-over-limit.alkionbackup', 'true', 'true', 'true'),
+    (13, 'com.android.documentsui:id/item_root', 'android.widget.LinearLayout', '[-3,1506][1076,1698]', '[0,1506][1080,1698]', '', '', 'true', 'true', 'true'),
+    (14, '', 'android.widget.LinearLayout', '[-2,1506][1077,1695]', '[0,1506][1080,1695]', '', '', 'false', 'true', 'true'),
+    (15, '', 'android.widget.LinearLayout', '[186,1545][846,1656]', '[189,1545][849,1656]', '', '', 'false', 'true', 'true'),
+    (16, '', 'android.widget.LinearLayout', '[186,1545][846,1602]', '[189,1545][849,1602]', '', '', 'false', 'true', 'true'),
+    (17, 'android:id/title', 'android.widget.TextView', '[186,1545][846,1602]', '[189,1545][849,1602]', '$RUN-dev-open-short.alkionbackup', '', 'false', 'true', 'true'),
+    (16, 'com.android.documentsui:id/line2', 'android.widget.LinearLayout', '[186,1613][846,1656]', '[189,1613][849,1656]', '', '', 'false', 'true', 'true'),
+    (17, 'com.android.documentsui:id/metadata', 'android.widget.TextView', '[186,1613][401,1656]', '[189,1613][404,1656]', '595 kB, BIN file', '', 'false', 'true', 'true'),
+    (15, 'com.android.documentsui:id/preview_icon', 'android.widget.FrameLayout', '[888,1506][1077,1695]', '[891,1506][1080,1695]', '', 'Preview the file $RUN-dev-open-short.alkionbackup', 'true', 'true', 'true'),
+    (1, 'android:id/navigationBarBackground', 'android.view.View', '[-2,2274][1077,2400]', '[0,2274][1080,2400]', '', '', 'false', 'true', 'false'),
+)
+
+
+def resumed_list(settled):
+    root, stack = ET.Element("hierarchy", rotation="0"), []
+    for depth, resource, cls, before, after, text, desc, clickable, enabled, visible in RESUMED_LIST:
+        parent = root if depth == 0 else stack[depth - 1]
+        node = ET.SubElement(parent, "node", {"package": "com.android.documentsui", "resource-id": resource,
+            "class": cls, "bounds": after if settled else before, "text": text.replace("$RUN", RUN),
+            "content-desc": desc.replace("$RUN", RUN), "clickable": clickable, "enabled": enabled, "visible-to-user": visible,
+            "observer-display-width": "1080", "observer-display-height": "2400"})
+        stack[depth:] = [node]
+    return root
+
+
 # Faithful pinned SDK 36 aapt2 xmltree output for the synthetic fixture.
 PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/android (line=1)
   E: manifest (line=1)
@@ -1440,6 +1527,66 @@ class DocumentsControls(unittest.TestCase):
         observed = sorted(path.name.split("-", 1)[1].rsplit("-", 1)[0] for path in (self.root / "output").glob("*list-view-*.observation"))
         self.assertEqual(observed, ["dev-open-cancel-list-view-0", "dev-open-cancel-list-view-1",
                                     "supported-open-cancel-list-view-0", "supported-open-cancel-list-view-1"])
+
+    def captured_resume(self, persistent=False):
+        """Replay the captured picker and its actual read-only settled follow-up."""
+        original = self.host.ui_xml
+        samples, taps = [], []
+        original_android = self.host.android
+        def capture():
+            tree = original()  # Keep hit testing from the existing captured list fixture.
+            if self.host.flavor == "dev" and self.host.current_phase["case"] == "open-denied" and self.host.selected and not self.host.drawer:
+                settled = bool(samples) and not persistent
+                samples.append(settled)
+                return ET.tostring(resumed_list(settled), encoding="unicode")
+            return tree
+        def android(argv, binary=False, data=None):
+            if argv[:2] == ["input", "tap"] and self.host.current_phase and self.host.current_phase["case"] == "open-denied":
+                taps.append(tuple(argv[-2:]))
+            return original_android(argv, binary, data)
+        return samples, taps, patch.object(self.host, "ui_xml", side_effect=capture), patch.object(self.host, "android", side_effect=android)
+
+    def test_captured_resumed_root_reobserves_shifted_list_without_reopening_drawer(self):
+        self.host.args.action = "documents"
+        samples, taps, capture, android = self.captured_resume()
+        with capture, android:
+            self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        self.assertEqual(samples, [False, True])
+        self.assertEqual(taps, [("540", "834"), ("540", "834")])
+        # Different-root cold starts still open the drawer and select the exact root.
+        self.assertEqual(self.host.mutations.count(("tap", 350)), 2)
+        roots = [json.loads(path.read_bytes()) for path in (self.root / "output").glob("*-click-target.json")
+                 if json.loads(path.read_bytes())["label"].startswith("Alkion synthetic ")]
+        self.assertEqual(len(roots), 2)
+        self.assert_clean_taps(self.host)
+
+    def test_captured_resumed_list_persistent_bad_bounds_refuse_bounded_without_tap(self):
+        self.host.args.action = "documents"
+        samples, taps, capture, android = self.captured_resume(persistent=True)
+        with capture, android:
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_checkpoint_unavailable:dev-open-denied-exact-root"):
+                self.host.documents_action(self.host.args)
+        self.assertEqual(samples, [False] * 13)
+        self.assertEqual(taps, [])
+        self.assertEqual((self.host.current_phase["case"], self.host.current_phase["state"]), ("open-denied", "picker"))
+        self.assertNotIn("open-denied", self.host.observed)
+        self.assert_clean_taps(self.host)
+
+    def test_list_readiness_waits_for_bounds_without_accepting_semantic_failures(self):
+        label = RUN + "-dev-open-denied.alkionbackup"
+        shifted, settled = resumed_list(False), resumed_list(True)
+        root_label = "Alkion synthetic " + RUN + "-dev"
+        self.assertTrue(documents.root_access_ready(shifted, root_label))
+        self.assertTrue(documents.selected_root(shifted, root_label))
+        self.assertFalse(documents.root_access_ready(shifted, "different root"))
+        self.assertTrue(documents.root_access_ready(settled, "different root"))
+        self.assertFalse(documents.list_bounds_ready(shifted, label))
+        self.assertTrue(documents.list_bounds_ready(settled, label))
+        for key, value in (("enabled", "false"), ("visible-to-user", "false"), ("class", "android.widget.FrameLayout")):
+            tree = resumed_list(False); row = documents.click_targets(tree, label)[0]; row.set(key, value)
+            self.assertTrue(documents.list_bounds_ready(tree, label))
+            with self.assertRaisesRegex(documents.Refusal, "documentsui_list_row_unusable"):
+                documents.list_row(tree, label)
 
     def test_grid_cards_reporting_shifted_bounds_keep_the_visible_title_tap(self):
         self.host.card_shift, self.host.args.action = NAVIGATION_TOP, "documents"
