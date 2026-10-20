@@ -31,6 +31,8 @@ only an emulator run proves device behavior.
 | `adb exec-out` neither forwards stdin nor carries the remote exit status | owned reads and writes use binary `adb shell -T` |
 | A successful `adb install` exits 0 with one stdout line `Success`; incremental installs add progress lines and may fall back to a streamed install after a `Failure` line | judge installs by exit code, the `Success` line and no `Failure` |
 | adb scans emulator ports up to 5585 by default | higher ports work only by registering with a running adb server |
+| API 36 synthetic captures (2026-10-20) show DocumentsUI can shift outer/card/toggle bounds off-display while child titles retain display coordinates; its observed List view control exposes all six fixture inputs | prefer list mode at the first usable OPEN root; re-observe unusable toggles boundedly, never guess a coordinate offset |
+| API 36 synthetic rehearsal (2026-10-20): `am unfreeze --sticky PID` prints `Unfreezing process PACKAGE (PID) sticky=true` and preserves the provider PID | require the exact line and unchanged PID; namespace discovery and the full supported flow remain separate checks |
 
 Add a row, with its source, whenever a device run teaches a new fact.
 
