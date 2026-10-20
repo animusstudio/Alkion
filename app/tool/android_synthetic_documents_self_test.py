@@ -38,6 +38,9 @@ REVISION = "a" * 40
 CERT = "b" * 64
 RAW = bytes(range(256)) * 1025
 SOURCE_NAME = "alkion-backup-12345678-20261018T121314Z-abcdef.alkionbackup"
+# Captured API 36 DocumentsUI on a 1080x2400 display: the navigation bar covers y >= 2274.
+DUI = "com.android.documentsui:id/"
+NAVIGATION_TOP = 2274
 
 # Faithful pinned SDK 36 aapt2 xmltree output for the synthetic fixture.
 PACKAGED_PROVIDER_TREE = """N: android=http://schemas.android.com/apk/res/android (line=1)
@@ -191,6 +194,9 @@ class FakeHost:
         self.save_captures = 0
         self.cancel_lag = 0
         self.preview_taps = []
+        # DocumentsUI directory model: view mode per root, a card bounds shift and the rendered tap geometry.
+        self.views, self.view_lag, self.card_shift, self.list_drift = {}, 0, 0, 0
+        self.hits, self.bar_taps, self.wrong_taps, self.toggle_taps = [], [], [], []
         self.driver, self.updates, self.lifecycle = self.make_receipts()
         self.args = SimpleNamespace(sdk=self.sdk, serial="emulator-5560", avd="documents-proof",
             receipt=str(receipt_path), output=str(root / "output"), driver_run=str(root / "driver/run.json"),
@@ -560,11 +566,12 @@ class FakeHost:
             return result()
         if argv[:2] == ["input", "tap"]:
             x, y = int(argv[-2]), int(argv[-1]); self.mutations.append(("tap", y))
-            # Hit-testing for the real-shaped grid card: its preview icon sits on top.
-            if 890 <= x < 1016 and 1180 <= y < 1306:
-                self.preview_taps.append((x, y)); return result()
-            if 551 <= x < 1016 and 1180 <= y < 1781:
-                self.complete_picker(); return result()
+            # Hit-testing against the last rendered directory: the navigation bar, then its toggle, previews and items.
+            if self.front == "com.android.documentsui" and y >= NAVIGATION_TOP:
+                self.bar_taps.append((x, y)); return result()
+            hit = next((action for box, action in self.hits if box[0] <= x < box[2] and box[1] <= y < box[3]), None)
+            if hit is not None:
+                hit(x, y); return result()
             if y < 100:
                 # Choosing a root reloads it; Save stays disabled until that load completes.
                 self.selected = True; self.drawer = False; self.save_captures = 0
@@ -681,6 +688,7 @@ class FakeHost:
                 self.next_case(value["sequence"] + 1)
 
     def ui_xml(self):
+        self.hits = []
         root = ET.Element("hierarchy", rotation="0")
         container = ET.SubElement(root, "node", {"package": self.front, "resource-id": self.front + ":id/content",
             "class": "android.widget.FrameLayout", "text": "", "content-desc": "", "clickable": "false",
@@ -697,6 +705,8 @@ class FakeHost:
         label = "Alkion synthetic " + namespace
         if self.scenario == "wrong-root":
             label = "Alkion synthetic " + "2" * 32 + "-" + self.flavor
+        if self.scenario == "list-foreign-root" and self.views.get(self.flavor) == "list":
+            label = "Alkion synthetic " + "3" * 32 + "-" + self.flavor
         listed = (self.package_root(documents.PROVIDER) / ("files/proof-runs/" + namespace + "/input.pin")).is_file()
         def node(text, y, clickable=True, cls="android.widget.TextView", desc="", resource="com.android.documentsui:id/item",
                  enabled=True):
@@ -722,39 +732,134 @@ class FakeHost:
             if self.current_phase["case"].startswith("save-"):
                 node(name, 100, False, "android.widget.EditText")
             else:
-                self.grid_card(container, name)
+                self.directory(container, name)
             if self.current_phase["case"].startswith("save-"):
                 # SaveFragment enables Save only after the root document loads.
                 node("SAVE", 200, enabled=self.save_captures > 0)
                 self.save_captures += 1
         return ET.tostring(root, encoding="unicode")
 
-    def grid_card(self, container, name):
-        """Real API 36 grid card: the CardView reports bounds below the display while its title is on screen."""
-        def add(parent, attributes):
-            values = {"package": "com.android.documentsui", "text": "", "content-desc": "", "resource-id": "",
-                      "class": "android.widget.FrameLayout", "clickable": "false", "enabled": "true", "visible-to-user": "true"}
-            values.update(attributes)
-            return ET.SubElement(parent, "node", values)
-        holder = container
-        if self.scenario == "card-label-outside":
-            holder = add(container, {"bounds": "[551,1180][1016,1781]"})
-        card = add(container, {"class": "androidx.cardview.widget.CardView", "resource-id": "com.android.documentsui:id/item_root",
-                               "clickable": "true", "bounds": "[551,3454][1016,4055]"})
-        frame = add(card, {"bounds": "[551,1180][1016,1781]"})
-        add(card, {"resource-id": "com.android.documentsui:id/preview_icon", "clickable": "true", "bounds": "[890,1180][1016,1306]",
-                   "content-desc": "Preview the file " + name})
-        nameplate = add(frame, {"resource-id": "com.android.documentsui:id/nameplate", "bounds": "[551,1645][1016,1781]"})
-        title = {"class": "android.widget.TextView", "resource-id": "android:id/title", "text": name, "bounds": "[683,1666][984,1717]"}
-        if self.scenario == "card-label-offscreen":
-            title.update(bounds="[683,2289][984,2340]", **{"visible-to-user": "false"})
-        if self.scenario == "card-preview-over-label":
-            title.update(bounds="[900,1200][1010,1260]")
-        add(holder if self.scenario == "card-label-outside" else nameplate, title)
-        if self.scenario == "two-cards":
-            twin = add(container, {"class": "androidx.cardview.widget.CardView", "resource-id": "com.android.documentsui:id/item_root",
-                                   "clickable": "true", "bounds": "[64,3454][529,4055]"})
-            add(twin, {"class": "android.widget.TextView", "resource-id": "android:id/title", "text": name, "bounds": "[196,1666][497,1717]"})
+    def directory(self, container, current):
+        """Captured API 36 DocumentsUI directory of the six open documents, in grid or list view.
+
+        The header offers only the other view mode, and the directory stays a
+        GridView in both. Taps resolve against this rendered geometry.
+        """
+        mode = self.views.get(self.flavor, "grid")
+        if self.view_lag:  # A switch not yet drawn.
+            self.view_lag -= 1
+            mode = {"grid": "list", "list": "grid"}[mode]
+        toggle, description = {"grid": ("sub_menu_list", "List view"), "list": ("sub_menu_grid", "Grid view")}[mode]
+        if self.scenario != "toggle-missing":
+            menu = self.add(container, (890, 404, 1017, 530), "androidx.appcompat.widget.LinearLayoutCompat", resource_id=DUI + "sub_menu")
+            for _ in range(2 if self.scenario == "toggle-duplicate" else 1):
+                self.add(menu, (890, 404, 1017, 530), "android.widget.Button", resource_id=DUI + toggle,
+                         content_desc=description, clickable="true")
+            self.hits.append(((890, 404, 1017, 530), lambda x, y: self.switch_view()))
+        grid = self.add(container, (0, 136, 1080, 2400), "android.widget.GridView", resource_id=DUI + "dir_list")
+        self.add(container, (0, NAVIGATION_TOP, 1080, 2400), "android.view.View",
+                 resource_id="android:id/navigationBarBackground", visible_to_user="false")
+        names = sorted(RUN + "-" + self.flavor + "-" + case + ".alkionbackup" for case in documents.CASES
+                       if case.startswith("open-") and case != "open-cancel")
+        names = [current if name == self.current_phase["document_label"] else name for name in names]
+        if mode == "list" and self.scenario == "list-duplicate-row":
+            names.append(current)
+        if mode == "list" and self.scenario == "list-unsettled":
+            self.list_drift += 1
+        for index, name in enumerate(names):
+            def select(x, y, name=name):
+                if name == self.current_phase["document_label"]:
+                    self.complete_picker()
+                else:
+                    self.wrong_taps.append(name)
+            (self.grid_card if mode == "grid" else self.list_row)(grid, index, name, select)
+
+    def switch_view(self):
+        self.toggle_taps.append(self.current_phase["case"])
+        if self.scenario != "list-stale":
+            self.views[self.flavor] = {"grid": "list", "list": "grid"}[self.views.get(self.flavor, "grid")]
+            self.view_lag = 1 if self.scenario == "list-lag" else 0
+
+    @staticmethod
+    def add(parent, bounds, cls="android.widget.FrameLayout", **attributes):
+        values = {"package": "com.android.documentsui", "text": "", "content-desc": "", "resource-id": "", "class": cls,
+                  "clickable": "false", "enabled": "true", "visible-to-user": "true", "bounds": "[%d,%d][%d,%d]" % bounds}
+        values.update({key.replace("_", "-"): value for key, value in attributes.items()})
+        return ET.SubElement(parent, "node", values)
+
+    def grid_card(self, parent, index, name, select):
+        """Captured grid card in rows of two.
+
+        A third-row nameplate's contents start under the navigation bar and
+        report not visible. With card_shift the card reports its own bounds
+        shifted while its contents keep display bounds, as another capture did.
+        """
+        add, image = self.add, "android.widget.ImageView"
+        left, top = (64, 551)[index % 2], 557 + 623 * (index // 2)
+        right, bottom = left + 465, min(top + 601, 2400)
+        def shown(y):
+            return str(y < NAVIGATION_TOP).lower()
+        current = name == self.current_phase["document_label"]
+        card = add(parent, (left, top + self.card_shift, right, bottom + self.card_shift), "androidx.cardview.widget.CardView",
+                   resource_id=DUI + "item_root", clickable="true")
+        add(card, (left, top, right, bottom), "android.view.View")
+        frame = add(add(card, (left, top, right, bottom), "androidx.cardview.widget.CardView"),
+                    (left, top, right, bottom), "android.widget.RelativeLayout")
+        thumbnail = add(frame, (left, top, right, top + 465), resource_id=DUI + "thumbnail")
+        add(thumbnail, (left, top, right, top + 465), image, resource_id=DUI + "icon_thumb")
+        add(thumbnail, (left + 180, top + 180, left + 285, top + 285), image, resource_id=DUI + "icon_mime_lg")
+        preview = add(frame, (left + 339, top, right, top + 126), resource_id=DUI + "preview_icon",
+                      content_desc="Preview the file " + name, clickable="true")
+        add(preview, (left + 370, top + 31, left + 433, top + 94), image)
+        nameplate = add(frame, (left, top + 465, right, bottom), "android.widget.LinearLayout", resource_id=DUI + "nameplate")
+        icon = add(nameplate, (left, top + 465, left + 132, bottom), resource_id=DUI + "icon")
+        for resource, visible in (("icon_mime_sm", shown(top + 493)), ("icon_check", "false")):
+            add(icon, (left + 32, top + 493, left + 111, top + 572), image, resource_id=DUI + resource, visible_to_user=visible)
+        texts = add(nameplate, (left + 132, top + 465, right, bottom), "android.widget.RelativeLayout")
+        holder, title = texts, (left + 132, top + 486, left + 433, top + 537)
+        if current and self.scenario == "card-label-outside":
+            holder = add(parent, (left, top, right, bottom))
+        if current and self.scenario == "card-preview-over-label":
+            title = (left + 349, top + 20, left + 459, top + 80)
+        add(holder, title, "android.widget.TextView", resource_id="android:id/title", text=name, visible_to_user=shown(title[1]))
+        date = left + 132
+        if name.endswith("-open-short.alkionbackup"):
+            add(texts, (left + 132, top + 537, left + 196, top + 580), "android.widget.TextView", resource_id=DUI + "details",
+                text="27 B", visible_to_user=shown(top + 537))
+            date = left + 207
+        add(texts, (date, top + 537, date, top + 580), "android.widget.TextView", resource_id=DUI + "date", visible_to_user="false")
+        if current and self.scenario == "two-cards":
+            twin = add(parent, (64, 3454, 529, 4055), "androidx.cardview.widget.CardView", resource_id=DUI + "item_root", clickable="true")
+            add(twin, (196, 1666, 497, 1717), "android.widget.TextView", resource_id="android:id/title", text=name)
+        self.hits += [((left + 339, top, right, top + 126), lambda x, y: self.preview_taps.append((x, y))),
+                      ((left, top, right, bottom), select)]
+
+    def list_row(self, parent, index, name, select):
+        """Captured list row; the short document's row adds a metadata line under its title."""
+        add, image, line = self.add, "android.widget.ImageView", "android.widget.LinearLayout"
+        top = 546 + 192 * index + self.list_drift
+        row = add(parent, (0, top, 1080, top + 192), line, resource_id=DUI + "item_root", clickable="true")
+        body = add(row, (0, top, 1080, top + 189), line)
+        icon = add(add(body, (0, top, 189, top + 189), resource_id=DUI + "icon"), (42, top + 42, 147, top + 147),
+                   "androidx.cardview.widget.CardView")
+        add(icon, (42, top + 42, 147, top + 147), image, resource_id=DUI + "icon_thumb")
+        add(icon, (55, top + 55, 134, top + 134), image, resource_id=DUI + "icon_check", visible_to_user="false")
+        add(icon, (63, top + 63, 126, top + 126), image, resource_id=DUI + "icon_mime")
+        short = name.endswith("-open-short.alkionbackup")
+        first = top + (39 if short else 66)
+        texts = add(body, (189, first, 849, top + (150 if short else 123)), line)
+        hidden = self.scenario == "list-row-hidden" and name == self.current_phase["document_label"]
+        add(add(texts, (189, first, 849, first + 57), line), (189, first, 849, first + 57), "android.widget.TextView",
+            resource_id="android:id/title", text=name, visible_to_user=str(not hidden).lower())
+        if short:
+            add(add(texts, (189, top + 107, 849, top + 150), line, resource_id=DUI + "line2"), (189, top + 107, 370, top + 150),
+                "android.widget.TextView", resource_id=DUI + "metadata", text="27 B, BIN file")
+        preview = add(body, (891, top, 1080, top + 189), resource_id=DUI + "preview_icon",
+                      content_desc="Preview the file " + name, clickable="true")
+        add(preview, (946, top + 55, 1025, top + 134), image)
+        add(row, (189, top + 189, 1059, top + 192), "android.view.View")
+        self.hits += [((891, top, 1080, top + 189), lambda x, y: self.preview_taps.append((x, y))),
+                      ((0, top, 1080, top + 192), select)]
 
     def provider_load(self, relative):
         """The provider's own load(): bind a complete namespace and write its pin once."""
@@ -1196,31 +1301,113 @@ class DocumentsControls(unittest.TestCase):
                 documents.picker_document(evidence, "budget", caller=caller, deadline=documents.time.monotonic() + 5)
         self.assertTrue(1 < len(calls) < 12)
 
-    def test_grid_card_with_offscreen_bounds_is_selected_through_its_visible_title(self):
+    def open_records(self):
+        """Click records of open documents, by case, from both variants in route order."""
+        records = {}
+        for path in sorted((self.root / "output").glob("*-click-target.json")):
+            item = json.loads(path.read_bytes())
+            if item["target_resource_id"] == DUI + "item_root":
+                # Labels are <run>-<variant>-<case>.alkionbackup.
+                records.setdefault(item["label"].split("-", 2)[-1].rsplit(".", 1)[0], []).append(item)
+        return records
+
+    def assert_clean_taps(self, host):
+        # The preview icons, the navigation bar and other documents are never tapped.
+        self.assertEqual((host.preview_taps, host.bar_taps, host.wrong_taps), ([], [], []))
+
+    def test_hidden_grid_title_switches_once_to_list_view_and_the_root_stays_listed(self):
         self.host.args.action = "documents"
         state = self.host.documents_action(self.host.args)
         self.assertEqual(state["documents_phase"], "PASS")
-        self.assertEqual(self.host.preview_taps, [])  # The preview icon is never tapped.
-        records = [json.loads(path.read_bytes()) for path in sorted((self.root / "output").glob("*-click-target.json"))]
-        cards = [item for item in records if item["target_resource_id"] == "com.android.documentsui:id/item_root"]
-        self.assertTrue(cards)
-        self.assertTrue(all((item["tapped"], item["target_bounds"], item["tapped_bounds"]) ==
-                            ("label", "[551,3454][1016,4055]", "[683,1666][984,1717]") for item in cards))
-        self.assertTrue(all(item["tapped"] == "target" for item in records if item not in cards))
+        self.assert_clean_taps(self.host)
+        # Cases run good, denied, error, short, over-limit, corrupt; short is the first in the third grid row.
+        self.assertEqual(self.host.toggle_taps, ["open-short", "open-short"])
+        self.assertEqual(self.host.views, {"dev": "list", "supported": "list"})
+        self.assertEqual(self.host.mutations.count(("tap", 467)), 2)  # The centre of the captured toggle.
+        switches = [json.loads(path.read_bytes()) for path in sorted((self.root / "output").glob("*-view-switch.json"))]
+        self.assertEqual([(item["toggle_resource_id"], item["toggle_bounds"]) for item in switches],
+                         [(DUI + "sub_menu_list", "[890,404][1017,530]")] * 2)
+        records = {case: [(item["tapped"], item["target_bounds"], item["tapped_bounds"], item.get("view"), item.get("switched"))
+                          for item in items] for case, items in self.open_records().items()}
+        self.assertEqual(records, {
+            "open-good": [("target", "[551,1180][1016,1781]", "[551,1180][1016,1781]", None, None)] * 2,
+            "open-denied": [("target", "[551,557][1016,1158]", "[551,557][1016,1158]", None, None)] * 2,
+            "open-error": [("target", "[64,1180][529,1781]", "[64,1180][529,1781]", None, None)] * 2,
+            "open-short": [("target", "[0,1506][1080,1698]", "[0,1506][1080,1698]", "list", True)] * 2,
+            "open-over-limit": [("target", "[0,1314][1080,1506]", "[0,1314][1080,1506]", "list", False)] * 2,
+            "open-corrupt": [("target", "[0,546][1080,738]", "[0,546][1080,738]", "list", False)] * 2})
+        # The switch is re-observed until the row repeats, then never again.
+        observed = sorted(path.name.split("-", 1)[1].rsplit("-", 1)[0] for path in (self.root / "output").glob("*list-view-*.observation"))
+        self.assertEqual(observed, ["dev-open-short-list-view-0", "dev-open-short-list-view-1",
+                                    "supported-open-short-list-view-0", "supported-open-short-list-view-1"])
 
-    def test_grid_card_fallback_refuses_unusable_shapes_on_the_route(self):
-        for scenario, reason in (("card-label-offscreen", "ui_target_bounds_unusable"),
-                                 ("card-preview-over-label", "ui_tap_point_ambiguous"),
-                                 ("two-cards", "unique_native_documents_label_missing"),
-                                 ("card-label-outside", "unique_native_documents_label_missing")):
+    def test_grid_cards_reporting_shifted_bounds_keep_the_visible_title_tap(self):
+        self.host.card_shift, self.host.args.action = NAVIGATION_TOP, "documents"
+        self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        self.assert_clean_taps(self.host)
+        records = {case: {(item["tapped"], item["target_bounds"], item["tapped_bounds"]) for item in items}
+                   for case, items in self.open_records().items()}
+        self.assertEqual({case: records[case] for case in ("open-good", "open-denied", "open-error")}, {
+            "open-good": {("label", "[551,3454][1016,4055]", "[683,1666][984,1717]")},
+            "open-denied": {("label", "[551,2831][1016,3432]", "[683,1043][984,1094]")},
+            "open-error": {("label", "[64,3454][529,4055]", "[196,1666][497,1717]")}})
+        self.assertEqual(records["open-short"], {("target", "[0,1506][1080,1698]", "[0,1506][1080,1698]")})
+        self.assertEqual(self.host.toggle_taps, ["open-short", "open-short"])
+
+    def test_list_switch_not_yet_drawn_is_reobserved(self):
+        self.host.scenario, self.host.args.action = "list-lag", "documents"
+        self.assertEqual(self.host.documents_action(self.host.args)["documents_phase"], "PASS")
+        self.assert_clean_taps(self.host)
+        self.assertEqual(self.host.toggle_taps, ["open-short", "open-short"])
+        attempts = sorted(path.name for path in (self.root / "output").glob("*-dev-open-short-list-view-0-*.observation"))
+        self.assertEqual(len(attempts), 2)  # The grid still drawn, then the list.
+
+    def test_open_document_refuses_unusable_view_states_on_the_route(self):
+        stale = "documentsui_(checkpoint_unavailable|case_budget_exceeded):dev-open-short-list-view-0"
+        for scenario, reason, switches in (("toggle-missing", "documentsui_list_view_unavailable", 0),
+                                           ("toggle-duplicate", "documentsui_list_view_unavailable", 0),
+                                           ("list-stale", stale, 1),
+                                           ("list-foreign-root", stale, 1),
+                                           ("list-duplicate-row", "unique_native_documents_label_missing", 1),
+                                           ("list-row-hidden", "documentsui_list_row_unusable", 1),
+                                           ("list-unsettled", "documentsui_list_view_not_settled", 1),
+                                           ("card-preview-over-label", "ui_tap_point_ambiguous", 0),
+                                           ("two-cards", "unique_native_documents_label_missing", 0),
+                                           ("card-label-outside", "unique_native_documents_label_missing", 0)):
             with self.subTest(scenario=scenario):
                 host = FakeHost(self.root / scenario)
                 host.scenario, host.args.action = scenario, "documents"
+                if scenario.startswith(("card-", "two-")):
+                    host.card_shift = NAVIGATION_TOP  # These shapes reach the visible-title tap.
                 with patch.dict(os.environ, ANDROID_USER_HOME=str(host.user)):
                     with self.assertRaisesRegex(documents.Refusal, reason):
                         host.documents_action(host.args)
-                self.assertEqual(host.preview_taps, [])
-                self.assertFalse([item for item in host.mutations if item[0] == "tap" and item[1] > 1000])
+                self.assert_clean_taps(host)
+                self.assertEqual(len(host.toggle_taps), switches)
+                # The refused case's document is never selected.
+                self.assertEqual((host.flavor, host.current_phase["state"]), ("dev", "picker"))
+                self.assertEqual(host.current_phase["case"], "open-good" if host.card_shift else "open-short")
+                self.assertNotIn(host.current_phase["case"], host.observed)
+
+    def test_view_mode_needs_one_usable_toggle_with_its_captured_description(self):
+        def tree(*toggles):
+            root = ET.Element("hierarchy")
+            for resource, description, bounds, visible in toggles:
+                ET.SubElement(root, "node", {"package": "com.android.documentsui", "text": "", "content-desc": description,
+                    "resource-id": DUI + resource, "clickable": "true", "enabled": "true", "visible-to-user": visible,
+                    "bounds": bounds, "observer-display-width": "1080", "observer-display-height": "2400"})
+            return root
+        captured = "[890,404][1017,530]"
+        self.assertEqual(documents.view_mode(tree(("sub_menu_list", "List view", captured, "true")))[1], "grid")
+        self.assertEqual(documents.view_mode(tree(("sub_menu_grid", "Grid view", captured, "true")))[1], "list")
+        for name, shape in {"none": tree(),
+                            "both": tree(("sub_menu_list", "List view", captured, "true"), ("sub_menu_grid", "Grid view", captured, "true")),
+                            "swapped-description": tree(("sub_menu_list", "Grid view", captured, "true")),
+                            "hidden": tree(("sub_menu_list", "List view", captured, "false")),
+                            "off-display": tree(("sub_menu_list", "List view", "[890,2404][1017,2530]", "true")),
+                            "covered": tree(("sub_menu_list", "List view", captured, "true"), ("item", "", "[900,410][1000,520]", "true"))}.items():
+            with self.subTest(shape=name):
+                self.assertEqual(documents.view_mode(shape), (None, None))
 
     def test_label_tap_requires_a_visible_descendant_of_the_unique_target(self):
         def tree(title_parent="card", title_bounds="[683,1666][984,1717]", visible="true", card_visible="true"):

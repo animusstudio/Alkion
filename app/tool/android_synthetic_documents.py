@@ -579,6 +579,24 @@ def on_display(node):
             box[2] > box[0] >= 0 and box[3] > box[1] >= 0 and box[2] <= width and box[3] <= height)
 
 
+def target_labels(document, label, target):
+    """The label's nodes strictly inside target."""
+    parents = {child: parent for parent in document.iter() for child in parent}
+    def inside_target(node):
+        while node is not None and node is not target:
+            node = parents.get(node)
+        return node is target
+    return [node for node in nodes(document, label) if node is not target and inside_target(node)]
+
+
+def centre_clear(document, node, target):
+    """Whether the centre of node hits no clickable node other than target."""
+    x1, y1, x2, y2 = node_box(node)
+    x, y = (x1 + x2) // 2, (y1 + y2) // 2
+    return not [other for other in document.iter("node") if other is not target and other.get("clickable") == "true" and
+                node_box(other) and node_box(other)[0] <= x < node_box(other)[2] and node_box(other)[1] <= y < node_box(other)[3]]
+
+
 def label_tap(document, label, target):
     """The visible label inside the unique target, when the target's own bounds are unusable.
 
@@ -586,20 +604,11 @@ def label_tap(document, label, target):
     while its title is on screen; a tap on the title is routed to the card. The
     tap point must hit no other clickable node, such as the card's preview icon.
     """
-    parents = {child: parent for parent in document.iter() for child in parent}
-    def inside_target(node):
-        while node is not None and node is not target:
-            node = parents.get(node)
-        return node is target
-    labelled = [node for node in nodes(document, label) if node is not target and inside_target(node)]
+    labelled = target_labels(document, label, target)
     require(len(labelled) == 1 and on_display(labelled[0]) and target.get("enabled") == "true" and
             target.get("visible-to-user") == "true" and labelled[0].get("enabled") == "true",
             "ui_target_bounds_unusable:" + label)
-    x1, y1, x2, y2 = node_box(labelled[0])
-    x, y = (x1 + x2) // 2, (y1 + y2) // 2
-    others = [node for node in document.iter("node") if node is not target and node.get("clickable") == "true" and
-              node_box(node) and node_box(node)[0] <= x < node_box(node)[2] and node_box(node)[1] <= y < node_box(node)[3]]
-    require(not others, "ui_tap_point_ambiguous:" + label)
+    require(centre_clear(document, labelled[0], target), "ui_tap_point_ambiguous:" + label)
     return labelled[0]
 
 
@@ -612,6 +621,86 @@ def click_label(evidence, document, label):
         "target_resource_id": target.get("resource-id"), "tapped": "target" if tapped is target else "label",
         "tapped_bounds": tapped.get("bounds")})
     evidence.host.click_node(evidence.prepared.args, tapped)
+
+
+ITEM_ROOT = "com.android.documentsui:id/item_root"
+# DocumentsUI's header offers only the other view mode; its directory stays a GridView in both.
+VIEW_TOGGLES = {"com.android.documentsui:id/sub_menu_list": ("List view", "grid"),
+                "com.android.documentsui:id/sub_menu_grid": ("Grid view", "list")}
+LIST_SAMPLES = 3  # Observations after the switch until the document's row repeats.
+
+
+def view_mode(document):
+    """The unique usable view toggle and the mode it proves, or (None, None)."""
+    toggles = [node for node in document.iter("node") if node.get("resource-id") in VIEW_TOGGLES]
+    if len(toggles) != 1:
+        return None, None
+    toggle = toggles[0]
+    description, mode = VIEW_TOGGLES[toggle.get("resource-id")]
+    usable = (toggle.get("package") == "com.android.documentsui" and nodes(document, description) == [toggle] and
+              toggle.get("clickable") == "true" and toggle.get("enabled") == "true" and on_display(toggle) and
+              centre_clear(document, toggle, toggle))
+    return (toggle, mode) if usable else (None, None)
+
+
+def title_hidden(document, label):
+    """Whether the unique target's own title is off the display, like a grid's last row under the navigation bar."""
+    choices = click_targets(document, label)
+    require(len(choices) == 1, "unique_native_documents_label_missing:" + label)
+    labelled = target_labels(document, label, choices[0])
+    return len(labelled) == 1 and not on_display(labelled[0])
+
+
+def list_row(document, label):
+    """The unique list row for label: on the display, with its title, and a centre no other node claims."""
+    choices = click_targets(document, label)
+    require(len(choices) == 1, "unique_native_documents_label_missing:" + label)
+    row = choices[0]
+    titles = target_labels(document, label, row)
+    require(row.get("resource-id") == ITEM_ROOT and row.get("class") == "android.widget.LinearLayout" and
+            row.get("enabled") == "true" and on_display(row) and len(titles) == 1 and
+            titles[0].get("enabled") == "true" and on_display(titles[0]), "documentsui_list_row_unusable:" + label)
+    require(centre_clear(document, row, row), "ui_tap_point_ambiguous:" + label)
+    return row
+
+
+def settled_list(observe, label):
+    """The re-observed list view, once the document's row and title bounds repeat."""
+    previous = None
+    for sample in range(LIST_SAMPLES):
+        document = observe("list-view-" + str(sample))
+        require(view_mode(document)[1] == "list", "documentsui_list_view_unproven:" + label)
+        shape = [(node.get("bounds"), node.get("visible-to-user")) for node in nodes(document, label) + click_targets(document, label)]
+        if shape == previous:
+            return document
+        previous = shape
+    raise Refusal("documentsui_list_view_not_settled:" + label)
+
+
+def open_document(evidence, document, label, observe):
+    """Select an open case's document, switching a grid directory to list view once when its title is hidden.
+
+    API 36 DocumentsUI reports a last-row grid title under the navigation bar as
+    not visible to the user. Such a grid is switched through its unique 'List
+    view' control and re-observed with observe(name), which must prove the same
+    root in list view; a directory already in list view needs no switch. A list
+    row is tapped only when it is unique, on the display and unclaimed at its centre.
+    """
+    toggle, mode = view_mode(document)
+    switched = False
+    if mode != "list":
+        if not title_hidden(document, label):
+            return click_label(evidence, document, label)
+        require(mode == "grid", "documentsui_list_view_unavailable:" + label)
+        evidence.keep("view-switch.json", {"label": label, "toggle_resource_id": toggle.get("resource-id"),
+                                           "toggle_bounds": toggle.get("bounds")})
+        evidence.host.click_node(evidence.prepared.args, toggle)
+        document, switched = settled_list(observe, label), True
+    row = list_row(document, label)
+    evidence.keep("click-target.json", {"label": label, "target_bounds": row.get("bounds"),
+        "target_resource_id": row.get("resource-id"), "tapped": "target", "tapped_bounds": row.get("bounds"),
+        "view": "list", "switched": switched})
+    evidence.host.click_node(evidence.prepared.args, row)
 
 
 def foreground(evidence, package, name):
@@ -691,7 +780,9 @@ def drive_picker(evidence, phase):
     if case.endswith("-cancel"):
         evidence.host.adb(evidence.prepared.args, "shell", "input", "keyevent", "KEYCODE_BACK")
     elif case.startswith("open-"):
-        click_label(evidence, document, phase["document_label"])
+        open_document(evidence, document, phase["document_label"], lambda name: picker_document(
+            evidence, flavor + "-" + case + "-" + name, lambda doc: selected_root(doc, phase["root_label"]) and
+            view_mode(doc)[1] == "list" and bool(nodes(doc, phase["document_label"])), **bounds))
     else:
         titles = [node for node in nodes(document, phase["document_label"]) if node.get("class") == "android.widget.EditText"]
         require(len(titles) == 1, "documentsui_exact_create_filename_missing")
