@@ -401,7 +401,7 @@ def parse_observation(raw, receipt, request, binding, expected, started, ended):
             document.get("rotation") == str(receipt["rotation"]), "hierarchy_invalid")
     count = 0
     labels = 0
-    def walk(node, depth, ancestors=()):
+    def walk(node, depth):
         nonlocal count, labels
         count += 1
         require(node.tag == "node" and depth <= 64 and count <= 4096 and all(k in node.attrib for k in
@@ -415,28 +415,14 @@ def parse_observation(raw, receipt, request, binding, expected, started, ended):
         match = re.fullmatch(r"\[(-?[0-9]+),(-?[0-9]+)\]\[(-?[0-9]+),(-?[0-9]+)\]", node.get("bounds", ""))
         require(match is not None, "node_bounds_invalid")
         x1, y1, x2, y2 = map(int, match.groups())
-        if not (x1 <= x2 and y1 <= y2):
-            # API 36 can expose an empty, vertically inverted hidden divider at
-            # the display bottom. Preserve it verbatim; it is never a tap rect.
-            def identity(item, resource, cls, clickable, visible):
-                return (item.get("package") == "com.android.documentsui" and item.get("resource-id") == resource and
-                        item.get("class") == cls and item.get("clickable") == clickable and
-                        item.get("visible-to-user") == visible and item.get("enabled") == "true")
-            require(expected == "com.android.documentsui" and len(ancestors) >= 2 and len(node) == 0 and
-                    identity(node, "", "android.view.View", "false", "false") and
-                    node.get("text") == node.get("content-desc") == "" and
-                    0 <= x1 < x2 <= receipt["width"] and y1 > receipt["height"] == y2,
-                    "node_bounds_invalid")
-            parent, directory = ancestors[-1], ancestors[-2]
-            require(identity(parent, "com.android.documentsui:id/item_root", "android.widget.LinearLayout", "true", "false") and
-                    identity(directory, "com.android.documentsui:id/dir_list", "android.widget.GridView", "false", "true"),
-                    "node_bounds_invalid")
-            px1, py1, px2, py2 = map(int, re.findall(r"-?[0-9]+", parent.get("bounds")))
-            dx1, dy1, dx2, dy2 = map(int, re.findall(r"-?[0-9]+", directory.get("bounds")))
-            require(0 <= dx1 <= px1 < px2 <= dx2 <= receipt["width"] and
-                    0 <= dy1 <= py1 < py2 == receipt["height"] == dy2, "node_bounds_invalid")
+        # Android Rect treats inversion as empty geometry. An invisible,
+        # nonclickable, unlabeled leaf has neither a target nor descendants;
+        # preserve its native fields without granting it a usable tap rectangle.
+        inert_leaf = (len(node) == 0 and node.get("visible-to-user") == "false" and
+                      node.get("clickable") == "false" and node.get("text") == node.get("content-desc") == "")
+        require((x1 <= x2 and y1 <= y2) or inert_leaf, "node_bounds_invalid")
         for child in node:
-            walk(child, depth + 1, (*ancestors, node))
+            walk(child, depth + 1)
     walk(document[0], 0)
     require(count == receipt["node_count"], "node_count_changed")
     needs_labels = expected in ("dev.animusstudio.alkion.dev", "dev.animusstudio.alkion")
