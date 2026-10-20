@@ -1418,6 +1418,21 @@ class DocumentsControls(unittest.TestCase):
         switches = [json.loads(path.read_bytes()) for path in sorted((self.root / "output").glob("*-view-switch.json"))]
         self.assertEqual([(item["toggle_resource_id"], item["toggle_bounds"]) for item in switches],
                          [(DUI + "sub_menu_list", "[890,404][1017,530]")] * 2)
+        # Every selected target and view toggle has a retained native receipt immediately after its semantic record.
+        for path in sorted((self.root / "output").glob("*.json")):
+            if not path.name.endswith(("-click-target.json", "-view-switch.json")):
+                continue
+            item = json.loads(path.read_bytes())
+            box = item.get("tapped_bounds", item.get("toggle_bounds"))
+            x1, y1, x2, y2 = map(int, re.findall(r"-?\d+", box))
+            next_path = path.with_name(str(int(path.name.split("-", 1)[0]) + 1).zfill(4) + "-native-command.json")
+            native = json.loads(next_path.read_bytes())
+            self.assertEqual(native["argv"], ["shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2)])
+            self.assertEqual((native["code"], native["stdout"], native["stderr"], native["stdout_length"], native["stderr_length"]),
+                             (0, "", "", 0, 0))
+        native_records = [json.loads(path.read_bytes()) for path in sorted((self.root / "output").glob("*-native-command.json"))]
+        taps = [item for item in native_records if item["argv"][:3] == ["shell", "input", "tap"]]
+        self.assertEqual([int(item["argv"][-1]) for item in taps], [y for action, y in self.host.mutations if action == "tap"])
         records = self.open_records()
         self.assertEqual(set(records), {case for case in documents.CASES if case.startswith("open-") and case != "open-cancel"})
         for items in records.values():
@@ -1477,6 +1492,27 @@ class DocumentsControls(unittest.TestCase):
                 self.assertEqual(host.current_phase["case"], "open-good" if host.card_shift else "open-short")
                 self.assertNotIn(host.current_phase["case"], host.observed)
 
+    def test_node_tap_keeps_refused_command_output_before_failing(self):
+        evidence, _ = self.evidence_after_seed()
+        node = self.host.add(ET.Element("hierarchy"), (890, 404, 1017, 530), clickable="true")
+        node.set("observer-display-width", "1080"); node.set("observer-display-height", "2400")
+        for response, reason in ((result("unexpected"), "documentsui_tap_output_invalid"),
+                                 (result("", "diagnostic"), "documentsui_tap_output_invalid"),
+                                 (result("", "tap failed", 1), "native_command_failed")):
+            with self.subTest(reason=reason), patch.object(self.host, "adb", return_value=response):
+                with self.assertRaisesRegex(documents.Refusal, reason):
+                    documents.tap_node(evidence, node)
+                record = json.loads(sorted((self.root / "output").glob("*-native-command.json"))[-1].read_bytes())
+                self.assertEqual(record["argv"], ["shell", "input", "tap", "953", "467"])
+                self.assertEqual((record["code"], record["stdout"], record["stderr"]),
+                                 (response.returncode, response.stdout, response.stderr))
+        for key, value in (("enabled", "false"), ("visible-to-user", "false"), ("bounds", "[890,2678][1017,2804]")):
+            refused = copy.deepcopy(node); refused.set(key, value)
+            with self.subTest(key=key), patch.object(evidence, "native") as native:
+                with self.assertRaisesRegex(documents.Refusal, "ui_node_outside_attested_display"):
+                    documents.tap_node(evidence, refused)
+                native.assert_not_called()
+
     def test_captured_whole_shift_reobserves_then_refuses_without_tapping(self):
         evidence, _ = self.evidence_after_seed()
         tree = shifted_directory()
@@ -1489,7 +1525,7 @@ class DocumentsControls(unittest.TestCase):
         def observe(name):
             observed.append(name)
             return shifted_directory()  # No captured shifted-to-normal transition is assumed.
-        with patch.object(self.host, "click_node") as click:
+        with patch.object(evidence, "native") as click:
             with self.assertRaisesRegex(documents.Refusal, "documentsui_list_toggle_off_display"):
                 documents.open_document(evidence, tree, label, observe)
             click.assert_not_called()
@@ -1515,11 +1551,13 @@ class DocumentsControls(unittest.TestCase):
     def test_captured_whole_shift_keeps_the_visible_title_fallback(self):
         evidence, _ = self.evidence_after_seed()
         for case in ("open-good", "open-denied", "open-error"):
-            with self.subTest(case=case), patch.object(self.host, "click_node") as click:
+            with self.subTest(case=case), patch.object(evidence, "native", return_value=result()) as click:
                 documents.open_document(evidence, shifted_directory(), RUN + "-dev-" + case + ".alkionbackup",
                                         lambda name: self.fail("visible title needs no view switch"))
                 self.assertEqual(click.call_count, 1)
-                self.assertTrue(documents.on_display(click.call_args.args[1]))
+                self.assertEqual(click.call_args.args[:3], ("shell", "input", "tap"))
+                self.assertEqual(click.call_args.args[3:], ("833", "1691") if case == "open-good" else
+                                 ("833", "1068") if case == "open-denied" else ("346", "1691"))
 
     def test_off_display_toggle_reobservation_keeps_exact_root_and_case_budget(self):
         evidence, phase = self.evidence_after_seed()

@@ -5,7 +5,7 @@ reviewed helpers as an object with APP, command, adb, receipt_guard,
 temporary_path, read_json, toolchain, apk_facts, installed_matches,
 package_metadata, device_platform_guard, driver_continuation_contract,
 lifecycle_contract, driver_neighbor_bytes, closed_profile_fingerprint, app_pid,
-ordinary_kill(args, package, uid, output), ui_document and click_node, and
+ordinary_kill(args, package, uid, output) and ui_document.
 args._publisher is the reviewed publisher artifact the harness binds after
 preparation. Owned files are published by the shared no-replace publisher;
 namespace directories keep their existing rename. No target/path/APK guard is
@@ -618,6 +618,14 @@ def label_tap(document, label, target):
     return labelled[0]
 
 
+def tap_node(evidence, node):
+    """Tap a validated node, retaining native output and status before checking success."""
+    require(on_display(node) and node.get("enabled") == "true", "ui_node_outside_attested_display")
+    x1, y1, x2, y2 = node_box(node)
+    result = evidence.native("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+    require(not result.stdout and not result.stderr, "documentsui_tap_output_invalid")
+
+
 def click_label(evidence, document, label):
     choices = click_targets(document, label)
     require(len(choices) == 1, "unique_native_documents_label_missing:" + label)
@@ -627,7 +635,7 @@ def click_label(evidence, document, label):
     evidence.keep("click-target.json", {"label": label, "target_bounds": target.get("bounds"),
         "target_resource_id": target.get("resource-id"), "tapped": "target" if tapped is target else "label",
         "tapped_bounds": tapped.get("bounds")})
-    evidence.host.click_node(evidence.prepared.args, tapped)
+    tap_node(evidence, tapped)
 
 
 ITEM_ROOT = "com.android.documentsui:id/item_root"
@@ -702,7 +710,7 @@ def prefer_list(evidence, document, label, observe, *, optional=False):
     require(mode == "grid", "documentsui_list_view_unavailable:" + str(label))
     evidence.keep("view-switch.json", {"label": label, "toggle_resource_id": toggle.get("resource-id"),
                                        "toggle_bounds": toggle.get("bounds")})
-    evidence.host.click_node(evidence.prepared.args, toggle)
+    tap_node(evidence, toggle)
     return settled_list(observe, label), True
 
 
@@ -725,7 +733,7 @@ def open_document(evidence, document, label, observe):
     evidence.keep("click-target.json", {"label": label, "target_bounds": row.get("bounds"),
         "target_resource_id": row.get("resource-id"), "tapped": "target", "tapped_bounds": row.get("bounds"),
         "view": "list", "switched": switched})
-    evidence.host.click_node(evidence.prepared.args, row)
+    tap_node(evidence, row)
 
 
 def foreground(evidence, package, name):
@@ -793,7 +801,7 @@ def drive_picker(evidence, phase):
                       node.get("clickable") == "true" and node.get("content-desc") in
                       ("Show roots", "Open navigation drawer")]
         require(len(candidates) == 1, "documentsui_root_navigation_unavailable")
-        evidence.host.click_node(evidence.prepared.args, candidates[0])
+        tap_node(evidence, candidates[0])
         document = picker_document(evidence, flavor + "-" + case + "-roots",
                                    lambda doc: bool(click_targets(doc, phase["root_label"])), **bounds)
     click_label(evidence, document, phase["root_label"])
