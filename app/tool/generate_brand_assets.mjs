@@ -11,8 +11,9 @@ const directory=join(root,'assets/icon');
 const source=await readFile(join(directory,'clean-arm-characters.svg'),'utf8');
 // Remove only the source's black plate; paths and glyph placement stay verbatim.
 const plate='<rect width="1000" height="1000" fill="#000"/>';
-if(source.split(plate).length!==2||source.includes('<image')||source.includes('<text'))throw Error('Unexpected character master');
-const art=source.replace(/^<svg[^>]*>/,'').replace(/<\/svg>\s*$/,'').replace(plate,'');
+const outerPlate='<rect width="100%" height="100%" fill="#000"/>';
+if(source.split(plate).length!==2||source.split(outerPlate).length!==2||source.includes('<image')||source.includes('<text'))throw Error('Unexpected character master');
+const art=source.replace(/^<svg[^>]*>/,'').replace(/<\/svg>\s*$/,'').replace(plate,'').replace(outerPlate,'');
 const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),args:['--disable-gpu']});
 try {
  const page=await browser.newPage({deviceScaleFactor:1});
