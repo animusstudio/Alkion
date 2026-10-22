@@ -239,7 +239,9 @@ none skipped. It is superseded.
 
 Implementation: `672181e`, against baseline `f6b54f9`, under the
 [approved branding plan](../plans/2026-10-23-arm-icon-and-readme-branding.md).
-Independent review and owner-approved publication remain pending.
+Independent task and outgoing review passed `f6b54f9..3edaf40` with no findings;
+destination/leak checks passed with zero findings and no new tags.
+Owner-approved publication remains pending.
 
 The approved outlined 96-column clean arm replaces the active inherited Reps
 launcher artwork. Five legacy PNGs, five adaptive foreground PNGs and five

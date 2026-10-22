@@ -63,10 +63,9 @@ packaging through the pinned Make/FVM route. Use repository check receipts.
 ## Task state
 
 T1: implementation and focused verification complete at `672181e`; independent
-review pending.
+task/outgoing review passed `f6b54f9..3edaf40` with no findings.
 Source baseline `f6b54f9`; early implementation `2c0155c`.
-Next: independent task/outgoing review; then prepare
-the exact outgoing range for owner-run publication.
+Next: prepare the exact integrated range for owner-approved, owner-run publication.
 
 Implemented the approved 96-column character arm, separate transparent adaptive
 foreground/black background, monochrome layer and all five existing Android
