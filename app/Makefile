@@ -55,3 +55,9 @@ gen-l10n:
 # Scoped dependency removal refresh; no upgrade or network resolution.
 get-offline-update:
 	$(FLUTTER) pub get --offline
+
+# Rebuild approved brand PNGs, then the existing Android resource set.
+.PHONY: brand-icons
+brand-icons:
+	node tool/generate_brand_assets.mjs
+	$(DART) run flutter_launcher_icons -f flutter_launcher_icons.yaml
