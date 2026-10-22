@@ -1,0 +1,25 @@
+{
+  "source": "clean-arm-characters.svg",
+  "source_sha256": "0a9b29e9e4db171145645bcc74826b51180a054adf0303714c2746b0cec36c52",
+  "glyph_bound_radius": 540.9940743963157,
+  "adaptive_scale": 0.5535078083407632,
+  "legacy_scale": 0.8302617125111448,
+  "adaptive_layer_dp": 108,
+  "safe_circle_dp": 66,
+  "safe_margin": 0.02,
+  "generator_inset_percent": 0,
+  "files": [
+    {
+      "file": "alkion-foreground-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "ae0ed1b5cbaa296e5df25e8ede79896950de3ba80efc60cb641f9276c76e6193"
+    },
+    {
+      "file": "alkion-icon-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "sha256": "a998281af9d2eccda7087196e07d3e7e8d6a84ec0e529d074c9d7cd1036b7e1d"
+    }
+  ]
+}
