@@ -62,6 +62,30 @@ packaging through the pinned Make/FVM route. Use repository check receipts.
 
 ## Task state
 
-T1: in progress. Source baseline `f6b54f9`.
-Next: implementation, bounded validation and independent review; then prepare
+T1: implementation and focused verification complete at `672181e`; independent
+review pending.
+Source baseline `f6b54f9`; early implementation `2c0155c`.
+Next: independent task/outgoing review; then prepare
 the exact outgoing range for owner-run publication.
+
+Implemented the approved 96-column character arm, separate transparent adaptive
+foreground/black background, monochrome layer and all five existing Android
+launcher densities. Generator inset is zero; measured glyph bounds determine a
+single safe-circle composition. The README displays the 96-column character bust
+and Alkion/by Animus banner, with the unchanged legacy factual body grouped under
+Legacy Reps reference. Notices and public regeneration metadata are retained.
+
+Focused source/geometry, alpha/native resource, README and reproduction checks
+passed. All 20 regenerated input/resource/metadata files reproduced byte-for-byte.
+Foreground alpha radii are 32.27–32.60dp inside the 33dp safe radius at every
+density. The normal manifest and existing notification initialization still
+resolve `@mipmap/ic_launcher`. Local README and icon-mask desktop/mobile captures
+passed; one private transparency-canvas correction improved white-glyph visibility
+without changing product assets. No native launcher/device behavior is claimed.
+
+`make -C app alkion-toolchain` confirmed FVM Flutter 3.44.0 / Dart 3.12.0;
+locked offline `get`, `analyze` (0 issues) and full `test TEST=--concurrency=2`
+(1453 passed, 0 skipped) passed. Android debug packaging passed, followed by a
+15-resource pixel comparison against the APK and adaptive-layer inspection.
+Application ID/version remain `dev.animusstudio.alkion.dev` / `0.18.1+37`.
+The [acceptance record](../alkion/acceptance.md) owns the final receipt summary.

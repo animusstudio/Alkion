@@ -233,3 +233,54 @@ to these checks.
 
 The earlier pre-fix T7 run had 1255 tests in 174 test files, all passing with
 none skipped. It is superseded.
+
+
+## Character arm icon and README branding — 2026-10-23
+
+Implementation: `672181e`, against baseline `f6b54f9`, under the
+[approved branding plan](../plans/2026-10-23-arm-icon-and-readme-branding.md).
+Independent review and owner-approved publication remain pending.
+
+The approved outlined 96-column clean arm replaces the active inherited Reps
+launcher artwork. Five legacy PNGs, five adaptive foreground PNGs and five
+monochrome PNGs retain the normal launcher resource name. The adaptive foreground
+is transparent except for glyphs; black is a separate opaque background. Every
+nonzero-alpha foreground pixel fits the centered 66/108 safe circle: observed
+radii 32.27–32.60dp, below 33dp. Generator inset is explicitly zero to avoid
+padding the composition twice. No masks are baked into either input.
+
+The local character-bust banner carries Alkion and `by Animus`. README alt text
+and relative paths are valid. The original legacy factual body is preserved,
+with heading hierarchy and an explicit Legacy Reps reference boundary.
+Source/banner/font-notice hashes match the approved material. The glyph artwork
+has no raster sculpture underlay. See [icon reproduction](../../app/assets/icon/README.md)
+and [banner notices](../assets/brand/README.md).
+
+| Check | Result |
+| --- | --- |
+| `make -C app alkion-toolchain` | PASS: actual FVM route, Flutter 3.44.0, Dart 3.12.0. |
+| `make -C app get` | PASS: offline, enforced existing lockfile. |
+| `make -C app brand-icons` | PASS: retained SVG → PNG compositions → locked launcher generator 0.14.4; repeated generation reproduced all 20 outputs byte-for-byte. |
+| Focused asset/resource audit | PASS: exact approved geometry/notices, input/native dimensions, alpha footprint, separate black background, no opaque black foreground plate, zero extra inset; manifest and notification both resolve `@mipmap/ic_launcher`. |
+| README and mask inspection | PASS: local Markdown render and generated-resource specimens at 1440px/390px, circle/rounded-square and actual 48/64/96px views; no page errors or overflow. |
+| `make -C app analyze` | PASS: 0 issues. |
+| `make -C app test TEST=--concurrency=2` | PASS: 1453 tests passed, 0 skipped; 370s. |
+| `make -C app build-apk` | PASS: debug APK, 6s incremental confirmation; all 15 packaged PNG resources pixel-identical to generated resources, adaptive background/foreground/monochrome present. |
+
+An initial alpha audit caught both black source plates: the composition now
+removes both plates while preserving every glyph path/placement. A follow-up
+blanket bright-RGB assertion was corrected for low-alpha antialiased pixels;
+the final audit checks transparency, complete alpha footprint and absence of an
+opaque black plate. Only final corrected resources enter the packaging check.
+The visual pass required one private specimen-canvas correction; source and
+product pixels did not change. No app IDs, version, signing, sync or behavior
+changed. Device appearance, notification rendering and adaptive-icon motion on
+a launcher remain UNRUN; no device install, tag, release or deployment occurred.
+
+The first packaging process terminated with SIGTERM (exit 143) after producing
+an APK, without a successful completion receipt. The unchanged incremental
+confirmation returned exit 0; only that receipt supports the packaging PASS.
+The final debug APK SHA-256 is
+`f538c4ee45ee421181d072c432bbbffb92d864bc61f74c7d18c232e30801601b`.
+Packaged identity/version remain `dev.animusstudio.alkion.dev` / `0.18.1+37`.
+Existing KGP/plugin migration warnings remain outside this asset change.
