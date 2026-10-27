@@ -29,7 +29,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/main.dart';
 import 'package:alkion/data/session_writer.dart';
 import 'package:alkion/store/local_store.dart';
-import 'package:alkion/ui/onboarding_screen.dart';
 import 'package:alkion/ui/today_screen.dart';
 import 'package:alkion/ui/profile_screen.dart';
 import 'package:alkion/widgets/sparkline.dart';
@@ -201,7 +200,6 @@ void main() {
           runtime = await AlkionRuntime.open(
             Directory('${root.path}/dev.animusstudio.alkion.dev'),
           );
-          await runtime!.completeOnboarding(OnboardingChoice.empty);
           debugPrint('APP_ROOT runtime opened');
         });
         await tester.runAsync(
@@ -211,7 +209,6 @@ void main() {
         await settleReal(tester);
         debugPrint('APP_ROOT settled');
         expect(find.byType(TodayScreen), findsOneWidget);
-        expect(find.byType(OnboardingScreen), findsNothing);
         await tester.runAsync(() async {
           expect(
             (await runtime!.store.get('PRAGMA user_version')).values.single,

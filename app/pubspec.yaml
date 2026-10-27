@@ -21,7 +21,7 @@ dependencies:
   # App-support dir for the local DB file.
   path_provider: ^2.1.4
   path: ^1.9.0
-  # Google Fonts for Space Grotesk / Hanken Grotesk / JetBrains Mono.
+  # Local Space Grotesk / Space Mono styles through Google Fonts.
   google_fonts: ^6.2.1
   # Reactive state management (UnitService, ActiveSessionController).
   provider: ^6.1.2
@@ -34,10 +34,9 @@ dependencies:
   # OS-alarm scheduling for the rest-end notification revert (transitive via
   # flutter_local_notifications; declared direct since we import tz/data).
   timezone: ^0.11.0
-  # Deterministic v5 ids for the template-absorb migration.
+  # Profile, revision, restore and deterministic compatibility IDs.
   uuid: ^4.5.0
-  # SHA-256 for capture profile and schema evidence digests. Transitive via
-  # powersync; declared direct because lib/capture imports it.
+  # SHA-256 for local store, backup, transfer and schema evidence digests.
   crypto: ^3.0.7
   # Runtime app version footer; no update transport.
   package_info_plus: ^8.0.0
@@ -47,16 +46,16 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
   # Generates the Android launcher icon (incl. adaptive) from assets/icon/.
-  # Config: flutter_launcher_icons.yaml; sources prepared in docs/flutter_icons/.
+  # Config and approved source: flutter_launcher_icons.yaml and assets/icon/.
   flutter_launcher_icons: ^0.14.1
 
 flutter:
   uses-material-design: true
   # Generate AppLocalizations from lib/l10n/*.arb (config in l10n.yaml).
   generate: true
-  # Space Grotesk / Hanken Grotesk / JetBrains Mono static TTFs (OFL, see
-  # OFL.txt). Named in google_fonts' asset convention (`Family-Weight.ttf`),
-  # so GoogleFonts.* loads them from the bundle with no network; runtime
-  # fetching stays on as the fallback for any weight not bundled.
+  # Locally bundled static TTFs and OFL notices. WorkoutType requests only
+  # Space Grotesk Regular/Medium and Space Mono Regular; no network is needed.
   assets:
     - assets/google_fonts/
+    - assets/character_body/
+    - assets/icon/alkion-foreground-1024.png

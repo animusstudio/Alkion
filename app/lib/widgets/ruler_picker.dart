@@ -92,7 +92,7 @@ class RulerScale {
 /// A horizontal measuring-tape number picker: values sit in a row, a swipe
 /// moves the tape (a fling moves many values), and on release it snaps so a
 /// value sits under the centre marker. The centre value is the selected one —
-/// large and accent-coloured — and neighbours shrink and fade with distance.
+/// large and neutral — and neighbours shrink and fade with distance.
 ///
 /// Values are in the caller's space (kg for weight); [format] renders them.
 /// [onChanged] fires once per value that crosses the centre, never for a
@@ -116,6 +116,8 @@ class RulerPicker extends StatefulWidget {
     this.fineStep,
     this.onTapValue,
     this.semanticLabel,
+    this.unitLabel,
+    this.showMinorTicks = true,
   });
 
   static const double defaultItemExtent = 72;
@@ -151,6 +153,12 @@ class RulerPicker extends StatefulWidget {
   final double itemExtent;
   final VoidCallback? onTapValue;
   final String? semanticLabel;
+
+  /// Display unit below the centered value; excluded from the numeric formatter.
+  final String? unitLabel;
+
+  /// Draw intermediate visual ticks between values; integer counts omit them.
+  final bool showMinorTicks;
 
   @override
   State<RulerPicker> createState() => RulerPickerState();
@@ -218,10 +226,15 @@ class RulerPickerState extends State<RulerPicker>
   final _labels = _LabelCache();
   final _paints = _TapePaints();
   final List<String> _centreLabels = [];
+  final List<Rect> _labelBounds = [];
 
   /// The labels the last paint drew within half a slot of the centre.
   @visibleForTesting
   List<String> get centreLabels => List.unmodifiable(_centreLabels);
+
+  /// Final scaled label bounds from the last paint, in ruler coordinates.
+  @visibleForTesting
+  List<Rect> get labelBounds => List.unmodifiable(_labelBounds);
 
   static const double _height = 80;
 
@@ -636,13 +649,27 @@ class RulerPickerState extends State<RulerPicker>
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final extent = widget.itemExtent;
-    final grid = _modeGrid;
-    final i = grid.indexOf(_current);
     _labels.configure(
       text: tokens.text,
-      accent: tokens.accentText,
+      accent: tokens.text,
       scaler: MediaQuery.textScalerOf(context),
     );
+    // Use the font's laid-out metrics: scaled line boxes round independently
+    // from fontSize * height, which otherwise clips the top at large text.
+    final labelHeight = _labels
+        .get(widget.format(_current), centre: true, opacity: 1)
+        .height;
+    final unitHeight = widget.unitLabel == null
+        ? 0.0
+        : _labels.get(widget.unitLabel!, centre: false, opacity: 0.7).height *
+                  (12 / 32) +
+              4;
+    final height = math.max(
+      _height,
+      labelHeight + unitHeight + _majorTick + 12,
+    );
+    final grid = _modeGrid;
+    final i = grid.indexOf(_current);
 
     // Clipped to the ruler's own box: the painter draws a step past each
     // side so edge values slide in, and the ShaderMask's fade only covers
@@ -663,6 +690,9 @@ class RulerPickerState extends State<RulerPicker>
             labels: _labels,
             paints: _paints,
             centreLabels: _centreLabels,
+            labelBounds: _labelBounds,
+            unitLabel: widget.unitLabel,
+            showMinorTicks: widget.showMinorTicks,
           ),
         ),
       ),
@@ -696,7 +726,7 @@ class RulerPickerState extends State<RulerPicker>
             // one ruled edge, so the tape reads as part of the card it lives
             // in.
             child: SizedBox(
-              height: _height,
+              height: height,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -726,8 +756,8 @@ class RulerPickerState extends State<RulerPicker>
                     bottom: 0,
                     child: IgnorePointer(
                       child: Container(
-                        width: 2.5,
-                        height: _majorTick + 8,
+                        width: 2,
+                        height: 20,
                         decoration: BoxDecoration(
                           color: tokens.accentText,
                           borderRadius: BorderRadius.circular(2),
@@ -741,7 +771,10 @@ class RulerPickerState extends State<RulerPicker>
                     key: const Key('ruler-centre'),
                     behavior: HitTestBehavior.translucent,
                     onTap: widget.onTapValue,
-                    child: SizedBox(width: extent, height: _height),
+                    child: SizedBox(
+                      width: math.max(48, extent),
+                      height: height,
+                    ),
                   ),
                 ],
               ),
@@ -754,19 +787,15 @@ class RulerPickerState extends State<RulerPicker>
 }
 
 const double _majorTick = 14;
-const double _mediumTick = 10;
-const double _minorTick = 7;
-
-/// Where label centres sit: midway down the space above the ruled edge,
-/// clear of its ticks.
-const double _labelCentreY = (RulerPickerState._height - _majorTick - 4) / 2;
+const double _mediumTick = 9;
+const double _minorTick = 5;
 
 /// The tape's strokes, kept across frames; the painter sets their colours.
 class _TapePaints {
   final baseline = Paint()..strokeWidth = 1;
-  final major = Paint()..strokeWidth = 1.5;
+  final major = Paint()..strokeWidth = 1;
   final minor = Paint()..strokeWidth = 1;
-  final medium = Paint()..strokeWidth = 1.25;
+  final medium = Paint()..strokeWidth = 1;
 }
 
 /// Laid-out value labels, keyed by text, centre styling and a quantised
@@ -814,9 +843,9 @@ class _LabelCache {
     return _painters[key] = TextPainter(
       text: TextSpan(
         text: label,
-        style: WorkoutType.display(
-          size: 28,
-          weight: centre ? FontWeight.w700 : FontWeight.w600,
+        style: WorkoutType.mono(
+          size: 32,
+          weight: FontWeight.w400,
           color: color,
         ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
       ),
@@ -857,6 +886,9 @@ class _TapePainter extends CustomPainter {
     required this.labels,
     required this.paints,
     required this.centreLabels,
+    required this.labelBounds,
+    required this.unitLabel,
+    required this.showMinorTicks,
   }) : generation = labels.generation,
        // A new closure arrives with every parent build; what matters is
        // whether it renders differently (a unit switch).
@@ -871,6 +903,8 @@ class _TapePainter extends CustomPainter {
   final double fineExtent;
   final String Function(double) format;
   final Color line;
+  final String? unitLabel;
+  final bool showMinorTicks;
   final _LabelCache labels;
   final _TapePaints paints;
   final int generation;
@@ -879,6 +913,7 @@ class _TapePainter extends CustomPainter {
   /// Filled on each paint with the labels drawn within half a slot of the
   /// centre, for tests.
   final List<String> centreLabels;
+  final List<Rect> labelBounds;
 
   double _x(double v, Size size) =>
       size.width / 2 + (v - position) * pxPerValue;
@@ -893,6 +928,9 @@ class _TapePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     centreLabels.clear();
+    labelBounds.clear();
+    final candidates =
+        <({double x, String text, double distance, double fade})>[];
     final step = coarse.step;
     final base = size.height - 0.5;
     final halfSpan = size.width / 2 / pxPerValue + step;
@@ -927,7 +965,7 @@ class _TapePainter extends CustomPainter {
     );
     for (var k = k0; k <= k1; k++) {
       final isMajor = k % 5 == 0;
-      if (!isMajor && minorAlpha <= 0) continue;
+      if (!isMajor && (!showMinorTicks || minorAlpha <= 0)) continue;
       final x = _x(coarse.base + k * sub, size);
       canvas.drawLine(
         Offset(x, base),
@@ -958,7 +996,12 @@ class _TapePainter extends CustomPainter {
       final v = coarse.valueAt(i);
       final fade = fine == null || _isOn(v, fine) ? 1.0 : 1 - zoom;
       final x = _x(v, size);
-      _label(canvas, x, format(v), (x - size.width / 2).abs() / slot, fade);
+      candidates.add((
+        x: x,
+        text: format(v),
+        distance: (x - size.width / 2).abs() / slot,
+        fade: fade,
+      ));
     }
 
     // Fine-only labels.
@@ -967,14 +1010,26 @@ class _TapePainter extends CustomPainter {
         final v = fine.valueAt(i);
         if (_isOn(v, coarse)) continue;
         final x = _x(v, size);
-        _label(
-          canvas,
-          x,
-          format(v),
-          (x - size.width / 2).abs() / slot,
-          fineFade,
-        );
+        candidates.add((
+          x: x,
+          text: format(v),
+          distance: (x - size.width / 2).abs() / slot,
+          fade: fineFade,
+        ));
       }
+    }
+    // The selected value has priority. Neighbour labels keep their exact
+    // positions, but give way when scaled glyphs would cover another value.
+    candidates.sort((a, b) => a.distance.compareTo(b.distance));
+    for (final candidate in candidates) {
+      _label(
+        canvas,
+        candidate.x,
+        candidate.text,
+        candidate.distance,
+        candidate.fade,
+        size,
+      );
     }
   }
 
@@ -984,25 +1039,52 @@ class _TapePainter extends CustomPainter {
     String text,
     double distance,
     double fade,
+    Size bounds,
   ) {
     final d = distance.clamp(0.0, 3.0);
     final centre = d < 0.5;
-    // A gentle falloff: 1.0 at the centre, 0.72 one step away, 0.56 at three.
-    final size = d <= 1 ? 1 - 0.28 * d : 0.72 - 0.08 * (d - 1);
-    final opacity = (1 - 0.26 * d).clamp(0.22, 1.0) * fade;
+    // Selected value leads; neighbours keep the proposal’s 13/12dp hierarchy.
+    var size = d < 0.5 ? 1 - 0.3 * d : (d < 1.5 ? 13 / 32 : 12 / 32);
+    final opacity = (centre ? 1.0 : 0.7) * fade;
     if (opacity < 0.01) return;
-    if (centre) centreLabels.add(text);
     final tp = labels.get(text, centre: centre, opacity: opacity);
+    size = math.min(
+      size,
+      (bounds.width - 16).clamp(1, double.infinity) / tp.width,
+    );
+    final unit = centre && unitLabel != null
+        ? labels.get(unitLabel!, centre: false, opacity: 0.7)
+        : null;
+    final unitHeight = unit == null ? 0.0 : unit.height * (12 / 32) + 4;
+    final y = (bounds.height - _majorTick - 4 - unitHeight) / 2;
+    final rect = Rect.fromCenter(
+      center: Offset(x, y),
+      width: tp.width * size,
+      height: tp.height * size,
+    );
+    if (labelBounds.any((other) => other.inflate(4).overlaps(rect))) return;
+    labelBounds.add(rect);
+    if (centre) centreLabels.add(text);
     canvas
       ..save()
-      ..translate(x, _labelCentreY)
+      ..translate(x, y)
       ..scale(size);
     tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
     canvas.restore();
+    if (unit != null) {
+      canvas
+        ..save()
+        ..translate(x, y + tp.height * size / 2 + 2)
+        ..scale(12 / 32);
+      unit.paint(canvas, Offset(-unit.width / 2, 0));
+      canvas.restore();
+    }
   }
 
   @override
   bool shouldRepaint(_TapePainter old) =>
+      old.showMinorTicks != showMinorTicks ||
+      old.unitLabel != unitLabel ||
       old.position != position ||
       old.zoom != zoom ||
       old.pxPerValue != pxPerValue ||

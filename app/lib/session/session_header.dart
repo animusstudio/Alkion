@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
-import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../widgets/fit_label.dart';
 import 'active_session_controller.dart';
 
 /// "Next · …" for the header rest row: the live set, or finishing.
@@ -35,8 +35,8 @@ String restNextLabel(AppLocalizations l, UnitService unit, LiveSet? live) {
 }
 
 /// The live workout's sticky header: minimize, title and set count, the ⋯
-/// menu and elapsed time; under it the progress bar, which becomes a thicker
-/// draining rest countdown while resting, with a rest row (countdown, what is
+/// menu and elapsed time; under it a calibrated remaining-time scale while
+/// resting, with a rest row (countdown, what is
 /// next, +30s / Skip). The rest row appears with the first logged set and then
 /// stays, switching between the countdown and a "rested" count-up of the same
 /// height so the list below never moves on its own. Replaces the old floating
@@ -83,9 +83,6 @@ class SessionHeader extends StatelessWidget {
   /// False while a data capture holds the source: +30s is shown as
   /// unavailable, does nothing, and the line under the row says why.
   final bool restExtensionAvailable;
-
-  /// Threshold (inclusive) for the final-seconds accent.
-  static const _finalThreshold = 5;
 
   /// The rested count-up stops here.
   static const _restedCap = 99 * 60 + 59;
@@ -134,27 +131,20 @@ class SessionHeader extends StatelessWidget {
       label: label,
       excludeSemantics: true,
       onTap: onTap,
-      child: GestureDetector(
+      child: IconButton(
         key: key,
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: tokens.surface,
-                border: Border.all(color: tokens.line),
-              ),
-              alignment: Alignment.center,
-              child: icon,
-            ),
+        onPressed: onTap,
+        style: IconButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          fixedSize: const Size(48, 48),
+          backgroundColor: tokens.surface2,
+          foregroundColor: tokens.dim,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
+          focusColor: tokens.focus.withValues(alpha: 0.25),
         ),
+        icon: icon,
       ),
     );
 
@@ -165,28 +155,31 @@ class SessionHeader extends StatelessWidget {
         children: [
           SizedBox(height: MediaQuery.of(context).padding.top + 4),
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 12, 8),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Column(
               children: [
-                circleButton(
-                  key: const Key('session-minimize'),
-                  label: l.sessionMinimize,
-                  onTap: onMinimize,
-                  icon: Transform.rotate(
-                    angle: 1.5708,
-                    child: Icon(WIcons.chevron, size: 18, color: tokens.dim),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text.rich(
+                Row(
+                  children: [
+                    circleButton(
+                      key: const Key('session-minimize'),
+                      label: l.sessionMinimize,
+                      onTap: onMinimize,
+                      icon: Transform.rotate(
+                        angle: 1.5708,
+                        child: Icon(
+                          WIcons.chevron,
+                          size: 18,
+                          color: tokens.dim,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FitLabel.rich(
                         TextSpan(
                           style: WorkoutType.display(
-                            size: 18,
-                            weight: FontWeight.w700,
+                            size: 22,
+                            weight: FontWeight.w500,
                             color: tokens.text,
                           ),
                           children: [
@@ -194,56 +187,53 @@ class SessionHeader extends StatelessWidget {
                             if (draft.focus.isNotEmpty)
                               TextSpan(
                                 text: ' · ${draft.focus}',
-                                style: WorkoutType.display(
-                                  size: 18,
-                                  weight: FontWeight.w600,
-                                  color: tokens.faint,
+                                style: WorkoutType.body(
+                                  size: 16,
+                                  color: tokens.dim,
                                 ),
                               ),
                           ],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        setsText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: WorkoutType.mono(size: 11, color: tokens.faint),
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 12),
+                    circleButton(
+                      key: const Key('session-menu'),
+                      label: l.sessionWorkoutOptions,
+                      onTap: onMenu,
+                      icon: Icon(WIcons.more, size: 18, color: tokens.dim),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                const SizedBox(height: 8),
+                Row(
                   children: [
+                    Expanded(
+                      child: FitLabel(
+                        setsText,
+                        maxLines: 2,
+                        style: WorkoutType.body(size: 12, color: tokens.dim),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Text(
                       '$mm:${ss.toString().padLeft(2, '0')}',
                       style: WorkoutType.mono(
                         size: 18,
-                        weight: FontWeight.w700,
-                        color: tokens.accentText,
+                        weight: FontWeight.w500,
+                        color: tokens.dim,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      l.sessionElapsed,
-                      style: WorkoutType.mono(
-                        size: 9,
-                        color: tokens.faint,
-                        letterSpacing: 0.06 * 9,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: FitLabel(
+                        l.sessionElapsed,
+                        maxLines: 2,
+                        style: WorkoutType.body(size: 12, color: tokens.dim),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(width: 4),
-                circleButton(
-                  key: const Key('session-menu'),
-                  label: l.sessionWorkoutOptions,
-                  onTap: onMenu,
-                  icon: Icon(WIcons.more, size: 18, color: tokens.dim),
                 ),
               ],
             ),
@@ -272,38 +262,30 @@ class SessionHeader extends StatelessWidget {
                                 children: [
                                   Text(
                                     resting ? l.restLabel : l.restRestedLabel,
-                                    style: WorkoutType.mono(
-                                      size: 10,
-                                      color: tokens.faint,
-                                      letterSpacing: 0.08 * 10,
+                                    style: WorkoutType.body(
+                                      size: 12,
+                                      color: tokens.dim,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  // Always laid out (empty when the rested time is unknown)
-                                  // so both states keep one height.
-                                  AnimatedDefaultTextStyle(
-                                    duration: Motion.of(context, Motion.base),
-                                    curve: Motion.curve,
-                                    style:
-                                        WorkoutType.display(
-                                          size: 18,
-                                          weight: FontWeight.w700,
-                                          color: !resting
-                                              ? tokens.dim
-                                              : remaining <= _finalThreshold
-                                              ? tokens.accentText
-                                              : tokens.text,
-                                        ).copyWith(
-                                          fontFeatures: const [
-                                            FontFeature.tabularFigures(),
-                                          ],
-                                        ),
+                                  // Keep the visible readout neutral. The rest
+                                  // scale owns its combined remaining/total
+                                  // accessibility value while counting down.
+                                  ExcludeSemantics(
+                                    excluding: resting,
                                     child: Text(
                                       resting
                                           ? clock(remaining)
                                           : rested == null
                                           ? ''
                                           : clock(rested),
+                                      key: const Key('rest-clock'),
+                                      style: WorkoutType.mono(
+                                        size: 24,
+                                        color: resting
+                                            ? tokens.text
+                                            : tokens.dim,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -333,7 +315,7 @@ class SessionHeader extends StatelessWidget {
                                   _RestChip(
                                     key: const Key('rest-add'),
                                     label: l.restAdd30s,
-                                    filled: false,
+                                    accentPlus: true,
                                     tokens: tokens,
                                     onTap: restExtensionAvailable
                                         ? onAdd30s
@@ -346,7 +328,7 @@ class SessionHeader extends StatelessWidget {
                                     child: _RestChip(
                                       key: const Key('rest-skip'),
                                       label: l.commonSkip,
-                                      filled: true,
+                                      accentPlus: false,
                                       tokens: tokens,
                                       onTap: restExtensionAvailable
                                           ? onSkip
@@ -364,36 +346,97 @@ class SessionHeader extends StatelessWidget {
                     },
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  FitLabel(
                     resting && !restExtensionAvailable
                         ? l.captureRestUnavailable
                         : nextLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: WorkoutType.mono(size: 11, color: tokens.dim),
+                    maxLines: 2,
+                    style: WorkoutType.body(size: 12, color: tokens.dim),
                   ),
                 ],
               ),
             ),
-          // Progress bar: 6dp whenever the rest row shows. It drains while
-          // resting (fraction gliding linearly between the one-second ticks)
-          // and otherwise shows workout progress.
-          AnimatedContainer(
-            duration: Motion.of(context, Motion.base),
-            curve: Motion.curve,
-            height: showRow ? 6 : 3,
-            color: tokens.surface3,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(end: barFraction),
-              duration: Motion.of(context, const Duration(seconds: 1)),
-              curve: Curves.linear,
-              builder: (_, value, __) => FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: value.clamp(0.0, 1.0),
-                child: Container(color: tokens.accentText),
+          // Remaining seconds and the calibrated endpoints share one inset.
+          // Outside a rest, retain workout-set progress as the fallback.
+          if (resting)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Semantics(
+                label: l.restLabel,
+                key: const Key('rest-remaining-value'),
+                value: '${clock(remaining)} / ${clock(restTotal)}',
+                child: Column(
+                  children: [
+                    _RemainingLine(
+                      fraction: barFraction,
+                      track: tokens.surface3,
+                      fill: tokens.accentText,
+                    ),
+                    SizedBox(
+                      key: const Key('rest-scale'),
+                      height: 8,
+                      width: double.infinity,
+                      child: CustomPaint(
+                        painter: _RestScalePainter(
+                          total: restTotal,
+                          color: tokens.lineStrong,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    ExcludeSemantics(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '0:00',
+                            style: WorkoutType.mono(
+                              size: 12,
+                              color: tokens.dim,
+                            ),
+                          ),
+                          Text(
+                            clock(restTotal),
+                            key: const Key('rest-total'),
+                            style: WorkoutType.mono(
+                              size: 12,
+                              color: tokens.dim,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
+            )
+          else if (showRow)
+            // Reserve the same scale height after rest; no new rest is implied.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                children: [
+                  _RemainingLine(
+                    fraction: barFraction,
+                    track: tokens.surface3,
+                    fill: tokens.accentText,
+                  ),
+                  const SizedBox(height: 12),
+                  Opacity(
+                    opacity: 0,
+                    child: ExcludeSemantics(
+                      child: Text(' ', style: WorkoutType.mono(size: 12)),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            _RemainingLine(
+              fraction: barFraction,
+              track: tokens.surface3,
+              fill: tokens.accentText,
             ),
-          ),
           Container(height: 1, color: tokens.line),
         ],
       ),
@@ -405,14 +448,14 @@ class _RestChip extends StatelessWidget {
   const _RestChip({
     super.key,
     required this.label,
-    required this.filled,
+    required this.accentPlus,
     required this.tokens,
     required this.onTap,
     this.unavailableLabel,
   });
 
   final String label;
-  final bool filled;
+  final bool accentPlus;
   final WorkoutTokens tokens;
 
   /// Null: unavailable, drawn faint and announced with [unavailableLabel].
@@ -425,45 +468,110 @@ class _RestChip extends StatelessWidget {
     return Semantics(
       enabled: enabled,
       hint: enabled ? null : unavailableLabel,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          height: 48,
-          constraints: const BoxConstraints(minWidth: 56),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          // Skip is secondary to the log bar, the screen's one lime action:
-          // a quiet filled chip, not an accent one.
-          decoration: BoxDecoration(
-            color: filled ? tokens.surface3 : null,
-            border: filled
-                ? null
-                : Border.all(color: enabled ? tokens.lineStrong : tokens.line),
-            borderRadius: BorderRadius.circular(AppRadius.radius * 0.5),
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(56, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          backgroundColor: tokens.surface2,
+          foregroundColor: tokens.text,
+          disabledForegroundColor: tokens.faint,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
-          // widthFactor 1 sizes the chip to its label; a Container `alignment`
-          // would instead stretch it across all the width its Flexible offers.
-          // Longer translations (German "Überspringen") ellipsize rather than
-          // overflow at small widths / large text scale.
-          child: Center(
-            widthFactor: 1,
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: WorkoutType.mono(
-                size: 12,
-                weight: FontWeight.w700,
-                color: !enabled
-                    ? tokens.faint
-                    : filled
-                    ? tokens.text
-                    : tokens.dim,
-              ),
-            ),
+        ),
+        child: FitLabel.rich(
+          TextSpan(
+            children: [
+              if (accentPlus && label.startsWith('+')) ...[
+                TextSpan(
+                  text: '+',
+                  style: WorkoutType.body(
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: enabled ? tokens.accentText : tokens.faint,
+                  ),
+                ),
+                TextSpan(text: label.substring(1)),
+              ] else
+                TextSpan(text: label),
+            ],
+          ),
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          style: WorkoutType.body(
+            size: 14,
+            weight: FontWeight.w500,
+            color: enabled ? tokens.text : tokens.faint,
           ),
         ),
       ),
     );
   }
+}
+
+/// A flat two-pixel instrument line. No interpolated animation changes what
+/// the timer's current second reports.
+class _RemainingLine extends StatelessWidget {
+  const _RemainingLine({
+    required this.fraction,
+    required this.track,
+    required this.fill,
+  });
+  final double fraction;
+  final Color track;
+  final Color fill;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: const Key('rest-remaining-track'),
+    height: 2,
+    child: ColoredBox(
+      color: track,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: fraction.clamp(0.0, 1.0),
+          heightFactor: 1,
+          child: ColoredBox(color: fill),
+        ),
+      ),
+    ),
+  );
+}
+
+class _RestScalePainter extends CustomPainter {
+  const _RestScalePainter({required this.total, required this.color});
+  final int total;
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (total <= 0 || size.width < 1) return;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    // Keep 15-second calibration for ordinary rests; long custom rests use
+    // whole multiples of 15 so the marks remain individually readable.
+    final step =
+        15 *
+        (total / 15 / (size.width / 8).clamp(1, double.infinity))
+            .ceil()
+            .clamp(1, total)
+            .toInt();
+    void tick(int seconds) {
+      final x = (seconds / total * size.width).clamp(0.5, size.width - 0.5);
+      final height = seconds == 0 || seconds == total || seconds % 60 == 0
+          ? 7.0
+          : 4.0;
+      canvas.drawLine(Offset(x, 0), Offset(x, height), paint);
+    }
+
+    for (var second = 0; second < total; second += step) {
+      tick(second);
+    }
+    tick(total);
+  }
+
+  @override
+  bool shouldRepaint(_RestScalePainter oldDelegate) =>
+      oldDelegate.total != total || oldDelegate.color != color;
 }

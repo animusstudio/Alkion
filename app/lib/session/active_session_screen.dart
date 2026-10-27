@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../data/exercise_repository.dart';
+import '../data/body_workload_adapters.dart';
+import '../ui/body_figure.dart';
 import '../data/session_repository.dart';
 import '../data/session_writer.dart';
 import '../l10n/app_localizations.dart';
@@ -12,6 +14,7 @@ import '../settings/settings_service.dart';
 import '../shell/session_launcher.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
+import '../theme/workout_canvas.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
@@ -43,7 +46,7 @@ import 'session_summary_screen.dart';
 /// - Body: the list of [ExerciseBlock]s + dashed "Add exercise".
 /// - Pinned [LogSetBar] in `bottomNavigationBar`: logs the live set (starting
 ///   rest afterward) or finishes the workout when nothing is live.
-/// - Finish wires through `db.writeTransaction(PowerSyncTxExecutor)`.
+/// - Finish prepares and commits a revisioned local workout action.
 class ActiveSessionScreen extends StatefulWidget {
   const ActiveSessionScreen({super.key});
 
@@ -212,10 +215,14 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
   // ── Finish handling ───────────────────────────────────────────────────────
 
+  bool _finishing = false;
+
   Future<void> _handleFinish(
     BuildContext context,
     ActiveSessionController controller,
   ) async {
+    if (_finishing) return;
+    setState(() => _finishing = true);
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     try {
       // Adopts the finish snapshot only after the transaction commits.
@@ -231,11 +238,16 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           ),
         );
       }
-    } catch (e) {
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _finishing = false);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppLocalizations.of(context).sessionSaveFailed('$e')),
+            content: Text(
+              AppLocalizations.of(context).sessionSaveFailedMessage,
+            ),
+            duration: const Duration(seconds: 3),
             backgroundColor: context.tokens.danger,
           ),
         );
@@ -302,11 +314,17 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   }
 
   Future<void> _openWorkoutMenu(ActiveSessionController c) async {
+    commitPendingInput();
     final l = AppLocalizations.of(context);
     final picked = await showWActionSheet<String>(
       context,
       title: l.sessionWorkoutOptions,
       actions: [
+        WSheetAction(
+          label: l.bodyWorkload,
+          value: 'workload',
+          icon: Icons.accessibility_new,
+        ),
         WSheetAction(
           label: l.sessionFinishWorkout,
           value: 'finish',
@@ -322,6 +340,15 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       ],
     );
     if (!mounted || picked == null) {
+      return;
+    }
+    if (picked == 'workload') {
+      commitPendingInput();
+      await showBodyWorkloadSheet(
+        context,
+        workload: () => activeWorkoutWorkload(c.draft),
+        changes: c,
+      );
       return;
     }
     if (picked == 'finish') {
@@ -422,132 +449,138 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final live = controller.liveSet;
 
     return Scaffold(
-      body: Column(
-        children: [
-          // +30s is unavailable while a data capture holds the source.
-          ValueListenableBuilder<bool>(
-            valueListenable: controller.captureFrozen,
-            builder: (context, frozen, _) => Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SessionHeader(
-                  draft: draft,
-                  elapsed: controller.elapsed,
-                  doneWork: controller.doneWork,
-                  totalWork: controller.totalWork,
-                  prCount: controller.prCount,
-                  restStart: controller.restStart,
-                  restTotal: controller.restTotal,
-                  restEndedAt: controller.restEndedAt,
-                  showRestRow: controller.hasLoggedSet,
-                  nextLabel: restNextLabel(l, unit, controller.nextPendingSet),
-                  onMinimize: () => Navigator.of(context).pop(),
-                  onMenu: () {
-                    if (!controller.finishPending) {
-                      _openWorkoutMenu(controller);
-                    }
-                  },
-                  onAdd30s: () {
-                    HapticFeedback.lightImpact();
-                    controller.addRestTime(30);
-                  },
-                  onSkip: controller.stopRest,
-                  restExtensionAvailable: !frozen,
-                ),
-                // Persistent while a data capture holds the source: what is
-                // changed now lives in memory only until the hold ends.
-                if (frozen) const CaptureHoldBanner(),
-              ],
-            ),
-          ),
-          Expanded(
-            child: AbsorbPointer(
-              absorbing: controller.finishPending,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      body: WorkoutCanvas(
+        child: Column(
+          children: [
+            // +30s is unavailable while a data capture holds the source.
+            ValueListenableBuilder<bool>(
+              valueListenable: controller.captureFrozen,
+              builder: (context, frozen, _) => Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (draft.blocks.isEmpty) ...[
-                    const SizedBox(height: 40),
-                    _EmptySessionPlaceholder(tokens: tokens, l: l),
-                    const SizedBox(height: 20),
-                  ],
-                  for (final block in draft.blocks)
-                    Reveal(
-                      key: ValueKey(block.exercise.id),
-                      child: ExerciseBlock(
-                        block: block,
-                        unit: unit,
-                        liveSetId: live?.set.id,
-                        rirPromptSetId: controller.rirPromptSetId,
-                        liveCardKey: _liveCardKey,
-                        onLongPressHeader: draft.blocks.length < 2
-                            ? null
-                            : () {
-                                HapticFeedback.mediumImpact();
-                                showReorderExercisesSheet(
-                                  context,
-                                  controller: controller,
-                                );
-                              },
-                        onFocusSet: (_, s) {
-                          // Settle in-flight edits first (same rule as the log
-                          // bar): a gliding ruler would otherwise keep writing
-                          // into the set being left.
-                          commitPendingInput();
-                          controller.focusSet(s);
-                        },
-                        onSetChanged: (_, __) => controller.markChanged(),
-                        onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
-                        onMarkNotDone: (_, s) => controller.markNotDone(s),
-                        onRemoveSet: (b, s) => _removeSet(controller, b, s),
-                        onMenu: (b) => _openBlockMenu(controller, b),
-                      ),
+                  SessionHeader(
+                    draft: draft,
+                    elapsed: controller.elapsed,
+                    doneWork: controller.doneWork,
+                    totalWork: controller.totalWork,
+                    prCount: controller.prCount,
+                    restStart: controller.restStart,
+                    restTotal: controller.restTotal,
+                    restEndedAt: controller.restEndedAt,
+                    showRestRow: controller.hasLoggedSet,
+                    nextLabel: restNextLabel(
+                      l,
+                      unit,
+                      controller.nextPendingSet,
                     ),
-                  const SizedBox(height: 10),
-                  _DashedButton(
-                    height: 48,
-                    icon: WIcons.plus,
-                    label: l.sessionAddExercise,
-                    tokens: tokens,
-                    onTap: () async {
-                      final repo = ExerciseRepository.local(
-                        context.read<LocalDatabase>(),
-                      );
-                      final sessionRepo = SessionRepository.local(
-                        context.read<LocalDatabase>(),
-                      );
-                      // Exercises already in the workout aren't offered again.
-                      final all = [
-                        for (final e in await repo.all())
-                          if (!controller.hasExercise(e.id)) e,
-                      ];
-                      if (!context.mounted) {
-                        return;
-                      }
-                      final picked = await showExercisePicker(
-                        context,
-                        exercises: all,
-                      );
-                      if (picked != null) {
-                        try {
-                          await controller.addBlock(
-                            picked,
-                            sessionRepo: sessionRepo,
-                          );
-                        } on FreshSessionLimitException catch (error) {
-                          if (context.mounted) {
-                            await showFreshSessionLimit(context, error);
-                          }
-                        }
+                    onMinimize: () => Navigator.of(context).pop(),
+                    onMenu: () {
+                      if (!controller.finishPending) {
+                        _openWorkoutMenu(controller);
                       }
                     },
+                    onAdd30s: () {
+                      HapticFeedback.lightImpact();
+                      controller.addRestTime(30);
+                    },
+                    onSkip: controller.stopRest,
+                    restExtensionAvailable: !frozen,
                   ),
+                  // Persistent while a data capture holds the source: what is
+                  // changed now lives in memory only until the hold ends.
+                  if (frozen && !_finishing) const CaptureHoldBanner(),
                 ],
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: AbsorbPointer(
+                absorbing: controller.finishPending,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  children: [
+                    if (draft.blocks.isEmpty) ...[
+                      const SizedBox(height: 40),
+                      _EmptySessionPlaceholder(tokens: tokens, l: l),
+                      const SizedBox(height: 20),
+                    ],
+                    for (final block in draft.blocks)
+                      Reveal(
+                        key: ValueKey(block.exercise.id),
+                        child: ExerciseBlock(
+                          block: block,
+                          unit: unit,
+                          liveSetId: live?.set.id,
+                          rirPromptSetId: controller.rirPromptSetId,
+                          liveCardKey: _liveCardKey,
+                          onLongPressHeader: draft.blocks.length < 2
+                              ? null
+                              : () {
+                                  HapticFeedback.mediumImpact();
+                                  showReorderExercisesSheet(
+                                    context,
+                                    controller: controller,
+                                  );
+                                },
+                          onFocusSet: (_, s) {
+                            // Settle in-flight edits first (same rule as the log
+                            // bar): a gliding ruler would otherwise keep writing
+                            // into the set being left.
+                            commitPendingInput();
+                            controller.focusSet(s);
+                          },
+                          onSetChanged: (_, __) => controller.markChanged(),
+                          onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
+                          onMarkNotDone: (_, s) => controller.markNotDone(s),
+                          onRemoveSet: (b, s) => _removeSet(controller, b, s),
+                          onMenu: (b) => _openBlockMenu(controller, b),
+                        ),
+                      ),
+                    const SizedBox(height: 10),
+                    _AddExerciseButton(
+                      height: 48,
+                      icon: WIcons.plus,
+                      label: l.sessionAddExercise,
+                      tokens: tokens,
+                      onTap: () async {
+                        final repo = ExerciseRepository.local(
+                          context.read<LocalDatabase>(),
+                        );
+                        final sessionRepo = SessionRepository.local(
+                          context.read<LocalDatabase>(),
+                        );
+                        // Exercises already in the workout aren't offered again.
+                        final all = [
+                          for (final e in await repo.all())
+                            if (!controller.hasExercise(e.id)) e,
+                        ];
+                        if (!context.mounted) {
+                          return;
+                        }
+                        final picked = await showExercisePicker(
+                          context,
+                          exercises: all,
+                        );
+                        if (picked != null) {
+                          try {
+                            await controller.addBlock(
+                              picked,
+                              sessionRepo: sessionRepo,
+                            );
+                          } on FreshSessionLimitException catch (error) {
+                            if (context.mounted) {
+                              await showFreshSessionLimit(context, error);
+                            }
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
       // In bottomNavigationBar (not the body) so the undo snackbar floats above it.
       bottomNavigationBar: LogSetBar(
@@ -589,22 +622,22 @@ class _EmptySessionPlaceholder extends StatelessWidget {
           l.sessionEmptyTitle,
           style: WorkoutType.display(
             size: 18,
-            weight: FontWeight.w700,
+            weight: FontWeight.w500,
             color: tokens.text,
           ),
         ),
         const SizedBox(height: 6),
         Text(
           l.sessionEmptySubtitle,
-          style: WorkoutType.mono(size: 12, color: tokens.faint),
+          style: WorkoutType.body(size: 14, color: tokens.dim),
         ),
       ],
     );
   }
 }
 
-class _DashedButton extends StatelessWidget {
-  const _DashedButton({
+class _AddExerciseButton extends StatelessWidget {
+  const _AddExerciseButton({
     required this.height,
     required this.icon,
     required this.label,
@@ -620,36 +653,34 @@ class _DashedButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: tokens.lineStrong,
-            style: BorderStyle.solid,
-          ),
-          borderRadius: BorderRadius.circular(AppRadius.radius),
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        minimumSize: Size(double.infinity, height),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        foregroundColor: tokens.text,
+        backgroundColor: tokens.surface2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: tokens.dim),
-            const SizedBox(width: 7),
-            // Shrinks, then ellipsizes, rather than pushing past the button
-            // on a narrow phone at large text.
-            Flexible(
-              child: FitLabel(
-                label,
-                style: WorkoutType.mono(
-                  size: 13,
-                  weight: FontWeight.w600,
-                  color: tokens.dim,
-                ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20, color: tokens.dim),
+          const SizedBox(width: 8),
+          Flexible(
+            child: FitLabel(
+              label,
+              maxLines: 2,
+              style: WorkoutType.body(
+                size: 14,
+                weight: FontWeight.w500,
+                color: tokens.text,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -609,8 +609,8 @@
   "bodyweightSaveEntry": "Save entry",
   "exportAllData": "Export all data",
   "exportFullBackup": "Full backup · JSON",
-  "exportHistory": "Export history",
-  "exportHistorySub": "Sessions in a date range · JSON",
+  "exportHistory": "Share workout history",
+  "exportHistorySub": "Choose dates and save a JSON file to share.",
   "exportSavedTitle": "Export saved",
   "exportSavedMessage": "Written to {path}",
   "@exportSavedMessage": {
@@ -707,9 +707,6 @@
     }
   },
   "onboardingWelcome": "Welcome",
-  "onboardingIntro": "How would you like to start? You can change everything later.",
-  "onboardingAddStarter": "Add starter exercises",
-  "onboardingStartEmpty": "Start empty",
   "loginTitle": "Login",
   "loginEmailLabel": "email",
   "loginPasswordLabel": "password",
@@ -1090,56 +1087,8 @@
   "alkionLoadUnavailableLabel": "Weight unavailable",
   "alkionRepsUnavailableLabel": "Reps unavailable",
   "alkionDomainExportSub": "Versioned Alkion domain export · JSON",
-  "alkionImportTransfer": "Import & transfer",
-  "alkionImportTransferSub": "Full export import, reviews, original bytes",
-  "alkionTransferTitle": "Import & transfer",
-  "alkionTransferImportSection": "Import a full export",
-  "alkionTransferPathLabel": "Export file path",
-  "alkionTransferNamespaceLabel": "Source namespace",
-  "alkionTransferImportAction": "Import",
-  "alkionTransferImportSelected": "Import selected",
-  "alkionTransferImportAlreadySelected": "Already imported",
-  "alkionTransferImportRejected": "Import rejected",
-  "alkionTransferImportIncompatible": "Import needs review",
-  "alkionTransferImportRefused": "Import not staged",
-  "alkionTransferGenerations": "Imports",
-  "alkionTransferExportOriginal": "Export original bytes",
-  "alkionTransferApplySettings": "Apply imported settings",
-  "alkionTransferReviews": "Reviews",
-  "alkionTransferNoReviews": "No pending reviews",
-  "alkionTransferAbsence": "Missing from the latest import",
-  "alkionTransferOverlay": "Source changed under your edit",
-  "alkionTransferTombstone": "Source changed under a deletion",
-  "alkionTransferKeep": "Keep",
-  "alkionTransferDelete": "Delete",
-  "alkionTransferRestore": "Restore",
-  "alkionTransferDeleteTitle": "Delete this record?",
-  "alkionTransferDeleteMessage": "Missing from an export does not prove the record was deleted. This records your own deletion, which can be restored.",
-  "alkionTransferMeasurements": "Measurements without a date",
-  "alkionTransferExportCompat": "Export transfer file",
-  "alkionTransferExportCompatSub": "Reps-compatible full export with stated limits; not a backup.",
-  "alkionTransferFailed": "Transfer action failed",
-  "alkionTransferOutcomeMessage": "Reason: {category}. The original file and staged bytes are kept.",
-  "@alkionTransferOutcomeMessage": {
-    "placeholders": {
-      "category": {
-        "type": "String"
-      }
-    }
-  },
-  "alkionTransferSettingsApplied": "{applied} applied, {skipped} not applied (missing or invalid values never replace current settings).",
-  "@alkionTransferSettingsApplied": {
-    "placeholders": {
-      "applied": {
-        "type": "int"
-      },
-      "skipped": {
-        "type": "int"
-      }
-    }
-  },
   "alkionBackupRestore": "Backup & restore",
-  "alkionBackupRestoreSub": "Manual verified backup, check and restore",
+  "alkionBackupRestoreSub": "Save a backup or restore your Alkion data.",
   "alkionBackupTitle": "Backup & restore",
   "alkionBackupSection": "Manual backup",
   "alkionBackupExplain": "A backup counts only once it is verified. Copy the file off this device and check it there; sharing or copying alone is not proof. Alkion never schedules or reminds, so work after your last verified backup can be lost.",
@@ -1256,5 +1205,92 @@
         "type": "String"
       }
     }
-  }
+  },
+  "alkionDocumentSaved": "Copy saved and checked",
+  "alkionDocumentSavedMessage": "{name}\nCopy matches the original. Checked on this device only; verify a physical off-device copy separately.",
+  "@alkionDocumentSavedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionDocumentShared": "Delivery only",
+  "alkionDocumentSharedMessage": "Sharing does not verify a receiving copy or prove an off-device backup. Keep the local original.",
+  "alkionDocumentCancelled": "Save cancelled",
+  "alkionDocumentCancelledMessage": "The local original is kept. No verified external copy was completed.",
+  "alkionDocumentSelectExplain": "Choose a file through Files. Alkion checks a completed private copy and keeps the original unchanged.",
+  "alkionBackupSaveCopy": "Create backup and save copy",
+  "alkionBackupCopySaved": "{name}\nSHA-256 {digest}…\nBackup copy fully checked here. Copy it off this device and run the receiving verifier there.",
+  "@alkionBackupCopySaved": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "digest": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionDocumentFailureMessage": "{reason}\nAny external copy may be incomplete. The local original and private staging are kept.",
+  "@alkionDocumentFailureMessage": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionFirstStartBody": "Start on this device, or restore a backup before creating a profile. No account is needed.",
+  "alkionFirstStartLocal": "Start local",
+  "alkionFirstRestoreTitle": "Restore backup",
+  "alkionFirstRestoreConfirm": "Restore this verified backup onto this empty installation? Its profile and saved work will be kept; this installation gets a new identity.",
+  "alkionFirstResumeBody": "This restore has complete verified staging. Complete it to recover the same profile. Your previous attempt is kept.",
+  "alkionFirstReselectBody": "This restore needs the same backup again. Choose it to retry; earlier staging is kept. Starting an unrelated profile is unavailable.",
+  "alkionNotificationsDenied": "Notifications are off. Workout logging and your saved rest deadline still work. You can enable notifications in Android settings.",
+  "alkionNotificationsInexact": "Background rest notifications may be delayed. Your saved deadline is unchanged and reconciles when you reopen Alkion.",
+  "alkionNotificationsUnavailable": "Workout notifications are unavailable. Logging and your saved rest deadline still work; reopen Alkion to check your rest.",
+  "sessionSaveFailedMessage": "Could not save your workout. Please try again.",
+  "bodyViewFront": "Front",
+  "bodyViewBack": "Back",
+  "sessionTapValueToType": "Tap value to type",
+  "bodyWorkload": "Workout workload",
+  "bodyPlanned": "Planned working sets",
+  "bodyCompleted": "Completed working sets",
+  "bodySaved": "Saved working sets",
+  "bodyRelative": "Colour shows relative working-set counts within this workout, not effort or muscle recovery.",
+  "bodyLoading": "Loading workout counts…",
+  "bodyReadUnavailable": "Workout counts could not be read. Close this view and try again.",
+  "bodyArtworkUnavailable": "Artwork unavailable",
+  "bodyEmpty": "No working sets to map yet.",
+  "bodyMapped": "Mapped working sets: {count}",
+  "@bodyMapped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bodyUnmapped": "Unmapped working sets: {count}",
+  "@bodyUnmapped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bodyUnknownKind": "Sets with unknown type: {count}",
+  "@bodyUnknownKind": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bodyArtworkStyle": "Artwork style",
+  "bodyMaleArtwork": "Male artwork",
+  "bodyFemaleArtwork": "Female artwork",
+  "bodyPause": "Pause rotation",
+  "bodyResume": "Resume rotation",
+  "bodyRetryArtwork": "Reload artwork",
+  "bodyLoadingArtwork": "Loading artwork…"
 }

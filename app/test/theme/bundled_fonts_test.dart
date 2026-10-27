@@ -37,10 +37,13 @@ void main() {
 
   test('the bundled faces replace the test font', () async {
     await preloadAppFonts();
-    // JetBrains Mono advances every glyph 0.6 em; the test font draws 1 em
+    // Space Mono advances every glyph 0.612 em; the test font draws 1 em
     // squares.
-    expect(_width('0000000000', WorkoutType.mono(size: 20)), closeTo(120, 1));
-    // Space Grotesk and Hanken Grotesk are proportional: "i" is far narrower
+    expect(
+      _width('0000000000', WorkoutType.mono(size: 20)),
+      closeTo(122.4, 0.1),
+    );
+    // Space Grotesk and Space Grotesk are proportional: "i" is far narrower
     // than "M" (the test font draws them the same width).
     final display = WorkoutType.display(size: 20, letterSpacing: 0);
     expect(_width('iiii', display), lessThan(_width('MMMM', display) / 2));

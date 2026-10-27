@@ -3,9 +3,9 @@ import '../theme/app_theme.dart';
 import '../theme/typography.dart';
 import 'fit_label.dart';
 
-/// A mono uppercase section label with an optional right-aligned action widget.
+/// A short uppercase interface section label with an optional right-aligned action widget.
 ///
-/// Visual spec: `docs/design_handoff_workout_tracker/design/app/ui.jsx`.
+/// Uses the shared label role; measured values use mono elsewhere.
 class SectionLabel extends StatelessWidget {
   const SectionLabel({super.key, required this.label, this.action});
 
@@ -26,11 +26,11 @@ class SectionLabel extends StatelessWidget {
           child: FitLabel(
             label.toUpperCase(),
             maxLines: 2,
-            style: WorkoutType.mono(
-              size: 11,
-              weight: FontWeight.w600,
+            style: WorkoutType.body(
+              size: 12,
+              weight: FontWeight.w500,
               color: tokens.faint,
-              letterSpacing: 0.08 * 11,
+              letterSpacing: 0.06 * 12,
             ),
           ),
         ),

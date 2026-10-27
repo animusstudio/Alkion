@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../files/android_documents.dart';
+import '../../files/document_access.dart';
+import '../../recovery/backup.dart';
 import '../../recovery/recovery_host.dart';
 import '../../recovery/restore.dart' show unknownNewerWork;
 import '../../store/local_store.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/workout_canvas.dart';
 import '../../theme/typography.dart';
 import '../../widgets/w_dialog.dart';
 
@@ -13,10 +17,11 @@ import '../../widgets/w_dialog.dart';
 /// reminds, uploads or shares: a backup is a verified local file the owner
 /// copies off the device and checks there.
 class AlkionRecoveryScreen extends StatefulWidget {
-  const AlkionRecoveryScreen({super.key, this.flush});
+  const AlkionRecoveryScreen({super.key, this.flush, this.documents});
 
   /// Owned lifecycle barrier: flush durable input before backup/restore.
   final Future<void> Function()? flush;
+  final DocumentAccess? documents;
 
   @override
   State<AlkionRecoveryScreen> createState() => _AlkionRecoveryScreenState();
@@ -25,6 +30,8 @@ class AlkionRecoveryScreen extends StatefulWidget {
 class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   final _path = TextEditingController();
   bool _busy = false;
+  late final DocumentAccess? _documents =
+      widget.documents ?? platformDocumentAccess();
   List<Map<String, Object?>> _history = const [];
   List<Map<String, Object?>> _pending = const [];
 
@@ -70,7 +77,11 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     } catch (e) {
       await _message(
         l.alkionBackupFailed,
-        l.alkionBackupFailedMessage(e is StoreException ? e.category : '$e'),
+        e is DocumentException
+            ? l.alkionDocumentFailureMessage(e.category)
+            : l.alkionBackupFailedMessage(
+                e is StoreException ? e.category : '$e',
+              ),
       );
     } finally {
       if (mounted) {
@@ -93,6 +104,20 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
 
   Future<void> _create() => _run((host, l) async {
     final receipt = await host.createBackup();
+    final documents = _documents;
+    if (documents != null) {
+      final saved = await saveBackupCopy(host, receipt, documents);
+      await _message(
+        saved == null ? l.alkionDocumentCancelled : l.alkionDocumentSaved,
+        saved == null
+            ? l.alkionDocumentCancelledMessage
+            : l.alkionBackupCopySaved(
+                documentLabel(saved.readback.name),
+                receipt.verified.containerSha256.substring(0, 16),
+              ),
+      );
+      return;
+    }
     await _message(
       l.alkionBackupCreated,
       l.alkionBackupCreatedMessage(
@@ -102,8 +127,19 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     );
   });
 
+  Future<String?> _selectedPath() async {
+    final documents = _documents;
+    if (documents == null) return _path.text.trim();
+    return (await documents.open(
+      maxBytes: maxBackupBytes,
+      mimeTypes: const ['*/*'],
+    ))?.path;
+  }
+
   Future<void> _check() => _run((host, l) async {
-    final verified = await host.verifyBackup(_path.text.trim());
+    final path = await _selectedPath();
+    if (path == null) return;
+    final verified = await host.verifyBackup(path);
     if (verified.profileId != host.profileId) {
       await _message(l.alkionBackupCheckOk, l.alkionBackupForeignProfile);
       return;
@@ -118,8 +154,10 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   });
 
   Future<void> _restore() => _run((host, l) async {
-    final path = _path.text.trim();
+    final path = await _selectedPath();
+    if (path == null) return;
     final verified = await host.verifyBackup(path);
+    verified.requireWriterVariant();
     if (verified.profileId != host.profileId) {
       await _message(l.alkionBackupCheckOk, l.alkionBackupForeignProfile);
       return;
@@ -147,95 +185,176 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     final l = AppLocalizations.of(context);
     final enabled = !_busy && _host != null;
     Widget header(String text) => Padding(
-      padding: const EdgeInsets.fromLTRB(2, 20, 2, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: WorkoutType.mono(
-          size: 10.5,
-          weight: FontWeight.w600,
-          color: tokens.faint,
+      padding: const EdgeInsets.fromLTRB(0, 32, 0, 12),
+      child: Semantics(
+        header: true,
+        child: Text(
+          text,
+          style: WorkoutType.body(
+            size: 16,
+            weight: FontWeight.w500,
+            color: tokens.text,
+          ),
         ),
       ),
     );
     Widget line(String text) =>
-        Text(text, style: WorkoutType.mono(size: 11, color: tokens.faint));
-    Widget actions(List<Widget> children) =>
-        Wrap(spacing: 8, runSpacing: 4, children: children);
+        Text(text, style: WorkoutType.body(size: 14, color: tokens.dim));
+    Widget metadata(String text) =>
+        Text(text, style: WorkoutType.mono(size: 12, color: tokens.dim));
+    Widget actions(List<Widget> children) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < children.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          children[i],
+        ],
+      ],
+    );
+    final titleStyle = WorkoutType.body(
+      size: 20,
+      weight: FontWeight.w500,
+      color: tokens.text,
+    );
+    final titleLayout = TextPainter(
+      text: TextSpan(text: l.alkionBackupTitle, style: titleStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: MediaQuery.sizeOf(context).width - 88);
+    final titleHeight = titleLayout.height + 16;
+    titleLayout.dispose();
     return Scaffold(
       backgroundColor: tokens.bg,
       appBar: AppBar(
         backgroundColor: tokens.bg,
-        title: Text(l.alkionBackupTitle),
+        toolbarHeight: titleHeight < kToolbarHeight
+            ? kToolbarHeight
+            : titleHeight,
+        title: MediaQuery(
+          data: MediaQuery.of(context),
+          child: Text(
+            l.alkionBackupTitle,
+            style: titleStyle,
+            softWrap: true,
+            overflow: TextOverflow.visible,
+          ),
+        ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              header(l.alkionBackupSection),
-              line(l.alkionBackupExplain),
-              const SizedBox(height: 8),
-              actions([
-                FilledButton(
-                  key: const Key('backup-create'),
-                  onPressed: enabled ? _create : null,
-                  child: Text(l.alkionBackupCreate),
-                ),
-              ]),
-              header(l.alkionBackupFileSection),
-              TextField(
-                key: const Key('backup-path'),
-                controller: _path,
-                decoration: InputDecoration(labelText: l.alkionBackupPathLabel),
-              ),
-              const SizedBox(height: 8),
-              actions([
-                OutlinedButton(
-                  key: const Key('backup-check'),
-                  onPressed: enabled ? _check : null,
-                  child: Text(l.alkionBackupCheck),
-                ),
-                OutlinedButton(
-                  key: const Key('backup-restore'),
-                  onPressed: enabled ? _restore : null,
-                  child: Text(l.alkionRestoreAction),
-                ),
-              ]),
-              if (_history.isNotEmpty) ...[
-                header(l.alkionRestoreHistory),
-                for (final h in _history)
-                  line(
-                    '${h['restore_id']} · ${h['from_generation']} → ${h['to_generation']} · ${h['created_at']}',
-                  ),
-              ],
-              header(l.alkionRestoreReviewsSection),
-              if (_pending.isEmpty) line(l.alkionRestoreNoReviews),
-              for (final r in _pending)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    (r['evidence'] as Map)['disposition'] == unknownNewerWork
-                        ? l.alkionRestoreUnknownNewerWork
-                        : '${(r['evidence'] as Map)['table']} · ${(r['evidence'] as Map)['disposition']}',
-                    style: WorkoutType.body(size: 14, color: tokens.text),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      body: WorkoutCanvas(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: ColoredBox(
+                  color: tokens.bg,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      line(((r['evidence'] as Map)['key'] as List).join(' · ')),
+                      header(l.alkionBackupSection),
+                      line(l.alkionBackupExplain),
+                      const SizedBox(height: 16),
                       actions([
-                        TextButton(
-                          onPressed: enabled
-                              ? () => _keep(r['review_id'] as String)
-                              : null,
-                          child: Text(l.alkionRestoreKeep),
+                        FilledButton(
+                          key: const Key('backup-create'),
+                          onPressed: enabled ? _create : null,
+                          child: Text(
+                            _documents == null
+                                ? l.alkionBackupCreate
+                                : l.alkionBackupSaveCopy,
+                          ),
                         ),
                       ]),
+                      header(l.alkionBackupFileSection),
+                      if (_documents == null)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              l.alkionBackupPathLabel,
+                              style: WorkoutType.body(
+                                size: 14,
+                                color: tokens.dim,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Semantics(
+                              label: l.alkionBackupPathLabel,
+                              child: TextField(
+                                key: const Key('backup-path'),
+                                controller: _path,
+                              ),
+                            ),
+                          ],
+                        ),
+                      if (_documents != null)
+                        line(l.alkionDocumentSelectExplain),
+                      const SizedBox(height: 16),
+                      actions([
+                        OutlinedButton(
+                          key: const Key('backup-check'),
+                          onPressed: enabled ? _check : null,
+                          child: Text(l.alkionBackupCheck),
+                        ),
+                        OutlinedButton(
+                          key: const Key('backup-restore'),
+                          onPressed: enabled ? _restore : null,
+                          child: Text(l.alkionRestoreAction),
+                        ),
+                      ]),
+                      if (_history.isNotEmpty) ...[
+                        header(l.alkionRestoreHistory),
+                        for (final h in _history)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: metadata(
+                              '${h['restore_id']} · ${h['from_generation']} → ${h['to_generation']} · ${h['created_at']}',
+                            ),
+                          ),
+                      ],
+                      header(l.alkionRestoreReviewsSection),
+                      if (_pending.isEmpty) line(l.alkionRestoreNoReviews),
+                      for (final r in _pending)
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                          ),
+                          title: Text(
+                            (r['evidence'] as Map)['disposition'] ==
+                                    unknownNewerWork
+                                ? l.alkionRestoreUnknownNewerWork
+                                : '${(r['evidence'] as Map)['table']} · ${(r['evidence'] as Map)['disposition']}',
+                            style: WorkoutType.body(
+                              size: 14,
+                              color: tokens.text,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              metadata(
+                                ((r['evidence'] as Map)['key'] as List).join(
+                                  ' · ',
+                                ),
+                              ),
+                              actions([
+                                TextButton(
+                                  onPressed: enabled
+                                      ? () => _keep(r['review_id'] as String)
+                                      : null,
+                                  child: Text(l.alkionRestoreKeep),
+                                ),
+                              ]),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
-            ],
+              ),
+            ),
           ),
         ),
       ),

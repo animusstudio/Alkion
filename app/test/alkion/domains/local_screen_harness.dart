@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -496,4 +497,85 @@ class RealZoneDatabase implements LocalDatabase {
     );
     controller.onCancel = () => zone.run(subscription.cancel);
   });
+}
+
+Future<void> settleUntil(WidgetTester tester, Finder finder) async {
+  for (var i = 0; i < 120 && finder.evaluate().isEmpty; i++) {
+    await settleReal(tester, ticks: 1);
+  }
+  expect(finder, findsWidgets);
+}
+
+/// Invokes the enabled button that shows [finder] directly; layout at narrow
+/// width and large text is asserted separately through takeException.
+Future<void> press(WidgetTester tester, Finder finder) async {
+  final button = find.ancestor(
+    of: finder,
+    matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+  );
+  final widget = tester.widget<ButtonStyleButton>(
+    button.evaluate().isEmpty ? finder : button.first,
+  );
+  expect(widget.onPressed, isNotNull);
+  widget.onPressed!();
+  await tester.pump();
+}
+
+Future<void> dismissDialog(WidgetTester tester, Finder content) async {
+  await settleUntil(tester, content);
+  await settleUntil(tester, find.text('OK'));
+  await tester.ensureVisible(find.text('OK').last);
+  await tester.pump();
+  await tester.tap(find.text('OK').last);
+  // Wait for the dialog route (and its barrier) to finish leaving.
+  for (
+    var i = 0;
+    i < 60 && find.byType(ModalBarrier).evaluate().length > 1;
+    i++
+  ) {
+    await settleReal(tester, ticks: 1);
+  }
+  await settleReal(tester, ticks: 3);
+}
+
+/// Checks actual rendered labels and touch geometry, including content below
+/// the viewport in these intentionally eager scroll views.
+void expectCompleteTextAndActions(WidgetTester tester, {String? toolbarTitle}) {
+  for (final element in find.byType(RichText).evaluate()) {
+    final paragraph = element.renderObject! as RenderParagraph;
+    expect(
+      paragraph.didExceedMaxLines,
+      isFalse,
+      reason: paragraph.text.toPlainText(),
+    );
+  }
+  if (toolbarTitle != null) {
+    final title = find.text(toolbarTitle);
+    final paragraph = tester.renderObject<RenderParagraph>(title);
+    expect(paragraph.textScaler.scale(20), 40);
+    final toolbar = tester.getRect(find.byType(AppBar));
+    final origin = paragraph.localToGlobal(Offset.zero);
+    final boxes = paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: 0, extentOffset: toolbarTitle.length),
+    );
+    expect(boxes, isNotEmpty);
+    for (final box in boxes) {
+      final bounds = box.toRect().shift(origin);
+      expect(bounds.left, greaterThanOrEqualTo(toolbar.left));
+      expect(bounds.right, lessThanOrEqualTo(toolbar.right));
+      expect(bounds.top, greaterThanOrEqualTo(toolbar.top));
+      expect(bounds.bottom, lessThanOrEqualTo(toolbar.bottom));
+    }
+    expect(paragraph.size.height, lessThanOrEqualTo(toolbar.height));
+    expect(
+      tester.getRect(find.byType(SingleChildScrollView)).top,
+      greaterThanOrEqualTo(toolbar.bottom),
+    );
+  }
+  for (final element
+      in find.byWidgetPredicate((w) => w is ButtonStyleButton).evaluate()) {
+    final size = tester.getSize(find.byWidget(element.widget));
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
+  }
 }

@@ -32,7 +32,7 @@ class VolumeBars extends StatelessWidget {
   final List<({String muscle, int sets, int target})> rows;
 
   static TextStyle _countStyle(Color color) =>
-      WorkoutType.mono(size: 11.5, color: color);
+      WorkoutType.mono(size: 12, color: color);
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +43,7 @@ class VolumeBars extends StatelessWidget {
     // The count column fits the widest '{sets}/{target}' at the current text
     // size (38 dp at 1.0×), so a count never wraps digit by digit.
     var countWidth = 38.0;
+    var labelWidth = 74.0;
     for (final row in rows) {
       final painter = TextPainter(
         text: TextSpan(
@@ -55,30 +56,42 @@ class VolumeBars extends StatelessWidget {
       )..layout();
       countWidth = math.max(countWidth, painter.width.ceilToDouble());
       painter.dispose();
+      final namePainter = TextPainter(
+        text: TextSpan(
+          text: row.muscle,
+          style: WorkoutType.body(size: 14, color: tokens.dim),
+        ),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      labelWidth = math.max(labelWidth, namePainter.width.ceilToDouble());
+      namePainter.dispose();
     }
 
     return WCard(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Muscle names get 74 dp at 1.0×, growing with the text size but
-          // never past 38% of the row, so the bar keeps its share.
-          final grown = scaler.scale(74);
-          final labelWidth = constraints.hasBoundedWidth
-              ? math.min(grown, constraints.maxWidth * 0.38)
-              : grown;
+          // Preserve names using the real bundled font metrics. When names,
+          // exact counts and a useful 48dp track no longer fit together, the
+          // label gets its own line instead of being squeezed into a fraction.
+          final stacked =
+              constraints.hasBoundedWidth &&
+              labelWidth + countWidth + 24 + 48 > constraints.maxWidth;
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               for (final (index, row) in rows.indexed)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 11),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: _VolumeRow(
                     row: row,
                     tokens: tokens,
                     index: index,
                     labelWidth: labelWidth,
                     countWidth: countWidth,
+                    stacked: stacked,
                   ),
                 ),
             ],
@@ -96,6 +109,7 @@ class _VolumeRow extends StatelessWidget {
     required this.index,
     required this.labelWidth,
     required this.countWidth,
+    required this.stacked,
   });
 
   final ({String muscle, int sets, int target}) row;
@@ -105,6 +119,7 @@ class _VolumeRow extends StatelessWidget {
   final int index;
   final double labelWidth;
   final double countWidth;
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) {
@@ -117,18 +132,18 @@ class _VolumeRow extends StatelessWidget {
         ? (row.sets / row.target).clamp(0.0, 1.0)
         : 0.0;
 
-    return Row(
+    final label = FitLabel(
+      row.muscle,
+      maxLines: stacked ? 2 : 1,
+      style: WorkoutType.body(size: 14, color: tokens.dim),
+    );
+    final valueRow = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Muscle label — shrinks a little, then ellipsizes.
-        SizedBox(
-          width: labelWidth,
-          child: FitLabel(
-            row.muscle,
-            style: WorkoutType.body(size: 12.5, color: tokens.dim),
-          ),
-        ),
-        const SizedBox(width: 12),
+        if (!stacked) ...[
+          SizedBox(width: labelWidth, child: label),
+          const SizedBox(width: 12),
+        ],
         // Track with fill bar + target tick
         Expanded(
           child: SizedBox(
@@ -140,7 +155,7 @@ class _VolumeRow extends StatelessWidget {
                 Container(
                   key: const Key('volume-track'),
                   decoration: BoxDecoration(
-                    color: tokens.surface3,
+                    color: tokens.grid,
                     borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                 ),
@@ -174,7 +189,7 @@ class _VolumeRow extends StatelessWidget {
                   child: Container(
                     key: const Key('volume-target-tick'),
                     width: 1.5,
-                    color: tokens.text.withValues(alpha: 0.4),
+                    color: tokens.lineStrong,
                   ),
                 ),
               ],
@@ -195,5 +210,11 @@ class _VolumeRow extends StatelessWidget {
         ),
       ],
     );
+    return stacked
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [label, const SizedBox(height: 8), valueRow],
+          )
+        : valueRow;
   }
 }

@@ -1,0 +1,118 @@
+@font-face{font-family:'Space Grotesk';src:url('assets/SpaceGrotesk-Variable.ttf') format('truetype');font-weight:300 700;font-display:swap}
+@font-face{font-family:'Space Mono';src:url('assets/SpaceMono-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+:root{
+ font-family:'Space Grotesk',sans-serif;font-synthesis:none;color-scheme:dark;
+ --bg:#000;--surface:#030305;--inset:#09090d;--ink:#f0f0f5;--muted:#a7a7b3;
+ --line:#15151d;--strong:#767682;--accent:#ff6835;--neutral:#f0f0f5;--focus:#419bff;
+ --dots:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath fill='%23202027' d='M0 0h1.5v1.5H0z'/%3E%3C/svg%3E");--on-action:#000;
+}
+:root[data-theme=light]{
+ color-scheme:light;--bg:#f5f6f8;--surface:#fff;--inset:#eceef2;--ink:#111217;
+ --muted:#535863;--line:#dee1e7;--strong:#7c828d;--accent:#a82d00;--neutral:#111217;
+ --focus:#0053bc;--dots:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath fill='%23E1E4E9' d='M0 0h1.5v1.5H0z'/%3E%3C/svg%3E");--on-action:#fff;
+}
+*{box-sizing:border-box}
+html{scrollbar-color:var(--strong) var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
+/* Quiet square texture stays in the page margins, outside solid art/reading. */
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.28;background-image:var(--dots);background-size:24px 24px}
+header,main{position:relative;z-index:1}
+::selection{background:var(--ink);color:var(--bg)}
+a{color:inherit;text-underline-offset:4px}
+button,select{font:inherit;color:inherit;min-height:48px}
+button{padding:8px 16px;border:1px solid var(--strong);border-radius:8px;background:var(--bg);cursor:pointer;font-weight:500}
+button:active{background:var(--inset)}
+button:disabled{cursor:default;color:var(--muted)}
+button:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible,canvas:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+select{width:100%;padding:12px 32px 12px 12px;background:var(--inset);border:1px solid var(--strong);border-radius:8px;cursor:pointer}
+label{display:block;margin-bottom:8px;color:var(--muted);font-size:12px}
+h1,h2,h3,p{margin:0}
+h1{font-size:32px;font-weight:500;letter-spacing:-.02em;line-height:1.25}
+h2{font-size:18px;font-weight:500;letter-spacing:-.02em;line-height:1.3}
+h3{font-size:14px;font-weight:500}
+p{color:var(--muted)}
+header{max-width:1120px;margin:auto;display:flex;align-items:center;gap:24px;padding:24px 32px;border-bottom:1px solid var(--line);background:var(--bg)}
+header a{text-decoration:none;font-size:20px;font-weight:500}
+header>span{flex:1;color:var(--muted);font-size:12px}
+header button{font-size:12px}
+main{max-width:1120px;margin:auto;padding:32px}
+.intro{margin-bottom:32px;background:var(--bg)}
+.intro p{margin-top:12px;max-width:65ch}
+.study-layout{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(300px,.88fr);gap:32px 48px;align-items:start}
+.artwork{grid-column:1;grid-row:1 / span 2;background:var(--bg);min-width:0}
+.art-heading,.compact-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.view-controls{display:flex;gap:4px}
+.view-controls button{background:transparent;border-color:transparent;min-width:64px;font-size:12px;color:var(--muted)}
+.view-controls button[aria-pressed=true]{color:var(--ink);border-bottom-color:var(--ink);border-radius:0}
+.figure-stage{height:690px;position:relative;margin-top:12px}
+.figure-stage canvas,.compact-stage canvas{height:100%;width:100%;display:block;touch-action:pan-y;cursor:grab}
+.figure-stage canvas:active,.compact-stage canvas:active{cursor:grabbing}
+.motion-controls{display:flex;gap:16px;align-items:center;margin-top:12px}
+.motion-controls button{min-width:96px}
+.motion-controls p{font-size:12px;max-width:30ch}
+.anatomy-note{font-size:12px;max-width:52ch;margin:16px 0 0}
+.workout-data{grid-column:2;grid-row:2;background:var(--bg);min-width:0;border-top:1px solid var(--line);padding-top:24px}
+.workout-data>h2{margin-bottom:24px}
+.data-heading{margin-top:24px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.data-heading>span{font:12px 'Space Mono',monospace;color:var(--muted)}
+#coverage{font-size:12px;margin-top:8px;min-height:36px}
+.counts{margin-top:12px;border-top:1px solid var(--line)}
+.count-row{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:40px;border-bottom:1px solid var(--line)}
+.count-row>span:last-child{font:12px 'Space Mono',monospace;font-variant-numeric:tabular-nums}
+.muscle-label{display:flex;align-items:center;gap:12px}
+.swatch{height:6px;width:6px;display:inline-block;background:var(--neutral)}
+.scale{margin-top:24px}
+.scale-colors{height:4px;background:linear-gradient(to right,var(--neutral),var(--accent))}
+.scale>div:last-child{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:8px}
+.metric-note{font-size:12px;margin-top:16px;max-width:65ch}
+details{border-top:1px solid var(--line);margin-top:24px}
+summary{cursor:pointer;display:flex;align-items:center;min-height:48px;font-size:12px;list-style:none}
+summary::after{content:'';width:8px;height:8px;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(45deg);margin-left:auto;margin-right:4px}
+details[open] summary::after{transform:rotate(225deg)}
+details p{font-size:12px;margin:4px 0 12px}
+.edit-controls{display:flex;flex-wrap:wrap;gap:8px}
+.edit-controls button{font-size:12px;padding:8px 12px}
+#edit-state{min-height:18px;margin:8px 0 0}
+.compact-section{grid-column:2;grid-row:1;background:var(--bg);min-width:0}
+.compact-heading>span{font-size:12px;color:var(--muted)}
+.context-note{font-size:12px;margin-top:12px;max-width:60ch}
+.today-card{max-width:358px;margin:16px auto 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.today-card>h3{font-size:28px;font-weight:500;letter-spacing:-.02em;line-height:1.25}
+.card-context{font-size:12px;color:var(--accent);margin-top:8px}
+.compact-layout{display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:12px;align-items:start;margin-top:12px}
+.card-figure{width:128px}
+.compact-stage{width:128px;height:212px;position:relative}
+.compact-info{min-width:0;padding-top:4px}
+.compact-info dl{margin:0 0 16px}
+.compact-info dt{color:var(--muted);font-size:12px}
+.compact-info dd{margin:4px 0 0;font:16px 'Space Mono',monospace;font-variant-numeric:tabular-nums}
+.compact-info p{font-size:12px;color:var(--ink);line-height:1.6;overflow-wrap:anywhere}
+.card-view-controls{display:grid;grid-template-columns:1fr 1fr}
+.card-view-controls button{padding:8px 2px;min-width:48px;min-height:48px;border:0;border-radius:0;background:transparent;color:var(--muted);font-size:12px;position:relative}
+.card-view-controls button[aria-pressed=true]{color:var(--ink)}
+.card-view-controls button[aria-pressed=true]::after{content:'';position:absolute;left:12px;right:12px;bottom:6px;border-bottom:1px solid var(--ink)}
+.card-action{min-height:56px;margin-top:16px;padding:12px;display:flex;align-items:center;justify-content:center;background:var(--ink);color:var(--on-action);font-size:16px;font-weight:500;border-radius:8px}
+.fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:12px;text-align:center;font-size:12px;background:var(--surface)}
+[hidden]{display:none!important}
+.source-diagnostics{max-width:65ch}
+.source-diagnostics p{margin-top:12px}
+#region-legend{display:flex;flex-wrap:wrap;gap:12px 16px;padding-bottom:12px}
+#region-legend span{font-size:12px;display:flex;align-items:center;gap:8px}
+#region-legend span::before{content:'';width:8px;height:8px;background:var(--region)}
+footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--line);font-size:12px;background:var(--bg)}
+footer p{max-width:75ch}
+footer button{margin-top:16px}
+@media(hover:hover) and (pointer:fine){button:not(:disabled):hover{background:var(--inset)}a:hover{text-decoration:underline}}
+@media(max-width:760px){
+ header{padding:16px;gap:12px}header button{padding:8px 12px}
+ main{padding:24px 16px}.intro{margin-bottom:24px}h1{font-size:28px}
+ .study-layout{grid-template-columns:minmax(0,1fr);gap:32px}
+ .compact-section,.artwork,.workout-data{grid-column:1;grid-row:auto}
+ .figure-stage{height:590px}.motion-controls{gap:12px}
+ footer{margin-top:32px}
+}
+@media(max-width:359px){
+ header>span{display:none}.figure-stage{height:530px}
+ .compact-layout{grid-template-columns:1fr}.card-figure{justify-self:center}
+ .compact-info p{max-width:36ch}
+}

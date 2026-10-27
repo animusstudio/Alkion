@@ -127,6 +127,8 @@ class SettingsService extends ChangeNotifier {
   Color _accent = accents[0];
   int _restCompoundSeconds = 180, _restIsolationSeconds = 90;
   String? _localeOverride;
+  String _bodyStyle = 'male';
+  String get bodyStyle => _bodyStyle;
   BodyweightGoal _bodyweightGoal = BodyweightGoal.maintain;
   String get mode => _mode;
   Color get accent => _accent;
@@ -149,6 +151,7 @@ class SettingsService extends ChangeNotifier {
     final p = _preferences;
     if (p == null) return;
     final data = await p.load();
+    _bodyStyle = data['body_style'] == 'female' ? 'female' : 'male';
     _mode = data['mode'] as String? ?? 'dark';
     _profileName = data['profile_name'] as String? ?? 'Athlete';
     final color = data['accent'] as int?;
@@ -168,6 +171,7 @@ class SettingsService extends ChangeNotifier {
 
   Map<String, Object?> _snapshot() => {
     'mode': _mode,
+    'body_style': _bodyStyle,
     'profile_name': _profileName,
     'accent': _accent.toARGB32(),
     'rest_compound_seconds': _restCompoundSeconds,
@@ -193,6 +197,14 @@ class SettingsService extends ChangeNotifier {
   Future<void> flushPersistence() async {
     if (_unboundOwed) throw const StoreException('unbound_preferences');
     await _preferences?.flushPersistence();
+  }
+
+  Future<void> setBodyStyle(String value) {
+    if (value != 'male' && value != 'female') {
+      throw const StoreException('malformed_value');
+    }
+    _bodyStyle = value;
+    return _save();
   }
 
   Future<void> setMode(String v) {

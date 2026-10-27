@@ -1,8 +1,9 @@
-import 'dart:ui' show Tristate;
+import 'dart:ui' show SemanticsAction, Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/shell/w_tab_bar.dart';
+import 'package:alkion/widgets/split_card.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/widgets/delete_button.dart';
 import 'package:alkion/widgets/plan_form.dart';
@@ -130,14 +131,46 @@ void main() {
     );
   });
 
-  testWidgets('tab bar FAB has the "Start workout" semantics label', (
-    tester,
-  ) async {
+  testWidgets('all five destinations expose 48dp tap targets', (tester) async {
+    final selected = <int>[];
     await tester.pumpWidget(
-      wrapL10n(WTabBar(currentIndex: 0, onTab: (_) {}, onStart: () {})),
+      wrapL10n(WTabBar(currentIndex: 0, onTab: selected.add)),
     );
+    for (final index in [1, 2, 0, 3, 4]) {
+      final target = find.byKey(ValueKey('destination-$index'));
+      expect(tester.getSize(target).width, greaterThanOrEqualTo(48));
+      expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+      expect(
+        tester
+            .getSemantics(target)
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isTrue,
+      );
+      await tester.tap(target);
+    }
+    expect(selected, [1, 2, 0, 3, 4]);
+    expect(find.byType(FloatingActionButton), findsNothing);
+  });
 
-    expect(find.bySemanticsLabel('Start workout'), findsOneWidget);
+  testWidgets('Today card owns the 56dp Start action', (tester) async {
+    var starts = 0;
+    await tester.pumpWidget(
+      wrapL10n(
+        SingleChildScrollView(
+          child: SplitCard(
+            days: const [],
+            nextIndex: 0,
+            onStart: (_) => starts++,
+          ),
+        ),
+      ),
+    );
+    final start = find.byKey(const Key('today-start'));
+    await tester.ensureVisible(start);
+    expect(tester.getSize(start).height, greaterThanOrEqualTo(56));
+    await tester.tap(start);
+    expect(starts, 1);
   });
 
   testWidgets(

@@ -5,7 +5,8 @@ import '../theme/icons.dart';
 import '../theme/motion.dart';
 import '../theme/typography.dart';
 import '../util/clock_format.dart';
-import '../widgets/pressable.dart';
+import '../theme/tokens.dart';
+import '../l10n/app_localizations.dart';
 
 /// Compact "workout in progress" pill, top-right on non-Today tabs. Shows live
 /// elapsed (accent rest countdown while resting). Tap → reopen the session.
@@ -54,34 +55,39 @@ class _SessionIndicatorState extends State<SessionIndicator> {
     }
     final resting = restRemaining > 0;
     return Reveal(
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: PressableScale(
-          child: Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: tokens.surface2,
-              borderRadius: BorderRadius.circular(17),
-              border: Border.all(color: tokens.lineStrong),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(WIcons.dumbbell, size: 13, color: tokens.accentText),
-                const SizedBox(width: 7),
-                Text(
-                  resting
-                      ? fmtClock(Duration(seconds: restRemaining))
-                      : fmtClock(now.difference(widget.startedAt)),
-                  style: WorkoutType.mono(
-                    size: 12,
-                    weight: FontWeight.w700,
-                    color: resting ? tokens.accentText : tokens.dim,
+      child: Semantics(
+        button: true,
+        label: AppLocalizations.of(context).todayResumeWorkout,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            focusColor: tokens.focus.withValues(alpha: 0.25),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 48),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: tokens.surface2,
+                borderRadius: BorderRadius.circular(AppRadius.control),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(WIcons.dumbbell, size: 18, color: tokens.accentText),
+                  const SizedBox(width: 7),
+                  Text(
+                    resting
+                        ? fmtClock(Duration(seconds: restRemaining))
+                        : fmtClock(now.difference(widget.startedAt)),
+                    style: WorkoutType.mono(
+                      size: 12,
+                      weight: FontWeight.w400,
+                      color: resting ? tokens.accentText : tokens.dim,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

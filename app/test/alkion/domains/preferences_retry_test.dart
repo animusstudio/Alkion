@@ -124,6 +124,7 @@ Map<String, Object?> settingsSnapshot(SettingsService settings) => {
   'rest_isolation_seconds': settings.restIsolationSeconds,
   'locale': settings.localeOverride,
   'bodyweight_goal': settings.bodyweightGoal.name,
+  'body_style': settings.bodyStyle,
 };
 
 Future<void> recordPreferenceProof(

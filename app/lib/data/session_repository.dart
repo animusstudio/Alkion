@@ -13,7 +13,7 @@ import 'top_set_backfill.dart';
 // ── Mutation builders (pure) ──────────────────────────────────────────────────
 //
 // These build the SQL + args for editing logged history. They never touch
-// is_top_set / is_pr — the server recomputes those on sync.
+// is_top_set / is_pr; derivation is a separate local workflow/evidence concern.
 
 ({String sql, List<Object?> args}) updateSetOp(
   String id, {
@@ -77,7 +77,7 @@ List<ExerciseBlockData> groupSetsIntoBlocks(List<LoggedSet> sets) {
     final exSets = byExercise[exId]!;
     final workingSets = exSets.where((s) => !s.isWarmup).toList();
 
-    // Top set: the one flagged is_top_set=true by the server; fall back to
+    // Top set: the retained is_top_set flag, falling back to
     // the set with the highest weight if none is flagged.
     final topSet = workingSets.firstWhere(
       (s) => s.isTopSet,
@@ -107,8 +107,7 @@ const workoutOrderSelect =
 
 /// Repository for sessions and sets — history reads, last/best top-set lookups.
 ///
-/// Local SQLite CAN JOIN freely; only the PowerSync sync-rules cannot. All
-/// JOINs here query the local SQLite DB via [PowerSyncDatabase].
+/// Queries and JOINs use the profile-scoped local [LocalDatabase].
 class SessionRepository {
   final LocalDatabase db;
 

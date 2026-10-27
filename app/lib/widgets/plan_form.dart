@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
-import 'pressable.dart';
+import 'fit_label.dart';
+import '../theme/motion.dart';
 
 // ── Field ──────────────────────────────────────────────────────────────────
 
-/// A labelled form row: mono uppercase label above [child], with an optional
-/// mono hint below.
+/// A labelled form row: uppercase interface label above [child], with an optional
+/// interface hint below.
 class Field extends StatelessWidget {
   const Field({super.key, required this.label, required this.child, this.hint});
 
@@ -24,23 +25,21 @@ class Field extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          FitLabel(
             label.toUpperCase(),
-            style: WorkoutType.mono(
-              size: 10.5,
-              weight: FontWeight.w600,
+            maxLines: 2,
+            style: WorkoutType.body(
+              size: 12,
+              weight: FontWeight.w500,
               color: tokens.faint,
-              letterSpacing: 0.08 * 10.5,
+              letterSpacing: 0.06 * 12,
             ),
           ),
           const SizedBox(height: 8),
           child,
           if (hint != null) ...[
             const SizedBox(height: 6),
-            Text(
-              hint!,
-              style: WorkoutType.mono(size: 10.5, color: tokens.faint),
-            ),
+            Text(hint!, style: WorkoutType.body(size: 12, color: tokens.faint)),
           ],
         ],
       ),
@@ -50,8 +49,8 @@ class Field extends StatelessWidget {
 
 // ── TextInput ─────────────────────────────────────────────────────────────
 
-/// A single-line text input: h46, surface3 background, line border,
-/// radius*0.6, 15 px body font.
+/// A single-line text input: at least 48dp, sunken background, focus-blue border,
+/// 8dp corners and scalable interface text.
 class TextInput extends StatelessWidget {
   const TextInput({
     super.key,
@@ -67,10 +66,10 @@ class TextInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    const r = AppRadius.radius * 0.6;
+    const r = AppRadius.control;
 
-    return SizedBox(
-      height: 46,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48),
       child: TextField(
         controller: controller,
         onChanged: onChanged,
@@ -79,19 +78,22 @@ class TextInput extends StatelessWidget {
           hintText: placeholder,
           hintStyle: WorkoutType.body(size: 15, color: tokens.faint),
           filled: true,
-          fillColor: tokens.surface3,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          fillColor: tokens.sunken,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 12,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(r),
-            borderSide: BorderSide(color: tokens.line),
+            borderSide: BorderSide(color: tokens.lineStrong),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(r),
-            borderSide: BorderSide(color: tokens.line),
+            borderSide: BorderSide(color: tokens.lineStrong),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(r),
-            borderSide: BorderSide(color: tokens.lineStrong),
+            borderSide: BorderSide(color: tokens.focus, width: 2),
           ),
         ),
       ),
@@ -101,8 +103,7 @@ class TextInput extends StatelessWidget {
 
 // ── ChipSelect ────────────────────────────────────────────────────────────
 
-/// A horizontal wrap of pill chips. Selected chip = accent bg / accentInk
-/// text; unselected = surface bg / dim text / lineStrong border.
+/// A wrap of neutral selection chips with the existing 48dp hit areas.
 ///
 /// Generic over [T] so the same widget handles weekday ints, muscle-group
 /// strings, or any other value.
@@ -124,37 +125,41 @@ class ChipSelect<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Wrap(
-      spacing: 7,
-      runSpacing: 7,
+      spacing: 8,
+      runSpacing: 8,
       children: items.map((item) {
         final on = item == selected;
-        return GestureDetector(
-          onTap: () => onSelect(item),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            // widthFactor keeps the chip its own width: a plain Center fills
-            // the Wrap's full width and stacks every chip on its own row.
-            child: Center(
-              widthFactor: 1,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  color: on ? tokens.accent : tokens.surface,
-                  border: Border.all(
-                    color: on ? Colors.transparent : tokens.lineStrong,
+        return Semantics(
+          button: true,
+          selected: on,
+          child: GestureDetector(
+            onTap: () => onSelect(item),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              // widthFactor keeps the chip its own width: a plain Center fills
+              // the Wrap's full width and stacks every chip on its own row.
+              child: Center(
+                widthFactor: 1,
+                child: AnimatedContainer(
+                  duration: Motion.of(context, Motion.fast),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 8,
                   ),
-                ),
-                child: Text(
-                  labelOf(item),
-                  style: WorkoutType.body(
-                    size: 13,
-                    weight: FontWeight.w600,
-                    color: on ? tokens.accentInk : tokens.dim,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppRadius.control),
+                    color: on ? tokens.action : tokens.sunken,
+                    border: Border.all(
+                      color: on ? tokens.action : tokens.lineStrong,
+                    ),
+                  ),
+                  child: Text(
+                    labelOf(item),
+                    style: WorkoutType.body(
+                      size: 13,
+                      weight: FontWeight.w500,
+                      color: on ? tokens.onAction : tokens.dim,
+                    ),
                   ),
                 ),
               ),
@@ -199,17 +204,17 @@ class Toggle extends StatelessWidget {
           height: 48,
           child: Center(
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
+              duration: Motion.of(context, Motion.fast),
               width: 50,
               height: 30,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(AppRadius.pill),
-                color: value ? tokens.accent : tokens.surface3,
+                color: value ? tokens.action : tokens.surface3,
               ),
               child: Stack(
                 children: [
                   AnimatedPositioned(
-                    duration: const Duration(milliseconds: 150),
+                    duration: Motion.of(context, Motion.fast),
                     top: 3,
                     left: value ? 23 : 3,
                     child: Container(
@@ -217,7 +222,7 @@ class Toggle extends StatelessWidget {
                       height: 24,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: value ? tokens.accentInk : tokens.dim,
+                        color: value ? tokens.onAction : tokens.dim,
                       ),
                     ),
                   ),
@@ -234,7 +239,7 @@ class Toggle extends StatelessWidget {
 // ── PrimaryBtn ────────────────────────────────────────────────────────────
 
 /// Full-width h52 primary action button.
-/// Enabled: accent bg / accentInk text.
+/// Enabled: neutral action fill and contrasting text.
 /// Enabled [secondary]: surface2 bg / line border / text label.
 /// Disabled: surface3 bg / faint text.
 class PrimaryBtn extends StatelessWidget {
@@ -256,35 +261,54 @@ class PrimaryBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: PressableScale(
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          height: 52,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.radius),
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(48, 52)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+        ),
+      ),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? tokens.dim
+            : secondary
+            ? tokens.text
+            : tokens.onAction,
+      ),
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? tokens.surface3
+            : secondary
+            ? tokens.surface2
+            : tokens.action,
+      ),
+      side: secondary
+          ? WidgetStatePropertyAll(BorderSide(color: tokens.lineStrong))
+          : null,
+      textStyle: WidgetStatePropertyAll(
+        WorkoutType.body(size: 16, weight: FontWeight.w500),
+      ),
+    );
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        style: style,
+        onPressed: enabled ? onTap : null,
+        child: FitLabel(
+          label,
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          style: WorkoutType.body(
+            size: 16,
+            weight: FontWeight.w500,
             color: !enabled
-                ? tokens.surface3
+                ? tokens.dim
                 : secondary
-                ? tokens.surface2
-                : tokens.accent,
-            border: enabled && secondary
-                ? Border.all(color: tokens.line)
-                : null,
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: WorkoutType.display(
-              size: 16,
-              weight: FontWeight.w700,
-              color: !enabled
-                  ? tokens.faint
-                  : secondary
-                  ? tokens.text
-                  : tokens.accentInk,
-            ),
+                ? tokens.text
+                : tokens.onAction,
           ),
         ),
       ),
@@ -294,8 +318,8 @@ class PrimaryBtn extends StatelessWidget {
 
 // ── PlanSection ──────────────────────────────────────────────────────────
 
-/// A section divider inside plan editors: mono uppercase label + optional
-/// smaller mono hint below.
+/// A section divider inside plan editors: uppercase interface label + optional
+/// smaller interface hint below.
 ///
 /// Distinct from [SectionLabel] (which has a trailing action slot and different
 /// margin rhythm). PlanSection matches the JSX `PlanSection` exactly.
@@ -309,28 +333,23 @@ class PlanSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 20, 2, 11),
+      padding: const EdgeInsets.fromLTRB(0, 24, 0, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          FitLabel(
             label.toUpperCase(),
-            style: WorkoutType.mono(
-              size: 10.5,
-              weight: FontWeight.w700,
+            maxLines: 2,
+            style: WorkoutType.body(
+              size: 12,
+              weight: FontWeight.w500,
               color: tokens.faint,
-              letterSpacing: 0.1 * 10.5,
+              letterSpacing: 0.06 * 12,
             ),
           ),
           if (hint != null) ...[
             const SizedBox(height: 5),
-            Opacity(
-              opacity: 0.85,
-              child: Text(
-                hint!,
-                style: WorkoutType.mono(size: 10, color: tokens.faint),
-              ),
-            ),
+            Text(hint!, style: WorkoutType.body(size: 12, color: tokens.dim)),
           ],
         ],
       ),

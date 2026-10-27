@@ -130,7 +130,7 @@ void main() {
     await harness.unmount(tester);
   });
 
-  // At 320dp the line wraps before the split. The count must start the
+  // At 320dp with large text the line wraps before the split. The count must start the
   // second line with its noun, never end the first as a dangling "3-".
   testWidgets('a wrapped line keeps the day count with its noun at 320dp', (
     tester,
@@ -150,7 +150,7 @@ void main() {
         );
       },
     );
-    setPhone(tester, width: 320, textScale: 1.0);
+    setPhone(tester, width: 320, textScale: 2.0);
     await pumpProfile(tester);
     await settleUntilFound(tester, line, where: 'Profile 320dp');
     final p = tester.renderObject<RenderParagraph>(

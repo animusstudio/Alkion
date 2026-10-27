@@ -310,7 +310,7 @@ void main() {
   );
 
   testWidgets(
-    'the current choice carries a trailing check in the accent text colour',
+    'the current choice carries a neutral trailing check and selected semantics',
     (tester) async {
       final tokens = WorkoutTokens.light(accents[3]);
       // Only the light theme separates the two: in the dark one they're equal.

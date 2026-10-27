@@ -8,6 +8,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../domain/evidence.dart';
+import '../files/android_documents.dart';
+import '../files/document_access.dart';
+import '../files/publication_directory.dart';
 import '../identity/directory_durability.dart';
 import '../store/local_store.dart';
 import '../settings/settings_service.dart';
@@ -16,7 +19,7 @@ import '../units/unit_service.dart';
 import 'alkion_exports.dart';
 import 'exclusive_publish.dart';
 
-enum ExportOutcome { shared, saved, empty }
+enum ExportOutcome { shared, saved, providerVerified, cancelled, empty }
 
 class ExportResult {
   const ExportResult(this.outcome, [this.path]);
@@ -30,7 +33,7 @@ abstract interface class ExportDelivery {
 }
 
 /// Publishes flushed temporary bytes into an explicit directory with an
-/// exclusive hard link (which cannot replace an existing name, unlike rename),
+/// atomic exclusive publication (which cannot replace an existing name),
 /// removes the temporary name, fsyncs the directory and re-reads the hash.
 final class DirectoryExportDelivery implements ExportDelivery {
   DirectoryExportDelivery(this.directory);
@@ -55,7 +58,7 @@ final class DirectoryExportDelivery implements ExportDelivery {
       } finally {
         await handle.close();
       }
-      if (!linkExclusive(temp.path, target.path)) {
+      if (!publishExclusive(temp.path, target.path)) {
         throw const StoreException('export_destination_exists');
       }
     } finally {
@@ -75,6 +78,11 @@ final class PlatformExportDelivery implements ExportDelivery {
   const PlatformExportDelivery();
   @override
   Future<ExportResult> deliver(Uint8List bytes, String filename) async {
+    if (Platform.isAndroid) {
+      return DocumentExportDelivery(
+        AndroidDocuments.instance,
+      ).deliver(bytes, filename);
+    }
     if (Platform.isLinux) {
       return DirectoryExportDelivery(
         await getApplicationDocumentsDirectory(),
@@ -90,6 +98,58 @@ final class PlatformExportDelivery implements ExportDelivery {
       ),
     );
     return const ExportResult(ExportOutcome.shared);
+  }
+}
+
+/// Publishes complete immutable local bytes before showing Save copy. Provider
+/// failures/cancellation retain the publication and all staging. A readback
+/// receipt proves this device's delivered copy only.
+final class DocumentExportDelivery implements ExportDelivery {
+  DocumentExportDelivery(
+    this.documents, {
+    this.directory,
+    this.publicationDirectory,
+  });
+  final DocumentAccess documents;
+  final Directory? directory;
+  final Future<Directory> Function()? publicationDirectory;
+
+  static Future<Directory> _defaultPublicationDirectory() async {
+    if (Platform.isAndroid) {
+      return checkedAndroidPublicationDirectory('document-exports');
+    }
+    return Directory(
+      p.join((await getApplicationSupportDirectory()).path, 'document-exports'),
+    ).create(recursive: true);
+  }
+
+  @override
+  Future<ExportResult> deliver(Uint8List bytes, String filename) async {
+    final root =
+        directory ??
+        await (publicationDirectory ?? _defaultPublicationDirectory)();
+    if (directory != null) await root.create(recursive: true);
+    final operation = await root.createTemp('export-');
+    final local = await DirectoryExportDelivery(
+      operation,
+    ).deliver(bytes, filename);
+    final saved = await documents.save(
+      File(local.path!),
+      filename: filename,
+      maxBytes: max(bytes.length, 1),
+      mimeType: filename.endsWith('.json')
+          ? 'application/json'
+          : 'application/octet-stream',
+    );
+    if (saved == null) return ExportResult(ExportOutcome.cancelled, local.path);
+    if (saved.readback.length != bytes.length ||
+        saved.readback.sha256 != sha256.convert(bytes).toString()) {
+      throw DocumentException(
+        'document_readback_mismatch',
+        originalPath: local.path,
+      );
+    }
+    return ExportResult(ExportOutcome.providerVerified, saved.readback.name);
   }
 }
 

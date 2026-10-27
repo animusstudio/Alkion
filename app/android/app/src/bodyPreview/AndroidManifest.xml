@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Explicit offline APK check: no debugger network permission. -->
+    <application>
+        <!-- Dataless synthetic isolation probe; absent from ordinary/release manifests. -->
+        <activity
+            android:name=".BodyGraphicsProbeActivity"
+            android:exported="true"
+            android:hardwareAccelerated="true"
+            android:process=":body_graphics_probe" />
+    </application>
+</manifest>

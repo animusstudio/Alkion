@@ -10,6 +10,7 @@ import '../data/session_repository.dart';
 import '../data/session_writer.dart';
 import '../data/stats_repository.dart';
 import '../export/export_service.dart';
+import '../files/document_access.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/app_languages.dart';
 import '../settings/bodyweight_goal.dart';
@@ -24,18 +25,18 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../util/dates.dart';
+import '../widgets/alkion_brand.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import 'alkion_recovery/recovery_screen.dart';
-import 'alkion_transfer/transfer_screen.dart';
 
-// ── Group + Row helpers (mirror screen-profile.jsx) ──────────────────────────
+// ── Group + Row helpers ─────────────────────────────────────────────────────
 
 class _Group extends StatelessWidget {
-  const _Group({required this.label, required this.children});
+  const _Group({super.key, required this.label, required this.children});
 
   final String label;
   final List<Widget> children;
@@ -44,19 +45,18 @@ class _Group extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.only(bottom: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 2, bottom: 9),
+            padding: const EdgeInsets.only(left: 2, bottom: 8),
             child: Text(
               label.toUpperCase(),
-              style: WorkoutType.mono(
-                size: 10.5,
-                weight: FontWeight.w600,
-                color: tokens.faint,
-                letterSpacing: 0.1 * 10.5,
+              style: WorkoutType.body(
+                size: 12,
+                weight: FontWeight.w500,
+                color: tokens.dim,
               ),
             ),
           ),
@@ -70,7 +70,7 @@ class _Group extends StatelessWidget {
             decoration: BoxDecoration(
               color: tokens.surface,
               border: Border.all(color: tokens.line),
-              borderRadius: BorderRadius.circular(AppRadius.radius),
+              borderRadius: BorderRadius.circular(AppRadius.panel),
             ),
             child: Column(
               children: [
@@ -94,7 +94,7 @@ class _Row extends StatelessWidget {
     required this.title,
     this.sub,
     this.right,
-    this.below,
+    this.control = false,
     this.onTap,
   });
 
@@ -103,89 +103,92 @@ class _Row extends StatelessWidget {
   final String? sub;
   final Widget? right;
 
-  /// A line under the title and sub, for a value too long for [right].
-  final Widget? below;
+  final bool control;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final r = AppRadius.radius * 0.5;
-
     Widget row = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: _hPad, vertical: 13),
+      padding: const EdgeInsets.all(16),
       child: LayoutBuilder(
-        builder: (context, constraints) => Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: tokens.surface3,
-                borderRadius: BorderRadius.circular(r),
-              ),
-              child: Icon(icon, size: 18, color: tokens.accentText),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  FitLabel(
-                    title,
-                    maxLines: 2,
-                    style: WorkoutType.body(
-                      size: 14.5,
-                      weight: FontWeight.w600,
-                      color: tokens.text,
-                    ),
-                  ),
-                  if (sub != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      sub!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: WorkoutType.mono(size: 10.5, color: tokens.faint),
-                    ),
-                  ],
-                  if (below != null) ...[const SizedBox(height: 6), below!],
-                ],
-              ),
-            ),
-            if (right != null) ...[
-              const SizedBox(width: 8),
-              // Capped so a wide control (chips, a long sync status at large
-              // text) wraps inside its slot instead of squeezing the title to
-              // nothing or overflowing the row.
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: constraints.maxWidth * _rightShare,
+        builder: (context, constraints) {
+          final stackControl =
+              control &&
+              (constraints.maxWidth < 320 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 20);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tokens.surface2,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
-                child: right!,
+                child: Icon(icon, size: 18, color: tokens.dim),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FitLabel(
+                      title,
+                      maxLines: 2,
+                      style: WorkoutType.body(
+                        size: 16,
+                        weight: FontWeight.w500,
+                        color: tokens.text,
+                      ),
+                    ),
+                    if (sub != null) ...[
+                      const SizedBox(height: 4),
+                      FitLabel(
+                        sub!,
+                        maxLines: 3,
+                        style: WorkoutType.body(size: 12, color: tokens.dim),
+                      ),
+                    ],
+                    if (stackControl && right != null) ...[
+                      const SizedBox(height: 12),
+                      right!,
+                    ],
+                  ],
+                ),
+              ),
+              if (right != null && !stackControl) ...[
+                const SizedBox(width: 8),
+                // Capped so a wide control (chips, a long sync status at large
+                // text) wraps inside its slot instead of squeezing the title to
+                // nothing or overflowing the row.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * 0.6,
+                  ),
+                  child: right!,
+                ),
+              ],
             ],
-          ],
-        ),
+          );
+        },
       ),
     );
 
     if (onTap != null) {
-      row = GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: row,
+      row = Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          focusColor: tokens.focus.withValues(alpha: 0.2),
+          child: row,
+        ),
       );
     }
 
     return row;
   }
-
-  /// The most of the row the right slot may take; the 144dp rest steppers
-  /// still fit it at 320dp.
-  static const _rightShare = 0.6;
-
-  static const _hPad = 14.0;
 }
 
 // ── Quick-stats card ──────────────────────────────────────────────────────────
@@ -243,27 +246,28 @@ class _QuickStatsState extends State<_QuickStats> {
                 ? '–'
                 : '${unitService.fmtBw(current)}${unitService.uLabel}';
 
-            return Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked =
+                    constraints.maxWidth < 360 &&
+                    MediaQuery.textScalerOf(context).scale(12) > 18;
+                final cards = <Widget>[
+                  _StatCard(
                     label: l.profileStatSessions,
                     value: sessionCount,
+                    horizontal: stacked,
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _StatCard(label: l.profileStatPrs, value: prCount),
-                ),
-                const SizedBox(width: 8),
-                // Expanded must stay the direct Row child; UnitSwap's
-                // AnimatedSwitcher cannot host a flex ParentDataWidget.
-                Expanded(
-                  child: UnitSwap(
+                  _StatCard(
+                    label: l.profileStatPrs,
+                    value: prCount,
+                    horizontal: stacked,
+                  ),
+                  UnitSwap(
                     unitKey: unitService.unit,
                     child: _StatCard(
                       label: l.profileStatBodyweight,
                       value: bwText,
+                      horizontal: stacked,
                       detail: current == null && bwEntries.isNotEmpty
                           ? uncertainDay != null
                                 ? l.alkionDateUnavailable(
@@ -275,8 +279,25 @@ class _QuickStatsState extends State<_QuickStats> {
                           : null,
                     ),
                   ),
-                ),
-              ],
+                ];
+                return stacked
+                    ? Column(
+                        children: [
+                          for (var i = 0; i < cards.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 8),
+                            cards[i],
+                          ],
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          for (var i = 0; i < cards.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            Expanded(child: cards[i]),
+                          ],
+                        ],
+                      );
+              },
             );
           },
         );
@@ -286,60 +307,74 @@ class _QuickStatsState extends State<_QuickStats> {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, this.detail});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    this.detail,
+    this.horizontal = false,
+  });
 
   final String label;
   final String value;
   final String? detail;
+  final bool horizontal;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    // No internal Expanded: callers place this in a Row and own the flex,
-    // so wrappers (e.g. UnitSwap) can sit between the Row and the card.
+    final number = FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(
+        value,
+        maxLines: 1,
+        style: WorkoutType.mono(
+          size: 22,
+          weight: FontWeight.w400,
+          color: tokens.text,
+        ),
+      ),
+    );
+    final caption = Column(
+      crossAxisAlignment: horizontal
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.center,
+      children: [
+        FitLabel(
+          label,
+          maxLines: 2,
+          style: WorkoutType.body(
+            size: 12,
+            weight: FontWeight.w500,
+            color: tokens.dim,
+          ),
+        ),
+        if (detail != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: FitLabel(
+              detail!,
+              maxLines: 3,
+              style: WorkoutType.body(size: 12, color: tokens.dim),
+            ),
+          ),
+      ],
+    );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: tokens.surface,
         border: Border.all(color: tokens.line),
-        borderRadius: BorderRadius.circular(AppRadius.radius),
+        borderRadius: BorderRadius.circular(AppRadius.panel),
       ),
-      child: Column(
-        children: [
-          // A third of a narrow phone at large text: "82.4kg" scales down
-          // whole and the label shrinks, then ellipsizes.
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              maxLines: 1,
-              style: WorkoutType.display(
-                size: 20,
-                weight: FontWeight.w700,
-                color: tokens.text,
-              ),
-            ),
-          ),
-          if (detail != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: FitLabel(
-                detail!,
-                style: WorkoutType.mono(size: 9, color: tokens.dim),
-                maxLines: 3,
-              ),
-            ),
-          const SizedBox(height: 6),
-          FitLabel(
-            label.toUpperCase(),
-            style: WorkoutType.mono(
-              size: 9,
-              color: tokens.faint,
-              letterSpacing: 0.06 * 9,
-            ),
-          ),
-        ],
-      ),
+      child: horizontal
+          ? Row(
+              children: [
+                Expanded(child: caption),
+                const SizedBox(width: 12),
+                Flexible(child: number),
+              ],
+            )
+          : Column(children: [number, const SizedBox(height: 8), caption]),
     );
   }
 }
@@ -367,26 +402,26 @@ String? profileTrainingLine(
 
 // ── ProfileScreen ─────────────────────────────────────────────────────────────
 
-/// Full-screen Profile & Settings overlay, pushed on the root navigator.
+/// Profile & Settings, embedded as a shell destination or opened standalone.
 ///
 /// Exposes:
 ///   • Editable profile name → SettingsService
 ///   • Training line (first workout month · training days) from the local DB
 ///   • Quick stats (Sessions / PRs / Bodyweight) from the local DB
 ///   • Units chip (kg / lb) → UnitService
-///   • Theme chip (Dark / Light) + 4 accent swatches → SettingsService
-///   • Configurable server URL → confirm → setServerUrl + apiBaseUrl, then
-///     onLogout first, onClose second (safe teardown order)
-///   • Account: signed-in email + Sign out (danger, confirm)
+///   • Theme chip (Dark / Light) and all stored accent choices
+///   • Backup/restore and workout-history sharing
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
     required this.onClose,
+    this.embedded = false,
     this.onLogout,
     this.auth,
   });
 
   final VoidCallback onClose;
+  final bool embedded;
   final Future<void> Function()? onLogout;
   final Object? auth;
 
@@ -400,7 +435,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _nameCtrl;
 
   // Data export state
-  bool _exportingFull = false;
   bool _exportingHistory = false;
 
   // Update-check state (Android only).
@@ -497,6 +531,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _pickBodyStyle(SettingsService settings) async {
+    final l = AppLocalizations.of(context);
+    final choice = await showWActionSheet<String>(
+      context,
+      title: l.bodyArtworkStyle,
+      actions: [
+        WSheetAction(
+          label: l.bodyMaleArtwork,
+          value: 'male',
+          selected: settings.bodyStyle == 'male',
+        ),
+        WSheetAction(
+          label: l.bodyFemaleArtwork,
+          value: 'female',
+          selected: settings.bodyStyle == 'female',
+        ),
+      ],
+    );
+    if (choice != null && mounted) {
+      showWriteFailures(context, settings.setBodyStyle(choice));
+    }
+  }
+
   // ── Bodyweight goal picker ──────────────────────────────────────────────
 
   String _goalLabel(AppLocalizations l, BodyweightGoal g) => switch (g) {
@@ -540,32 +597,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       throw const StoreException('boundary_unmounted');
     }
     await context.read<UnitService>().flushPersistence();
-  }
-
-  Future<void> _exportFull() async {
-    setState(() => _exportingFull = true);
-    try {
-      await _flushBoundary();
-      if (!mounted) {
-        return;
-      }
-      final result = await ExportService(context.read<LocalDatabase>())
-          .exportFull(
-            settings: context.read<SettingsService>(),
-            units: context.read<UnitService>(),
-          );
-      if (mounted) {
-        await _reportExport(result);
-      }
-    } catch (e) {
-      if (mounted) {
-        await _exportError(e);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _exportingFull = false);
-      }
-    }
   }
 
   Future<void> _exportHistory() async {
@@ -621,7 +652,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final l = AppLocalizations.of(context);
     switch (result.outcome) {
       case ExportOutcome.shared:
-        return; // the share sheet was the feedback
+        await showWDialog<bool>(
+          context,
+          title: l.alkionDocumentShared,
+          message: l.alkionDocumentSharedMessage,
+          actions: [WDialogAction(label: l.commonOk, value: true)],
+        );
+      case ExportOutcome.providerVerified:
+        await showWDialog<bool>(
+          context,
+          title: l.alkionDocumentSaved,
+          message: l.alkionDocumentSavedMessage(
+            documentLabel(result.path ?? ''),
+          ),
+          actions: [WDialogAction(label: l.commonOk, value: true)],
+        );
+      case ExportOutcome.cancelled:
+        await showWDialog<bool>(
+          context,
+          title: l.alkionDocumentCancelled,
+          message: l.alkionDocumentCancelledMessage,
+          actions: [WDialogAction(label: l.commonOk, value: true)],
+        );
       case ExportOutcome.saved:
         await showWDialog<bool>(
           context,
@@ -641,7 +693,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await showWDialog<bool>(
       context,
       title: l.exportFailedTitle,
-      message: '$e',
+      message: l.alkionDocumentFailureMessage(
+        e is DocumentException ? e.category : '$e',
+      ),
       actions: [WDialogAction(label: l.commonOk, value: true)],
     );
   }
@@ -672,44 +726,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                   child: Row(
                     children: [
-                      Semantics(
-                        button: true,
-                        label: l.commonBack,
-                        excludeSemantics: true,
-                        onTap: widget.onClose,
-                        child: GestureDetector(
+                      if (!widget.embedded)
+                        Semantics(
+                          button: true,
+                          label: l.commonBack,
+                          excludeSemantics: true,
                           onTap: widget.onClose,
-                          child: SizedBox(
-                            width: 48,
-                            height: 48,
-                            child: Center(
-                              child: Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: tokens.line),
-                                  borderRadius: BorderRadius.circular(
-                                    AppRadius.pill,
+                          child: GestureDetector(
+                            onTap: widget.onClose,
+                            child: SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: Center(
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: tokens.line),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.control,
+                                    ),
+                                    color: tokens.surface2,
                                   ),
-                                  color: tokens.surface,
-                                ),
-                                child: Icon(
-                                  WIcons.back,
-                                  size: 18,
-                                  color: tokens.dim,
+                                  child: Icon(
+                                    WIcons.back,
+                                    size: 18,
+                                    color: tokens.dim,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        l.profileTitle,
-                        style: WorkoutType.display(
-                          size: 19,
-                          weight: FontWeight.w700,
-                          color: tokens.text,
+                      if (!widget.embedded) const SizedBox(width: 12),
+                      Expanded(
+                        child: FitLabel(
+                          l.profileTitle,
+                          maxLines: 2,
+                          style: WorkoutType.display(
+                            size: widget.embedded ? 28 : 22,
+                            weight: FontWeight.w500,
+                            color: tokens.text,
+                          ),
                         ),
                       ),
                     ],
@@ -721,17 +779,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // ── Scrollable body ───────────────────────────────────────────────
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 104),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  24,
+                  16,
+                  widget.embedded
+                      ? bottomNavInset(context)
+                      : 32 + MediaQuery.viewPaddingOf(context).bottom,
+                ),
                 children: [
                   // ── Profile header ──────────────────────────────────────────
                   _buildProfileHeader(settings, tokens),
 
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
 
                   // ── Quick stats ─────────────────────────────────────────────
                   const _QuickStats(),
 
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 24),
 
                   // ── Units ───────────────────────────────────────────────────
                   _Group(
@@ -741,6 +806,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: WIcons.scale,
                         title: l.profileWeightUnit,
                         sub: l.profileWeightUnitSub,
+                        control: true,
                         right: ChipSelect<Unit>(
                           items: Unit.values,
                           selected: unitService.unit,
@@ -778,6 +844,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ? WIcons.flame
                             : WIcons.bolt,
                         title: l.profileTheme,
+                        control: true,
                         right: ChipSelect<String>(
                           items: const ['dark', 'light'],
                           selected: settings.mode,
@@ -798,10 +865,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             right: null,
                           ),
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                             child: _buildAccentSwatches(settings, tokens),
                           ),
                         ],
+                      ),
+                      _Row(
+                        icon: WIcons.user,
+                        title: l.bodyArtworkStyle,
+                        sub: settings.bodyStyle == 'female'
+                            ? l.bodyFemaleArtwork
+                            : l.bodyMaleArtwork,
+                        right: Icon(
+                          WIcons.chevron,
+                          size: 16,
+                          color: tokens.faint,
+                        ),
+                        onTap: () => _pickBodyStyle(settings),
                       ),
                       _Row(
                         icon: WIcons.globe,
@@ -825,8 +905,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: WIcons.timer,
                         title: l.profileCompoundRest,
                         sub: l.profileCompoundRestSub,
+                        control: true,
                         right: SizedBox(
-                          width: 144,
+                          width: 192,
                           child: WStepper(
                             value: settings.restCompoundSeconds.toDouble(),
                             step: 15,
@@ -847,8 +928,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: WIcons.timer,
                         title: l.profileIsolationRest,
                         sub: l.profileIsolationRestSub,
+                        control: true,
                         right: SizedBox(
-                          width: 144,
+                          width: 192,
                           child: WStepper(
                             value: settings.restIsolationSeconds.toDouble(),
                             step: 15,
@@ -868,52 +950,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
 
-                  _Group(
-                    label: l.profileGroupSync,
-                    children: [
-                      _Row(
-                        icon: WIcons.user,
-                        title: l.alkionLocalOnly,
-                        below: Text(
-                          l.alkionAccountUnavailable,
-                          style: WorkoutType.mono(
-                            size: 10.5,
-                            color: tokens.faint,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
                   // ── Data ────────────────────────────────────────────────────
                   _Group(
+                    key: const Key('profile-data-actions'),
                     label: l.profileGroupData,
                     children: [
-                      _Row(
-                        icon: WIcons.export,
-                        title: AppLocalizations.of(context).exportAllData,
-                        sub: l.alkionDomainExportSub,
-                        right: _exportingFull ? const _RowSpinner() : null,
-                        onTap: _exportingFull ? null : _exportFull,
-                      ),
-                      _Row(
-                        icon: WIcons.history,
-                        title: AppLocalizations.of(context).exportHistory,
-                        sub: AppLocalizations.of(context).exportHistorySub,
-                        right: _exportingHistory ? const _RowSpinner() : null,
-                        onTap: _exportingHistory ? null : _exportHistory,
-                      ),
-                      _Row(
-                        icon: WIcons.capture,
-                        title: l.alkionImportTransfer,
-                        sub: l.alkionImportTransferSub,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                AlkionTransferScreen(flush: _flushBoundary),
-                          ),
-                        ),
-                      ),
                       _Row(
                         icon: WIcons.refresh,
                         title: l.alkionBackupRestore,
@@ -925,18 +966,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                       ),
+                      _Row(
+                        icon: WIcons.history,
+                        title: l.exportHistory,
+                        sub: l.exportHistorySub,
+                        right: _exportingHistory ? const _RowSpinner() : null,
+                        onTap: _exportingHistory ? null : _exportHistory,
+                      ),
                     ],
                   ),
 
                   // ── Version footer ───────────────────────────────────────────
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      _version.isEmpty
-                          ? 'Alkion Dev'
-                          : 'Alkion Dev · v$_version',
-                      textAlign: TextAlign.center,
-                      style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                    child: Column(
+                      children: [
+                        const AlkionBrandLockup(compact: true),
+                        const SizedBox(height: 8),
+                        Text(
+                          _version.isEmpty
+                              ? 'Alkion Dev'
+                              : 'Alkion Dev · v$_version',
+                          textAlign: TextAlign.center,
+                          style: WorkoutType.body(size: 12, color: tokens.dim),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -963,25 +1017,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
     return Row(
       children: [
-        // 66px accent avatar
+        // Local identity uses a neutral surface; workout data owns the accent.
         Container(
           width: 66,
           height: 66,
           decoration: BoxDecoration(
-            color: tokens.accent,
+            color: tokens.surface2,
+            border: Border.all(color: tokens.line),
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
-          child: Text(
-            _initials(settings.profileName),
-            style: WorkoutType.display(
-              size: 26,
-              weight: FontWeight.w700,
-              color: tokens.accentInk,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: FittedBox(
+              child: Text(
+                _initials(settings.profileName),
+                style: WorkoutType.display(
+                  size: 26,
+                  weight: FontWeight.w500,
+                  color: tokens.text,
+                ),
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 15),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1005,13 +1065,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Row(
                         children: [
                           Flexible(
-                            child: Text(
+                            child: FitLabel(
                               settings.profileName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
                               style: WorkoutType.display(
-                                size: 23,
-                                weight: FontWeight.w700,
+                                size: 22,
+                                weight: FontWeight.w500,
                                 color: tokens.text,
                               ),
                             ),
@@ -1025,19 +1084,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               if (_editingName) ...[
                 const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: () => _submitName(settings),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 48),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        l.profileSaveName,
-                        style: WorkoutType.mono(
-                          size: 11,
-                          weight: FontWeight.w600,
-                          color: tokens.accentText,
-                        ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () => _submitName(settings),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      foregroundColor: tokens.text,
+                    ),
+                    child: FitLabel(
+                      l.profileSaveName,
+                      maxLines: 2,
+                      style: WorkoutType.body(
+                        size: 14,
+                        weight: FontWeight.w500,
+                        color: tokens.text,
                       ),
                     ),
                   ),
@@ -1047,7 +1108,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   trainingLine,
                   key: const Key('profile-training-line'),
-                  style: WorkoutType.mono(size: 11, color: tokens.faint),
+                  style: WorkoutType.body(size: 12, color: tokens.dim),
                 ),
               ],
             ],
@@ -1060,8 +1121,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildAccentSwatches(SettingsService settings, WorkoutTokens tokens) {
     final l = AppLocalizations.of(context);
     return Wrap(
-      spacing: 4,
-      runSpacing: 4,
+      spacing: 8,
+      runSpacing: 8,
       children: accents.asMap().entries.map((entry) {
         final n = entry.key + 1;
         final color = entry.value;
@@ -1072,34 +1133,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
           label: l.profileAccentOption(n),
           excludeSemantics: true,
           onTap: () => showWriteFailures(context, settings.setAccent(color)),
-          child: GestureDetector(
-            onTap: () => showWriteFailures(context, settings.setAccent(color)),
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: Center(
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color,
-                    border: Border.all(
-                      color: isSelected ? tokens.text : Colors.transparent,
-                      width: 2,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: tokens.bg,
-                              spreadRadius: 2,
-                              blurRadius: 0,
-                            ),
-                          ]
-                        : null,
-                  ),
-                ),
+          child: IconButton(
+            key: ValueKey('profile-accent-$n'),
+            onPressed: () =>
+                showWriteFailures(context, settings.setAccent(color)),
+            style: IconButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              fixedSize: const Size(48, 48),
+              padding: const EdgeInsets.all(8),
+              focusColor: tokens.focus.withValues(alpha: 0.25),
+              side: BorderSide(color: isSelected ? tokens.text : tokens.line),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.control),
               ),
+            ),
+            icon: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+              child: isSelected
+                  ? Icon(
+                      WIcons.check,
+                      size: 18,
+                      color: color.computeLuminance() > 0.179
+                          ? const Color(0xFF000000)
+                          : const Color(0xFFFFFFFF),
+                    )
+                  : null,
             ),
           ),
         );

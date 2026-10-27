@@ -10,7 +10,7 @@ import 're_listenable.dart';
 /// If [existingId] is non-null, returns an UPDATE reusing that id.
 /// If null, returns an INSERT using [newId].
 /// `weight_kg` is TEXT (`toStringAsFixed(2)`); `user_id`/`created_at` are
-/// omitted (server stamps from token / server defaults — like persistSession).
+/// omitted by this retained compatibility SQL builder.
 ({String sql, List<Object?> args}) bodyweightUpsertOp(
   String? existingId,
   String dateIso,

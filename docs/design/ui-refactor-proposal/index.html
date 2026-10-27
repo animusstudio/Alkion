@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Alkion · UI proposal</title>
+  <link rel="stylesheet" href="proposal.css?v=20261021-instrument-6">
+  <script src="proposal.js" defer></script>
+  <script src="body-map.js" defer></script>
+</head>
+<body>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5.5 8v13h13V8M9 21v-5a3 3 0 0 1 6 0v5"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3.5 4v16.5H21M6.5 16l4-4 4 1 6-8M16.5 5h4v4"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M4 6.5v4h4M4.3 10a8 8 0 1 1 .7 6M12 7v5l4 2.5"/></symbol>
+      <symbol id="i-plan" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 14h8M8 17.5h5"/></symbol>
+      <symbol id="i-profile" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="4"/><path d="M3.5 21a8.5 8.5 0 0 1 17 0"/></symbol>
+      <symbol id="i-type" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01M12 9h.01M17 9h.01M7 12h.01M12 12h.01M17 12h.01M8 16h8"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-field" viewBox="0 0 12 12"><path d="M1 1h2v2H1zM5 1h2v2H5zM9 1h2v2H9zM1 5h2v2H1zM5 5h2v2H5zM9 5h2v2H9zM1 9h2v2H1zM5 9h2v2H5zM9 9h2v2H9z"/></symbol>
+    </defs>
+  </svg>
+
+  <main class="review">
+    <header class="review-header">
+      <div><h1>Alkion</h1><p>Today &amp; active workout · visual proposal</p></div>
+      <div class="review-controls">
+        <div class="theme-controls" role="group" aria-label="Review theme">
+          <button type="button" data-theme-choice="dark" aria-pressed="true">Dark</button>
+          <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        </div>
+        <label class="split-control" for="mock-split">Mock split
+          <select id="mock-split" disabled>
+            <option value="upper-a">Upper A</option>
+            <option value="upper-b" selected>Upper B</option>
+            <option value="lower-a">Lower A</option>
+            <option value="lower-b">Lower B</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+      </div>
+    </header>
+    <p class="preview-note" id="preview-note">Synthetic content. Mock split changes the Today card only. Theme, Front/Back and preview scrolling work; app actions are static. These are separate before-start and during-workout moments.</p>
+    <p class="material-note" id="body-state" role="status">Mock focus illustration · character preview loading.</p>
+    <noscript><p class="preview-note">JavaScript is off. The dark Upper B example and text focus summary are shown; review controls and character rendering require JavaScript.</p></noscript>
+
+    <div class="board">
+      <section class="composition" aria-labelledby="today-title">
+        <div class="composition-heading"><h2 id="today-title">Today</h2><span>Before starting</span></div>
+        <div class="phone today" aria-describedby="preview-note">
+          <div class="phone-scroll" tabindex="0" role="region" aria-label="Scroll static Today composition">
+            <div class="today-content">
+              <header class="greeting">
+                <div class="profile" aria-label="Profile affordance, preview">AJ</div>
+                <div><h3>Ready to train</h3><p>Wed, 21 Oct · <span id="next-split">Next: Upper B</span></p></div>
+              </header>
+
+              <section class="next-workout" aria-label="Next workout">
+                <div class="day-title"><h3 id="split-title">Upper B</h3><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></div>
+                <p class="rotation" id="split-context">Next in rotation</p>
+                <div class="workout-overview">
+                  <div class="workout-information">
+                    <div class="workout-focus" id="focus-summary" aria-live="polite" aria-atomic="true">
+                      <p><span>Primary</span><strong>Chest</strong></p>
+                      <p><span>Support</span><strong>Delts, triceps</strong></p>
+                    </div>
+                    <dl class="workout-details">
+                      <div><dt>Exercises</dt><dd id="split-exercises">5</dd></div>
+                      <div><dt>Est. time</dt><dd id="split-time">55m</dd></div>
+                      <div><dt>Last</dt><dd id="split-last">5d ago</dd></div>
+                    </dl>
+                  </div>
+                  <div class="body-figure">
+                    <div class="body-art" id="body-art" aria-hidden="true">
+                      <img id="body-source" src="assets/body-sculpture-source.png" alt="" hidden>
+                      <canvas id="body-ascii" width="256" height="472"></canvas>
+                      <div class="body-fallback"><span>Unfilled view</span><p>Character preview unavailable</p></div>
+                    </div>
+                    <div class="body-views" role="group" aria-label="Body view">
+                      <button type="button" data-body-view="front" aria-pressed="true" disabled>Front</button>
+                      <button type="button" data-body-view="back" aria-pressed="false" disabled>Back</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="app-action"><span>Start workout</span></div>
+              </section>
+
+              <section class="week-section" aria-labelledby="week-title">
+                <h4 id="week-title">This week</h4>
+                <div class="week-strip">
+                  <div class="week-day"><span>Mon</span><strong>Upper A</strong><span class="week-state"><svg class="icon small" aria-hidden="true"><use href="#i-check"/></svg><span class="sr-only">Completed</span></span></div>
+                  <div class="week-day"><span>Tue</span><strong>Lower A</strong><span class="week-state"><svg class="icon small" aria-hidden="true"><use href="#i-check"/></svg><span class="sr-only">Completed</span></span></div>
+                  <div class="week-day selected"><span>Thu</span><strong>Upper B</strong><span class="next-label">Next</span></div>
+                  <div class="week-day"><span>Fri</span><strong>Lower B</strong><span class="week-state planned"><span class="sr-only">Not completed</span></span></div>
+                  <div class="week-day custom"><svg class="icon small" aria-hidden="true"><use href="#i-plus"/></svg><strong>Custom</strong></div>
+                </div>
+              </section>
+
+              <dl class="stats" aria-label="Current workout statistics">
+                <div><dt>Bodyweight</dt><dd>78.4<small>kg</small></dd><dd class="stat-note">Latest entry</dd></div>
+                <div><dt>Sets this week</dt><dd>24</dd><dd class="stat-note">+4 vs last wk</dd></div>
+                <div><dt>PRs this week</dt><dd>2</dd><dd class="stat-note">last 20 Oct</dd></div>
+              </dl>
+
+              <section class="recent-prs" aria-labelledby="pr-title">
+                <h4 id="pr-title">Recent PRs</h4>
+                <div class="pr-row"><div><strong>Romanian deadlift</strong><p>Tue, 20 Oct</p></div><div class="pr-value"><span>100<small>kg</small> × 8</span><span class="data-tag">PR</span></div><svg class="icon small" aria-hidden="true"><use href="#i-chevron"/></svg></div>
+              </section>
+
+              <section class="weekly-volume" aria-labelledby="volume-title">
+                <div class="section-heading"><h4 id="volume-title">Weekly volume</h4><span>Sets / target</span></div>
+                <div class="volume-row"><span>Back</span><div class="volume-track"><i style="width:83.333%"></i></div><span class="count">10/12</span></div>
+                <div class="volume-row"><span>Quads</span><div class="volume-track"><i style="width:75%"></i></div><span class="count">6/8</span></div>
+                <div class="volume-row"><span>Chest</span><div class="volume-track"><i style="width:50%"></i></div><span class="count">6/12</span></div>
+                <div class="volume-row"><span>Shoulders</span><div class="volume-track"><i style="width:25%"></i></div><span class="count">2/8</span></div>
+                <div class="volume-row"><span>Calves</span><div class="volume-track"><i style="width:0%"></i></div><span class="count">0/6</span></div>
+              </section>
+            </div>
+          </div>
+          <div class="bottom-nav" aria-label="Navigation composition">
+            <div class="nav-item"><span class="nav-icon-slot"><svg class="destination-icon" aria-hidden="true"><use href="#i-chart"/></svg></span><span>Progress</span></div>
+            <div class="nav-item"><span class="nav-icon-slot"><svg class="destination-icon" aria-hidden="true"><use href="#i-history"/></svg></span><span>History</span></div>
+            <div class="nav-item current"><span class="nav-icon-slot"><svg class="destination-icon" aria-hidden="true"><use href="#i-home"/></svg></span><span>Today</span></div>
+            <div class="nav-item"><span class="nav-icon-slot"><svg class="destination-icon" aria-hidden="true"><use href="#i-plan"/></svg></span><span>Plan</span></div>
+            <div class="nav-item"><span class="nav-icon-slot"><svg class="destination-icon" aria-hidden="true"><use href="#i-profile"/></svg></span><span>Profile</span></div>
+          </div>
+        </div>
+        <p class="composition-note">Full-body focus study. Primary and support are mock split assignments, including muscles hidden in the current view. Custom keeps the figure unfilled.</p>
+      </section>
+
+      <section class="composition" aria-labelledby="workout-title">
+        <div class="composition-heading"><h2 id="workout-title">Active workout</h2><span>Rest after set 1</span></div>
+        <div class="phone active-workout" aria-describedby="preview-note">
+          <header class="session-header">
+            <div class="session-title-row">
+              <div class="icon-control" aria-label="Minimize affordance, preview"><svg class="icon" aria-hidden="true"><use href="#i-down"/></svg></div>
+              <div class="session-title"><h3>Upper B</h3><p>Chest, shoulders &amp; triceps</p></div>
+              <div class="icon-control" aria-label="Workout options affordance, preview"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></div>
+            </div>
+            <div class="session-meta"><span>1/15 sets</span><span><span class="elapsed">08:42</span> elapsed</span></div>
+            <div class="rest-row"><div><span class="rest-label">Rest</span><span class="rest-time">1:24</span></div><div class="rest-actions"><span><span class="rest-plus">+</span>30s</span><span>Skip</span></div></div>
+            <p class="next-set">Next · Bench press · set 2 · 72.5kg × 8</p>
+            <div class="rest-instrument"><div class="rest-track" style="--remaining: 70%" role="progressbar" aria-label="Rest remaining" aria-valuemin="0" aria-valuemax="120" aria-valuenow="84" aria-valuetext="1 minute 24 seconds of 2 minutes remaining"></div><div class="rest-scale" aria-hidden="true"><i style="--second: 0" class="major"></i><i style="--second: 15"></i><i style="--second: 30"></i><i style="--second: 45"></i><i style="--second: 60" class="major"></i><i style="--second: 75"></i><i style="--second: 90"></i><i style="--second: 105"></i><i style="--second: 120" class="major"></i></div><div class="rest-bounds" aria-hidden="true"><span>0:00</span><span>2:00</span></div></div>
+          </header>
+
+          <div class="phone-scroll" tabindex="0" role="region" aria-label="Scroll static active workout composition">
+            <div class="session-content">
+              <section class="exercise" aria-labelledby="bench-title">
+                <header class="exercise-heading"><svg class="icon small expanded-chevron" aria-hidden="true"><use href="#i-down"/></svg><div><h4 id="bench-title">Bench press</h4><p>Chest · 3×6–10 @ RIR 1–2</p><span class="exercise-top">72.5<small>kg</small></span></div><div class="icon-control" aria-label="Exercise options affordance, preview"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></div></header>
+
+                <div class="compact-set logged"><span class="set-index">1</span><span class="set-values">72.5<small>kg</small> × 8</span><span class="set-rir">RIR 2</span><span class="data-tag neutral-tag">Top</span><span class="logged-mark"><svg class="icon small" aria-hidden="true"><use href="#i-check"/></svg><span class="sr-only">Logged</span></span></div>
+                <div class="rir-strip"><span class="rir-caption">RIR</span><div class="rir-options" aria-label="Post-log RIR correction preview, 2 selected"><span>0</span><span>1</span><span class="selected">2<svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></span><span>3</span><span>4</span><span>5</span></div></div>
+
+                <section class="live-set" aria-label="Current set 2">
+                  <h5>Set 2</h5>
+                  <div class="ruler-label"><span class="ruler-name"><svg class="field-marker" aria-hidden="true"><use href="#i-field"/></svg><span>Weight</span></span><span class="ruler-leader" aria-hidden="true"></span><span class="typing-cue"><svg class="icon small" aria-hidden="true"><use href="#i-type"/></svg>Tap value to type</span></div>
+                  <div class="ruler" aria-label="Weight ruler preview, selected 72.5 kilograms"><div class="ruler-numbers weight-numbers"><span>70.5</span><span>71.5</span><strong>72.5<small>kg</small></strong><span>73.5</span><span>74.5</span></div><div class="ruler-ticks weight-ticks" aria-hidden="true"><i style="--tick: 0"></i><i style="--tick: 1"></i><i style="--tick: 2" class="major"></i><i style="--tick: 3"></i><i style="--tick: 4" class="half"></i><i style="--tick: 5"></i><i style="--tick: 6" class="major"></i><i style="--tick: 7"></i><i style="--tick: 8" class="half"></i><i style="--tick: 9"></i><i style="--tick: 10" class="center"></i><i style="--tick: 11"></i><i style="--tick: 12" class="half"></i><i style="--tick: 13"></i><i style="--tick: 14" class="major"></i><i style="--tick: 15"></i><i style="--tick: 16" class="half"></i><i style="--tick: 17"></i><i style="--tick: 18" class="major"></i><i style="--tick: 19"></i><i style="--tick: 20"></i></div></div>
+                  <div class="ruler-label reps-label"><span class="ruler-name"><svg class="field-marker" aria-hidden="true"><use href="#i-field"/></svg><span>Reps</span></span><span class="ruler-leader" aria-hidden="true"></span></div>
+                  <div class="ruler" aria-label="Repetitions ruler preview, selected 8"><div class="ruler-numbers reps-numbers"><span>6</span><span>7</span><strong>8<small>reps</small></strong><span>9</span><span>10</span></div><div class="ruler-ticks reps-ticks" aria-hidden="true"><i style="--tick: 2" class="major"></i><i style="--tick: 6" class="major"></i><i style="--tick: 10" class="center"></i><i style="--tick: 14" class="major"></i><i style="--tick: 18" class="major"></i></div></div>
+                  <p class="last-reference">last 72.5kg × 8 · 5d ago</p>
+                </section>
+
+                <div class="compact-set pending"><span class="set-index">3</span><span class="set-values">72.5<small>kg</small> × 8</span><span class="pending-mark"><span class="sr-only">Pending</span></span></div>
+              </section>
+
+              <section class="exercise collapsed" aria-label="Incline dumbbell press, collapsed"><header class="exercise-heading"><svg class="icon small" aria-hidden="true"><use href="#i-chevron"/></svg><div><h4>Incline dumbbell press</h4><p>Chest · 3×8–12 @ RIR 1–2</p></div><div class="icon-control" aria-label="Exercise options affordance, preview"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></div></header></section>
+              <section class="exercise collapsed" aria-label="Lateral raise, collapsed"><header class="exercise-heading"><svg class="icon small" aria-hidden="true"><use href="#i-chevron"/></svg><div><h4>Lateral raise</h4><p>Shoulders · 3×12–15 @ RIR 1–2</p></div><div class="icon-control" aria-label="Exercise options affordance, preview"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></div></header></section>
+              <section class="exercise collapsed" aria-label="Cable fly, collapsed"><header class="exercise-heading"><svg class="icon small" aria-hidden="true"><use href="#i-chevron"/></svg><div><h4>Cable fly</h4><p>Chest · 3×10–15 @ RIR 1–2</p></div><div class="icon-control" aria-label="Exercise options affordance, preview"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></div></header></section>
+              <section class="exercise collapsed" aria-label="Triceps pushdown, collapsed"><header class="exercise-heading"><svg class="icon small" aria-hidden="true"><use href="#i-chevron"/></svg><div><h4>Triceps pushdown</h4><p>Triceps · 3×10–15 @ RIR 1–2</p></div><div class="icon-control" aria-label="Exercise options affordance, preview"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></div></header></section>
+              <div class="add-exercise"><svg class="icon small" aria-hidden="true"><use href="#i-plus"/></svg><span>Add exercise</span></div>
+            </div>
+          </div>
+          <div class="log-bar"><div class="app-action"><span>Log set 2 · 72.5kg × 8</span></div></div>
+        </div>
+        <p class="composition-note">Rest stays in the header. One live set, exact-value rulers, in-flow RIR correction and a pinned logging action.</p>
+      </section>
+    </div>
+    <footer class="review-footer"><p>Visual direction only · no saved data or running workout · no Android verification</p><a href="README.md">Design brief &amp; source mapping</a></footer>
+  </main>
+</body>
+</html>

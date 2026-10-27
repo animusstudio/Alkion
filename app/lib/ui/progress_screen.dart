@@ -312,19 +312,10 @@ class _LiftView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                l.progressProgression,
-                style: WorkoutType.mono(
-                  size: 11.5,
-                  color: tokens.faint,
-                  letterSpacing: 0.06 * 11.5,
-                ),
-              ),
-              const SizedBox(height: 5),
               FitLabel(
                 l.progressTrend(metricName),
                 maxLines: 2,
-                style: WorkoutType.display(size: 28, weight: FontWeight.w700),
+                style: WorkoutType.display(size: 28, weight: FontWeight.w500),
               ),
             ],
           ),
@@ -337,25 +328,27 @@ class _LiftView extends StatelessWidget {
           subtitle: subtitle,
           onTap: onPickerTap,
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
 
         // (3) Metric tabs
         MetricTabs(selected: metricId, onSelect: onMetricChanged),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
 
         // (4) Chart. Exactly 1 point can't draw a trend, so it gets an
         // explanatory message instead; 0 points keeps LineChart's own
         // existing blank-frame behaviour, and 2+ draws the real chart.
         WCard(
           padding: const EdgeInsets.fromLTRB(8, 16, 8, 10),
-          child: rawSeries.length == 1
+          child: rawSeries.length < 2
               ? SizedBox(
                   height: 210,
                   child: Center(
                     child: Text(
-                      l.progressTrendNeedsMore,
+                      rawSeries.isEmpty
+                          ? l.progressNoSessions
+                          : l.progressTrendNeedsMore,
                       textAlign: TextAlign.center,
-                      style: WorkoutType.mono(size: 12, color: tokens.faint),
+                      style: WorkoutType.body(size: 12, color: tokens.faint),
                     ),
                   ),
                 )
@@ -368,18 +361,18 @@ class _LiftView extends StatelessWidget {
                   formatValue: _fmtVal,
                 ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
 
         Text(
           l.alkionCompatibility,
-          style: WorkoutType.mono(size: 10, color: tokens.faint),
+          style: WorkoutType.body(size: 12, color: tokens.faint),
         ),
         if (rawSeries.any(
           (p) => p.coverage?.complete == false || !p.topAvailable,
         ))
           Text(
             l.alkionLegacyFallback,
-            style: WorkoutType.mono(size: 10, color: tokens.faint),
+            style: WorkoutType.body(size: 12, color: tokens.faint),
           ),
         if (rawSeries.any((p) => p.coverage?.complete == false))
           Text(
@@ -387,7 +380,7 @@ class _LiftView extends StatelessWidget {
               rawSeries.fold<int>(0, (n, p) => n + (p.coverage?.known ?? 0)),
               rawSeries.fold<int>(0, (n, p) => n + (p.coverage?.total ?? 0)),
             ),
-            style: WorkoutType.mono(size: 10, color: tokens.faint),
+            style: WorkoutType.body(size: 12, color: tokens.faint),
           ),
         // (5) BigStat cards
         _BigStatRow(
@@ -398,14 +391,14 @@ class _LiftView extends StatelessWidget {
           firstTopReps: rawSeries.isNotEmpty ? rawSeries.first.topReps : 0,
           fmtVal: _fmtVal,
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 24),
 
         // (6) Session log
         SectionLabel(
           label: l.progressBySession(metricName),
           action: Text(
             l.progressSessionsCount(rawSeries.length),
-            style: WorkoutType.mono(size: 11, color: tokens.dim),
+            style: WorkoutType.mono(size: 12, color: tokens.dim),
           ),
         ),
         const SizedBox(height: 8),
@@ -415,7 +408,7 @@ class _LiftView extends StatelessWidget {
             child: Center(
               child: Text(
                 l.progressNoSessions,
-                style: WorkoutType.mono(size: 13, color: tokens.faint),
+                style: WorkoutType.body(size: 13, color: tokens.faint),
               ),
             ),
           )
@@ -455,39 +448,29 @@ class _BigStatRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    Widget tile(
+      String label,
+      String value,
+      String? shownUnit, {
+      bool accent = false,
+    }) => WCard(
+      padding: const EdgeInsets.all(16),
+      child: UnitSwap(
+        unitKey: shownUnit ?? '',
+        child: BigStat(
+          label: label,
+          value: value,
+          unit: shownUnit,
+          accent: accent,
+        ),
+      ),
+    );
     if (series.isEmpty) {
-      return Row(
+      return ProgressStatRow(
         children: [
-          Expanded(
-            child: WCard(
-              child: BigStat(
-                label: l.progressStatCurrent,
-                value: '—',
-                unit: unit,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: WCard(
-              child: BigStat(
-                label: l.progressStatBest,
-                value: '—',
-                unit: unit,
-                accent: true,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: WCard(
-              child: BigStat(
-                label: l.progressStat12wkDelta,
-                value: '—',
-                unit: unit,
-              ),
-            ),
-          ),
+          tile(l.progressStatCurrent, '—', unit),
+          tile(l.progressStatBest, '—', unit),
+          tile(l.progressStat12wkDelta, '—', unit),
         ],
       );
     }
@@ -512,50 +495,20 @@ class _BigStatRow extends StatelessWidget {
       fmtVal: fmtVal,
     );
 
-    return Row(
+    return ProgressStatRow(
       children: [
-        Expanded(
-          child: WCard(
-            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-            child: UnitSwap(
-              unitKey: currentUnit,
-              child: BigStat(
-                label: l.progressStatCurrent,
-                value: fmtVal(last),
-                unit: currentUnit.isNotEmpty ? currentUnit : null,
-              ),
-            ),
-          ),
+        tile(
+          l.progressStatCurrent,
+          fmtVal(last),
+          currentUnit.isNotEmpty ? currentUnit : null,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: WCard(
-            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-            child: UnitSwap(
-              unitKey: unit,
-              child: BigStat(
-                label: l.progressStatBest,
-                value: fmtVal(best),
-                unit: unit.isNotEmpty ? unit : null,
-                accent: true,
-              ),
-            ),
-          ),
+        tile(
+          l.progressStatBest,
+          fmtVal(best),
+          unit.isNotEmpty ? unit : null,
+          accent: true,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: WCard(
-            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-            child: UnitSwap(
-              unitKey: unit,
-              child: BigStat(
-                label: l.progressStat12wkDelta,
-                value: delta12wk.value,
-                unit: delta12wk.unit,
-              ),
-            ),
-          ),
-        ),
+        tile(l.progressStat12wkDelta, delta12wk.value, delta12wk.unit),
       ],
     );
   }
@@ -640,7 +593,7 @@ class _SessionLogCard extends StatelessWidget {
                   ? null
                   : Border(bottom: BorderSide(color: tokens.line, width: 1)),
             ),
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
                 // Date
@@ -671,15 +624,18 @@ class _SessionLogCard extends StatelessWidget {
                     alignment: Alignment.centerRight,
                     child: metric.pr && p.isPr
                         ? const PRBadge(small: true)
-                        : Text(
-                            deltaLabel,
-                            textAlign: TextAlign.right,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: WorkoutType.mono(
-                              size: 11.5,
-                              weight: FontWeight.w600,
-                              color: deltaColor,
+                        : FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              deltaLabel,
+                              textAlign: TextAlign.right,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: WorkoutType.mono(
+                                size: 12,
+                                weight: FontWeight.w400,
+                                color: deltaColor,
+                              ),
                             ),
                           ),
                   ),
@@ -708,28 +664,34 @@ class _ValueLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: value,
-            style: WorkoutType.mono(
-              size: 14,
-              weight: FontWeight.w700,
-              color: tokens.text,
-            ),
-          ),
-          if (unit.isNotEmpty)
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text.rich(
+        TextSpan(
+          children: [
             TextSpan(
-              text: unit,
-              style: WorkoutType.mono(size: 10, color: tokens.faint),
+              text: value,
+              style: WorkoutType.mono(
+                size: 14,
+                weight: FontWeight.w400,
+                color: tokens.text,
+              ),
             ),
-          if (reps != null)
-            TextSpan(
-              text: ' × ${reps!}',
-              style: WorkoutType.mono(size: 12, color: tokens.faint),
-            ),
-        ],
+            if (unit.isNotEmpty)
+              TextSpan(
+                text: unit,
+                style: WorkoutType.mono(size: 12, color: tokens.faint),
+              ),
+            if (reps != null)
+              TextSpan(
+                text: ' × ${reps!}',
+                style: WorkoutType.mono(size: 12, color: tokens.faint),
+              ),
+          ],
+        ),
+        maxLines: 1,
+        softWrap: false,
       ),
     );
   }
@@ -747,26 +709,23 @@ class _EmptyState extends StatelessWidget {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            l.progressEmpty,
-            style: WorkoutType.mono(size: 14, color: tokens.faint),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: onOpenPicker,
-            child: Text(
-              l.progressChooseExercise,
-              style: WorkoutType.mono(
-                size: 13,
-                weight: FontWeight.w600,
-                color: tokens.accentText,
-              ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              l.progressEmpty,
+              textAlign: TextAlign.center,
+              style: WorkoutType.body(size: 16, color: tokens.dim),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: onOpenPicker,
+              child: Text(l.progressChooseExercise),
+            ),
+          ],
+        ),
       ),
     );
   }

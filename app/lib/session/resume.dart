@@ -223,10 +223,9 @@ SetState loggedToSetState(LoggedSet r) => SetState(
 /// snapshot and its current [rows] (see [mergeLoggedSets]).
 ///
 /// - A block with nothing logged whose exercise was deleted since is dropped:
-///   its planned sets were never stored, and ticking them would upload set
-///   PUTs the server's exercise foreign key rejects. (A block with logged
-///   sets keeps its exercise: deleting an exercise is refused while logged
-///   sets reference it.)
+///   its planned sets were never stored and cannot reference a missing exercise.
+///   A block with logged sets keeps its exercise: deleting an exercise is
+///   refused while logged sets reference it.
 /// - Each unmatched group becomes a block of exactly its logged rows, with an
 ///   exercise placeholder named after its id if the exercise is gone (the
 ///   fallback History shows), and a baseline that ignores this session.

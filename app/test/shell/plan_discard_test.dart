@@ -480,9 +480,14 @@ void main() {
       await _expandBenchPress(tester);
       await _tapVisible(tester, _workingSetsInc);
 
-      await openTab(tester, WIcons.history);
-      expect(find.text(_l.planDiscardTitle, skipOffstage: false), findsNothing);
-      expect(find.byType(DayEditor, skipOffstage: false), findsOneWidget);
+      for (final destination in [WIcons.history, WIcons.user]) {
+        await openTab(tester, destination);
+        expect(
+          find.text(_l.planDiscardTitle, skipOffstage: false),
+          findsNothing,
+        );
+        expect(find.byType(DayEditor, skipOffstage: false), findsOneWidget);
+      }
 
       await openTab(tester, WIcons.plan);
       expect(_discardTitle, findsNothing);
@@ -528,7 +533,7 @@ void main() {
       await scrollIntoView(tester, find.byType(DayEditor), save);
       final pullSave = find.descendant(
         of: find.byWidgetPredicate((w) => w is DayEditor && w.id == 'd2'),
-        matching: find.byType(PrimaryBtn),
+        matching: find.ancestor(of: save, matching: find.byType(PrimaryBtn)),
       );
       bool pullSaveEnabled() => tester.widget<PrimaryBtn>(pullSave).enabled;
 

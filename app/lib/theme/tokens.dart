@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
 // ── accent options (Profile) ─────────────────────────────────────────────────
+const Color defaultWorkoutAccent = Color(0xFFFF6835);
+
+// Keep every previously stored choice available; only the unset default changes.
 const List<Color> accents = [
-  Color(0xFFc2f53a), // lime (default)
+  defaultWorkoutAccent, // workout coral
+  Color(0xFFFF8A65), // explicit previous default
+  Color(0xFFc2f53a), // lime (explicit legacy choice)
   Color(0xFF5ce6a4), // mint
   Color(0xFFffc24b), // amber
   Color(0xFF5cc8ff), // sky
@@ -11,12 +16,23 @@ const List<Color> accents = [
 
 // ── radius / spacing constants ───────────────────────────────────────────────
 abstract final class AppRadius {
-  static const double radius = 15;
+  static const double control = 8;
+  static const double panel = 12;
+  static const double sheet = 16;
+  static const double tick = 6;
+  // Compatibility for existing card callers. Controls use [control].
+  static const double radius = panel;
   static const double pill = 99;
 }
 
 abstract final class AppSpacing {
+  static const double xs = 4;
+  static const double sm = 8;
+  static const double md = 12;
   static const double pad = 16;
+  static const double lg = 24;
+  static const double xl = 32;
+  static const double touch = 48;
 }
 
 /// Bottom inset for scrollable pages so trailing content (e.g. delete buttons)
@@ -51,86 +67,112 @@ Color accentTextOn(Color accent, List<Color> surfaces, {double target = 4.5}) {
   return hsl.toColor();
 }
 
+/// Neutral black/white surfaces with independent action, workout, focus and status roles.
+/// [accent] preserves the user's workout-color choice; [action] is neutral.
 class WorkoutTokens extends ThemeExtension<WorkoutTokens> {
   const WorkoutTokens({
     required this.bg,
     required this.surface,
     required this.surface2,
     required this.surface3,
+    required this.sunken,
     required this.line,
     required this.lineStrong,
+    required this.grid,
     required this.text,
     required this.dim,
     required this.faint,
     required this.accent,
     required this.accentText,
     required this.accentInk,
+    required this.action,
+    required this.onAction,
+    required this.focus,
+    required this.info,
+    required this.caution,
     required this.danger,
+    required this.success,
+    required this.overlay,
   });
 
   final Color bg;
   final Color surface;
   final Color surface2;
   final Color surface3;
+  final Color sunken;
   final Color line;
   final Color lineStrong;
+  final Color grid;
   final Color text;
   final Color dim;
   final Color faint;
   final Color accent;
-
-  /// The accent as text, an icon or a mark ≤ 8dp on a surface: the accent
-  /// itself in dark mode, a darker shade of it in light mode so it stays
-  /// readable. Fills behind content use [accent].
   final Color accentText;
-
   final Color accentInk;
+  final Color action;
+  final Color onAction;
+  final Color focus;
+  final Color info;
+  final Color caution;
   final Color danger;
+  final Color success;
+  final Color overlay;
 
-  // accentInk is the same constant in both dark and light modes.
-  static const Color _accentInk = Color(0xFF0b0c08);
-
-  // ── dark palette ────────────────────────────────────────────────────────────
   factory WorkoutTokens.dark(Color accent) => WorkoutTokens(
-    bg: const Color(0xFF0b0b0c),
-    surface: const Color(0xFF131316),
-    surface2: const Color(0xFF191920),
-    surface3: const Color(0xFF262630),
-    line: const Color(0x12ffffff), // rgba(255,255,255,0.07) ≈ 0x12 (18/255)
-    lineStrong: const Color(
-      0x24ffffff,
-    ), // rgba(255,255,255,0.14) ≈ 0x24 (36/255)
-    text: const Color(0xFFf3f3f1),
-    dim: const Color(0x9Effffff), // rgba(255,255,255,0.62) ≈ 0x9E (158/255)
-    faint: const Color(0x61ffffff), // rgba(255,255,255,0.38) ≈ 0x61 (97/255)
+    bg: const Color(0xFF000000),
+    surface: const Color(0xFF030305),
+    surface2: const Color(0xFF09090D),
+    surface3: const Color(0xFF15151D),
+    sunken: const Color(0xFF000000),
+    line: const Color(0xFF15151D),
+    lineStrong: const Color(0xFF767682),
+    grid: const Color(0xFF202027),
+    text: const Color(0xFFF0F0F5),
+    dim: const Color(0xFFA7A7B3),
+    faint: const Color(0xFFA7A7B3),
     accent: accent,
     accentText: accent,
-    accentInk: _accentInk,
-    danger: const Color(0xFFff6b5e),
+    accentInk: const Color(0xFF000000),
+    action: const Color(0xFFF0F0F5),
+    onAction: const Color(0xFF000000),
+    focus: const Color(0xFF419BFF),
+    info: const Color(0xFF7CC4FF),
+    caution: const Color(0xFFF2C14E),
+    danger: const Color(0xFFFF6B7A),
+    success: const Color(0xFF5EE0A0),
+    overlay: const Color(0x9E000000),
   );
 
-  // ── light palette ───────────────────────────────────────────────────────────
-  factory WorkoutTokens.light(Color accent) {
-    const bg = Color(0xFFf3f2ec);
-    const surface = Color(0xFFffffff);
-    const surface2 = Color(0xFFf6f5ef);
-    const surface3 = Color(0xFFe9e8e0);
-    return WorkoutTokens(
-      bg: bg,
-      surface: surface,
-      surface2: surface2,
-      surface3: surface3,
-      line: const Color(0x14000000), // rgba(0,0,0,0.08) ≈ 0x14 (20/255)
-      lineStrong: const Color(0x26000000), // rgba(0,0,0,0.15) ≈ 0x26 (38/255)
-      text: const Color(0xFF15150f),
-      dim: const Color(0x99000000), // rgba(0,0,0,0.6) ≈ 0x99 (153/255)
-      faint: const Color(0x66000000), // rgba(0,0,0,0.4) ≈ 0x66 (102/255)
-      accent: accent,
-      accentText: accentTextOn(accent, const [bg, surface, surface2, surface3]),
-      accentInk: _accentInk,
-      danger: const Color(0xFFff6b5e),
-    );
-  }
+  factory WorkoutTokens.light(Color accent) => WorkoutTokens(
+    bg: const Color(0xFFF5F6F8),
+    surface: const Color(0xFFFFFFFF),
+    surface2: const Color(0xFFECEEF2),
+    surface3: const Color(0xFFECEEF2),
+    sunken: const Color(0xFFECEEF2),
+    line: const Color(0xFFDEE1E7),
+    lineStrong: const Color(0xFF7C828D),
+    grid: const Color(0xFFE1E4E9),
+    text: const Color(0xFF111217),
+    dim: const Color(0xFF535863),
+    faint: const Color(0xFF535863),
+    accent: accent,
+    accentText: accent == defaultWorkoutAccent
+        ? const Color(0xFFA82D00)
+        : accentTextOn(accent, const [
+            Color(0xFFF5F6F8),
+            Color(0xFFFFFFFF),
+            Color(0xFFECEEF2),
+          ]),
+    accentInk: const Color(0xFF000000),
+    action: const Color(0xFF111217),
+    onAction: const Color(0xFFFFFFFF),
+    focus: const Color(0xFF0053BC),
+    info: const Color(0xFF1D64A6),
+    caution: const Color(0xFF8A5A00),
+    danger: const Color(0xFFC0243B),
+    success: const Color(0xFF18683F),
+    overlay: const Color(0x73111217),
+  );
 
   @override
   WorkoutTokens copyWith({
@@ -138,32 +180,48 @@ class WorkoutTokens extends ThemeExtension<WorkoutTokens> {
     Color? surface,
     Color? surface2,
     Color? surface3,
+    Color? sunken,
     Color? line,
     Color? lineStrong,
+    Color? grid,
     Color? text,
     Color? dim,
     Color? faint,
     Color? accent,
     Color? accentText,
     Color? accentInk,
+    Color? action,
+    Color? onAction,
+    Color? focus,
+    Color? info,
+    Color? caution,
     Color? danger,
-  }) {
-    return WorkoutTokens(
-      bg: bg ?? this.bg,
-      surface: surface ?? this.surface,
-      surface2: surface2 ?? this.surface2,
-      surface3: surface3 ?? this.surface3,
-      line: line ?? this.line,
-      lineStrong: lineStrong ?? this.lineStrong,
-      text: text ?? this.text,
-      dim: dim ?? this.dim,
-      faint: faint ?? this.faint,
-      accent: accent ?? this.accent,
-      accentText: accentText ?? this.accentText,
-      accentInk: accentInk ?? this.accentInk,
-      danger: danger ?? this.danger,
-    );
-  }
+    Color? success,
+    Color? overlay,
+  }) => WorkoutTokens(
+    bg: bg ?? this.bg,
+    surface: surface ?? this.surface,
+    surface2: surface2 ?? this.surface2,
+    surface3: surface3 ?? this.surface3,
+    sunken: sunken ?? this.sunken,
+    line: line ?? this.line,
+    lineStrong: lineStrong ?? this.lineStrong,
+    grid: grid ?? this.grid,
+    text: text ?? this.text,
+    dim: dim ?? this.dim,
+    faint: faint ?? this.faint,
+    accent: accent ?? this.accent,
+    accentText: accentText ?? this.accentText,
+    accentInk: accentInk ?? this.accentInk,
+    action: action ?? this.action,
+    onAction: onAction ?? this.onAction,
+    focus: focus ?? this.focus,
+    info: info ?? this.info,
+    caution: caution ?? this.caution,
+    danger: danger ?? this.danger,
+    success: success ?? this.success,
+    overlay: overlay ?? this.overlay,
+  );
 
   @override
   WorkoutTokens lerp(WorkoutTokens? other, double t) {
@@ -173,15 +231,24 @@ class WorkoutTokens extends ThemeExtension<WorkoutTokens> {
       surface: Color.lerp(surface, other.surface, t)!,
       surface2: Color.lerp(surface2, other.surface2, t)!,
       surface3: Color.lerp(surface3, other.surface3, t)!,
+      sunken: Color.lerp(sunken, other.sunken, t)!,
       line: Color.lerp(line, other.line, t)!,
       lineStrong: Color.lerp(lineStrong, other.lineStrong, t)!,
+      grid: Color.lerp(grid, other.grid, t)!,
       text: Color.lerp(text, other.text, t)!,
       dim: Color.lerp(dim, other.dim, t)!,
       faint: Color.lerp(faint, other.faint, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
       accentText: Color.lerp(accentText, other.accentText, t)!,
       accentInk: Color.lerp(accentInk, other.accentInk, t)!,
+      action: Color.lerp(action, other.action, t)!,
+      onAction: Color.lerp(onAction, other.onAction, t)!,
+      focus: Color.lerp(focus, other.focus, t)!,
+      info: Color.lerp(info, other.info, t)!,
+      caution: Color.lerp(caution, other.caution, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
+      success: Color.lerp(success, other.success, t)!,
+      overlay: Color.lerp(overlay, other.overlay, t)!,
     );
   }
 }

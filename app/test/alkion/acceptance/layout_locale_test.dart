@@ -5,7 +5,6 @@ import 'package:alkion/main.dart';
 import 'package:alkion/session/active_session_screen.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/shell/session_launcher.dart';
-import 'package:alkion/ui/onboarding_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -37,7 +36,6 @@ void main() {
           runtime = await AlkionRuntime.open(
             Directory('${temp.path}/dev.animusstudio.alkion.dev'),
           );
-          await runtime!.completeOnboarding(OnboardingChoice.empty);
           await seedExercise(
             runtime!.store,
             'acceptance-ex-a',
@@ -77,7 +75,11 @@ void main() {
         phone(412, 1);
         await mountApp();
         await settleUntil(tester, find.byType(AppShell));
-        await act(tester, () => tester.tap(startFab()));
+        await settleUntil(tester, startWorkout());
+        await act(tester, () async {
+          await tester.ensureVisible(startWorkout());
+          await tester.tap(startWorkout());
+        });
         await settleUntil(tester, find.byKey(const Key('log-set-bar')));
         await act(
           tester,

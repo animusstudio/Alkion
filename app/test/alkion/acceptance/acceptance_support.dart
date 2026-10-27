@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:alkion/theme/icons.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
@@ -272,8 +271,5 @@ void expectNoMinimizeException(WidgetTester tester) {
   expect(tester.takeException(), isNull);
 }
 
-/// The tab bar's 64dp start FAB (28dp bolt). Today's hero also draws a smaller
-/// bolt once its plan loads, so the icon alone is ambiguous.
-Finder startFab() => find.byWidgetPredicate(
-  (w) => w is Icon && w.icon == WIcons.bolt && w.size == 28,
-);
+/// The sole Start action lives on the Today workout card.
+Finder startWorkout() => find.byKey(const Key('today-start'));

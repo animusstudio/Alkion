@@ -20,6 +20,7 @@ void main() {
       'Biceps',
       'Triceps',
     ]) {
+      await tester.scrollUntilVisible(find.text(label), 100);
       expect(find.text(label), findsOneWidget);
     }
   });
@@ -76,7 +77,25 @@ void main() {
 
     expect(muscle, 'chest');
     expect(sets, 0);
-    // All 8 muscles now render the "no goal" glyph, chest included.
-    expect(find.text('—'), findsNWidgets(8));
+    // Inspect each lazy row, including the edited Chest, for its no-goal glyph.
+    for (final label in [
+      'Chest',
+      'Back',
+      'Shoulders',
+      'Quads',
+      'Hamstrings',
+      'Calves',
+      'Biceps',
+      'Triceps',
+    ]) {
+      await tester.scrollUntilVisible(find.text(label), 100);
+      final row = find
+          .ancestor(of: find.text(label), matching: find.byType(Padding))
+          .first;
+      expect(
+        find.descendant(of: row, matching: find.text('—')),
+        findsOneWidget,
+      );
+    }
   });
 }

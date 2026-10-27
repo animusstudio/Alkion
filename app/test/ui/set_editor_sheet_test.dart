@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' show Tristate;
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/domain/local_action.dart';
@@ -543,6 +544,7 @@ void main() {
   testWidgets(
     'a stored RIR outside the range selects no chip and survives a weight edit',
     (tester) async {
+      final semantics = tester.ensureSemantics();
       final repo = FakeSessionRepository();
       await tester.pumpWidget(sheet(repo, [_set('s1', rir: 7)]));
       await tester.tap(find.byKey(const Key('set-line-s1')));
@@ -555,10 +557,21 @@ void main() {
           matching: find.byType(DecoratedBox),
         ),
       );
-      expect(faces, isNotEmpty);
-      for (final face in faces) {
-        expect((face.decoration as BoxDecoration).color, tokens.surface3);
+      expect(faces, hasLength(rirMax - rirMin + 1));
+      for (var n = rirMin; n <= rirMax; n++) {
+        expect(
+          tester
+              .getSemantics(find.byKey(Key('rir-$n')))
+              .getSemanticsData()
+              .flagsCollection
+              .isSelected,
+          Tristate.isFalse,
+        );
       }
+      for (final face in faces) {
+        expect((face.decoration as BoxDecoration).color, tokens.surface2);
+      }
+      semantics.dispose();
 
       await tester.timedDrag(
         find.byKey(const Key('live-weight')),

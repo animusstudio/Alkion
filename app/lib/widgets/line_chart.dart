@@ -1,6 +1,5 @@
 import '../util/dates.dart' show qualifiedCalendarDate;
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
@@ -182,15 +181,15 @@ Offset valueLabelOrigin({
 
 /// The chart's axis labels: the y gridline values and the month names.
 TextStyle chartLabelStyle(Color color) =>
-    WorkoutType.mono(size: 9, color: color);
+    WorkoutType.mono(size: 12, color: color);
 
 /// The value chip beside the chart's last point.
 TextStyle chartChipStyle(Color color) =>
-    WorkoutType.mono(size: 12, weight: FontWeight.w700, color: color);
+    WorkoutType.mono(size: 12, color: color);
 
 /// A progression line chart ported from `ui.jsx` `LineChart`.
 ///
-/// Renders a [CustomPaint] with area-fill gradient, polyline, PR markers,
+/// Renders a [CustomPaint] with a data line, PR markers,
 /// month x-labels, and a value label on a chip beside the last point. Falls back
 /// to an empty [SizedBox] when `series.length < 2`.
 ///
@@ -228,7 +227,7 @@ class LineChart extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         return MountProgress(
-          duration: const Duration(milliseconds: 450),
+          duration: Motion.slow,
           builder: (_, t) => CustomPaint(
             size: Size(constraints.maxWidth, height),
             painter: _LineChartPainter(
@@ -237,7 +236,9 @@ class LineChart extends StatelessWidget {
               showReps: showReps,
               formatValue: formatValue,
               accent: tokens.accentText,
-              bg: tokens.bg,
+              bg: tokens.surface,
+              grid: tokens.grid,
+              textScaler: MediaQuery.textScalerOf(context),
               faint: tokens.faint,
               text: tokens.text,
               localeName: localeName,
@@ -261,6 +262,8 @@ class _LineChartPainter extends CustomPainter {
     required this.formatValue,
     required this.accent,
     required this.bg,
+    required this.grid,
+    required this.textScaler,
     required this.faint,
     required this.text,
     required this.localeName,
@@ -273,6 +276,8 @@ class _LineChartPainter extends CustomPainter {
   final String Function(double) formatValue;
   final Color accent;
   final Color bg;
+  final Color grid;
+  final TextScaler textScaler;
   final Color faint;
   final Color text;
 
@@ -294,8 +299,6 @@ class _LineChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final W = size.width;
     final H = size.height;
-    final iw = W - _padL - _padR;
-    final ih = H - _padT - _padB;
     final n = series.length;
 
     // ── y-domain ──────────────────────────────────────────────────────────────
@@ -305,50 +308,45 @@ class _LineChartPainter extends CustomPainter {
     final lo = axis.values.first;
     final hi = axis.values.last;
 
-    final fractions = dateFractions([for (final s in series) s.date]);
-    double xAt(int i) => _padL + fractions[i] * iw;
-    double yAt(double v) => _padT + ih - ((v - lo) / (hi - lo)) * ih;
-
-    // One style for every axis label, built once per paint rather than per
-    // gridline: each call goes through google_fonts.
     final labelStyle = chartLabelStyle(faint);
+    var labelWidth = 0.0;
+    var labelHeight = 0.0;
+    for (final value in axis.values) {
+      final painter = _paragraph(axis.label(value), labelStyle);
+      labelWidth = math.max(labelWidth, painter.width);
+      labelHeight = math.max(labelHeight, painter.height);
+      painter.dispose();
+    }
+    final padL = math.max(_padL, math.min(labelWidth + 8, W * .45));
+    final padT = math.max(_padT, labelHeight / 2 + 4);
+    final padB = math.max(_padB, labelHeight + 8);
+    final iw = math.max(1.0, W - padL - _padR);
+    final ih = math.max(1.0, H - padT - padB);
+
+    final fractions = dateFractions([for (final s in series) s.date]);
+    double xAt(int i) => padL + fractions[i] * iw;
+    double yAt(double v) => padT + ih - ((v - lo) / (hi - lo)) * ih;
 
     // ── gridlines + left y labels, on round values ───────────────────────────
     final gridPaint = Paint()
-      ..color = faint.withValues(alpha: 0.18)
+      ..color = grid
       ..strokeWidth = 1;
 
     for (final gv in axis.values) {
       final gy = yAt(gv);
 
-      canvas.drawLine(Offset(_padL, gy), Offset(W - _padR, gy), gridPaint);
+      canvas.drawLine(Offset(padL, gy), Offset(W - _padR, gy), gridPaint);
 
       _paintText(
         canvas,
         text: axis.label(gv),
-        x: _padL - 7,
-        y: gy + 3.5,
+        x: padL - 8,
+        y: gy,
         rightAlign: true,
         style: labelStyle,
+        canvasWidth: W,
       );
     }
-
-    // ── area-fill gradient (vertical: accent@0.22 → accent@0) ─────────────────
-    final areaPath = Path()..moveTo(xAt(0), _padT + ih);
-    for (var i = 0; i < n; i++) {
-      areaPath.lineTo(xAt(i), yAt(series[i].value));
-    }
-    areaPath
-      ..lineTo(xAt(n - 1), _padT + ih)
-      ..close();
-
-    final areaGradient = ui.Gradient.linear(
-      Offset(0, _padT),
-      Offset(0, _padT + ih),
-      // Fade the fill in with progress so it never pops; identical at t=1.
-      [accent.withValues(alpha: 0.22 * progress), accent.withValues(alpha: 0)],
-    );
-    canvas.drawPath(areaPath, Paint()..shader = areaGradient);
 
     // ── polyline — accent stroke w2.4 round ───────────────────────────────────
     final linePath = Path()..moveTo(xAt(0), yAt(series[0].value));
@@ -388,11 +386,7 @@ class _LineChartPainter extends CustomPainter {
         );
       } else {
         // Mid dot: r2.2 accent@0.55
-        canvas.drawCircle(
-          Offset(cx, cy),
-          2.2,
-          Paint()..color = accent.withValues(alpha: 0.55),
-        );
+        canvas.drawCircle(Offset(cx, cy), 2.2, Paint()..color = accent);
       }
     }
 
@@ -400,17 +394,28 @@ class _LineChartPainter extends CustomPainter {
     // The first month is labelled at the first point; later months at their
     // 1st on the time axis (so a late-August and an early-September point
     // don't stack their labels), skipping any that would crowd a neighbour.
+    Rect? previousMonthBounds;
     for (final m in monthLabelPositions([for (final s in series) s.date])) {
-      final x = _padL + m.fraction * iw;
-      _paintText(
-        canvas,
-        text: DateFormat.MMM(localeName).format(DateTime(2024, m.month)),
-        x: x,
-        y: H - 8,
-        rightAlign: false,
-        centreAlign: true,
-        style: labelStyle,
+      final x = padL + m.fraction * iw;
+      final label = DateFormat.MMM(localeName).format(DateTime(2024, m.month));
+      final paragraph = _paragraph(label, labelStyle, maxWidth: W);
+      final origin = Offset(
+        (x - paragraph.width / 2).clamp(
+          0.0,
+          math.max(0.0, W - paragraph.width),
+        ),
+        H - labelHeight / 2 - 4 - paragraph.height / 2,
       );
+      final bounds = origin & paragraph.size;
+      // Fractional spacing alone cannot account for scaled or localized text.
+      // Compare the final painted bounds, including the edge clamp.
+      if (previousMonthBounds != null &&
+          bounds.left < previousMonthBounds.right + 8) {
+        paragraph.dispose();
+        continue;
+      }
+      paragraph.paint(canvas, origin);
+      previousMonthBounds = bounds;
     }
 
     // ── last point: r9 accent@0.16 halo + r4.5 dot + floating value label ─────
@@ -422,12 +427,6 @@ class _LineChartPainter extends CustomPainter {
     final lastX = xAt(n - 1);
     final lastY = yAt(last.value);
 
-    // r9 halo
-    canvas.drawCircle(
-      Offset(lastX, lastY),
-      9,
-      Paint()..color = accent.withValues(alpha: 0.16),
-    );
     // r4.5 accent dot + bg-color halo stroke w2
     canvas.drawCircle(Offset(lastX, lastY), 4.5, Paint()..color = accent);
     canvas.drawCircle(
@@ -443,10 +442,7 @@ class _LineChartPainter extends CustomPainter {
     // covers the line's final segment.
     final label =
         '${formatValue(last.value)}$unit${showReps ? ' ×${last.reps}' : ''}';
-    final tp = TextPainter(
-      text: TextSpan(text: label, style: chartChipStyle(text)),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final tp = _paragraph(label, chartChipStyle(text), maxWidth: W - 16);
     const chipPad = EdgeInsets.symmetric(horizontal: 6, vertical: 3);
     final chipSize = Size(
       tp.width + chipPad.horizontal,
@@ -468,6 +464,24 @@ class _LineChartPainter extends CustomPainter {
     tp.paint(canvas, origin + Offset(chipPad.left, chipPad.top));
   }
 
+  TextPainter _paragraph(String text, TextStyle style, {double? maxWidth}) {
+    TextPainter build(TextScaler scaler) => TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    var painter = build(textScaler);
+    if (maxWidth != null && painter.width > maxWidth) {
+      // Fit the complete numeric string rather than truncating exact values.
+      final size = style.fontSize!;
+      final factor = textScaler.scale(size) / size * maxWidth / painter.width;
+      painter.dispose();
+      painter = build(TextScaler.linear(factor));
+    }
+    return painter;
+  }
+
   /// Paints [text] at logical position ([x], [y]).
   ///
   /// Alignment options (only one should be true at a time):
@@ -485,11 +499,9 @@ class _LineChartPainter extends CustomPainter {
     required bool rightAlign,
     bool centreAlign = false,
     required TextStyle style,
+    required double canvasWidth,
   }) {
-    final tp = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final tp = _paragraph(text, style, maxWidth: rightAlign ? x : canvasWidth);
 
     final double dx;
     if (rightAlign) {
@@ -499,7 +511,13 @@ class _LineChartPainter extends CustomPainter {
     } else {
       dx = x;
     }
-    tp.paint(canvas, Offset(dx, y - tp.height / 2));
+    tp.paint(
+      canvas,
+      Offset(
+        dx.clamp(0.0, math.max(0.0, canvasWidth - tp.width)),
+        y - tp.height / 2,
+      ),
+    );
   }
 
   @override
@@ -511,6 +529,8 @@ class _LineChartPainter extends CustomPainter {
         old.formatValue != formatValue ||
         old.accent != accent ||
         old.bg != bg ||
+        old.grid != grid ||
+        old.textScaler != textScaler ||
         old.faint != faint ||
         old.text != text ||
         old.localeName != localeName;

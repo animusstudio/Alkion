@@ -6,6 +6,7 @@ import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/export/alkion_exports.dart';
 import 'package:alkion/export/export_service.dart';
+import 'package:alkion/files/document_access.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/transfer/json_span_reader.dart';
@@ -15,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'import_test.dart' show authorNote, domainRow, localId, withoutRow;
 import 'transfer_harness.dart';
+import '../files/fake_documents.dart';
 
 const rich = 'full-rich-synthetic-v1.json';
 const seams = 'full-historical-seams-synthetic-v1.json';
@@ -52,6 +54,50 @@ bool containsKey(Object? node, String key) => switch (node) {
 };
 
 void main() {
+  test(
+    'document export publishes complete local original and keeps it on cancel, provider failure and changed readback',
+    () async {
+      final out = await Directory.systemTemp.createTemp(
+        'alkion-export-documents-',
+      );
+      try {
+        final documents = FakeDocuments(out);
+        final delivery = DocumentExportDelivery(documents, directory: out);
+        final bytes = Uint8List.fromList([0, 10, 255, 44]);
+        final saved = await delivery.deliver(bytes, 'synthetic.json');
+        expect(saved.outcome, ExportOutcome.providerVerified);
+        expect(await File(documents.sources.last).readAsBytes(), bytes);
+        documents.cancelSave = true;
+        final cancelled = await delivery.deliver(bytes, 'synthetic.json');
+        expect(cancelled.outcome, ExportOutcome.cancelled);
+        expect(await File(cancelled.path!).readAsBytes(), bytes);
+        documents.cancelSave = false;
+        documents.saveError = const DocumentException(
+          'document_permission_denied',
+        );
+        await expectLater(
+          delivery.deliver(bytes, 'synthetic.json'),
+          throwsA(isA<DocumentException>()),
+        );
+        expect(await File(documents.sources.last).readAsBytes(), bytes);
+        documents.saveError = null;
+        documents.corruptReadback = true;
+        await expectLater(
+          delivery.deliver(
+            Uint8List.fromList(List.filled(100, 42)),
+            'synthetic.json',
+          ),
+          throwsA(isA<DocumentException>()),
+        );
+        expect(
+          await File(documents.sources.last).readAsBytes(),
+          List.filled(100, 42),
+        );
+      } finally {
+        await out.delete(recursive: true);
+      }
+    },
+  );
   test(
     'AC-16 versioned full-domain export: exact values, tombstones, revisions and coverage from one snapshot',
     () async {
@@ -302,7 +348,7 @@ void main() {
           ),
         );
         // An unrelated file already holding the name is never replaced, even
-        // without any pre-check: the exclusive link refuses it.
+        // without any pre-check: exclusive publication refuses it.
         final occupied = File(
           '${out.path}/alkion-original-${bad.artifactId!.substring(4, 20)}.bin',
         );

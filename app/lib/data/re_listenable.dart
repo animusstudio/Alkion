@@ -3,7 +3,7 @@ import 'dart:async';
 /// Wraps a single-subscription stream factory in a stream that can be listened
 /// to more than once, replaying the most recent value to each new listener.
 ///
-/// `PowerSyncDatabase.watch()` returns a SINGLE-SUBSCRIPTION stream, and
+/// A SQLite watch may be a single-subscription stream, and
 /// cancelling does not reset it — a second `listen()` throws
 /// "Bad state: Stream has already been listened to". That is fatal for a
 /// StreamBuilder living inside a lazy ListView: the sliver garbage-collects the

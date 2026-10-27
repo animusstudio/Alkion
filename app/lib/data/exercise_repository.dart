@@ -146,10 +146,8 @@ String slugify(String name) {
   return s.isEmpty ? 'exercise' : s;
 }
 
-/// Returns a collision-proof slug by appending the first 8 chars of [id].
-///
-/// Using the UUID prefix makes the slug globally unique without querying the
-/// server: `slugify(name) + '-' + id.substring(0, 8)`.
+/// Retains the inherited slug rule: append up to eight ID characters to the
+/// normalized name without a network lookup.
 String uniqueSlug(String name, String id) {
   return '${slugify(name)}-${id.substring(0, id.length < 8 ? id.length : 8)}';
 }
@@ -159,8 +157,8 @@ String uniqueSlug(String name, String id) {
 /// What deleting an exercise requires, given its references.
 enum ExerciseDeleteAction { blockedByHistory, confirmWithDays, confirmPlain }
 
-/// Logged sets always block (history would break — mirrors the server's FK
-/// RESTRICT); split-day references are removable alongside the exercise.
+/// Logged sets always block deletion to preserve history references; split-day
+/// references are removable alongside the exercise.
 ExerciseDeleteAction decideExerciseDelete({
   required int setCount,
   required int dayCount,
@@ -178,14 +176,14 @@ ExerciseDeleteAction decideExerciseDelete({
 /// - UPDATE when [existingId] is non-null (targets that id; slug not changed).
 ///
 /// Value rules (mirror bodyweightUpsertOp pattern):
-/// - [ExerciseDraft.baseWeightKg] null → `''` (server NULLIF keeps NULL);
+/// - [ExerciseDraft.baseWeightKg] null → `''` in the compatibility builder;
 ///   non-null → `toStringAsFixed(2)`.
 /// - [ExerciseDraft.plateStepKg] always `toStringAsFixed(2)`.
 /// - [ExerciseDraft.compound] → `0`/`1`.
-/// - OMIT user_id / created_at / created_by (server stamps).
+/// - OMIT old user_id / created_at / created_by fields.
 /// - SET is_template = 0 locally so the row is visible offline: the list
 ///   queries hide templates, and an unset is_template (NULL) would be hidden
-///   too. The server forces is_template=false for client writes regardless.
+///   too. Keep this compatibility value explicit.
 ({String sql, List<Object?> args}) exerciseUpsertOp(
   String? existingId,
   String newId,

@@ -518,8 +518,8 @@ void main() {
             find.descendant(
               of: find
                   .ancestor(
-                    of: find.text(label.toUpperCase()),
-                    matching: find.byType(Column),
+                    of: find.text(label),
+                    matching: find.byType(Container),
                   )
                   .first,
               matching: find.text(value),

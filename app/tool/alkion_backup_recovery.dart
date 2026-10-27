@@ -645,6 +645,21 @@ Future<void> child(List<String> args) async {
           workDirectory: scratch,
         ).abandon(args[2]);
         result = {'abandoned': args[2]};
+      case 'fresh-state':
+        final state = await RestoreService(
+          supportRootOf(caseRoot),
+          workDirectory: scratch,
+        ).freshState();
+        result = {
+          'can_start_local': state?.canStartLocal,
+          'can_complete': state?.canComplete,
+          'restore_id': state?.pending?.restoreId,
+        };
+      case 'complete-fresh':
+        result = (await RestoreService(
+          supportRootOf(caseRoot),
+          workDirectory: scratch,
+        ).completeFresh(args[2])).intent;
       case 'inventory':
         final store = await openStore(caseRoot);
         try {
@@ -1446,6 +1461,108 @@ final class Qualification {
     );
   }
 
+  Future<void> freshPreparationCases() async {
+    for (final boundary in [
+      'fresh-preparation',
+      'restore-staged-bytes',
+      'restore-staged',
+      'restore-intent',
+      'restore-selected',
+      'restore-before-identity',
+    ]) {
+      final label = 'first-start-$boundary';
+      final root = await caseDir(label).create();
+      final killed = await runChild(output, '$label-kill', [
+        'restore',
+        root.path,
+        backupPath,
+        boundary,
+      ], killAt: boundary);
+      final support = supportRootOf(root);
+      final preparation = File(
+        p.join(
+          freshPreparationDirectory(support.path, AlkionIdentity.applicationId),
+          'preparation.json',
+        ),
+      );
+      final preparationDigest = sha256
+          .convert(preparation.readAsBytesSync())
+          .toString();
+      final oldStages = <String, String>{
+        if (support.existsSync())
+          for (final entry in support.listSync(
+            recursive: true,
+            followLinks: false,
+          ))
+            if (entry is File &&
+                [
+                  'alkion.sqlite',
+                  'intent.json',
+                ].contains(p.basename(entry.path)))
+              entry.path: sha256.convert(entry.readAsBytesSync()).toString(),
+      };
+      final status = await runChild(output, '$label-status', [
+        'fresh-state',
+        root.path,
+      ]);
+      final state = Map<String, Object?>.from(status['result'] as Map);
+      final ready = ![
+        'fresh-preparation',
+        'restore-staged-bytes',
+      ].contains(boundary);
+      final refused = await reopenTwice(root);
+      final resumed = await runChild(
+        output,
+        '$label-resume',
+        ready
+            ? ['complete-fresh', root.path, state['restore_id'] as String]
+            : ['restore', root.path, backupPath],
+      );
+      final intent = Map<String, Object?>.from(resumed['result'] as Map);
+      final exactBeforeReopen = oldStages.entries.every(
+        (entry) =>
+            sha256.convert(File(entry.key).readAsBytesSync()).toString() ==
+            entry.value,
+      );
+      final validation = await _validateRestored(root, intent, named: false);
+      final selectedDatabase = generationDatabasePath(
+        p.join(support.path, 'profiles', intent['profile_id'] as String),
+        intent['restore_id'] as String,
+      );
+      record(
+        label,
+        {
+          'actually_sigkilled':
+              killed['boundary_reached'] == true && killed['exit'] == -9,
+          'no_blank_identity': refused is String,
+          'local_start_refused': state['can_start_local'] == false,
+          'honest_resume_or_reselect': state['can_complete'] == ready,
+          'preparation_immutable':
+              sha256.convert(preparation.readAsBytesSync()).toString() ==
+              preparationDigest,
+          'staging_exact_before_normal_reopen': exactBeforeReopen,
+          'unselected_attempts_and_intents_retained_exact': oldStages.entries
+              .where((entry) => entry.key != selectedDatabase)
+              .every(
+                (entry) =>
+                    sha256
+                        .convert(File(entry.key).readAsBytesSync())
+                        .toString() ==
+                    entry.value,
+              ),
+          'restored_covered_state_exact_two_reopens':
+              (validation['violations'] as List).isEmpty,
+        },
+        {
+          'kill': killed,
+          'status': state,
+          'resume': resumed,
+          'validation': validation,
+        },
+      );
+    }
+  }
+
   Future<void> unreadablePreviousCase() async {
     final root = await copyOfBase('unreadable-previous');
     final directory = await profileDirectoryOf(root);
@@ -1885,6 +2002,7 @@ Future<void> main(List<String> args) async {
   await q.restoreCase();
   await q.selectionInterruptionCase();
   await q.freshStorageCase();
+  await q.freshPreparationCases();
   await q.abandonBeforeFenceCase();
   await q.abandonMarkerInterruptionCases();
   await q.unreadablePreviousCase();

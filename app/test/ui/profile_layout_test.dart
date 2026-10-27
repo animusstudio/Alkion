@@ -1,6 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/ui/profile_screen.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 
 import '../support/layout_expect.dart';
 import '../support/screen_harness.dart';
@@ -28,8 +30,14 @@ void main() {
   }
 
   // The quick stats ("KÖRPERGEWICHT", "82.4kg"), the theme chips and the
-  // local-profile status all outgrew their slots at 2.0x.
-  for (final (width, code) in [(320.0, 'de'), (320.0, 'it'), (412.0, 'de')]) {
+  // Data actions all need room at 2.0x.
+  for (final (width, code) in [
+    (320.0, 'en'),
+    (320.0, 'de'),
+    (320.0, 'es'),
+    (320.0, 'it'),
+    (412.0, 'de'),
+  ]) {
     testWidgets('Profile holds at ${width.round()}dp 2.0x $code', (
       tester,
     ) async {
@@ -41,9 +49,56 @@ void main() {
         find.byType(ProfileScreen),
         'Profile ${width.round()}dp $code',
       );
+      final l = AppLocalizations.of(tester.element(find.byType(ProfileScreen)));
+      final data = find.byKey(const Key('profile-data-actions'));
+      await scrollIntoView(tester, find.byType(ProfileScreen), data);
+      for (final label in [l.alkionBackupRestore, l.exportHistory]) {
+        final title = find.descendant(of: data, matching: find.text(label));
+        expect(title, findsOneWidget);
+        expectNoSplitWords(tester, within: title);
+      }
+      expect(
+        find.descendant(of: data, matching: find.byType(InkWell)),
+        findsNWidgets(2),
+      );
+      expect(find.textContaining('Reps'), findsNothing);
+      expect(find.text(l.exportAllData), findsNothing);
+      expect(find.text(l.profileGroupSync.toUpperCase()), findsNothing);
+      expect(find.text(l.alkionAccountUnavailable), findsNothing);
+      expect(tester.takeException(), isNull);
       await harness.unmount(tester);
     });
   }
+
+  testWidgets(
+    'rest controls retain full targets and exact typed values at 320dp 2x',
+    (tester) async {
+      await harness.open(tester);
+      setPhone(tester, width: 320, textScale: 2);
+      await pumpProfile(tester, 'en');
+      final value = find.text('180s');
+      await scrollIntoView(tester, find.byType(ProfileScreen), value);
+      final target = find
+          .ancestor(of: value, matching: find.byType(GestureDetector))
+          .first;
+      expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getRect(target).top,
+        greaterThan(tester.getRect(find.text('Compound rest')).bottom),
+      );
+      await tester.tap(value);
+      await tester.pumpAndSettle();
+      final field = find.byType(TextField);
+      expect(tester.getSize(field).height, greaterThanOrEqualTo(48));
+      await tester.enterText(field, '195');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await settleReal(tester, ticks: 3);
+      expect(harness.settings.restCompoundSeconds, 195);
+      expect(find.text('195s'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await harness.unmount(tester);
+    },
+  );
 
   testWidgets('the theme chips wrap in their slot and leave the title room', (
     tester,
@@ -62,86 +117,4 @@ void main() {
     expect(tester.takeException(), isNull);
     await harness.unmount(tester);
   });
-
-  testWidgets('the local profile status fits its row at 320dp 2.0x de', (
-    tester,
-  ) async {
-    await harness.open(tester, prefs: syncOnPrefs);
-    setPhone(tester, width: 320, textScale: 2.0);
-    final auth = await signedInAuth(tester);
-    await pumpProfile(tester, 'de', auth: auth);
-    final status = find.text('Lokales Profil');
-    await scrollIntoView(tester, find.byType(ProfileScreen), status);
-    expect(tester.takeException(), isNull);
-    expectNoSplitWords(tester, within: status);
-    final row = tester.getRect(find.byType(ProfileScreen));
-    expect(tester.getRect(status).right, lessThanOrEqualTo(row.right));
-    await harness.unmount(tester);
-  });
-
-  // The account-unavailable explanation sits below its local-profile title
-  // and remains readable at large text.
-  for (final width in [320.0, 412.0]) {
-    for (final (code, title, label) in [
-      ('de', 'Lokales Profil', 'Konten sind hier noch nicht verfügbar.'),
-      (
-        'it',
-        'Profilo locale',
-        'La connessione a un account non è disponibile in questa versione di sviluppo.',
-      ),
-    ]) {
-      testWidgets('the account-unavailable explanation stays whole at '
-          '${width.round()}dp 2.0x $code', (tester) async {
-        await harness.open(
-          tester,
-          prefs: syncOnPrefs,
-          lastSyncedAt: DateTime.now().subtract(
-            const Duration(hours: 3, minutes: 5),
-          ),
-        );
-        setPhone(tester, width: width, textScale: 2.0);
-        await pumpProfile(tester, code, auth: await signedInAuth(tester));
-        final status = find.text(label);
-        await scrollIntoView(tester, find.byType(ProfileScreen), status);
-        expect(tester.takeException(), isNull);
-        final p = tester.renderObject<RenderParagraph>(status);
-        expect(p.didExceedMaxLines, isFalse, reason: '"$label" is cut short');
-        expectNoSplitWords(tester, within: status);
-        expect(
-          tester.getRect(status).top,
-          greaterThanOrEqualTo(tester.getRect(find.text(title)).bottom),
-          reason: 'the status should sit under the title',
-        );
-        expect(
-          tester.getRect(status).right,
-          lessThanOrEqualTo(tester.getRect(find.byType(ProfileScreen)).right),
-        );
-        await harness.unmount(tester);
-      });
-    }
-  }
-
-  testWidgets(
-    'the unavailable explanation stays below its title at 412dp 1.0x en',
-    (tester) async {
-      await harness.open(
-        tester,
-        prefs: syncOnPrefs,
-        lastSyncedAt: DateTime.now().subtract(
-          const Duration(hours: 3, minutes: 5),
-        ),
-      );
-      setPhone(tester, width: 412);
-      await pumpProfile(tester, 'en', auth: await signedInAuth(tester));
-      final status = find.text(
-        'Account connection is unavailable in this development build.',
-      );
-      await scrollIntoView(tester, find.byType(ProfileScreen), status);
-      final title = tester.getRect(find.text('Local profile'));
-      expect(tester.getRect(status).top, greaterThanOrEqualTo(title.bottom));
-      expectNoSplitWords(tester, within: status);
-      expect(tester.takeException(), isNull);
-      await harness.unmount(tester);
-    },
-  );
 }

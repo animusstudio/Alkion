@@ -16,7 +16,7 @@ import 're_listenable.dart';
 ///
 /// OMIT created_by / slug / notes / user_id / created_at. SET is_template = 0
 /// locally so a new day is visible offline (list queries hide templates and an
-/// unset NULL is_template would be hidden too); the server forces it anyway.
+/// unset NULL is_template would be hidden too).
 ({String sql, List<Object?> args}) dayTemplateUpsertOp(
   String? existingId,
   String newId,
@@ -52,7 +52,7 @@ import 're_listenable.dart';
 ///   exercise_id or day_template_id).
 ///
 /// OMIT created_by / user_id / created_at. SET is_template = 0 locally (matches
-/// the day row) so the slot is treated as owned offline; the server forces it.
+/// the day row) so the slot is treated as locally owned.
 ({String sql, List<Object?> args}) slotUpsertOp(
   String? itemId,
   String newId,
@@ -114,8 +114,7 @@ import 're_listenable.dart';
 /// SQL ops to execute in a single writeTransaction.
 ///
 /// **INVARIANT (new/clone path):** the day_templates INSERT is always FIRST,
-/// followed by all slot ops — required because the server verifies parent
-/// ownership before accepting items.
+/// followed by all slot ops so each item has its parent before insertion.
 ///
 /// [existingId] null → INSERT the day; non-null → UPDATE the day.
 /// [loadedSlots] must contain the current DB slots (with itemId set).

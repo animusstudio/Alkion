@@ -1,93 +1,83 @@
 # Alkion app development
 
-This is the pre-1.0, account-free Alkion app. Flutter is pinned to 3.44.0 with
-FVM in [`.fvmrc`](.fvmrc). Follow the current [Alkion development
-guide](../docs/alkion/development.md) for toolchain, storage and safety
-boundaries. From the repository root, the active app checks are:
+The account-free Alkion runtime stores local profiles, workouts, settings and
+immutable outbox entries in SQLite. Backup/restore and transfer preserve original
+bytes and uncertain recovery state. No backend, account, synchronization sender
+or update transport is required or enabled.
+
+## Toolchain and checks
+
+Flutter is pinned to 3.44.0 in [`.fvmrc`](.fvmrc). Use an existing FVM installation
+and run every local Flutter/Dart command through Make from the repository root:
 
 ```sh
 make -C app get
 make -C app alkion-toolchain
 make -C app analyze
-make -C app test TEST='test/path/to/focused_test.dart'
-make -C app test
+make -C app test TEST=--concurrency=2
+make -C app test TEST=test/path/to/focused_test.dart
 make -C app format
 make -C app build
 ```
 
-`get` uses offline locked dependencies; `format` checks formatting without
-writing files; `build` creates the Linux bundle. Use `make -C app test TEST=...`
-for a focused test path.
+For a fresh machine, install the pinned SDK with FVM from `app/`, then use
+`make -C app get-online` from the repository root once to populate dependencies
+with the committed lock enforced. See
+[continuing development](../docs/alkion/continuing-development.md).
 
-## Historical Reps scaffold notes
+`get` resolves offline with the lock enforced. `format` checks without writing;
+`fmt FORMAT_FILES=...` formats explicitly owned files. `build` creates the Linux
+bundle. Tests use disposable fixtures, including actual standalone SQLite;
+they do not need PostgreSQL, PowerSync or a Go service.
 
-The following body is retained from the inherited Reps scaffold. It records the
-older PowerSync/backend proof-of-concept and its setup instructions; it is
-historical context, not current Alkion setup or run guidance.
-
-# app/
-
-Flutter (Dart) client for workout-tracker. Local-first: reads/writes a local
-SQLite database that [PowerSync](https://www.powersync.com/) keeps in sync with
-the Go API + Postgres backend. See
-`docs/superpowers/specs/2026-05-24-workout-tracker-stack-design.md` for the
-stack rationale.
-
-The UI in `lib/ui/` is intentionally minimal/throwaway — UX is deferred to a
-later design phase. These foundations exist to prove the sync round-trip
-(download of seeded data + upload of local writes).
-
-## Layout
-
-- `lib/sync/schema.dart` — PowerSync local schema for the six synced tables.
-- `lib/sync/db.dart` — opens the single `PowerSyncDatabase`, connect/disconnect.
-- `lib/sync/connector.dart` — `PowerSyncBackendConnector`: `fetchCredentials`
-  (POST `/auth/powersync-token`) and `uploadData` (POST `/sync/upload`).
-- `lib/auth/auth_store.dart` — login / refresh / logout + secure token storage.
-- `lib/ui/` — throwaway login + exercises-list/write screens.
-
-## Toolchain
-
-Flutter is pinned to 3.44.0 via [fvm](https://fvm.app) in `app/.fvmrc`. Install
-the pinned SDK once (from the repo root):
+For a normal development APK, select an explicit disposable Android user
+directory for the debug key, with Android SDK and Java 21 configured:
 
 ```sh
-make -C app install
-make -C app doctor   # the Linux toolchain section should be all green
+ANDROID_USER_HOME=/tmp/alkion-debug-user make -C app build-apk
 ```
 
-All Flutter/Dart commands run through `make -C app <target>`, which invokes
-`fvm flutter`/`fvm dart` with the pinned SDK.
+The default flavor is `dev` (`dev.animusstudio.alkion.dev`, Alkion Dev);
+`ALKION_FLAVOR=supported` selects `dev.animusstudio.alkion`. These commands build
+only. They do not select a device, install or launch an app.
 
-## First-time scaffold
-
-`lib/` and `pubspec.yaml` are committed; the platform runner directory
-(`linux/`) is generated once, in place (additive — it will not touch `lib/`):
+For an optimized, private release-mode test APK (dev package, arm64 only), reuse
+the **same disposable Android user directory and debug certificate** as the
+installed development APK:
 
 ```sh
-make -C app scaffold-linux
-make -C app get
+ANDROID_USER_HOME=/tmp/alkion-debug-user ALKION_LOCAL_RELEASE_TEST=1 \
+  make -C app build-apk-local-test-release
 ```
 
-## Run (Linux desktop — foundations validation target)
+This opt-in uses release-mode compilation with disposable debug signing.
+Gradle permits only `assembleDevRelease` for this route;
+supported-flavor release builds and bundles remain blocked. Without the opt-in,
+all release tasks remain blocked. Builds never read inherited `key.properties`;
+final release identity/signing remain separate owner decisions.
 
-The backend must be up:
+## Source map
 
-```sh
-docker compose -f infra/compose.yml -f infra/compose.dev.yml --env-file infra/.env up -d
-make -C app run
-```
+- `lib/main.dart`, `lib/identity/`: profile identity and selected-generation startup.
+- `lib/store/`, `lib/domain/`, `lib/data/`: SQLite admission/recovery,
+  revisioned domain actions and immutable local outbox.
+- `lib/data/`, `lib/session/`: repositories, drafts, finished workouts and timers.
+- `lib/recovery/`, `lib/transfer/`: backup, restore, quarantine and import contracts.
+- `lib/ui/`, `lib/shell/`, `lib/widgets/`, `lib/theme/`: application UI.
+- `test/`, `tool/`: unit/widget/native-boundary tests and focused local proof tools.
 
-Dev credentials: `me@example.com` / `devpassword`.
+Follow [app agent guidance](AGENTS.md), [current development](../docs/alkion/development.md)
+and [integrated acceptance](../docs/alkion/acceptance.md). Driver, store, transfer
+and backup Make routes require explicit disposable fixture paths. The bespoke
+Android campaign tools are retired; use the [manual APK checklist](../docs/alkion/android-smoke.md)
+for a small device smoke check. Host tests do not establish device behavior.
 
-- The exercises list should populate with the seeded template exercises
-  (proves DOWNLOAD).
-- "Log a quick session" inserts a session + two sets locally; the connector
-  uploads them to `/sync/upload` → Postgres (proves UPLOAD).
+## Historical capture evidence
 
-## Analyze / test
-
-```sh
-make -C app analyze
-make -C app test
-```
+[Retirement disposition](../docs/alkion/legacy-retirement.md) records the old Reps
+backend removal and retained non-runtime schema/protocol fixtures. Dated capture
+qualification and installation records remain available, as do
+`scripts/check-capture-installation.py`, `scripts/verify-capture-rehearsal.py` and
+their installation tests. Older capture-production/release commands are not
+current app setup instructions. No live import, key access or service operation
+is authorized by this guide.

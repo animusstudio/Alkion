@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/main.dart';
 import 'package:alkion/store/local_store.dart';
-import 'package:alkion/ui/onboarding_screen.dart';
 import 'package:alkion/units/unit_service.dart';
 import '../../support/app_fonts.dart';
 import '../domains/local_screen_harness.dart' show seedExercise;
@@ -40,7 +39,6 @@ void main() {
               runtime = await AlkionRuntime.open(
                 Directory('${root.path}/dev.animusstudio.alkion.dev'),
               );
-              await runtime!.completeOnboarding(OnboardingChoice.empty);
               await seedExercise(
                 runtime!.store,
                 'exact-kg',

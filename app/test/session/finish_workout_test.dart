@@ -136,6 +136,84 @@ void main() {
     },
   );
 
+  test('concurrent Finish and flushes share one durable completion', () async {
+    final m = SessionManager(
+      finishedStore: FinishedSessionStore.local(db),
+      draftStore: drafts,
+    );
+    addTearDown(m.dispose);
+    final c = await controller();
+    m.register(c);
+    await m.flushPersistence();
+    final repository = WorkoutRepository.local(db);
+    // Enter the controller queue before Finish installs its in-flight result.
+    final queued = c.flushPersistence();
+    final first = finishWorkout(c, m, repository: repository);
+    final barrier = m.flushPersistence();
+    final second = finishWorkout(c, m, repository: repository);
+    final ids = await Future.wait([first, second]);
+    await Future.wait([queued, barrier]).timeout(const Duration(seconds: 5));
+    expect(ids[1], ids[0]);
+    expect(m.lastFinished, same(c.lastFinished));
+    expect(m.persistenceError, isNull);
+    expect(await db.getAll('SELECT * FROM sessions'), hasLength(1));
+    expect(await db.getAll('SELECT * FROM operations'), hasLength(1));
+    expect(await drafts.load(), isNull);
+  });
+
+  test(
+    'failed shared Finish stays pending and retries the original intent',
+    () async {
+      final m = SessionManager(
+        finishedStore: FinishedSessionStore.local(db),
+        draftStore: drafts,
+      );
+      addTearDown(m.dispose);
+      final c = await controller();
+      m.register(c);
+      await m.flushPersistence();
+      final before = await db.store.inventory();
+      final repository = WorkoutRepository.local(_FailingCommit(db, db.zone));
+      Future<Object?> outcome(Future<Object?> work) =>
+          work.then<Object?>((_) => null, onError: (Object e) => e);
+      final queued = outcome(c.flushPersistence());
+      final first = outcome(finishWorkout(c, m, repository: repository));
+      final barrier = outcome(m.flushPersistence());
+      final second = outcome(finishWorkout(c, m, repository: repository));
+      final errors = await Future.wait([
+        first,
+        barrier,
+        second,
+        queued,
+      ]).timeout(const Duration(seconds: 5));
+      expect(errors, everyElement(isA<StateError>()));
+      expect(identical(errors[0], errors[2]), isTrue);
+      expect(identical(errors[0], errors[3]), isTrue);
+      expect(await db.store.inventory(), before);
+      final intent = c.pendingFinish!;
+      await expectLater(
+        m.flushPersistence(),
+        throwsA(
+          isA<StoreException>().having(
+            (e) => e.category,
+            'category',
+            'finish_retry_required',
+          ),
+        ),
+      );
+      final id = await finishWorkout(
+        c,
+        m,
+        repository: WorkoutRepository.local(db),
+      );
+      expect(id, intent.action.target.id);
+      final operation = (await db.getAll('SELECT * FROM operations')).single;
+      expect(operation['operation_id'], intent.action.operationId);
+      expect(operation['input_hash'], intent.action.hash);
+      expect(await drafts.load(), isNull);
+    },
+  );
+
   test(
     'without a manager the finish still returns its durable session id',
     () async {
