@@ -1,6 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:alkion/animus/connection.dart';
+import 'package:alkion/animus/config.dart';
+import 'package:alkion/animus/contracts.dart';
+import 'package:alkion/animus/ports.dart';
+import 'package:alkion/animus/probe.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/recovery/restore.dart';
@@ -15,8 +20,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../domains/local_screen_harness.dart' show settleReal;
 import '../files/fake_documents.dart';
-import 'first_start_restore_test.dart' show firstActionReady;
+import 'first_start_restore_test.dart'
+    show firstActionReady, openOfflineChoices;
 import '../../support/app_fonts.dart';
+import '../../animus/support.dart';
 
 Widget _app(
   Widget home, {
@@ -114,6 +121,20 @@ void main() {
             expect(find.byType(AlkionBrandLockup), findsOneWidget);
             expect(find.text('Alkion'), findsOneWidget);
             expect(find.text('by Animus'), findsOneWidget);
+            if (state.canStartLocal) {
+              expect(
+                find.byKey(const Key('first-animus-sign-in')),
+                findsOneWidget,
+              );
+              expect(
+                find.byKey(const Key('first-animus-sign-up')),
+                findsOneWidget,
+              );
+              expect(find.byKey(const Key('first-go-offline')), findsOneWidget);
+              expect(find.byKey(const Key('first-restore')), findsNothing);
+              _completeParagraphs(tester);
+              await openOfflineChoices(tester);
+            }
             expect(
               find.byKey(const Key('first-start-local')),
               state.canStartLocal ? findsOneWidget : findsNothing,
@@ -175,6 +196,7 @@ void main() {
         ),
       );
       await tester.pump();
+      await openOfflineChoices(tester);
       final restore = find.byKey(const Key('first-restore'));
       await tester.ensureVisible(restore);
       await tester.tap(restore);
@@ -219,4 +241,503 @@ void main() {
       await tester.runAsync(() => temp.delete(recursive: true));
     },
   );
+  testWidgets(
+    'offline transition waits for abandonment, Back returns, and picker cancellation stays offline',
+    (tester) async {
+      _narrow(tester);
+      final gate = Completer<void>();
+      var abandoned = 0, started = 0, prepared = 0;
+      late Directory temp;
+      await tester.runAsync(() async {
+        temp = await Directory.systemTemp.createTemp('alkion-entry-choices-');
+      });
+      addTearDown(() => temp.delete(recursive: true));
+      final root = Directory('${temp.path}/${AlkionIdentity.applicationId}');
+      final documents = FakeDocuments(temp);
+      await tester.pumpWidget(
+        _app(
+          FirstStartScreen(
+            service: RestoreService(root),
+            state: const FreshRestoreState(canStartLocal: true),
+            documents: documents,
+            prepareConnection: () async {
+              prepared++;
+              return AnimusConnectionController();
+            },
+            abandonAuthentication: () async {
+              abandoned++;
+              await gate.future;
+            },
+            startLocal: () async {
+              started++;
+            },
+            relaunch: () async {
+              fail('Cancel must not relaunch');
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      final offline = find.byKey(const Key('first-go-offline'));
+      await tester.ensureVisible(offline);
+      await tester.tap(offline);
+      await tester.pump();
+      expect(abandoned, 1);
+      expect(prepared, 0);
+      expect(started, 0);
+      expect(find.byKey(const Key('first-start-local')), findsNothing);
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('first-start-local')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('first-restore')));
+      await tester.tap(find.byKey(const Key('first-restore')));
+      await firstActionReady(tester);
+      expect(documents.opens, 1);
+      expect(root.existsSync(), isFalse);
+      expect(find.byKey(const Key('first-start-local')), findsOneWidget);
+      expect(find.byKey(const Key('first-animus-sign-in')), findsNothing);
+      await tester.ensureVisible(find.byKey(const Key('first-offline-back')));
+      await tester.tap(find.byKey(const Key('first-offline-back')));
+      await tester.pump();
+      expect(find.byKey(const Key('first-animus-sign-in')), findsOneWidget);
+      expect(find.byKey(const Key('first-restore')), findsNothing);
+      expect(started, 0);
+      await openOfflineChoices(tester);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.byKey(const Key('first-animus-sign-in')), findsOneWidget);
+      expect(started, 0);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'account confirmation is explicit and readable in all locales and themes',
+    (tester) async {
+      _narrow(tester);
+      for (final locale in ['en', 'de', 'es', 'it']) {
+        for (final brightness in Brightness.values) {
+          final auth = _EntryAuth(), probe = _EntryProbe();
+          final c = AnimusConnectionController(
+            config: syntheticAnimusConfig(),
+            auth: auth,
+            probe: probe,
+          );
+          var prepared = 0, confirmations = 0;
+          await tester.pumpWidget(
+            _app(
+              FirstStartScreen(
+                key: ValueKey('confirm-$locale-$brightness'),
+                service: RestoreService(
+                  Directory('/synthetic-unopened-entry-target'),
+                ),
+                state: const FreshRestoreState(canStartLocal: true),
+                entryConfig: syntheticAnimusConfig(),
+                prepareConnection: () async {
+                  prepared++;
+                  return c;
+                },
+                abandonAuthentication: c.cancel,
+                confirmConnection: () async {
+                  confirmations++;
+                  await c.confirm();
+                },
+                startLocal: () async {
+                  fail('Sign-in must not choose offline');
+                },
+                relaunch: () async {},
+              ),
+              locale: locale,
+              brightness: brightness,
+            ),
+          );
+          await tester.pump();
+          expect(prepared, 0);
+          expect(auth.authorizations, 0);
+          expect(find.byType(TextField), findsNothing);
+          final signIn = find.byKey(const Key('first-animus-sign-in'));
+          await tester.ensureVisible(signIn);
+          await tester.tap(signIn);
+          await tester.pumpAndSettle();
+          expect(prepared, 1);
+          expect(auth.authorizations, 1);
+          expect(auth.intent, AnimusAuthIntent.signIn);
+          expect(auth.retains, 0);
+          expect(probe.calls, 0);
+          expect(
+            find.textContaining('synthetic-entry-subject'),
+            findsOneWidget,
+          );
+          expect(
+            find.text(syntheticAnimusConfig().dataSpaceId),
+            findsOneWidget,
+          );
+          expect(
+            find.text('synthetic-credential-never-displayed'),
+            findsNothing,
+          );
+          final confirm = find.byKey(const Key('first-animus-confirm'));
+          await tester.ensureVisible(confirm);
+          _completeParagraphs(tester);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(confirmations, 1);
+          expect(auth.retains, 1);
+          expect(probe.calls, 1);
+          await tester.pumpWidget(const SizedBox());
+          c.dispose();
+        }
+      }
+    },
+  );
+
+  testWidgets(
+    'pending browser login keeps offline available and fences late completion',
+    (tester) async {
+      _narrow(tester);
+      final auth = _EntryAuth()..pending = Completer<AnimusAuthSession?>();
+      final probe = _EntryProbe();
+      final c = AnimusConnectionController(
+        config: syntheticAnimusConfig(),
+        auth: auth,
+        probe: probe,
+      );
+      await tester.pumpWidget(
+        _app(
+          FirstStartScreen(
+            service: RestoreService(
+              Directory('/synthetic-unopened-entry-target'),
+            ),
+            state: const FreshRestoreState(canStartLocal: true),
+            entryConfig: syntheticAnimusConfig(),
+            prepareConnection: () async => c,
+            abandonAuthentication: c.cancel,
+            startLocal: () async {},
+            relaunch: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('first-animus-sign-in')));
+      await tester.tap(find.byKey(const Key('first-animus-sign-in')));
+      await tester.pump();
+      expect(c.busy, isTrue);
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const Key('first-go-offline')))
+            .onPressed,
+        isNotNull,
+      );
+      await openOfflineChoices(tester);
+      auth.pending!.complete(_entrySession());
+      await tester.pumpAndSettle();
+      expect(c.identity, isNull);
+      expect(find.byKey(const Key('first-start-local')), findsOneWidget);
+      expect(auth.retains, 0);
+      expect(probe.calls, 0);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    },
+  );
+  testWidgets(
+    'confirmation locks offline, cancellation and Back until persistence finishes',
+    (tester) async {
+      _narrow(tester);
+      final auth = _EntryAuth(), probe = _EntryProbe();
+      final c = AnimusConnectionController(
+        config: syntheticAnimusConfig(),
+        auth: auth,
+        probe: probe,
+      );
+      final gate = Completer<void>();
+      var abandoned = 0;
+      await tester.pumpWidget(
+        _app(
+          FirstStartScreen(
+            service: RestoreService(
+              Directory('/synthetic-unopened-entry-target'),
+            ),
+            state: const FreshRestoreState(canStartLocal: true),
+            entryConfig: syntheticAnimusConfig(),
+            prepareConnection: () async => c,
+            abandonAuthentication: () async {
+              abandoned++;
+              await c.cancel();
+            },
+            confirmConnection: () async {
+              await gate.future;
+              await c.confirm();
+            },
+            startLocal: () async {},
+            relaunch: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('first-animus-sign-in')));
+      await tester.tap(find.byKey(const Key('first-animus-sign-in')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('first-animus-confirm')));
+      await tester.tap(find.byKey(const Key('first-animus-confirm')));
+      await tester.pump();
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const Key('first-go-offline')))
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const Key('first-animus-cancel')))
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('first-animus-confirm')))
+            .onPressed,
+        isNull,
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.byKey(const Key('first-animus-confirm')), findsOneWidget);
+      expect(find.byKey(const Key('first-start-local')), findsNothing);
+      expect(abandoned, 0);
+      expect(auth.retains, 0);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(auth.retains, 1);
+      expect(probe.calls, 1);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    },
+  );
+
+  testWidgets(
+    'configured signup uses create-account intent; unconfigured setup is explicit',
+    (tester) async {
+      _narrow(tester);
+      final config = AnimusConfig.fromEnvironment(
+        syntheticAnimusValues()
+          ..['ALKION_ANIMUS_ENROLLMENT_FLOW'] = 'synthetic-enrollment',
+        platform: AnimusPlatform.linux,
+      )!;
+      final auth = _EntryAuth(), probe = _EntryProbe();
+      final c = AnimusConnectionController(
+        config: config,
+        auth: auth,
+        probe: probe,
+      );
+      await tester.pumpWidget(
+        _app(
+          FirstStartScreen(
+            service: RestoreService(
+              Directory('/synthetic-unopened-entry-target'),
+            ),
+            state: const FreshRestoreState(canStartLocal: true),
+            entryConfig: config,
+            prepareConnection: () async => c,
+            abandonAuthentication: c.cancel,
+            startLocal: () async {},
+            relaunch: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('first-animus-sign-up')));
+      await tester.tap(find.byKey(const Key('first-animus-sign-up')));
+      await tester.pumpAndSettle();
+      expect(auth.intent, AnimusAuthIntent.createAccount);
+      expect(auth.retains, 0);
+      expect(probe.calls, 0);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+      await tester.pumpWidget(
+        _app(
+          FirstStartScreen(
+            service: RestoreService(
+              Directory('/synthetic-unopened-entry-target'),
+            ),
+            state: const FreshRestoreState(canStartLocal: true),
+            entryMisconfigured: true,
+            startLocal: () async {},
+            relaunch: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.text('Animus setup is unavailable. Local workouts are available.'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('first-animus-sign-in')))
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const Key('first-animus-sign-up')))
+            .onPressed,
+        isNull,
+      );
+      await openOfflineChoices(tester);
+      expect(find.byKey(const Key('first-start-local')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'normal phone entry keeps the offline action near the safe bottom',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          FakeAccessibilityFeatures.allOn;
+      addTearDown(tester.view.reset);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await tester.pumpWidget(
+        _app(
+          FirstStartScreen(
+            service: RestoreService(
+              Directory('/synthetic-unopened-entry-target'),
+            ),
+            state: const FreshRestoreState(canStartLocal: true),
+            startLocal: () async {},
+            relaunch: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+      final rect = tester.getRect(find.byKey(const Key('first-go-offline')));
+      expect(rect.bottom, greaterThan(740));
+      expect(rect.bottom, lessThan(824));
+      _completeParagraphs(tester);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'published profile can continue offline after secret retention fails without fresh restore choices',
+    (tester) async {
+      _narrow(tester);
+      final auth = _EntryAuth()
+        ..retainFailure = const AnimusSecretStoreUnavailable();
+      var published = false, continued = 0, abandoned = 0;
+      final probe = _EntryProbe();
+      final c = AnimusConnectionController(
+        config: syntheticAnimusConfig(),
+        auth: auth,
+        probe: probe,
+        beforeRetain: () async {
+          published = true;
+        },
+      );
+      await tester.pumpWidget(
+        _app(
+          FirstStartScreen(
+            service: RestoreService(
+              Directory('/synthetic-unopened-entry-target'),
+            ),
+            state: const FreshRestoreState(canStartLocal: true),
+            entryConfig: syntheticAnimusConfig(),
+            prepareConnection: () async => c,
+            confirmConnection: c.confirm,
+            hasLocalProfile: () => published,
+            continueOffline: () async {
+              continued++;
+              await c.cancel();
+            },
+            abandonAuthentication: () async {
+              abandoned++;
+            },
+            startLocal: () async {
+              fail('Published profile must not start fresh');
+            },
+            relaunch: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('first-animus-sign-in')));
+      await tester.tap(find.byKey(const Key('first-animus-sign-in')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('first-animus-confirm')));
+      await tester.tap(find.byKey(const Key('first-animus-confirm')));
+      await tester.pumpAndSettle();
+      expect(published, isTrue);
+      expect(probe.calls, 0);
+      expect(find.text('Continue offline'), findsOneWidget);
+      final offline = find.byKey(const Key('first-go-offline'));
+      await tester.ensureVisible(offline);
+      await tester.tap(offline);
+      await tester.pumpAndSettle();
+      expect(continued, 1);
+      expect(abandoned, 0);
+      expect(find.byKey(const Key('first-start-local')), findsNothing);
+      expect(find.byKey(const Key('first-restore')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    },
+  );
+}
+
+AnimusAuthSession _entrySession() => AnimusAuthSession(
+  identity: AnimusIdentity(
+    issuer: syntheticAnimusConfig().issuer,
+    subject: 'synthetic-entry-subject',
+    displayName: 'Synthetic entry account',
+  ),
+  accessToken: 'synthetic-credential-never-displayed',
+  expiresAt: DateTime.utc(2100),
+);
+
+class _EntryAuth implements AnimusAuthPort {
+  int authorizations = 0, retains = 0;
+  Object? retainFailure;
+  AnimusAuthIntent? intent;
+  Completer<AnimusAuthSession?>? pending;
+  @override
+  Future<AnimusAuthSession?> authorize({
+    AnimusAuthIntent intent = AnimusAuthIntent.signIn,
+  }) async {
+    authorizations++;
+    this.intent = intent;
+    return pending == null ? _entrySession() : pending!.future;
+  }
+
+  @override
+  Future<void> retain(AnimusAuthSession session) async {
+    retains++;
+    if (retainFailure != null) throw retainFailure!;
+  }
+
+  @override
+  Future<AnimusAuthSession?> restore() async => null;
+  @override
+  Future<AnimusAuthSession?> refresh() async => null;
+  @override
+  Future<void> disconnect() async {}
+  @override
+  Future<void> cancel() async {}
+  @override
+  Future<void> close() async {}
+}
+
+class _EntryProbe implements AnimusProbePort {
+  int calls = 0;
+  @override
+  Future<AnimusProbeResult> verify(AnimusAuthSession session) async {
+    calls++;
+    return AnimusProbeResult.verified;
+  }
+
+  @override
+  Future<void> cancel() async {}
+  @override
+  Future<void> close() async {}
 }
