@@ -7,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'animus/connection.dart';
+import 'animus/config.dart';
+import 'animus/entry.dart';
 import 'animus/runtime.dart';
 import 'data/active_session_draft.dart';
 import 'data/finished_session_store.dart';
@@ -67,10 +69,28 @@ class AlkionRuntime with WidgetsBindingObserver {
     Directory supportRoot, {
     WorkoutNotification? notifications,
     AnimusConnectionController Function(AlkionProfile, int)? connectionFactory,
+    LocalStore? preparedStore,
   }) async {
     GoogleFonts.config.allowRuntimeFetching = false;
-    final profile = await AlkionProfile.open(supportRoot: supportRoot);
-    final store = await openAlkionStore(profile);
+    late final AlkionProfile profile;
+    try {
+      final selected = preparedStore == null
+          ? await AlkionProfile.open(supportRoot: supportRoot)
+          : await AlkionProfile.existing(supportRoot: supportRoot);
+      if (selected == null ||
+          (preparedStore != null &&
+              (preparedStore.profile.root.path != selected.root.path ||
+                  preparedStore.profile.installationId !=
+                      selected.installationId ||
+                  preparedStore.profileId != selected.profileId))) {
+        throw const StoreException('entry_profile_conflict');
+      }
+      profile = selected;
+    } catch (_) {
+      await preparedStore?.close();
+      rethrow;
+    }
+    final store = preparedStore ?? await openAlkionStore(profile);
     try {
       final settings = SettingsService.local(store),
           units = UnitService.local(store),
@@ -214,14 +234,59 @@ Future<void> launchAlkion(
   Future<void> relaunch() => launchAlkion(root, present: present);
   try {
     final service = RestoreService(root);
+    final entry = AnimusEntryLifecycle(root);
+    await entry.recover();
     final fresh = await service.freshState();
     if (fresh != null) {
+      AnimusConfig? entryConfig;
+      var entryMisconfigured = false;
+      try {
+        entryConfig = readAnimusEntryConfig();
+      } on Object {
+        entryMisconfigured = true;
+      }
       present(
         AlkionFirstStartApp(
           service: service,
           state: fresh,
-          startLocal: () =>
-              _launchAlkionRuntime(root, present: present, relaunch: relaunch),
+          entryConfig: entryConfig,
+          entryMisconfigured: entryMisconfigured,
+          prepareConnection: entry.prepareConnection,
+          abandonAuthentication: entry.abandonAuthentication,
+          hasLocalProfile: () => entry.hasLocalProfile,
+          continueOffline: () async {
+            await entry.continueOffline();
+            await _launchAlkionRuntime(
+              root,
+              present: present,
+              relaunch: relaunch,
+              preparedStore: entry.takePreparedStore(),
+            );
+          },
+          confirmConnection: () async {
+            final connection = await entry.confirmConnection();
+            if (connection != null) {
+              await _launchAlkionRuntime(
+                root,
+                present: present,
+                relaunch: relaunch,
+                connection: connection,
+                preparedStore: entry.takePreparedStore(),
+              );
+            }
+          },
+          startLocal: () async {
+            await entry.abandonAuthentication();
+            final current = await service.freshState();
+            if (current == null || !current.canStartLocal) {
+              throw const StoreException('fresh_restore_interrupted');
+            }
+            await _launchAlkionRuntime(
+              root,
+              present: present,
+              relaunch: relaunch,
+            );
+          },
           relaunch: relaunch,
         ),
       );
@@ -250,8 +315,14 @@ Future<void> _launchAlkionRuntime(
   Directory root, {
   required void Function(Widget) present,
   required Future<void> Function() relaunch,
+  AnimusConnectionController? connection,
+  LocalStore? preparedStore,
 }) async {
-  final runtime = await AlkionRuntime.open(root);
+  final runtime = await AlkionRuntime.open(
+    root,
+    connectionFactory: connection == null ? null : (_, _) => connection,
+    preparedStore: preparedStore,
+  );
   present(
     AlkionApp(
       runtime: runtime,
