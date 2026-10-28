@@ -74,6 +74,72 @@ void _completeParagraphs(WidgetTester tester) {
 void main() {
   setUpAll(preloadAppFonts);
   testWidgets(
+    'production large-text step navigation starts at the top and picker cancellation preserves offline choices',
+    (tester) async {
+      _narrow(tester);
+      late Directory temp;
+      await tester.runAsync(() async {
+        temp = await Directory.systemTemp.createTemp('alkion-entry-scroll-');
+      });
+      addTearDown(() => temp.delete(recursive: true));
+      final root = Directory('${temp.path}/${AlkionIdentity.applicationId}');
+      final documents = FakeDocuments(temp);
+      await tester.pumpWidget(
+        AlkionFirstStartApp(
+          service: RestoreService(root),
+          state: const FreshRestoreState(canStartLocal: true),
+          documents: documents,
+          startLocal: () async {
+            fail('Navigation must not create a profile');
+          },
+          relaunch: () async {
+            fail('Picker cancellation must not relaunch');
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      ScrollPosition position() =>
+          tester.state<ScrollableState>(find.byType(Scrollable)).position;
+      final viewport = tester.getRect(find.byType(SingleChildScrollView));
+      final offline = find.byKey(const Key('first-go-offline'));
+      await tester.ensureVisible(offline);
+      await tester.pumpAndSettle();
+      expect(position().pixels, greaterThan(0));
+      await tester.tap(offline);
+      await tester.pumpAndSettle();
+      expect(position().pixels, 0);
+      final back = find.byKey(const Key('first-offline-back'));
+      expect(viewport.contains(tester.getCenter(back)), isTrue);
+      expect(
+        tester.getRect(find.byType(AlkionBrandLockup)).top,
+        greaterThanOrEqualTo(viewport.top),
+      );
+      final restore = find.byKey(const Key('first-restore'));
+      await tester.ensureVisible(restore);
+      await tester.pumpAndSettle();
+      final beforeCancel = position().pixels;
+      await tester.tap(restore);
+      await firstActionReady(tester);
+      expect(documents.opens, 1);
+      expect(position().pixels, beforeCancel);
+      expect(find.byKey(const Key('first-start-local')), findsOneWidget);
+      expect(find.byKey(const Key('first-animus-sign-in')), findsNothing);
+      expect(root.existsSync(), isFalse);
+      await tester.ensureVisible(back);
+      await tester.tap(back);
+      await tester.pumpAndSettle();
+      expect(position().pixels, 0);
+      expect(
+        tester.getRect(find.byType(AlkionBrandLockup)).top,
+        greaterThanOrEqualTo(viewport.top),
+      );
+      expect(find.byKey(const Key('first-animus-sign-in')), findsOneWidget);
+      expect(find.byKey(const Key('first-restore')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
     'production first-start app follows system light and dark themes on both entry steps',
     (tester) async {
       tester.platformDispatcher.accessibilityFeaturesTestValue =

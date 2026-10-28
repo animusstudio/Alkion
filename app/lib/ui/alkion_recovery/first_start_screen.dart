@@ -292,6 +292,10 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
           child: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
+                // A new step starts at its heading instead of inheriting the
+                // previous step's footer position. Picker cancellation keeps
+                // this key, so it preserves the current offline position.
+                key: ValueKey(offline),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Padding(
