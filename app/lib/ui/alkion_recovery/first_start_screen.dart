@@ -52,7 +52,9 @@ class AlkionFirstStartApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: AlkionIdentity.displayName,
-    theme: buildTheme(Brightness.dark, accents[0]),
+    theme: buildTheme(Brightness.light, accents[0]),
+    darkTheme: buildTheme(Brightness.dark, accents[0]),
+    themeMode: ThemeMode.system,
     localizationsDelegates: const [
       AppLocalizations.delegate,
       GlobalMaterialLocalizations.delegate,

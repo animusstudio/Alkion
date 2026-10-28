@@ -74,6 +74,60 @@ void _completeParagraphs(WidgetTester tester) {
 void main() {
   setUpAll(preloadAppFonts);
   testWidgets(
+    'production first-start app follows system light and dark themes on both entry steps',
+    (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          FakeAccessibilityFeatures.allOn;
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      await tester.pumpWidget(
+        AlkionFirstStartApp(
+          service: RestoreService(
+            Directory('/synthetic-unopened-entry-target'),
+          ),
+          state: const FreshRestoreState(canStartLocal: true),
+          startLocal: () async {
+            fail('Changing theme must not create a profile');
+          },
+          relaunch: () async {
+            fail('Changing theme must not relaunch');
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.byType(FirstStartScreen))).brightness,
+        Brightness.light,
+      );
+      for (final offline in [false, true]) {
+        if (offline) await openOfflineChoices(tester);
+        for (final brightness in [Brightness.dark, Brightness.light]) {
+          tester.platformDispatcher.platformBrightnessTestValue = brightness;
+          await tester.pumpAndSettle();
+          final context = tester.element(find.byType(FirstStartScreen));
+          expect(Theme.of(context).brightness, brightness);
+          expect(
+            tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+            context.tokens.bg,
+          );
+          expect(
+            find.byKey(
+              Key(offline ? 'first-start-local' : 'first-animus-sign-in'),
+            ),
+            findsOneWidget,
+          );
+          expect(find.byType(AlkionBrandLockup), findsOneWidget);
+          _completeParagraphs(tester);
+        }
+      }
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
     'first-start choices and interrupted copy stay complete in four locales, light/dark, 320dp/2x',
     (tester) async {
       _narrow(tester);
