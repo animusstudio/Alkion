@@ -36,12 +36,17 @@ Check A3–A5 with provider-derived output; escalate an unsupported method as a
 bounded product decision. Never weaken required MFA through another login path.
 
 T2 — First-use entry lifecycle (full).
-Own main.dart and identity/entry state plus narrow lifecycle tests.
-Compose the existing scoped connection only after an explicit entry action,
-persist pending/completed entry safely, and fence cancel/offline/restart/
-replacement. Distinguish existing profiles from new pending entry without
-reusing the legacy onboarding flag. Preserve restore-first recovery and no-I/O
-local startup. Check A2/A5 using real disposable SQLite/profile state.
+Own main.dart, identity/entry journal and reserved profile creation adapters,
+plus narrow lifecycle/restore tests. Compose the scoped connection only after
+an explicit action using reserved IDs/initial generation in a separate journal;
+no provisional database is created and the normal root stays fresh. Create and
+verify exact identity/generation only on confirmed login, before secret
+retention/probe. Fence/close and preserve pending journal bytes aside
+when choosing offline or Restore, using unchanged fresh restore protections.
+Recover journal interruptions without guessing/replacing existing bytes; an
+interrupted restore takes priority. Never reuse the legacy onboarding flag.
+Check A2/A5 with real disposable SQLite, including login/signup → cancel/restart
+→ restore a different profile, interrupted restore and identity-creation crash points.
 
 T3 — Native onboarding and Profile continuity (standard).
 Own first_start_screen.dart, shared entry/confirmation UI and four locale ARBs,
@@ -75,11 +80,11 @@ Public push needs separate exact outgoing-range review and owner direction.
 
 ## State
 
-- Specification/plan: proposed; design review pending.
+- Specification/plan: proposed; independent design and fix review PASS.
 - T1–T4: not started.
 - Owner method direction: email/password, passkeys, six-digit email passwordless.
 - Passkey role interpreted as passwordless plus optional account-required MFA.
 
-Next: independent design review, then present the concrete flow and plan for
-owner approval, including any provider capability limits discovered by T1 research.
+Next: owner approval of the reviewed flow/plan, then T1's pinned-provider
+rehearsal before implementing or advertising the requested hosted methods.
 

@@ -77,12 +77,30 @@ access. Registration alone grants no workout access.
 No auth, discovery, mail, browser or secret-store I/O before an explicit tap.
 Guest/offline and restore never depend on provider availability.
 
-The existing auth scope requires a selected installation/profile/generation.
-Create/select a fresh local profile only on an explicit entry action, retaining
-a durable pending-entry state across a crash if authentication has not completed.
-Choose an additive local state/journal compatible with current restore gates;
-do not reinterpret the old onboarding-complete flag, whose false value exists
-on valid current profiles. Existing and restored profiles open as before without
+The existing auth scope requires an installation/profile/generation. On an
+explicit login/signup action reserve identity IDs and the initial generation in
+a separate pending-entry journal; do not create a store or publish a selected
+local-profile.json in the normal root. Keep
+the normal root genuinely fresh, so cancelling login does not turn first-use
+Restore into a forbidden foreign-profile restore. The journal contains identity
+and phase only, never credentials; unconfirmed auth stays in memory.
+
+On confirmed login, durably create the reserved identity and initial store in
+the fresh normal root under existing ownership/durability rules; verify that
+the actual generation matches the reserved auth scope before retaining secrets
+or reading the API. Never silently rebind a staged login to another generation.
+There is no provisional workout database to copy or move. On offline selection
+or Restore instead, fence and close staged auth first; preserve the pending
+journal outside the restore target, then use the unchanged fresh local/restore route.
+Do not delete or adopt an established profile to make room.
+
+Journal transitions must recover after crashes before/during identity creation
+or abandonment: resume the proven pending selection or show explicit recovery;
+never guess an identity, replace unknown bytes, or apply pending auth to a
+restored profile. Any conflict with an established normal root fails closed.
+Interrupted fresh restores take precedence over a pending entry journal.
+Do not reinterpret the old onboarding-complete flag, whose false value exists
+on valid current profiles. Existing/restored profiles open as before without
 being forced through the new entry screen.
 
 A cancelled/failed login remains on the entry flow with Retry and offline
@@ -117,6 +135,10 @@ disposable browser; unsupported device/provider states remain truthful.
 A5. Cancel, offline transition, process restart and generation replacement fence
 late callbacks. No unconfirmed secret retention, cross-account inheritance or
 implicit refresh; required MFA cannot be bypassed by another advertised method.
+Login/signup then cancel or restart can restore a different synthetic profile,
+including resuming an interrupted restore. Crashes around reserved identity creation
+preserve exact identity/generation and bytes; established foreign-profile restore
+protection remains enforced.
 A6. One bounded integrated synthetic entry/login/confirm/read/return exercise,
 focused real-store and widget regressions, and native screenshots establish
 measured coverage. No sender, replica, owner data, production mail/deployment,
