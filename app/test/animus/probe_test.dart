@@ -131,7 +131,6 @@ void main() {
       (r) => r['kind'] = 'training_day',
       (r) => r['workout'] = {},
       (r) => r['plan'] = null,
-      (r) => r['unknown_union_member'] = {},
       (r) => r.remove('definition'),
       (r) => r['definition'] = null,
       (r) => r['definition']['ref']['kind'] = 'workout',
@@ -158,6 +157,170 @@ void main() {
     http.response = _response(jsonEncode(record));
     expect(await probe.verify(session), AnimusProbeResult.verified);
   });
+
+  test(
+    'attribution entries require their public layer and optional field types',
+    () async {
+      for (final entry in <Object?>[
+        false,
+        null,
+        1,
+        'source',
+        [],
+        {},
+        {'layer': null},
+        {'layer': false},
+        {'layer': 'invented'},
+        {'layer': 'source', 'evidence': null},
+        {'layer': 'source', 'evidence': false},
+        {'layer': 'source', 'evidence': []},
+        {'layer': 'source', 'operation_id': null},
+        {'layer': 'source', 'operation_id': 1},
+        {'layer': 'source', 'operation_id': 'not-a-uuid'},
+        {'layer': 'source', 'revision': null},
+        {'layer': 'source', 'revision': false},
+        {'layer': 'source', 'revision': '1'},
+        {'layer': 'source', 'revision': 1.0},
+      ]) {
+        final record = jsonDecode(fixture) as Map<String, dynamic>;
+        record['definition']['field_attribution'] = {'name': entry};
+        http.response = _response(jsonEncode(record));
+        expect(
+          await probe.verify(session),
+          AnimusProbeResult.invalidResponse,
+          reason: jsonEncode(entry),
+        );
+      }
+      for (final layer in ['source', 'correction', 'successor']) {
+        final record = jsonDecode(fixture) as Map<String, dynamic>;
+        record['definition']['field_attribution'] = {
+          'name': {
+            'layer': layer,
+            'evidence': {
+              'future_public_evidence': [
+                null,
+                true,
+                {'raw': 'synthetic'},
+              ],
+            },
+            'operation_id': 'ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF',
+            'revision': 1,
+            'future_attribution_metadata': false,
+          },
+        };
+        http.response = _response(jsonEncode(record));
+        expect(await probe.verify(session), AnimusProbeResult.verified);
+      }
+    },
+  );
+
+  test('known optional shared metadata follows public schema types', () async {
+    final invalid = <String, List<Object?>>{
+      'deleted_at': [
+        false,
+        1,
+        {},
+        '',
+        'not-a-timestamp',
+        '2026-02-30T12:34:56Z',
+        '2026-10-28T12:34:56',
+        '2026-10-28T24:00:00Z',
+        '2026-10-28T12:34:56+24:00',
+      ],
+      'evidence': [
+        false,
+        {},
+        [null],
+        [false],
+        ['synthetic'],
+        [[]],
+      ],
+      'source_origin': [null, false, 1, {}, []],
+      'notes': [
+        null,
+        false,
+        'synthetic',
+        {},
+        {'state': 'invented'},
+        {'state': null},
+      ],
+      'note_layers': [
+        null,
+        false,
+        {},
+        {
+          'source': {'state': 'valid'},
+          'correction': null,
+        },
+        {'source': false, 'correction': null, 'successor': null},
+        {
+          'source': {'state': 'valid'},
+          'correction': [],
+          'successor': null,
+        },
+        {
+          'source': {'state': 'valid'},
+          'correction': null,
+          'successor': false,
+        },
+      ],
+    };
+    for (final field in invalid.entries) {
+      for (final value in field.value) {
+        final record = jsonDecode(fixture) as Map<String, dynamic>;
+        record['definition'][field.key] = value;
+        http.response = _response(jsonEncode(record));
+        expect(
+          await probe.verify(session),
+          AnimusProbeResult.invalidResponse,
+          reason: '${field.key}: ${jsonEncode(value)}',
+        );
+      }
+    }
+  });
+
+  test(
+    'valid shared metadata preserves open JSON fields and captured values',
+    () async {
+      final record = jsonDecode(fixture) as Map<String, dynamic>;
+      record['future_record_metadata'] = [true, null];
+      record['definition'].addAll({
+        'source_origin': '',
+        'evidence': [
+          {},
+          {
+            'future_evidence': [1, false],
+          },
+        ],
+        'notes': {
+          'state': 'invalid',
+          'raw': {
+            'original': [false],
+          },
+          'value': null,
+        },
+        'note_layers': {
+          'source': {'state': 'missing', 'raw': null, 'value': null},
+          'correction': null,
+          'successor': {},
+          'future_note_layer_metadata': true,
+        },
+        'future_definition_metadata': {
+          'original': [null, true],
+        },
+      });
+      for (final timestamp in [
+        null,
+        '2026-10-28T12:34:56Z',
+        '2024-02-29T12:34:56.123456+02:30',
+        '2026-10-28t12:34:56z',
+      ]) {
+        record['definition']['deleted_at'] = timestamp;
+        http.response = _response(jsonEncode(record));
+        expect(await probe.verify(session), AnimusProbeResult.verified);
+      }
+    },
+  );
 
   test('revision must be a positive exact int64 JSON integer', () async {
     for (final revision in [

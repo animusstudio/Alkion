@@ -136,9 +136,13 @@ bool _validDefinition(AnimusHttpResponse response, String expectedId) {
     final text = utf8.decode(response.body, allowMalformed: false);
     final record = _StrictJson(text).read();
     if (record is! Map<String, Object?> ||
-        record.length != 2 ||
         record['kind'] != AnimusDefinitionReadContract.kind ||
-        !record.containsKey(AnimusDefinitionReadContract.member)) {
+        !record.containsKey(AnimusDefinitionReadContract.member) ||
+        AnimusDefinitionReadContract.recordMembers.any(
+          (member) =>
+              member != AnimusDefinitionReadContract.member &&
+              record.containsKey(member),
+        )) {
       return false;
     }
     final definition = record[AnimusDefinitionReadContract.member];
@@ -152,11 +156,102 @@ bool _validDefinition(AnimusHttpResponse response, String expectedId) {
         revision is int &&
         revision > 0 &&
         definition.containsKey('field_attribution') &&
-        (definition['field_attribution'] == null ||
-            definition['field_attribution'] is Map<String, Object?>);
+        _validSharedMetadata(definition);
   } catch (_) {
     return false;
   }
+}
+
+// Validate the shared public TrainingRecordBody schemas, without inventing an
+// exercise-field inventory or treating captured evidence as caller authority.
+// Open evidence objects and additional properties remain bounded opaque JSON.
+bool _validSharedMetadata(Map<String, Object?> definition) {
+  final attribution = definition['field_attribution'];
+  if (attribution != null &&
+      (attribution is! Map<String, Object?> ||
+          !attribution.values.every(_validAttribution))) {
+    return false;
+  }
+  final deletedAt = definition['deleted_at'];
+  if (deletedAt != null && !_validTimestamp(deletedAt)) return false;
+  final evidence = definition['evidence'];
+  if (evidence != null &&
+      (evidence is! List<Object?> ||
+          !evidence.every((entry) => entry is Map<String, Object?>))) {
+    return false;
+  }
+  if (definition.containsKey('source_origin') &&
+      definition['source_origin'] is! String) {
+    return false;
+  }
+  if (definition.containsKey('notes') &&
+      !_validTrainingValue(definition['notes'])) {
+    return false;
+  }
+  if (definition.containsKey('note_layers')) {
+    final layers = definition['note_layers'];
+    if (layers is! Map<String, Object?> ||
+        !_validTrainingValue(layers['source'])) {
+      return false;
+    }
+    for (final name in const ['correction', 'successor']) {
+      if (!layers.containsKey(name) ||
+          (layers[name] != null && layers[name] is! Map<String, Object?>)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool _validAttribution(Object? value) {
+  if (value is! Map<String, Object?> ||
+      !const {'source', 'correction', 'successor'}.contains(value['layer'])) {
+    return false;
+  }
+  if (value.containsKey('evidence') &&
+      value['evidence'] is! Map<String, Object?>) {
+    return false;
+  }
+  if (value.containsKey('operation_id')) {
+    final id = value['operation_id'];
+    if (id is! String || !isCanonicalAnimusUuid(id.toLowerCase())) return false;
+  }
+  return !value.containsKey('revision') || value['revision'] is int;
+}
+
+bool _validTrainingValue(Object? value) =>
+    value is Map<String, Object?> &&
+    const {
+      '',
+      'missing',
+      'null',
+      'empty',
+      'valid',
+      'invalid',
+      'unavailable',
+    }.contains(value['state']);
+
+final _timestamp = RegExp(
+  r'^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|[+-](\d{2}):(\d{2}))$',
+);
+
+bool _validTimestamp(Object value) {
+  if (value is! String) return false;
+  final match = _timestamp.firstMatch(value);
+  if (match == null) return false;
+  int part(int index) => int.parse(match.group(index)!);
+  final month = part(2);
+  final day = part(3);
+  // DateTime.parse normalizes invalid calendar days, so check them explicitly.
+  return month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= DateTime.utc(part(1), month + 1, 0).day &&
+      part(4) <= 23 &&
+      part(5) <= 59 &&
+      part(6) <= 60 && // RFC 3339 permits a leap-second representation.
+      (match.group(7) == null || (part(7) <= 23 && part(8) <= 59));
 }
 
 /// JSON's built-in decoder silently keeps the last duplicate object member.
