@@ -75,6 +75,7 @@ client secrets, access/refresh/ID tokens or owner account data.
   "ALKION_ANIMUS_API_ORIGIN": "https://api.example.test",
   "ALKION_ANIMUS_ISSUER": "https://identity.example.test/application/o/alkion/",
   "ALKION_ANIMUS_CLIENT_ID": "alkion-synthetic",
+  "ALKION_ANIMUS_ENROLLMENT_FLOW": "alkion-enrollment",
   "ALKION_ANIMUS_REDIRECT_URI": "http://127.0.0.1:43819/callback",
   "ALKION_ANIMUS_DATA_SPACE_ID": "11111111-1111-4111-8111-111111111111",
   "ALKION_ANIMUS_READ_ADMISSION": "22222222-2222-4222-8222-222222222222",
@@ -104,6 +105,55 @@ make -C app build-apk-animus ANIMUS_CONFIG=/tmp/alkion-android-config.json
 These are build/check routes; they do not install or launch a device. Normal
 bootstrap enforces the lock. `get-online-update` is only for an approved
 dependency change; `get-online` bootstraps the committed lock on a fresh cache.
+
+## Hosted account creation and sign-in methods
+
+`ALKION_ANIMUS_ENROLLMENT_FLOW` is optional. Omit it when hosted account creation
+has not been configured and rehearsed; Create one then reports unavailable.
+Its value is a reviewed Authentik flow slug, one to 63 lowercase ASCII letters,
+digits or hyphens, starting with a letter or digit. URLs, query strings and
+redirect targets are rejected. Adding/changing it creates a fresh session scope.
+
+Create one prepares the ordinary SDK authorization-code transaction, then opens
+the configured provider's `/if/flow/<slug>/` enrollment route. The only `next`
+value is the relative SDK-generated `/application/o/authorize/` request, with
+its original client, exact callback, state, nonce and S256 challenge. The adapter
+requires the discovered authorization endpoint to have that exact path on the
+issuer origin, without query or fragment. This explicit Authentik route supports
+the provider at its origin root; a path-prefixed installation needs separate
+review. No supplied redirect, `prompt=create` or alternative token exchange is
+accepted. The same callback, issuer, signature, audience, nonce and cancellation
+checks apply to login and signup. Enrollment alone retains no session and grants
+no workout permission; the app still requires account/space confirmation.
+
+Configure an enrollment flow restricted to unauthenticated users, using Prompt,
+User Write and User Login stages and the provider's address-verification policy.
+Authentik's [enrollment examples](https://docs.goauthentik.io/add-secure-apps/flows-stages/flow/flows/)
+show these stages; its two-stage example does not verify email and must not be
+treated as proof that an address is verified. The documented
+[identification enrollment link](https://docs.goauthentik.io/add-secure-apps/flows-stages/stages/identification/)
+also preserves the current transaction when users choose signup from login.
+Rehearse synthetic account creation and the complete OIDC return before setting
+this input for a distributed build.
+
+All passwords, passkey enrollment/assertions, account recovery and email entry
+stay in the external provider browser. Alkion collects none of them and requests
+only `openid profile offline_access`; workout grants remain independent. Match
+accounts by validated issuer and subject, never by email. Passkey setup needs
+an appropriate HTTPS RP hostname (or a compatible local browser fixture), a
+discoverable credential for passwordless use and the selected user-verification
+policy. Validate required MFA on every reachable login route. In particular,
+the provider's default passkey path may skip its later MFA stage; review that
+policy rather than allowing it to bypass an account's required second factor.
+
+Six-digit passwordless email is not an advertised method in this setup. Pinned
+Authentik 2026.8.3 provides six-digit expiring, single-use email authenticators
+and failed-attempt backoff. Its stock validation flow does not supply the full
+required generic unknown-address response and separate resend throttle:
+[device selection sends immediately](https://github.com/goauthentik/authentik/blob/version/2026.8.3/authentik/stages/authenticator_validate/challenge.py),
+and an unknown identified user has no compatible device challenge. Keep that
+method unavailable until those controls have a supported, independently reviewed
+and rehearsed solution. Email magic links and TOTP do not satisfy that contract.
 
 ## Definition verification contract
 

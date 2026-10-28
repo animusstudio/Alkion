@@ -41,6 +41,36 @@ void main() {
     }
   });
 
+  test('account creation requires an explicit reviewed enrollment slug', () {
+    expect(syntheticAnimusConfig().supportsAccountCreation, isFalse);
+    final config = AnimusConfig.fromEnvironment(
+      syntheticAnimusValues()
+        ..['ALKION_ANIMUS_ENROLLMENT_FLOW'] = 'alkion-enrollment',
+      platform: AnimusPlatform.linux,
+    )!;
+    expect(config.enrollmentFlow, 'alkion-enrollment');
+    expect(config.supportsAccountCreation, isTrue);
+    expect(config.fingerprint, isNot(syntheticAnimusConfig().fingerprint));
+    for (final invalid in [
+      'https://other.example.test/flow',
+      '../enrollment',
+      'enrollment?next=/other',
+      'enrollment#fragment',
+      'enrollment/other',
+      ' enrollment',
+      'enrollment\r\n',
+      'A' * 64,
+    ]) {
+      expect(
+        () => AnimusConfig.fromEnvironment(
+          syntheticAnimusValues()..['ALKION_ANIMUS_ENROLLMENT_FLOW'] = invalid,
+          platform: AnimusPlatform.linux,
+        ),
+        throwsA(isA<AnimusConfigException>()),
+      );
+    }
+  });
+
   test(
     'strict endpoints reject insecure origins, credentials and routing data',
     () {

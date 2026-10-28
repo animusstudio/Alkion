@@ -247,7 +247,9 @@ class _Auth implements AnimusAuthPort {
   Completer<AnimusAuthSession?>? pending;
   Object? failure;
   @override
-  Future<AnimusAuthSession?> authorize() async {
+  Future<AnimusAuthSession?> authorize({
+    AnimusAuthIntent intent = AnimusAuthIntent.signIn,
+  }) async {
     calls++;
     if (failure != null) throw failure!;
     return pending == null ? _session() : pending!.future;

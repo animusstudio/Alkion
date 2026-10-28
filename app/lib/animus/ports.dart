@@ -7,7 +7,9 @@ import 'contracts.dart';
 abstract interface class AnimusAuthPort {
   /// Browser code + PKCE S256. Null is user cancellation. The result is staged,
   /// never a retained/authorized connection until explicit account confirmation.
-  Future<AnimusAuthSession?> authorize();
+  Future<AnimusAuthSession?> authorize({
+    AnimusAuthIntent intent = AnimusAuthIntent.signIn,
+  });
 
   /// Revalidates retained material for this scope; never called at app startup.
   Future<AnimusAuthSession?> restore();

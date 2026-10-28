@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:alkion/animus/adapters/auth_browser.dart';
+import 'package:alkion/animus/config.dart';
 import 'package:alkion/animus/contracts.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:crypto/crypto.dart';
@@ -13,7 +14,9 @@ import 'package:http/testing.dart';
 import 'support.dart';
 
 class AuthFixture {
-  final scope = syntheticAnimusScope();
+  AuthFixture({AnimusConfig? config})
+    : scope = syntheticAnimusScope(config: config);
+  final AnimusScope scope;
   final secrets = MemoryAuthSecrets();
   final browser = FixtureBrowser();
   late Directory _keys;
@@ -29,6 +32,7 @@ class AuthFixture {
   String? nonceOverride;
   String? audienceOverride;
   String subject = 'synthetic-user-one';
+  String authorizationEndpoint = 'https://identity.example.test/authorize';
   Completer<void>? tokenGate;
   Future<void> initialize() async {
     _keys = await Directory.systemTemp.createTemp('alkion-auth-synthetic-');
@@ -75,7 +79,7 @@ class AuthFixture {
       return http.Response(
         jsonEncode({
           'issuer': issuerOverride ?? config.issuer.toString(),
-          'authorization_endpoint': 'https://identity.example.test/authorize',
+          'authorization_endpoint': authorizationEndpoint,
           'token_endpoint': 'https://identity.example.test/token',
           'jwks_uri': 'https://identity.example.test/jwks',
           'response_types_supported': ['code'],
@@ -108,7 +112,7 @@ class AuthFixture {
         validPkce =
             verifier.length >= 43 &&
             _base64(sha256.convert(ascii.encode(verifier)).bytes) ==
-                browser.lastAuthorization?.queryParameters['code_challenge'];
+                browser.lastTransaction?.queryParameters['code_challenge'];
       }
       await tokenGate?.future;
       final now = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
@@ -121,7 +125,7 @@ class AuthFixture {
         if (!refresh)
           'nonce':
               nonceOverride ??
-              browser.lastAuthorization!.queryParameters['nonce'],
+              browser.lastTransaction!.queryParameters['nonce'],
         'name': 'Synthetic account',
       });
       return http.Response(
@@ -169,6 +173,12 @@ String _base64(List<int> bytes) => base64Url.encode(bytes).replaceAll('=', '');
 
 class FixtureBrowser implements AnimusBrowserPort {
   Uri? lastAuthorization;
+  Uri? get lastTransaction {
+    final uri = lastAuthorization;
+    final next = uri?.queryParameters['next'];
+    return next == null ? uri : uri!.resolve(next);
+  }
+
   Uri Function(Uri uri, Uri redirect)? callback;
   Completer<Uri?>? gate;
   int launches = 0;
@@ -185,7 +195,7 @@ class FixtureBrowser implements AnimusBrowserPort {
         redirectUri.replace(
           queryParameters: {
             'code': 'unit-single-use-code',
-            'state': authorizationUri.queryParameters['state']!,
+            'state': lastTransaction!.queryParameters['state']!,
           },
         );
   }

@@ -29,6 +29,7 @@ final class AnimusConfig {
     required this.readAdmission,
     required this.probeRecordId,
     required this.allowLoopbackHttp,
+    required this.enrollmentFlow,
   });
 
   final AnimusPlatform platform;
@@ -40,6 +41,10 @@ final class AnimusConfig {
   final String readAdmission;
   final String probeRecordId;
   final bool allowLoopbackHttp;
+
+  /// Reviewed Authentik enrollment flow slug, never an arbitrary redirect URL.
+  final String? enrollmentFlow;
+  bool get supportsAccountCreation => enrollmentFlow != null;
 
   /// Null means disabled. Partial/invalid opted-in setup fails closed.
   static AnimusConfig? fromEnvironment(
@@ -97,6 +102,11 @@ final class AnimusConfig {
 
     final api = endpoint('API_ORIGIN', originOnly: true);
     final issuer = endpoint('ISSUER', originOnly: false);
+    final enrollment = values['${prefix}ENROLLMENT_FLOW'] ?? '';
+    if (enrollment.isNotEmpty &&
+        !RegExp(r'^[a-z0-9][a-z0-9-]{0,62}$').hasMatch(enrollment)) {
+      throw const AnimusConfigException('ENROLLMENT_FLOW');
+    }
     final client = requiredValue('CLIENT_ID');
     if (client.length > 256) throw const AnimusConfigException('CLIENT_ID');
     final redirectText = requiredValue('REDIRECT_URI');
@@ -141,6 +151,7 @@ final class AnimusConfig {
       readAdmission: uuid('READ_ADMISSION'),
       probeRecordId: uuid('PROBE_RECORD_ID'),
       allowLoopbackHttp: loopback,
+      enrollmentFlow: enrollment.isEmpty ? null : enrollment,
     );
   }
 
@@ -172,6 +183,9 @@ final class AnimusConfig {
           'ALKION_ANIMUS_ALLOW_LOOPBACK_HTTP',
           defaultValue: 'false',
         ),
+        'ALKION_ANIMUS_ENROLLMENT_FLOW': String.fromEnvironment(
+          'ALKION_ANIMUS_ENROLLMENT_FLOW',
+        ),
       }, platform: platform);
 
   Uri get definitionUri => apiOrigin.replace(
@@ -199,6 +213,7 @@ final class AnimusConfig {
             readAdmission,
             probeRecordId,
             allowLoopbackHttp,
+            if (enrollmentFlow != null) enrollmentFlow,
           ]),
         ),
       )
