@@ -1,6 +1,6 @@
 # Animus login and optional offline onboarding
 
-Date: 2026-10-28. Lane: full (auth and first-use persistence). Status: Proposed.
+Date: 2026-10-28. Lane: full (auth and first-use persistence). Status: Approved; implementation in progress.
 Specification: [login/onboarding](../specs/2026-10-28-animus-login-onboarding.md).
 Base: accepted connection foundation at 58f09ae; separate local feature branch.
 
@@ -84,13 +84,14 @@ Public push needs separate exact outgoing-range review and owner direction.
 
 ## State
 
-- Specification/plan: proposed; independent design and fix review PASS.
+- Specification/plan: independent design and fix review PASS; owner approved
+  the refined two-step flow on 2026-10-28 ("Great").
 - Owner refinement: Go fully offline leads to Start new/Restore; initial screen
   has no separate Restore action. Authentication boundaries remain unchanged.
 - T1–T4: not started.
 - Owner method direction: email/password, passkeys, six-digit email passwordless.
 - Passkey role interpreted as passwordless plus optional account-required MFA.
 
-Next: owner approval of the reviewed flow/plan, then T1's pinned-provider
-rehearsal before implementing or advertising the requested hosted methods.
+Next: T1's pinned-provider rehearsal alongside T2 entry lifecycle and T3 UI;
+advertise hosted methods only after their actual supported paths are verified.
 

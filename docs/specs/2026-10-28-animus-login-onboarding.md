@@ -1,6 +1,6 @@
 # Animus login and optional offline onboarding
 
-Date: 2026-10-28. Lane: full. Status: Proposed.
+Date: 2026-10-28. Lane: full. Status: Approved; implementation in progress.
 Builds on the [accepted connection foundation](2026-10-28-animus-connection-foundation.md).
 
 ## Outcome and current behavior
