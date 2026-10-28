@@ -47,6 +47,14 @@ envelopes are bounded to 256 KiB. Never attach OIDC debug log sinks or include
 upstream exception details in application diagnostics: they may contain URLs
 or identity/token material.
 
+Before every Linux storage call, a bounded D-Bus presence check requires the
+`org.freedesktop.secrets` service. Only unset/empty `SECRET_BACKEND` or exact
+`service` is accepted; forced file, portal or unknown backends fail unavailable.
+Flatpak/Snap markers are also refused because libsecret can select its portal
+file backend there before consulting `SECRET_BACKEND`. This first slice
+supports the native desktop Secret Service route only. The guard checks no
+keyring items and never mutates the process environment.
+
 Primary package references: [OIDC changelog](https://pub.dev/packages/oidc/changelog),
 [Android browser setup](https://pub.dev/packages/oidc_android), and
 [secure storage 10.3.4](https://pub.dev/packages/flutter_secure_storage/versions/10.3.4).

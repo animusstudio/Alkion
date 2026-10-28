@@ -44,6 +44,12 @@ dependencies:
   oidc: 5.0.2
   flutter_secure_storage: 10.3.4
   http: 1.6.0
+  # Direct adapter imports, pinned to the already resolved dependency set.
+  dbus: 0.7.12
+  logging: 1.3.0
+  oidc_platform_interface: 1.0.4
+  oidc_android: 3.0.1
+  url_launcher: 6.3.3
 
 dev_dependencies:
   flutter_test:

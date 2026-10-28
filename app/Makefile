@@ -80,8 +80,9 @@ get-offline-update:
 .PHONY: get-online-update analyze-animus
 get-online-update:
 	$(FLUTTER) pub get
+ANIMUS_ANALYZE_FILES ?= lib/animus test/animus
 analyze-animus:
-	$(DART) analyze lib/animus test/animus
+	$(DART) analyze $(ANIMUS_ANALYZE_FILES)
 
 # Public setup values only; never put credentials/tokens in a Dart define file.
 .PHONY: build-animus build-apk-animus

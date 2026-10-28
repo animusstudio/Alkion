@@ -6,13 +6,17 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../contracts.dart';
 import '../ports.dart';
+import 'linux_secret_service_guard.dart';
 
 /// Android Keystore-backed AES-GCM / Linux libsecret, with no alternate store.
 /// Creation is inert; only explicit operations touch the OS secret service.
 final class OsAnimusSecretStore implements AnimusSecretStore {
-  OsAnimusSecretStore({FlutterSecureStorage? storage})
-    : _storage =
-          storage ?? const FlutterSecureStorage(aOptions: androidOptions);
+  OsAnimusSecretStore({
+    FlutterSecureStorage? storage,
+    LinuxSecretServiceGuard? linuxGuard,
+  }) : _storage =
+           storage ?? const FlutterSecureStorage(aOptions: androidOptions),
+       _linuxGuard = linuxGuard ?? LinuxSecretServiceGuard();
 
   static const maxEnvelopeBytes = 256 * 1024;
   static const androidOptions = AndroidOptions(
@@ -21,12 +25,14 @@ final class OsAnimusSecretStore implements AnimusSecretStore {
     migrateOnAlgorithmChange: false,
   );
   final FlutterSecureStorage _storage;
+  final LinuxSecretServiceGuard _linuxGuard;
 
   Future<T> _guard<T>(Future<T> Function() operation) async {
     if (!Platform.isAndroid && !Platform.isLinux) {
       throw const AnimusSecretStoreUnavailable();
     }
     try {
+      if (Platform.isLinux) await _linuxGuard.check();
       return await operation();
     } on PlatformException {
       // Platform messages can include private keyring/credential details.
@@ -37,17 +43,17 @@ final class OsAnimusSecretStore implements AnimusSecretStore {
   }
 
   @override
-  Future<void> checkAvailability(AnimusScope scope) => _guard(() async {
+  Future<void> checkAvailability(AnimusScope scope) async {
     final key = '${scope.storageKey}.availability';
-    await _storage.write(key: key, value: '1');
+    await _guard(() => _storage.write(key: key, value: '1'));
     try {
-      if (await _storage.read(key: key) != '1') {
+      if (await _guard(() => _storage.read(key: key)) != '1') {
         throw const AnimusSecretStoreUnavailable();
       }
     } finally {
-      await _storage.delete(key: key);
+      await _guard(() => _storage.delete(key: key));
     }
-  });
+  }
 
   @override
   Future<String?> read(AnimusScope scope) => _guard(() async {
@@ -59,15 +65,15 @@ final class OsAnimusSecretStore implements AnimusSecretStore {
   });
 
   @override
-  Future<void> write(AnimusScope scope, String value) => _guard(() async {
+  Future<void> write(AnimusScope scope, String value) async {
     if (value.isEmpty || utf8.encode(value).length > maxEnvelopeBytes) {
       throw const AnimusSecretStoreUnavailable();
     }
-    await _storage.write(key: scope.storageKey, value: value);
-    if (await _storage.read(key: scope.storageKey) != value) {
+    await _guard(() => _storage.write(key: scope.storageKey, value: value));
+    if (await _guard(() => _storage.read(key: scope.storageKey)) != value) {
       throw const AnimusSecretStoreUnavailable();
     }
-  });
+  }
 
   @override
   Future<void> delete(AnimusScope scope) =>

@@ -1,4 +1,5 @@
 import 'package:alkion/animus/adapters/oidc_manager_factory.dart';
+import 'package:alkion/animus/adapters/linux_secret_service_guard.dart';
 import 'package:alkion/animus/adapters/secure_storage.dart';
 import 'package:alkion/animus/contracts.dart';
 import 'package:alkion/animus/ports.dart';
@@ -55,7 +56,7 @@ void main() {
     'OS adapter is inert, scopes each blob and deletes only that scope',
     () async {
       final native = _SyntheticSecureStorage();
-      final store = OsAnimusSecretStore(storage: native);
+      final store = _syntheticStore(native);
       final first = syntheticAnimusScope();
       final restored = syntheticAnimusScope(generation: 2);
       expect(native.calls, 0);
@@ -80,7 +81,7 @@ void main() {
           code: 'KeyringLocked',
           message: 'private-detail',
         );
-      final store = OsAnimusSecretStore(storage: native);
+      final store = _syntheticStore(native);
       final scope = syntheticAnimusScope();
       for (final operation in <Future<Object?> Function()>[
         () => store.checkAvailability(scope),
@@ -110,7 +111,7 @@ void main() {
     'failed secure persistence never silently accepts missing bytes',
     () async {
       final native = _SyntheticSecureStorage()..discardWrites = true;
-      final store = OsAnimusSecretStore(storage: native);
+      final store = _syntheticStore(native);
       await expectLater(
         store.checkAvailability(syntheticAnimusScope()),
         throwsA(isA<AnimusSecretStoreUnavailable>()),
@@ -125,7 +126,7 @@ void main() {
 
   test('secure envelope bounds are UTF-8 byte bounds', () async {
     final native = _SyntheticSecureStorage();
-    final store = OsAnimusSecretStore(storage: native);
+    final store = _syntheticStore(native);
     final scope = syntheticAnimusScope();
     await expectLater(
       store.write(scope, 'é' * OsAnimusSecretStore.maxEnvelopeBytes),
@@ -238,3 +239,13 @@ final class _SyntheticSecureStorage extends FlutterSecureStorage {
     values.remove(key);
   }
 }
+
+OsAnimusSecretStore _syntheticStore(FlutterSecureStorage storage) =>
+    OsAnimusSecretStore(
+      storage: storage,
+      linuxGuard: LinuxSecretServiceGuard(
+        environment: () => const {},
+        isSandboxed: () async => false,
+        hasService: () async => true,
+      ),
+    );

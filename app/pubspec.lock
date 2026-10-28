@@ -138,7 +138,7 @@ packages:
     source: hosted
     version: "1.0.0"
   dbus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: dbus
       sha256: d0c98dcd4f5169878b6cf8f6e0a52403a9dff371a3e2f019697accbf6f44a270
@@ -422,7 +422,7 @@ packages:
     source: hosted
     version: "5.1.1"
   logging:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: logging
       sha256: c8245ada5f1717ed44271ed1c26b8ce85ca3228fd2ffdb75468ab01979309d61
@@ -502,7 +502,7 @@ packages:
     source: hosted
     version: "5.0.2"
   oidc_android:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: oidc_android
       sha256: "4ccaccb210ed9bb8c81388e474840eb0ee0c09235c54fbf17bd23047f4a2bd08"
@@ -550,7 +550,7 @@ packages:
     source: hosted
     version: "1.1.1"
   oidc_platform_interface:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: oidc_platform_interface
       sha256: "367cbe54cd5c312bdc7175e8929a680b973cf857210b339b99fdcf38b6de4d35"
@@ -899,7 +899,7 @@ packages:
     source: hosted
     version: "1.4.0"
   url_launcher:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: url_launcher
       sha256: e8cc955c97e06df9879140a1fe301f3d493f01b7c62dec7f46834be31d7e9fda

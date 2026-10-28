@@ -22,23 +22,28 @@ OidcUserManager createAnimusOidcManager({
   store: store,
   httpClient: httpClient,
   id: config.fingerprint,
-  settings: OidcUserManagerSettings(
-    redirectUri: config.redirectUri,
-    expectedIssuer: config.issuer,
-    strictIssuerValidation: true,
-    initMode: OidcInitMode.blockingValidate,
-    // Foreground caller coordinates expiry/401 refresh, never background timers.
-    refreshBefore: null,
-    scope: const ['openid', 'profile', 'email', 'offline_access'],
-    allowedIdTokenAlgorithms: const ['RS256', 'ES256'],
-    userInfoSettings: const OidcUserInfoSettings(
-      sendUserInfoRequest: false,
-      followDistributedClaims: false,
-    ),
-    revokeTokensOnLogout: false,
-    options: const OidcPlatformSpecificOptions(
-      android: OidcNativeOptionsAndroid(flowTimeoutSeconds: 120),
-      linux: OidcPlatformSpecificOptions_Native(flowTimeoutSeconds: 120),
-    ),
+  settings: createAnimusOidcSettings(config),
+);
+
+/// Shared validation/foreground policy for the production guarded manager.
+OidcUserManagerSettings createAnimusOidcSettings(
+  AnimusConfig config,
+) => OidcUserManagerSettings(
+  redirectUri: config.redirectUri,
+  expectedIssuer: config.issuer,
+  strictIssuerValidation: true,
+  initMode: OidcInitMode.blockingValidate,
+  // Foreground caller coordinates expiry/401 refresh, never background timers.
+  refreshBefore: null,
+  scope: const ['openid', 'profile', 'email', 'offline_access'],
+  allowedIdTokenAlgorithms: const ['RS256', 'ES256'],
+  userInfoSettings: const OidcUserInfoSettings(
+    sendUserInfoRequest: false,
+    followDistributedClaims: false,
+  ),
+  revokeTokensOnLogout: false,
+  options: const OidcPlatformSpecificOptions(
+    android: OidcNativeOptionsAndroid(flowTimeoutSeconds: 120),
+    linux: OidcPlatformSpecificOptions_Native(flowTimeoutSeconds: 120),
   ),
 );
