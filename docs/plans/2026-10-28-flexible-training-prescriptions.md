@@ -13,18 +13,21 @@ dataset work independent. Group creation defaults under Profile → Training
 preferences (rep entry and RIR controls); local optional actions
 override each new item's defaults. Scheduling remains optional. Saved values are
 always visible, and changing preferences never rewrites existing/open items.
+Enable/disable individual saved workout days, as clarified by the owner, so old
+ones remain editable/reusable under Inactive while only active days are offered
+for fresh workouts. This adds no multi-day program entity or exclusive program.
 Existing rep bounds represent fixed reps when equal;
 an explicit persisted RIR policy distinguishes Off from inheritance. This store
 compatibility change uses the full lane; no speculative training engine is added.
 
-Acceptance A1–A9 is defined in the spec. Main risks are unintended inheritance,
+Acceptance A1–A12 is defined in the spec. Main risks are unintended inheritance,
 fabricated actual RIR, nulls materialized by editor defaults, and compatibility
 across stores/drafts/backups. Preserve the current visual system and essential
 local action/recovery boundaries.
 
 ## Tasks
 
-1. **T1 — RIR policy and preferences compatibility (A3, A6, A8).** Full-lane implementer owns
+1. **T1 — RIR, day activation and preferences compatibility (A3, A6, A8, A10–A12).** Full-lane implementer owns
    `app/lib/store/`, `domain/`, `settings/`, relevant `data/`, `export/`, `transfer/`, `recovery/` and their
    focused tests/contracts. Introduce the forward migration without replacing
    version-1 history; carry policy through immutable actions and supported backup/
@@ -37,11 +40,20 @@ local action/recovery boundaries.
    Add profile-scoped creation defaults to the existing settings snapshot;
    validate retry/flush/isolation/backup and preserve all other settings. No live
    preference dependency in persisted slots, existing days or in-flight drafts.
+   Add saved-day activation, legacy-active migration/import and atomic revisioned
+   status-only actions. Carry inactive state through native backup/output/restore;
+   refuse lossy compatibility export. Prove concurrent day edits/status changes,
+   retries and two-profile isolation without changing slots or historical rows.
+   Reimport of a known legacy day retains its later local Disable through the
+   existing overlay/review boundary; test this separately from new-day defaults.
+   Expose separate all-day management/by-ID and active-workout queries; preserve
+   full saved ordering for next-active rotation after a now-inactive last day.
    Coordinate the nullable resolved-slot API with T3 before committing a coherent
    compiling task. Do not add compatibility fields to frozen legacy services.
-2. **T2 — Preferences, exercise and day editors (A1–A3, A5, A7–A9).** Standard Flutter
+2. **T2 — Preferences, exercise/day editing and reuse (A1–A3, A5, A7–A10).** Standard Flutter
    implementer owns `ui/exercise_editor.dart`, `ui/day_editor.dart`,
    `ui/editor_guard.dart`, `ui/profile_screen.dart`, a training-preferences sheet,
+   `ui/split_tab.dart`, `ui/plan_screen.dart`,
    shared prescription controls/formatting as needed,
    localization sources/generated output and focused UI/layout tests. Implement
    Advanced, truly optional defaults, fixed/range choice and Off/inherit/target
@@ -51,8 +63,11 @@ local action/recovery boundaries.
    values. Optional Add weekday and visible Change/Remove retain nullable saves.
    Use local More options/Add target instead of repeating preference switches
    for every exercise; preserve existing range/target/weekday visibility.
-3. **T3 — Workout and summary consumers (A2–A4, A6, A8–A9).** Standard Flutter
-   implementer owns `session/`, prescription consumers in Today/Plan and focused
+   Add day-menu Enable/Disable, retained Inactive section/count and all-disabled
+   recovery; preserve edit access, row ordering and pending/failure/retry feedback.
+3. **T3 — Workout and summary consumers (A2–A4, A6, A8–A11).** Standard Flutter
+   implementer owns `session/`, `shell/session_launcher.dart`, prescription
+   consumers in Today/Plan and focused
    controller/draft/resume/widget tests. Distinguish target from observation;
    new sets use null actual RIR, logging never requires it, and Off/no-target
    avoids automatic prompting. Retain optional actual-RIR entry/clear. Read old
@@ -60,7 +75,10 @@ local action/recovery boundaries.
    cover added sets/exercises and resumed sessions as well as fresh starts.
    A preference edit never alters a saved prescription or active workout, hides
    recorded RIR, or changes Today rotation into calendar scheduling.
-4. **T4 — Integrated qualification and acceptance (A1–A9).** Coordinator runs
+   Filter choices/planned previews to active days and skip inactive days in stable
+   rotation. Guard stale fresh launches at admission while keeping already-started
+   and historical resume/finish valid. Retain historical totals for inactive days.
+4. **T4 — Integrated qualification and acceptance (A1–A12).** Coordinator runs
    integrated checks and one batched native/layout visual inspection in disposable
    storage. Reviewer independently checks final acceptance and evidence. Update
    `docs/alkion/acceptance.md` and current contract docs with bounded results.
@@ -76,7 +94,8 @@ change receive independent review, with fix-diff rechecks only.
 
 - Focused real-SQLite migration/domain/recovery tests for T1; editor/save/discard,
   preference persistence/isolation, fixed/range/RIR and optional weekday matrix
-  for T2; fresh/log/add/resume/draft and unchanged rotation tests for T3.
+  plus active/inactive management for T2; fresh/log/add/resume/draft, inactive
+  rotation, stale launch and all-disabled states for T3.
 - Run Flutter/Dart through `make -C app`; use `fmt FORMAT_FILES=...` only on owned
   files. Integrated `make -C app analyze`, `make -C app format`,
   `make -C app test TEST=--concurrency=2` and `make -C app build`.
@@ -97,7 +116,10 @@ change receive independent review, with fix-diff rechecks only.
   Owner subsequently requested optional scheduling and simpler grouped preferences.
   Amendment review PASS; removed the suggested redundant global weekday-disclosure
   preference. Schedule stays contextual through Add weekday and Change/Remove.
+  Owner added enable/disable for saved workout days. Activation amendment review
+  PASS, with known-day reimport explicitly retaining later local Disable after
+  reviewer clarification; fix recheck PASS, no remaining findings.
 - T1–T4: Not started. No runtime files changed.
-- Checks: original and amended proposal Markdown references/whitespace and diff
-  checks PASS. No runtime files changed.
+- Checks: original, preferences and activation proposal Markdown references/
+  whitespace and diff checks PASS. No runtime files changed.
 - Next: obtain owner approval of this concrete scope before T1.

@@ -12,6 +12,7 @@ without requiring knowledge of RIR. Creating an exercise should capture its
 identity; reusable prescription defaults and starting weight are optional.
 Exercise dataset/search changes are a separate workstream.
 Day weekday assignment is optional, with flexible training as the initial path.
+Keep several saved workout days and enable/disable them for later reuse.
 
 Inspected baseline: `29f136a`. Exercise/slot rep and RIR bounds are already
 nullable, and equal rep bounds can represent fixed reps. However, exercise
@@ -22,6 +23,8 @@ exercise defaults, so clearing bounds cannot reliably express an opt-out.
 Weekday storage is already nullable; the day editor nevertheless always exposes
 seven weekday chips. Today recommends the next day by saved order/history, not
 by calendar weekday. Profile-scoped revisioned local preferences already exist.
+The owner clarified that split activation applies to an individual saved workout
+day (e.g. Push), matching the current UI; no multi-day program entity is needed.
 
 ## Product decisions
 
@@ -89,6 +92,36 @@ by calendar weekday. Profile-scoped revisioned local preferences already exist.
   prescription consumer share fixed/range and optional-RIR presentation rules.
   Preserve established components, typography, themes and logging controls.
 
+## Active and inactive workout days
+
+- New days and existing days after upgrade start Active. Several days may be
+  active simultaneously. Day actions in Plan offer **Disable** or **Enable**;
+  these are reversible saved-day actions, independent of training preferences.
+- Plan shows active days normally and a discoverable **Inactive (count)** section
+  for retained days, initially collapsed when active days exist. When every day
+  is inactive, expose the retained list and Enable directly, rather than implying
+  the library is empty. Inactive days remain editable without enabling them.
+- Disabling retains the same day/slot IDs, full exercise order and prescriptions,
+  optional weekday, day ordering and history. Re-enabling restores eligibility
+  in that saved order without cloning, rebuilding or resetting it. No confirmation
+  dialog is needed for this reversible action; reflect pending/failure/retry and
+  announce committed status accessibly, without falsely reporting success.
+- Today workout choices, planned workload and weekday previews include only
+  active days. All-disabled states offer Enable a day in Plan or the existing
+  custom-workout path. Historical workouts, totals and exercise history remain
+  available regardless of their day status. Management reads and by-ID lookups
+  still resolve inactive days; activation is not deletion or an access boundary.
+- Next-day rotation walks the full saved order after the last trained known day,
+  skipping inactive days and wrapping. This also applies when the last trained
+  day is now inactive. If the last ID is unknown, choose the first active day;
+  with no active days return no recommendation. Preserve stable day positions
+  when filtering/reordering: hidden inactive rows must not be dropped or reset.
+- A disabled day cannot start a fresh workout through a stale card/launcher:
+  check the current committed eligibility at launch admission and offer return
+  to Plan to enable it. Disabling never interrupts, relabels or discards an already
+  started/minimized workout. Its draft, timer, resume and finish remain valid;
+  resuming historical workouts also remains available without enabling the day.
+
 ## Persistence and compatibility
 
 Add an explicit slot RIR policy using a forward store migration. Null/legacy
@@ -107,6 +140,20 @@ introduce new workout/outbox fields. New slots persist the resulting RIR policy
 and concrete rep values so future preference changes cannot reinterpret them.
 Exercise creation still saves unset prescription defaults, regardless of these
 preferences. Scheduling continues to use the existing nullable weekday field.
+
+Persist day activation through the same forward-migration/domain-action boundary
+as RIR policy. Add a qualified active flag on saved days; legacy missing flags
+mean Active. A status-only action writes the activation field against its observed
+day revision with atomic data/outbox evidence; it must not rewrite prescriptions,
+slots, position or weekday. Concurrent editor saves cannot overwrite a newer
+activation change silently, nor can activation overwrite unsaved/newer content.
+Retry reconciles the same prepared intent. Preserve activation in current models,
+native output/backup/restore and revision payloads, with profile isolation and
+unknown values retained rather than treated as Active. Legacy transfer import
+defaults newly imported days to Active. Reimport of a known day preserves a later
+local Disable through the existing overlay/review boundary, rather than silently
+reactivating it. Frozen compatibility export must refuse inactive-day state
+it cannot represent, rather than silently re-enabling days on reimport.
 
 Keep the frozen `reps-export/1` input/projection policy unchanged. Existing Alkion
 domain output and native backup carry the new policy with their schema/version
@@ -164,12 +211,31 @@ workouts, actual RIR and history do not change or become hidden.
 one explicitly; null and assigned values survive unrelated edits and restore.
 Revealing the picker is not dirty. Assigned weekdays remain visible regardless of
 training preferences. Rotation/manual choice still work as before.
+**A10.** Disable/save/reopen and enable a saved workout day while others stay
+active. Plan retains it under Inactive and allows editing/reuse without enabling;
+its IDs, content, weekday, ordering and history stay intact. Active-only workout
+choices/previews/rotation update after commit, including when the most recently
+trained day is inactive. Re-enable returns it to its saved position. All-disabled
+and initially empty profiles have distinct usable states. Reordering cannot lose
+inactive days; unrelated edits cannot implicitly enable them.
+**A11.** A stale disabled-day choice cannot launch a fresh workout. Existing
+active/minimized drafts and historical workout resume/finish still work without
+changing activation. Status changes and concurrent editor saves are revision-safe;
+failure/retry yields one reconciled intent and no partial slot/content writes.
+**A12.** Migration and newly imported legacy days default to Active. Reimporting
+the same legacy day after a local Disable retains the local inactive state through
+the existing overlay/review boundary. Native backup/restore
+round-trips inactive status and exact content. Compatibility export refuses
+unrepresentable inactive state. Unknown flags, failed/repeated migration and
+two-profile cases preserve the store/recovery/isolation boundaries.
 
 ## Non-goals
 
 No exercise catalog, search, equipment identity or dataset work. This first slice
 does not introduce supersets, circuits, drop sets, per-set varying prescriptions,
 timed/distance training, split presets or a calendar-based recommendation engine.
-Optional weekday disclosure does not change rotation. No automatic
+No multi-day program grouping, automatic exclusive-program selection or copying
+an entire routine is introduced. Optional weekday disclosure does not change
+rotation; inactive-day filtering does. No automatic
 progression redesign, historical observation rewrite, account/sync/backend work,
 release or publication. These need their own concrete product scope.
