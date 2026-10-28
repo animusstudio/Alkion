@@ -84,6 +84,23 @@ ANIMUS_ANALYZE_FILES ?= lib/animus test/animus
 analyze-animus:
 	$(DART) analyze $(ANIMUS_ANALYZE_FILES)
 
+# Real synthetic provider/API opt-in. Input contains only the public client
+# configuration and a private test bridge; it never contains bearer credentials.
+.PHONY: test-animus-live
+test-animus-live:
+	@test -n "$${ANIMUS_LIVE_FIXTURE}" && test -f "$${ANIMUS_LIVE_FIXTURE}" || (echo 'Set private ANIMUS_LIVE_FIXTURE to a disposable live fixture contract.' >&2; exit 2)
+	$(FLUTTER) test --no-pub test/animus/live_connection_integration_test.dart --reporter expanded
+
+# Standalone plugin checkpoint; never launches the normal app or opens a store.
+.PHONY: build-animus-native-checkpoint-linux build-animus-native-checkpoint-android
+build-animus-native-checkpoint-linux:
+	@test -n "$(ANIMUS_NATIVE_CONFIG)" && test -f "$(ANIMUS_NATIVE_CONFIG)" || (echo 'Set ANIMUS_NATIVE_CONFIG to explicit disposable checkpoint JSON.' >&2; exit 2)
+	$(FLUTTER) build linux --debug --no-pub --target tool/animus_native_checkpoint.dart --dart-define-from-file="$(ANIMUS_NATIVE_CONFIG)"
+build-animus-native-checkpoint-android:
+	@test -n "$(ANIMUS_NATIVE_CONFIG)" && test -f "$(ANIMUS_NATIVE_CONFIG)" || (echo 'Set ANIMUS_NATIVE_CONFIG to explicit disposable checkpoint JSON.' >&2; exit 2)
+	@test -n "$${ANDROID_USER_HOME}" && test -f "$${ANDROID_USER_HOME}/debug.keystore" || (echo 'Set the existing disposable Android debug signer directory.' >&2; exit 2)
+	ALKION_ANIMUS_NATIVE=1 ALKION_ANIMUS_LOOPBACK_HTTP=1 $(FLUTTER) build apk --debug --no-pub --flavor dev --target-platform android-x64 --target tool/animus_native_checkpoint.dart --dart-define-from-file="$(ANIMUS_NATIVE_CONFIG)"
+
 # Public setup values only; never put credentials/tokens in a Dart define file.
 .PHONY: build-animus build-apk-animus
 build-animus:
