@@ -21,6 +21,8 @@ class AuthFixture {
   int requests = 0;
   int exchanges = 0;
   int refreshes = 0;
+  int accessExpiresInSeconds = 3600;
+  int refreshExpiresInSeconds = 3600;
   bool validPkce = false;
   List<String>? challengeMethods = ['S256'];
   String? issuerOverride;
@@ -77,6 +79,7 @@ class AuthFixture {
           'token_endpoint': 'https://identity.example.test/token',
           'jwks_uri': 'https://identity.example.test/jwks',
           'response_types_supported': ['code'],
+          'scopes_supported': ['openid', 'profile', 'offline_access'],
           'subject_types_supported': ['public'],
           'id_token_signing_alg_values_supported': ['RS256'],
           'token_endpoint_auth_methods_supported': ['none'],
@@ -125,10 +128,12 @@ class AuthFixture {
         jsonEncode({
           'access_token': 'unit-bearer-${exchanges + refreshes}',
           'token_type': 'Bearer',
-          'expires_in': 3600,
+          'expires_in': refresh
+              ? refreshExpiresInSeconds
+              : accessExpiresInSeconds,
           'refresh_token': 'unit-refresh',
           'id_token': idToken,
-          'scope': 'openid profile email offline_access',
+          'scope': 'openid profile offline_access',
         }),
         200,
       );

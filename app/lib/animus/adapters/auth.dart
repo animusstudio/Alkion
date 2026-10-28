@@ -435,6 +435,14 @@ final class _GuardedManager extends OidcUserManager {
   final Logger _silent = Logger.detached('AnimusOidc')..level = Level.OFF;
   @override
   Logger get logger => _silent;
+
+  /// `refreshBefore: null` disables only the SDK's expiring notification;
+  /// its expired notification still refreshes. Do not subscribe to either,
+  /// session monitoring or other lifecycle reactions. This adapter's explicit
+  /// restore/refresh methods are the only owners of refresh-token exchanges.
+  @override
+  void attachLifecycleListeners() {}
+
   @override
   Map<String, dynamic> prepareForRedirectFlow(
     OidcPlatformSpecificOptions options,

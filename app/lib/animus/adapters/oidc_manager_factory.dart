@@ -35,7 +35,7 @@ OidcUserManagerSettings createAnimusOidcSettings(
   initMode: OidcInitMode.blockingValidate,
   // Foreground caller coordinates expiry/401 refresh, never background timers.
   refreshBefore: null,
-  scope: const ['openid', 'profile', 'email', 'offline_access'],
+  scope: const ['openid', 'profile', 'offline_access'],
   allowedIdTokenAlgorithms: const ['RS256', 'ES256'],
   userInfoSettings: const OidcUserInfoSettings(
     sendUserInfoRequest: false,

@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:alkion/animus/adapters/auth.dart';
+import 'package:alkion/animus/connection.dart';
+import 'package:alkion/animus/contracts.dart';
+import 'package:alkion/animus/probe.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
@@ -42,12 +45,74 @@ void main() {
       final session = await auth.authorize();
       expect(session, isNotNull);
       expect(fixture.validPkce, isTrue);
+      expect(
+        fixture.browser.lastAuthorization!.queryParameters['scope']!
+            .split(' ')
+            .toSet(),
+        {'openid', 'profile', 'offline_access'},
+      );
       expect(session!.identity.subject, 'synthetic-user-one');
       expect(fixture.secrets.values, isEmpty);
       await auth.retain(session);
       expect(fixture.secrets.values.length, 1);
       expect(records, isEmpty);
       await logging.cancel();
+    },
+  );
+
+  test('staged SDK token expiry never starts an implicit refresh', () async {
+    fixture.accessExpiresInSeconds = 1;
+    final session = (await auth.authorize())!;
+    final requests = fixture.requests;
+    final remaining = session.expiresAt.difference(DateTime.now().toUtc());
+    await Future<void>.delayed(remaining + const Duration(milliseconds: 150));
+    expect(fixture.requests, requests);
+    expect(fixture.refreshes, 0);
+    expect(fixture.exchanges, 1);
+    expect(fixture.secrets.values, isEmpty);
+  });
+
+  test(
+    'retained SDK token expiry stays idle until one explicit coordinated verification',
+    () async {
+      fixture.accessExpiresInSeconds = 1;
+      final probe = _SdkSessionProbe();
+      final controller = AnimusConnectionController(
+        config: fixture.scope.config,
+        auth: auth,
+        probe: probe,
+      );
+      try {
+        await controller.connect();
+        await controller.confirm();
+        expect(controller.state, AnimusConnectionState.verified);
+        expect(fixture.secrets.writes, 1);
+        final oldEnvelope = fixture.secrets.values.values.single;
+        final requests = fixture.requests;
+        final remaining = probe.sessions.single.expiresAt.difference(
+          DateTime.now().toUtc(),
+        );
+        await Future<void>.delayed(
+          remaining + const Duration(milliseconds: 150),
+        );
+        expect(fixture.requests, requests);
+        expect(fixture.refreshes, 0);
+        expect(fixture.secrets.writes, 1);
+        expect(probe.sessions.length, 1);
+        await Future.wait([controller.verify(), controller.verify()]);
+        expect(fixture.refreshes, 1);
+        expect(fixture.secrets.writes, 2);
+        expect(fixture.secrets.values.values.single != oldEnvelope, isTrue);
+        expect(probe.sessions.length, 2);
+        expect(
+          probe.sessions.last.expiresAt.isAfter(DateTime.now().toUtc()),
+          isTrue,
+        );
+        expect(controller.state, AnimusConnectionState.verified);
+      } finally {
+        await controller.close();
+        controller.dispose();
+      }
     },
   );
 
@@ -319,4 +384,18 @@ Future<void> _until(bool Function() done) async {
     await Future<void>.delayed(const Duration(milliseconds: 5));
   }
   throw StateError('Synthetic operation did not reach bounded checkpoint');
+}
+
+class _SdkSessionProbe implements AnimusProbePort {
+  final sessions = <AnimusAuthSession>[];
+  @override
+  Future<AnimusProbeResult> verify(AnimusAuthSession session) async {
+    sessions.add(session);
+    return AnimusProbeResult.verified;
+  }
+
+  @override
+  Future<void> cancel() async {}
+  @override
+  Future<void> close() async {}
 }
