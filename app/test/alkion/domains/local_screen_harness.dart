@@ -22,6 +22,7 @@ import 'package:alkion/session/session_manager.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/icons.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/shell/w_tab_bar.dart';
 import '../../support/app_fonts.dart';
@@ -357,8 +358,19 @@ Future<void> settleUntilFound(
 
 /// Taps the bottom-nav tab showing [icon] (locale-independent).
 Future<void> openTab(WidgetTester tester, IconData icon) async {
+  final index = {
+    WIcons.home: 0,
+    WIcons.chart: 1,
+    WIcons.history: 2,
+    WIcons.plan: 3,
+    WIcons.user: 4,
+  }[icon];
+  if (index == null) throw ArgumentError.value(icon, 'icon');
   await tester.tap(
-    find.descendant(of: find.byType(WTabBar), matching: find.byIcon(icon)),
+    find.descendant(
+      of: find.byType(WTabBar),
+      matching: find.byKey(ValueKey('destination-$index')),
+    ),
   );
   await settleReal(tester, ticks: 10);
 }

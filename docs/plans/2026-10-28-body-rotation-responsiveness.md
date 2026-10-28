@@ -1,6 +1,6 @@
 # Body rotation responsiveness
 
-Date: 2026-10-28. Lane: standard. Status: Implemented and checked; independent review and delivery in progress.
+Date: 2026-10-28. Lane: standard. Status: Implemented and reviewed; delivery in progress.
 Continuation of the approved native body and body-controls UI work. Owner reports slow, clunky drag/rotation and directs merging the UI into main afterward, then proceeding to the separate Animus connection.
 
 ## Outcome and decisions
@@ -27,4 +27,5 @@ T3. After the fix is accepted, deliver the reviewed UI/fix range through a PR an
 
 T1 complete: shared dirty/autoplay frame scheduling, bounded latest native evaluation, v2 cumulative turns with command/revision acknowledgment fences, and allocation-free equivalent sampling. Runtime checks PASS (161406), 12,248 frozen material cases PASS (160727), actual JDK queue PASS (160757), final controller5 PASS (161409), existing gesture/controller15 PASS (160936), scoped analyzer0 and named format0/2 (161407), diff check clean.
 T2: final unchanged-source private offline ARM64 APK compile PASS27s (161548); original six model hashes retained. Owner selected local Flutter desktop development rather than reconnecting a phone. Linux debug app is running with separate test storage; Android-only artwork is not exercised there. CPU-only synthetic ellipse sampler median compact1.315→0.533ms and enlarged1.818→0.675ms; desktop real-mesh renderer held-view glyph signatures match in all four cases, while full draw timing is mixed. Neither establishes Android frame rate or physical gesture acceptance.
-Next: finish exact-range independent review, deliver PR and merge on green checks, then prepare the separately reviewed Animus connection scope. No phone installation or public model redistribution follows.
+Independent fix and exact public range review PASS at `af80b2f`, no findings/leaks. Initial PR CI passed1,671 tests and failed16 at one shared old-icon navigation finder. The helper now uses the same existing destination keys as the accepted support helper; no app behavior/assertions changed. Independent mechanical review PASS; affected files18 tests PASS (163132).
+Next: repeat PR CI after the helper correction and merge on green checks, then prepare the separately reviewed Animus connection scope. No phone installation or public model redistribution follows.
