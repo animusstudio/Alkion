@@ -1,6 +1,6 @@
 # Optional Animus connection — first working slice
 
-Date: 2026-10-28. Status: Proposed. Lane: full (authentication and authorization).
+Date: 2026-10-28. Status: Approved by owner, implementation in progress. Lane: full (authentication and authorization).
 
 ## Outcome
 

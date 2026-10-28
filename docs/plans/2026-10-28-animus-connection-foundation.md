@@ -1,6 +1,6 @@
 # Optional Animus connection foundation
 
-Date: 2026-10-28. Lane: full. Status: Proposed; implementation awaits approval.
+Date: 2026-10-28. Lane: full. Status: Approved by owner; T1 in progress.
 Specification: [connection foundation](../specs/2026-10-28-animus-connection-foundation.md).
 
 ## Outcome
@@ -69,9 +69,10 @@ and credentials outside the public Alkion source. Record results at immutable
 source revisions. No public push, release or production account/grant change
 follows from plan approval alone.
 
-Next: independent design review and owner approval of this first connection
-milestone; then implement T1–T5. Data synchronization follows separate scoped
+Next: T1 contract/platform foundation, then T2–T5. Data synchronization follows separate scoped
 plans using the existing outbox/replica/recovery contracts.
 
 Design review: PASS after replacing the snapshot probe with the exact direct
 definitions read and explicit unavailable handling.
+
+Owner approval received 2026-10-28. T1 is delegated; T2–T5 await its coherent interfaces.
