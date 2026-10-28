@@ -6,6 +6,8 @@ import 'package:path/path.dart' as paths;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'animus/connection.dart';
+import 'animus/runtime.dart';
 import 'data/active_session_draft.dart';
 import 'data/finished_session_store.dart';
 import 'data/session_writer.dart';
@@ -52,6 +54,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     this.units,
     this.identity,
     this.sessions,
+    this.animus,
   );
   final Directory supportRoot;
   final LocalStore store;
@@ -59,9 +62,11 @@ class AlkionRuntime with WidgetsBindingObserver {
   final UnitService units;
   final IdentityService identity;
   final SessionManager sessions;
+  final AnimusConnectionController animus;
   static Future<AlkionRuntime> open(
     Directory supportRoot, {
     WorkoutNotification? notifications,
+    AnimusConnectionController Function(AlkionProfile, int)? connectionFactory,
   }) async {
     GoogleFonts.config.allowRuntimeFetching = false;
     final profile = await AlkionProfile.open(supportRoot: supportRoot);
@@ -88,6 +93,12 @@ class AlkionRuntime with WidgetsBindingObserver {
         units,
         identity,
         sessions,
+        (connectionFactory ??
+            (profile, generation) => createAnimusConnection(
+              installationId: profile.installationId,
+              profileId: profile.profileId,
+              generation: generation,
+            ))(profile, store.token.generation),
       );
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
@@ -148,6 +159,9 @@ class AlkionRuntime with WidgetsBindingObserver {
 
   Future<void> close() async {
     _closing = true;
+    // Fence remote callbacks synchronously, before any local barrier yields.
+    // Its bounded best-effort teardown never holds up local store closure.
+    unawaited(animus.close());
     try {
       await flushPersistence();
     } catch (_) {
@@ -162,6 +176,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     units.dispose();
     identity.dispose();
     persistenceFailure.dispose();
+    animus.dispose();
   }
 }
 
@@ -319,6 +334,9 @@ class AlkionApp extends StatelessWidget {
     providers: [
       Provider<LocalDatabase>.value(value: runtime.store),
       Provider<RecoveryHost?>.value(value: recovery),
+      ChangeNotifierProvider<AnimusConnectionController?>.value(
+        value: runtime.animus,
+      ),
       Provider<DomainRecovery>.value(
         value: DomainRecovery(runtime.store.recover),
       ),
