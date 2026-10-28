@@ -21,13 +21,19 @@ measured Space Mono metadata, coral accent, restrained animated dotted canvas,
 black/near-black surfaces and readable light-theme equivalents. No new body
 model, artwork, visual identity or elaborate intro sequence.
 
-One screen, in order:
+First screen, in order:
 - Alkion, by Animus.
 - Welcome to Alkion; concise explanation that sign-in is optional.
 - Primary: Sign in to Animus.
 - Don't have an account? Create one.
-- Secondary: Restore backup.
 - Bottom, safe-area aware: Go fully offline; Connect later in Profile.
+
+Go fully offline opens a second screen with two choices: Start new and Restore
+backup. Start new creates the empty local profile and enters the app. Restore
+backup uses the existing verified restore flow. Back returns to the first
+screen; cancelling the backup picker stays on the offline choice screen.
+Opening this second screen alone creates no profile and does not mark onboarding
+complete. Restore is not a competing action on the initial sign-in screen.
 
 Offline is a complete persistent local profile, not an expiring guest account.
 Use Go fully offline as the label rather than suggesting disposable guest data.
@@ -104,9 +110,10 @@ on valid current profiles. Existing/restored profiles open as before without
 being forced through the new entry screen.
 
 A cancelled/failed login remains on the entry flow with Retry and offline
-available. Going offline cancels/fences pending callbacks before entering the
-app. Offline selection or completed confirmed login marks this new entry
-decision complete. Failed persistence never reports completion.
+available. Going offline cancels/fences pending callbacks before showing the
+Start new/Restore choice. Only successful Start new, completed Restore or
+completed confirmed login marks this new entry decision complete. Failed
+persistence never reports completion.
 An authenticated account without workout permission gets truthful status and
 can continue locally; do not imply synchronization or automatic cloud provisioning.
 Restored/replaced generations retain the current fresh-confirmation requirement.
@@ -120,11 +127,13 @@ and fully usable offline/restore actions, not dead fake login buttons.
 
 ## Acceptance
 
-A1. Fresh launch shows sign-in, signup, restore and bottom offline action in all
-four locales, at 320dp/large text and normal phone size, with native accessibility.
-A2. Offline opens the full empty-library local app without remote I/O; restart
-remembers the choice, and Profile can connect later. Existing/restored profiles
-and interrupted restore/recovery paths preserve behavior and data.
+A1. Fresh launch shows sign-in, signup and the bottom offline action. Offline
+then shows Start new/Restore with working Back and picker cancellation, in all
+four locales at 320dp/large text and normal phone size with native accessibility.
+A2. Entering the offline choice screen alone creates no profile. Start new opens
+the full empty-library local app without remote I/O; completed setup survives
+restart, and Profile can connect later. Existing/restored profiles and
+interrupted restore/recovery paths preserve behavior and data.
 A3. Each advertised method uses an actual supported provider path and the same
 validated OIDC return; no app credential collection or invented endpoint.
 Signup produces a real synthetic account and does not invent data grants.

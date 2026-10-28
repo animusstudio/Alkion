@@ -7,7 +7,8 @@ Base: accepted connection foundation at 58f09ae; separate local feature branch.
 ## Outcome
 
 Put Animus sign-in first, with Create one and a bottom Go fully offline action.
-Retain Restore backup, existing profiles and Profile connection after skipping.
+Offline opens a second Start new/Restore backup screen; completing either enters
+the app. Retain existing profiles and Profile connection after offline setup.
 Support the owner's email/password, passkey and six-digit email-code direction
 through the existing identity provider, without collecting credentials in Flutter.
 
@@ -43,6 +44,8 @@ no provisional database is created and the normal root stays fresh. Create and
 verify exact identity/generation only on confirmed login, before secret
 retention/probe. Fence/close and preserve pending journal bytes aside
 when choosing offline or Restore, using unchanged fresh restore protections.
+Entering the offline choice screen alone creates no profile and does not
+complete onboarding; fence auth before that transition.
 Recover journal interruptions without guessing/replacing existing bytes; an
 interrupted restore takes priority. Never reuse the legacy onboarding flag.
 Check A2/A5 with real disposable SQLite, including login/signup → cancel/restart
@@ -50,8 +53,9 @@ Check A2/A5 with real disposable SQLite, including login/signup → cancel/resta
 
 T3 — Native onboarding and Profile continuity (standard).
 Own first_start_screen.dart, shared entry/confirmation UI and four locale ARBs,
-plus widget/layout tests. Build the proposed single screen in existing tokens,
-reuse hosted login/account confirmation and keep Restore available. Preserve
+plus widget/layout tests. Build the two-step entry in existing tokens: sign-in/
+signup/offline first, then Start new/Restore with Back and picker cancellation.
+Reuse hosted login/account confirmation and keep Restore in the offline step. Preserve
 Profile connect/disconnect for offline users. Check A1/A2 and safe busy/error/
 unavailable states. Coordinate T2's frozen lifecycle interfaces before wiring.
 
@@ -81,6 +85,8 @@ Public push needs separate exact outgoing-range review and owner direction.
 ## State
 
 - Specification/plan: proposed; independent design and fix review PASS.
+- Owner refinement: Go fully offline leads to Start new/Restore; initial screen
+  has no separate Restore action. Authentication boundaries remain unchanged.
 - T1–T4: not started.
 - Owner method direction: email/password, passkeys, six-digit email passwordless.
 - Passkey role interpreted as passwordless plus optional account-required MFA.
