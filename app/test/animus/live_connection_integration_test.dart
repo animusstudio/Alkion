@@ -7,8 +7,15 @@ import 'package:alkion/animus/adapters/http.dart';
 import 'package:alkion/animus/config.dart';
 import 'package:alkion/animus/connection.dart';
 import 'package:alkion/animus/contracts.dart';
+import 'package:alkion/animus/entry.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:alkion/animus/probe.dart';
+import 'package:alkion/animus/runtime.dart';
+import 'package:alkion/identity/alkion_identity.dart';
+import 'package:alkion/identity/alkion_profile.dart';
+import 'package:alkion/main.dart';
+import 'package:alkion/store/local_store.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -18,6 +25,7 @@ import 'package:http/http.dart' as http;
 /// or provider-administration credentials. No record body enters a receipt.
 void main() {
   final input = Platform.environment['ANIMUS_LIVE_FIXTURE'];
+  final entryOnly = input != null && _Fixture(input).data['entry_only'] == true;
   test(
     'real OIDC and public API connection acceptance',
     () async {
@@ -38,7 +46,11 @@ void main() {
 
       try {
         final primary = owner(fixture.primary);
-        await primary.controller.connect();
+        await primary.controller.connect(
+          intent: fixture.data['auth_only'] == true
+              ? fixture.authIntent
+              : AnimusAuthIntent.signIn,
+        );
         passed(
           'login_staged_without_read_or_retention',
           primary.controller.state ==
@@ -276,9 +288,331 @@ void main() {
         });
       }
     },
-    skip: input == null ? 'Set private ANIMUS_LIVE_FIXTURE to opt in.' : false,
+    skip: input == null
+        ? 'Set private ANIMUS_LIVE_FIXTURE to opt in.'
+        : entryOnly
+        ? 'The fixture selected bounded first-use entry acceptance.'
+        : false,
     timeout: const Timeout(Duration(minutes: 8)),
   );
+
+  test(
+    'real first-use OIDC confirmation, owned store, public read and Profile reconnect',
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      final fixture = _Fixture(input!);
+      final receipts = <String, String>{};
+      void passed(String name, bool value) {
+        receipts[name] = value ? 'PASS' : 'FAIL';
+        if (!value) throw StateError('live entry acceptance: $name');
+      }
+
+      final directory = await Directory.systemTemp.createTemp(
+        'alkion-live-entry-',
+      );
+      final root = Directory(
+        '${directory.path}/${AlkionIdentity.applicationId}',
+      );
+      final secrets = _MemorySecrets();
+      final api = _AuditedHttp();
+      final audit = _AuthAudit();
+      final config = AnimusConfig.fromEnvironment(
+        fixture.primary,
+        platform: AnimusPlatform.linux,
+      )!;
+      AnimusScope? scope;
+      AnimusConnectionController? controller;
+      AlkionRuntime? runtime;
+      late final AnimusEntryLifecycle entry;
+      entry = AnimusEntryLifecycle(
+        root,
+        connectionFactory: (reservation, beforeRetain) {
+          return createAnimusConnection(
+            installationId: reservation.installationId,
+            profileId: reservation.profileId,
+            generation: reservation.generation,
+            platform: AnimusPlatform.linux,
+            loadConfig: (_) => config,
+            beforeRetain: beforeRetain,
+            authFactory: (selectedScope) {
+              scope = selectedScope;
+              return OidcAnimusAuth(
+                scope: selectedScope,
+                secrets: secrets,
+                browser: SystemAnimusBrowser(
+                  platform: AnimusPlatform.linux,
+                  launch: (uri) async {
+                    audit.browserLaunches++;
+                    final response = await fixture.request('authorize', {
+                      'authorization_uri': uri.toString(),
+                    });
+                    return response['launched'] == true;
+                  },
+                ),
+                httpClientFactory: () => _AuditedAuthClient(audit),
+              );
+            },
+            probeFactory: (_) => AnimusProbe(config: config, http: api),
+          );
+        },
+      );
+
+      Future<void> checkOwnedScope() async {
+        final profile = await AlkionProfile.existing(supportRoot: root);
+        final store = entry.preparedStore ?? runtime?.store;
+        passed(
+          'created_scope_matches_reserved_auth',
+          profile != null &&
+              store != null &&
+              profile.installationId == scope!.installationId &&
+              profile.profileId == scope!.profileId &&
+              store.token.generation == scope!.generation &&
+              store.profileId == scope!.profileId,
+        );
+        await expectLater(
+          LocalStore.open(
+            profile: profile!,
+            expectedProfileId: profile.profileId,
+            schema: store!.schema,
+          ),
+          throwsA(
+            isA<StoreException>().having(
+              (error) => error.category,
+              'category',
+              'profile_in_use',
+            ),
+          ),
+        );
+        passed('confirmed_generation_ownership_remains_held', true);
+      }
+
+      secrets.beforeWrite = (selectedScope) async {
+        passed('secret_scope_is_reserved_scope', selectedScope == scope);
+        await checkOwnedScope();
+      };
+      api.beforeGet = checkOwnedScope;
+      var completed = false;
+      Object? originalFailure;
+      try {
+        await entry.recover();
+        passed(
+          'startup_has_no_auth_or_store',
+          audit.requests == 0 &&
+              api.calls == 0 &&
+              !root.existsSync() &&
+              secrets.values.isEmpty,
+        );
+        controller = await entry.prepareConnection();
+        passed(
+          'explicit_action_only_reserves_identity',
+          !root.existsSync() &&
+              audit.requests == 0 &&
+              api.calls == 0 &&
+              secrets.values.isEmpty &&
+              (await entry.journal.read()) != null,
+        );
+        await controller.connect();
+        passed(
+          'real_login_stages_while_normal_root_is_fresh',
+          controller.state == AnimusConnectionState.awaitingConfirmation &&
+              !root.existsSync() &&
+              api.calls == 0 &&
+              secrets.values.isEmpty &&
+              audit.codeExchanges == 1,
+        );
+        final connected = await entry.confirmConnection();
+        passed(
+          'confirmed_real_direct_read',
+          identical(connected, controller) &&
+              controller.state == AnimusConnectionState.verified &&
+              api.calls == 1 &&
+              api.statuses.single == 200 &&
+              secrets.values.length == 1 &&
+              (await entry.journal.read()) == null,
+        );
+        final ownedStore = entry.preparedStore;
+        runtime = await AlkionRuntime.open(
+          root,
+          preparedStore: entry.takePreparedStore(),
+          connectionFactory: (_, _) => connected!,
+        );
+        passed(
+          'same_owned_store_and_connection_enter_runtime',
+          identical(runtime.store, ownedStore) &&
+              identical(runtime.animus, controller),
+        );
+        for (final table in [
+          'exercises',
+          'day_templates',
+          'muscle_targets',
+          'operations',
+        ]) {
+          passed(
+            'local_${table}_remain_empty',
+            (await runtime.store.getAll('SELECT * FROM $table')).isEmpty,
+          );
+        }
+        await runtime.animus.disconnect();
+        final calls = api.calls;
+        passed(
+          'profile_disconnect_keeps_local_identity_and_removes_secret',
+          runtime.animus.state == AnimusConnectionState.disconnected &&
+              secrets.values.isEmpty &&
+              runtime.store.profileId == scope!.profileId,
+        );
+        await runtime.animus.connect();
+        passed(
+          'profile_reconnect_needs_fresh_confirmation',
+          runtime.animus.state == AnimusConnectionState.awaitingConfirmation &&
+              secrets.values.isEmpty &&
+              api.calls == calls &&
+              audit.codeExchanges == 2,
+        );
+        await runtime.animus.confirm();
+        passed(
+          'profile_reconfirm_reads_through_same_owned_scope',
+          runtime.animus.state == AnimusConnectionState.verified &&
+              api.calls == calls + 1 &&
+              api.statuses.last == 200 &&
+              secrets.values.length == 1,
+        );
+        completed = true;
+      } catch (error) {
+        originalFailure = error;
+        rethrow;
+      } finally {
+        Object? cleanupFailure;
+        StackTrace? cleanupStack;
+        var cleaned = false;
+        try {
+          if (runtime != null) {
+            await runtime.close();
+          } else {
+            await controller?.close();
+            controller?.dispose();
+            await entry.takePreparedStore()?.close();
+          }
+          await directory.delete(recursive: true);
+          cleaned = !directory.existsSync();
+        } catch (error, stack) {
+          cleanupFailure = error;
+          cleanupStack = stack;
+        }
+        try {
+          fixture.writeReport(
+            _entryReport(
+              receipts,
+              completed: completed,
+              cleaned: cleaned,
+              diagnostics: {
+                'auth_requests': audit.requests,
+                'auth_statuses': audit.statuses,
+                'code_exchanges': audit.codeExchanges,
+                'refresh_exchanges': audit.refreshExchanges,
+                'browser_launches': audit.browserLaunches,
+                'api_calls': api.calls,
+                'api_statuses': api.statuses,
+              },
+            ),
+          );
+        } catch (error, stack) {
+          cleanupFailure ??= error;
+          cleanupStack ??= stack;
+        }
+        // Failed reporting/cleanup must fail a successful test, while an
+        // earlier assertion or transport failure keeps its original stack.
+        if (originalFailure == null && cleanupFailure != null) {
+          Error.throwWithStackTrace(cleanupFailure, cleanupStack!);
+        }
+      }
+    },
+    skip: !entryOnly
+        ? 'Set a private ANIMUS_LIVE_FIXTURE with entry_only=true.'
+        : false,
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test(
+    'incomplete live entry receipts fail closed without claiming later proof',
+    () {
+      final report = _entryReport(
+        {'startup_has_no_auth_or_store': 'PASS'},
+        completed: false,
+        cleaned: true,
+        diagnostics: const {},
+      );
+      expect(report['status'], 'incomplete');
+      expect(report['failed'], 1);
+      expect(report['local_store_opened'], isFalse);
+      expect(report['reserved_store_ownership_handoff'], isFalse);
+      expect(report['production_http_probe'], isFalse);
+      final cleanupFailed = _entryReport(
+        const {},
+        completed: true,
+        cleaned: false,
+        diagnostics: const {},
+      );
+      expect(cleanupFailed['failed'], 1);
+      expect(cleanupFailed['status'], 'incomplete');
+    },
+  );
+}
+
+Map<String, Object?> _entryReport(
+  Map<String, String> receipts, {
+  required bool completed,
+  required bool cleaned,
+  required Map<String, Object?> diagnostics,
+}) {
+  bool proved(String name) => receipts[name] == 'PASS';
+  const requiredCases = {
+    'startup_has_no_auth_or_store',
+    'explicit_action_only_reserves_identity',
+    'real_login_stages_while_normal_root_is_fresh',
+    'created_scope_matches_reserved_auth',
+    'confirmed_generation_ownership_remains_held',
+    'secret_scope_is_reserved_scope',
+    'confirmed_real_direct_read',
+    'same_owned_store_and_connection_enter_runtime',
+    'local_exercises_remain_empty',
+    'local_day_templates_remain_empty',
+    'local_muscle_targets_remain_empty',
+    'local_operations_remain_empty',
+    'profile_disconnect_keeps_local_identity_and_removes_secret',
+    'profile_reconnect_needs_fresh_confirmation',
+    'profile_reconfirm_reads_through_same_owned_scope',
+  };
+  final complete = completed && cleaned && requiredCases.every(proved);
+  final cases = {
+    ...receipts,
+    'entry_case_completed': complete ? 'PASS' : 'FAIL',
+  };
+  return {
+    'version': 1,
+    'status': complete ? 'complete' : 'incomplete',
+    'cases': cases,
+    'passed': cases.values.where((value) => value == 'PASS').length,
+    'failed': cases.values.where((value) => value == 'FAIL').length,
+    'production_entry_lifecycle': proved(
+      'explicit_action_only_reserves_identity',
+    ),
+    'production_oidc_sdk': proved(
+      'real_login_stages_while_normal_root_is_fresh',
+    ),
+    'production_http_probe': proved('confirmed_real_direct_read'),
+    'real_linux_callback_listener': proved(
+      'real_login_stages_while_normal_root_is_fresh',
+    ),
+    'local_store_opened': proved('created_scope_matches_reserved_auth'),
+    'reserved_store_ownership_handoff': proved(
+      'same_owned_store_and_connection_enter_runtime',
+    ),
+    'secret_store': 'memory_transport_test_only',
+    'native_plugin_qualification': 'separate_checkpoint_required',
+    'remote_record_retention': false,
+    'synthetic_local_storage_removed': cleaned,
+    'diagnostics': diagnostics,
+  };
 }
 
 final class _Fixture {
@@ -289,6 +623,11 @@ final class _Fixture {
       Map<String, String>.from(data['revocable']);
   String get wrongSpace => data['wrong_space'] as String;
   String get offlineOrigin => data['offline_origin'] as String;
+  AnimusAuthIntent get authIntent => switch (data['auth_intent']) {
+    null || 'signIn' => AnimusAuthIntent.signIn,
+    'createAccount' => AnimusAuthIntent.createAccount,
+    _ => throw const FormatException('Unsupported live authentication intent'),
+  };
 
   Future<Map<String, dynamic>> command(String action) =>
       request('command', {'action': action});
@@ -366,12 +705,14 @@ final class _Owner {
 
 final class _MemorySecrets implements AnimusSecretStore {
   final values = <String, String>{};
+  Future<void> Function(AnimusScope)? beforeWrite;
   @override
   Future<void> checkAvailability(AnimusScope scope) async {}
   @override
   Future<String?> read(AnimusScope scope) async => values[scope.storageKey];
   @override
   Future<void> write(AnimusScope scope, String value) async {
+    await beforeWrite?.call(scope);
     values[scope.storageKey] = value;
   }
 
@@ -413,6 +754,7 @@ final class _AuditedHttp implements AnimusHttpPort {
   final inner = IoAnimusHttpPort();
   int calls = 0;
   final statuses = <int>[];
+  Future<void> Function()? beforeGet;
   @override
   Future<AnimusHttpResponse> get({
     required Uri uri,
@@ -420,6 +762,7 @@ final class _AuditedHttp implements AnimusHttpPort {
     required int maxResponseBytes,
     required Duration timeout,
   }) async {
+    await beforeGet?.call();
     calls++;
     final response = await inner.get(
       uri: uri,
