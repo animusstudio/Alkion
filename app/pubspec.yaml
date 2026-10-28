@@ -4,7 +4,7 @@ publish_to: none
 version: 0.18.1+37
 
 environment:
-  sdk: ^3.8.0
+  sdk: ^3.11.0
   flutter: ">=3.44.0"
 
 dependencies:
@@ -40,6 +40,10 @@ dependencies:
   crypto: ^3.0.7
   # Runtime app version footer; no update transport.
   package_info_plus: ^8.0.0
+  # Optional foreground Animus connection; no default persistent OIDC store.
+  oidc: 5.0.2
+  flutter_secure_storage: 10.3.4
+  http: 1.6.0
 
 dev_dependencies:
   flutter_test:

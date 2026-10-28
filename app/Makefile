@@ -76,6 +76,24 @@ gen-l10n:
 get-offline-update:
 	$(FLUTTER) pub get --offline
 
+# Explicit dependency changes only; normal bootstrap continues to enforce lock.
+.PHONY: get-online-update analyze-animus
+get-online-update:
+	$(FLUTTER) pub get
+analyze-animus:
+	$(DART) analyze lib/animus test/animus
+
+# Public setup values only; never put credentials/tokens in a Dart define file.
+.PHONY: build-animus build-apk-animus
+build-animus:
+	@test -n "$(ANIMUS_CONFIG)" && test -f "$(ANIMUS_CONFIG)" || (echo 'Set ANIMUS_CONFIG to an explicit setup JSON file.' >&2; exit 2)
+	$(FLUTTER) build linux --no-pub --dart-define-from-file="$(ANIMUS_CONFIG)"
+build-apk-animus:
+	@test -n "$(ANIMUS_CONFIG)" && test -f "$(ANIMUS_CONFIG)" || (echo 'Set ANIMUS_CONFIG to an explicit setup JSON file.' >&2; exit 2)
+	@test -n "$${ANDROID_USER_HOME}" && test -f "$${ANDROID_USER_HOME}/debug.keystore" || (echo 'Set the existing disposable Android debug signer directory.' >&2; exit 2)
+	@case "$(ANIMUS_LOOPBACK_HTTP)" in ''|0|1) ;; *) echo 'ANIMUS_LOOPBACK_HTTP must be 0 or 1.' >&2; exit 2 ;; esac
+	ALKION_ANIMUS_NATIVE=1 ALKION_ANIMUS_LOOPBACK_HTTP="$(ANIMUS_LOOPBACK_HTTP)" $(FLUTTER) build apk --debug --no-pub --flavor dev --target-platform android-arm64 --dart-define-from-file="$(ANIMUS_CONFIG)"
+
 # Isolated synthetic artwork checkpoint; does not open an Alkion store.
 .PHONY: build-character-body-preview stage-character-body verify-character-body
 build-character-body-preview:
