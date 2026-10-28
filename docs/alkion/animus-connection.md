@@ -15,6 +15,10 @@ accepts plain-only provider metadata), and binds issuer, exact callback and loca
 scope. The manager factory is lazy, uses a public client with no secret,
 requires blocking validation, and disables automatic refresh and UserInfo.
 Only explicit account/space confirmation permits session retention.
+Requested OIDC scopes are `openid profile offline_access`; workout permission
+comes from the API grant and reader admission, independently of these scopes.
+The guarded manager omits SDK lifecycle subscriptions, so token expiry alone
+cannot make a refresh request. Explicit restore/verification owns refresh.
 
 `oidc 5` makes discovery issuer mismatch rejection the default. Secure storage
 10.3.4 retains maintained Android namespace and Linux error fixes while fitting
@@ -127,3 +131,104 @@ One `401` may coordinate one refresh and one identical retry. `403` is denied;
 sends pending operations or proves whole-history coverage. The reusable ports
 keep authentication, scoped OS storage and bounded no-redirect HTTP independent
 of local workout storage.
+
+## Real provider/API integration
+
+`test/animus/live_connection_integration_test.dart` is opt-in and skips during
+ordinary tests when `ANIMUS_LIVE_FIXTURE` is absent. Supply an explicit private
+JSON contract from a separately prepared disposable fixture, then run:
+
+```sh
+ANIMUS_LIVE_FIXTURE=/tmp/alkion-live-private/client-input.json \
+  make -C app test-animus-live
+```
+
+Keep the containing directory mode `700`, the input and pre-created report
+files mode `600`, and all fixture credentials outside the repository. The
+contract contains public client setup and test control locators only; it must
+not contain passwords, provider administration credentials or tokens.
+
+| JSON member | Required value |
+| --- | --- |
+| `version` | `1`. |
+| `primary` | A map of the `ALKION_ANIMUS_*` setup strings above for a public client with current `workouts:read`, a direct reader registration and a seeded definition. Linux callback configuration is required. |
+| `revocable` | The same setup shape for a second public client/direct reader whose synthetic grant and admission the fixture can revoke. |
+| `wrong_space` | A different synthetic data-space UUID, outside the configured reader's admission. |
+| `offline_origin` | An exact loopback HTTP origin with no listener for the duration of the check. |
+| `bridge_url` | A private loopback HTTP origin for the bounded test bridge described below. |
+| `report_path` | An explicit private file receiving only safe case labels, enums and counts. |
+
+Both clients authenticate the same freshly generated synthetic owner account;
+the fixture also provides another real provider account with no inherited
+workout access. The API must expose the implemented definitions-detail
+contract and validate real provider credentials. The fixture uses a genuinely
+short-lived access token (60 seconds for this check); do not replace expiry
+with altered JWT claims or an application clock. Administrative mutations
+belong only to the external synthetic fixture, never the product API/client.
+
+The test uses the production OIDC adapter and SDK, production HTTP/probe, and
+the real `SystemAnimusBrowser` Linux loopback listener. Its injected launcher
+POSTs `{"authorization_uri":"<SDK-generated URI>"}` to `/authorize`. The
+bridge drives the actual provider browser login/consent flow externally, then
+delivers that provider-issued callback with an HTTP GET to the exact registered
+loopback callback. It replies `{"launched":true}`. The production Dart adapter
+performs the token exchange and identity validation itself. The bridge must
+keep credentials, callbacks and authorization URIs out of logs and receipts.
+It must never mint a token, bypass provider authentication or substitute an
+auth port. Requests use explicit content lengths and bounded JSON responses.
+
+`POST /command` accepts `{"action":"<action>"}` and responds
+`{"ok":true}` after the bounded fixture operation completes:
+
+| Action | Fixture behavior |
+| --- | --- |
+| `await_expiry` | Wait until the last issued access credential has genuinely expired, with a small margin. |
+| `revoke_access` | Revoke active access credentials for the synthetic owner through fixture administration. |
+| `revoke_grant`, `restore_grant` | Remove or restore the second client's workout read grant. |
+| `revoke_reader` | Revoke the second client's current read admission. |
+| `restore_reader` | Register a replacement direct reader; include its UUID as `read_admission` in the response. The old admission must stay denied. |
+| `other_account`, `owner_account` | Select which real synthetic provider account the next browser flow uses. |
+| `hold_callback` | Hold the next provider-issued callback before delivery. |
+| `await_callback` | Wait for the held provider callback to be ready. |
+| `release_callback` | Deliver the delayed callback, tolerating a listener already closed by cancellation. |
+
+The bridge must accept only its known local fixture operations and bound
+every wait. The driver opens no workout store and retains session envelopes
+only in memory for this transport check. See the dated
+[acceptance record](acceptance.md#optional-animus-connection--2026-10-28) for
+executed coverage and the separate OS/native limits.
+
+## Standalone native adapter checkpoint
+
+`tool/animus_native_checkpoint.dart` exercises actual OS secret storage and
+system-browser launch/callback independently of a workout profile. It writes,
+reads and deletes a noncredential marker in a synthetic scope, checks that a
+different generation cannot read it, and verifies deletion by reading again.
+A separate loopback browser fixture returns the exact registered callback with
+`?state=native-checkpoint&code=noncredential-checkpoint`. This callback contains
+no authorization credential; the real OIDC flow is qualified separately above.
+
+Supply a setup-only JSON file with `ANIMUS_NATIVE_CHECKPOINT: "true"`,
+`ANIMUS_NATIVE_BROWSER_URI` pointing to that loopback browser fixture and
+`ANIMUS_NATIVE_REDIRECT_URI` set to the exact Linux or Android callback. Build
+with `make -C app build-animus-native-checkpoint-linux
+ANIMUS_NATIVE_CONFIG=/tmp/alkion-native-checkpoint.json`, or
+`build-animus-native-checkpoint-android` with the same config variable and an
+existing disposable `ANDROID_USER_HOME`/debug signer. The Android route builds
+only a debug x86_64 dev APK for a disposable emulator. Neither target installs
+or launches an app.
+
+Run checkpoints only with an explicitly selected synthetic scope and browser
+target; Android uses a fresh disposable emulator. Linux may use an already
+available Secret Service for that unique synthetic marker scope. Never enumerate
+or access owner entries or unlock an owner's keyring for qualification. Missing
+or locked services remain unavailable. The checkpoint reports only enums and
+booleans in its UI/stdout, including secure storage, generation isolation,
+secret cleanup and browser callback. A native PASS requires all four. An
+unavailable service/browser remains an explicit limit; a host transport PASS
+does not establish installed native adapter behavior.
+
+Linux and Android checkpoint results: [acceptance](acceptance.md#optional-animus-connection--2026-10-28),
+2026-10-28, **PASS**. These native checks cover OS storage, generation isolation,
+verified deletion and browser/callback transport; the separate live integration
+covers real OIDC authentication. Neither checkpoint opens a local workout store.

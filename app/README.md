@@ -2,8 +2,11 @@
 
 The account-free Alkion runtime stores local profiles, workouts, settings and
 immutable outbox entries in SQLite. Backup/restore and transfer preserve original
-bytes and uncertain recovery state. No backend, account, synchronization sender
-or update transport is required or enabled.
+bytes and uncertain recovery state. Local use requires no backend or account.
+An explicitly configured [optional Animus connection](../docs/alkion/animus-connection.md)
+provides browser sign-in and a confirmed foreground read-access check. Default
+startup stays offline; no synchronization sender, replica download or update
+transport is enabled.
 
 ## Toolchain and checks
 
@@ -28,7 +31,9 @@ with the committed lock enforced. See
 `get` resolves offline with the lock enforced. `format` checks without writing;
 `fmt FORMAT_FILES=...` formats explicitly owned files. `build` creates the Linux
 bundle. Tests use disposable fixtures, including actual standalone SQLite;
-they do not need PostgreSQL, PowerSync or a Go service.
+ordinary tests do not need a backend. The separate opt-in real Animus check
+uses an explicitly supplied disposable provider/API fixture; see the
+[live fixture contract](../docs/alkion/animus-connection.md#real-providerapi-integration).
 
 For a normal development APK, select an explicit disposable Android user
 directory for the debug key, with Android SDK and Java 21 configured:
@@ -63,6 +68,7 @@ final release identity/signing remain separate owner decisions.
   revisioned domain actions and immutable local outbox.
 - `lib/data/`, `lib/session/`: repositories, drafts, finished workouts and timers.
 - `lib/recovery/`, `lib/transfer/`: backup, restore, quarantine and import contracts.
+- `lib/animus/`: optional scoped auth, secret storage and foreground read verification.
 - `lib/ui/`, `lib/shell/`, `lib/widgets/`, `lib/theme/`: application UI.
 - `test/`, `tool/`: unit/widget/native-boundary tests and focused local proof tools.
 

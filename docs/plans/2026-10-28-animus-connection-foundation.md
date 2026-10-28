@@ -1,6 +1,7 @@
 # Optional Animus connection foundation
 
-Date: 2026-10-28. Lane: full. Status: Approved by owner; T1 in progress.
+Date: 2026-10-28. Lane: full. Status: Complete; T1–T5, Linux/Android native
+checkpoints, full-suite confirmation and final independent review PASS.
 Specification: [connection foundation](../specs/2026-10-28-animus-connection-foundation.md).
 
 ## Outcome
@@ -24,6 +25,14 @@ local operations are subsequent milestones, not implied by a Connected label.
   current account/space/read access and respect local profile/generation changes.
 
 ## Tasks
+
+| Task | Current state |
+| --- | --- |
+| T1 | Implemented; independent review and fix review PASS. |
+| T2 | Implemented; independent review and foreground-refresh fix review PASS. |
+| T3 | Implemented; independent review and response-validation fix review PASS. |
+| T4 | Implemented; independent review PASS. |
+| T5 | Real provider/API integration PASS, 23 checks; Linux/Android native adapter checkpoints PASS, including secret deletion. Full suite PASS: 1,796 passed, one opt-in skip. Final A1–A6 review PASS at runtime source `93215b3`. |
 
 T1 — Contract and platform foundation. Verify actual API request/response and
 direct reader registration requirements and seeded server verification ID, choose/pin the minimum supported auth,
@@ -69,10 +78,13 @@ and credentials outside the public Alkion source. Record results at immutable
 source revisions. No public push, release or production account/grant change
 follows from plan approval alone.
 
-Next: T1 contract/platform foundation, then T2–T5. Data synchronization follows separate scoped
-plans using the existing outbox/replica/recovery contracts.
+The approved connection slice is complete within its recorded synthetic scope.
+Measured coverage and limits live in [acceptance](../alkion/acceptance.md#optional-animus-connection--2026-10-28).
+Data synchronization follows separate scoped plans using the existing
+outbox/replica/recovery contracts.
 
 Design review: PASS after replacing the snapshot probe with the exact direct
 definitions read and explicit unavailable handling.
 
-Owner approval received 2026-10-28. T1 is delegated; T2–T5 await its coherent interfaces.
+Owner approval received 2026-10-28. No public push, release or owner-account
+attachment is implied by implementation or synthetic acceptance.
