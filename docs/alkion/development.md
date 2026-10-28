@@ -1,5 +1,7 @@
 # Alkion development and qualified driver handoff
 
+2026-10-28 · [Optional Animus connection foundation](../plans/2026-10-28-animus-connection-foundation.md) · Proposed.
+
 2026-10-28 · [Body rotation responsiveness](../plans/2026-10-28-body-rotation-responsiveness.md) · Approved.
 
 2026-10-26 · [Body controls and branding](../plans/2026-10-26-body-controls-and-branding.md) · Approved.
