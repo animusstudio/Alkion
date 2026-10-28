@@ -33,6 +33,30 @@ lighting, male `fullerMesh` and female `posedMesh` remain the approved functions
 Palette changes invalidate the glyph atlas without changing geometry or glyph
 selection. Existing source studies remain untouched.
 
+The internal display protocol is version 2, validated in Dart's native host and
+JavaScript. In addition to bounded `yaw`, it carries `turn`, a cumulative manual
+turn modulo 2π. Front/Back advance `command` and reset `turn`; relative drag
+keeps that absolute command and accumulates `turn`. JavaScript applies the
+difference from the last accepted turn at its current rendered angle. The first
+drag therefore starts at the actual autoplay angle even when native telemetry
+is older. Replacing intermediate displays retains all drag movement modulo 2π.
+Each controller action also advances a bounded `revision`, even when turns
+return to the same angle. Status echoes `command`, `turn` and `revision`; Dart
+accepts yaw telemetry only for its current triple, so delayed reports cannot
+overwrite a newer gesture. Autoplay retains the existing periodic telemetry;
+relative drag does not depend on more frequent reports.
+
+Android retains one JavaScript evaluation in flight and one replaceable latest
+snapshot containing both display and host lifecycle state. Closing a view or
+losing its process invalidates pending work and completion callbacks. One RAF
+scheduler handles manual invalidation, resizing and autoplay: updates before a
+frame draw only the latest state, identical paused displays do not redraw, and
+manual controls still work under reduced motion. Hidden state cancels scheduled
+drawing and clears the autoplay time anchor; resuming never catches up elapsed
+background time. Character sampling reuses renderer-owned temporary storage;
+its shade, anchor, coverage, edge direction, glyph and alpha outputs match the
+accepted sampler's frozen synthetic references.
+
 ## Private inputs and local builds
 
 Only generic runtime files and the existing OFL font enter tracked source.
@@ -90,9 +114,11 @@ versioned display state before JavaScript evaluation.
 
 Focused checks from the repository root:
 `node app/tool/check_character_body.mjs`,
+`node app/tool/check_character_body_material.mjs`,
+`python3 app/tool/check_character_body_bridge.py` (JDK 17+),
 `python3 app/tool/test_stage_character_body.py`,
 `make -C app test TEST=test/ui/character_body_test.dart`.
-They establish host-side protocol/loader/motion/stager/controller behavior, not
+They establish host-side protocol/loader/motion/material/native-queue/stager/controller behavior, not
 Android rendering performance. The first disposable emulator checkpoint must
 still prove packaged module/font/mesh/mask loading, fixed-angle fidelity, drag,
 background/resume/disposal, offline manifest and bounded load/frame/memory costs.

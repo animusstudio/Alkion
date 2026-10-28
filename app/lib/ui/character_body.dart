@@ -15,8 +15,13 @@ enum CharacterBodyStatus { loading, ready, unavailable, error }
 /// right. Automatic yaw updates do not notify listeners or rebuild the parent.
 class CharacterBodyController extends ChangeNotifier {
   double _yaw = 0;
+  // Cumulative modulo turn is independent of delayed autoplay telemetry.
+  // JS applies its difference at the current rendered angle, even when the
+  // native queue replaces intermediate drag messages with the latest one.
+  double _turn = 0;
   bool _paused = true;
   int _command = 0;
+  int _revision = 0;
   int _retry = 0;
   double get yaw => _yaw;
   bool get paused => _paused;
@@ -25,30 +30,57 @@ class CharacterBodyController extends ChangeNotifier {
   void back() => _hold(math.pi);
   void rotateBy(double radians) {
     if (!radians.isFinite) return;
-    _hold(_yaw + radians);
+    _yaw = (_yaw + radians) % (math.pi * 2);
+    _turn = (_turn + radians) % (math.pi * 2);
+    _paused = true;
+    _revision++;
+    notifyListeners();
   }
 
   void _hold(double value) {
     _yaw = value % (math.pi * 2);
+    _turn = 0;
     _paused = true;
     _command++;
+    _revision++;
     notifyListeners();
   }
 
   void resume() {
     _paused = false;
+    _revision++;
     // Do not reset the WebView's most recent automatic yaw.
     notifyListeners();
   }
 
   void pause() {
     _paused = true;
+    _revision++;
     notifyListeners();
   }
 
   void retry() {
     _retry++;
+    _revision++;
     notifyListeners();
+  }
+
+  /// Internal bridge acknowledgment, exposed for controller regression checks.
+  @visibleForTesting
+  void acknowledgeRenderedYaw({
+    required double yaw,
+    required Object? command,
+    required Object? turn,
+    required Object? revision,
+  }) {
+    if (yaw.isFinite &&
+        yaw >= 0 &&
+        yaw < math.pi * 2 &&
+        revision == _revision &&
+        command == _command &&
+        turn == _turn) {
+      _yaw = yaw;
+    }
   }
 }
 
@@ -156,7 +188,7 @@ class _CharacterBodyState extends State<CharacterBody>
   ];
 
   Map<String, Object> _display() => {
-    'version': 1,
+    'version': 2,
     'style': widget.style.name,
     'scores': {
       for (final muscle in WorkloadMuscle.values)
@@ -171,7 +203,9 @@ class _CharacterBodyState extends State<CharacterBody>
     'compact': widget.compact,
     'paused': widget.controller.paused,
     'yaw': widget.controller.yaw,
+    'turn': widget.controller._turn,
     'command': widget.controller._command,
+    'revision': widget.controller._revision,
     'retry': widget.controller._retry,
   };
 
@@ -209,11 +243,17 @@ class _CharacterBodyState extends State<CharacterBody>
     _channel!.setMethodCallHandler((call) async {
       if (!mounted || call.method != 'status' || call.arguments is! Map) return;
       final event = call.arguments as Map;
-      if (event['version'] != 1) return;
+      if (event['version'] != 2) return;
       final yaw = event['yaw'];
-      if (yaw is num && yaw.isFinite && yaw >= 0 && yaw < math.pi * 2) {
-        // Do not overwrite an in-flight native-control gesture with old telemetry.
-        if (!widget.controller.paused) widget.controller._yaw = yaw.toDouble();
+      if (yaw is num) {
+        // Acknowledgments belong to the exact absolute anchor and cumulative
+        // turn. A delayed autoplay report cannot overwrite a newer gesture.
+        widget.controller.acknowledgeRenderedYaw(
+          yaw: yaw.toDouble(),
+          command: event['command'],
+          turn: event['turn'],
+          revision: event['revision'],
+        );
       }
       for (final status in CharacterBodyStatus.values) {
         if (status.name == event['status']) _setStatus(status);

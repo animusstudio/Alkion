@@ -20,12 +20,13 @@ export async function loadMesh(style,signal){
  const masks=new Image();masks.src=root+'regions.png';await masks.decode();data.masks=masks;return style==='female'?posedMesh(data):fullerMesh(data);
 }
 
+const glyphIndices=Object.fromEntries([...glyphAlphabet].map((glyph,index)=>[glyph,index]));
 const diagnosticColors=[[118,124,138],[255,105,70],[100,165,255],[240,190,70],[140,210,100],[200,140,240],[70,205,200],[245,130,190],[170,180,250]];
 
 /** A real indexed depth-buffered surface sampled into character cells. */
 export class VolumeRenderer{
  constructor(canvas,mesh,compact=false){
-  this.canvas=canvas;this.mesh=mesh;this.compact=compact;this.drawCount=0;this.glyphCount=0;
+  this.canvas=canvas;this.mesh=mesh;this.compact=compact;this.sample={};this.drawCount=0;this.glyphCount=0;
   this.ctx=canvas.getContext('2d');if(!this.ctx)throw new Error('Canvas unavailable');
   this.surface=document.createElement('canvas');const gl=this.gl=this.surface.getContext('webgl',{alpha:true,antialias:false,preserveDrawingBuffer:true});
   if(!gl||!gl.getExtension('OES_element_index_uint'))throw new Error('Indexed graphics unavailable');
@@ -125,9 +126,9 @@ export class VolumeRenderer{
   let count=0,signature=2166136261;const histogram={};
   for(let row=0;row<this.rows;row++)for(let col=0;col<this.cols;col++){
    const phase=columnPhase(col);
-   const cell=sampleSurfaceCell(pixels,stride,this.surface.height,col,row,this.compact,phase);if(!cell)continue;
+   const cell=sampleSurfaceCell(pixels,stride,this.surface.height,col,row,this.compact,phase,this.sample);if(!cell)continue;
    const glyph=materialGlyph(cell.shade,col,row,cell);if(glyph===' ')continue;
-   const g=glyphAlphabet.indexOf(glyph);
+   const g=glyphIndices[glyph];
    ctx.globalAlpha=materialAlpha(cell.shade,theme,cell.coverage,this.compact);
    ctx.drawImage(this.atlas,g*this.tileW,cell.region*this.tileH,this.tileW,this.tileH,col*this.cellW+(this.cellW-this.tileW)/2,(row+phase/3)*this.cellH+(this.cellH-this.tileH)/2,this.tileW,this.tileH);
    count++;histogram[glyph]=(histogram[glyph]||0)+1;

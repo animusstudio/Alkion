@@ -51,41 +51,45 @@ export function materialGlyph(shade,column,row,cell){
 // RGB carries source-normal light, UV region ID and normalized view depth;
 // alpha is occupancy. WebGL readPixels is bottom-up. All tone decisions below
 // use geometry only, never the region/color channel.
-export function sampleSurfaceCell(pixels,width,height,column,row,compact=false,phase=0){
- const points=[],occupied=[];
- for(let y=0;y<3;y++)for(let x=0;x<3;x++){
-  const px=column*3+x,py=height-1-(row*3+y+phase),at=(py*width+px)*4;
-  const inside=px>=0&&px<width&&py>=0&&py<height;
-  points.push({px,py,at});occupied.push(inside&&pixels[at+3]?1:0);
- }
- const count=occupied.reduce((a,b)=>a+b,0);if(!count)return null;
- const anchor=points[occupied[4]?4:occupied.indexOf(1)],depth=pixels[anchor.at+2];
- let light=0,weight=0;
- for(let i=0;i<9;i++)if(occupied[i]&&Math.abs(pixels[points[i].at+2]-depth)<=6){
-  light+=pixels[points[i].at];weight++;
- }
- // Opposite samples cancel a plane's slope. Only nearby, mutually visible
- // surface pairs can darken a recess; background/occlusion edges add no rim.
- let cavity=0,pairs=0;
- for(const radius of compact?[3]:[3,6])for(const [dx,dy] of [[1,0],[0,1],[1,1],[1,-1]]){
-  const pair=[];
-  for(const sign of [-1,1]){
-   const x=anchor.px+dx*radius*sign,y=anchor.py+dy*radius*sign;
-   if(x<0||x>=width||y<0||y>=height)break;
-   const at=(y*width+x)*4;
-   if(!pixels[at+3]||Math.abs(pixels[at+2]-depth)>12)break;
-   pair.push(pixels[at+2]);
+// Fixed directions and caller-owned result storage avoid garbage per sample.
+const cavityDX=[1,0,1,1],cavityDY=[0,1,1,-1];
+export function sampleSurfaceCell(pixels,width,height,column,row,compact=false,phase=0,out=null){
+ const left=column*3,top=height-1-(row*3+phase);
+ let occupied=0,count=0,first=0;
+ for(let i=0;i<9;i++){
+  const px=left+i%3,py=top-Math.floor(i/3),at=(py*width+px)*4;
+  if(px>=0&&px<width&&py>=0&&py<height&&pixels[at+3]){
+   occupied|=1<<i;if(!count)first=i;count++;
   }
-  if(pair.length===2){cavity+=Math.max(0,(pair[0]+pair[1])/2-depth-.75);pairs++;}
  }
- // Broad normal-lit planes lead; local recess contrast remains subordinate
- // and cannot push even the darkest plane down to the punctuation floor.
+ if(!count)return null;
+ const anchor=occupied&16?4:first,ax=left+anchor%3,ay=top-Math.floor(anchor/3),anchorAt=(ay*width+ax)*4,depth=pixels[anchorAt+2];
+ let light=0,weight=0;
+ for(let i=0;i<9;i++)if(occupied&(1<<i)){
+  const at=((top-Math.floor(i/3))*width+left+i%3)*4;
+  if(Math.abs(pixels[at+2]-depth)<=6){light+=pixels[at];weight++;}
+ }
+ let cavity=0,pairs=0;
+ for(let radius=3;radius<=(compact?3:6);radius+=3)for(let direction=0;direction<4;direction++){
+  const dx=cavityDX[direction]*radius,dy=cavityDY[direction]*radius;
+  const x1=ax-dx,y1=ay-dy;
+  if(x1<0||x1>=width||y1<0||y1>=height)continue;
+  const at1=(y1*width+x1)*4,d1=pixels[at1+2];
+  if(!pixels[at1+3]||Math.abs(d1-depth)>12)continue;
+  const x2=ax+dx,y2=ay+dy;
+  if(x2<0||x2>=width||y2<0||y2>=height)continue;
+  const at2=(y2*width+x2)*4,d2=pixels[at2+2];
+  if(!pixels[at2+3]||Math.abs(d2-depth)>12)continue;
+  cavity+=Math.max(0,(d1+d2)/2-depth-.75);pairs++;
+ }
  const planeLight=shapePlaneLight(light/weight);
  const recess=Math.min(20,pairs?cavity/pairs*4:0,(planeLight-41)*.65);
- const shade=Math.round(clamp(planeLight-recess,41,255));
- return {shade,region:pixels[anchor.at+1],at:anchor.at,coverage:count/9,
-  gx:occupied[2]+occupied[5]+occupied[8]-occupied[0]-occupied[3]-occupied[6],
-  gy:occupied[6]+occupied[7]+occupied[8]-occupied[0]-occupied[1]-occupied[2]};
+ const cell=out||{};
+ cell.shade=Math.round(clamp(planeLight-recess,41,255));
+ cell.region=pixels[anchorAt+1];cell.at=anchorAt;cell.coverage=count/9;
+ cell.gx=((occupied>>2)&1)+((occupied>>5)&1)+((occupied>>8)&1)-(occupied&1)-((occupied>>3)&1)-((occupied>>6)&1);
+ cell.gy=((occupied>>6)&1)+((occupied>>7)&1)+((occupied>>8)&1)-(occupied&1)-((occupied>>1)&1)-((occupied>>2)&1);
+ return cell;
 }
 
 export const colors={dark:{neutral:[240,240,245],accent:[255,104,53]},light:{neutral:[17,18,23],accent:[168,45,0]}};

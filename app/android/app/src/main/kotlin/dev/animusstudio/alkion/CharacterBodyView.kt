@@ -49,6 +49,9 @@ internal class CharacterBodyView(
     private val main = Handler(Looper.getMainLooper())
     private val channel = MethodChannel(messenger, "dev.animusstudio.alkion/character-body/$id")
     private val web = WebView(context)
+    private val evaluations = LatestBodyEvaluation { script, complete ->
+        web.evaluateJavascript(script) { complete.run() }
+    }
     private val container = FrameLayout(context)
     private var processGone = false
     @Volatile private var disposed = false
@@ -121,17 +124,17 @@ internal class CharacterBodyView(
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 if (!disposed) {
                     processGone = true
+                    evaluations.close()
                     loaded = false
                     container.removeView(web)
                     web.destroy()
-                    channel.invokeMethod("status", mapOf("version" to 1, "status" to "error", "yaw" to 0.0))
+                    channel.invokeMethod("status", mapOf("version" to 2, "status" to "error", "yaw" to 0.0))
                 }
                 return true
             }
             override fun onPageFinished(view: WebView, url: String) {
                 if (disposed || processGone || url != origin + "index.html") return
                 loaded = true
-                sendDisplay()
                 hostPaused(paused)
             }
         }
@@ -140,10 +143,20 @@ internal class CharacterBodyView(
                 if (disposed || text.length > 1024) return
                 val event = try { JSONObject(text) } catch (_: Exception) { return }
                 val status = event.optString("status")
-                if (event.optInt("version") != 1 || status !in listOf("loading", "ready", "unavailable", "error")) return
+                if (event.optInt("version") != 2 || status !in listOf("loading", "ready", "unavailable", "error")) return
                 val yaw = event.optDouble("yaw", 0.0)
                 if (!yaw.isFinite() || yaw < 0 || yaw >= Math.PI * 2) return
-                val safe = mapOf("version" to 1, "status" to status, "yaw" to yaw)
+                val command = event.optDouble("command", -1.0)
+                val turn = event.optDouble("turn", -1.0)
+                val revision = event.optDouble("revision", -1.0)
+                val safe = mutableMapOf<String, Any>("version" to 2, "status" to status, "yaw" to yaw)
+                if (command.isFinite() && command >= 0 && command <= 9007199254740991.0 &&
+                    command == Math.floor(command) && turn.isFinite() && turn >= 0 && turn < Math.PI * 2 &&
+                    revision.isFinite() && revision >= 0 && revision <= 9007199254740991.0 && revision == Math.floor(revision)) {
+                    safe["command"] = command.toLong()
+                    safe["turn"] = turn
+                    safe["revision"] = revision.toLong()
+                }
                 // Only aggregate renderer timings; no workout or source payload in logs.
                 val metrics = listOf("frames", "totalMs", "maxMs", "loadMs").associateWith {
                     event.optDouble(it, 0.0).takeIf { value -> value.isFinite() && value >= 0 } ?: 0.0
@@ -170,18 +183,23 @@ internal class CharacterBodyView(
         web.loadUrl(origin + "index.html")
     }
     private fun sendDisplay() {
-        if (!disposed && !processGone && loaded && display != null) web.evaluateJavascript("window.AlkionBody && window.AlkionBody.update($display)", null)
+        if (disposed || processGone || !loaded) return
+        val update = display?.let { ",window.AlkionBody.update($it)" } ?: ""
+        // Include lifecycle in every replaceable snapshot. A late display
+        // completion can never drain an older unpaused state after a pause.
+        evaluations.offer("window.AlkionBody && (window.AlkionBody.hostPaused($paused)$update)")
     }
     fun hostPaused(value: Boolean) {
         paused = value
         if (disposed || processGone) return
-        if (loaded) web.evaluateJavascript("window.AlkionBody && window.AlkionBody.hostPaused($value)", null)
+        sendDisplay()
         if (value) web.onPause() else web.onResume()
     }
     override fun getView(): View = container
     override fun dispose() {
         if (disposed) return
         disposed = true
+        evaluations.close()
         channel.setMethodCallHandler(null)
         if (!processGone) {
             web.removeJavascriptInterface("AlkionNative")
@@ -198,8 +216,8 @@ internal class CharacterBodyView(
 /** Native guard complements JS validation, before anything is evaluated. */
 internal fun validateDisplay(raw: Any?): JSONObject? {
     val map = raw as? Map<*, *> ?: return null
-    val keys = setOf("version", "style", "scores", "neutral", "accent", "background", "theme", "visible", "reduced", "compact", "paused", "yaw", "command", "retry")
-    if (map.keys != keys || map["version"] != 1 || map["style"] !in listOf("male", "female") || map["theme"] !in listOf("light", "dark")) return null
+    val keys = setOf("version", "style", "scores", "neutral", "accent", "background", "theme", "visible", "reduced", "compact", "paused", "yaw", "turn", "command", "revision", "retry")
+    if (map.keys != keys || map["version"] != 2 || map["style"] !in listOf("male", "female") || map["theme"] !in listOf("light", "dark")) return null
     if (listOf("visible", "reduced", "compact", "paused").any { map[it] !is Boolean }) return null
     for (key in listOf("neutral", "accent", "background")) {
         val rgb = map[key] as? List<*> ?: return null
@@ -210,7 +228,9 @@ internal fun validateDisplay(raw: Any?): JSONObject? {
     if (scores.keys != muscles || scores.values.any { it !is Number || !it.toDouble().isFinite() || it.toDouble() !in 0.0..1.0 }) return null
     val yaw = (map["yaw"] as? Number)?.toDouble() ?: return null
     if (!yaw.isFinite() || yaw < 0 || yaw >= Math.PI * 2) return null
-    for (key in listOf("command", "retry")) {
+    val turn = (map["turn"] as? Number)?.toDouble() ?: return null
+    if (!turn.isFinite() || turn < 0 || turn >= Math.PI * 2) return null
+    for (key in listOf("command", "revision", "retry")) {
         val number = map[key]
         if ((number !is Int && number !is Long) || (number as Number).toLong() !in 0..9007199254740991L) return null
     }
