@@ -1,6 +1,6 @@
 # Animus login and optional offline onboarding
 
-Date: 2026-10-28. Lane: full (auth and first-use persistence). Status: Approved; implementation in progress.
+Date: 2026-10-28. Lane: full (auth and first-use persistence). Status: Complete; final independent A1–A6 review PASS.
 Specification: [login/onboarding](../specs/2026-10-28-animus-login-onboarding.md).
 Base: accepted connection foundation at 58f09ae; separate local feature branch.
 
@@ -9,8 +9,9 @@ Base: accepted connection foundation at 58f09ae; separate local feature branch.
 Put Animus sign-in first, with Create one and a bottom Go fully offline action.
 Offline opens a second Start new/Restore backup screen; completing either enters
 the app. Retain existing profiles and Profile connection after offline setup.
-Support the owner's email/password, passkey and six-digit email-code direction
-through the existing identity provider, without collecting credentials in Flutter.
+Support email/password and passkeys through the existing identity provider,
+without collecting credentials in Flutter. The owner explicitly deferred email
+codes after reviewing the pinned provider's missing flow controls.
 
 ## Decisions and limits
 
@@ -19,9 +20,9 @@ Alkion visual components. Offline remains permanent, account-free local use.
 No automatic sync claim, cloud writer, replica, exercise seed, app redesign,
 owner profile/provider mutation, live email, deployment, release or public push.
 
-Provider method availability is an explicit prerequisite. Prove exact six-digit
-email passwordless and signup return semantics on the pinned provider before
-advertising them. Record an actual capability gap instead of a substitute method.
+Provider method availability is an explicit prerequisite. Prove password,
+passkey and signup return semantics before advertising them. Six-digit email
+codes are deferred to a separate plan; no substitute method is introduced.
 Additional private fixture/configuration work stays outside public app source;
 public files contain only supported contracts, setup recipes and synthetic tests.
 
@@ -29,7 +30,7 @@ public files contain only supported contracts, setup recipes and synthetic tests
 
 T1 — Hosted authentication contract and rehearsal (full).
 Verify pinned-provider email/password, passkey passwordless/second factor,
-six-digit email code and enrollment/return paths. Define trusted setup inputs
+and enrollment/return paths. Record the deferred email capability gap. Define trusted setup inputs
 and method availability. Prepare disposable provider/mail-sink recipes without
 touching owner infrastructure. Own public connection setup contract/docs and
 focused configuration/intent tests; private fixture changes remain private.
@@ -88,10 +89,22 @@ Public push needs separate exact outgoing-range review and owner direction.
   the refined two-step flow on 2026-10-28 ("Great").
 - Owner refinement: Go fully offline leads to Start new/Restore; initial screen
   has no separate Restore action. Authentication boundaries remain unchanged.
-- T1–T4: not started.
-- Owner method direction: email/password, passkeys, six-digit email passwordless.
+- T1: source review PASS; 14 hosted signup/password/passkey check groups PASS.
+  Actual production Dart password and signup intents PASS. Email codes deferred.
+- T2: implemented, 41 focused tests and independent review PASS.
+- T3: 28 focused tests and independent review PASS; theme/scroll follow-ups have
+  11 passing UI tests, fix reviews and bounded native confirmation PASS.
+- T4: full app suite at 8ee61a8 passed 1,828/one opt-in skip; analyzer 0 issues.
+  Later focused corrections PASS. Real entry/API at b835459 passed 16/16 checks;
+  native Android first-use/Start new/restart PASS; final A1–A6 review PASS.
+- All disposable provider/database/Go fixtures and the emulator were cleaned up;
+  existing resources and owner data were untouched.
+- Owner amendment: finish password/passkeys/onboarding; defer email codes.
 - Passkey role interpreted as passwordless plus optional account-required MFA.
 
-Next: T1's pinned-provider rehearsal alongside T2 entry lifecycle and T3 UI;
-advertise hosted methods only after their actual supported paths are verified.
+Measured source/artifact identities, checks and limits are recorded in
+[acceptance](../alkion/acceptance.md#animus-sign-in-and-optional-offline-onboarding--2026-10-28).
+Parent API check/smoke evidence is reused because server/contracts are unchanged.
+Next: separate owner-directed delivery or follow-on synchronization work.
+All source and artifacts remain local; no public push, phone install or deployment.
 

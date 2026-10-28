@@ -4,9 +4,11 @@ The account-free Alkion runtime stores local profiles, workouts, settings and
 immutable outbox entries in SQLite. Backup/restore and transfer preserve original
 bytes and uncertain recovery state. Local use requires no backend or account.
 An explicitly configured [optional Animus connection](../docs/alkion/animus-connection.md)
-provides browser sign-in and a confirmed foreground read-access check. Default
-startup stays offline; no synchronization sender, replica download or update
-transport is enabled.
+provides browser sign-in and a confirmed foreground read-access check. Fresh
+startup offers optional sign-in or Go fully offline, then Start new/Restore
+backup. Existing profiles open directly; Profile retains connect/disconnect.
+Startup performs no connection I/O before an explicit action. No synchronization
+sender, replica download or update transport is enabled.
 
 ## Toolchain and checks
 

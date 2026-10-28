@@ -1,9 +1,34 @@
 # Optional Animus connection
 
-The connection is an explicit foreground feature. With no configuration,
-Alkion opens its local profile without creating an authentication manager,
-opening a browser, reading session secrets or contacting a server. Connection
+The connection is an explicit foreground feature. First use offers optional
+Animus sign-in and a complete offline path; existing profiles open directly.
+Before an explicit connection action, startup creates no authentication manager,
+opens no browser, reads no session secrets and contacts no server. Connection
 does not enable a sender, replica download, background refresh or summary API.
+
+## First-use and offline behavior
+
+The initial screen shows Sign in to Animus, Create one and Go fully offline.
+Unavailable configuration is explained, and account creation is enabled only
+with a configured hosted enrollment flow. Go fully offline opens Start new and
+Restore backup with Back. Entering that step creates no profile; cancelling the
+backup picker stays there. Start new creates an empty local library. Existing
+and restored profiles bypass entry, including those with the old onboarding
+flag unset. Offline users can connect later in Profile.
+
+An explicit sign-in/signup action reserves identity IDs and the initial store
+generation in a separate, credential-free entry journal. The normal root stays
+fresh until account/space confirmation creates and verifies that exact scope.
+Only then can the connection retain secrets or check API access. Offline or
+cancellation fences staged authentication before fresh local/restore choices;
+interrupted restore takes priority, and unknown/recovery bytes are preserved.
+If secret retention fails after local profile creation, Continue offline opens
+that same profile instead of offering Start new/Restore over it. Disconnect
+keeps local workouts and does not force onboarding again.
+
+The [dated onboarding acceptance](acceptance.md#animus-sign-in-and-optional-offline-onboarding--2026-10-28)
+records tested entry, restore, native and real-provider coverage and remaining
+hosted-method limits.
 
 ## Dependencies and platform setup
 
@@ -136,6 +161,28 @@ also preserves the current transaction when users choose signup from login.
 Rehearse synthetic account creation and the complete OIDC return before setting
 this input for a distributed build.
 
+Email/password and passkeys are the requested hosted methods. Disposable
+Authentik 2026.8.3 rehearsal passed synthetic signup/OIDC return, password login,
+resident passkey enrollment/passwordless login and required passkey second
+factor. The supplemental required-MFA fixture flow and synthetic account policy
+stopped password-only login and denied passwordless bypass. This is not an audit
+of the owner's or a production provider's policy.
+
+Passkey checks used localhost in isolated Chromium headless-shell revision 1248
+with a virtual CTAP2 resident credential and required user verification. Separate
+production Dart password and create-account intents passed with their exact
+loopback issuer and actual Linux callback listener, each staging the account
+with one code exchange, no refresh/API access and no retained session or local
+store. The synthetic signup example does not verify email ownership, sends no
+mail and grants no workout access. Physical authenticators, phones and production
+email/account provisioning are outside that proof. The dated acceptance record
+tracks final review separately.
+
+Identity-provider administration owns which methods are offered, enrollment and
+MFA policy. Independently rehearse the intended deployment's setup and every
+reachable login route before enabling it for users. Alkion adds no native
+credential fields or alternative auth service.
+
 All passwords, passkey enrollment/assertions, account recovery and email entry
 stay in the external provider browser. Alkion collects none of them and requests
 only `openid profile offline_access`; workout grants remain independent. Match
@@ -146,9 +193,9 @@ policy. Validate required MFA on every reachable login route. In particular,
 the provider's default passkey path may skip its later MFA stage; review that
 policy rather than allowing it to bypass an account's required second factor.
 
-Six-digit passwordless email is not an advertised method in this setup. Pinned
-Authentik 2026.8.3 provides six-digit expiring, single-use email authenticators
-and failed-attempt backoff. Its stock validation flow does not supply the full
+Six-digit passwordless email is **DEFERRED by owner direction** for this milestone
+and is not advertised or enabled. Pinned Authentik 2026.8.3 provides six-digit
+expiring, single-use email authenticators and failed-attempt backoff. Its stock validation flow does not supply the full
 required generic unknown-address response and separate resend throttle:
 [device selection sends immediately](https://github.com/goauthentik/authentik/blob/version/2026.8.3/authentik/stages/authenticator_validate/challenge.py),
 and an unknown identified user has no compatible device challenge. Keep that
@@ -243,10 +290,18 @@ auth port. Requests use explicit content lengths and bounded JSON responses.
 | `release_callback` | Deliver the delayed callback, tolerating a listener already closed by cancellation. |
 
 The bridge must accept only its known local fixture operations and bound
-every wait. The driver opens no workout store and retains session envelopes
-only in memory for this transport check. See the dated
-[acceptance record](acceptance.md#optional-animus-connection--2026-10-28) for
-executed coverage and the separate OS/native limits.
+every wait. The original connection case opens no workout store and retains
+session envelopes only in memory for this transport check. An optional
+`auth_only: true` input limits that case to real authentication; `auth_intent`
+selects `signIn` or `createAccount`. A separate `entry_only: true` input runs the
+production first-use lifecycle, including reserved scope, exact store creation,
+ownership handoff into the runtime and Profile reconnect. That entry case uses
+an explicit disposable store and in-memory secret transport, removes its local
+storage, and does not qualify OS secret adapters. Do not combine these modes
+when reporting their measured scope. The dated
+[connection acceptance](acceptance.md#optional-animus-connection--2026-10-28) and
+[onboarding acceptance](acceptance.md#animus-sign-in-and-optional-offline-onboarding--2026-10-28)
+record executed coverage and the separate OS/native limits.
 
 ## Standalone native adapter checkpoint
 

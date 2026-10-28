@@ -6,6 +6,69 @@ observed: 2026-10-28
 
 # Alkion integrated acceptance
 
+## Animus sign-in and optional offline onboarding — 2026-10-28
+
+The [approved onboarding plan](../plans/2026-10-28-animus-login-onboarding.md)
+adds a first-use choice: Sign in to Animus, Create one when hosted enrollment is
+configured, or Go fully offline. Offline opens Start new/Restore backup with
+Back; cancelling the picker stays on those choices. Existing and restored
+profiles open directly. No authentication, browser, secret-store or network work
+runs before an explicit action. T1 authentication, T2 entry lifecycle and T3 UI
+have independent review PASS, including the required focused corrections. Final
+independent A1–A6 review is **PASS with no findings** for the owner-amended scope;
+the reviewer verified the hosted-method receipts and entry/native identities.
+
+Sign-in reserves an identity outside the fresh restore target. Account/space
+confirmation creates and verifies that exact local identity/store generation
+before retaining a session or reading the API. Cancellation and offline selection
+fence staged callbacks before exposing fresh local/restore choices. If the local
+profile was created but secret retention fails, Continue offline opens that same
+profile; it never offers a fresh restore over it. Interrupted restore and entry
+recovery preserve their original bytes. Profile retains connection controls after
+offline setup.
+
+| Executed coverage | Measured result |
+| --- | --- |
+| Broad app regression at `8ee61a8` | **1,828 passed, one opt-in skip, 89 seconds**; analyzer **0 issues**. This run precedes the later focused theme/scroll corrections and live-entry test addition. |
+| Production entry UI at `ca0f2e5` | **11 focused tests passed**, scoped analyzer **0 issues**. The actual first-start app follows system light/dark settings; entry/Back transitions start at scroll offset zero, and picker cancellation preserves the offline step. Four-locale 320dp/2× and interrupted-restore coverage remains in the focused UI/restore suite. |
+| Android native first-use confirmation at `ca0f2e5` | **PASS** in a disposable x86_64 emulator: 412×892 dark/1× and 320×640 light/2× captures, entry/offline/Back navigation, no profile/database before a choice, Start new creating the local profile/database, and restart returning to the app. |
+| Native artifact identity | Dev/debug APK SHA-256 `fe39b202a51f5ddeadc25ef6a282dd786ab2e76b4f28d3f53e5bd8303b6f06bf`. The configuration was synthetic; these captures make no live-API claim. |
+| Hosted methods on Authentik `2026.8.3` | **14 check groups passed**: synthetic signup and OIDC return, S256/single-use code checks, email/password login, resident passkey enrollment/passwordless assertion, and required passkey second factor. The required-MFA synthetic policy stopped password-only login and denied the passwordless bypass. |
+| Production Dart password and signup intents | **Both authentication-only runs passed** through the actual SDK and Linux callback listener against the loopback provider. Each made one code exchange, zero refreshes/API reads, opened no workout store and retained no session; the validated account remained awaiting confirmation. |
+| Integrated entry and API at `b835459` | **16/16 checks passed in 14 seconds** using the production entry lifecycle, OIDC SDK, Linux callback listener, HTTP/probe and production Go authorization/API handler. Two code exchanges and two definition reads returned `200`. The reserved store remained owned through runtime handoff; local datasets/outbox stayed empty, and Profile disconnect/reconnect required fresh confirmation while preserving local identity. |
+
+The integrated transport run retained secrets in memory; OS-secret behavior has
+separate native adapter evidence in the connection section below. Its synthetic
+local storage was removed, the API process stopped, the fixture/schema reclaimed
+and private fixture inputs removed. The newer live-entry case ran separately
+from the broad suite; its older long connection case was deliberately skipped.
+
+Email/password and passkeys are the requested hosted methods. Six-digit
+passwordless email is **DEFERRED by owner direction** and is not advertised or
+enabled. Hosted signup, password and passkey checks passed within the fixture
+scope above; final independent A1–A6 review passed with these same limits.
+Provider setup owns credentials, enrollment and MFA policy; Alkion collects no
+passwords, passkeys or email codes. Final infrastructure cleanup **PASS**:
+owned disposable provider/database containers, networks, volumes and private
+inputs were removed; Go/schema/handshake resources were cleared, the emulator
+was stopped, and existing resources were left untouched.
+
+Passkey proof used localhost and isolated Chromium headless-shell revision 1248
+with a virtual CTAP2 resident credential and required user verification. The
+production Dart password/signup checks used their exact `127.0.0.1` issuer.
+Required MFA was tested through a supplemental fixture flow and a synthetic
+account policy, not an audit of owner or production policy. The synthetic signup
+example creates a disposable provider account but does not verify email
+ownership, uses no SMTP and provisions no workout grants. These results do not
+qualify a physical authenticator or phone, production email/account provisioning,
+or every provider login route.
+
+The native confirmation qualifies these synthetic first-use screens and offline
+startup only. No physical phone, owner profile, body artwork, production mail,
+server synchronization, deployment, release or publication was qualified. Body
+assets were not staged for these artifacts. Work and artifacts remain local;
+no public push or deployment occurred.
+
 ## Optional Animus connection — 2026-10-28
 
 The [approved connection plan](../plans/2026-10-28-animus-connection-foundation.md)

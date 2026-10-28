@@ -1,6 +1,6 @@
 # Animus login and optional offline onboarding
 
-Date: 2026-10-28. Lane: full. Status: Approved; implementation in progress.
+Date: 2026-10-28. Lane: full. Status: Implemented; independent A1–A6 review PASS for the owner-amended scope.
 Builds on the [accepted connection foundation](2026-10-28-animus-connection-foundation.md).
 
 ## Outcome and current behavior
@@ -10,9 +10,11 @@ clear permanent offline alternative. Today first use offers Start local/Restore;
 the optional connection exists only after a local profile opens, in Profile.
 Existing connection verification is read-only; it does not upload workouts.
 
-The owner requested email/password, passkeys as second factor/passwordless,
-and passwordless six-digit email codes. Interpret passkeys as supporting both
-roles, with enrollment and account policy managed by Animus's identity provider.
+The owner selected email/password and passkeys as second factor/passwordless.
+Six-digit email passwordless was requested initially, then explicitly deferred
+after the pinned provider's response/throttling limits were identified.
+Passkeys support both roles, with enrollment and account policy managed by
+Animus's identity provider. Email-code work needs a separate follow-on plan.
 
 ## Entry screen and visual direction
 
@@ -52,18 +54,18 @@ Hosted methods:
 1. Email and password.
 2. Passkey sign-in; optionally enrolled passkeys as a required second factor
    according to account policy.
-3. Passwordless email: a six-digit, expiring, single-use code to the previously
-   verified account address. Separate resend/attempt throttles and generic
-   unknown-address responses. It must not silently enroll or replace an address.
+Six-digit email sign-in is not offered in this milestone. A future implementation
+must use verified addresses, expiring single-use codes, resend/attempt throttles
+and generic unknown-address responses; it must not replace an address at login.
 
 Provider policy must apply across entry methods. Email sign-in is not a bypass
 for an account's required second factor. Never merge accounts by email; Alkion
 continues to identify an account by validated issuer and subject.
 
-Confirm the pinned provider can realize these exact hosted paths before
-advertising them. Current upstream documentation exposes email authenticators
-but describes dedicated passwordless flows in WebAuthn terms; a magic link or
-TOTP is not an acceptable substitute for the requested email code.
+Confirm the pinned provider can realize the advertised hosted paths. Pinned
+email validation has no separate resend throttle or matching unknown-address
+challenge; the owner chose to defer email codes rather than weaken that contract.
+A magic link or TOTP is not a substitute for the deferred email-code method.
 Use documented supported configuration, not a custom authentication backend.
 Prepare/rehearse only disposable provider flows, synthetic accounts and a local
 mail sink. Actual SMTP/domain, owner passkeys, production account enrollment and
@@ -137,10 +139,9 @@ interrupted restore/recovery paths preserve behavior and data.
 A3. Each advertised method uses an actual supported provider path and the same
 validated OIDC return; no app credential collection or invented endpoint.
 Signup produces a real synthetic account and does not invent data grants.
-A4. Email code validation proves exactly six digits, expiry, single-use,
-wrong-code throttling and resend controls using captured synthetic delivery.
-Passkey sign-in and required second-factor behavior are checked in a compatible
-disposable browser; unsupported device/provider states remain truthful.
+A4. Password and passkey sign-in and required second-factor behavior are checked
+in a compatible disposable browser; unsupported device/provider states remain
+truthful. Email-code sign-in is unavailable and never advertised as implemented.
 A5. Cancel, offline transition, process restart and generation replacement fence
 late callbacks. No unconfirmed secret retention, cross-account inheritance or
 implicit refresh; required MFA cannot be bypassed by another advertised method.

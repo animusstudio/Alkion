@@ -20,14 +20,14 @@ The app keeps the local workout workflow available without an account. A later o
 
 ## Operating Context
 
-People use Alkion on an Android phone before, during and after strength training. A workout can be minimized and resumed. The app also supports reviewing history and progress, editing plans and exercises, managing preferences, and using existing export and recovery flows. Current synthetic Linux tests exercise account-free local workflows; Android, owner storage and sync are not qualified by those tests.
+People use Alkion on an Android phone before, during and after strength training. A workout can be minimized and resumed. The app also supports reviewing history and progress, editing plans and exercises, managing preferences, and using existing export and recovery flows. Synthetic Linux tests exercise local workflows and the optional connection. A disposable Android emulator qualifies the measured first-use screens and offline startup; physical-phone, owner-storage and sync qualification remain separate.
 
 ## Capabilities and Constraints
 
-- First use offers Start local or Restore backup, then opens the app directly. New local profiles have an empty exercise library; existing and restored exercises are preserved. Current workflows include Today, Progress, History and Plan navigation; workout entry/resume/finish; exercise and training-day editing; bodyweight measurements; unit, language, theme and appearance settings; and existing export, backup and recovery surfaces.
-- Local use remains account-free. The optional Profile → Animus connection opens the external provider browser and verifies access only after explicit account/space confirmation. It does not attach local history to a server writer, send pending operations or download a replica.
+- First use offers optional Animus sign-in/account creation and Go fully offline. Offline opens Start new/Restore backup with Back; entering those choices alone creates no profile. Existing/restored profiles open directly. New local profiles have an empty exercise library; existing and restored exercises are preserved. Current workflows include Today, Progress, History and Plan navigation; workout entry/resume/finish; exercise and training-day editing; bodyweight measurements; unit, language, theme and appearance settings; and existing export, backup and recovery surfaces.
+- Local use remains account-free. Optional first-use or Profile → Animus connection opens the external provider browser and verifies access only after explicit account/space confirmation. Passwords, passkeys and account enrollment stay with the provider; six-digit email sign-in is deferred and unavailable. It does not attach local history to a server writer, send pending operations or download a replica.
 - Keep exact recorded values, ordering, dates, units and evidence distinctions. Missing or incomplete information must not be presented as a zero or as a medical conclusion.
-- The Android installation and owner-storage route remain unqualified. Synthetic Linux tests establish only the tested synthetic Linux behavior.
+- Physical-phone installation and owner-storage behavior remain unqualified. Synthetic host and emulator checks establish only their measured behavior; the onboarding emulator run does not qualify body artwork.
 - Flutter is the existing client implementation. No new runtime, backend or dependency is selected by this product record.
 
 ## Brand Commitments
