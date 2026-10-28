@@ -1,7 +1,7 @@
 # Preserve the Android runtime across Activity recreation
 
 Date: 2026-10-28. Lane: standard Android lifecycle correction.
-Status: Approved by owner; implementation in progress.
+Status: Done; owner-approved fix independently reviewed and installed in place.
 Base: f2a6e73. Owner reported repeatable profile_in_use after background/reopen.
 
 ## Outcome and evidence
@@ -77,7 +77,8 @@ phone update, without uninstalling or clearing data.
 
 ## State
 
-Read-only diagnosis and baseline reproduction complete. Owner approved the
-focused fix and data-preserving phone update on 2026-10-28. Next: native implementation,
-scratch verification, independent review, then data-preserving phone update.
-
+Implementation `0e1a739c708a89cf950c006e2da6d4556b3af7fc` satisfies A1–A5; independent review PASS, no findings.
+Three actual Activity destroy/create cycles, ordinary resume, root return, cold restart with identical synthetic draft, and two interrupted picker/retry checks PASS.
+Focused tests: 35 passed, zero skipped; analyzer: zero issues; bridge/runtime/material checks and debug/optimized ARM64 builds PASS.
+APK SHA256 `690f9063a34bc52b7be22796ce33ac062f06371cfc836cf539540969bb1975ba` installed/opened on Nothing A024; ordinary background/reopen retained its PID.
+No uninstall, data clear, owner-store/UI inspection or phone-setting change. Emulator stopped. Software-emulator artwork unavailable; no physical rendering/performance claim. No public push.
