@@ -9,7 +9,7 @@ void main() {
     );
   });
   test('non-home tab goes home', () {
-    for (final i in [1, 2, 3]) {
+    for (final i in [1, 2, 3, 4]) {
       expect(
         decideBack(tabHandled: false, tabIndex: i, planEditsAtRisk: false),
         BackAction.goHome,
@@ -29,7 +29,7 @@ void main() {
     );
   });
   test('unsaved Plan edits leave back on the other tabs unchanged', () {
-    for (final i in [1, 2, 3]) {
+    for (final i in [1, 2, 3, 4]) {
       expect(
         decideBack(tabHandled: false, tabIndex: i, planEditsAtRisk: true),
         BackAction.goHome,

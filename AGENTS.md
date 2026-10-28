@@ -1,40 +1,74 @@
-# CLAUDE.md
+# Working on Alkion
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Alkion, by Animus, is a pre-1.0, account-free workout app. The active runtime is
+Flutter over a standalone profile-scoped SQLite store. Android is the product
+target; Linux supports development and synthetic qualification. Read
+[development](docs/alkion/development.md), [acceptance](docs/alkion/acceptance.md)
+and the relevant approved plan before changing behavior; app rules are in
+[app/AGENTS.md](app/AGENTS.md). `CLAUDE.md` files delegate to these instructions.
 
-**Current state:** `main` is pre-1.0 development of Alkion, the successor app (see `docs/alkion/`). v0.18.1 is the final legacy Reps release. Before Alkion 1.0, create no `v*` tag or GitHub release and do not use the `release` skill; the Releases section below describes the legacy process.
+## Boundaries
 
-## What this is
-
-"Reps" (`io.github.psychonaut0.reps`) — a personal, local-first gym-logging app. Flutter client (Android phone + Linux desktop for dev) over a PowerSync-synced SQLite, with an optional self-hosted Go backend + Postgres for multi-device sync. Works fully offline with no account; sync is opt-in. The root README.md is the original capture document (training split, seed data) — it predates the build and its "status" line is stale; this file and the per-directory CLAUDE.md files are the operative truth.
+- No account, sender, OTA transport or Animus integration is enabled. Do not
+  introduce one as cleanup. Final release identity/signing remain open.
+- Use explicit disposable storage and synthetic fixtures for qualification.
+  Never discover/read owner profiles, keys, credentials, queues or real exports.
+- Preserve originals, corrections, derived results and provenance separately.
+  Essential local actions commit data and immutable outbox atomically. Replicas
+  are not backups; recovery must retain uncertain intent and existing bytes.
+- Legacy Reps v0.18.1 is frozen. The old Go/PowerSync/compose/API and legacy
+  publishing routes are retired; [disposition](docs/alkion/legacy-retirement.md)
+  and [non-runtime evidence](docs/history/reps-backend/README.md) record exact
+  source references. Do not recreate those services in the app.
+- No live migration, READY/cutover, service shutdown, deployment, signing, tag,
+  release or publication without explicit owner direction. Keep private
+  coordination paths, owner data and credentials out of this public tree.
+- Preserve LICENSE, bundled font notices, source manifests and dated evidence.
+  Historical plans describe their recorded trees, not current setup commands.
 
 ## Layout
 
-- `app/` — Flutter client (see `app/CLAUDE.md`)
-- `server/` — Go API: auth, PowerSync token, `/sync/upload` write path (see `server/CLAUDE.md`)
-- `infra/` — local dev compose stack: Postgres, server, PowerSync service (see `infra/CLAUDE.md`)
-- `powersync/` — PowerSync service config + `sync-rules.yaml` (bucket definitions)
-- `api/` — OpenAPI 3.1 spec for the Go API (`make -C server lint-spec`)
-- `docs/superpowers/specs/` + `docs/superpowers/plans/` — design specs and implementation plans, one pair per increment; `docs/design_handoff_workout_tracker/` — the authoritative visual/interaction spec (README + `.jsx` prototypes)
-- `web/` — placeholder, not built
+- `app/`: local application, store, recovery/transfer and focused local proof tools.
+- `docs/alkion/`: current contracts, architecture and scoped acceptance.
+- `docs/history/`, `docs/superpowers/`: retired evidence and dated design records.
+- `scripts/`, `tests/`: capture installation/rehearsal evidence checkers.
 
 ## Commands
 
-Everything runs from the **repo root** with explicit paths — never `cd` (committed docs/runbooks follow the same rule).
+Run from the repository root with explicit paths. Every local Flutter/Dart
+command goes through `make -C app` and FVM 3.44.0:
 
-- App: `make -C app analyze` · `make -C app test` (single file: `make -C app test TEST=test/widgets/foo_test.dart`) · `make -C app build` (Linux) · `make -C app build-apk-release` (signed APK; needs gitignored `app/android/key.properties`)
-- Server: `make -C server test` (needs the dev Postgres up; injects `TEST_DATABASE_URL`) · `make -C server build` · `make -C server run`
-- Dev stack: `docker compose -f infra/compose.yml -f infra/compose.dev.yml --env-file infra/.env up -d` — **always both files**; base-only drops the host ports (8080 server, 8090 powersync, **5433** postgres — not 5432, that's taken by another project)
+```sh
+make -C app get
+make -C app analyze
+make -C app test TEST=--concurrency=2
+make -C app format
+make -C app build
+make -C app build-apk
+python3 -m unittest discover -s tests -p test_capture_installation.py
+```
 
-## Releases
+`get` resolves offline with the committed lock. A fresh machine may explicitly
+use `get-online` once for connected dependency bootstrap with the same lock
+enforced. `format` checks only;
+`fmt FORMAT_FILES=...` writes explicitly owned paths. Debug APK builds require
+an explicit disposable Android user directory; never read inherited signing
+configuration. The sole release-mode exception is the opt-in private dev APK
+test route documented in `app/README.md`, using that disposable debug certificate.
+Other release tasks and implicit run/device/scaffold/clean routes fail closed.
+No backend is required. `app-ci.yml` keeps app analysis and tests; no
+legacy signing/image publication workflow remains.
 
-- Tag `v*` on main → `.github/workflows/android-release.yml` builds and publishes the signed `reps-vX.Y.Z.apk` to GitHub Releases (signing via repo secrets; release runbook in `app/android/RELEASE.md`, automated end-to-end by the project `release` skill). **Before tagging `vX.Y.Z`, bump `app/pubspec.yaml` `version:` to `X.Y.Z+N`** — the in-app OTA updater reads the running version from there, and the release workflow hard-fails if the pubspec version (sans `+build`) doesn't match the tag.
-- Push to main → `.github/workflows/build.yml` publishes the server image to GHCR (`ghcr.io/psychonaut0/workout-tracker-server`, public). Production runs on the homelab (`ct-workout` LXC); deployment lives in the separate infra repo (`personal/infra/stacks/ct-workout/`).
+## Workflow
 
-## Cross-cutting architecture facts
+Use an approved lane-sized plan and focused checks, then independent review.
+Assigned implementers do not re-delegate. Stage files by name, preserve unrelated
+work, and use subject-only Conventional Commits. No amend, force push or history
+rewrite without authorization. One branch/PR per plan, merge commit on green
+checks; never push directly to main. Public pushes require exact outgoing-range
+review and owner approval. The coordinator owns delivery.
 
-- **Local-first**: the app always opens its local PowerSync SQLite; identity is a locally generated user id (`IdentityService`). Login/registration only attaches sync. The server is source of truth only when syncing.
-- **Ownership model ("nothing is locked")**: server-seeded template rows (`is_template=1`, `created_by NULL`) are read-only server-side and are NEVER shown in the UI. A boot migration (`app/lib/data/template_absorb.dart`) copies them into user-owned rows with deterministic `uuid.v5(ns, '$userId:$templateId')` ids and re-points references. Every visible exercise/day is editable and deletable.
-- **Sync contract** (details in `server/CLAUDE.md`): client uploads `{op,table,id,data}` batches to `POST /sync/upload`; server stamps `user_id`/`created_by`, computes `is_top_set`/`is_pr`, never returns 4xx for bad data (per-op SAVEPOINT + skip). PATCH handlers apply an explicit column allowlist — a client `UPDATE` touching a column the handler ignores is silently dropped upstream (re-point that kind of change via DELETE+INSERT instead).
-- **Workflow convention**: each increment goes brainstorm → spec (`docs/superpowers/specs/`) → plan (`docs/superpowers/plans/`) → implementation (subagent-driven with TDD) → adversarial review → merge `--no-ff` → tag. Commit style: Conventional Commits, standard types, subject line only, no body. Plan/spec documents are committed; never reference plan numbers inside code — use descriptive language.
-- Treat the repo as public: secrets stay in gitignored files (`server/.secrets/`, `app/android/key.properties`, `infra/.env`) and GitHub Actions secrets.
+For a device check, use the short [manual APK checklist](docs/alkion/android-smoke.md)
+with an explicitly selected disposable profile/device. The bespoke campaign
+framework is retired; ordinary unit/widget, real SQLite and native-boundary tests
+remain the automated checks. Never infer device qualification from host PASS.

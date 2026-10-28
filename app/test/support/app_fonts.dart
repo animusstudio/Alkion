@@ -3,25 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:alkion/theme/typography.dart';
 
 /// The weights the app draws each family in (see `WorkoutType`).
-const displayWeights = [
-  FontWeight.w400,
-  FontWeight.w500,
-  FontWeight.w600,
-  FontWeight.w700,
-];
-const bodyWeights = [
-  FontWeight.w400,
-  FontWeight.w500,
-  FontWeight.w600,
-  FontWeight.w700,
-  FontWeight.w800,
-];
-const monoWeights = [
-  FontWeight.w400,
-  FontWeight.w500,
-  FontWeight.w600,
-  FontWeight.w700,
-];
+const displayWeights = [FontWeight.w400, FontWeight.w500];
+const bodyWeights = [FontWeight.w400, FontWeight.w500];
+const monoWeights = [FontWeight.w400];
 
 /// Loads every bundled face the app draws, so a test lays out with the real
 /// metrics from its first frame. Call it outside fake time: in `setUpAll`,

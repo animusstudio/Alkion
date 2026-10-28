@@ -1,0 +1,283 @@
+{
+  "status": "implemented_after_coordinator_disposition_check",
+  "retired_source_commit": "661a05bd26b5aaad14850dcfd5bcbd29e7e97730",
+  "source_url": "https://github.com/animusstudio/Alkion/tree/661a05bd26b5aaad14850dcfd5bcbd29e7e97730",
+  "removed_paths": [
+    ".claude/skills/release/SKILL.md",
+    ".github/workflows/android-preview.yml",
+    ".github/workflows/android-release.yml",
+    ".github/workflows/build.yml",
+    "api/README.md",
+    "api/openapi.yaml",
+    "app/android/RELEASE.md",
+    "infra/.env.example",
+    "infra/AGENTS.md",
+    "infra/CLAUDE.md",
+    "infra/README.md",
+    "infra/compose.dev.yml",
+    "infra/compose.yml",
+    "powersync/README.md",
+    "powersync/powersync.yaml",
+    "powersync/sync-rules.yaml",
+    "server/.dockerignore",
+    "server/.gitignore",
+    "server/AGENTS.md",
+    "server/CLAUDE.md",
+    "server/Dockerfile",
+    "server/Makefile",
+    "server/README.md",
+    "server/cmd/createuser/main.go",
+    "server/cmd/genkey/main.go",
+    "server/cmd/server/healthcheck.go",
+    "server/cmd/server/healthcheck_test.go",
+    "server/cmd/server/main.go",
+    "server/db/migrations/.gitkeep",
+    "server/db/migrations/00001_create_users.sql",
+    "server/db/migrations/00002_create_exercises.sql",
+    "server/db/migrations/00003_create_refresh_tokens.sql",
+    "server/db/migrations/00004_powersync_replication.sql",
+    "server/db/migrations/00005_seed_template_exercises.sql",
+    "server/db/migrations/00006_create_sessions.sql",
+    "server/db/migrations/00007_create_sets.sql",
+    "server/db/migrations/00008_create_bodyweight_logs.sql",
+    "server/db/migrations/00009_powersync_publish_workout_tables.sql",
+    "server/db/migrations/00010_create_day_templates.sql",
+    "server/db/migrations/00011_create_day_template_items.sql",
+    "server/db/migrations/00012_session_day_template_fk.sql",
+    "server/db/migrations/00013_powersync_publish_day_templates.sql",
+    "server/db/migrations/00014_seed_day_templates.sql",
+    "server/db/migrations/00015_exercise_traits.sql",
+    "server/db/migrations/00016_session_duration.sql",
+    "server/db/migrations/00017_day_template_schedule.sql",
+    "server/db/migrations/00018_muscle_targets.sql",
+    "server/db/migrations/00019_seed_exercise_traits.sql",
+    "server/db/migrations/00020_backfill_day_focus_weekday.sql",
+    "server/db/migrations/00021_exercise_rest.sql",
+    "server/db/migrations/00022_sets_user_exercise_idx.sql",
+    "server/db/migrations/00023_account_writer_authority.sql",
+    "server/db/migrations/00024_migration_peer_decisions.sql",
+    "server/db/migrations/00025_account_writer_gate_rows.sql",
+    "server/db/migrations/00026_rebackfill_account_writer_gate_rows.sql",
+    "server/db/migrations/embed.go",
+    "server/db/migrations/embed_test.go",
+    "server/docs/account-writer-fence.md",
+    "server/go.mod",
+    "server/go.sum",
+    "server/internal/api/auth_handlers.go",
+    "server/internal/api/auth_handlers_test.go",
+    "server/internal/api/errors.go",
+    "server/internal/api/handover_process_test.go",
+    "server/internal/api/healthz.go",
+    "server/internal/api/healthz_test.go",
+    "server/internal/api/middleware_auth.go",
+    "server/internal/api/middleware_auth_test.go",
+    "server/internal/api/migration_abort_integration_test.go",
+    "server/internal/api/migration_control.go",
+    "server/internal/api/migration_control_test.go",
+    "server/internal/api/readyz.go",
+    "server/internal/api/readyz_test.go",
+    "server/internal/api/router.go",
+    "server/internal/api/sync_upload.go",
+    "server/internal/api/sync_upload_gate_test.go",
+    "server/internal/api/sync_upload_test.go",
+    "server/internal/api/testhelpers_test.go",
+    "server/internal/api/uploadhelpers_test.go",
+    "server/internal/auth/jwks.go",
+    "server/internal/auth/jwks_test.go",
+    "server/internal/auth/keys.go",
+    "server/internal/auth/keys_test.go",
+    "server/internal/auth/password.go",
+    "server/internal/auth/password_test.go",
+    "server/internal/auth/random_test.go",
+    "server/internal/auth/refresh_store.go",
+    "server/internal/auth/refresh_store_test.go",
+    "server/internal/auth/testhelpers_test.go",
+    "server/internal/auth/token.go",
+    "server/internal/auth/token_header_test.go",
+    "server/internal/auth/token_test.go",
+    "server/internal/auth/users.go",
+    "server/internal/auth/users_test.go",
+    "server/internal/config/config.go",
+    "server/internal/config/config_test.go",
+    "server/internal/db/conn.go",
+    "server/internal/db/conn_test.go",
+    "server/internal/db/migrate.go",
+    "server/internal/db/migrate_test.go",
+    "server/internal/migration/cross_repository_test.go",
+    "server/internal/migration/gate.go",
+    "server/internal/migration/gate_test.go",
+    "server/internal/migration/peer.go",
+    "server/internal/migration/peer_test.go",
+    "server/internal/migration/protocol.go",
+    "server/internal/migration/runtime.go",
+    "server/internal/migration/service.go",
+    "server/internal/migration/service_test.go",
+    "server/internal/migration/testdata/reps-migration-peer.schema.json",
+    "server/internal/migration/testdata/wire-v1.json",
+    "server/internal/migration/types.go",
+    "server/internal/migration/wire.go",
+    "web/README.md"
+  ],
+  "retained_non_runtime_evidence": [
+    {
+      "source_path": "server/db/migrations/00001_create_users.sql",
+      "retained_path": "docs/history/reps-backend/schema/00001_create_users.sql.txt",
+      "sha256": "d5d7e60bd890defeb38fe617d8ed07a69d42eea87e133cdcb5c7f65a45b0a258"
+    },
+    {
+      "source_path": "server/db/migrations/00002_create_exercises.sql",
+      "retained_path": "docs/history/reps-backend/schema/00002_create_exercises.sql.txt",
+      "sha256": "a67c6d90c06b609317960b4327f4271ce5152078a98ec22d01b65260f312f726"
+    },
+    {
+      "source_path": "server/db/migrations/00003_create_refresh_tokens.sql",
+      "retained_path": "docs/history/reps-backend/schema/00003_create_refresh_tokens.sql.txt",
+      "sha256": "57455938cee047ce3a5ea47691c3192c449d7f0a445321488596a0f8b59540dc"
+    },
+    {
+      "source_path": "server/db/migrations/00004_powersync_replication.sql",
+      "retained_path": "docs/history/reps-backend/schema/00004_powersync_replication.sql.txt",
+      "sha256": "26e1af315b702066f0b8cf9182bfb6d9b4b7b69532364eb71a446a4fc1bac679"
+    },
+    {
+      "source_path": "server/db/migrations/00005_seed_template_exercises.sql",
+      "retained_path": "docs/history/reps-backend/schema/00005_seed_template_exercises.sql.txt",
+      "sha256": "b5fce7ae2530b07ad04935944ab28746a711ea54f561307dd2ab4caf70f04207"
+    },
+    {
+      "source_path": "server/db/migrations/00006_create_sessions.sql",
+      "retained_path": "docs/history/reps-backend/schema/00006_create_sessions.sql.txt",
+      "sha256": "2f7a4ac9b97ed7a7e0fe7148aaf84a6221cf13c36de2951cbdea7ba5166855f4"
+    },
+    {
+      "source_path": "server/db/migrations/00007_create_sets.sql",
+      "retained_path": "docs/history/reps-backend/schema/00007_create_sets.sql.txt",
+      "sha256": "43b91cca470c5581865f0c8c6418e34f765371eff7959692bd57d9c00450ca5b"
+    },
+    {
+      "source_path": "server/db/migrations/00008_create_bodyweight_logs.sql",
+      "retained_path": "docs/history/reps-backend/schema/00008_create_bodyweight_logs.sql.txt",
+      "sha256": "10288ebb96add1f58ab1c61f2354e5f05c64ead2b99e3ee8c0f8915f2db0db79"
+    },
+    {
+      "source_path": "server/db/migrations/00009_powersync_publish_workout_tables.sql",
+      "retained_path": "docs/history/reps-backend/schema/00009_powersync_publish_workout_tables.sql.txt",
+      "sha256": "7a3fb65dd0029b371a39b3a25d07c722d646934c94f8a0c49efb7bbd662b4b13"
+    },
+    {
+      "source_path": "server/db/migrations/00010_create_day_templates.sql",
+      "retained_path": "docs/history/reps-backend/schema/00010_create_day_templates.sql.txt",
+      "sha256": "83a0ca96fd620e849d75c81c71ac843e09caedeea3408581a561c30e6fcabab5"
+    },
+    {
+      "source_path": "server/db/migrations/00011_create_day_template_items.sql",
+      "retained_path": "docs/history/reps-backend/schema/00011_create_day_template_items.sql.txt",
+      "sha256": "6d895d27ca75352c40d78e77cc2bd73f14344af2cce488cabcedbe044c9a31a3"
+    },
+    {
+      "source_path": "server/db/migrations/00012_session_day_template_fk.sql",
+      "retained_path": "docs/history/reps-backend/schema/00012_session_day_template_fk.sql.txt",
+      "sha256": "3ecedf2c29fd048a6186fb14da9c4150df1a10e4f6b2effa3b466aee8eab1b7a"
+    },
+    {
+      "source_path": "server/db/migrations/00013_powersync_publish_day_templates.sql",
+      "retained_path": "docs/history/reps-backend/schema/00013_powersync_publish_day_templates.sql.txt",
+      "sha256": "f422f598d74bf822bad4ae1c0808913fec2f3ef6bfb71fba84d43ae4dd62d7a0"
+    },
+    {
+      "source_path": "server/db/migrations/00014_seed_day_templates.sql",
+      "retained_path": "docs/history/reps-backend/schema/00014_seed_day_templates.sql.txt",
+      "sha256": "cc9cadcb76ee0cc44850d3c885a49e45ad3127ee20ac01f4448374ff043afaab"
+    },
+    {
+      "source_path": "server/db/migrations/00015_exercise_traits.sql",
+      "retained_path": "docs/history/reps-backend/schema/00015_exercise_traits.sql.txt",
+      "sha256": "1977b8b674536a93a11115f75b62004d45277f79df1ad6869e6077db3a9d7203"
+    },
+    {
+      "source_path": "server/db/migrations/00016_session_duration.sql",
+      "retained_path": "docs/history/reps-backend/schema/00016_session_duration.sql.txt",
+      "sha256": "05400e8326f23c28df44d403aeb8efcc66cf22b06c2e75b9912fdbd0f7af8f9c"
+    },
+    {
+      "source_path": "server/db/migrations/00017_day_template_schedule.sql",
+      "retained_path": "docs/history/reps-backend/schema/00017_day_template_schedule.sql.txt",
+      "sha256": "09f11a1af7b24c61f54c670ed8ae7a71b9864377cbb2c050b202879d6c333846"
+    },
+    {
+      "source_path": "server/db/migrations/00018_muscle_targets.sql",
+      "retained_path": "docs/history/reps-backend/schema/00018_muscle_targets.sql.txt",
+      "sha256": "9036902e1be4d76cb13b443a2c2ddc1e063f405ceb37242f20ca6489c912aca5"
+    },
+    {
+      "source_path": "server/db/migrations/00019_seed_exercise_traits.sql",
+      "retained_path": "docs/history/reps-backend/schema/00019_seed_exercise_traits.sql.txt",
+      "sha256": "873d91b11b9cbe4b9cb810f862755edb3e0bca6809f7a2f0a26ce93590d0c247"
+    },
+    {
+      "source_path": "server/db/migrations/00020_backfill_day_focus_weekday.sql",
+      "retained_path": "docs/history/reps-backend/schema/00020_backfill_day_focus_weekday.sql.txt",
+      "sha256": "167415fcfc2ee1f5ac270acbbb0f5f2fa273c42d578ad7b90d9fce96eb53f7e1"
+    },
+    {
+      "source_path": "server/db/migrations/00021_exercise_rest.sql",
+      "retained_path": "docs/history/reps-backend/schema/00021_exercise_rest.sql.txt",
+      "sha256": "9665cc5d83fd437453c83021f742dac67b35cb7d1b966df045f9dad03af04a3c"
+    },
+    {
+      "source_path": "server/db/migrations/00022_sets_user_exercise_idx.sql",
+      "retained_path": "docs/history/reps-backend/schema/00022_sets_user_exercise_idx.sql.txt",
+      "sha256": "0552820753afddc2ef5e446c5d2785f4dea7603db49fbc6bfe2f45948b6cd7b6"
+    },
+    {
+      "source_path": "server/db/migrations/00023_account_writer_authority.sql",
+      "retained_path": "docs/history/reps-backend/schema/00023_account_writer_authority.sql.txt",
+      "sha256": "1cfeda3be581ae7f86587101d9f8cff101dfafbd3b792c8546d5255115e06f50"
+    },
+    {
+      "source_path": "server/db/migrations/00024_migration_peer_decisions.sql",
+      "retained_path": "docs/history/reps-backend/schema/00024_migration_peer_decisions.sql.txt",
+      "sha256": "9ee338e9698f422061277e8e9d391f337a7ee316b0d5cfbf5d7caf4a13bd0b09"
+    },
+    {
+      "source_path": "server/db/migrations/00025_account_writer_gate_rows.sql",
+      "retained_path": "docs/history/reps-backend/schema/00025_account_writer_gate_rows.sql.txt",
+      "sha256": "fd348668fabb47a12a34299aed9bce33d815060435c4f2ab5a64fccb854b7c6b"
+    },
+    {
+      "source_path": "server/db/migrations/00026_rebackfill_account_writer_gate_rows.sql",
+      "retained_path": "docs/history/reps-backend/schema/00026_rebackfill_account_writer_gate_rows.sql.txt",
+      "sha256": "dbbbbc0d8e737e8f478dbb877f50a384c51567b8e26b366b143cda4fc23e05a0"
+    },
+    {
+      "source_path": "server/internal/migration/testdata/reps-migration-peer.schema.json",
+      "retained_path": "docs/history/reps-backend/protocol/reps-migration-peer.schema.json",
+      "sha256": "989e41423c9c4947790ba213481b905cac6b1ff94671826cf88127e5059e447e"
+    },
+    {
+      "source_path": "server/internal/migration/testdata/wire-v1.json",
+      "retained_path": "docs/history/reps-backend/protocol/wire-v1.json",
+      "sha256": "0d75db6887c2df8eadd8725c9af1ba91343574ff95626757ad323fa0fed461d2"
+    },
+    {
+      "source_path": "powersync/sync-rules.yaml",
+      "retained_path": "docs/history/reps-backend/schema/sync-rules.yaml.txt",
+      "sha256": "2e0ef44f07c1d23b070567ba5804abb16ab4cc72ff41dd819c493a73a770525b"
+    },
+    {
+      "source_path": "server/docs/account-writer-fence.md",
+      "retained_path": "docs/history/reps-backend/account-writer-fence.md.txt",
+      "sha256": "06f43d01caf0ab5c3ac6dc6b23a7b781bd1d1c65567cc955c56bb2f06a1adbf4"
+    }
+  ],
+  "history_source_links": [
+    "server/internal/migration/cross_repository_test.go",
+    "server/internal/migration/protocol.go",
+    "server/internal/migration/types.go",
+    "server/internal/migration/wire.go",
+    "api/openapi.yaml",
+    "powersync/powersync.yaml",
+    "infra/compose.yml",
+    "infra/compose.dev.yml"
+  ]
+}

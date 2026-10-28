@@ -348,41 +348,59 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
                     onSubmitted: (_) => _commitEdit(),
                     style: WorkoutType.mono(
                       size: 15,
-                      weight: FontWeight.w700,
+                      weight: FontWeight.w400,
                       color: tokens.text,
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isDense: true,
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
+                      filled: true,
+                      fillColor: tokens.sunken,
+                      constraints: const BoxConstraints(minHeight: 48),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                        borderSide: BorderSide(color: tokens.lineStrong),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                        borderSide: BorderSide(color: tokens.focus, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 4,
+                      ),
                     ),
                   )
                 : GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: _beginEdit,
-                    child: AnimatedSwitcher(
-                      duration: Motion.of(context, Motion.fast),
-                      transitionBuilder: (child, anim) => FadeTransition(
-                        opacity: anim,
-                        child: SlideTransition(
-                          position: Tween(
-                            begin: Offset(0, _up ? 0.4 : -0.4),
-                            end: Offset.zero,
-                          ).animate(anim),
-                          child: child,
-                        ),
-                      ),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          widget.format(_internalValue),
-                          key: ValueKey(widget.format(_internalValue)),
-                          maxLines: 1,
-                          overflow: TextOverflow.visible,
-                          style: WorkoutType.mono(
-                            size: 15,
-                            weight: FontWeight.w700,
-                            color: tokens.text,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 48),
+                      child: Center(
+                        child: AnimatedSwitcher(
+                          duration: Motion.of(context, Motion.fast),
+                          transitionBuilder: (child, anim) => FadeTransition(
+                            opacity: anim,
+                            child: SlideTransition(
+                              position: Tween(
+                                begin: Offset(0, _up ? 0.4 : -0.4),
+                                end: Offset.zero,
+                              ).animate(anim),
+                              child: child,
+                            ),
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              widget.format(_internalValue),
+                              key: ValueKey(widget.format(_internalValue)),
+                              maxLines: 1,
+                              overflow: TextOverflow.visible,
+                              style: WorkoutType.mono(
+                                size: 15,
+                                weight: FontWeight.w400,
+                                color: tokens.text,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -396,12 +414,11 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
   }
 }
 
-/// The square − / + button [WStepper] flanks its value with: a 25×34 rounded
-/// rect inside a 48×48 hit area. Public so other steppers that manage their
+/// The square − / + button [WStepper] flanks its value with: a neutral
+/// control inside a 48×48 hit area. Public so other steppers that manage their
 /// own value (the bodyweight sheet) share the exact same visual.
 ///
-/// The tap does NOT bubble to enclosing widgets (e.g. an accordion header):
-/// the [GestureDetector] is [HitTestBehavior.opaque].
+/// The button owns its tap instead of activating an enclosing row.
 class StepperButton extends StatelessWidget {
   const StepperButton({
     super.key,
@@ -425,26 +442,21 @@ class StepperButton extends StatelessWidget {
       label: semanticLabel,
       excludeSemantics: true,
       onTap: onTap,
-      child: GestureDetector(
-        // Stop tap from propagating to parent (e.g. accordion header).
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: Container(
-              width: 25,
-              height: 34,
-              decoration: BoxDecoration(
-                color: tokens.surface3,
-                borderRadius: BorderRadius.circular(AppRadius.radius * 0.4),
-              ),
-              alignment: Alignment.center,
-              child: Icon(icon, size: 16, color: tokens.text),
-            ),
+      child: IconButton(
+        onPressed: onTap,
+        style: IconButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          fixedSize: const Size(48, 48),
+          padding: const EdgeInsets.all(8),
+          backgroundColor: tokens.surface2,
+          foregroundColor: tokens.text,
+          focusColor: tokens.focus.withValues(alpha: 0.25),
+          side: BorderSide(color: tokens.lineStrong),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
           ),
         ),
+        icon: Icon(icon, size: 20),
       ),
     );
   }

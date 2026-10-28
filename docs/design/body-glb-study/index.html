@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light"><title>Alkion · Female source study</title>
+<link rel="stylesheet" href="study.css"><script type="module" src="study.js"></script>
+</head>
+<body>
+<header><a href="#body-heading">Alkion</a><span>Female source study</span><button id="theme" disabled>Light theme</button></header>
+<main>
+<div class="intro"><h1>Female anatomy, in characters.</h1><p>The supplied female anatomy, rendered as characters. Color shows counted working sets.</p></div>
+<div class="study-layout">
+<section class="compact-section" aria-labelledby="compact-heading">
+<div class="compact-heading"><h2 id="compact-heading">In Today</h2><span id="compact-view">Front</span></div>
+<p class="context-note" id="context-note">Synthetic card composition. Start workout is a visual reference, not an action.</p>
+<div class="today-card" aria-describedby="context-note">
+<h3 id="compact-title">Planned workout</h3><p id="compact-mode" class="card-context">Planned workload</p>
+<div class="compact-layout">
+<div class="compact-info"><dl><dt>Mapped working sets</dt><dd id="compact-total">—</dd></dl><p id="compact-counts">Loading…</p></div>
+<div class="card-figure"><div class="compact-stage" id="compact-stage"><canvas id="compact-body" tabindex="0" role="img" aria-label="Today body, at the app's original size. Same view and workload. Drag or use arrow keys and Home." aria-describedby="motion-help"></canvas><p id="compact-fallback" class="fallback" role="status">Body preview loading…</p></div>
+<div class="card-view-controls" role="group" aria-label="Today body view"><button data-view="front" aria-pressed="false" disabled>Front</button><button data-view="back" aria-pressed="false" disabled>Back</button></div></div>
+</div>
+<div class="card-action">Start workout</div>
+</div>
+<p id="compact-coverage" class="context-note">Loading…</p>
+</section>
+<section class="artwork" aria-labelledby="body-heading">
+<div class="art-heading"><h2 id="body-heading">Female source anatomy</h2><div class="view-controls" role="group" aria-label="Anatomical view"><button data-view="front" aria-pressed="false" disabled>Front</button><button data-view="back" aria-pressed="false" disabled>Back</button></div></div>
+<div class="figure-stage" id="large-stage"><canvas id="large-body" tabindex="0" role="img" aria-label="Rotatable body. Drag horizontally, use left and right arrows to turn ten degrees, or Home for front. Exact counts follow." aria-describedby="motion-help"></canvas><p class="fallback" id="large-fallback" role="status">Body preview loading…</p></div>
+<div class="motion-controls"><button id="motion" disabled>Pause</button><p id="motion-state" role="status">Preparing body…</p></div><p class="anatomy-note" id="motion-help">Drag to turn and hold. Arrow keys turn 10°; Home returns to front. Head, core, forearms, hands, feet and unsupported patches stay neutral.</p>
+<details class="source-diagnostics"><summary>Inspect source mapping</summary><label for="render-mode">Preview material</label><select id="render-mode"><option value="characters">Character body · workload colors</option><option value="neutral">Neutral surface · posed geometry</option><option value="regions">Region overlay · mapping only</option></select><p>Diagnostic colors identify source patches. They do not show workload.</p><div id="region-legend" hidden><span style="--region:#ff6946">Chest</span><span style="--region:#64a5ff">Back</span><span style="--region:#f0be46">Shoulders</span><span style="--region:#8cd264">Quads</span><span style="--region:#c88cf0">Hamstrings</span><span style="--region:#46cdc8">Calves</span><span style="--region:#f582be">Biceps</span><span style="--region:#aab4fa">Triceps</span><span style="--region:#767c8a">Neutral / unsupported</span></div></details>
+</section>
+<section class="workout-data" aria-labelledby="input-heading">
+<h2 id="input-heading">Illustrative workout</h2>
+<label for="fixture">Synthetic set inputs</label><select id="fixture" disabled><option>Loading examples…</option></select>
+<div class="data-heading"><h3 id="metric-title">Workout workload</h3><span id="set-total">—</span></div>
+<p id="coverage" role="status" aria-live="polite">Loading workout inputs…</p>
+<div id="counts" class="counts" aria-label="Working sets by muscle group"></div>
+<div id="scale" class="scale" hidden><div class="scale-colors"></div><div><span>0 sets</span><span id="scale-max">Highest count</span></div></div>
+<p class="metric-note">Relative to this workout's highest count. Warmups and pending or deleted sets do not count. No physiological intensity is implied.</p>
+<details><summary>Try a live set update</summary><p>Change synthetic set records and recalculate the same workload.</p><div class="edit-controls"><button id="complete" disabled>Complete chest set</button><button id="remove" disabled>Remove last chest set</button><button id="undo" disabled>Undo</button></div><p id="edit-state" role="status" aria-live="polite"></p></details>
+</section>
+
+</div>
+<footer><p>Local source-geometry experiment · synthetic workout inputs. Authored mapping follows selected labeled source patches; it is not a medical or physiological model.</p><button id="retry" hidden>Retry body preview</button><noscript><p>JavaScript is required for the character artwork and synthetic inputs. No workout values have loaded.</p></noscript></footer>
+</main>
+</body>
+</html>

@@ -7,6 +7,7 @@ import '../../recovery/restore.dart';
 import '../../store/generation_selection.dart';
 import '../../store/local_store.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/workout_canvas.dart';
 import '../../theme/tokens.dart';
 import '../../theme/typography.dart';
 
@@ -110,73 +111,97 @@ class _RecoveryBodyState extends State<_RecoveryBody> {
     Widget button(String label, Key key, Future<void> Function() action) =>
         FilledButton(
           key: key,
-          style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+          style: FilledButton.styleFrom(minimumSize: const Size(48, 56)),
           onPressed: _busy ? null : () => _act(action),
           child: Text(label),
         );
     return Scaffold(
       backgroundColor: tokens.bg,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                title,
-                style: WorkoutType.body(
-                  size: 20,
-                  weight: FontWeight.w600,
-                  color: tokens.text,
+      body: WorkoutCanvas(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 48, 24, 32),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: ColoredBox(
+                  color: tokens.bg,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Semantics(
+                        header: true,
+                        child: Text(
+                          title,
+                          style: WorkoutType.display(
+                            size: 32,
+                            weight: FontWeight.w500,
+                            color: tokens.text,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        body,
+                        style: WorkoutType.body(size: 16, color: tokens.dim),
+                      ),
+                      if (pending != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '${pending.restoreId} · ${(pending.intent['backup'] as Map)['created_at']}',
+                          style: WorkoutType.mono(size: 12, color: tokens.dim),
+                        ),
+                      ],
+                      if (_failure != null) ...[
+                        const SizedBox(height: 12),
+                        Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            l.alkionRestoreFailedBody(_failure!),
+                            style: WorkoutType.body(
+                              size: 14,
+                              color: tokens.danger,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (app._kind == _Kind.interrupted &&
+                              pending != null) ...[
+                            button(
+                              l.alkionRestoreComplete,
+                              const Key('restore-complete'),
+                              () async {
+                                await app.service!.complete(pending.restoreId);
+                                await app.relaunch();
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            button(
+                              l.alkionRestoreKeepCurrent,
+                              const Key('restore-keep-current'),
+                              () async {
+                                await app.service!.abandon(pending.restoreId);
+                                await app.relaunch();
+                              },
+                            ),
+                          ] else
+                            button(
+                              l.alkionRestoreReopen,
+                              const Key('restore-reopen'),
+                              app.relaunch,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(body, style: WorkoutType.body(size: 14, color: tokens.text)),
-              if (pending != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  '${pending.restoreId} · ${(pending.intent['backup'] as Map)['created_at']}',
-                  style: WorkoutType.mono(size: 11, color: tokens.faint),
-                ),
-              ],
-              if (_failure != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  l.alkionRestoreFailedBody(_failure!),
-                  style: WorkoutType.body(size: 14, color: tokens.text),
-                ),
-              ],
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (app._kind == _Kind.interrupted && pending != null) ...[
-                    button(
-                      l.alkionRestoreComplete,
-                      const Key('restore-complete'),
-                      () async {
-                        await app.service!.complete(pending.restoreId);
-                        await app.relaunch();
-                      },
-                    ),
-                    button(
-                      l.alkionRestoreKeepCurrent,
-                      const Key('restore-keep-current'),
-                      () async {
-                        await app.service!.abandon(pending.restoreId);
-                        await app.relaunch();
-                      },
-                    ),
-                  ] else
-                    button(
-                      l.alkionRestoreReopen,
-                      const Key('restore-reopen'),
-                      app.relaunch,
-                    ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -202,14 +227,16 @@ class AlkionRestoringApp extends StatelessWidget {
     home: Builder(
       builder: (context) => Scaffold(
         backgroundColor: context.tokens.bg,
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                AppLocalizations.of(context).alkionRestoreRunning,
-                textAlign: TextAlign.center,
-                style: WorkoutType.body(size: 14, color: context.tokens.text),
+        body: WorkoutCanvas(
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 48, 24, 32),
+                child: Text(
+                  AppLocalizations.of(context).alkionRestoreRunning,
+                  textAlign: TextAlign.center,
+                  style: WorkoutType.body(size: 16, color: context.tokens.dim),
+                ),
               ),
             ),
           ),

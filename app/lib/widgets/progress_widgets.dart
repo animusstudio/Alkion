@@ -66,12 +66,9 @@ String metricShort(AppLocalizations l, String id) {
   }
 }
 
-// ── BigStat ───────────────────────────────────────────────────────────────────
+// ── Shared progress controls ─────────────────────────────────────────────────
 
-/// A compact stat display: mono uppercase label above a large value + optional
-/// unit in a baseline-aligned row.
-///
-/// Visual spec: `docs/design_handoff_workout_tracker/design/app/screen-progress.jsx`.
+/// Label and exact value, with a separate unit slot.
 class BigStat extends StatelessWidget {
   const BigStat({
     super.key,
@@ -80,7 +77,6 @@ class BigStat extends StatelessWidget {
     this.unit,
     this.accent = false,
   });
-
   final String label;
   final String value;
   final String? unit;
@@ -89,25 +85,20 @@ class BigStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final valueColor = accent ? tokens.accentText : tokens.text;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Mono 9.5 uppercase faint label, mb6. A third of a narrow phone at
-        // large text is too small for "BESTWERT": shrink, then ellipsize.
         FitLabel(
           label.toUpperCase(),
-          style: WorkoutType.mono(
-            size: 9.5,
-            color: tokens.faint,
-            letterSpacing: 0.06 * 9.5,
+          maxLines: 2,
+          style: WorkoutType.body(
+            size: 12,
+            weight: FontWeight.w500,
+            color: tokens.dim,
+            letterSpacing: .72,
           ),
         ),
-        const SizedBox(height: 6),
-        // Baseline-aligned row: display value + optional mono unit. Scales
-        // down rather than overflowing a third-of-a-narrow-phone card at
-        // large text sizes.
+        const SizedBox(height: 8),
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
@@ -118,17 +109,19 @@ class BigStat extends StatelessWidget {
             children: [
               Text(
                 value,
-                style: WorkoutType.display(
+                maxLines: 1,
+                softWrap: false,
+                style: WorkoutType.mono(
                   size: 22,
-                  weight: FontWeight.w700,
-                  color: valueColor,
+                  weight: FontWeight.w400,
+                  color: accent ? tokens.accentText : tokens.text,
                 ),
               ),
               if (unit != null) ...[
-                const SizedBox(width: 3),
+                const SizedBox(width: 4),
                 Text(
                   unit!,
-                  style: WorkoutType.mono(size: 11, color: tokens.dim),
+                  style: WorkoutType.mono(size: 12, color: tokens.dim),
                 ),
               ],
             ],
@@ -139,14 +132,30 @@ class BigStat extends StatelessWidget {
   }
 }
 
-// ── ProgressSelectorRow ───────────────────────────────────────────────────────
+/// Existing stat plates reflow at larger system text sizes.
+class ProgressStatRow extends StatelessWidget {
+  const ProgressStatRow({super.key, required this.children});
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final columns =
+          constraints.maxWidth < MediaQuery.textScalerOf(context).scale(240)
+          ? 1
+          : 3;
+      final width = (constraints.maxWidth - 8 * (columns - 1)) / columns;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 12,
+        children: [
+          for (final child in children) SizedBox(width: width, child: child),
+        ],
+      );
+    },
+  );
+}
 
-/// A tappable card row for selecting the current exercise or target.
-///
-/// Shows a 38×38 surface3 icon tile on the left, a title + subtitle in the
-/// centre, and a 'CHANGE' label + chevron on the right.
-///
-/// Visual spec: `docs/design_handoff_workout_tracker/design/app/screen-progress.jsx`.
+/// Existing exercise/measurement selection, styled as a flat tonal plate.
 class ProgressSelectorRow extends StatelessWidget {
   const ProgressSelectorRow({
     super.key,
@@ -155,7 +164,6 @@ class ProgressSelectorRow extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
   });
-
   final IconData icon;
   final String title;
   final String subtitle;
@@ -164,84 +172,56 @@ class ProgressSelectorRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: tokens.line),
-        borderRadius: BorderRadius.circular(15),
+    return Material(
+      color: tokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        side: BorderSide(color: tokens.line),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(15),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              // pad 13/12/13/12 → top 13, right 12, bottom 13, left 12
-              padding: const EdgeInsets.fromLTRB(12, 13, 12, 13),
-              child: Row(
-                children: [
-                  // 38×38 surface3 tile with centred accent icon, radius 7.5
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: tokens.surface3,
-                      borderRadius: BorderRadius.circular(7.5),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(icon, color: tokens.accentText, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  // Title + subtitle
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: WorkoutType.body(
-                            size: 16,
-                            weight: FontWeight.w600,
-                            color: tokens.text,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: WorkoutType.mono(
-                            size: 11,
-                            color: tokens.faint,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // 'CHANGE' + chevron
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        AppLocalizations.of(context).progressChange,
-                        style: WorkoutType.mono(
-                          size: 10,
-                          weight: FontWeight.w700,
-                          color: tokens.dim,
-                          letterSpacing: 0.06 * 10,
-                        ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        focusColor: tokens.focus.withValues(alpha: .16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(icon, color: tokens.text, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FitLabel(
+                      title,
+                      maxLines: 2,
+                      style: WorkoutType.body(
+                        size: 16,
+                        weight: FontWeight.w400,
+                        color: tokens.text,
                       ),
-                      const SizedBox(width: 2),
-                      Icon(WIcons.chevron, color: tokens.faint, size: 16),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 4),
+                    FitLabel(
+                      subtitle,
+                      maxLines: 2,
+                      style: WorkoutType.body(size: 12, color: tokens.dim),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      AppLocalizations.of(context).progressChange,
+                      style: WorkoutType.body(
+                        size: 12,
+                        weight: FontWeight.w500,
+                        color: tokens.text,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Icon(WIcons.chevron, color: tokens.dim, size: 20),
+            ],
           ),
         ),
       ),
@@ -249,39 +229,37 @@ class ProgressSelectorRow extends StatelessWidget {
   }
 }
 
-// ── MetricTabs ────────────────────────────────────────────────────────────────
-
-/// A segmented tab row for switching between the four progress metrics.
-///
-/// Each segment is labelled by [Metric.short]. The selected segment shows a
-/// surface3 background with a 1 px [WorkoutTokens.lineStrong] inner ring;
-/// unselected segments are transparent with a 1 px [WorkoutTokens.line] border.
-///
-/// Visual spec: `docs/design_handoff_workout_tracker/design/app/screen-progress.jsx`.
+/// Metric selection stays neutral; the plotted workout data carries color.
 class MetricTabs extends StatelessWidget {
   const MetricTabs({super.key, required this.selected, required this.onSelect});
-
   final String selected;
   final ValueChanged<String> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
-
-    return Row(
-      children: [
-        for (var i = 0; i < kMetrics.length; i++) ...[
-          if (i > 0) const SizedBox(width: 6),
-          Expanded(
-            child: _MetricSegment(
-              metric: kMetrics[i],
-              isSelected: kMetrics[i].id == selected,
-              tokens: tokens,
-              onTap: () => onSelect(kMetrics[i].id),
-            ),
-          ),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked =
+            constraints.maxWidth < MediaQuery.textScalerOf(context).scale(240);
+        final count = stacked ? 2 : 4;
+        final width = (constraints.maxWidth - 8 * (count - 1)) / count;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final metric in kMetrics)
+              SizedBox(
+                width: width,
+                child: _MetricSegment(
+                  metric: metric,
+                  isSelected: metric.id == selected,
+                  tokens: context.tokens,
+                  onTap: () => onSelect(metric.id),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -293,7 +271,6 @@ class _MetricSegment extends StatelessWidget {
     required this.tokens,
     required this.onTap,
   });
-
   final Metric metric;
   final bool isSelected;
   final WorkoutTokens tokens;
@@ -301,29 +278,37 @@ class _MetricSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = isSelected ? tokens.surface3 : Colors.transparent;
-    final borderColor = isSelected ? tokens.lineStrong : tokens.line;
-    final textColor = isSelected ? tokens.text : tokens.faint;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: borderColor),
+    return Semantics(
+      selected: isSelected,
+      button: true,
+      child: Material(
+        color: isSelected ? tokens.surface2 : tokens.sunken,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
+          side: BorderSide(color: isSelected ? tokens.lineStrong : tokens.line),
         ),
-        alignment: Alignment.center,
-        child: Text(
-          metricShort(AppLocalizations.of(context), metric.id),
-          style: WorkoutType.mono(
-            size: 11.5,
-            weight: FontWeight.w700,
-            color: textColor,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          focusColor: tokens.focus.withValues(alpha: .16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Center(
+                child: FitLabel(
+                  metricShort(AppLocalizations.of(context), metric.id),
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  style: WorkoutType.body(
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: isSelected ? tokens.text : tokens.dim,
+                  ),
+                ),
+              ),
+            ),
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
       ),
     );

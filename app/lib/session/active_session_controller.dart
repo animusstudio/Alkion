@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'notification_action.dart';
 import 'dart:convert';
 import 'dart:math' show max;
 
@@ -472,6 +473,8 @@ class SessionDraft {
 ///
 /// All state mutations (toggleDone, addSet, etc.) call [notifyListeners] so
 /// that Provider-wired widgets rebuild automatically.
+typedef _RestState = ({DateTime? start, int total, DateTime? endedAt});
+
 class ActiveSessionController extends ChangeNotifier {
   /// [draftStore] enables debounced autosave of the in-progress draft (used
   /// for resume-on-launch). Null (e.g. in unit tests) disables persistence.
@@ -511,10 +514,17 @@ class ActiveSessionController extends ChangeNotifier {
 
   /// A mutation happened while frozen, so its autosave is still owed.
   bool _savePending = false;
+  bool _notificationActionPending = false;
+  _RestState? _notificationRestBefore;
+  List<_RestState Function(_RestState)>? _notificationRestEdits;
+  bool get notificationActionUncertain =>
+      _draftStore?.pendingNotificationAction != null;
 
   /// Whether a capture froze autosave and rest auto-stop.
   bool get callbacksFrozen =>
-      _frozenGeneration != null || _pendingFinish != null;
+      _frozenGeneration != null ||
+      _pendingFinish != null ||
+      _notificationActionPending;
 
   /// [callbacksFrozen] as a listenable, for what the screen shows as
   /// unavailable while a capture holds the source (the +30s rest chip).
@@ -547,7 +557,53 @@ class ActiveSessionController extends ChangeNotifier {
 
   Object? persistenceError;
   Future<void> _persistenceTail = Future.value();
-  bool get persistenceOwed => _savePending || _draftStore?.pending != null;
+  bool get persistenceOwed =>
+      _savePending ||
+      _draftStore?.pending != null ||
+      notificationActionUncertain;
+
+  void _beginNotificationRest() {
+    _notificationRestBefore = (
+      start: restStart,
+      total: restTotal,
+      endedAt: restEndedAt,
+    );
+    _notificationRestEdits = [];
+  }
+
+  bool _adoptNotificationRest(CommittedRestChange? committed) {
+    if (committed != null) {
+      _RestState state = (
+        start: committed.restStart,
+        total: committed.restTotal,
+        endedAt: _notificationRestBefore?.endedAt,
+      );
+      for (final edit
+          in _notificationRestEdits ?? <_RestState Function(_RestState)>[]) {
+        state = edit(state);
+      }
+      restStart = state.start;
+      restTotal = state.total;
+      restEndedAt = state.endedAt;
+    }
+    final action = _draftStore?.pendingNotificationAction;
+    if (action != null) {
+      _draftStore!.acknowledgeNotificationAction(action);
+    }
+    _notificationRestBefore = null;
+    _notificationRestEdits = null;
+    return committed != null;
+  }
+
+  Future<bool> _reconcileNotificationAction(DraftStore store) async {
+    if (store.pendingNotificationAction == null) return false;
+    final adopted = _adoptNotificationRest(
+      await store.reconcileNotificationAction(),
+    );
+    persistenceError = null;
+    return adopted;
+  }
+
   SessionDraft snapshot() {
     final json = draft.toJson()
       ..addAll({
@@ -570,14 +626,18 @@ class ActiveSessionController extends ChangeNotifier {
         if (epoch != _saveEpoch || callbacksFrozen || _pendingFinish != null) {
           return;
         }
+        var reconciled = false;
         try {
+          final uncertain = notificationActionUncertain;
+          reconciled = await _reconcileNotificationAction(store);
+          final saved = uncertain ? snapshot() : copy;
           if (store.pending != null) {
-            await store.save(copy);
+            await store.save(saved);
           }
           if (epoch != _saveEpoch) {
             return;
           }
-          await store.save(copy);
+          await store.save(saved);
           if (epoch == _saveEpoch) {
             _savePending = false;
           }
@@ -585,6 +645,8 @@ class ActiveSessionController extends ChangeNotifier {
         } catch (e) {
           persistenceError = e;
           _savePending = true;
+        } finally {
+          if (reconciled) super.notifyListeners();
         }
       });
     });
@@ -592,15 +654,23 @@ class ActiveSessionController extends ChangeNotifier {
 
   /// Lifecycle/transfer/backup/close barrier. Failures leave exact work owed.
   Future<void> flushPersistence() {
+    final finishing = _finishInFlight;
+    if (finishing != null) return finishing.then<void>((_) {});
     _saveDebounce?.cancel();
     final epoch = ++_saveEpoch;
-    final work = _persistenceTail.then((_) async {
+    final work = _persistenceTail.then<void>((_) async {
       final store = _draftStore;
       if (store == null || _draft == null) return;
       if (_pendingFinish != null) {
         throw const StoreException('finish_retry_required');
       }
+      var reconciled = false;
       try {
+        reconciled = await _reconcileNotificationAction(store);
+        if (_pendingFinish != null) {
+          throw const StoreException('finish_retry_required');
+        }
+        if (!_savePending && store.pending == null) return;
         // Settle the already frozen older save. Finish may have prepared while
         // that write awaited SQL; it owns the next transition from this base.
         if (store.pending != null) {
@@ -616,6 +686,8 @@ class ActiveSessionController extends ChangeNotifier {
         persistenceError = error;
         _savePending = true;
         rethrow;
+      } finally {
+        if (reconciled) super.notifyListeners();
       }
     });
     // Every explicit flush and autosave shares one tail. Keep the returned
@@ -624,6 +696,69 @@ class ActiveSessionController extends ChangeNotifier {
       (_) {},
       onError: (Object error, StackTrace stack) {},
     );
+    // A queued flush may meet Finish after admission. Join its outcome only
+    // outside the internal tail that Finish itself waits for.
+    return work.catchError((Object error, StackTrace stack) {
+      final finishing = _finishInFlight;
+      if (finishing != null &&
+          error is StoreException &&
+          error.category == 'finish_retry_required') {
+        return finishing.then<void>((_) {});
+      }
+      Error.throwWithStackTrace(error, stack);
+    });
+  }
+
+  /// Shares the autosave tail. Pending edits settle first; no older snapshot
+  /// may overwrite the action's committed rest, and finish cannot prepare from
+  /// the old revision while the action is in flight.
+  Future<bool> applyNotificationAction(NotificationAction action) {
+    final store = _draftStore;
+    if (store == null || _draft == null || callbacksFrozen) {
+      return Future.value(false);
+    }
+    _notificationActionPending = true;
+    _captureFrozen.value = true;
+    _saveDebounce?.cancel();
+    final epoch = ++_saveEpoch;
+    final previousAction = store.pendingNotificationAction;
+    if (previousAction == null) _beginNotificationRest();
+    final work = _persistenceTail.then((_) async {
+      var adopted = false;
+      try {
+        adopted = await _reconcileNotificationAction(store);
+        if (_savePending || store.pending != null) {
+          if (store.pending != null) await store.save(snapshot());
+          await store.save(snapshot());
+          if (epoch == _saveEpoch) _savePending = false;
+        }
+        if (_frozenGeneration != null || finishPending || _draft == null) {
+          return false;
+        }
+        if (previousAction?.encode() == action.encode()) return adopted;
+        if (_notificationRestEdits == null) _beginNotificationRest();
+        final committed = await store.consumeAction(action);
+        adopted = _adoptNotificationRest(committed) || adopted;
+        if (committed == null) return false;
+        persistenceError = null;
+        // This state is already durable. Ordinary listeners must not autosave
+        // the pre-action rest or create a second consumption.
+        return true;
+      } catch (error) {
+        persistenceError = error;
+        rethrow;
+      } finally {
+        _notificationActionPending = false;
+        _captureFrozen.value = callbacksFrozen;
+        if (_savePending) _scheduleSave();
+        if (!notificationActionUncertain) {
+          _notificationRestBefore = null;
+          _notificationRestEdits = null;
+        }
+        if (adopted) super.notifyListeners();
+      }
+    });
+    _persistenceTail = work.then<void>((_) {}, onError: (Object error) {});
     return work;
   }
 
@@ -661,6 +796,16 @@ class ActiveSessionController extends ChangeNotifier {
     _frozenGeneration = null;
     _captureFrozen.value = _pendingFinish != null;
     if (_pendingFinish != null) {
+      return;
+    }
+    if (notificationActionUncertain) {
+      unawaited(
+        flushPersistence().then((_) => resumeCallbacks(now)).catchError((
+          Object error,
+        ) {
+          persistenceError = error;
+        }),
+      );
       return;
     }
     final start = restStart;
@@ -803,7 +948,13 @@ class ActiveSessionController extends ChangeNotifier {
     if (finishPending) {
       throw const StoreException('finish_retry_required');
     }
-    restStart = DateTime.now();
+    final start = DateTime.now();
+    // Log Set remains responsive. Its new rest is ordered after the in-flight
+    // notification, with the tap's absolute start rather than a later retry.
+    _notificationRestEdits?.add(
+      (_) => (start: start, total: seconds, endedAt: null),
+    );
+    restStart = start;
     restTotal = seconds;
     restEndedAt = null;
     notifyListeners();
@@ -818,6 +969,13 @@ class ActiveSessionController extends ChangeNotifier {
     if (restStart == null || callbacksFrozen) {
       return;
     }
+    _notificationRestEdits?.add(
+      (state) => (
+        start: state.start,
+        total: state.start == null ? state.total : state.total + seconds,
+        endedAt: state.endedAt,
+      ),
+    );
     restTotal += seconds;
     notifyListeners();
   }
@@ -834,6 +992,18 @@ class ActiveSessionController extends ChangeNotifier {
     }
     final due = start.add(Duration(seconds: restTotal));
     final now = DateTime.now();
+    _notificationRestEdits?.add((state) {
+      final deadline = state.start?.add(Duration(seconds: state.total));
+      return (
+        start: null,
+        total: 0,
+        endedAt: deadline == null
+            ? state.endedAt
+            : now.isBefore(deadline)
+            ? now
+            : deadline,
+      );
+    });
     restEndedAt = now.isBefore(due) ? now : due;
     restStart = null;
     restTotal = 0;
@@ -849,6 +1019,9 @@ class ActiveSessionController extends ChangeNotifier {
     if (this.restStart == restStart && this.restTotal == restTotal) {
       return;
     }
+    _notificationRestEdits?.add(
+      (state) => (start: restStart, total: restTotal, endedAt: state.endedAt),
+    );
     this.restStart = restStart;
     this.restTotal = restTotal;
     notifyListeners();
@@ -994,7 +1167,7 @@ class ActiveSessionController extends ChangeNotifier {
   bool get canFinish => doneWork >= 1;
 
   /// Number of exercise blocks that have beaten their all-time best in this
-  /// session (optimistic — the server's is_pr flags are authoritative after sync).
+  /// session, using the current local best evidence.
   int get prCount {
     var count = 0;
     for (final block in draft.blocks) {
@@ -1212,21 +1385,12 @@ class ActiveSessionController extends ChangeNotifier {
   FinishedSession? get lastFinished => _lastFinished;
   FinishedSession? _lastFinished;
 
-  /// Persists the session to the local PowerSync DB, clears the draft store,
-  /// and clears the in-memory draft.
-  ///
-  /// A fresh draft gets a new session id; a resumed draft (non-null
-  /// `sessionId`) replaces its own session in place, on its original date.
-  /// Returns the session id. The caller must wrap this in a write transaction
-  /// (`db.writeTransaction((tx) => controller.finish(PowerSyncTxExecutor(tx)))`)
-  /// to ensure atomicity — `shell/session_launcher.dart`'s `finishWorkout` is
-  /// the production path that does both: it runs this inside the caller's
-  /// transaction and, only after that transaction commits, hands the
-  /// resulting [lastFinished] to `SessionManager.recordFinished`. Pass
-  /// [draftStore] to also clear the on-disk draft (call with the same
-  /// [DraftStore] used to save the session while it was active).
+  /// Prepared finish intent and snapshot retained until the local workflow
+  /// commits or reconciles. Preserve a resumed workout's identity and date;
+  /// only publish [lastFinished] after commitFinish succeeds.
   PreparedDomainAction? _pendingFinish;
   FinishedSession? _pendingRecovery;
+  Future<String>? _finishInFlight;
   PreparedDomainAction? get pendingFinish => _pendingFinish;
   bool get finishPending => _pendingFinish != null;
 
@@ -1234,6 +1398,9 @@ class ActiveSessionController extends ChangeNotifier {
     WorkoutRepository repository, {
     DateTime? at,
   }) {
+    if (_notificationActionPending || notificationActionUncertain) {
+      throw const StoreException('notification_action_pending');
+    }
     if (_pendingFinish != null) {
       return _pendingFinish!;
     }
@@ -1341,17 +1508,41 @@ class ActiveSessionController extends ChangeNotifier {
     return _pendingFinish!;
   }
 
-  Future<String> commitFinish(WorkoutRepository repository) async {
+  Future<String> commitFinish(WorkoutRepository repository) {
+    final finishing = _finishInFlight;
+    if (finishing != null) return finishing;
+    final previousPersistence = _persistenceTail;
+    final completion = Completer<String>();
+    // Install before prepareFinish synchronously notifies persistence listeners.
+    _finishInFlight = completion.future;
+    _commitFinish(repository, previousPersistence).then(
+      (id) {
+        _finishInFlight = null;
+        completion.complete(id);
+      },
+      onError: (Object error, StackTrace stack) {
+        _finishInFlight = null;
+        completion.completeError(error, stack);
+      },
+    );
+    return completion.future;
+  }
+
+  Future<String> _commitFinish(
+    WorkoutRepository repository,
+    Future<void> previousPersistence,
+  ) async {
     final intent = prepareFinish(repository);
-    await _persistenceTail;
+    final finished = _pendingRecovery!;
+    await previousPersistence;
     final store = _draftStore;
     if (store?.pending != null) {
       await store!.save(snapshot());
     }
     await repository.commitPrepared(intent);
     // Only successfully awaited COMMIT or exact-byte replay adopts success.
-    final finished = _pendingRecovery!;
     _lastFinished = finished;
+    persistenceError = null;
     _draftStore?.completed();
     _pendingFinish = null;
     _pendingRecovery = null;
@@ -1376,6 +1567,9 @@ class ActiveSessionController extends ChangeNotifier {
   }) => Future.error(const StoreException('prepared_workout_required'));
 
   Future<void> discard() async {
+    if (_notificationActionPending) {
+      throw const StoreException('notification_action_pending');
+    }
     if (_pendingFinish != null) {
       throw const StoreException('finish_retry_required');
     }
@@ -1384,6 +1578,7 @@ class ActiveSessionController extends ChangeNotifier {
     await _persistenceTail;
     final store = _draftStore;
     if (store != null) {
+      await _reconcileNotificationAction(store);
       if (store.pending != null) {
         await store.save(snapshot());
       }

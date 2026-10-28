@@ -7,8 +7,7 @@ import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/recovery_host.dart';
 import 'package:alkion/recovery/restore.dart';
-import 'package:alkion/session/workout_notification.dart'
-    show extendRestInBackground;
+import 'package:alkion/session/notification_action.dart';
 import 'package:alkion/store/generation_selection.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/transfer/incoming_quarantine.dart';
@@ -131,6 +130,78 @@ void main() {
     timeout: const Timeout(Duration(seconds: 120)),
   );
 
+  test('backup accepts a temporary consumed at publication', () async {
+    final root = await seeded();
+    final store = await proof.openStore(root);
+    final dest = await destination();
+    late BackupReceipt receipt;
+    try {
+      receipt = await createBackup(
+        store,
+        dest,
+        checkpoint: (phase) async {
+          if (phase == 'backup-published') {
+            // Linux link retains the temporary. Removing that owned name here
+            // reproduces Android's consumed-source state before caller cleanup.
+            for (final file in dest.listSync().whereType<File>()) {
+              if (p.basename(file.path).contains('.partial-')) {
+                await file.delete();
+              }
+            }
+          }
+        },
+      );
+    } finally {
+      await store.close();
+    }
+    expect(dest.listSync().map((e) => e.path), [receipt.path]);
+    expect(
+      (await verifyBackupFile(
+        File(receipt.path),
+        workDirectory: temp,
+      )).containerSha256,
+      receipt.verified.containerSha256,
+    );
+  });
+
+  for (final cut in ['backup-before-publish', 'backup-published']) {
+    test(
+      'backup interruption at $cut preserves source and any final',
+      () async {
+        final root = await seeded();
+        final before = await coveredAt(root);
+        final store = await proof.openStore(root);
+        final dest = await destination();
+        try {
+          await expectLater(
+            createBackup(
+              store,
+              dest,
+              checkpoint: (phase) async {
+                if (phase == cut) throw StateError('publication cut');
+              },
+            ),
+            throwsStateError,
+          );
+        } finally {
+          await store.close();
+        }
+        final files = dest.listSync();
+        if (cut == 'backup-before-publish') {
+          expect(files, isEmpty);
+        } else {
+          expect(files, hasLength(1));
+          final verified = await verifyBackupFile(
+            files.single as File,
+            workDirectory: temp,
+          );
+          expect(verified.facts.state.digest(), before.digest());
+        }
+        expect((await coveredAt(root)).digest(), before.digest());
+      },
+    );
+  }
+
   test(
     'injected disk-full while writing publishes nothing and keeps the source',
     () async {
@@ -227,15 +298,10 @@ void main() {
           expectedRevision: 1,
         );
       });
+      final firstAction = (await issueNotificationAction(store))!;
+      expect(await consumeNotificationAction(store, firstAction), isNotNull);
+      final oldAction = (await issueNotificationAction(store))!;
       await store.close();
-      Future<void> plus30(int generation) => extendRestInBackground(
-        supportRoot: support,
-        expectedProfileId: profileId,
-        generation: generation,
-        draftId: 'd1',
-        restStart: start,
-      );
-      await plus30(oldGeneration); // positive control before restore
       final receipt = await backupOf(root);
       store = await proof.openStore(root);
       final service = RestoreService(support, workDirectory: temp);
@@ -262,19 +328,23 @@ void main() {
           storeCategory('stale_generation'),
         );
         before = await proof.coveredOf(current);
+        expect(await consumeNotificationAction(current, oldAction), isNull);
+        expect((await proof.coveredOf(current)).digest(), before.digest());
       } finally {
         await current.close();
       }
-      await expectLater(
-        plus30(oldGeneration),
-        storeCategory('stale_generation'),
-      );
       expect((await coveredAt(root)).digest(), before.digest());
       // Restored local state was adopted into the selected generation.
-      await plus30(outcome.selectedGeneration);
-      final timer = (await coveredAt(
-        root,
-      )).tables['local_state']!.firstWhere((r) => r['state_kind'] == 'timer');
+      final owner = await proof.openStore(root);
+      try {
+        final refreshed = (await issueNotificationAction(owner))!;
+        expect(await consumeNotificationAction(owner, refreshed), isNotNull);
+      } finally {
+        await owner.close();
+      }
+      final timer = (await coveredAt(root)).tables['local_state']!.firstWhere(
+        (r) => r['state_kind'] == 'timer' && r['state_key'] == 'active',
+      );
       final payload = jsonDecode(
         utf8.decode(
           base64.decode(

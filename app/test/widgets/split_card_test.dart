@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
+import 'package:alkion/ui/character_body.dart';
 import 'package:alkion/theme/icons.dart';
 import 'package:alkion/widgets/split_card.dart';
 
@@ -58,6 +59,23 @@ final _twodays = [
 
 void main() {
   group('SplitCard', () {
+    testWidgets('only selected visible page owns artwork', (tester) async {
+      Widget card(bool visible) => SplitCard(
+        days: _twodays,
+        nextIndex: 0,
+        visible: visible,
+        onStart: (_) {},
+      );
+      await pumpWithTheme(tester, card(true));
+      await tester.pumpAndSettle();
+      expect(find.byType(CharacterBody, skipOffstage: false), findsOneWidget);
+      await tester.drag(find.byType(PageView), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      expect(find.byType(CharacterBody, skipOffstage: false), findsOneWidget);
+      await pumpWithTheme(tester, card(false));
+      await tester.pumpAndSettle();
+      expect(find.byType(CharacterBody, skipOffstage: false), findsNothing);
+    });
     testWidgets(
       'Start on the initial day slide (nextIndex=0) calls onStart with that day',
       (tester) async {

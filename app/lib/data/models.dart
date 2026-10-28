@@ -3,7 +3,7 @@ import 'history_numeric_evidence.dart';
 
 // Retained display models. Exact evidence is the source of untouched writes.
 //
-// PowerSync rows arrive as `Map<String, dynamic>` with:
+// Retained legacy/import rows use `Map<String, dynamic>` with:
 // - NUMERIC columns → TEXT, and may be '' or NULL. Parse via `double.tryParse`,
 //   NEVER `double.parse` — `double.parse('')` throws and one bad row kills the
 //   whole list stream's map() (this crashed the catalog in v0.12.10).
@@ -131,7 +131,7 @@ class Exercise {
       equip: row['equip'] as String?,
       compound: (row['compound'] as int? ?? 0) != 0,
       // tryParse (not parse): a locally-created exercise with no base weight is
-      // stored as '' (the null sentinel the server NULLIFs). double.parse('')
+      // retained as empty compatibility text. double.parse('')
       // throws, and one bad row would break the whole catalog stream's map().
       baseWeightKg: double.tryParse(baseWt?.toString() ?? ''),
       plateStepKg: double.tryParse(plateStep?.toString() ?? '') ?? 2.5,

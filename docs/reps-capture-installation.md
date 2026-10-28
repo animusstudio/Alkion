@@ -1,5 +1,11 @@
 # Reps capture installation matrix
 
+> Historical Reps evidence. Recorded results and commands below describe their
+> original source profiles; they are not current Alkion setup or signing
+> instructions. See [retirement provenance](alkion/legacy-retirement.md). The
+> capture installation/rehearsal checkers remain available for explicit synthetic
+> evidence; no current capture-production or release route is enabled.
+
 This page says which installations can reach a capture bridge and on what
 evidence. Each row is one exact installation profile. It has one of three
 statuses:

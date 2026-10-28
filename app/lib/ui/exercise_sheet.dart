@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
+import '../widgets/fit_label.dart';
 
 /// The sentinel value returned when the user picks the Bodyweight option.
 const String kBodyweightSentinel = '__bodyweight__';
@@ -30,6 +31,11 @@ Future<String?> showExerciseSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    barrierColor: context.tokens.overlay,
+    useSafeArea: true,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
     builder: (_) => _ExerciseSheet(
       exercises: exercises,
       current: current,
@@ -57,6 +63,13 @@ class _ExerciseSheet extends StatefulWidget {
 
 class _ExerciseSheetState extends State<_ExerciseSheet> {
   String _query = '';
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   // Whether the Bodyweight row is visible given the current query.
   bool get _showBodyweight {
@@ -106,81 +119,95 @@ class _ExerciseSheetState extends State<_ExerciseSheet> {
     );
     final hasResults = exerciseCount > 0 || showBodyweight;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.84,
-      minChildSize: 0.4,
-      maxChildSize: 0.92,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: tokens.surface2,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(AppRadius.radius * 1.5),
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.84,
+        minChildSize: 0.4,
+        maxChildSize: 0.92,
+        expand: false,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: tokens.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppRadius.sheet),
+              ),
+              border: Border(
+                top: BorderSide(color: tokens.lineStrong, width: 1),
+              ),
             ),
-            border: Border(top: BorderSide(color: tokens.lineStrong, width: 1)),
-          ),
-          clipBehavior: Clip.hardEdge,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ── Fixed header (grabber + title + search) ──────────────
-              _SheetHeader(
-                tokens: tokens,
-                query: _query,
-                onQueryChanged: (v) => setState(() => _query = v),
-                onClearQuery: () => setState(() => _query = ''),
-                onDone: () => Navigator.of(context).pop(),
-              ),
-
-              // ── Scrollable list ──────────────────────────────────────
-              Flexible(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 30),
-                  children: [
-                    if (!hasResults)
-                      _EmptyState(query: _query.trim(), tokens: tokens),
-
-                    // Bodyweight pinned row
-                    if (showBodyweight) ...[
-                      _SectionLabel(
-                        label: l.exerciseSheetTracking,
-                        tokens: tokens,
-                      ),
-                      _BodyweightRow(
-                        selected: widget.current == kBodyweightSentinel,
-                        tokens: tokens,
-                        onTap: () =>
-                            Navigator.of(context).pop(kBodyweightSentinel),
-                      ),
-                      const SizedBox(height: 14),
-                    ],
-
-                    // Exercise groups
-                    for (final muscle in muscles) ...[
-                      _SectionLabel(
-                        label: localizedMuscle(context, muscle).toUpperCase(),
-                        tokens: tokens,
-                      ),
-                      for (final ex in grouped[muscle]!) ...[
-                        _ExerciseRow(
-                          exercise: ex,
-                          selected: ex.id == widget.current,
-                          tokens: tokens,
-                          onTap: () => Navigator.of(context).pop(ex.id),
-                        ),
-                        const SizedBox(height: 6),
-                      ],
-                      const SizedBox(height: 14),
-                    ],
-                  ],
+            clipBehavior: Clip.hardEdge,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Fixed header (grabber + title + search) ──────────────
+                _SheetHeader(
+                  tokens: tokens,
+                  controller: _searchController,
+                  query: _query,
+                  onQueryChanged: (v) => setState(() => _query = v),
+                  onClearQuery: () {
+                    _searchController.clear();
+                    setState(() => _query = '');
+                  },
+                  onDone: () => Navigator.of(context).pop(),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+
+                // ── Scrollable list ──────────────────────────────────────
+                Flexible(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      8,
+                      16,
+                      16 + MediaQuery.viewPaddingOf(context).bottom,
+                    ),
+                    children: [
+                      if (!hasResults)
+                        _EmptyState(query: _query.trim(), tokens: tokens),
+
+                      // Bodyweight pinned row
+                      if (showBodyweight) ...[
+                        _SectionLabel(
+                          label: l.exerciseSheetTracking,
+                          tokens: tokens,
+                        ),
+                        _BodyweightRow(
+                          selected: widget.current == kBodyweightSentinel,
+                          tokens: tokens,
+                          onTap: () =>
+                              Navigator.of(context).pop(kBodyweightSentinel),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // Exercise groups
+                      for (final muscle in muscles) ...[
+                        _SectionLabel(
+                          label: localizedMuscle(context, muscle).toUpperCase(),
+                          tokens: tokens,
+                        ),
+                        for (final ex in grouped[muscle]!) ...[
+                          _ExerciseRow(
+                            exercise: ex,
+                            selected: ex.id == widget.current,
+                            tokens: tokens,
+                            onTap: () => Navigator.of(context).pop(ex.id),
+                          ),
+                          const SizedBox(height: 6),
+                        ],
+                        const SizedBox(height: 16),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -192,6 +219,7 @@ class _ExerciseSheetState extends State<_ExerciseSheet> {
 class _SheetHeader extends StatelessWidget {
   const _SheetHeader({
     required this.tokens,
+    required this.controller,
     required this.query,
     required this.onQueryChanged,
     required this.onClearQuery,
@@ -199,6 +227,7 @@ class _SheetHeader extends StatelessWidget {
   });
 
   final WorkoutTokens tokens;
+  final TextEditingController controller;
   final String query;
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onClearQuery;
@@ -226,36 +255,25 @@ class _SheetHeader extends StatelessWidget {
           // Title row
           Row(
             children: [
-              Text(
-                l.exerciseSheetTitle,
-                style: WorkoutType.display(
-                  size: 19,
-                  weight: FontWeight.w700,
-                  color: tokens.text,
+              Expanded(
+                child: FitLabel(
+                  l.exerciseSheetTitle,
+                  maxLines: 2,
+                  style: WorkoutType.display(size: 22, color: tokens.text),
                 ),
               ),
-              const Spacer(),
-              GestureDetector(
-                onTap: onDone,
-                child: Text(
-                  l.commonDone,
-                  style: WorkoutType.mono(
-                    size: 12,
-                    weight: FontWeight.w600,
-                    color: tokens.dim,
-                  ),
-                ),
-              ),
+              const SizedBox(width: 8),
+              TextButton(onPressed: onDone, child: Text(l.commonDone)),
             ],
           ),
           const SizedBox(height: 12),
 
           // Search field
           Container(
-            height: 42,
+            constraints: const BoxConstraints(minHeight: 48),
             decoration: BoxDecoration(
               color: tokens.surface3,
-              borderRadius: BorderRadius.circular(AppRadius.radius * 0.7),
+              borderRadius: BorderRadius.circular(AppRadius.control),
             ),
             child: Row(
               children: [
@@ -264,6 +282,7 @@ class _SheetHeader extends StatelessWidget {
                 const SizedBox(width: 9),
                 Expanded(
                   child: TextField(
+                    controller: controller,
                     autofocus: false,
                     style: WorkoutType.body(size: 15, color: tokens.text),
                     decoration: InputDecoration(
@@ -280,15 +299,12 @@ class _SheetHeader extends StatelessWidget {
                   ),
                 ),
                 if (query.isNotEmpty)
-                  GestureDetector(
-                    onTap: onClearQuery,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Text(
-                        '×',
-                        style: WorkoutType.mono(size: 16, color: tokens.faint),
-                      ),
-                    ),
+                  IconButton(
+                    onPressed: onClearQuery,
+                    tooltip: MaterialLocalizations.of(
+                      context,
+                    ).clearButtonTooltip,
+                    icon: Icon(Icons.close, size: 20, color: tokens.dim),
                   )
                 else
                   const SizedBox(width: 12),
@@ -316,11 +332,11 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(2, 2, 2, 8),
       child: Text(
         label.toUpperCase(),
-        style: WorkoutType.mono(
-          size: 10.5,
-          weight: FontWeight.w700,
+        style: WorkoutType.body(
+          size: 12,
+          weight: FontWeight.w500,
           color: tokens.faint,
-          letterSpacing: 0.1 * 10.5,
+          letterSpacing: 0.06 * 12,
         ),
       ),
     );
@@ -350,40 +366,41 @@ class _BodyweightRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
         decoration: BoxDecoration(
           color: tokens.surface,
-          borderRadius: BorderRadius.circular(AppRadius.radius * 0.65),
+          borderRadius: BorderRadius.circular(AppRadius.panel),
           border: Border.all(
-            color: selected ? tokens.accentText : tokens.line,
+            color: selected ? tokens.lineStrong : tokens.line,
             width: selected ? 1.5 : 1,
           ),
         ),
         child: Row(
           children: [
-            Icon(WIcons.scale, size: 20, color: tokens.accentText),
+            Icon(WIcons.scale, size: 20, color: tokens.text),
             const SizedBox(width: 11),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  FitLabel(
                     l.exerciseSheetBodyweight,
+                    maxLines: 2,
                     style: WorkoutType.body(
                       size: 14.5,
-                      weight: FontWeight.w600,
+                      weight: FontWeight.w500,
                       color: tokens.text,
                     ),
                   ),
                   const SizedBox(height: 1),
                   Text(
                     l.exerciseSheetBodyweightSub,
-                    style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                    style: WorkoutType.body(size: 12, color: tokens.faint),
                   ),
                 ],
               ),
             ),
             if (selected) ...[
               const SizedBox(width: 8),
-              Icon(WIcons.check, size: 16, color: tokens.accentText),
+              Icon(WIcons.check, size: 16, color: tokens.text),
             ],
           ],
         ),
@@ -427,9 +444,9 @@ class _ExerciseRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
         decoration: BoxDecoration(
           color: tokens.surface,
-          borderRadius: BorderRadius.circular(AppRadius.radius * 0.65),
+          borderRadius: BorderRadius.circular(AppRadius.panel),
           border: Border.all(
-            color: selected ? tokens.accentText : tokens.line,
+            color: selected ? tokens.lineStrong : tokens.line,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -441,20 +458,21 @@ class _ExerciseRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  FitLabel(
                     exercise.name,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                     style: WorkoutType.body(
                       size: 14.5,
-                      weight: FontWeight.w600,
+                      weight: FontWeight.w500,
                       color: tokens.text,
                     ),
                   ),
                   if (subtitle.isNotEmpty) ...[
                     const SizedBox(height: 1),
-                    Text(
+                    FitLabel(
                       subtitle,
-                      style: WorkoutType.mono(size: 10.5, color: tokens.faint),
+                      maxLines: 2,
+                      style: WorkoutType.body(size: 12, color: tokens.faint),
                     ),
                   ],
                 ],
@@ -464,7 +482,7 @@ class _ExerciseRow extends StatelessWidget {
             // Check icon when this is the current exercise
             if (selected) ...[
               const SizedBox(width: 8),
-              Icon(WIcons.check, size: 16, color: tokens.accentText),
+              Icon(WIcons.check, size: 16, color: tokens.text),
             ],
           ],
         ),
@@ -491,7 +509,7 @@ class _EmptyState extends StatelessWidget {
         child: Text(
           l.exerciseSheetEmpty(query),
           textAlign: TextAlign.center,
-          style: WorkoutType.mono(size: 13, color: tokens.faint),
+          style: WorkoutType.body(size: 13, color: tokens.faint),
         ),
       ),
     );

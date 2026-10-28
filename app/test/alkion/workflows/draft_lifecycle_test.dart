@@ -345,12 +345,12 @@ void main() {
             intent = controller.prepareFinish(repository),
             frozen = base64Encode(controller.pendingFinish!.action.bytes);
         final good = File('${root.path}/pool-closed-preserved.sqlite');
+        await store.backupTo(good.path);
         var corrupted = false;
         final phases = <String>[];
         subscription = store.recoveryEvents.listen((phase) {
           phases.add(phase.name);
           if (phase == RecoveryPhase.poolClosed && !corrupted) {
-            File(store.path).copySync(good.path);
             File(store.path).writeAsBytesSync([0, 255, 1, 2], flush: true);
             corrupted = true;
           }

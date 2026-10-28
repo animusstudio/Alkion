@@ -8,6 +8,7 @@ import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../util/dates.dart';
 import '../widgets/rir_picker.dart';
+import '../widgets/fit_label.dart';
 import 'active_session_controller.dart';
 import 'set_values_editor.dart';
 
@@ -54,25 +55,21 @@ class LiveSetCard extends StatelessWidget {
     final label = set.done ? l.sessionLiveLogged(base) : base;
     final last = lastTop;
 
-    TextStyle caption() => WorkoutType.mono(
-      size: 10,
-      color: tokens.faint,
-      letterSpacing: 0.08 * 10,
-    );
+    TextStyle caption() => WorkoutType.body(size: 12, color: tokens.dim);
     // Text keeps the card's inset; the rulers run the card's full width so
     // their ruled edge reads as part of the card, fading into its sides.
     Widget inset(Widget child) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: child,
     );
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
+      margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
         color: tokens.surface2,
-        borderRadius: BorderRadius.circular(AppRadius.radius * 0.8),
-        border: Border.all(color: tokens.accentText, width: 1.5),
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        border: Border.all(color: tokens.lineStrong),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -80,11 +77,10 @@ class LiveSetCard extends StatelessWidget {
           inset(
             Text(
               label,
-              style: WorkoutType.mono(
-                size: 10.5,
-                weight: FontWeight.w700,
-                color: tokens.accentText,
-                letterSpacing: 0.08 * 10.5,
+              style: WorkoutType.body(
+                size: 14,
+                weight: FontWeight.w500,
+                color: tokens.text,
               ),
             ),
           ),
@@ -134,7 +130,7 @@ class LiveSetCard extends StatelessWidget {
           ],
           const SizedBox(height: 10),
           inset(
-            Text(
+            FitLabel(
               lastTopUnavailable
                   ? l.alkionBaselineUnavailable
                   : last == null
@@ -144,27 +140,25 @@ class LiveSetCard extends StatelessWidget {
                       last.reps,
                       localizedDaysAgo(l, last.date),
                     ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: WorkoutType.mono(size: 11.5, color: tokens.dim),
+              maxLines: 3,
+              style: WorkoutType.body(size: 12, color: tokens.dim),
             ),
           ),
           if (set.done)
-            GestureDetector(
+            TextButton(
               key: const Key('live-mark-not-done'),
-              behavior: HitTestBehavior.opaque,
-              onTap: onMarkNotDone,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
-                child: Center(
-                  child: Text(
-                    l.sessionMarkNotDone,
-                    style: WorkoutType.body(
-                      size: 14,
-                      weight: FontWeight.w600,
-                      color: tokens.dim,
-                    ),
-                  ),
+              onPressed: onMarkNotDone,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                foregroundColor: tokens.text,
+              ),
+              child: FitLabel(
+                l.sessionMarkNotDone,
+                maxLines: 2,
+                style: WorkoutType.body(
+                  size: 14,
+                  weight: FontWeight.w500,
+                  color: tokens.dim,
                 ),
               ),
             ),

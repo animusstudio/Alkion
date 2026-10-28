@@ -32,8 +32,8 @@ import '../widgets/w_dialog.dart';
 ///
 /// Edits persist debounced (400 ms per set) via [SessionRepository.updateSet]
 /// rather than on every ruler tick; a pending edit is flushed immediately on
-/// close/switch/delete/add/dispose. Re-derives is_top_set locally on every
-/// write (see SessionRepository.updateSet); is_pr is left to the server.
+/// close/switch/delete/add/dispose. Writes use the local repository workflow;
+/// captured numeric evidence remains separate from local derivation.
 class SetEditorSheet extends StatefulWidget {
   const SetEditorSheet({
     super.key,
@@ -563,9 +563,11 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
         padding: EdgeInsets.only(bottom: bottomInset),
         child: Container(
           decoration: BoxDecoration(
-            color: tokens.bg,
+            color: tokens.surface,
             border: Border(top: BorderSide(color: tokens.line)),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppRadius.sheet),
+            ),
           ),
           padding: EdgeInsets.fromLTRB(
             16,
@@ -588,23 +590,24 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
 
               // Title
-              Text(
+              FitLabel(
                 widget.exercise.name,
+                maxLines: 2,
                 style: WorkoutType.display(
-                  size: 18,
-                  weight: FontWeight.w700,
+                  size: 22,
+                  weight: FontWeight.w500,
                   color: tokens.text,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 l.historyEditSets,
-                style: WorkoutType.mono(size: 11, color: tokens.faint),
+                style: WorkoutType.body(size: 12, color: tokens.faint),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
 
               // Sets (scrollable in case of many)
               Flexible(
@@ -644,18 +647,14 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
                               mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
-                                  WIcons.plus,
-                                  size: 14,
-                                  color: tokens.accentText,
-                                ),
+                                Icon(WIcons.plus, size: 14, color: tokens.text),
                                 const SizedBox(width: 6),
                                 Text(
                                   l.sessionAddSet,
-                                  style: WorkoutType.mono(
-                                    size: 11,
-                                    weight: FontWeight.w600,
-                                    color: tokens.accentText,
+                                  style: WorkoutType.body(
+                                    size: 12,
+                                    weight: FontWeight.w500,
+                                    color: tokens.text,
                                   ),
                                 ),
                               ],
@@ -795,17 +794,21 @@ class _SetLineRow extends StatelessWidget {
             children: [
               SizedBox(
                 width: 26,
-                child: Text(
-                  set.isWarmup
-                      ? l.sessionWarmupShort
-                      : set.orderKnown
-                      ? '$workIndex'
-                      : '—',
-                  textAlign: TextAlign.center,
-                  style: WorkoutType.mono(
-                    size: 13,
-                    weight: FontWeight.w700,
-                    color: tokens.dim,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    set.isWarmup
+                        ? l.sessionWarmupShort
+                        : set.orderKnown
+                        ? '$workIndex'
+                        : '—',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    style: WorkoutType.mono(
+                      size: 13,
+                      weight: FontWeight.w400,
+                      color: tokens.dim,
+                    ),
                   ),
                 ),
               ),
@@ -814,64 +817,65 @@ class _SetLineRow extends StatelessWidget {
                 child: Row(
                   children: [
                     Flexible(
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: shows ? units.fmtWt(set.weightKg) : '—',
-                              semanticsLabel: shows
-                                  ? null
-                                  : l.alkionLoadUnavailableLabel,
-                              style: WorkoutType.mono(
-                                size: 15,
-                                weight: FontWeight.w700,
-                                color: tokens.text,
-                              ),
-                            ),
-                            if (shows)
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
                               TextSpan(
-                                text: units.uLabel,
+                                text: shows ? units.fmtWt(set.weightKg) : '—',
+                                semanticsLabel: shows
+                                    ? null
+                                    : l.alkionLoadUnavailableLabel,
                                 style: WorkoutType.mono(
-                                  size: 11,
+                                  size: 15,
+                                  weight: FontWeight.w400,
+                                  color: tokens.text,
+                                ),
+                              ),
+                              if (shows)
+                                TextSpan(
+                                  text: units.uLabel,
+                                  style: WorkoutType.mono(
+                                    size: 12,
+                                    color: tokens.faint,
+                                  ),
+                                ),
+                              TextSpan(
+                                text: '  ×  ',
+                                style: WorkoutType.mono(
+                                  size: 12,
                                   color: tokens.faint,
                                 ),
                               ),
-                            TextSpan(
-                              text: '  ×  ',
-                              style: WorkoutType.mono(
-                                size: 12,
-                                color: tokens.faint,
+                              TextSpan(
+                                text: set.repsKnown ? '${set.reps}' : '—',
+                                style: WorkoutType.mono(
+                                  size: 15,
+                                  weight: FontWeight.w400,
+                                  color: tokens.text,
+                                ),
                               ),
-                            ),
-                            TextSpan(
-                              text: set.repsKnown ? '${set.reps}' : '—',
-                              style: WorkoutType.mono(
-                                size: 15,
-                                weight: FontWeight.w700,
-                                color: tokens.text,
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          maxLines: 1,
+                          softWrap: false,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (!set.isWarmup && set.rir != null) ...[
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Text(
                         l.sessionRir(set.rir!),
-                        style: WorkoutType.mono(
-                          size: 10.5,
-                          color: tokens.faint,
-                        ),
+                        style: WorkoutType.mono(size: 12, color: tokens.faint),
                       ),
                     ],
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Icon(WIcons.chevron, size: 18, color: tokens.faint),
+              const SizedBox(width: 12),
+              Icon(WIcons.chevron, size: 22, color: tokens.faint),
             ],
           ),
         ),
@@ -905,8 +909,8 @@ class _SetEditingCard extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final pounds = units.unit == Unit.lb;
 
-    TextStyle caption() => WorkoutType.mono(
-      size: 10,
+    TextStyle caption() => WorkoutType.body(
+      size: 12,
       color: tokens.faint,
       letterSpacing: 0.08 * 10,
     );
@@ -920,8 +924,8 @@ class _SetEditingCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
         color: tokens.surface2,
-        borderRadius: BorderRadius.circular(AppRadius.radius * 0.8),
-        border: Border.all(color: tokens.accentText, width: 1.5),
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        border: Border.all(color: tokens.lineStrong),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -984,7 +988,7 @@ class _SetEditingCard extends StatelessWidget {
                       l.historyDeleteSet,
                       style: WorkoutType.body(
                         size: 14,
-                        weight: FontWeight.w600,
+                        weight: FontWeight.w500,
                         color: tokens.danger,
                       ),
                     ),

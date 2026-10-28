@@ -24,7 +24,7 @@ final class WeeklyMuscleVolume {
 ///
 /// All week-bounded queries accept a [weekStart] (Monday 00:00) and bind
 /// its ISO-8601 string via the NAMED `parameters:` argument — consistent
-/// with [PowerSyncDatabase.watch]'s API.  The scalar streams map the
+/// with [LocalDatabase.watch]'s API.  The scalar streams map the
 /// first row's `n` column; the list streams use the nested `.map` pattern.
 class StatsRepository {
   final LocalDatabase db;
@@ -145,8 +145,7 @@ class StatsRepository {
   /// raw count would double them (NULL counts as owned). The query always
   /// returns exactly one row, so an empty DB emits `(null, 0)`.
   Stream<({String? firstSessionDate, int dayCount})> watchTrainingSummary() {
-    // Both tables are named rather than left to PowerSync to infer from the
-    // subqueries, so a days-only change always refreshes the line.
+    // Name both tables explicitly so a days-only change refreshes the line.
     return reListenable(
       () => db
           .watch(

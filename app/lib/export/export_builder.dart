@@ -3,14 +3,12 @@
 /// import-compatibility contract; bump it on breaking schema changes.
 library;
 
-/// Identity columns stripped from full-export rows: both are user UUIDs the
-/// server re-stamps on import, so exporting them only leaks identity.
+/// Old account identity columns omitted by the retained full-v1 export format.
 const _identityColumns = {'user_id', 'created_by'};
 
-/// Lossless full-backup envelope. Strips the identity columns from every row
-/// (an import re-stamps them; keeps the file portable across devices and
-/// accounts). Rows are otherwise passed through as stored (kg canonical,
-/// ids kept).
+/// Retained full-v1 export envelope. Omits old account identity columns;
+/// other row values and IDs pass through unchanged. Current local profile
+/// backup/restore uses the separate recovery envelope.
 Map<String, dynamic> buildFullExport({
   required Map<String, List<Map<String, Object?>>> tables,
   required Map<String, Object?> settings,

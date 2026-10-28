@@ -5,6 +5,7 @@ import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
+import '../widgets/fit_label.dart';
 import 'active_session_controller.dart';
 
 /// Drag-and-drop reordering of the workout's exercises, as a sheet of
@@ -24,7 +25,11 @@ Future<void> showReorderExercisesSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.55),
+    barrierColor: context.tokens.overlay,
+    useSafeArea: true,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
     builder: (_) => _ReorderExercisesSheet(controller: controller),
   );
 }
@@ -48,7 +53,7 @@ class _ReorderExercisesSheet extends StatelessWidget {
         constraints: BoxConstraints(maxHeight: maxHeight),
         decoration: BoxDecoration(
           color: tokens.surface,
-          borderRadius: BorderRadius.circular(AppRadius.radius),
+          borderRadius: BorderRadius.circular(AppRadius.sheet),
           border: Border.all(color: tokens.lineStrong),
         ),
         child: ListenableBuilder(
@@ -62,12 +67,13 @@ class _ReorderExercisesSheet extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
-                  child: Text(
+                  child: FitLabel(
                     l.sessionReorderExercises,
-                    style: WorkoutType.mono(
-                      size: 10.5,
-                      color: tokens.faint,
-                      letterSpacing: 0.08 * 10.5,
+                    maxLines: 2,
+                    style: WorkoutType.display(
+                      size: 22,
+                      weight: FontWeight.w500,
+                      color: tokens.text,
                     ),
                   ),
                 ),
@@ -124,19 +130,18 @@ class _Row extends StatelessWidget {
     return ReorderableDelayedDragStartListener(
       index: index,
       child: Container(
-        height: 56,
+        constraints: const BoxConstraints(minHeight: 56),
         color: tokens.surface,
         padding: const EdgeInsets.only(left: 18, right: 4),
         child: Row(
           children: [
             Expanded(
-              child: Text(
+              child: FitLabel(
                 block.exercise.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
                 style: WorkoutType.body(
                   size: 15,
-                  weight: FontWeight.w600,
+                  weight: FontWeight.w500,
                   color: tokens.text,
                 ),
               ),
@@ -146,7 +151,7 @@ class _Row extends StatelessWidget {
               '$done/$total',
               style: WorkoutType.mono(
                 size: 12,
-                weight: FontWeight.w700,
+                weight: FontWeight.w500,
                 color: done == total && total > 0
                     ? tokens.accentText
                     : tokens.dim,

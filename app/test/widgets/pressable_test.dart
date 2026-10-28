@@ -3,28 +3,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/widgets/pressable.dart';
 
 void main() {
-  testWidgets('scales down on pointer-down and back up on release', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Center(
-          child: PressableScale(child: SizedBox(width: 100, height: 40)),
-        ),
-      ),
+  for (final reducedMotion in [false, true]) {
+    testWidgets(
+      'pressed controls stay fixed (reduced motion: $reducedMotion)',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(disableAnimations: reducedMotion),
+              child: Center(
+                child: PressableScale(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: const SizedBox(width: 100, height: 48),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        final before = tester.getRect(find.byType(PressableScale));
+        final gesture = await tester.startGesture(before.center);
+        await tester.pump();
+        expect(tester.getRect(find.byType(PressableScale)), before);
+        expect(find.byType(AnimatedScale), findsNothing);
+        await gesture.up();
+      },
     );
-    double currentScale() =>
-        tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale;
-    expect(currentScale(), 1.0);
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byType(PressableScale)),
-    );
-    await tester.pump();
-    expect(currentScale(), lessThan(1.0));
-    await gesture.up();
-    await tester.pump();
-    expect(currentScale(), 1.0);
-  });
+  }
 
   testWidgets('does not block the child own taps', (tester) async {
     var tapped = false;

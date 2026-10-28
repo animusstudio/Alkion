@@ -29,11 +29,6 @@ out/
 .cache/
 coverage/
 
-# Go
-bin/
-*.test
-*.out
-
 # Python (scripts/, tests/)
 __pycache__/
 
@@ -54,4 +49,4 @@ app/.flutter-plugins-dependencies
 app/*.iml
 # NOTE: app/build/ is already covered by the generic build/ rule above.
 # NOTE: app/pubspec.lock is intentionally NOT ignored — committed for reproducible builds.
-# NOTE: the local PowerSync DB lives outside the repo (app-support dir); *.db/*.sqlite already covered.
+# NOTE: profile SQLite files live outside the repo; *.db/*.sqlite already covered.

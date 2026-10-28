@@ -40,7 +40,7 @@ class SetWrite {
   /// fields above are explicitly the retained compatibility display fallback.
   final Map<String, Object?> rawUntouched;
 
-  /// RIR is null for warm-up sets (not persisted; the server leaves it NULL).
+  /// RIR is null for warm-up sets.
   final int? rir;
 
   final bool isWarmup;
@@ -85,7 +85,7 @@ class SessionWrite {
 // ── Top set ───────────────────────────────────────────────────────────────────
 
 /// Index into [sets] of the top set for ONE exercise: heaviest non-warmup set,
-/// tie-break weight DESC, reps DESC, set_number ASC, id ASC (mirrors the server).
+/// tie-break weight DESC, reps DESC, set_number ASC, id ASC (legacy rule).
 /// Returns -1 if there is no non-warmup set. weightKg is TEXT → compare numerically.
 int topSetIndex(List<SetWrite> sets) {
   var best = -1;
@@ -118,9 +118,7 @@ int topSetIndex(List<SetWrite> sets) {
 
 /// The session INSERT. The training day is bound through a subquery so a day
 /// deleted locally (mid-workout, or while a finished workout was resumed)
-/// becomes NULL instead of an id the server's day_templates foreign key would
-/// reject — a rejected session PUT makes the server skip every set PUT of the
-/// batch as an orphan, and the whole workout then vanishes on sync-down.
+/// becomes NULL instead of retaining an invalid training-day reference.
 const _insertSessionSql =
     'INSERT INTO sessions (id, date, day_template_id, split_label, duration_min) '
     'SELECT ?, ?, (SELECT id FROM day_templates WHERE id = ?), ?, ?';
@@ -157,12 +155,9 @@ Future<void> _insertSets(SqlExecutor executor, SessionWrite write) async {
 /// Writes [write] to the database via [executor]: one `sessions` INSERT + one
 /// `sets` INSERT per set.
 ///
-/// The server stamps `user_id`; `is_top_set`/`is_pr` are stamped client-side
-/// (see [topSetIndex]) so offline-logged data is correct before sync.
-///
-/// **Atomicity:** always call this inside `db.writeTransaction` via
-/// [PowerSyncTxExecutor]; that ensures the session row and all set rows commit
-/// as one local transaction and are uploaded as one CRUD batch.
+/// Retained compatibility SQL helper, exercised by SQL-builder fixtures.
+/// Call within a caller-owned local write transaction so session and set rows
+/// commit together. Production revision/outbox writes use WorkoutRepository.
 Future<void> persistSession(SqlExecutor executor, SessionWrite write) async {
   await executor.execute(_insertSessionSql, _sessionArgs(write));
   await _insertSets(executor, write);
@@ -171,15 +166,9 @@ Future<void> persistSession(SqlExecutor executor, SessionWrite write) async {
 /// Replaces an already-finished session in place — finishing a resumed
 /// workout: same session id and date, a new set of sets.
 ///
-/// The session row is UPDATEd, never deleted. Uploaded as a PATCH of
-/// `split_label`/`duration_min` only, it cannot be rejected by the server;
-/// a DELETE + re-INSERT would instead lose the whole, already-synced workout
-/// whenever the re-insert PUT is rejected (for example, its training day was
-/// deleted since). The guarded INSERT re-creates the row only if it vanished
-/// (deleted by a sync during the resumed workout) and otherwise inserts
-/// nothing and uploads nothing. The sets are DELETE + INSERT with the same
-/// ids, which PowerSync uploads as DELETE then PUT; the server recomputes the
-/// top-set and PR flags for both.
+/// Preserve the session identity/date while replacing its sets with their
+/// existing IDs. The guarded insert restores a missing compatibility row;
+/// this helper has no upload or server-side recomputation path.
 ///
 /// Same atomicity rule as [persistSession].
 Future<void> replaceSession(SqlExecutor executor, SessionWrite write) async {

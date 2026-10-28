@@ -90,33 +90,36 @@ void main() {
       },
     );
 
-    testWidgets('the selected chip is filled; NEXT stays on the rotation day', (
-      tester,
-    ) async {
-      await pumpWithTheme(
-        tester,
-        WeekStrip(days: days, selectedIndex: 2, onSelect: (_) {}),
-      );
-      final tokens = tester.element(find.byType(WeekStrip)).tokens;
-      BoxDecoration deco(int i) =>
-          tester
-                  .widget<Container>(
-                    find
-                        .descendant(
-                          of: find.byKey(ValueKey('week-chip-$i')),
-                          matching: find.byType(Container),
-                        )
-                        .first,
-                  )
-                  .decoration!
-              as BoxDecoration;
-      expect(deco(2).color, tokens.accent);
-      expect(deco(0).color, tokens.surface);
-      expect(
-        find.text('NEXT'),
-        findsOneWidget,
-      ); // on Upper A (isNext), not selected
-    });
+    testWidgets(
+      'selection uses a neutral outline; NEXT stays on the rotation day',
+      (tester) async {
+        await pumpWithTheme(
+          tester,
+          WeekStrip(days: days, selectedIndex: 2, onSelect: (_) {}),
+        );
+        final tokens = tester.element(find.byType(WeekStrip)).tokens;
+        BoxDecoration deco(int i) =>
+            tester
+                    .widget<Container>(
+                      find
+                          .descendant(
+                            of: find.byKey(ValueKey('week-chip-$i')),
+                            matching: find.byType(Container),
+                          )
+                          .first,
+                    )
+                    .decoration!
+                as BoxDecoration;
+        expect(deco(2).color, tokens.bg);
+        expect(deco(0).color, tokens.bg);
+        expect((deco(2).border! as Border).top.color, tokens.text);
+        expect((deco(0).border! as Border).top.color, Colors.transparent);
+        expect(
+          find.text('NEXT'),
+          findsOneWidget,
+        ); // on Upper A (isNext), not selected
+      },
+    );
 
     testWidgets(
       'a chip that is both isNext and done shows NEXT and the check icon',

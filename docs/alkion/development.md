@@ -1,5 +1,28 @@
 # Alkion development and qualified driver handoff
 
+2026-10-28 · [Body rotation responsiveness](../plans/2026-10-28-body-rotation-responsiveness.md) · Approved.
+
+2026-10-26 · [Body controls and branding](../plans/2026-10-26-body-controls-and-branding.md) · Approved.
+
+2026-10-25 · [Native character-body integration](../plans/2026-10-25-native-character-body.md) · Approved.
+2026-10-25 · [Android character-body runtime](character-body-runtime.md) · Approved.
+
+2026-10-24 · [Female glutes and resting arms](../plans/2026-10-24-female-glutes-arm-pose.md) · Approved.
+2026-10-24 · [Source-female character body](../plans/2026-10-24-source-female-character-body.md) · Done.
+2026-10-24 · [Athletic character-body balance](../plans/2026-10-24-character-body-balance.md) · Done.
+2026-10-24 · [Fuller character-body physique](../plans/2026-10-24-character-body-bulk.md) · Approved.
+2026-10-24 · [Character body density refinement](../plans/2026-10-24-character-body-density.md) · Approved.
+2026-10-24 · [Character body lighting refinement](../plans/2026-10-24-character-body-lighting.md) · Approved.
+2026-10-24 · [Character body readability and identity](../plans/2026-10-24-character-body-readability.md) · Done.
+
+2026-10-24 · [Source-GLB character body study](../plans/2026-10-24-source-glb-ascii-body.md) · Approved.
+
+2026-10-23 · [Anatomical body volume refinement](../plans/2026-10-23-anatomical-body-volume-refinement.md) · Approved.
+
+2026-10-23 · [Contour-derived rotating ASCII body](../plans/2026-10-23-contour-derived-3d-body-experiment.md) · Approved.
+
+2026-10-23 · [Segmented ASCII workout body map](../plans/2026-10-23-rotatable-ascii-body-study.md) · Approved.
+
 Current hygiene qualification (2026-10-17) is recorded in
 [integrated acceptance](acceptance.md#hygiene-remediation-2026-10-17): preference
 Retry retains/reconciles owed snapshots, Keep current retries its committed
@@ -13,6 +36,30 @@ independent R1-public final review passed on 2026-10-17, reviewer
 accepted. Owner/device/transport/publication gates and the required staged
 public-tree check remain unchanged. The dated T1 driver handoff below remains
 historical evidence.
+
+2026-10-21 · [UI design-system refactor](../plans/2026-10-21-ui-design-system-refactor.md) · Done.
+
+2026-10-21 · [Minimal local onboarding](../plans/2026-10-21-minimal-onboarding.md) · Done.
+
+2026-10-21 · [Local profile and workout completion](../plans/2026-10-20-local-profile-workflows.md) · Done.
+Focused checks and the normal APK are recorded in [acceptance](acceptance.md#profile-import-removal-2026-10-21).
+
+## Current standalone development
+
+The [source cleanup](legacy-retirement.md) removed the retired backend,
+PowerSync service, deployment/API and legacy signing workflows. The app uses
+standalone SQLite with no account, backend or synchronization sender. See the
+[app README](../../app/README.md) for current commands: offline locked `get`,
+`analyze`, `test TEST=--concurrency=2`, check-only `format`, Linux `build` and
+debug `build-apk` through pinned FVM. Normal Android builds use an explicit
+isolated debug user directory, existing SDK and Java21; no inherited signing
+configuration is read. Builds do not install or launch a device.
+
+Capture evidence checkers remain available; old capture-production and release
+routes remain disabled. The bespoke Android campaign framework is retired;
+ordinary tests, local recovery proofs and native-boundary tests remain. Use the
+[manual APK checklist](android-smoke.md) for a small device check.
+The dated handoff below records earlier states and limits, not current setup.
 
 T1 author evidence on 2026-10-13; T1 was independently accepted as a bounded task on 2026-10-13. Status: [integrated acceptance](acceptance.md). Normal launch now opens the integrated account-free app over the selected store generation; the preflight widget remains only as the startup-failure screen, and it opens no application paths, preferences, credentials, database, notifications, capture plugin, network or updates. The sections below keep the T1 driver handoff as recorded, including its statements about the checkout as it was then. The source is now developed before 1.0 on `main` of this public repository.
 

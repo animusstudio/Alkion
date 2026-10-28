@@ -5,8 +5,108 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/app_fonts.dart';
 
 void main() {
+  setUpAll(preloadAppFonts);
+  testWidgets(
+    'scaled decimal ruler labels keep exact centre value and never intersect',
+    (tester) async {
+      for (final scale in [1.0, 2.0]) {
+        await tester.pumpWidget(
+          wrapL10n(
+            MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: Center(
+                child: SizedBox(
+                  width: 262,
+                  child: RulerPicker(
+                    value: 142.5,
+                    step: 1,
+                    fineStep: 0.25,
+                    max: 500,
+                    format: (v) => '$v',
+                    semanticLabel: 'Weight',
+                    unitLabel: 'kg',
+                    onChanged: (_) {},
+                    onTapValue: () {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final state = tester.state<RulerPickerState>(find.byType(RulerPicker));
+        expect(state.position, 142.5);
+        expect(state.centreLabels, contains('142.5'));
+        final boxes = state.labelBounds;
+        expect(boxes, isNotEmpty);
+        final height = tester.getSize(find.byType(RulerPicker)).height;
+        for (var i = 0; i < boxes.length; i++) {
+          expect(boxes[i].top, greaterThanOrEqualTo(0));
+          expect(boxes[i].bottom, lessThanOrEqualTo(height - 14));
+          for (var j = i + 1; j < boxes.length; j++) {
+            expect(
+              boxes[i].overlaps(boxes[j]),
+              isFalse,
+              reason: '$scale: ${boxes[i]} intersects ${boxes[j]}',
+            );
+          }
+        }
+        expect(
+          tester.getSize(find.byKey(const Key('ruler-centre'))).width,
+          greaterThanOrEqualTo(48),
+        );
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+  testWidgets('integer count rulers omit intermediate tick strokes only', (
+    tester,
+  ) async {
+    for (final showMinorTicks in [true, false]) {
+      await tester.pumpWidget(
+        wrapL10n(
+          Center(
+            child: SizedBox(
+              width: 280,
+              child: RulerPicker(
+                value: 6,
+                step: 1,
+                max: 50,
+                format: (v) => v.toInt().toString(),
+                onChanged: (_) {},
+                showMinorTicks: showMinorTicks,
+              ),
+            ),
+          ),
+        ),
+      );
+      final tape = find.descendant(
+        of: find.byType(RulerPicker),
+        matching: find.byType(CustomPaint),
+      );
+      var minor = 0, major = 0;
+      expect(
+        tape,
+        paints..everything((method, args) {
+          if (method == #drawLine) {
+            final from = args[0] as Offset, to = args[1] as Offset;
+            if (from.dx == to.dx) {
+              final length = (from.dy - to.dy).abs();
+              if ((length - 5).abs() < 0.01) minor++;
+              if ((length - 14).abs() < 0.01) major++;
+            }
+          }
+          return true;
+        }),
+      );
+      expect(major, greaterThan(0));
+      expect(minor, showMinorTicks ? greaterThan(0) : 0);
+    }
+  });
+
   group('RulerScale', () {
     test('an on-grid anchor starts the tape at min', () {
       final s = RulerScale(anchor: 100, step: 2.5, min: 0, max: 500);

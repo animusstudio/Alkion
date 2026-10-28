@@ -9,9 +9,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'data/active_session_draft.dart';
 import 'data/finished_session_store.dart';
 import 'data/session_writer.dart';
-import 'data/exercise_repository.dart';
-import 'data/catalog_seed.dart';
+import 'data/exercise_repository.dart' show DomainRecovery;
 import 'identity/alkion_identity.dart';
+import 'identity/alkion_flutter_identity.dart';
+import 'files/publication_directory.dart';
 import 'identity/identity_service.dart';
 import 'identity/alkion_profile.dart';
 import 'l10n/app_localizations.dart';
@@ -19,6 +20,8 @@ import 'recovery/backup.dart' as backup;
 import 'recovery/recovery_host.dart';
 import 'recovery/restore.dart';
 import 'session/session_manager.dart';
+import 'session/workout_notification.dart';
+import 'shell/session_launcher.dart';
 import 'settings/settings_service.dart';
 import 'shell/app_shell.dart';
 import 'store/generation_selection.dart';
@@ -26,7 +29,7 @@ import 'store/local_store.dart';
 import 'store/schema.dart';
 import 'theme/app_theme.dart';
 import 'ui/alkion_recovery/recovery_app.dart';
-import 'ui/onboarding_screen.dart';
+import 'ui/alkion_recovery/first_start_screen.dart';
 import 'units/unit_service.dart';
 import 'widgets/pending_input.dart';
 
@@ -37,10 +40,6 @@ Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
 );
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
-enum HomeRoute { onboarding, shell }
-
-HomeRoute homeRouteFor({required bool onboardingComplete}) =>
-    onboardingComplete ? HomeRoute.shell : HomeRoute.onboarding;
 bool shouldConnectSync({required bool syncEnabled, required bool loggedIn}) =>
     false;
 
@@ -60,7 +59,10 @@ class AlkionRuntime with WidgetsBindingObserver {
   final UnitService units;
   final IdentityService identity;
   final SessionManager sessions;
-  static Future<AlkionRuntime> open(Directory supportRoot) async {
+  static Future<AlkionRuntime> open(
+    Directory supportRoot, {
+    WorkoutNotification? notifications,
+  }) async {
     GoogleFonts.config.allowRuntimeFetching = false;
     final profile = await AlkionProfile.open(supportRoot: supportRoot);
     final store = await openAlkionStore(profile);
@@ -87,22 +89,15 @@ class AlkionRuntime with WidgetsBindingObserver {
         identity,
         sessions,
       );
+      final notifier = notifications ?? WorkoutNotification();
+      notifier.locale = settings.locale?.languageCode;
+      await sessions.initializeNotifications(notifier);
       WidgetsBinding.instance.addObserver(runtime);
       return runtime;
     } catch (_) {
       await store.close();
       rethrow;
     }
-  }
-
-  PreparedDomainAction? _onboardingIntent;
-  Future<void> completeOnboarding(OnboardingChoice choice) async {
-    if (choice == OnboardingChoice.starter) {
-      final intent = _onboardingIntent ??= prepareStarterCatalog(store);
-      await ExerciseRepository.local(store).commitPrepared(intent);
-    }
-    await identity.completeOnboarding();
-    _onboardingIntent = null;
   }
 
   final persistenceFailure = ValueNotifier<Object?>(null);
@@ -160,6 +155,7 @@ class AlkionRuntime with WidgetsBindingObserver {
       rethrow;
     }
     WidgetsBinding.instance.removeObserver(this);
+    await sessions.closeNotifications();
     sessions.dispose();
     await store.close();
     settings.dispose();
@@ -172,14 +168,25 @@ class AlkionRuntime with WidgetsBindingObserver {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    final support = await getApplicationSupportDirectory();
-    final root = paths.basename(support.path) == AlkionIdentity.applicationId
-        ? support
-        : Directory(paths.join(support.path, AlkionIdentity.applicationId));
+    final root = await checkedAlkionSupportRoot();
     await launchAlkion(root);
   } catch (error) {
     runApp(AlkionPreflightApp(error: error));
   }
+}
+
+/// Identity is checked before even asking the platform for a storage directory.
+Future<Directory> checkedAlkionSupportRoot({
+  Future<AlkionAndroidStorage?> Function()? verifyIdentity,
+  Future<Directory> Function()? supportDirectory,
+}) async {
+  final storage =
+      await (verifyIdentity ?? AlkionFlutterIdentity.verifyPlatformIdentity)();
+  final supplied = await (supportDirectory ?? getApplicationSupportDirectory)();
+  final support = storage?.checkedSupportDirectory(supplied) ?? supplied;
+  return paths.basename(support.path) == AlkionIdentity.applicationId
+      ? support
+      : Directory(paths.join(support.path, AlkionIdentity.applicationId));
 }
 
 /// Opens the selected store generation. An interrupted restore keeps every
@@ -188,19 +195,24 @@ Future<void> launchAlkion(
   Directory root, {
   void Function(Widget app) present = runApp,
 }) async {
+  GoogleFonts.config.allowRuntimeFetching = false;
   Future<void> relaunch() => launchAlkion(root, present: present);
   try {
-    final runtime = await AlkionRuntime.open(root);
-    present(
-      AlkionApp(
-        runtime: runtime,
-        recovery: RuntimeRecoveryHost(
-          runtime,
+    final service = RestoreService(root);
+    final fresh = await service.freshState();
+    if (fresh != null) {
+      present(
+        AlkionFirstStartApp(
+          service: service,
+          state: fresh,
+          startLocal: () =>
+              _launchAlkionRuntime(root, present: present, relaunch: relaunch),
           relaunch: relaunch,
-          present: present,
         ),
-      ),
-    );
+      );
+      return;
+    }
+    await _launchAlkionRuntime(root, present: present, relaunch: relaunch);
   } on GenerationSelectionException catch (error) {
     if (error.category != 'restore_interrupted') {
       present(AlkionPreflightApp(error: error));
@@ -219,6 +231,24 @@ Future<void> launchAlkion(
   }
 }
 
+Future<void> _launchAlkionRuntime(
+  Directory root, {
+  required void Function(Widget) present,
+  required Future<void> Function() relaunch,
+}) async {
+  final runtime = await AlkionRuntime.open(root);
+  present(
+    AlkionApp(
+      runtime: runtime,
+      recovery: RuntimeRecoveryHost(
+        runtime,
+        relaunch: relaunch,
+        present: present,
+      ),
+    ),
+  );
+}
+
 /// Manual backup/restore for the running runtime. Backup flushes owed input
 /// and snapshots the open store. Restore verifies first, flushes, replaces the
 /// UI, closes the runtime (all owners, timers and watches), and only then
@@ -229,11 +259,16 @@ final class RuntimeRecoveryHost implements RecoveryHost {
     required this.relaunch,
     this.present = runApp,
     Future<Directory> Function()? backupDirectory,
-  }) : backupDirectory = backupDirectory ?? getApplicationDocumentsDirectory;
+  }) : backupDirectory = backupDirectory ?? _privateBackupDirectory;
   final AlkionRuntime runtime;
   final Future<void> Function() relaunch;
   final void Function(Widget app) present;
   final Future<Directory> Function() backupDirectory;
+
+  static Future<Directory> _privateBackupDirectory() async {
+    if (!Platform.isAndroid) return getApplicationDocumentsDirectory();
+    return checkedAndroidPublicationDirectory('document-backups');
+  }
 
   @override
   String get profileId => runtime.store.profileId;
@@ -251,6 +286,7 @@ final class RuntimeRecoveryHost implements RecoveryHost {
   @override
   Future<void> restoreBackup(String path) async {
     final verified = await verifyBackup(path);
+    verified.requireWriterVariant();
     if (verified.profileId != profileId) {
       throw const StoreException('foreign_profile');
     }
@@ -294,55 +330,58 @@ class AlkionApp extends StatelessWidget {
     child: Builder(
       builder: (context) {
         final settings = context.watch<SettingsService>();
-        final identity = context.watch<IdentityService>();
         return MaterialApp(
           navigatorKey: appNavigatorKey,
+          scaffoldMessengerKey: appScaffoldMessengerKey,
           title: AlkionIdentity.displayName,
           builder: (context, child) => ValueListenableBuilder<Object?>(
             valueListenable: runtime.persistenceFailure,
-            builder: (context, error, _) => Stack(
-              children: [
-                if (child != null) child,
-                if (error != null)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: SafeArea(
-                      child: Material(
-                        color: Theme.of(context).colorScheme.errorContainer,
-                        elevation: 4,
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                AppLocalizations.of(
-                                  context,
-                                ).alkionStoreRecoveryTitle,
-                              ),
-                              Text(
-                                AppLocalizations.of(
-                                  context,
-                                ).alkionStoreRecoveryBody,
-                              ),
-                              TextButton(
-                                style: TextButton.styleFrom(
-                                  minimumSize: const Size(48, 48),
+            builder: (context, error, _) => _RuntimeNotificationNavigation(
+              runtime: runtime,
+              child: Stack(
+                children: [
+                  if (child != null) child,
+                  if (error != null)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: SafeArea(
+                        child: Material(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          elevation: 4,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  AppLocalizations.of(
+                                    context,
+                                  ).alkionStoreRecoveryTitle,
                                 ),
-                                onPressed: runtime.retryPersistence,
-                                child: Text(
-                                  AppLocalizations.of(context).alkionRetry,
+                                Text(
+                                  AppLocalizations.of(
+                                    context,
+                                  ).alkionStoreRecoveryBody,
                                 ),
-                              ),
-                            ],
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size(48, 48),
+                                  ),
+                                  onPressed: runtime.retryPersistence,
+                                  child: Text(
+                                    AppLocalizations.of(context).alkionRetry,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
           theme: buildTheme(settings.brightness, settings.accent),
@@ -354,13 +393,102 @@ class AlkionApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           supportedLocales: AppLocalizations.supportedLocales,
-          home: identity.onboardingComplete
-              ? const AppShell()
-              : OnboardingScreen(onChosen: runtime.completeOnboarding),
+          home: const AppShell(),
         );
       },
     ),
   );
+}
+
+final appScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+/// Defers cold-launch navigation and feedback until the selected app exists.
+class _RuntimeNotificationNavigation extends StatefulWidget {
+  const _RuntimeNotificationNavigation({
+    required this.runtime,
+    required this.child,
+  });
+  final AlkionRuntime runtime;
+  final Widget child;
+  @override
+  State<_RuntimeNotificationNavigation> createState() =>
+      _RuntimeNotificationNavigationState();
+}
+
+class _RuntimeNotificationNavigationState
+    extends State<_RuntimeNotificationNavigation> {
+  bool _scheduled = false, _opening = false;
+  NotificationLimitation? _shown;
+  @override
+  void initState() {
+    super.initState();
+    widget.runtime.sessions.addListener(_changed);
+    _changed();
+  }
+
+  @override
+  void didUpdateWidget(_RuntimeNotificationNavigation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.runtime, widget.runtime)) {
+      oldWidget.runtime.sessions.removeListener(_changed);
+      widget.runtime.sessions.addListener(_changed);
+      _shown = null;
+      _changed();
+    }
+  }
+
+  void _changed() {
+    if (_scheduled || !mounted) return;
+    _scheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduled = false;
+      if (!mounted) return;
+      final sessions = widget.runtime.sessions;
+      final limitation = sessions.notificationLimitation;
+      final navigation = appNavigatorKey.currentContext;
+      if (limitation != null && limitation != _shown && navigation != null) {
+        _shown = limitation;
+        final l = AppLocalizations.of(navigation);
+        final message = switch (limitation) {
+          NotificationLimitation.denied => l.alkionNotificationsDenied,
+          NotificationLimitation.inexact => null,
+          NotificationLimitation.unavailable =>
+            l.alkionNotificationsUnavailable,
+        };
+        if (message != null) {
+          appScaffoldMessengerKey.currentState?.showSnackBar(
+            SnackBar(
+              content: Text(message),
+              duration: const Duration(seconds: 8),
+              action: SnackBarAction(label: l.commonOk, onPressed: () {}),
+            ),
+          );
+        }
+      } else if (limitation == null) {
+        _shown = null;
+      }
+      if (sessions.takeNotificationOpenRequest() &&
+          !_opening &&
+          navigation != null) {
+        _opening = true;
+        unawaited(
+          openActiveSession(
+            navigation,
+            sessions,
+          ).whenComplete(() => _opening = false),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.runtime.sessions.removeListener(_changed);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class AlkionPreflightApp extends StatelessWidget {

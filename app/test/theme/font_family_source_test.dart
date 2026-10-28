@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  // google_fonts registers one family per weight (`JetBrainsMono_700`) and
-  // nothing registers a plain name like 'JetBrainsMono', so a style that
+  // google_fonts registers one family per weight (`SpaceMono_regular`) and
+  // nothing registers a plain name like 'SpaceMono', so a style that
   // names a family itself silently draws in the platform font. Every style
   // goes through WorkoutType instead.
   test('no lib file names a font family', () {

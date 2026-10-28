@@ -1,16 +1,15 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../data/models.dart';
+import '../data/body_workload.dart';
+import '../ui/body_figure.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../util/dates.dart';
-import 'dashed_border.dart';
 import 'fit_label.dart';
-import 'pressable.dart';
 
 // ── DaySlide ──────────────────────────────────────────────────────────────────
 
@@ -26,8 +25,12 @@ class DaySlide extends StatelessWidget {
     required this.lastAgo,
     required this.index,
     required this.nextIndex,
+    this.workload,
+    this.bodyVisible = true,
   });
 
+  final WorkoutWorkload? workload;
+  final bool bodyVisible;
   final DayTemplate day;
   final int exerciseCount;
   final String lastAgo;
@@ -41,7 +44,6 @@ class DaySlide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final tokens = context.tokens;
 
     // Eyebrow keyed off the rotation target, NOT literal index 0.
     final isNext = index == nextIndex;
@@ -60,203 +62,151 @@ class DaySlide extends StatelessWidget {
     // Estimated time: max(20, (exerciseCount * 9 + 10).round())m
     final est = max(20, exerciseCount * 9 + 10);
 
-    final accentInk = tokens.accentInk;
-    // Sub-accent: accentInk @ ~58% (matching cd: color-mix(in srgb, accent-ink 58%))
-    final accentDim = accentInk.withValues(alpha: 0.58);
-
-    return Stack(
-      children: [
-        // Content column
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Eyebrow — one line: a long day name shrinks, then ellipsizes.
-            FitLabel(
-              eyebrow,
-              style: WorkoutType.mono(
-                size: 11,
-                weight: FontWeight.w700,
-                color: accentDim,
-                letterSpacing: 11 * 0.1,
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Name
-            Text(
-              day.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: WorkoutType.display(
-                size: 40,
-                weight: FontWeight.w700,
-                color: accentInk,
-                letterSpacing: 40 * -0.03,
-              ),
-            ),
-            // Focus
-            if (day.focus != null && day.focus!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                day.focus!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: WorkoutType.display(
-                  size: 19,
-                  weight: FontWeight.w600,
-                  color: accentDim,
-                  letterSpacing: 19 * -0.025,
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            // Stats row — scales down as a unit rather than overflowing a
-            // narrow card at large text.
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _StatCol(
-                    value: '$exerciseCount',
-                    label: l.splitExercises,
-                    valueColor: accentInk,
-                    labelColor: accentDim,
-                  ),
-                  const SizedBox(width: 18),
-                  _StatCol(
-                    value: l.splitEstTimeValue(est),
-                    label: l.splitEstTime,
-                    valueColor: accentInk,
-                    labelColor: accentDim,
-                  ),
-                  const SizedBox(width: 18),
-                  _StatCol(
-                    value: lastAgo.isEmpty ? '—' : lastAgo,
-                    label: l.splitLast,
-                    valueColor: accentInk,
-                    labelColor: accentDim,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+    return _SlideLayout(
+      workload: workload,
+      bodyVisible: bodyVisible,
+      title: day.name,
+      contextLabel: eyebrow,
+      focus: day.focus,
+      details: [
+        (label: l.splitExercises, value: '$exerciseCount'),
+        (label: l.splitEstTime, value: l.splitEstTimeValue(est)),
+        (label: l.splitLast, value: lastAgo.isEmpty ? '—' : lastAgo),
       ],
     );
   }
 }
 
-class _StatCol extends StatelessWidget {
-  const _StatCol({
-    required this.value,
-    required this.label,
-    required this.valueColor,
-    required this.labelColor,
+/// Workout metadata remains separate from the selected workload artwork.
+/// Large text stacks the figure below the real workout metadata.
+class _SlideLayout extends StatelessWidget {
+  const _SlideLayout({
+    required this.title,
+    required this.contextLabel,
+    this.focus,
+    this.details = const [],
+    this.hint,
+    this.workload,
+    this.bodyVisible = true,
   });
 
-  final String value;
-  final String label;
-  final Color valueColor;
-  final Color labelColor;
+  final WorkoutWorkload? workload;
+  final bool bodyVisible;
+  final String title;
+  final String contextLabel;
+  final String? focus;
+  final String? hint;
+  final List<({String label, String value})> details;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          value,
-          style: WorkoutType.mono(
-            size: 16,
-            weight: FontWeight.w700,
-            color: valueColor,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label.toUpperCase(),
-          style: WorkoutType.mono(
-            size: 9.5,
-            color: labelColor,
-            letterSpacing: 9.5 * 0.06,
-          ),
-        ),
-      ],
+    final t = context.tokens;
+    final figure = bodyVisible
+        ? BodyFigure(
+            workload:
+                workload ??
+                WorkoutWorkload.loading(WorkoutWorkloadMode.planned),
+          )
+        : const SizedBox(width: 128, height: 260);
+    return LayoutBuilder(
+      builder: (context, box) {
+        final stacked = _stackedOverview(context, box.maxWidth);
+        final information = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (focus?.isNotEmpty == true) ...[
+              FitLabel(
+                focus!,
+                maxLines: 3,
+                style: WorkoutType.body(size: 16, color: t.dim),
+              ),
+              const SizedBox(height: 16),
+            ],
+            for (final detail in details) ...[
+              FitLabel(
+                detail.label,
+                maxLines: 2,
+                style: WorkoutType.body(size: 12, color: t.dim),
+              ),
+              const SizedBox(height: 2),
+              FitLabel(
+                detail.value,
+                maxLines: 2,
+                style: WorkoutType.mono(size: 12, color: t.text),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (hint != null)
+              FitLabel(
+                hint!,
+                maxLines: 3,
+                style: WorkoutType.body(size: 12, color: t.dim),
+              ),
+          ],
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FitLabel(
+              title,
+              maxLines: 2,
+              style: WorkoutType.display(size: 28, color: t.text),
+            ),
+            const SizedBox(height: 8),
+            FitLabel(
+              contextLabel,
+              maxLines: 1,
+              style: WorkoutType.body(size: 12, color: t.accentText),
+            ),
+            const SizedBox(height: 12),
+            if (stacked) ...[
+              information,
+              const SizedBox(height: 12),
+              Center(child: figure),
+            ] else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: information),
+                  const SizedBox(width: 12),
+                  figure,
+                ],
+              ),
+          ],
+        );
+      },
     );
   }
 }
+
+bool _stackedOverview(BuildContext context, double width) =>
+    width < 240 || MediaQuery.textScalerOf(context).scale(12) > 18;
 
 // ── CustomSlide ───────────────────────────────────────────────────────────────
 
 /// The final page of the split-picker pager for a free-form custom session.
 class CustomSlide extends StatelessWidget {
-  const CustomSlide({super.key});
+  const CustomSlide({super.key, this.bodyVisible = true, this.workload});
+  final bool bodyVisible;
+  final WorkoutWorkload? workload;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final tokens = context.tokens;
-    final textColor = tokens.text;
-    final dimColor = tokens.dim;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Eyebrow
-        FitLabel(
-          l.splitNoTemplate,
-          style: WorkoutType.mono(
-            size: 11,
-            weight: FontWeight.w700,
-            color: dimColor,
-            letterSpacing: 11 * 0.1,
+    return _SlideLayout(
+      bodyVisible: bodyVisible,
+      workload:
+          workload ??
+          calculateWorkoutWorkload(
+            mode: WorkoutWorkloadMode.planned,
+            exercises: const [],
           ),
-        ),
-        const SizedBox(height: 10),
-        // Name
-        FitLabel(
-          l.todayCustomSession,
-          style: WorkoutType.display(
-            size: 40,
-            weight: FontWeight.w700,
-            color: textColor,
-            letterSpacing: 40 * -0.03,
-          ),
-        ),
-        const SizedBox(height: 4),
-        // Sub
-        FitLabel(
-          l.splitBuildAsYouGo,
-          style: WorkoutType.display(
-            size: 19,
-            weight: FontWeight.w600,
-            color: dimColor,
-            letterSpacing: 19 * -0.025,
-          ),
-        ),
-        const SizedBox(height: 18),
-        // Hint row — the hint takes the rest of the row, two lines at most.
-        Row(
-          children: [
-            Icon(WIcons.plus, size: 17, color: dimColor),
-            const SizedBox(width: 9),
-            Flexible(
-              child: FitLabel(
-                l.splitAddExercisesLive,
-                maxLines: 2,
-                style: WorkoutType.mono(
-                  size: 12,
-                  weight: FontWeight.w600,
-                  color: dimColor,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
+      title: l.todayCustomSession,
+      contextLabel: l.splitNoTemplate,
+      focus: l.splitBuildAsYouGo,
+      hint: l.splitAddExercisesLive,
     );
   }
 }
@@ -277,7 +227,12 @@ class SplitCard extends StatefulWidget {
     required this.onStart,
     this.selectedIndex,
     this.onSelectedChanged,
+    this.workload,
+    this.visible = true,
   });
+
+  final WorkoutWorkload? workload;
+  final bool visible;
 
   /// Day slides data. Each entry carries the template, exercise count, and
   /// a human-readable "last trained" label (e.g. '3d ago' or '—').
@@ -386,129 +341,201 @@ class _SplitCardState extends State<SplitCard> {
     }
   }
 
+  // Reserve the tallest slide at this width, so paging never moves Start.
+  // Labels may fit smaller through FitLabel, but never need more height.
+  double _pagerHeight(BuildContext context, double width) {
+    final l = AppLocalizations.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    double labelHeight(String text, TextStyle style, int lines, double space) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: DefaultTextStyle.of(context).style.merge(style),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+        maxLines: lines,
+      )..layout(maxWidth: max(1, space));
+      final height = painter.height;
+      painter.dispose();
+      return height;
+    }
+
+    final title = WorkoutType.display(size: 28);
+    final body = WorkoutType.body(size: 16);
+    final caption = WorkoutType.body(size: 12);
+    final mono = WorkoutType.mono(size: 12);
+    final stacked = _stackedOverview(context, width);
+    final infoWidth = stacked ? width : width - 140;
+    double focusHeight(String? focus) => focus?.isNotEmpty == true
+        ? labelHeight(focus!, body, 3, infoWidth) + 16
+        : 0;
+    double totalHeight(
+      String name,
+      String? focus,
+      List<({String label, String value})> details,
+      String? hint,
+    ) {
+      final infoHeight =
+          focusHeight(focus) +
+          details.fold<double>(
+            0,
+            (sum, detail) =>
+                sum +
+                labelHeight(detail.label, caption, 2, infoWidth) +
+                2 +
+                labelHeight(detail.value, mono, 2, infoWidth) +
+                12,
+          ) +
+          (hint == null ? 0 : labelHeight(hint, caption, 3, infoWidth));
+      return labelHeight(name, title, 2, width) +
+          8 +
+          scaler.scale(12) * 1.4 +
+          12 +
+          (stacked ? infoHeight + 12 + 260 : max(infoHeight, 260));
+    }
+
+    var tallest = totalHeight(
+      l.todayCustomSession,
+      l.splitBuildAsYouGo,
+      [],
+      l.splitAddExercisesLive,
+    );
+    for (final entry in widget.days) {
+      final est = max(20, entry.exerciseCount * 9 + 10);
+      tallest = max(
+        tallest,
+        totalHeight(entry.day.name, entry.day.focus, [
+          (label: l.splitExercises, value: '${entry.exerciseCount}'),
+          (label: l.splitEstTime, value: l.splitEstTimeValue(est)),
+          (
+            label: l.splitLast,
+            value: entry.lastAgo.isEmpty ? '—' : entry.lastAgo,
+          ),
+        ], null),
+      );
+    }
+    return tallest.ceilToDouble() + 4;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final tokens = context.tokens;
 
-    // Animated card theming: accent bg (day) ↔ surface bg (custom)
-    final cardBg = _isCustom ? tokens.surface : tokens.accent;
+    // A neutral plate keeps day identity and the Start action distinct.
+    final cardBg = tokens.surface;
 
     // Start button colours
-    final btnBg = _isCustom ? tokens.accent : tokens.accentInk;
-    final btnInk = _isCustom ? tokens.accentInk : tokens.accent;
-    final btnIcon = _isCustom ? WIcons.plus : WIcons.bolt;
+    final btnBg = tokens.action;
+    final btnInk = tokens.onAction;
     final btnLabel = _isCustom ? l.splitStartEmpty : l.splitStartWorkout;
 
     return Column(
       children: [
         // ── Card body ────────────────────────────────────────────────────────
         AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.ease,
+          duration: Motion.of(context, Motion.base),
+          curve: Motion.curve,
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(AppRadius.radius),
-            // Custom slide shows a dashed border; day slides have no border.
+            border: Border.all(color: tokens.line),
           ),
           child: Stack(
             children: [
-              // Dashed border overlay for Custom slide
-              if (_isCustom)
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: DashedBorderPainter(
-                      color: tokens.lineStrong,
-                      radius: AppRadius.radius,
-                    ),
-                  ),
-                ),
               Padding(
-                padding: const EdgeInsets.all(AppSpacing.pad + 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ── Pager ────────────────────────────────────────────────
-                    SizedBox(
-                      // Fixed height to keep the card stable as slides
-                      // scroll; the text part grows with the user's text
-                      // size (180 at 1.0×) so a slide never overflows.
-                      height: 32 + MediaQuery.textScalerOf(context).scale(148),
-                      child: ClipRect(
-                        child: PageView.builder(
-                          controller: _pageController,
-                          itemCount: _totalSlides,
-                          onPageChanged: (page) {
-                            setState(() => _currentPage = page);
-                            // While a programmatic _goTo is driving the
-                            // pager, PageView reports every intermediate
-                            // page the animation crosses — swallow those so
-                            // the strip/parent only ever hear about the
-                            // final target.
-                            if (_driveTarget != null && page != _driveTarget) {
-                              return;
-                            }
-                            widget.onSelectedChanged?.call(page);
-                          },
-                          itemBuilder: (context, i) {
-                            if (i < widget.days.length) {
-                              final entry = widget.days[i];
-                              return DaySlide(
-                                day: entry.day,
-                                exerciseCount: entry.exerciseCount,
-                                lastAgo: entry.lastAgo,
-                                index: i,
-                                nextIndex: widget.nextIndex,
+                padding: const EdgeInsets.all(AppSpacing.pad),
+                child: LayoutBuilder(
+                  builder: (context, box) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ── Pager ────────────────────────────────────────────────
+                      SizedBox(
+                        height: _pagerHeight(context, box.maxWidth),
+                        child: ClipRect(
+                          child: PageView.builder(
+                            controller: _pageController,
+                            itemCount: _totalSlides,
+                            onPageChanged: (page) {
+                              setState(() => _currentPage = page);
+                              // While a programmatic _goTo is driving the
+                              // pager, PageView reports every intermediate
+                              // page the animation crosses — swallow those so
+                              // the strip/parent only ever hear about the
+                              // final target.
+                              if (_driveTarget != null &&
+                                  page != _driveTarget) {
+                                return;
+                              }
+                              widget.onSelectedChanged?.call(page);
+                            },
+                            itemBuilder: (context, i) {
+                              if (i < widget.days.length) {
+                                final entry = widget.days[i];
+                                return DaySlide(
+                                  workload: widget.workload,
+                                  bodyVisible:
+                                      widget.visible &&
+                                      i == _currentPage &&
+                                      (_driveTarget == null ||
+                                          i == _driveTarget),
+                                  day: entry.day,
+                                  exerciseCount: entry.exerciseCount,
+                                  lastAgo: entry.lastAgo,
+                                  index: i,
+                                  nextIndex: widget.nextIndex,
+                                );
+                              }
+                              return CustomSlide(
+                                workload: widget.workload,
+                                bodyVisible:
+                                    widget.visible &&
+                                    i == _currentPage &&
+                                    (_driveTarget == null || i == _driveTarget),
                               );
-                            }
-                            return const CustomSlide();
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    // ── Start button ─────────────────────────────────────────
-                    PressableScale(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.ease,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: btnBg,
-                          borderRadius: BorderRadius.circular(
-                            AppRadius.radius * 0.8,
+                            },
                           ),
                         ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _onStart,
+                      ),
+                      const SizedBox(height: 18),
+                      // ── Start button ─────────────────────────────────────────
+                      FilledButton(
+                        key: const Key('today-start'),
+                        onPressed: _onStart,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 56),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          backgroundColor: btnBg,
+                          foregroundColor: btnInk,
+                          shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
-                              AppRadius.radius * 0.8,
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(btnIcon, size: 18, color: btnInk),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: FitLabel(
-                                    btnLabel,
-                                    style: WorkoutType.display(
-                                      size: 17,
-                                      weight: FontWeight.w700,
-                                      color: btnInk,
-                                      letterSpacing: 17 * 0.01,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                              AppRadius.control,
                             ),
                           ),
                         ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Flexible(
+                              child: FitLabel(
+                                btnLabel,
+                                maxLines: 2,
+                                style: WorkoutType.body(
+                                  size: 16,
+                                  weight: FontWeight.w500,
+                                  color: btnInk,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],

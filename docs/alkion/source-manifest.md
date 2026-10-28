@@ -1,6 +1,6 @@
 # Alkion development source manifest
 
-Pre-1.0 development source on `main` of this public repository, on top of the full Reps history; final application ID, signing and release remain open. Original tracked source is commit `6207987b7b480cc38be7c5f5ff947778405bbc5a`, app tree `3a41573cf36ff939e97e1faeb5a11e20dbacc95d`. Existing MIT and bundled font OFL notices remain unchanged. At T1, reuse of the unpublished source was not permission to publish its full delta; publication on `main` was decided later (2026-10-16). Legacy server, PowerSync service, infra, API and publishing workflows are read-only. No ignored/untracked source configuration or personal data was imported.
+Pre-1.0 development source on `main` of this public repository, on top of the full Reps history; final application ID, signing and release remain open. Original tracked source is commit `6207987b7b480cc38be7c5f5ff947778405bbc5a`, app tree `3a41573cf36ff939e97e1faeb5a11e20dbacc95d`. Existing MIT and bundled font OFL notices remain unchanged. At T1, reuse of the unpublished source was not permission to publish its full delta; publication on `main` was decided later (2026-10-16). Legacy server, PowerSync service, infra, API and publishing workflows were retired by the [2026-10-20 source cleanup](legacy-retirement.md); historical source and exact evidence remain reviewable. No ignored/untracked source configuration or personal data was imported.
 
 ## Reviewed mechanical package prefix manifest
 

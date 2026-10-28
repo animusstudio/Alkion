@@ -69,7 +69,10 @@ void main() {
   ) async {
     await tester.pumpWidget(header(restStart: DateTime.now(), restTotal: 90));
     expect(find.text('REST'), findsOneWidget);
-    expect(find.text('1:30'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest-clock'))).data,
+      '1:30',
+    );
     expect(
       find.text('Next · Lying leg curl · set 1 · 40kg × 8'),
       findsOneWidget,
@@ -147,7 +150,12 @@ void main() {
 
   for (final width in const [412.0, 320.0]) {
     for (final scale in const [1.0, 2.0]) {
-      for (final locale in const [Locale('en'), Locale('it')]) {
+      for (final locale in const [
+        Locale('en'),
+        Locale('de'),
+        Locale('es'),
+        Locale('it'),
+      ]) {
         testWidgets(
           'resting and rested are the same height at ${width}dp / $scale× ${locale.languageCode}',
           (tester) async {
@@ -313,7 +321,7 @@ void main() {
         child: header(restStart: DateTime.now(), restTotal: 90),
       ),
     );
-    final clock = find.text('1:30');
+    final clock = find.byKey(const Key('rest-clock'));
     final laidOut = tester.getSize(clock);
     final drawn = tester.getRect(clock);
     expect(drawn.width, closeTo(laidOut.width, 0.01));
@@ -323,6 +331,55 @@ void main() {
       tester.getRect(find.byKey(const Key('rest-skip'))).right,
       closeTo(400, 0.01),
     );
+  });
+
+  testWidgets('remaining line and endpoint use the current rest total', (
+    tester,
+  ) async {
+    final start = DateTime.now().subtract(const Duration(seconds: 36));
+    Future<void> expectScale(
+      int total,
+      String endpoint,
+      double fraction,
+    ) async {
+      await tester.pumpWidget(header(restStart: start, restTotal: total));
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest-total'))).data,
+        endpoint,
+      );
+      final track = find.byKey(const Key('rest-remaining-track'));
+      expect(tester.getSize(track).height, 2);
+      final fill = tester.widget<FractionallySizedBox>(
+        find.descendant(of: track, matching: find.byType(FractionallySizedBox)),
+      );
+      expect(fill.widthFactor, closeTo(fraction, 0.01));
+      final semantics = tester.widget<Semantics>(
+        find.byKey(const Key('rest-remaining-value')),
+      );
+      expect(
+        semantics.properties.value,
+        '${total == 120 ? '1:24' : '1:54'} / $endpoint',
+      );
+    }
+
+    await expectScale(120, '2:00', 0.7);
+    // Extending rest keeps the same origin and changes both the scale and
+    // countdown; the accepted specimen's 120 seconds is never hard-coded.
+    await expectScale(150, '2:30', 0.76);
+  });
+
+  testWidgets('outside rest the line retains completed set progress', (
+    tester,
+  ) async {
+    await tester.pumpWidget(header());
+    expect(find.byKey(const Key('rest-scale')), findsNothing);
+    final fill = tester.widget<FractionallySizedBox>(
+      find.descendant(
+        of: find.byKey(const Key('rest-remaining-track')),
+        matching: find.byType(FractionallySizedBox),
+      ),
+    );
+    expect(fill.widthFactor, closeTo(1 / 14, 0.0001));
   });
 
   group('restNextLabel', () {

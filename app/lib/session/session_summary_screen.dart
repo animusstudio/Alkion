@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
+import '../data/body_workload.dart';
+import '../data/body_workload_adapters.dart';
+import '../ui/body_figure.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
@@ -15,6 +18,7 @@ import '../units/unit_service.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pr_badge.dart';
 import '../widgets/tag.dart';
+import '../widgets/plan_form.dart';
 
 /// Post-session summary overlay.
 ///
@@ -43,6 +47,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   List<ExerciseBlockData>? _blocks;
   Map<String, String> _exerciseNames = {};
   bool _loading = true;
+  WorkoutWorkload _workload = WorkoutWorkload.loading(
+    WorkoutWorkloadMode.saved,
+  );
 
   /// Error state: [_notFound] means the session row was missing; otherwise
   /// [_loadError] (when non-null) carries the raw exception detail. Resolved to
@@ -65,9 +72,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         'SELECT * FROM sessions WHERE id = ?',
         [widget.sessionId],
       );
+      if (!mounted) return;
       if (rows.isEmpty) {
         setState(() {
           _notFound = true;
+          _workload = WorkoutWorkload.unavailable(WorkoutWorkloadMode.saved);
           _loading = false;
         });
         return;
@@ -82,14 +91,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       final allExercises = await _exerciseRepo.all();
       final names = {for (final e in allExercises) e.id: e.name};
 
+      if (!mounted) return;
       setState(() {
+        _workload = savedWorkoutWorkload(
+          sets: sets,
+          exercisesById: {for (final e in allExercises) e.id: e},
+        );
         _session = session;
         _blocks = blocks;
         _exerciseNames = names;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
+        _workload = WorkoutWorkload.unavailable(WorkoutWorkloadMode.saved);
         _loadError = '$e';
         _loading = false;
       });
@@ -113,6 +129,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : errorMessage != null
           ? _ErrorState(
+              onWorkload: () =>
+                  showBodyWorkloadSheet(context, workload: () => _workload),
               error: errorMessage,
               doneLabel: l.commonDone,
               tokens: tokens,
@@ -120,6 +138,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   Navigator.of(context).popUntil((route) => route.isFirst),
             )
           : _SummaryBody(
+              onWorkload: () =>
+                  showBodyWorkloadSheet(context, workload: () => _workload),
               session: _session!,
               blocks: _blocks!,
               exerciseNames: _exerciseNames,
@@ -136,6 +156,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
 class _SummaryBody extends StatelessWidget {
   const _SummaryBody({
+    required this.onWorkload,
     required this.session,
     required this.blocks,
     required this.exerciseNames,
@@ -144,6 +165,7 @@ class _SummaryBody extends StatelessWidget {
     required this.onDone,
   });
 
+  final VoidCallback onWorkload;
   final SessionSummaryRow session;
   final List<ExerciseBlockData> blocks;
   final Map<String, String> exerciseNames;
@@ -186,23 +208,15 @@ class _SummaryBody extends StatelessWidget {
                 index: 0,
                 child: Column(
                   children: [
-                    // Success icon with a one-shot accent glow flash on mount.
-                    _SuccessHeaderFlash(
-                      tokens: tokens,
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: tokens.accent,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          WIcons.check,
-                          size: 36,
-                          color: tokens.accentInk,
-                        ),
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: tokens.surface2,
+                        borderRadius: BorderRadius.circular(AppRadius.panel),
                       ),
+                      alignment: Alignment.center,
+                      child: Icon(WIcons.check, size: 36, color: tokens.text),
                     ),
                     const SizedBox(height: 20),
 
@@ -211,7 +225,7 @@ class _SummaryBody extends StatelessWidget {
                       TextSpan(
                         style: WorkoutType.display(
                           size: 22,
-                          weight: FontWeight.w700,
+                          weight: FontWeight.w500,
                           color: tokens.text,
                         ),
                         children: [
@@ -221,7 +235,7 @@ class _SummaryBody extends StatelessWidget {
                               text: ' · $focus',
                               style: WorkoutType.display(
                                 size: 22,
-                                weight: FontWeight.w600,
+                                weight: FontWeight.w500,
                                 color: tokens.faint,
                               ),
                             ),
@@ -235,7 +249,7 @@ class _SummaryBody extends StatelessWidget {
 
                     Text(
                       session.date,
-                      style: WorkoutType.mono(size: 11, color: tokens.faint),
+                      style: WorkoutType.mono(size: 12, color: tokens.dim),
                     ),
                   ],
                 ),
@@ -259,9 +273,9 @@ class _SummaryBody extends StatelessWidget {
               if (!_coverage.complete)
                 Text(
                   l.alkionKnownSubtotal(_coverage.known, _coverage.total),
-                  style: WorkoutType.mono(size: 10, color: tokens.faint),
+                  style: WorkoutType.body(size: 12, color: tokens.dim),
                 ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 32),
 
               // ── Top sets list ────────────────────────────────────────
               if (blocks.isNotEmpty)
@@ -272,11 +286,10 @@ class _SummaryBody extends StatelessWidget {
                     children: [
                       Text(
                         l.summaryTopSets,
-                        style: WorkoutType.mono(
-                          size: 10,
-                          weight: FontWeight.w600,
-                          color: tokens.faint,
-                          letterSpacing: 0.08 * 10,
+                        style: WorkoutType.body(
+                          size: 12,
+                          weight: FontWeight.w500,
+                          color: tokens.dim,
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -294,77 +307,22 @@ class _SummaryBody extends StatelessWidget {
                 ),
               const SizedBox(height: 32),
 
+              TextButton(
+                key: const Key('summary-workload'),
+                onPressed: onWorkload,
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                child: Text(l.bodyWorkload),
+              ),
+              const SizedBox(height: 16),
               // ── Done button ──────────────────────────────────────────
               StaggeredEntrance(
                 index: 3,
-                child: GestureDetector(
-                  onTap: onDone,
-                  child: Container(
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: tokens.accent,
-                      borderRadius: BorderRadius.circular(AppRadius.radius),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      l.commonDone,
-                      style: WorkoutType.display(
-                        size: 16,
-                        weight: FontWeight.w700,
-                        color: tokens.accentInk,
-                      ),
-                    ),
-                  ),
-                ),
+                child: PrimaryBtn(l.commonDone, enabled: true, onTap: onDone),
               ),
             ]),
           ),
         ),
       ],
-    );
-  }
-}
-
-// ── Success header flash ──────────────────────────────────────────────────────
-
-/// Wraps the success icon and fades a one-shot accent glow out around it on
-/// first mount.
-class _SuccessHeaderFlash extends StatefulWidget {
-  const _SuccessHeaderFlash({required this.tokens, required this.child});
-
-  final WorkoutTokens tokens;
-  final Widget child;
-
-  @override
-  State<_SuccessHeaderFlash> createState() => _SuccessHeaderFlashState();
-}
-
-class _SuccessHeaderFlashState extends State<_SuccessHeaderFlash> {
-  @override
-  Widget build(BuildContext context) {
-    if (MediaQuery.of(context).disableAnimations) {
-      return widget.child;
-    }
-    // Tween 1.0 → 0.0: glow strength fades out over 500ms on mount.
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 1.0, end: 0.0),
-      duration: const Duration(milliseconds: 500),
-      child: widget.child,
-      builder: (context, t, child) {
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: widget.tokens.accent.withValues(alpha: 0.7 * t),
-                blurRadius: 28 * t,
-                spreadRadius: 6 * t,
-              ),
-            ],
-          ),
-          child: child,
-        );
-      },
     );
   }
 }
@@ -391,61 +349,41 @@ class _StatTiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Row(
-      children: [
-        Expanded(
-          child: CountUp(
-            value: durationMin ?? 0,
-            builder: (v) => _TileInner(
-              label: l.summaryDuration,
-              value: durationMin == null ? '—' : '${v}m',
-              tokens: tokens,
-            ),
+    return LayoutBuilder(
+      builder: (context, box) {
+        final columns =
+            box.maxWidth < 360 ||
+                MediaQuery.textScalerOf(context).scale(12) > 18
+            ? 2
+            : 4;
+        final width = (box.maxWidth - (columns - 1) * 12) / columns;
+        final tiles = [
+          _TileInner(
+            label: l.summaryDuration,
+            value: durationMin == null ? '—' : '${durationMin}m',
+            tokens: tokens,
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: CountUp(
-            value: totalSets,
-            builder: (v) =>
-                _TileInner(label: l.summarySets, value: '$v', tokens: tokens),
+          _TileInner(label: l.summarySets, value: '$totalSets', tokens: tokens),
+          _TileInner(
+            label: l.summaryVolume,
+            value: volumeKg == null ? '—' : unit.fmtVol(volumeKg!),
+            tokens: tokens,
           ),
-        ),
-        const SizedBox(width: 12),
-        _Tile(
-          label: l.summaryVolume,
-          value: volumeKg == null ? '—' : unit.fmtVol(volumeKg!),
-          tokens: tokens,
-        ),
-        const SizedBox(width: 12),
-        // PR count ticks up from 0 on mount.
-        Expanded(
-          child: CountUp(
-            value: prCount,
-            builder: (v) => _TileInner(
-              label: l.summaryPrs,
-              value: '$v',
-              tokens: tokens,
-              highlight: prCount > 0,
-            ),
+          _TileInner(
+            label: l.summaryPrs,
+            value: '$prCount',
+            highlight: prCount > 0,
+            tokens: tokens,
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Tile extends StatelessWidget {
-  const _Tile({required this.label, required this.value, required this.tokens});
-
-  final String label;
-  final String value;
-  final WorkoutTokens tokens;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: _TileInner(label: label, value: value, tokens: tokens),
+        ];
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final tile in tiles) SizedBox(width: width, child: tile),
+          ],
+        );
+      },
     );
   }
 }
@@ -471,8 +409,7 @@ class _TileInner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: tokens.surface,
-        borderRadius: BorderRadius.circular(AppRadius.radius * 0.7),
-        border: Border.all(color: tokens.line),
+        border: Border(bottom: BorderSide(color: tokens.line)),
       ),
       child: Column(
         children: [
@@ -482,9 +419,9 @@ class _TileInner extends StatelessWidget {
               value,
               maxLines: 1,
               softWrap: false,
-              style: WorkoutType.display(
-                size: 20,
-                weight: FontWeight.w700,
+              style: WorkoutType.mono(
+                size: 22,
+                weight: FontWeight.w400,
                 color: highlight ? tokens.accentText : tokens.text,
               ),
               textAlign: TextAlign.center,
@@ -494,7 +431,8 @@ class _TileInner extends StatelessWidget {
           FitLabel(
             label,
             textAlign: TextAlign.center,
-            style: WorkoutType.mono(size: 9.5, color: tokens.faint),
+            maxLines: 2,
+            style: WorkoutType.body(size: 12, color: tokens.dim),
           ),
         ],
       ),
@@ -524,59 +462,67 @@ class _TopSetRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: tokens.surface,
-        borderRadius: BorderRadius.circular(AppRadius.radius * 0.7),
-        border: Border.all(color: tokens.line),
+        border: Border(bottom: BorderSide(color: tokens.line)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: FitLabel(
-              name,
-              maxLines: 2,
-              style: WorkoutType.body(
-                size: 14,
-                weight: FontWeight.w600,
-                color: tokens.text,
-              ),
+          FitLabel(
+            name,
+            maxLines: 2,
+            style: WorkoutType.body(
+              size: 16,
+              weight: FontWeight.w500,
+              color: tokens.text,
             ),
           ),
-          const SizedBox(width: 12),
-          RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: block.coverage.complete
-                      ? unit.fmtWt(block.topWeight)
-                      : '—',
-                  style: WorkoutType.mono(
-                    size: 14,
-                    weight: FontWeight.w700,
-                    color: tokens.text,
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: block.coverage.complete
+                              ? unit.fmtWt(block.topWeight)
+                              : '—',
+                          style: WorkoutType.mono(
+                            size: 16,
+                            weight: FontWeight.w500,
+                            color: tokens.text,
+                          ),
+                        ),
+                        TextSpan(
+                          text: unit.uLabel,
+                          style: WorkoutType.mono(size: 12, color: tokens.dim),
+                        ),
+                        TextSpan(
+                          text: block.coverage.complete
+                              ? ' × ${block.topReps}'
+                              : ' × —',
+                          style: WorkoutType.mono(size: 14, color: tokens.dim),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    softWrap: false,
                   ),
                 ),
-                TextSpan(
-                  text: unit.uLabel,
-                  style: WorkoutType.mono(size: 10, color: tokens.faint),
+              ),
+              const SizedBox(width: 8),
+              if (block.isPr)
+                const PRBadge(small: true)
+              else
+                Tag(
+                  label: AppLocalizations.of(context).sessionTagTop,
+                  tone: TagTone.solid,
                 ),
-                TextSpan(
-                  text: block.coverage.complete
-                      ? ' × ${block.topReps}'
-                      : ' × —',
-                  style: WorkoutType.mono(size: 13, color: tokens.dim),
-                ),
-              ],
-            ),
+            ],
           ),
-          if (block.isPr) ...[
-            const SizedBox(width: 8),
-            const PRBadge(small: true),
-          ] else ...[
-            const SizedBox(width: 8),
-            Tag(
-              label: AppLocalizations.of(context).sessionTagTop,
-              tone: TagTone.solid,
-            ),
-          ],
         ],
       ),
     );
@@ -587,12 +533,14 @@ class _TopSetRow extends StatelessWidget {
 
 class _ErrorState extends StatelessWidget {
   const _ErrorState({
+    required this.onWorkload,
     required this.error,
     required this.doneLabel,
     required this.tokens,
     required this.onDone,
   });
 
+  final VoidCallback onWorkload;
   final String error;
   final String doneLabel;
   final WorkoutTokens tokens;
@@ -614,26 +562,13 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            GestureDetector(
-              onTap: onDone,
-              child: Container(
-                height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                decoration: BoxDecoration(
-                  color: tokens.accent,
-                  borderRadius: BorderRadius.circular(AppRadius.radius),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  doneLabel,
-                  style: WorkoutType.mono(
-                    size: 14,
-                    weight: FontWeight.w700,
-                    color: tokens.accentInk,
-                  ),
-                ),
-              ),
+            TextButton(
+              key: const Key('summary-workload'),
+              onPressed: onWorkload,
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              child: Text(AppLocalizations.of(context).bodyWorkload),
             ),
+            PrimaryBtn(doneLabel, enabled: true, onTap: onDone),
           ],
         ),
       ),

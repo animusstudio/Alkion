@@ -21,6 +21,7 @@ Future<ActiveSessionController> _persistedController(
       [b.exercise.id, b.exercise.name],
     );
   }
+  await drafts.save(draft);
   final c = ActiveSessionController.fromDraft(draft, draftStore: drafts);
   addTearDown(() async {
     c.dispose();

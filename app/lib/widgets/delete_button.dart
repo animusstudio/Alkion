@@ -27,14 +27,14 @@ class WDeleteButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(WIcons.trash, size: 15, color: tokens.faint),
+            Icon(WIcons.trash, size: 15, color: tokens.danger),
             const SizedBox(width: 6),
             Text(
               label,
-              style: WorkoutType.mono(
+              style: WorkoutType.body(
                 size: 12.5,
-                weight: FontWeight.w600,
-                color: tokens.faint,
+                weight: FontWeight.w500,
+                color: tokens.danger,
               ),
             ),
           ],

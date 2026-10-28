@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import 'fit_label.dart';
 
-/// A compact stat tile: mono uppercase label, big value, optional unit,
+/// A compact stat tile: interface label, big value, optional unit,
 /// and either a sparkline widget or a sub-label below.
 ///
 /// Visual spec: `screen-today.jsx` → `StatTile`.
@@ -47,10 +46,11 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final labelStyle = WorkoutType.mono(
-      size: 10,
+    final labelStyle = WorkoutType.body(
+      size: 12,
+      weight: FontWeight.w500,
       color: tokens.faint,
-      letterSpacing: 0.08 * 10,
+      letterSpacing: 0.06 * 12,
     );
     // Reserve two label lines' worth of height (at the current text scale) so
     // the value row lines up across tiles whether or not a label wraps.
@@ -62,20 +62,16 @@ class StatTile extends StatelessWidget {
     )..layout();
     final labelLineHeight = labelPainter.height;
     labelPainter.dispose();
-    final subStyle = WorkoutType.mono(size: 10.5, color: tokens.dim);
+    final subStyle = WorkoutType.body(size: 12, color: tokens.dim);
 
     Widget content = Container(
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: BorderRadius.circular(AppRadius.radius),
-        border: Border.all(color: tokens.line),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      color: tokens.bg,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Mono uppercase label — reserves two lines so the value row
+          // Interface label — reserves two lines so the value row
           // lines up across tiles regardless of wrapping.
           SizedBox(
             height: labelLineHeight * 2,
@@ -101,11 +97,10 @@ class StatTile extends StatelessWidget {
               children: [
                 Text(
                   value,
-                  style: WorkoutType.display(
-                    size: 27,
-                    weight: FontWeight.w700,
+                  style: WorkoutType.mono(
+                    size: 24,
+                    weight: FontWeight.w400,
                     color: tokens.text,
-                    letterSpacing: 27 * -0.02,
                   ),
                 ),
                 if (unit != null) ...[
@@ -138,11 +133,7 @@ class StatTile extends StatelessWidget {
     );
 
     if (onTap != null) {
-      content = InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.radius),
-        child: content,
-      );
+      content = InkWell(onTap: onTap, child: content);
     }
 
     return content;

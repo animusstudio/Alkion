@@ -1,75 +1,64 @@
-# Alkion development boundary
+# Alkion app guidance
 
-This is the Alkion application, developed before 1.0 on `main` of this public
-repository (see the root `AGENTS.md`). Development identity is
-`dev.animusstudio.alkion.dev`; package/binary `alkion`, display `Alkion Dev`,
-endorsement `Alkion, by Animus`. Final application ID, signing, release
-identity and transport remain open. Inherited root/release instructions below
-are historical Reps guidance, not permission to tag, release, run a backend or
-connect legacy sync.
+This is the standalone pre-1.0 Alkion app (see root AGENTS.md). Android is the
+product target; Linux supports development and synthetic qualification. Normal
+startup opens the selected profile/store generation and integrated local UI.
+No account, synchronization sender, OTA update transport or backend is enabled.
+Final release identity/signing and an Animus connection remain separate work.
 
-All Flutter/Dart commands go through `make -C app` and FVM 3.44.0. Normal
-startup opens the integrated account-free app over the selected store
-generation (see `docs/alkion/development.md`). Use only
-explicit disposable storage for qualification; never discover/read legacy
-profiles, settings, credentials, queues or real artifacts. Signing out or
-transport denial cannot clear a local profile. No account/sender/OTA is enabled.
-Keep original bytes, corrections and derived results separate. Essential actions
-must later commit data and immutable outbox together. Replicas are not backups.
-Do not claim Android/device, full legacy recovery, production transfer or
-synchronization qualification from Linux synthetic driver tests.
+## Commands and boundaries
 
-Preserve inherited notices and the immutable source baseline. Exact additional
-180-file package-prefix ownership permits only the literal URI prefix change;
-no formatting or semantic changes there. Capture/PowerSync dependencies remain
-inventoried until their reviewed removal; do not delete transition code early.
-Every actual change needs independent review. App commits follow the root
-`AGENTS.md` (Conventional Commits; no tag or release before 1.0).
+Use `make -C app` from the repository root for all local Flutter/Dart work;
+FVM pins Flutter 3.44.0. Use `get` (offline, lock enforced), `analyze`,
+`get-online` only for explicit connected lock-enforced dependency bootstrap,
+`test TEST=--concurrency=2`, focused `test TEST=...`, check-only `format`,
+`build` (Linux), and `build-apk` (debug development flavor). `fmt` requires
+explicit owned FORMAT_FILES; no broad format. Android builds use Java21, the
+existing SDK and an explicit disposable ANDROID_USER_HOME. Never read production
+signing keys or inherited key.properties. The opt-in `build-apk-local-test-release`
+route reuses the disposable debug certificate for a private dev/arm64 APK only.
+Other release tasks and implicit run/install/device/scaffold/clean routes fail
+closed. See README.md for current build guidance.
 
-The retained behavior rules below guide later adapters, with this boundary
-and the assigned task taking precedence.
+Use explicit disposable storage and synthetic fixtures. Preserve existing
+bytes, exact numeric/calendar evidence, pending intents and unknown/newer store
+states. Never discover owner profiles, preferences, credentials or real exports.
+Do not claim device, production transfer, live legacy recovery or release
+qualification from host tests. Every change needs independent review. Root
+workflow, licensing/notices and publication boundaries apply.
 
-# CLAUDE.md
+## Runtime map
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+- `lib/main.dart`, `identity/alkion_profile.dart`: profile isolation and selected
+  generation startup; no adoption of legacy roots or user identities.
+- `lib/store/`: pinned standalone SQLite, serialized admission/ownership,
+  callback-scoped transactions and mandatory COMMIT-error recovery. Do not reuse
+  a failed pool or blindly retry an uncertain action with a new identity.
+- `lib/domain/`, `lib/data/`: immutable prepared actions,
+  revisions, atomic data/outbox changes and local repositories.
+- `lib/recovery/`, `lib/transfer/`: manual backup/restore, quarantine and exact
+  evidence import. Generation replacement drains owners and watches first.
+- `lib/session/`: draft/finished-session workflows, rest timers and notifications.
+  `SessionManager` is owned above MaterialApp; minimize is distinct from finish.
+- `lib/ui/`, `lib/shell/`, `lib/widgets/`, `lib/theme/`: integrated Flutter UI.
 
-Flutter client for Reps. Android is the product target; Linux desktop is the dev loop.
-
-## Commands
-
-Flutter is pinned via **fvm** (`.fvmrc`) — NEVER run `flutter` directly; every target goes through the Makefile from the repo root (`make -C app <target>`, which sets cwd so fvm resolves the pin):
-
-- `make -C app analyze` — must stay at "No issues found" (deprecation warnings count as failures)
-- `make -C app test` — full suite (~25s); single file: `make -C app test TEST=test/session/set_line_test.dart`
-- `make -C app build` — Linux desktop bundle (compiles PowerSync native libs; good smoke test)
-- `make -C app build-apk` / `build-apk-release` — debug / signed release APK (release needs gitignored `android/key.properties`; falls back to debug signing without it)
-- `make -C app run` / `run-android`, `fmt`, `get`, `doctor`
-
-Toolchain gotchas: Android needs JDK 21 (`flutter config --jdk-dir` already set — system JDK is too new for AGP) and `ANDROID_HOME=$HOME/Android/Sdk`. This host's Clang 22 breaks `flutter_secure_storage_linux` under `-Werror`; the fix lives in `linux/CMakeLists.txt` (`-Wno-error=deprecated-literal-operator`) — expect the same remedy for future vendored-header errors. `flutter_local_notifications` requires core-library desugaring (already configured in `android/app/build.gradle.kts`).
-
-## Architecture
-
-State management is `provider`; app-wide ChangeNotifiers are created in `main.dart` and provided ABOVE MaterialApp (so any route context can read them): `SettingsService`, `UnitService`, `IdentityService`, `SessionManager`.
-
-- `lib/sync/` — PowerSync: `db.dart` exposes the single global `db` (`PowerSyncDatabase`); `schema.dart` mirrors the server tables; `connector.dart` builds `/sync/upload` batches. Boot order in `main()` matters: capture-first startup (`capture/capture_startup.dart`: capture journal + native gate check, then raw draft/finished/`.tmp` bytes a loader could delete are copied into `<appSupport>/capture/preparation/`) → settings → openDatabase → identity → `backfillTopSets` → `absorbTemplates` → SessionManager/notification → resume draft → finished snapshot → optional connectSync. Where the capture plugin exists (Linux), an active or unreadable capture journal, a recorded or failing native gate, or any raw bytes that cannot be preserved show the capture recovery screen and run none of the later steps; without the plugin (Android builds) capture never holds startup, and a store whose bytes cannot be preserved is just not loaded (left untouched). Never add a boot step that writes before `runCaptureAwareStartup` decides. Every source writer is an admitted operation: SQL/file writers go through `runSourceWrite`, preference writers through `writePreferences` (`capture/preference_writes.dart`), and every sync connect/disconnect/clear through `changeSyncConnection` (`sync/db.dart`), which reports the connection change to capture evidence before touching the SDK; never call `db.connect`/`disconnect`/`disconnectAndClear` or `prefs.set*` directly.
-- `lib/data/` — repositories (plain classes over `db`) + pure op-builders (`(sql, args)` records) that the repos execute in `db.writeTransaction`. Boot migrations: `top_set_backfill.dart`, `template_absorb.dart`.
-- `lib/session/` — active workout: `ActiveSessionController` (draft + rest timer + debounced autosave to `DraftStore`), owned app-wide by `SessionManager` (minimize/resume, drives the ongoing notification via `workout_notification.dart`). The session screen is a pushed route that renders `manager.active`; popping it = minimize, not discard.
-- `lib/shell/` — `AppShell` (IndexedStack tabs + WTabBar + FAB + mini-bar), back-nav (`back_dispatch.dart`), `session_launcher.dart` (`startSession`/`openActiveSession`).
-- `lib/ui/` — screens; `lib/widgets/` — design-system widgets; `lib/theme/` — tokens (`context.tokens`), typography (`WorkoutType`), icons (`WIcons`), motion.
-- `lib/export/` — JSON export (pure builders + IO service). `lib/identity/`, `lib/settings/`, `lib/units/` — small services.
-
-Visual source of truth: `../docs/design_handoff_workout_tracker/` (README + `.jsx` prototypes). Match its exact control sizes; make rows flex for narrow phones. **Exception — the live workout screen** follows `../docs/superpowers/specs/2026-09-24-live-set-focus-design.md` instead of `screen-log.jsx`: one live set (`ActiveSessionController.liveSet`) in a `LiveSetCard` with `RulerPicker`s for weight/reps (a tap on the centre value opens the modal `showNumberEntrySheet`), the rest as `SetLine`s, a pinned `LogSetBar`, rest in `SessionHeader`, per-block/workout actions in `showWActionSheet`, and exercise reordering in `showReorderExercisesSheet` (never drag the cards in place — tall expanded cards break Flutter's reorderable list). Every tappable there is ≥48dp.
+The retired backend and legacy release instructions are removed. Historical
+schema/peer fixtures and immutable source refs live in
+`docs/history/reps-backend/`; capture qualification records/checkers remain
+non-runtime evidence. Do not recreate the old stack or move it into the app.
+Current contracts: `docs/alkion/{development,storage,recovery,transfer}.md`.
+Dated plans and the visual design handoff remain history; the live workout
+visual contract is `docs/superpowers/specs/2026-09-24-live-set-focus-design.md`.
 
 ## Hard-won rules (violating these reintroduces shipped bugs)
 
 **Data:**
-- `weight_kg` columns are TEXT (NUMERIC arrives as string — parse at the edges **with `double.tryParse`, NEVER `double.parse`**: a locally-created row stores `''` for "no value" until the server NULLIFs it on sync, `double.parse('')` throws, and because list streams map the whole result set one bad row blanks the entire catalog/history — this shipped as the worst data-visibility bug to date); booleans are INTEGER 0/1; `sessions.date`/`bodyweight_logs.date` are date-only `YYYY-MM-DD` (`isoDate()` in `util/dates.dart` — inclusive string-compare ranges are exact); `created_at` is full ISO.
-- The client NEVER writes `user_id`/`created_by`/`is_top_set`/`is_pr` upstream — server stamps/computes. Locally, `is_top_set` is ALSO computed client-side (`session_writer.topSetIndex`, `_recomputeTopSet` after History edits) because offline users have no server recompute.
-- Server PATCH handlers apply explicit column allowlists; a local `UPDATE` on a column outside that list silently diverges (e.g. `sets.exercise_id`). Re-point such columns via DELETE+INSERT with the same id (PowerSync emits DELETE+PUT, no coalescing; PUT recomputes server flags).
-- `is_template=1` rows are filtered out of every list query (`watchDays`, `watchCatalog`, `all()`); `byId` stays unfiltered for stray references. Don't reintroduce clone-on-edit.
-- `uuid` singleton comes from `package:powersync/powersync.dart`; deterministic ids use `package:uuid` v5 (see `template_absorb.dart`). Importing `package:powersync/powersync.dart` into widget files needs `show` (it re-exports `Column`).
+- Imported numeric text may be empty, invalid or unknown: parse display values with `double.tryParse`, preserve exact source evidence, and never replace unknown data with zero. Compatibility booleans are 0/1. Calendar days and timestamps have separate validation/timezone contracts; never normalize an invalid calendar rollover.
+- Domain writes use the local revision/action contracts and commit an immutable outbox entry atomically. No sender or server authority is enabled. Preserve exact imported evidence; do not invent a server base or normalize unknown values.
+- `is_template=1` compatibility rows stay out of owned catalog/day views. Keep deterministic template IDs and existing absorption/import behavior.
+- Import `package:uuid/uuid.dart` directly for UUIDs; `sqlite_async`, `crypto` and `uuid` have active local-store/backup/transfer callers.
 - Custom-exercise slugs: `uniqueSlug(name, id)` = slugify + `-id8` suffix (local dedup can't see other users' slugs).
-- **Resumed workouts** (`SessionDraft.sessionId != null`): `finish()` goes through `replaceSession`, which UPDATEs the session row and DELETE+INSERTs its sets with the same ids — it must NEVER delete and re-insert the session row: a re-insert PUT the server rejects (e.g. a training day deleted since fails the `day_template_id` FK) after a DELETE it accepted loses the whole already-synced workout. The finish snapshot (`FinishedSession`) is adopted by `SessionManager.recordFinished` only AFTER the write transaction commits — `finish()` notifies inside the transaction, before COMMIT. Every `lastTopSet`/`bestTopSet` lookup made while a resumed draft is live passes `excludeSessionId`, or the workout becomes its own PR baseline. Session inserts bind `day_template_id` through `(SELECT id FROM day_templates WHERE id = ?)`.
+- **Resumed workouts:** preserve their session ID, original date, exact untouched evidence and set order. Prepare the domain action before awaiting, reconcile uncertain outcomes with the same intent, and adopt the finished snapshot only after the durable workflow commits (`shell/session_launcher.dart`).
 - **`sets.set_number` runs across the whole session, not per exercise** — it is the only persisted record of exercise order (there is no position column). `finish()` numbers sets 1…N in on-screen order; `setsForSession` (History, summary, resume) and the export order exercises by their lowest `set_number` via `workoutOrderSelect`; History's `addSet` uses the session-wide `MAX(set_number)+1`. Sessions from builds before v0.14.1 restart at 1 per exercise, so their ties fall back to `exercise_id`. Never reintroduce per-exercise numbering.
 - `SessionManager.register` asserts that no other controller is active; every start/resume takes `tryBeginLaunch()` synchronously before its first await and releases it in `finally`.
 - The RIR range is `rirMin..rirMax` (`data/models.dart`, 0–5) everywhere: the `RirPicker` chips and all four editor steppers read it. A stored RIR outside it (old free-text data, a restore) selects no chip and is never rewritten by a picker host or an untouched save; an editor stepper clamps it into range only when touched. A null working-set RIR is a valid "no RIR" and shows no RIR text.
@@ -93,7 +82,7 @@ Visual source of truth: `../docs/design_handoff_workout_tracker/` (README + `.js
   Deliberate exceptions: the chart's y-axis ticks, and the add-weight sheet's fixed 1-dp input, which is also its edit seed.
 
   A delta is the difference of two `round…` values (`roundLoad`, `roundBodyweight`, `roundCount`), so it is the change the user can read between the numbers on screen. Never subtract raw values and format the result. Never add a second formatter for one of these quantities.
-- Never name a font family (`fontFamily:`) in a style. google_fonts registers one family per weight (`HankenGrotesk_600`) and nothing registers the plain name, so a named family silently draws in the platform font. `test/theme/font_family_source_test.dart` fails on any match. Styles come from `WorkoutType`; Material's text theme is `WorkoutType.hankenTextTheme`, always built from its size table. For another weight use `WorkoutType.body(weight:)`, never `textTheme.x!.copyWith(fontWeight:)`: each theme slot is a single-weight family. A CustomPainter that draws text passes `repaint: PaintingBinding.instance.systemFonts` (see `_LineChartPainter`), or listens like `RulerPicker`.
+- Never name a font family (`fontFamily:`) in a style. google_fonts registers a family per weight; styles must come from `WorkoutType`. The accepted faces are locally bundled Space Grotesk 400/500 for interface text and Space Mono 400 for measured values/metadata. `WorkoutType` maps historical heavier requests to those real weights, so no synthetic bold is needed. Material uses `WorkoutType.spaceTextTheme` (the historical `hankenTextTheme` alias remains compatible). For another role or weight use the helper, never `textTheme.x!.copyWith(fontWeight:)`. `test/theme/font_family_source_test.dart` guards source callers. A CustomPainter that draws text passes `repaint: PaintingBinding.instance.systemFonts` (see `_LineChartPainter`), or listens like `RulerPicker`.
 - `showWActionSheet` is also the app's single-choice picker. Mark the current row with `WSheetAction(selected: true)`, which draws a trailing `accentText` check and sets selected semantics. A row whose label is written in another language (the language sheet's endonyms) passes `labelLocale`. The sheet then wraps the row's own `Semantics` in an outer `Semantics(localeForSubtree:)`, so the row's focusable node carries label, locale, button, selected and tap, with the locale coming from that outer node. Never put the locale on the label or on the row's own `Semantics`, and never use `MergeSemantics` or `Localizations.override`: each of those splits the node or drops the locale.
 - The Plan tab's in-tab editors report unsaved edits through a per-open `EditorGuard` (`ui/editor_guard.dart`).
   - What counts is `daySnapshot` / `exerciseSnapshot` of `_currentDraft()`, the draft Save writes, against a baseline taken right after `_loadData` normalises. A new editor field must flow through `_currentDraft()` AND be copied into `daySnapshot`/`exerciseSnapshot` (field, `==`, `hashCode`), or the discard prompt can't see it.
@@ -104,10 +93,10 @@ Visual source of truth: `../docs/design_handoff_workout_tracker/` (README + `.js
 - Widget-test theme harness: `MaterialApp(theme: buildTheme(Brightness.dark, accents[0]))`; `context.tokens` has a theme-less fallback.
 - Perpetual-ticker widgets (ambient, mini-bar): use `pump(duration)` not `pumpAndSettle`, and end the test by pumping a replacement widget so tickers dispose. Reduced motion in tests: `tester.platformDispatcher.accessibilityFeaturesTestValue = FakeAccessibilityFeatures.allOn`.
 - `.github/workflows/app-ci.yml` runs analyze + tests on `push`/`pull_request` but renders no pixels — visual output (painters, layouts no test pumps) is only verified on-device.
-- Screens that own PowerSync watch-streams, and screens whose `initState` fires a one-shot database read, CAN be mounted in a widget test over a real database — use `test/support/screen_harness.dart`: `ScreenHarness.open` opens and seeds the DB with `dbForTests` inside `tester.runAsync`; advance frames with `settleReal` (real-async ticks), never `pumpAndSettle`; end every test body with `harness.unmount(tester)` and register `tearDown(harness.close)`, so the watch-throttle timers and subscriptions are released before the DB closes. Plain `pumpWidget` + fake time still hangs on them. `test/layout/` sweeps every main screen at {320, 412}dp × {1.0, 2.0}× × {en, de, it} with long names and fails on any overflow or word split (`expectNoSplitWords` in `test/support/layout_expect.dart`); a new label that can meet a narrow phone or large text uses `FitLabel` (`widgets/fit_label.dart`).
-- The op-builder tests assert SQL *strings* only — nothing executes against a PowerSync DB with realistic synced state (templates + owned copies + tombstones). A boot migration that changes which rows a query returns can detonate latent crashes in the row mappers for the newly-included rows; validate such changes against a realistic device DB (or a user's export) before shipping.
+- Screens that own SQLite watch streams, and screens whose `initState` fires a one-shot database read, CAN be mounted in a widget test over a real disposable local store — use `test/support/screen_harness.dart`: `ScreenHarness.open(tester)` opens and seeds the DB with the fixture `LocalStore` inside `tester.runAsync`; advance frames with `settleReal` (real-async ticks), never `pumpAndSettle`; end every test body with `harness.unmount(tester)` and register `tearDown(harness.close)`, so the watch-throttle timers and subscriptions are released before the DB closes. Plain `pumpWidget` + fake time still hangs on them. `test/layout/` sweeps every main screen at {320, 412}dp × {1.0, 2.0}× × {en, de, it} with long names and fails on any overflow or word split (`expectNoSplitWords` in `test/support/layout_expect.dart`); a new label that can meet a narrow phone or large text uses `FitLabel` (`widgets/fit_label.dart`).
+- SQL-builder tests alone cannot qualify storage behavior. Keep real SQLite workflow tests for atomic action/outbox commits, tenant/profile boundaries, idempotent reconciliation and preserved recovery state. Do not run migrations on owner data.
 - `SessionCard`/`SessionCardBody` ARE widget-testable: the deadlock is the real database, not the widget. Inject a `FakeSessionRepository implements SessionRepository` whose `setsForSession` returns a completed future (`noSuchMethod` covers the rest) — see `test/ui/history_session_card_test.dart`.
 
 **Debugging (device bugs):**
 - A featureless GRAY box on a release Android build is Flutter's release-mode `ErrorWidget` = an uncaught exception during build (debug shows the red screen). Get the stack trace or a local debug repro FIRST — don't theorize about renderers/compositors.
-- The in-app full export (Profile → Data) is the diagnostic of record for device-data bugs: it dumps every table verbatim (including `is_template`; only user-id columns stripped). Ask for it early; rows can be replayed through the real `fromRow` mappers in a throwaway test.
+- Diagnose from explicitly supplied synthetic exports and retained receipts. Never discover owner app data or turn a private export into a fixture.

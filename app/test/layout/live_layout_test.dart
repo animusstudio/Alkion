@@ -12,7 +12,10 @@ void main() {
   final harness = ScreenHarness();
   tearDown(harness.close);
 
-  for (final c in layoutConditions) {
+  for (final c in [
+    ...layoutConditions,
+    (width: 320.0, textScale: 2.0, locale: const Locale('es')),
+  ]) {
     final name = describeCondition(c);
     testWidgets('the live workout holds at $name', (tester) async {
       await harness.open(tester);

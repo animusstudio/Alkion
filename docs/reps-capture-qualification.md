@@ -1,5 +1,11 @@
 # Reps capture qualification
 
+> Historical Reps evidence. Recorded results and commands below describe their
+> original source profiles; they are not current Alkion setup or signing
+> instructions. See [retirement provenance](alkion/legacy-retirement.md). The
+> capture installation/rehearsal checkers remain available for explicit synthetic
+> evidence; no current capture-production or release route is enabled.
+
 This is the evidence guide for the local capture producer. It records which
 exact source profiles were observed, how each was observed and what is still
 unproven. Results use four words only: **PASS** (a test or observation ran

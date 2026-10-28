@@ -21,12 +21,11 @@ import 'package:alkion/store/local_store.dart';
 import 'package:alkion/store/schema.dart';
 import 'package:alkion/transfer/transfer_service.dart';
 import 'package:alkion/ui/alkion_recovery/recovery_app.dart';
-import 'package:alkion/ui/onboarding_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/app_fonts.dart';
-import '../domains/local_screen_harness.dart' show seedDay;
+import '../domains/local_screen_harness.dart' show seedDay, seedExercise;
 import '../transfer/import_test.dart' show withoutRow;
 import '../transfer/transfer_harness.dart' show fixture;
 import 'acceptance_support.dart';
@@ -82,27 +81,26 @@ void main() {
         });
         expect(shouldConnectSync(syncEnabled: true, loggedIn: true), isFalse);
 
-        // ── Start: onboarding through the real UI, then a plan and its clone.
-        phase(
-          'Start: onboarding through the real UI, then a plan and its clone',
-        );
+        // ── Start: empty shell, then explicit synthetic exercises and a plan clone.
+        phase('Start: empty shell, then synthetic exercises and a plan clone');
         await tester.runAsync(
           () => tester.pumpWidget(
             AlkionApp(runtime: runtime!, recovery: hostFor(runtime!)),
           ),
         );
-        await settleUntil(tester, find.byType(OnboardingScreen));
-        await act(tester, () => tester.tap(find.byType(FilledButton).first));
         await settleUntil(tester, find.byType(AppShell));
         late String dayId, cloneId;
         await tester.runAsync(() async {
           final store = runtime!.store;
+          expect(await _rows(store, 'SELECT * FROM exercises'), isEmpty);
+          await seedExercise(store, 'acceptance-ex-a', 'Synthetic Press');
+          await seedExercise(store, 'acceptance-ex-b', 'Synthetic Row');
           final exercises = await _rows(
             store,
             'SELECT id FROM exercises WHERE profile_id=? AND deleted=0 ORDER BY name,id',
             [store.profileId],
           );
-          expect(exercises.length, greaterThanOrEqualTo(2));
+          expect(exercises, hasLength(2));
           dayId = 'acceptance-day';
           await seedDay(
             store,
@@ -136,14 +134,19 @@ void main() {
           );
           expect(ops.map((o) => o['action']), [
             'definitionCreate',
+            'definitionCreate',
             'planCreate',
             'planClone',
           ]);
         });
 
-        // ── Start a workout from the FAB and log two sets.
-        phase('Start a workout from the FAB and log two sets');
-        await act(tester, () => tester.tap(startFab()));
+        // ── Start a workout from the Today card and log two sets.
+        phase('Start a workout from the Today card and log two sets');
+        await settleUntil(tester, startWorkout());
+        await act(tester, () async {
+          await tester.ensureVisible(startWorkout());
+          await tester.tap(startWorkout());
+        });
         await settleUntil(tester, find.byKey(const Key('log-set-bar')));
         expect(find.byType(ActiveSessionScreen), findsOneWidget);
         final draftId = runtime!.sessions.active!.draft.draftId;

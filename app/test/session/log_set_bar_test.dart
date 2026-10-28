@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/l10n/app_localizations.dart';
@@ -7,8 +8,12 @@ import 'package:alkion/session/live_set_card.dart';
 import 'package:alkion/session/log_set_bar.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/tokens.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/app_fonts.dart';
+import '../support/layout_expect.dart';
 
 const _ex = Exercise(
   id: 'lp',
@@ -46,8 +51,70 @@ SetState _s(String id, {bool warmup = false, bool done = false}) => SetState(
 );
 
 void main() {
+  setUpAll(preloadAppFonts);
   final unit = UnitService();
   final l = lookupAppLocalizations(const Locale('en'));
+
+  for (final brightness in Brightness.values) {
+    for (final code in ['en', 'de', 'es', 'it']) {
+      testWidgets(
+        'the log action stays readable and logs once at 320dp 2x $code ${brightness.name}',
+        (tester) async {
+          final s = _s('live');
+          final live = (block: _block([], [s]), set: s);
+          final local = lookupAppLocalizations(Locale(code));
+          final label = LogSetBar.labelFor(local, unit, live, false)!;
+          var logs = 0;
+          await tester.pumpWidget(
+            wrapL10n(
+              Theme(
+                data: buildTheme(brightness, defaultWorkoutAccent),
+                child: MediaQuery(
+                  data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SizedBox(
+                      width: 320,
+                      child: LogSetBar(
+                        live: live,
+                        canFinish: false,
+                        unit: unit,
+                        onLog: () => logs++,
+                        onFinish: () {},
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              locale: Locale(code),
+            ),
+          );
+          final bar = find.byKey(const Key('log-set-bar'));
+          expect(tester.getSize(bar).height, greaterThanOrEqualTo(48));
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.text(label),
+          );
+          expect(paragraph.didExceedMaxLines, isFalse);
+          expect(paragraph.text.toPlainText(), label);
+          expectNoSplitWords(tester);
+          final button = tester.widget<FilledButton>(bar);
+          final background = button.style!.backgroundColor!.resolve({})!;
+          final foreground = button.style!.foregroundColor!.resolve({})!;
+          final a = background.computeLuminance(),
+              b = foreground.computeLuminance();
+          expect(
+            a > b ? (a + .05) / (b + .05) : (b + .05) / (a + .05),
+            greaterThanOrEqualTo(4.5),
+          );
+          await tester.tap(bar);
+          expect(logs, 1);
+          expect(s.weightKg, 140);
+          expect(s.reps, 6);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
 
   group('labelFor', () {
     final w = _s('w', warmup: true);

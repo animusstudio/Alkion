@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light"><title>Alkion · Body study</title>
+<link rel="stylesheet" href="study.css"><script type="module" src="study.js"></script>
+</head>
+<body>
+<header class="review-header"><a href="../ui-refactor-proposal/">Alkion</a><span>Rotatable body study</span><button id="theme" disabled>Light theme</button></header>
+<main>
+<div class="intro"><h1>Workout workload</h1><p>A real 3D body, rendered in characters. Color follows counted working sets in the selected illustrative workout.</p></div>
+<div class="study-layout">
+<section class="inspection" aria-labelledby="inspect-heading">
+<div class="section-heading"><h2 id="inspect-heading">Body inspection</h2><span class="view-label" id="orientation">Three-quarter</span></div>
+<div class="figure-stage" id="large-stage"><canvas id="large-body" tabindex="0" role="img" aria-label="Rotatable 3D human body. Use Left and Right arrows to rotate; Home shows the front."></canvas><p class="fallback" id="large-fallback">Body preview loading…</p></div><p class="rotation-state" id="motion-state" role="status">Loading</p>
+<div class="rotation-controls" aria-label="Body rotation"><button data-snap="0" disabled>Front</button><button data-snap="3.141592653589793" disabled>Back</button><button id="motion" disabled>Pause</button></div>
+<button class="export-button" id="export" disabled>Export body PNG</button><p id="export-state" class="caption" aria-live="polite"></p>
+<p class="gesture-note">Drag sideways to rotate and hold. <span>Arrow keys rotate · Home resets</span></p>
+<details class="asset-inspection"><summary>Inspect muscle partitions</summary><label for="part">Surface region</label><select id="part" disabled><option value="">Workout colors</option><option value="chest">Chest</option><option value="back">Back</option><option value="shoulders">Shoulders</option><option value="quads">Quads</option><option value="hamstrings">Hamstrings</option><option value="calves">Calves</option><option value="biceps">Biceps</option><option value="triceps">Triceps</option></select><p>Uniform accent isolates one authored surface partition. This inspection mode shows no workload scale.</p></details>
+</section>
+<div class="workout-column">
+<section class="workout-data" aria-labelledby="workout-heading">
+<h2 id="workout-heading">Illustrative workout</h2>
+<label for="fixture">Synthetic workout input</label><select id="fixture" disabled><option>Loading examples…</option></select>
+<div class="data-heading"><h3 id="metric-title">Workout workload</h3><span id="set-total">—</span></div>
+<p id="coverage" role="status" aria-live="polite">Loading workout inputs…</p>
+<div id="counts" class="counts"></div>
+<div class="scale" id="scale"><div class="scale-colors"></div><div><span>0 sets</span><span id="scale-max">Most sets</span></div></div>
+<p class="metric-note">Relative working-set count within this workout. Load, reps and RIR are not weighted. Unsupported regions stay neutral.</p>
+<details><summary>Try live set changes</summary><p>Each action changes synthetic workout sets and recomputes the same count contract.</p><div class="edit-controls"><button id="complete" disabled>Complete chest set</button><button id="undo" disabled>Undo last change</button><button id="remove" disabled>Remove last chest set</button></div><p id="edit-state" aria-live="polite"></p></details>
+</section>
+<section class="compact-section" aria-labelledby="compact-heading"><h2 id="compact-heading">Today · compact view</h2><div class="today-card"><div class="today-title"><h3 id="today-title">Illustrative workout</h3><span>Selected</span></div><div class="compact-content"><div class="compact-stage" id="compact-stage"><canvas id="compact-body" tabindex="0" role="img" aria-label="Compact 3D workload body. Use Left and Right arrows to rotate; Home shows front."></canvas><p class="fallback" id="compact-fallback">Body preview loading…</p></div><div class="compact-summary"><span id="compact-mode">Workout workload</span><p id="compact-counts">—</p><span id="compact-coverage">—</span></div></div><button class="start-reference" disabled>Start workout</button></div><p class="caption">Compact layout reference. Workout actions belong to the native app.</p></section>
+</div>
+</div>
+<footer><p>MakeHuman CC0 mesh · approximate surface partitions · <a href="README.md">Source, conversion and limits</a></p><p>This is a local asset study with synthetic inputs, not an anatomy or physiological intensity assessment.</p><button id="retry" hidden>Retry body preview</button><noscript><p>The body preview needs JavaScript. The licensed source and metric contract remain available in the study notes.</p></noscript></footer>
+</main>
+</body></html>

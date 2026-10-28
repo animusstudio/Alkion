@@ -235,23 +235,17 @@ Future<ActiveSessionController?> prepareResume(
   }
 }
 
-/// Finishes [controller]'s workout inside the single write transaction that
-/// [transact] runs, and only once that transaction has COMMITTED hands the
-/// finish snapshot to [manager], so the workout can be resumed from History.
-/// (`finish()` notifies inside the transaction, before the commit; adopting
-/// there would let a failed commit replace a good snapshot.)
-///
-/// One source operation: its ticket spans the transaction, the draft clear
-/// inside it and the awaited `recordFinished`, including that save's error
-/// and clear continuations, so a capture cannot take its boundary between
-/// the COMMIT and the persisted snapshot.
+/// Finishes [controller]'s workout through its local repository workflow and
+/// hands the committed snapshot to [manager] for History resume.
+/// Prepare before awaiting, commit the local workflow, then adopt its already
+/// durable finished snapshot. A failed/uncertain commit retains the same intent
+/// for reconciliation rather than publishing a new successful finish.
 Future<String> finishWorkout(
   ActiveSessionController controller,
   SessionManager? manager, {
   required WorkoutRepository repository,
 }) async {
-  // Prepare on the synchronous call stack before the first await.
-  controller.prepareFinish(repository);
+  // commitFinish installs its shared completion before synchronous preparation.
   final id = await controller.commitFinish(repository);
   final finished = controller.lastFinished;
   if (finished != null) {
