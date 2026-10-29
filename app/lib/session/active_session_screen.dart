@@ -1,3 +1,6 @@
+import '../catalog_ui/catalog_picker.dart';
+import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_measurement_form.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../data/exercise_repository.dart';
+import '../data/day_template_repository.dart';
 import '../data/body_workload_adapters.dart';
 import '../ui/body_figure.dart';
 import '../data/session_repository.dart';
@@ -221,6 +225,14 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     BuildContext context,
     ActiveSessionController controller,
   ) async {
+    if (CatalogTrialScope.maybeOf(context) != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).catalogTrialFinish),
+        ),
+      );
+      return;
+    }
     if (_finishing) return;
     setState(() => _finishing = true);
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -269,6 +281,35 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   /// in-flight typed value), starts rest after a newly logged working set,
   /// and scrolls the next live set into view.
   void _logLive(ActiveSessionController c) {
+    final trial = CatalogTrialScope.maybeOf(context);
+    final live = c.liveSet;
+    if (trial != null && live != null && _usesTrialForm(trial, live.block)) {
+      commitPendingInput();
+      final choice = _choiceFor(trial, live.block, live.set);
+      final values = trial.metricDrafts[live.set.id] ?? {};
+      final profile = trial.measurement(choice);
+      if (!catalogMeasurementsValid(profile, values)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context).catalogRequired)),
+        );
+        return;
+      }
+      trial.loggedMetrics[live.set.id] = Map.of(values);
+      trial.setContexts[live.set.id] = choice;
+      if (profile.requiredMetrics.contains('repetitions') &&
+          profile.requiredMetrics.contains('reported_load')) {
+        live.set.weightKg = double.parse(values['reported_load']!);
+        live.set.reps = int.parse(values['repetitions']!);
+        c.logLiveSet();
+      } else {
+        // Reuse the actual controller's set/focus lifecycle only. Typed
+        // measurements remain in the disposable adapter and never enter reps.
+        c.logLiveSet();
+      }
+      c.startRest(_restSecondsFor(live.block));
+      setState(() {});
+      return;
+    }
     final r = c.logLiveSet();
     if (r == null) {
       return;
@@ -362,10 +403,16 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   Future<void> _openBlockMenu(ActiveSessionController c, BlockState b) async {
     final l = AppLocalizations.of(context);
     final blocks = c.draft.blocks;
+    final trial = CatalogTrialScope.maybeOf(context);
     final picked = await showWActionSheet<String>(
       context,
       title: b.exercise.name,
       actions: [
+        if (trial?.exercises[b.exercise.id] != null) ...[
+          WSheetAction(label: l.catalogChangeSetup, value: 'setup'),
+          WSheetAction(label: l.catalogAddAgain, value: 'again'),
+          WSheetAction(label: l.catalogRoutineUse, value: 'routine'),
+        ],
         WSheetAction(label: l.sessionAddSet, value: 'set', icon: WIcons.plus),
         WSheetAction(
           label: l.sessionAddWarmupSet,
@@ -402,6 +449,53 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       return;
     }
     switch (picked) {
+      case 'setup':
+        await _changeTrialSetup(c, b, trial!);
+      case 'routine':
+        final origin = c.originSlotIdFor(b);
+        final templateId = c.draft.templateId;
+        if (origin == null || templateId == null) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(l.catalogRoutineNotice)));
+        } else {
+          final template = await DayTemplateRepository.local(
+            context.read<LocalDatabase>(),
+          ).byId(templateId);
+          if (!mounted) return;
+          final slot = template?.slots.where((s) => s.id == origin).firstOrNull;
+          final applied = trial!.useInRoutine(
+            origin,
+            trial.upcomingContexts[b] ??
+                trial.blockContexts[b] ??
+                trial.exercises[b.exercise.id]!,
+            actualSlot: slot,
+            exerciseId: b.exercise.id,
+            expectedRevision: c.originSlotRevisionFor(b),
+          );
+          if (!applied) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(l.catalogRoutineNotice)));
+          }
+        }
+      case 'again':
+        final choice =
+            trial!.upcomingContexts[b] ??
+            trial.blockContexts[b] ??
+            trial.exercises[b.exercise.id]!;
+        final ex = await trial.materialize(
+          choice,
+          ExerciseRepository.local(context.read<LocalDatabase>()),
+          locale: Localizations.localeOf(context).languageCode,
+        );
+        if (!mounted) return;
+        await c.addBlock(
+          ex,
+          sessionRepo: SessionRepository.local(context.read<LocalDatabase>()),
+          allowRepeat: true,
+        );
+        trial.blockContexts[c.draft.blocks.last] = choice;
       case 'set':
         c.addSet(b);
       case 'warmup':
@@ -430,11 +524,95 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
   }
 
+  CatalogChoice _choiceFor(CatalogTrialState state, BlockState b, SetState s) {
+    final origin = _controller?.originSlotIdFor(b);
+    if (!s.done) {
+      state.metricDrafts.putIfAbsent(
+        s.id,
+        () => Map.of(state.routineMetrics[origin] ?? {}),
+      );
+    }
+    final blockChoice = state.blockContexts.putIfAbsent(
+      b,
+      () => state.routineContexts[origin] ?? state.exercises[b.exercise.id]!,
+    );
+    return state.setContexts.putIfAbsent(
+      s.id,
+      () => state.upcomingContexts[b] ?? blockChoice,
+    );
+  }
+
+  bool _usesTrialForm(CatalogTrialState state, BlockState b) =>
+      state.exercises.containsKey(b.exercise.id);
+
+  Future<void> _changeTrialSetup(
+    ActiveSessionController c,
+    BlockState b,
+    CatalogTrialState trial,
+  ) async {
+    commitPendingInput();
+    final current =
+        trial.upcomingContexts[b] ??
+        trial.blockContexts[b] ??
+        trial.exercises[b.exercise.id]!;
+    if (current.variantId == null) return;
+    for (final s in b.allSets) {
+      _choiceFor(trial, b, s);
+    }
+    final l = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
+    final choice = await showWActionSheet<String>(
+      context,
+      title: l.catalogChangeSetup,
+      actions: [
+        WSheetAction(label: trial.label(current, locale), value: 'execution'),
+        for (final known
+            in trial.setups[current.variantId] ?? <CatalogChoice>[])
+          WSheetAction(
+            label: trial.distinction(known, locale),
+            value: known.setupId,
+            selected: known.setupId == current.setupId,
+          ),
+        WSheetAction(label: l.catalogNewMachine, value: 'new'),
+      ],
+    );
+    if (!mounted || choice == null) return;
+    CatalogChoice? selected;
+    if (choice == 'execution') {
+      final variant = trial.bundle.variants[current.variantId]!;
+      final choices = await showCatalogPicker(
+        context,
+        state: trial,
+        familyId: variant.familyId,
+      );
+      selected = choices?.firstOrNull;
+    } else if (choice == 'new') {
+      final name = await showCatalogSetupNickname(context);
+      if (name != null) selected = trial.newSetup(current, name);
+    } else {
+      selected = trial.setups[current.variantId]!.firstWhere(
+        (s) => s.setupId == choice,
+      );
+    }
+    if (!mounted || selected == null) return;
+    // Existing observations and entered drafts keep their exact setup. A fresh
+    // upcoming set owns the new context and starts without an inherited load.
+    trial.upcomingContexts[b] = selected;
+    trial.remember(selected);
+    c.addSet(b);
+    final added = b.workingSets.last;
+    trial.setContexts[added.id] = selected;
+    trial.metricDrafts[added.id] = {};
+    c.focusSet(added);
+    setState(() {});
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ActiveSessionController>();
+    final trial = CatalogTrialScope.maybeOf(context);
     final tokens = context.tokens;
     final unit = context.watch<UnitService>();
     final l = AppLocalizations.of(context);
@@ -506,37 +684,66 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     ],
                     for (final block in draft.blocks)
                       Reveal(
-                        key: ValueKey(block.exercise.id),
-                        child: ExerciseBlock(
-                          block: block,
-                          unit: unit,
-                          liveSetId: live?.set.id,
-                          rirPromptSetId: controller.rirPromptSetId,
-                          liveCardKey: _liveCardKey,
-                          onLongPressHeader: draft.blocks.length < 2
-                              ? null
-                              : () {
-                                  HapticFeedback.mediumImpact();
-                                  showReorderExercisesSheet(
-                                    context,
-                                    controller: controller,
-                                  );
+                        key: ObjectKey(block),
+                        child: trial != null && _usesTrialForm(trial, block)
+                            ? Column(
+                                children: [
+                                  for (final s in block.allSets)
+                                    CatalogTrialBlock(
+                                      key: ValueKey(s.id),
+                                      state: trial,
+                                      choice: _choiceFor(trial, block, s),
+                                      setId: s.id,
+                                      title: trial.label(
+                                        _choiceFor(trial, block, s),
+                                        Localizations.localeOf(
+                                          context,
+                                        ).languageCode,
+                                      ),
+                                      done: s.done,
+                                      onChanged: () {
+                                        controller.focusSet(s);
+                                        setState(() {});
+                                      },
+                                      onMenu: () =>
+                                          _openBlockMenu(controller, block),
+                                    ),
+                                ],
+                              )
+                            : ExerciseBlock(
+                                block: block,
+                                unit: unit,
+                                liveSetId: live?.set.id,
+                                rirPromptSetId: controller.rirPromptSetId,
+                                liveCardKey: _liveCardKey,
+                                onLongPressHeader: draft.blocks.length < 2
+                                    ? null
+                                    : () {
+                                        HapticFeedback.mediumImpact();
+                                        showReorderExercisesSheet(
+                                          context,
+                                          controller: controller,
+                                        );
+                                      },
+                                onFocusSet: (_, s) {
+                                  // Settle in-flight edits first (same rule as the log
+                                  // bar): a gliding ruler would otherwise keep writing
+                                  // into the set being left.
+                                  commitPendingInput();
+                                  controller.focusSet(s);
                                 },
-                          onFocusSet: (_, s) {
-                            // Settle in-flight edits first (same rule as the log
-                            // bar): a gliding ruler would otherwise keep writing
-                            // into the set being left.
-                            commitPendingInput();
-                            controller.focusSet(s);
-                          },
-                          onSetChanged: (_, __) => controller.markChanged(),
-                          onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
-                          onClearRir: (_, s) =>
-                              controller.setRirFromPrompt(s, null),
-                          onMarkNotDone: (_, s) => controller.markNotDone(s),
-                          onRemoveSet: (b, s) => _removeSet(controller, b, s),
-                          onMenu: (b) => _openBlockMenu(controller, b),
-                        ),
+                                onSetChanged: (_, __) =>
+                                    controller.markChanged(),
+                                onRir: (_, s, v) =>
+                                    controller.setRirFromPrompt(s, v),
+                                onClearRir: (_, s) =>
+                                    controller.setRirFromPrompt(s, null),
+                                onMarkNotDone: (_, s) =>
+                                    controller.markNotDone(s),
+                                onRemoveSet: (b, s) =>
+                                    _removeSet(controller, b, s),
+                                onMenu: (b) => _openBlockMenu(controller, b),
+                              ),
                       ),
                     const SizedBox(height: 10),
                     _AddExerciseButton(
@@ -562,9 +769,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         if (!context.mounted) {
                           return;
                         }
+                        CatalogChoice? catalogChoice;
                         final picked = await showExercisePicker(
                           context,
                           exercises: all,
+                          onCatalogChoice: (choice) => catalogChoice = choice,
                         );
                         if (picked != null) {
                           try {
@@ -574,6 +783,18 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                               repEntry: repEntry,
                               rirControls: rirControls,
                             );
+                            if (trial != null &&
+                                catalogChoice != null &&
+                                controller.draft.blocks.isNotEmpty) {
+                              final added = controller.draft.blocks.last;
+                              if (added.exercise.id == picked.id) {
+                                trial.blockContexts.putIfAbsent(
+                                  added,
+                                  () => catalogChoice!,
+                                );
+                                setState(() {});
+                              }
+                            }
                           } on FreshPrescriptionUnavailableException catch (
                             error
                           ) {
@@ -599,13 +820,26 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         ),
       ),
       // In bottomNavigationBar (not the body) so the undo snackbar floats above it.
-      bottomNavigationBar: LogSetBar(
-        live: controller.finishPending ? null : live,
-        canFinish: controller.canFinish || controller.finishPending,
-        unit: unit,
-        onLog: () => _logLive(controller),
-        onFinish: () => _handleFinish(context, controller),
-      ),
+      bottomNavigationBar:
+          trial != null && live != null && _usesTrialForm(trial, live.block)
+          ? SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: FilledButton(
+                  key: const Key('catalog-log-set'),
+                  onPressed: () => _logLive(controller),
+                  child: Text(l.catalogLogSet),
+                ),
+              ),
+            )
+          : LogSetBar(
+              live: controller.finishPending ? null : live,
+              canFinish: controller.canFinish || controller.finishPending,
+              unit: unit,
+              onLog: () => _logLive(controller),
+              onFinish: () => _handleFinish(context, controller),
+            ),
     );
   }
 }

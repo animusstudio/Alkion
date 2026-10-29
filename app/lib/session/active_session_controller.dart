@@ -957,6 +957,11 @@ class ActiveSessionController extends ChangeNotifier {
   ///
   /// Resolves each slot, queries the last/best top set for seeding and PR
   /// detection, then builds the block list.
+  final Map<BlockState, String> _originSlotIds = {};
+  String? originSlotIdFor(BlockState block) => _originSlotIds[block];
+  final Map<BlockState, int?> _originSlotRevisions = {};
+  int? originSlotRevisionFor(BlockState block) => _originSlotRevisions[block];
+
   Future<void> buildFromTemplate(
     DayTemplate template, {
     required ExerciseRepository exerciseRepo,
@@ -970,6 +975,8 @@ class ActiveSessionController extends ChangeNotifier {
       );
     }
     final prescriptions = <ResolvedSlot>[];
+    final originSlotIds = <String?>[];
+    final originSlotRevisions = <int?>[];
     var remaining = freshGeneratedSetLimit;
     for (final slot in template.slots) {
       final exercise = await exerciseRepo.byId(slot.exerciseId);
@@ -989,11 +996,16 @@ class ActiveSessionController extends ChangeNotifier {
       }
       remaining -= resolved.workSets + resolved.warmupSets;
       prescriptions.add(resolved);
+      originSlotIds.add(slot.id);
+      originSlotRevisions.add(slot.localRevision);
     }
 
     // No generated block, per-set UUID or draft mutation precedes preflight.
     final blocks = <BlockState>[];
-    for (final resolved in prescriptions) {
+    _originSlotIds.clear();
+    _originSlotRevisions.clear();
+    for (var i = 0; i < prescriptions.length; i++) {
+      final resolved = prescriptions[i];
       final exerciseId = resolved.exercise.id;
       final reference = await sessionRepo.lastTopSetEvidence(exerciseId);
       final lastTop = reference.value;
@@ -1004,6 +1016,10 @@ class ActiveSessionController extends ChangeNotifier {
       block.lastTop = lastTop;
       block.lastTopUnavailable = reference.unavailable;
       blocks.add(block);
+      if (originSlotIds[i] case final slotId?) {
+        _originSlotIds[block] = slotId;
+        _originSlotRevisions[block] = originSlotRevisions[i];
+      }
     }
 
     expandOnlyFirst(blocks);
@@ -1452,6 +1468,7 @@ class ActiveSessionController extends ChangeNotifier {
     required SessionRepository sessionRepo,
     RepEntry repEntry = RepEntry.fixed,
     RirControls rirControls = RirControls.off,
+    bool allowRepeat = false,
   }) async {
     // Build a default slot from the exercise's own defaults (no slot overrides).
     final hasRepEvidence =
@@ -1489,7 +1506,7 @@ class ActiveSessionController extends ChangeNotifier {
     // An exercise appears once per workout: blocks are keyed by exercise id
     // on screen. Checked after the lookups, so a second add that was already
     // in flight is dropped too.
-    if (hasExercise(exercise.id)) {
+    if (!allowRepeat && hasExercise(exercise.id)) {
       return;
     }
     final block = buildBlock(resolved: resolved, lastTopKg: lastTop?.weight);

@@ -1,3 +1,6 @@
+import '../catalog_ui/catalog_picker.dart';
+import '../catalog_ui/catalog_measurement_form.dart';
+import '../catalog_ui/catalog_trial_scope.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' hide TextInput;
@@ -29,7 +32,9 @@ import 'exercise_sheet.dart';
 
 /// Mutable UI state for a single slot row (wraps [SlotDraft]).
 class DaySlotState {
-  DaySlotState({required this.draft, this.showRirAdd = false});
+  DaySlotState({required this.draft, this.showRirAdd = false})
+    : instanceKey = draft.itemId ?? domainUuid.v4();
+  final String instanceKey;
 
   SlotDraft draft;
 
@@ -282,7 +287,7 @@ class _DayEditorState extends State<DayEditor> {
 
   void _removeSlot(int index) {
     if (_controlsLocked) return;
-    final exId = _slots[index].exerciseId;
+    final exId = _slots[index].instanceKey;
     setState(() {
       _slots.removeAt(index);
       if (_expandedExId == exId) _expandedExId = null;
@@ -291,6 +296,35 @@ class _DayEditorState extends State<DayEditor> {
 
   Future<void> _addExercise() async {
     if (_controlsLocked) return;
+    final trial = CatalogTrialScope.maybeOf(context);
+    if (trial != null) {
+      final locale = Localizations.localeOf(context).languageCode;
+      final choices = await showCatalogPicker(
+        context,
+        state: trial,
+        multiple: true,
+      );
+      if (!mounted || _controlsLocked || choices == null) return;
+      try {
+        for (final choice in choices) {
+          final ex = await trial.materialize(choice, _exRepo, locale: locale);
+          if (!mounted || _controlsLocked) return;
+          setState(() {
+            if (!_catalog.any((e) => e.id == ex.id)) _catalog.add(ex);
+          });
+          _appendExercise(ex, trialChoice: choice);
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context).catalogSaveFailed),
+            ),
+          );
+        }
+      }
+      return;
+    }
     final r = await showExerciseSheet(
       context,
       exercises: _catalog,
@@ -308,6 +342,11 @@ class _DayEditorState extends State<DayEditor> {
       (e) => e.id == r,
       orElse: () => throw StateError('exercise $r not in catalog'),
     );
+    _appendExercise(ex);
+  }
+
+  void _appendExercise(Exercise ex, {CatalogChoice? trialChoice}) {
+    final r = ex.id;
     final slot = Slot(
       exerciseId: r,
       position: _slots.length + 1,
@@ -345,6 +384,10 @@ class _DayEditorState extends State<DayEditor> {
       added.draft.rirLow = null;
       added.draft.rirHigh = null;
       _slots.add(added);
+      if (trialChoice != null) {
+        CatalogTrialScope.maybeOf(context)!.routineContexts[added.instanceKey] =
+            trialChoice;
+      }
     });
   }
 
@@ -370,11 +413,25 @@ class _DayEditorState extends State<DayEditor> {
     final draft = _currentDraft();
 
     final repository = _dayRepo;
+    final trial = CatalogTrialScope.maybeOf(context);
     final recovery = context.read<DomainRecovery?>();
     try {
       _pendingSave ??= repository.prepareDay(draft, id: _editId);
       await recovery?.recover();
       await repository.commitPrepared(_pendingSave!);
+      if (trial != null) {
+        final actionSlots = (_pendingSave!.input['slots'] as List).cast<Map>();
+        for (var i = 0; i < _slots.length; i++) {
+          final key = _slots[i].instanceKey;
+          final actualId = actionSlots[i]['id'] as String;
+          final choice =
+              trial.routineContexts[key] ??
+              trial.exercises[_slots[i].exerciseId];
+          if (choice != null) trial.routineContexts[actualId] = choice;
+          final metrics = trial.metricDrafts['routine:$key'];
+          if (metrics != null) trial.routineMetrics[actualId] = Map.of(metrics);
+        }
+      }
       if (mounted) widget.onBack();
     } catch (e, st) {
       // Surface the failure instead of silently leaving the button disabled.
@@ -573,8 +630,84 @@ class _DayEditorState extends State<DayEditor> {
                         isTemplate: true,
                       ),
                     );
+                    final trial = CatalogTrialScope.maybeOf(context);
+                    final choice =
+                        trial?.routineContexts[slot.instanceKey] ??
+                        trial?.exercises[ex.id];
+                    if (trial != null &&
+                        choice != null &&
+                        trial.measurement(choice).key != 'load_reps') {
+                      return Padding(
+                        key: ValueKey(slot.instanceKey),
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                ReorderableDragStartListener(
+                                  index: i,
+                                  enabled: !_controlsLocked,
+                                  child: const SizedBox(
+                                    width: 48,
+                                    height: 48,
+                                    child: Icon(Icons.drag_handle),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: FitLabel(
+                                    trial.label(
+                                      choice,
+                                      Localizations.localeOf(
+                                        context,
+                                      ).languageCode,
+                                    ),
+                                    maxLines: 3,
+                                    style: WorkoutType.body(
+                                      size: 16,
+                                      color: tokens.text,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: l.commonRemove,
+                                  onPressed: _controlsLocked
+                                      ? null
+                                      : () => _removeSlot(i),
+                                  icon: const Icon(Icons.close),
+                                ),
+                              ],
+                            ),
+                            WStepper(
+                              semanticLabel: l.dayEditorWorkingSets,
+                              format: (v) => v.round().toString(),
+                              value: (slot.draft.workSets ?? 1).toDouble(),
+                              min: 1,
+                              max: 99,
+                              step: 1,
+                              onChanged: _controlsLocked
+                                  ? (_) {}
+                                  : (v) => setState(
+                                      () => slot.draft.workSets = v.round(),
+                                    ),
+                            ),
+                            const SizedBox(height: 12),
+                            CatalogMeasurementForm(
+                              key: ValueKey('routine-${slot.instanceKey}'),
+                              profile: trial.measurement(choice),
+                              values: trial.metricDrafts.putIfAbsent(
+                                'routine:${slot.instanceKey}',
+                                () => {},
+                              ),
+                              enabled: !_controlsLocked,
+                              onChanged: () => setState(() {}),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                     return Reveal(
-                      key: ValueKey(slot.exerciseId),
+                      key: ValueKey(slot.instanceKey),
                       child: Padding(
                         padding: const EdgeInsets.only(bottom: 7),
                         child: DaySlotRow(
@@ -584,9 +717,15 @@ class _DayEditorState extends State<DayEditor> {
                           total: _slots.length,
                           slot: slot,
                           exercise: ex,
+                          displayName: choice == null
+                              ? null
+                              : trial!.label(
+                                  choice,
+                                  Localizations.localeOf(context).languageCode,
+                                ),
                           tokens: tokens,
-                          expanded: _expandedExId == slot.exerciseId,
-                          onToggle: () => _toggleSlot(slot.exerciseId),
+                          expanded: _expandedExId == slot.instanceKey,
+                          onToggle: () => _toggleSlot(slot.instanceKey),
                           onRemove: () => _removeSlot(i),
                           onChanged: () {
                             if (!_controlsLocked) setState(() {});
@@ -644,6 +783,7 @@ class DaySlotRow extends StatefulWidget {
     required this.onRemove,
     required this.onChanged,
     this.readOnly = false,
+    this.displayName,
   });
 
   final int index;
@@ -651,6 +791,7 @@ class DaySlotRow extends StatefulWidget {
   final int total;
   final DaySlotState slot;
   final Exercise exercise;
+  final String? displayName;
   final WorkoutTokens tokens;
   final bool expanded;
   final VoidCallback onToggle;
@@ -861,7 +1002,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 FitLabel(
-                                  widget.exercise.name,
+                                  (widget.displayName ?? widget.exercise.name),
                                   maxLines: 2,
                                   style: WorkoutType.body(
                                     size: 14,
@@ -905,7 +1046,9 @@ class _DaySlotRowState extends State<DaySlotRow> {
                 // needs similar-height rows).
                 if (!widget.expanded)
                   Semantics(
-                    label: l.a11yReorderExercise(widget.exercise.name),
+                    label: l.a11yReorderExercise(
+                      (widget.displayName ?? widget.exercise.name),
+                    ),
                     child: ReorderableDragStartListener(
                       index: widget.reorderIndex,
                       child: SizedBox(
@@ -923,7 +1066,9 @@ class _DaySlotRowState extends State<DaySlotRow> {
                 // Trash button
                 Semantics(
                   button: true,
-                  label: l.dayEditorRemoveExercise(widget.exercise.name),
+                  label: l.dayEditorRemoveExercise(
+                    (widget.displayName ?? widget.exercise.name),
+                  ),
                   excludeSemantics: true,
                   onTap: widget.onRemove,
                   child: GestureDetector(

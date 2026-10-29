@@ -1,3 +1,8 @@
+import 'package:provider/provider.dart';
+import '../catalog_ui/catalog_picker.dart';
+import '../catalog_ui/catalog_trial_scope.dart';
+import '../data/exercise_repository.dart';
+import '../store/local_store.dart';
 import 'package:flutter/material.dart';
 
 import '../data/models.dart';
@@ -23,7 +28,28 @@ import '../widgets/fit_label.dart';
 Future<Exercise?> showExercisePicker(
   BuildContext context, {
   required List<Exercise> exercises,
-}) {
+  ValueChanged<CatalogChoice>? onCatalogChoice,
+}) async {
+  final trial = CatalogTrialScope.maybeOf(context);
+  if (trial != null) {
+    final locale = Localizations.localeOf(context).languageCode;
+    final repo = ExerciseRepository.local(context.read<LocalDatabase>());
+    final picked = await showCatalogPicker(context, state: trial);
+    if (picked == null || picked.isEmpty) return null;
+    onCatalogChoice?.call(picked.single);
+    try {
+      return await trial.materialize(picked.single, repo, locale: locale);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context).catalogSaveFailed),
+          ),
+        );
+      }
+      return null;
+    }
+  }
   return showModalBottomSheet<Exercise>(
     context: context,
     isScrollControlled: true,

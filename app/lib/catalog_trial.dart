@@ -100,7 +100,9 @@ class _CatalogTrialBootstrapState extends State<CatalogTrialBootstrap> {
     try {
       // This fresh app-sandbox cache directory is the only selected store root.
       // Never query default support storage or enumerate earlier trial roots.
-      temporary = await Directory.systemTemp.createTemp('alkion-catalog-trial-');
+      temporary = await Directory.systemTemp.createTemp(
+        'alkion-catalog-trial-',
+      );
       runtime = await AlkionRuntime.open(
         Directory('${temporary.path}/${AlkionIdentity.applicationId}'),
         connectionFactory: (_, _) => AnimusConnectionController(),
@@ -179,7 +181,9 @@ class _CatalogTrialBootstrapState extends State<CatalogTrialBootstrap> {
                         ),
                         const SizedBox(height: 20),
                         Text(
-                          _failed ? l.catalogTrialUnavailable : l.catalogTrialNotice,
+                          _failed
+                              ? l.catalogTrialUnavailable
+                              : l.catalogTrialNotice,
                           style: WorkoutType.body(
                             size: 16,
                             color: context.tokens.dim,
