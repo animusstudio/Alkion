@@ -122,7 +122,9 @@ change receive independent review, with fix-diff rechecks only.
 - Owner approval: "Ok approved", 2026-10-29, covers the final A1–A12 scope.
 - T1: Implemented at `870b790`; independent review found one draft-metadata
   admission issue, corrected at `35b5af1`; fix-only recheck PASS, no findings.
-- T2: In progress after T1 acceptance. T3–T4: Not started.
+- T2: Implemented at `b73ee0b`, copy/capture correction `ccae0e8`, review fixes
+  `3236333`; independent review and fix recheck PASS, no remaining findings.
+- T3: In progress. T4: Not started.
 - Checks: original, preferences and activation proposal Markdown references/
   whitespace and diff checks PASS.
 - T1 checks at `870b790`: offline locked get PASS; explicit owned formatting PASS;
@@ -130,4 +132,9 @@ change receive independent review, with fix-diff rechecks only.
   68/68 PASS. Prior affected-suite fixture mismatches were corrected and rerun.
 - Draft fix at `35b5af1`: `make -C app test TEST='--concurrency=2 test/session/draft_json_test.dart test/session/controller_draft_access_test.dart'`
   → 23/23 PASS; analyze, owned formatting and diff check PASS.
-- Next: implement and independently review T2, then proceed through T3–T4.
+- T2 checks: 119 focused tests and analyze PASS at `b73ee0b`; copy/icon-font
+  correction 20 tests PASS at `ccae0e8`; review corrections 88 affected tests plus
+  strengthened 8-case recheck PASS at `3236333`, analyze/owned format/diff PASS.
+  Batched synthetic real-font visual inspection and sole confirmation PASS across
+  captured dark/light, 320/412dp and enlarged text; Android/device remains unrun.
+- Next: implement and independently review T3, then integrated T4 qualification.
