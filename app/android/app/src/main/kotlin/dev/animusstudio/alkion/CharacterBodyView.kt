@@ -1,6 +1,7 @@
 package dev.animusstudio.alkion
 
 import android.content.Context
+import android.content.MutableContextWrapper
 import android.graphics.Color
 import android.os.Build
 import android.os.Handler
@@ -26,26 +27,27 @@ import io.flutter.plugin.platform.PlatformViewFactory
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
-internal class CharacterBodyFactory(private val messenger: BinaryMessenger) :
+internal class CharacterBodyFactory(context: Context, private val messenger: BinaryMessenger) :
     PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+    private val application = context.applicationContext
     private val views = mutableSetOf<CharacterBodyView>()
-    private var paused = false
+    private var paused = true
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView =
-        CharacterBodyView(context, viewId, messenger, { views.remove(it) }).also {
+        CharacterBodyView(MutableContextWrapper(application), viewId, messenger, { views.remove(it) }).also {
             views.add(it)
             it.hostPaused(paused)
         }
     fun hostPaused(value: Boolean) { paused = value; views.toList().forEach { it.hostPaused(value) } }
-    fun close() { views.toList().forEach { it.dispose() }; views.clear() }
 }
 
 /** One display-only, offline surface. No URI from Dart/JS reaches AssetManager. */
 internal class CharacterBodyView(
-    context: Context,
+    private val context: MutableContextWrapper,
     id: Int,
     messenger: BinaryMessenger,
     private val onDispose: (CharacterBodyView) -> Unit,
 ) : PlatformView {
+    private val application = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val channel = MethodChannel(messenger, "dev.animusstudio.alkion/character-body/$id")
     private val web = WebView(context)
@@ -56,7 +58,9 @@ internal class CharacterBodyView(
     private var processGone = false
     @Volatile private var disposed = false
     private var loaded = false
-    private var paused = false
+    private var attached = false
+    private var hostIsPaused = true
+    private var paused = true
     private var display: JSONObject? = null
     private val origin = "https://appassets.androidplatform.net/body/"
     private val files: Map<String, Pair<String, String>> = buildMap {
@@ -118,7 +122,7 @@ internal class CharacterBodyView(
                             "Cache-Control" to "no-store",
                             "X-Content-Type-Options" to "nosniff",
                             "Content-Security-Policy" to "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; worker-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
-                        ), context.assets.open(entry.first))
+                        ), application.assets.open(entry.first))
                 } catch (_: java.io.IOException) { denied(404) }
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -135,7 +139,7 @@ internal class CharacterBodyView(
             override fun onPageFinished(view: WebView, url: String) {
                 if (disposed || processGone || url != origin + "index.html") return
                 loaded = true
-                hostPaused(paused)
+                updatePaused()
             }
         }
         web.addJavascriptInterface(object {
@@ -190,15 +194,32 @@ internal class CharacterBodyView(
         evaluations.offer("window.AlkionBody && (window.AlkionBody.hostPaused($paused)$update)")
     }
     fun hostPaused(value: Boolean) {
-        paused = value
+        hostIsPaused = value
+        updatePaused()
+    }
+    private fun updatePaused() {
+        paused = hostIsPaused || !attached
         if (disposed || processGone) return
         sendDisplay()
-        if (value) web.onPause() else web.onResume()
+        if (paused) web.onPause() else web.onResume()
+    }
+    override fun onFlutterViewAttached(flutterView: View) {
+        if (disposed) return
+        context.baseContext = flutterView.context
+        attached = true
+        updatePaused()
+    }
+    override fun onFlutterViewDetached() {
+        attached = false
+        context.baseContext = application
+        updatePaused()
     }
     override fun getView(): View = container
     override fun dispose() {
         if (disposed) return
         disposed = true
+        attached = false
+        context.baseContext = application
         evaluations.close()
         channel.setMethodCallHandler(null)
         if (!processGone) {
