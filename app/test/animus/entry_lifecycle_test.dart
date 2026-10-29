@@ -8,6 +8,8 @@ import 'package:alkion/animus/entry.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:alkion/animus/probe.dart';
 import 'package:alkion/identity/alkion_identity.dart';
+import 'package:alkion/data/day_template_repository.dart';
+import 'package:alkion/data/models.dart';
 import 'package:alkion/identity/alkion_profile.dart';
 import 'package:alkion/identity/entry_journal.dart';
 import 'package:alkion/main.dart';
@@ -129,12 +131,14 @@ void main() {
         expect(profile.profileId, reserved.profileId);
         final store = entry.preparedStore ?? handedStore!;
         expect(store.token.generation, reserved.generation);
+        expect(store.schema.latestVersion, 4);
+        expect((await store.get('PRAGMA user_version')).values.single, 4);
         expect(await store.getAll('SELECT * FROM exercises'), isEmpty);
         await expectLater(
           LocalStore.open(
             profile: profile,
             expectedProfileId: profile.profileId,
-            schema: workflowSchemaRegistry(),
+            schema: prescriptionSchemaRegistry(),
           ),
           throwsA(
             isA<StoreException>().having(
@@ -164,7 +168,19 @@ void main() {
       );
       handedStore = runtime.store;
       expect(runtime.store, same(owned));
+      expect(runtime.store.schema.latestVersion, 4);
+      expect((await runtime.store.get('PRAGMA user_version')).values.single, 4);
       expect(runtime.animus, same(controller));
+      final plans = DayTemplateRepository.local(runtime.store);
+      await plans.saveDay(
+        draft: DayDraft(name: 'After sign-in', slots: []),
+      );
+      final day = (await plans.allDays()).single;
+      expect(day.active, isTrue);
+      await plans.commitPrepared(
+        plans.prepareSetActive(day.id, day.localRevision!, false),
+      );
+      expect((await plans.byId(day.id))!.active, isFalse);
       await runtime.animus.disconnect();
       await runtime.animus.connect();
       await runtime.animus.confirm();
@@ -323,7 +339,7 @@ void main() {
         final store = await LocalStore.open(
           profile: profile,
           expectedProfileId: reserved.profileId,
-          schema: workflowSchemaRegistry(),
+          schema: prescriptionSchemaRegistry(),
         );
         expect(store.token.generation, 1);
         await store.close();

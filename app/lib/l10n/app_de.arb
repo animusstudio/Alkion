@@ -158,7 +158,7 @@
   "dayEditorFocusPlaceholder": "z. B. Druck",
   "dayEditorScheduledDay": "Geplanter Tag",
   "dayEditorExercisesCount": "Übungen · {count}",
-  "dayEditorSlotHint": "Sätze, Wiederholungen & RIR werden pro Tag festgelegt — tippe auf eine Zeile, um die Vorgabe dieses Tages anzupassen.",
+  "dayEditorSlotHint": "Tippe auf eine Übung, um Sätze und Wiederholungen zu ändern.",
   "dayEditorWarmupShort": "{count}aw",
   "dayEditorWorkingSets": "Arbeitssätze",
   "dayEditorWarmups": "Aufwärmen",
@@ -186,7 +186,7 @@
   "exerciseEditorEquipment": "Gerät / Maschine",
   "exerciseEditorEquipmentPlaceholder": "z. B. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Grundübung",
-  "exerciseEditorCompoundHint": "Bewegungsmerkmal · steuert Pause & Aufwärmen",
+  "exerciseEditorCompoundHint": "Wird für Pausen- und Gewichtsvorschläge verwendet.",
   "exerciseEditorStats": "Statistik",
   "exerciseEditorStatsHint": "Pro Übung über alle Splits hinweg erfasst.",
   "exerciseEditorPr": "Persönlicher Rekord",
@@ -660,6 +660,116 @@
   "bodyResume": "Drehung fortsetzen",
   "bodyRetryArtwork": "Darstellung neu laden",
   "bodyLoadingArtwork": "Darstellung wird geladen…",
+  "trainingPreferences": "Trainingseinstellungen",
+  "trainingPreferencesHint": "Vorgaben für neue Einträge. Gespeicherte Pläne und offene Editoren bleiben unverändert.",
+  "trainingRepEntry": "Wiederholungseingabe",
+  "trainingFixedReps": "Feste Wiederholungen",
+  "trainingRepRange": "Wiederholungsbereich",
+  "trainingReps": "Wiederholungen",
+  "trainingRirControls": "RIR-Eingabe",
+  "trainingRirOff": "Aus",
+  "trainingShow": "Anzeigen",
+  "trainingAdvanced": "Erweitert",
+  "trainingAdvancedHint": "Optionale Vorgaben. Im Trainingstag anpassbar.",
+  "trainingAdd": "{label} hinzufügen",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "{label} entfernen",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Wiederholungen festlegen",
+  "trainingRepairRir": "RIR-Ziel festlegen",
+  "trainingRirTarget": "RIR-Ziel",
+  "trainingRirExplanation": "Wiederholungen in Reserve: wie viele du noch schaffen würdest. Ein Ziel ist optional.",
+  "trainingMoreOptions": "Weitere Optionen",
+  "trainingAddRir": "RIR-Ziel hinzufügen",
+  "trainingRemoveRir": "RIR-Ziel entfernen",
+  "trainingUseExerciseDefault": "Übungsvorgabe verwenden",
+  "trainingUnavailable": "Vorgabe nicht verfügbar",
+  "trainingRirUnavailable": "RIR-Ziel nicht verfügbar",
+  "trainingAddWeekday": "Wochentag hinzufügen",
+  "trainingChangeWeekday": "Wochentag ändern",
+  "trainingRemoveWeekday": "Wochentag entfernen",
+  "trainingDisable": "Deaktivieren",
+  "trainingEnable": "Aktivieren",
+  "trainingInactive": "Inaktiv ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Aktionen für {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Status des Trainingstags gespeichert",
+  "trainingSaving": "Wird gespeichert…",
+  "trainingRetryStatus": "Status nicht gespeichert. Änderung erneut versuchen.",
+  "trainingRetry": "Erneut versuchen",
+  "trainingCompatExportRefused": "Dieser Export kann RIR-Regeln oder inaktive Trainingstage nicht erhalten. Erstelle unter Sicherung und Wiederherstellung eine native Sicherung.",
+  "trainingDayUnavailable": "Status nicht verfügbar",
+  "trainingDayEnabled": "{name} aktiviert",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "{name} deaktiviert",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingWeekdayUnavailable": "Wochentag nicht verfügbar",
+  "sessionClearRir": "RIR löschen",
+  "trainingOpenPlan": "Plan öffnen",
+  "trainingEnableDayInPlan": "Trainingstag im Plan aktivieren",
+  "trainingNoActiveDays": "Deine gespeicherten Trainingstage sind nicht aktiv. Prüfe sie im Plan oder starte ein freies Training.",
+  "trainingStartUnavailable": "Training nicht verfügbar",
+  "trainingDayStartUnavailable": "{name} ist für ein neues Training nicht verfügbar. Öffne den Plan, um den Tag zu aktivieren oder zu prüfen.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "Die Wiederholungsvorgabe für {name} ist nicht verfügbar. Korrigiere sie im Plan, bevor du ein neues Training startest.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "Die RIR-Regel für {name} wird nicht unterstützt. Prüfe sie im Plan, bevor du ein neues Training startest.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "animusConnect": "Mit Animus verbinden",
   "animusChangeAccount": "Konto wechseln",
   "animusRestore": "Gespeicherte Verbindung prüfen",

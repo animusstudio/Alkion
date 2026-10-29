@@ -255,7 +255,7 @@ class FixtureDatabase extends RealZoneDatabase {
       await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       ),
     );
   }
@@ -282,6 +282,25 @@ class FixtureDatabase extends RealZoneDatabase {
     final name = 'fixture_$table';
     await tx.execute('CREATE TEMP TABLE $name AS SELECT * FROM $table');
     final insert = sql.trimLeft().startsWith('INSERT');
+    final suppliedColumns = insert
+        ? RegExp(
+                r'^\s*INSERT(?: OR REPLACE)? INTO\s+\w+\s*\(([^)]*)\)',
+                caseSensitive: false,
+              )
+              .firstMatch(sql)
+              ?.group(1)
+              ?.split(',')
+              .map(
+                (name) => name
+                    .trim()
+                    .replaceAll('"', '')
+                    .replaceAll('`', '')
+                    .replaceAll('[', '')
+                    .replaceAll(']', '')
+                    .toLowerCase(),
+              )
+              .toSet()
+        : null;
     if (insert) {
       await tx.execute('DELETE FROM $name');
     }
@@ -295,6 +314,14 @@ class FixtureDatabase extends RealZoneDatabase {
         row['id'] as String,
       );
       final fields = projectionFields(row);
+      if (insert && table == 'day_templates') {
+        // CTAS staging drops SQLite defaults and adds a synthetic NULL for
+        // omitted columns. Preserve explicitly supplied NULL/unknown flags.
+        if (suppliedColumns != null && !suppliedColumns.contains('is_active')) {
+          fields.remove('is_active');
+        }
+        if (!fields.containsKey('is_active')) fields['is_active'] = 1;
+      }
       if (table == 'sets') {
         final ex = LocalRef(
           tx.profileId,

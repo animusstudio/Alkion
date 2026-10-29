@@ -814,34 +814,34 @@ packages:
     dependency: "direct main"
     description:
       name: sqlite3
-      sha256: "9488c7d2cdb1091c91cacf7e207cff81b28bff8e366f042bad3afe7d34afe189"
+      sha256: c73fd75df1332d76a6257f4823ae4df9c791f522b97e4a60cbcad214de1becf4
       url: "https://pub.dev"
     source: hosted
-    version: "3.3.2"
+    version: "3.5.0"
   sqlite3_connection_pool:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: sqlite3_connection_pool
-      sha256: "87f5555dbfb7f9c2383504ce479a78345bdfebd1488843206f5fc307a9aaada4"
+      sha256: "7196d9630f78e8f2d66e4cf46129ad8d3abaffebd7dd5ca10c1fec19dbed4513"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.5"
+    version: "0.2.15"
   sqlite3_web:
     dependency: transitive
     description:
       name: sqlite3_web
-      sha256: b539a44e227dc8fd617b56923400a1e8b793325293c05393eab5a24b944cf975
+      sha256: "8c140bd9124c060dd54227c5ccc5e1ce32123ef5d0c2f8cf46820c6c511c6c63"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.0"
+    version: "0.9.5"
   sqlite_async:
     dependency: "direct main"
     description:
       name: sqlite_async
-      sha256: e3e486e536253e17260c52b6f824b749adff3f1fed878d4abe629796b858290b
+      sha256: "6cc9971764f786e44f0280f28fc9da99096bdfd9234dd508454aaefecf36775e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.14.2"
+    version: "0.14.7"
   stack_trace:
     dependency: transitive
     description:

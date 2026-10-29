@@ -8,6 +8,8 @@
 
 2026-10-28 · [Optional Animus connection foundation](../plans/2026-10-28-animus-connection-foundation.md) · Approved.
 
+2026-10-28 · [Flexible training prescriptions](../plans/2026-10-28-flexible-training-prescriptions.md) · Done.
+
 2026-10-28 · [Body rotation responsiveness](../plans/2026-10-28-body-rotation-responsiveness.md) · Approved.
 
 2026-10-26 · [Body controls and branding](../plans/2026-10-26-body-controls-and-branding.md) · Approved.
@@ -102,7 +104,7 @@ SDK cache stamps required an automatically approved tool sandbox escalation. Exi
 
 ## Qualified primitives and limits
 
-Direct locked dependencies are `sqlite_async` 0.14.2 and `sqlite3` 3.3.2; native connection pool 0.2.5. Actual bundled SQLite is **3.53.1**. Build hooks use the packages' existing bundled native assets, without a new ORM/driver/plugin or custom source build. The qualification factory, harness and child process are in `app/tool/alkion_driver_qualification.dart`; they contain only synthetic probe tables, not an Alkion schema or operation store.
+Current locked dependencies are `sqlite_async` 0.14.7 and `sqlite3` 3.5.0; native connection pool 0.2.15. Actual bundled SQLite is **3.53.3**. Earlier dated qualification retains its recorded versions. Build hooks use the packages' existing bundled native assets, without a new ORM/driver/plugin or custom source build. The qualification factory, harness and child process are in `app/tool/alkion_driver_qualification.dart`; they contain only synthetic probe tables, not an Alkion schema or operation store.
 
 Factory: `SqliteDatabase.withFactory(NativeSqliteOpenFactory subclass)`, WAL, `synchronous=FULL`, `foreign_keys=ON` on every connection, two readers. The harness disables WAL auto-checkpoint to prove a committed WAL-only tail. A production store must state its checkpoint policy separately. Actual per-connection pragma checks pass, including read-only readers.
 

@@ -32,6 +32,12 @@ class PreferenceFaultDatabase extends FaultDatabase {
   final writeTokens = <StoreToken?>[];
   final rowsBeforeOutcome = <List<Map<String, dynamic>>>[];
   final errors = <Object>[];
+  final errorStacks = <StackTrace>[];
+  String get failureReason => [
+    'admission=${store.admission.name}, poolEpoch=${store.poolEpoch}',
+    for (var i = 0; i < errors.length; i++)
+      'attempt ${i + 1}: ${errors[i]}\n${errorStacks[i]}',
+  ].join('\n');
   int completedCallbacks = 0;
   final recoveryArtifacts = <String, List<int>?>{};
   @override
@@ -106,8 +112,9 @@ class PreferenceFaultDatabase extends FaultDatabase {
         throw StateError('synthetic lost successful COMMIT return');
       }
       return value;
-    } catch (error) {
+    } catch (error, stack) {
       errors.add(error);
+      errorStacks.add(stack);
       rethrow;
     } finally {
       await subscription?.cancel();
@@ -125,6 +132,8 @@ Map<String, Object?> settingsSnapshot(SettingsService settings) => {
   'locale': settings.localeOverride,
   'bodyweight_goal': settings.bodyweightGoal.name,
   'body_style': settings.bodyStyle,
+  'training_rep_entry': settings.repEntry.name,
+  'training_rir_controls': settings.rirControls.name,
 };
 
 Future<void> recordPreferenceProof(
@@ -367,8 +376,37 @@ void main() {
             final flush = key == 'settings'
                 ? settings.flushPersistence
                 : units.flushPersistence;
-            await expectLater(flush(), throwsA(anything));
+            // Only the injected fault is expected. A failed pool recovery must
+            // report its original error/stack here, before a later read obscures
+            // it with recovery_required. Units' setter intentionally returns void.
+            (Object, StackTrace)? retryFailure;
+            try {
+              await flush();
+            } catch (error, stack) {
+              retryFailure = (error, stack);
+            }
+            expect(
+              retryFailure?.$1,
+              kind == PreferenceFault.commit
+                  ? isA<sqlite.SqliteException>().having(
+                      (e) => e.extendedResultCode,
+                      'deferred FK COMMIT',
+                      787,
+                    )
+                  : isA<StateError>(),
+              reason: '${fault.failureReason}\nretry: ${retryFailure?.$2}',
+            );
             expect(fault.writeTokens, hasLength(2));
+            expect(
+              store.admission,
+              StoreAdmission.open,
+              reason: fault.failureReason,
+            );
+            expect(
+              store.poolEpoch,
+              kind == PreferenceFault.commit ? 2 : 0,
+              reason: fault.failureReason,
+            );
             final stillOld = await store.get(
               "SELECT * FROM local_state WHERE state_key=?",
               [key],

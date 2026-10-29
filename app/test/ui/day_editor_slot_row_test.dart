@@ -158,6 +158,8 @@ void main() {
   });
 
   testWidgets('the handle is absent when the row is expanded', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(wrapL10n(const _Harness(expandedIndex: 0)));
 
     // Row 0 is expanded — no drag handle for it, but row 1's is present.

@@ -181,12 +181,14 @@ class _DayChip extends StatelessWidget {
 
     final bgColor = tokens.bg;
     final borderColor = filled ? tokens.text : Colors.transparent;
-    final weekdayLabel = day.weekday != null
+    final weekdayLabel = day.weekday == null
+        ? ''
+        : day.weekday! >= 0 && day.weekday! <= 6
         ? weekdayShort(
             day.weekday!,
             Localizations.localeOf(context).toLanguageTag(),
           )
-        : '';
+        : '—';
 
     return Semantics(
       button: onTap != null,

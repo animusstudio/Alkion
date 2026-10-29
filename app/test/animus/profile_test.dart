@@ -10,6 +10,8 @@ import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/animus_connection_panel.dart';
 import 'package:alkion/ui/profile_screen.dart';
+import 'package:alkion/ui/training_preferences_sheet.dart';
+import 'package:alkion/settings/settings_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,6 +66,50 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     disabled.dispose();
   });
+
+  testWidgets(
+    'Profile keeps training preferences and optional connection usable together',
+    (tester) async {
+      final harness = ScreenHarness();
+      addTearDown(harness.close);
+      await harness.open(tester);
+      final auth = _Auth(), probe = _Probe();
+      final connection = AnimusConnectionController(
+        config: syntheticAnimusConfig(),
+        auth: auth,
+        probe: probe,
+      );
+      addTearDown(connection.dispose);
+      await tester.pumpWidget(
+        harness.wrap(
+          ProfileScreen(onClose: () {}),
+          extra: [
+            ChangeNotifierProvider<AnimusConnectionController?>.value(
+              value: connection,
+            ),
+          ],
+        ),
+      );
+      await settleReal(tester);
+      final host = find.byType(ProfileScreen);
+      await scrollIntoView(tester, host, find.text('Training preferences'));
+      await tester.tap(find.text('Training preferences').last);
+      await settleReal(tester);
+      expect(find.byType(TrainingPreferencesSheet), findsOneWidget);
+      await tester.tap(find.text('Rep range'));
+      await settleReal(tester);
+      expect(harness.settings.repEntry, RepEntry.range);
+      await tester.binding.handlePopRoute();
+      await settleReal(tester);
+      expect(find.byType(TrainingPreferencesSheet), findsNothing);
+      await scrollIntoView(tester, host, find.text('Connect to Animus'));
+      expect(find.byKey(const Key('animus-connection-panel')), findsOneWidget);
+      expect(find.text('Connect to Animus'), findsOneWidget);
+      expect(auth.calls, 0);
+      expect(probe.calls, 0);
+      await harness.unmount(tester);
+    },
+  );
 
   testWidgets(
     'account and space must be confirmed before retain or API read; disconnect is local',

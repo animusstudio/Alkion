@@ -40,7 +40,7 @@ import 'widgets/pending_input.dart';
 Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
   profile: profile,
   expectedProfileId: profile.profileId,
-  schema: workflowSchemaRegistry(),
+  schema: prescriptionSchemaRegistry(),
 );
 final appNavigatorKey = GlobalKey<NavigatorState>();
 

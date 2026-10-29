@@ -153,8 +153,9 @@ class ChipSelect<T> extends StatelessWidget {
                       color: on ? tokens.action : tokens.lineStrong,
                     ),
                   ),
-                  child: Text(
+                  child: FitLabel(
                     labelOf(item),
+                    maxLines: 2,
                     style: WorkoutType.body(
                       size: 13,
                       weight: FontWeight.w500,

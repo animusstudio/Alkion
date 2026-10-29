@@ -531,6 +531,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                           },
                           onSetChanged: (_, __) => controller.markChanged(),
                           onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
+                          onClearRir: (_, s) =>
+                              controller.setRirFromPrompt(s, null),
                           onMarkNotDone: (_, s) => controller.markNotDone(s),
                           onRemoveSet: (b, s) => _removeSet(controller, b, s),
                           onMenu: (b) => _openBlockMenu(controller, b),
@@ -543,6 +545,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                       label: l.sessionAddExercise,
                       tokens: tokens,
                       onTap: () async {
+                        final settings = context.read<SettingsService>();
+                        final repEntry = settings.repEntry;
+                        final rirControls = settings.rirControls;
                         final repo = ExerciseRepository.local(
                           context.read<LocalDatabase>(),
                         );
@@ -566,7 +571,18 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                             await controller.addBlock(
                               picked,
                               sessionRepo: sessionRepo,
+                              repEntry: repEntry,
+                              rirControls: rirControls,
                             );
+                          } on FreshPrescriptionUnavailableException catch (
+                            error
+                          ) {
+                            if (context.mounted) {
+                              await showFreshPrescriptionUnavailable(
+                                context,
+                                error,
+                              );
+                            }
                           } on FreshSessionLimitException catch (error) {
                             if (context.mounted) {
                               await showFreshSessionLimit(context, error);

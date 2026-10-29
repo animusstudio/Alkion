@@ -43,9 +43,14 @@ class _AppShellState extends State<AppShell> {
 
   /// Today hero Start button: start the given (or custom) session; return to Today.
   Future<void> _start(DayTemplate? day) async {
-    await launcher.startSession(context, template: day);
+    var openPlan = false;
+    await launcher.startSession(
+      context,
+      template: day,
+      onOpenPlan: () => openPlan = true,
+    );
     if (mounted) {
-      setState(() => _index = 0);
+      setState(() => _index = openPlan ? 3 : 0);
     }
   }
 
@@ -125,6 +130,7 @@ class _AppShellState extends State<AppShell> {
                       TodayScreen(
                         visible: _index == 0,
                         onStart: _start,
+                        onOpenPlan: () => _selectTab(3),
                         onOpenExercise: _openExercise,
                         onOpenProfile: _openProfile,
                         onResume: () {

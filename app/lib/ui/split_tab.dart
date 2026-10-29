@@ -2,6 +2,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 
 import '../data/day_template_repository.dart';
+import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
@@ -12,15 +13,76 @@ import '../theme/typography.dart';
 import '../util/dates.dart';
 import '../widgets/plan_form.dart';
 import '../widgets/fit_label.dart';
+import '../widgets/prescription_controls.dart';
+import '../widgets/w_action_sheet.dart';
+import '../widgets/w_dialog.dart';
+
+/// The Plan route owns immutable status intents independently of the list's
+/// lifetime, so opening an editor or another sub-tab cannot discard a retry.
+class DayStatusActions extends ChangeNotifier {
+  DayStatusActions(this.repository);
+  final DayTemplateRepository repository;
+  final Map<String, PreparedDomainAction> _pending = {};
+  final Set<String> _busy = {};
+  bool _disposed = false;
+
+  bool hasPending(String id) => _pending.containsKey(id);
+  bool isBusy(String id) => _busy.contains(id);
+
+  Future<bool?> perform(DayTemplate day, {DomainRecovery? recovery}) async {
+    if (_disposed || isBusy(day.id) || day.active == null) return null;
+    final intent = _pending[day.id] ??= repository.prepareSetActive(
+      day.id,
+      day.localRevision ??
+          (throw const StoreException('observed_revision_required')),
+      !day.isActive,
+    );
+    final enabling = intent.input['is_active'] == 1;
+    _busy.add(day.id);
+    _notify();
+    try {
+      await recovery?.recover();
+      try {
+        await repository.commitPrepared(intent);
+      } on StoreException catch (error) {
+        // apply checks a matching committed operation before its revision base.
+        // This rejection therefore proves this exact intent was never applied.
+        // Retire it without rebasing; only a new explicit action may replace it.
+        if (error.category == 'revision_conflict' &&
+            identical(_pending[day.id], intent)) {
+          _pending.remove(day.id);
+        }
+        rethrow;
+      }
+      _pending.remove(day.id);
+      return enabling;
+    } finally {
+      _busy.remove(day.id);
+      _notify();
+    }
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+}
 
 /// The Split sub-tab: a list of training days in rotation.
 ///
 /// [onOpenEditor] is called with the day id to edit (null = new day).
 class SplitTab extends StatefulWidget {
-  const SplitTab({super.key, required this.onOpenEditor});
+  const SplitTab({super.key, required this.onOpenEditor, this.statusActions});
 
   /// Called with the day id to edit (null = new day).
   final void Function(String? id) onOpenEditor;
+
+  final DayStatusActions? statusActions;
 
   @override
   State<SplitTab> createState() => _SplitTabState();
@@ -32,42 +94,149 @@ class _SplitTabState extends State<SplitTab> {
   );
   late final Stream<List<DayTemplate>> _daysStream = _repo.watchDays();
 
+  bool _showInactive = false;
+  late final DayStatusActions _statusActions;
+
+  @override
+  void initState() {
+    super.initState();
+    _statusActions = widget.statusActions ?? DayStatusActions(_repo);
+  }
+
+  @override
+  void dispose() {
+    if (widget.statusActions == null) _statusActions.dispose();
+    super.dispose();
+  }
+
+  Future<void> _setActive(DayTemplate day) async {
+    if (_statusActions.isBusy(day.id) || day.active == null) return;
+    final l = AppLocalizations.of(context);
+    try {
+      final enabling = await _statusActions.perform(
+        day,
+        recovery: context.read<DomainRecovery?>(),
+      );
+      if (enabling == null) return;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              enabling
+                  ? l.trainingDayEnabled(day.name)
+                  : l.trainingDayDisabled(day.name),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) await showWriteFailed(context, e);
+    }
+  }
+
+  Future<void> _actions(DayTemplate day) async {
+    final l = AppLocalizations.of(context);
+    final action = await showWActionSheet<String>(
+      context,
+      title: day.name,
+      actions: [
+        WSheetAction(label: l.planEditDay, value: 'edit', icon: WIcons.edit),
+        WSheetAction(
+          label: _statusActions.hasPending(day.id)
+              ? l.trainingRetry
+              : day.active == null
+              ? l.trainingDayUnavailable
+              : day.isActive
+              ? l.trainingDisable
+              : l.trainingEnable,
+          value: 'active',
+          icon: WIcons.refresh,
+          enabled: day.active != null && !_statusActions.isBusy(day.id),
+        ),
+      ],
+    );
+    if (!mounted) return;
+    if (action == 'edit') widget.onOpenEditor(day.id);
+    if (action == 'active') await _setActive(day);
+  }
+
+  Widget _card(DayTemplate day) => SplitDayCard(
+    weekday: day.scheduledWeekday,
+    name: day.name,
+    focus: day.focus,
+    exerciseCount: day.slots.length,
+    onTap: () => widget.onOpenEditor(day.id),
+    onActions: () => _actions(day),
+    status: _statusActions.isBusy(day.id)
+        ? AppLocalizations.of(context).trainingSaving
+        : _statusActions.hasPending(day.id)
+        ? AppLocalizations.of(context).trainingRetryStatus
+        : null,
+  );
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
-    return StreamBuilder<List<DayTemplate>>(
-      stream: _daysStream,
-      builder: (context, snap) {
-        final days = snap.data ?? [];
+    return AnimatedBuilder(
+      animation: _statusActions,
+      builder: (context, _) => StreamBuilder<List<DayTemplate>>(
+        stream: _daysStream,
+        builder: (context, snap) {
+          final days = snap.data ?? [];
 
-        return ListView(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, bottomNavInset(context)),
-          children: [
-            // Day cards
-            ...days.map(
-              (day) => Padding(
-                padding: EdgeInsets.zero,
-                child: SplitDayCard(
-                  weekday: day.scheduledWeekday,
-                  name: day.name,
-                  focus: day.focus,
-                  exerciseCount: day.slots.length,
-                  onTap: () => widget.onOpenEditor(day.id),
+          return ListView(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, bottomNavInset(context)),
+            children: [
+              ...days.where((d) => d.isActive).map(_card),
+              if (days.any((d) => d.active == false)) ...[
+                TrainingDisclosure(
+                  label: AppLocalizations.of(context).trainingInactive(
+                    days.where((d) => d.active == false).length,
+                  ),
+                  expanded: _showInactive || !days.any((d) => d.isActive),
+                  onTap: () => setState(() => _showInactive = !_showInactive),
                 ),
+                if (_showInactive || !days.any((d) => d.isActive))
+                  ...days
+                      .where((d) => d.active == false)
+                      .map(
+                        (day) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _card(day),
+                            TrainingAction(
+                              _statusActions.hasPending(day.id)
+                                  ? AppLocalizations.of(context).trainingRetry
+                                  : AppLocalizations.of(context).trainingEnable,
+                              onTap: _statusActions.isBusy(day.id)
+                                  ? null
+                                  : () => _setActive(day),
+                              icon: WIcons.refresh,
+                            ),
+                          ],
+                        ),
+                      ),
+              ],
+              if (days.any((d) => d.active == null)) ...[
+                Text(
+                  AppLocalizations.of(context).trainingDayUnavailable,
+                  style: WorkoutType.body(color: tokens.dim),
+                ),
+                ...days.where((d) => d.active == null).map(_card),
+              ],
+
+              if (days.isNotEmpty) const SizedBox(height: 16),
+
+              // "New training day" dashed button
+              _NewDayButton(
+                tokens: tokens,
+                onTap: () => widget.onOpenEditor(null),
               ),
-            ),
-
-            if (days.isNotEmpty) const SizedBox(height: 16),
-
-            // "New training day" dashed button
-            _NewDayButton(
-              tokens: tokens,
-              onTap: () => widget.onOpenEditor(null),
-            ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -86,6 +255,8 @@ class SplitDayCard extends StatelessWidget {
     required this.focus,
     required this.exerciseCount,
     required this.onTap,
+    this.onActions,
+    this.status,
   });
 
   /// Monday-origin (0-6) scheduled weekday, or null if unscheduled.
@@ -94,6 +265,8 @@ class SplitDayCard extends StatelessWidget {
   final String? focus;
   final int exerciseCount;
   final VoidCallback onTap;
+  final VoidCallback? onActions;
+  final String? status;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +342,11 @@ class SplitDayCard extends StatelessWidget {
                       color: tokens.text,
                     ),
                   ),
+                  if (status != null)
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(status!, style: metaStyle),
+                    ),
                   const SizedBox(height: 2),
                   // A long focus ellipsizes; the count keeps its own slot,
                   // capped at the row so at large text it shrinks, then
@@ -201,8 +379,15 @@ class SplitDayCard extends StatelessWidget {
               ),
             ),
 
-            // Chevron
-            Icon(WIcons.chevron, size: 16, color: tokens.faint),
+            if (onActions != null)
+              IconButton(
+                onPressed: onActions,
+                icon: const Icon(WIcons.more),
+                tooltip: l.trainingDayActions(name),
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              )
+            else
+              Icon(WIcons.chevron, size: 16, color: tokens.faint),
           ],
         ),
       ),

@@ -129,8 +129,9 @@ Future<Map<String, Object?>> qualifyDriver(Directory output) async {
   var db = openQualificationDatabase(path);
   final cases = <String, String>{};
   final evidence = <String, Object?>{
-    'sqlite_async': '0.14.2',
-    'sqlite3_package': '3.3.2',
+    'sqlite_async': '0.14.7',
+    'sqlite3_connection_pool': '0.2.15',
+    'sqlite3_package': '3.5.0',
     'sqlite_native': sqlite.sqlite3.version.libVersion,
     'dart': Platform.version,
     'cases': cases,
@@ -232,14 +233,15 @@ Future<Map<String, Object?>> qualifyDriver(Directory output) async {
       'COMMIT failure did not rollback all statements',
     );
     cases['real_commit_failure_after_successful_statements'] = 'PASS';
-    // This pinned stack has an observed error lifecycle limitation. Keep it
-    // explicit: checkpoint fails despite autocommit=true after failed COMMIT.
+    // Retain the mandatory recovery boundary. The old qualification's locked
+    // checkpoint diagnosis is historical; record this stack's raw result below.
     evidence['checkpoint_after_commit_error'] = <String, Object?>{
       'status':
           'No safe dirty-pool reuse guarantee; mandatory drain/close/reopen',
-      'known_error': 'SQLITE_LOCKED (6), reproduced in lifecycle diagnosis',
-      'cause':
-          'Prepared-statement lifecycle is an inference, not runtime proof',
+      'historical_stack': 'sqlite_async 0.14.2 / pool 0.2.5 / SQLite 3.53.1',
+      'historical_error': 'SQLITE_LOCKED (6), prior lifecycle diagnosis',
+      'historical_cause':
+          'Prepared-statement lifecycle was an inference in that qualification',
     };
     try {
       final observed = await db.writeLock(

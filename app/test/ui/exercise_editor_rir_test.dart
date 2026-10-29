@@ -39,6 +39,13 @@ void main() {
     await scrollIntoView(
       tester,
       find.byType(ExerciseEditor),
+      find.text('Advanced'),
+    );
+    await tester.tap(find.text('Advanced'));
+    await tester.pump();
+    await scrollIntoView(
+      tester,
+      find.byType(ExerciseEditor),
       find.text('RIR HIGH'),
     );
 
@@ -79,6 +86,13 @@ void main() {
         matching: find.byType(ListView),
       ),
     );
+    await scrollIntoView(
+      tester,
+      find.byType(ExerciseEditor),
+      find.text('Advanced'),
+    );
+    await tester.tap(find.text('Advanced'));
+    await tester.pump();
     await scrollIntoView(
       tester,
       find.byType(ExerciseEditor),

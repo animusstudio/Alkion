@@ -58,7 +58,7 @@ class ConsumerHarness {
       database = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       );
       await seed(database);
       units = UnitService.local(localDatabase);
@@ -105,7 +105,7 @@ class ConsumerHarness {
       database = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       );
       expect(await database.inventory(), before);
       units = UnitService.local(localDatabase);

@@ -4,7 +4,7 @@ This document describes the T2 production store boundary. Since T4 the
 production runtime opens it at normal startup; integrated evidence is in
 [acceptance](acceptance.md).
 There is no account, transport, PowerSync queue, acknowledgement or server
-allocation. The pinned driver is sqlite_async 0.14.2 / sqlite3 3.3.2, using T1's
+allocation. The pinned driver is sqlite_async 0.14.7 / sqlite3 3.5.0 (connection pool 0.2.15), using T1's
 qualified native factory configuration: WAL, synchronous FULL, foreign keys on
 every connection, two readers. Production auto-checkpoint is 1000 pages.
 Process-crash evidence is not physical power-loss or Android qualification.
@@ -128,7 +128,7 @@ expectedSchemaDigest)`. IDs must be contiguous, at most 5:
 | 1 | T2 | Profile, seven projections and preservation/action/local-state ledgers |
 | 2 | T3 | Catalog/plans/bodyweight/goals/settings additions actually required |
 | 3 | T4 | Draft/workout/timer/history additions actually required |
-| 4 | T5 | Transfer/export additions actually required (reserved; unused) |
+| 4 | Flexible prescriptions | `day_template_items.rir_policy TEXT`; `day_templates.is_active INTEGER DEFAULT 1` |
 | 5 | T6 | Backup/restore-generation additions actually required (reserved; unused) |
 
 Pass the same registry to `LocalStore.open(..., schema: registry)` on every open.
@@ -139,6 +139,31 @@ rows and version advancement run in one real SQLite transaction. Wrong shape,
 statement error or deferred COMMIT failure preserves the previous supported
 generation. No down migration or new empty replacement is permitted. Later tasks
 append IDs; they do not edit migration 1 or rewrite its identity.
+
+Current runtime, native backup verification and restore use
+`prescriptionSchemaRegistry()` (version 4). `domainSchemaRegistry()` (2) and
+`workflowSchemaRegistry()` (3) retain their exact history for older snapshots.
+Version 4 adds columns only: existing actions, revisions, source artifacts and
+projections are unchanged. `rir_policy` null retains legacy slot overrides and
+inheritance; `inherit` uses the exercise pair, `off` suppresses RIR and `target`
+uses the slot pair. Only complete ordered 0–5 pairs resolve. Missing targets are
+absent; partial/invalid pairs and unknown policy strings are unavailable, retained
+in raw evidence, and never become a synthetic RIR target.
+
+Saved days migrate to Active (`is_active=1`). Explicit 0 is inactive; null or any
+other value is unavailable and excluded from fresh-workout eligibility. Management
+and by-ID reads retain every saved day. `planSetActive` freezes only the status
+against the observed day revision; its domain revision/outbox write is atomic,
+shares editor conflict detection and never changes slots/history. Rotation uses
+the full saved ordering and skips ineligible days, including after an inactive
+last-trained day. Reorders must supply the complete owned list, including inactive
+rows.
+
+`settings` keeps profile-scoped creation defaults in the existing revisioned
+semantic snapshot: `training_rep_entry` (`fixed`/`range`, initial `fixed`) and
+`training_rir_controls` (`off`/`show`, initial `off`). The existing retry/flush
+barrier applies; these are captured creation inputs, not live prescription
+inheritance. Native backup includes the snapshot with all other local state.
 
 ## Covered layers and replacement rules
 

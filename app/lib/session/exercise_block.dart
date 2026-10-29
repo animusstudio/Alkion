@@ -7,6 +7,7 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../util/prescription_format.dart';
 import '../widgets/pr_badge.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/w_dialog.dart';
@@ -34,6 +35,7 @@ class ExerciseBlock extends StatefulWidget {
     required this.onFocusSet,
     required this.onSetChanged,
     required this.onRir,
+    this.onClearRir,
     required this.onMarkNotDone,
     this.onRemoveSet,
     required this.onMenu,
@@ -59,6 +61,7 @@ class ExerciseBlock extends StatefulWidget {
   final void Function(BlockState, SetState) onFocusSet;
   final void Function(BlockState, SetState) onSetChanged;
   final void Function(BlockState, SetState, int) onRir;
+  final void Function(BlockState, SetState)? onClearRir;
   final void Function(BlockState, SetState) onMarkNotDone;
 
   /// Swipe-left removal of a set. Null disables the swipe. A ticked set is
@@ -111,11 +114,15 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         block.allSets.any((s) => s.id == widget.liveSetId);
     final showSets = block.expanded || containsLive;
 
-    final rirStr = resolved.rirLow == resolved.rirHigh
-        ? '${resolved.rirLow}'
-        : '${resolved.rirLow}–${resolved.rirHigh}';
+    final prescription = formatPrescription(
+      workSets: resolved.workSets,
+      reps: qualifiedRepPair(resolved.repLow, resolved.repHigh),
+      rirLow: resolved.hasRirTarget ? resolved.rirLow : null,
+      rirHigh: resolved.hasRirTarget ? resolved.rirHigh : null,
+      unavailable: l.trainingUnavailable,
+    );
     final subLabel =
-        '${ex.muscleGroup} · ${resolved.workSets}×${resolved.repLow}–${resolved.repHigh} @ RIR $rirStr';
+        '${ex.muscleGroup} · $prescription${resolved.rirUnavailable ? ' · ${l.trainingRirUnavailable}' : ''}';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -309,6 +316,9 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         showRirPrompt: s.id == widget.rirPromptSetId,
         onTap: () => widget.onFocusSet(block, s),
         onRir: (v) => widget.onRir(block, s, v),
+        onClearRir: widget.onClearRir == null
+            ? null
+            : () => widget.onClearRir!(block, s),
       );
     }
     final onRemoveSet = widget.onRemoveSet;

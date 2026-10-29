@@ -176,7 +176,7 @@ Future<void> verifyTwoReopens(
     final reopened = await LocalStore.open(
       profile: profile,
       expectedProfileId: profile.profileId,
-      schema: domainSchemaRegistry(),
+      schema: prescriptionSchemaRegistry(),
     );
     try {
       expect(await reopened.inventory(), expected);

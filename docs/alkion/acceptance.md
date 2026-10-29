@@ -1,7 +1,7 @@
 ---
 app: alkion
 stage: development
-observed: 2026-10-28
+observed: 2026-10-29
 ---
 
 # Alkion integrated acceptance
@@ -136,6 +136,65 @@ inputs were removed. Cleanup confirmed that existing resources were untouched.
 See the [connection guide](animus-connection.md) for public setup and the generic
 live fixture contract. The R3 two-device and sender/replica conformance gates
 below remain UNRUN; this read-only connection slice does not satisfy them.
+
+## Flexible prescriptions and reusable workout days (2026-10-29)
+
+The owner-approved [plan](../plans/2026-10-28-flexible-training-prescriptions.md)
+and [contract](../specs/2026-10-28-flexible-training-prescriptions.md) are
+implemented and independently accepted at source `c0b086263c9ce958cf970f07957fa6f27453b19c`.
+Final integrated A1–A12 review PASS, no remaining findings within the recorded
+Linux/synthetic qualification scope.
+
+Exercise starting weight and reusable training defaults are optional under a
+collapsed Advanced section. Fixed reps render as `3×8`; ranges render as
+`3×8–12`. Profile training preferences initialize new items without rewriting
+saved prescriptions, open editors or workouts. RIR targets and observations stay
+separate: new actual working sets start without RIR, logging does not require it,
+and manual entry/clear preserves known zero and untouched older observations.
+Weekday assignment is optional through Add/Change/Remove.
+
+Saved workout days can be enabled or disabled independently. Inactive days remain
+editable and reusable in Plan; only active days enter fresh-workout choices and
+planned previews. Rotation retains the full saved ordering, including an inactive
+last-trained anchor. Committed launch eligibility rejects stale inactive choices;
+already admitted, minimized and historical workouts still resume and finish.
+
+Forward schema v4 preserves frozen v1–v3 migration evidence, adds explicit slot
+RIR policy and day activation, and retains atomic revision/action/outbox writes.
+Native backup/restore preserves these choices. Frozen legacy compatibility export
+refuses settings it cannot represent and directs the user to native backup.
+Unknown/partial source values remain evidence until explicit repair. Retried
+status actions preserve exact intent on uncertain outcomes; a definite revision
+rejection requires a new explicit action against the current day. Pending numeric
+input commits before mode changes, clear actions and disclosure collapse.
+
+| Check | Result and source |
+| --- | --- |
+| `make -C app test TEST=--concurrency=2` | PASS: 1,786 tests, 0 skipped, 483 s at `c0b0862`. |
+| `make -C app analyze` | PASS: 0 issues at `c0b0862`. |
+| `make -C app format` | PASS: 369 files, 0 changes at `c0b0862`. |
+| `make -C app build` | PASS: Linux bundle, 24 s at `c0b0862`; no application launch or installation. |
+| Driver, transfer and backup recovery tools | PASS at `7015bbb`; their exercised runtime inputs are unchanged by the later UI/test fixes. |
+| Selected current domain/workflow store recovery cases | PASS: 59 cases at `52981cc`, after correcting the probe's current-schema admission; historical migration probes stay frozen. |
+| Widget visual/layout/semantics checks | Batched dark/light 320/412dp and enlarged-text renders inspected, with one correction/confirmation pass; EN/DE/ES/IT layout and interaction assertions pass. |
+
+Delivery recovery correction: the old SQLite stack demonstrably left a failed
+prepared COMMIT statement holding WAL/SHM files after reported close. The scoped
+update uses sqlite_async 0.14.7, sqlite3_connection_pool 0.2.15, sqlite3 3.5.0
+(native SQLite 3.53.3), and required sqlite3_web 0.9.5; other locked packages stay
+unchanged. The close regression fails on the old stack and passes on the update.
+Both close regressions plus preference, domain and status cases pass (45 tests).
+Fresh native qualification passes: driver 13, store 59, transfer four crash
+boundaries plus split control, and backup 26 cases. Current producer receipts
+name the corrected stack; dated evidence remains unchanged. All admission,
+integrity and exact-intent checks remain in force. This proves the corrected
+close boundary; the original masked CI exception remains an inference, and
+combined-head CI must pass before merge.
+
+All fixtures and storage were disposable and synthetic. This acceptance does not
+establish physical Android/IME/back/lifecycle behavior: device interaction is
+**UNRUN** for this change. Owner-data transfer, synchronization, deployment,
+publication, signing and release are outside this qualification.
 
 ## UI refactor native adoption (2026-10-22)
 

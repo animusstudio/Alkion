@@ -369,7 +369,7 @@
       }
     }
   },
-  "dayEditorSlotHint": "Sets, reps & RIR are set per day — tap a row to tune this day's prescription.",
+  "dayEditorSlotHint": "Tap an exercise to change its sets and reps.",
   "dayEditorWarmupShort": "{count}wu",
   "@dayEditorWarmupShort": {
     "placeholders": {
@@ -432,7 +432,7 @@
   "exerciseEditorEquipment": "Equipment / machine",
   "exerciseEditorEquipmentPlaceholder": "e.g. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Compound lift",
-  "exerciseEditorCompoundHint": "Movement trait · drives rest & warmups",
+  "exerciseEditorCompoundHint": "Used for rest and weight suggestions.",
   "exerciseEditorStats": "Stats",
   "exerciseEditorStatsHint": "Tracked per exercise across every split.",
   "exerciseEditorPr": "Personal record",
@@ -1293,6 +1293,116 @@
   "bodyResume": "Resume rotation",
   "bodyRetryArtwork": "Reload artwork",
   "bodyLoadingArtwork": "Loading artwork…",
+  "trainingPreferences": "Training preferences",
+  "trainingPreferencesHint": "Defaults for new items. Saved plans and open editors stay as they are.",
+  "trainingRepEntry": "Rep entry",
+  "trainingFixedReps": "Fixed reps",
+  "trainingRepRange": "Rep range",
+  "trainingReps": "Reps",
+  "trainingRirControls": "RIR controls",
+  "trainingRirOff": "Off",
+  "trainingShow": "Show",
+  "trainingAdvanced": "Advanced",
+  "trainingAdvancedHint": "Optional defaults. You can adjust these in a training day.",
+  "trainingAdd": "Add {label}",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "Remove {label}",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Set a rep prescription",
+  "trainingRepairRir": "Set an RIR target",
+  "trainingRirTarget": "RIR target",
+  "trainingRirExplanation": "Repetitions in reserve: how many more reps you could do. A target is optional.",
+  "trainingMoreOptions": "More options",
+  "trainingAddRir": "Add RIR target",
+  "trainingRemoveRir": "Remove RIR target",
+  "trainingUseExerciseDefault": "Use exercise default",
+  "trainingUnavailable": "Prescription unavailable",
+  "trainingRirUnavailable": "RIR target unavailable",
+  "trainingAddWeekday": "Add weekday",
+  "trainingChangeWeekday": "Change weekday",
+  "trainingRemoveWeekday": "Remove weekday",
+  "trainingDisable": "Disable",
+  "trainingEnable": "Enable",
+  "trainingInactive": "Inactive ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Actions for {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Training day status saved",
+  "trainingSaving": "Saving…",
+  "trainingRetryStatus": "Status not saved. Retry the same change.",
+  "trainingRetry": "Retry",
+  "trainingCompatExportRefused": "This export cannot preserve RIR policies or inactive training days. Use Backup and restore to create a native backup that keeps them.",
+  "trainingDayUnavailable": "Day status unavailable",
+  "trainingDayEnabled": "Enabled {name}",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "Disabled {name}",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingWeekdayUnavailable": "Weekday unavailable",
+  "sessionClearRir": "Clear RIR",
+  "trainingOpenPlan": "Open Plan",
+  "trainingEnableDayInPlan": "Enable a day in Plan",
+  "trainingNoActiveDays": "Your saved days are not active. Review them in Plan or start a custom workout.",
+  "trainingStartUnavailable": "Workout unavailable",
+  "trainingDayStartUnavailable": "{name} is not available for a new workout. Open Plan to enable or review this day.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "The rep prescription for {name} is unavailable. Correct it in Plan before starting a new workout.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "The RIR policy for {name} is unsupported. Review it in Plan before starting a new workout.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "animusConnect": "Connect to Animus",
   "animusChangeAccount": "Change account",
   "animusRestore": "Check saved connection",
