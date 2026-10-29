@@ -145,8 +145,12 @@ class Exercise {
       // throws, and one bad row would break the whole catalog stream's map().
       baseWeightKg: double.tryParse(baseWt?.toString() ?? ''),
       plateStepKg: double.tryParse(plateStep?.toString() ?? '') ?? 2.5,
-      defaultRepLow: row['default_rep_low'] as int?,
-      defaultRepHigh: row['default_rep_high'] as int?,
+      defaultRepLow: row['default_rep_low'] is int
+          ? row['default_rep_low'] as int
+          : null,
+      defaultRepHigh: row['default_rep_high'] is int
+          ? row['default_rep_high'] as int
+          : null,
       defaultWarmupSets: row['default_warmup_sets'] as int?,
       defaultWorkingSets: row['default_working_sets'] as int?,
       defaultRirLow: row['default_rir_low'] is int
@@ -204,8 +208,12 @@ class Slot {
       position: row['position'] as int? ?? 0,
       workSets: row['target_working_sets'] as int?,
       warmupSets: row['target_warmup_sets'] as int?,
-      repLow: row['target_rep_low'] as int?,
-      repHigh: row['target_rep_high'] as int?,
+      repLow: row['target_rep_low'] is int
+          ? row['target_rep_low'] as int
+          : null,
+      repHigh: row['target_rep_high'] is int
+          ? row['target_rep_high'] as int
+          : null,
       rirLow: row['target_rir_low'] is int
           ? row['target_rir_low'] as int
           : null,

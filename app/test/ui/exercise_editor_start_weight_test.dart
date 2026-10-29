@@ -36,6 +36,13 @@ Future<void> _openEditor(WidgetTester tester, ScreenHarness harness) async {
   await scrollIntoView(
     tester,
     find.byType(ExerciseEditor),
+    find.text('Advanced'),
+  );
+  await tester.tap(find.text('Advanced'));
+  await tester.pump();
+  await scrollIntoView(
+    tester,
+    find.byType(ExerciseEditor),
     find.text('START WEIGHT'),
   );
 }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../data/models.dart';
@@ -24,6 +25,8 @@ typedef SlotValues = ({
   int? repHigh,
   int? rirLow,
   int? rirHigh,
+  String? rirPolicy,
+  String prescriptionEvidence,
 });
 
 /// What saving a [DayDraft] would write, compared by value.
@@ -83,6 +86,14 @@ DaySnapshot daySnapshot(DayDraft d) {
           repHigh: s.repHigh,
           rirLow: s.rirLow,
           rirHigh: s.rirHigh,
+          rirPolicy: s.rirPolicy,
+          prescriptionEvidence:
+              _prescriptionEvidence(s.rawFields, s.changedFields, {
+                'target_rep_low': s.repLow,
+                'target_rep_high': s.repHigh,
+                'target_rir_low': s.rirLow,
+                'target_rir_high': s.rirHigh,
+              }),
         ),
     ]),
   );
@@ -105,6 +116,7 @@ class ExerciseSnapshot {
     required this.rirLow,
     required this.rirHigh,
     required this.restSeconds,
+    this.prescriptionEvidence = '{}',
   });
 
   final String name;
@@ -123,6 +135,7 @@ class ExerciseSnapshot {
   final int? rirLow;
   final int? rirHigh;
   final int? restSeconds;
+  final String prescriptionEvidence;
 
   @override
   bool operator ==(Object other) =>
@@ -139,7 +152,8 @@ class ExerciseSnapshot {
       other.warmupSets == warmupSets &&
       other.rirLow == rirLow &&
       other.rirHigh == rirHigh &&
-      other.restSeconds == restSeconds;
+      other.restSeconds == restSeconds &&
+      other.prescriptionEvidence == prescriptionEvidence;
 
   @override
   int get hashCode => Object.hash(
@@ -156,6 +170,7 @@ class ExerciseSnapshot {
     rirLow,
     rirHigh,
     restSeconds,
+    prescriptionEvidence,
   );
 
   @override
@@ -167,7 +182,7 @@ class ExerciseSnapshot {
 }
 
 /// The exercise as Save would persist it: trimmed text (empty equipment is
-/// none), weights as kg strings, and a 0 rest as the default (null). The kg
+/// none), weights as kg strings, and nullable defaults without zero sentinels. The kg
 /// string is the stored form, so a weight stepped up and back down in lb is
 /// not a change.
 ExerciseSnapshot exerciseSnapshot(ExerciseDraft d) {
@@ -191,6 +206,25 @@ ExerciseSnapshot exerciseSnapshot(ExerciseDraft d) {
     warmupSets: d.defaultWarmupSets,
     rirLow: d.defaultRirLow,
     rirHigh: d.defaultRirHigh,
-    restSeconds: rest == 0 ? null : rest,
+    restSeconds: rest,
+    prescriptionEvidence: _prescriptionEvidence(d.rawFields, d.changedFields, {
+      'default_rep_low': d.defaultRepLow,
+      'default_rep_high': d.defaultRepHigh,
+      'default_rir_low': d.defaultRirLow,
+      'default_rir_high': d.defaultRirHigh,
+    }),
   );
 }
+
+// Unknown parsed bounds can both be null. Clearing their retained raw evidence
+// must still count as an edit, even when the display projection is unchanged.
+String _prescriptionEvidence(
+  Map<String, Object?> raw,
+  Set<String>? changed,
+  Map<String, Object?> values,
+) => jsonEncode({
+  for (final e in values.entries)
+    e.key: !(changed?.contains(e.key) ?? false) && raw.containsKey(e.key)
+        ? raw[e.key]
+        : e.value,
+});

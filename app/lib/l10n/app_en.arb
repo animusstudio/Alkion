@@ -1292,5 +1292,85 @@
   "bodyPause": "Pause rotation",
   "bodyResume": "Resume rotation",
   "bodyRetryArtwork": "Reload artwork",
-  "bodyLoadingArtwork": "Loading artwork…"
+  "bodyLoadingArtwork": "Loading artwork…",
+  "trainingPreferences": "Training preferences",
+  "trainingPreferencesHint": "Defaults for new items. Saved plans and open editors stay as they are.",
+  "trainingRepEntry": "Rep entry",
+  "trainingFixedReps": "Fixed reps",
+  "trainingRepRange": "Rep range",
+  "trainingReps": "Reps",
+  "trainingRirControls": "RIR controls",
+  "trainingRirOff": "Off",
+  "trainingShow": "Show",
+  "trainingAdvanced": "Advanced",
+  "trainingAdvancedHint": "Optional defaults. You can adjust these in a training day.",
+  "trainingAdd": "Add {label}",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "Remove {label}",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Set a rep prescription",
+  "trainingRepairRir": "Set an RIR target",
+  "trainingRirTarget": "RIR target",
+  "trainingRirExplanation": "Repetitions in reserve: how many more reps you could do. A target is optional.",
+  "trainingMoreOptions": "More options",
+  "trainingAddRir": "Add RIR target",
+  "trainingRemoveRir": "Remove RIR target",
+  "trainingUseExerciseDefault": "Use exercise default",
+  "trainingUnavailable": "Prescription unavailable",
+  "trainingRirUnavailable": "RIR target unavailable",
+  "trainingAddWeekday": "Add weekday",
+  "trainingChangeWeekday": "Change weekday",
+  "trainingRemoveWeekday": "Remove weekday",
+  "trainingDisable": "Disable",
+  "trainingEnable": "Enable",
+  "trainingInactive": "Inactive ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Actions for {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Training day status saved",
+  "trainingSaving": "Saving…",
+  "trainingRetryStatus": "Status not saved. Retry the same change.",
+  "trainingRetry": "Retry",
+  "trainingCompatExportRefused": "This export cannot preserve RIR policies or inactive training days. Use Backup and restore to create a native backup that keeps them.",
+  "trainingDayUnavailable": "Day status unavailable",
+  "trainingDayEnabled": "Enabled {name}",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "Disabled {name}",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

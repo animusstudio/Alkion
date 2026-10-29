@@ -659,5 +659,85 @@
   "bodyPause": "Drehung pausieren",
   "bodyResume": "Drehung fortsetzen",
   "bodyRetryArtwork": "Darstellung neu laden",
-  "bodyLoadingArtwork": "Darstellung wird geladen…"
+  "bodyLoadingArtwork": "Darstellung wird geladen…",
+  "trainingPreferences": "Trainingseinstellungen",
+  "trainingPreferencesHint": "Vorgaben für neue Einträge. Gespeicherte Pläne und offene Editoren bleiben unverändert.",
+  "trainingRepEntry": "Wiederholungseingabe",
+  "trainingFixedReps": "Feste Wiederholungen",
+  "trainingRepRange": "Wiederholungsbereich",
+  "trainingReps": "Wiederholungen",
+  "trainingRirControls": "RIR-Eingabe",
+  "trainingRirOff": "Aus",
+  "trainingShow": "Anzeigen",
+  "trainingAdvanced": "Erweitert",
+  "trainingAdvancedHint": "Optionale Vorgaben. Im Trainingstag anpassbar.",
+  "trainingAdd": "{label} hinzufügen",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "{label} entfernen",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Wiederholungen festlegen",
+  "trainingRepairRir": "RIR-Ziel festlegen",
+  "trainingRirTarget": "RIR-Ziel",
+  "trainingRirExplanation": "Wiederholungen in Reserve: wie viele du noch schaffen würdest. Ein Ziel ist optional.",
+  "trainingMoreOptions": "Weitere Optionen",
+  "trainingAddRir": "RIR-Ziel hinzufügen",
+  "trainingRemoveRir": "RIR-Ziel entfernen",
+  "trainingUseExerciseDefault": "Übungsvorgabe verwenden",
+  "trainingUnavailable": "Vorgabe nicht verfügbar",
+  "trainingRirUnavailable": "RIR-Ziel nicht verfügbar",
+  "trainingAddWeekday": "Wochentag hinzufügen",
+  "trainingChangeWeekday": "Wochentag ändern",
+  "trainingRemoveWeekday": "Wochentag entfernen",
+  "trainingDisable": "Deaktivieren",
+  "trainingEnable": "Aktivieren",
+  "trainingInactive": "Inaktiv ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Aktionen für {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Status des Trainingstags gespeichert",
+  "trainingSaving": "Wird gespeichert…",
+  "trainingRetryStatus": "Status nicht gespeichert. Änderung erneut versuchen.",
+  "trainingRetry": "Erneut versuchen",
+  "trainingCompatExportRefused": "Dieser Export kann RIR-Regeln oder inaktive Trainingstage nicht erhalten. Erstelle unter Sicherung und Wiederherstellung eine native Sicherung.",
+  "trainingDayUnavailable": "Status nicht verfügbar",
+  "trainingDayEnabled": "{name} aktiviert",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "{name} deaktiviert",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

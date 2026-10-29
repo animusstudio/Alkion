@@ -127,10 +127,10 @@ void main() {
       );
     });
 
-    test('a rest of 0 equals the default', () {
+    test('a rest of 0 remains distinct from absent', () {
       expect(
         exerciseSnapshot(_exercise(restSeconds: 0)),
-        exerciseSnapshot(_exercise()),
+        isNot(exerciseSnapshot(_exercise())),
       );
       expect(
         exerciseSnapshot(_exercise(restSeconds: 90)),

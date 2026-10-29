@@ -32,6 +32,8 @@ import '../widgets/stepper.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import 'alkion_recovery/recovery_screen.dart';
+import 'training_preferences_sheet.dart';
+import 'export_failure.dart';
 
 // ── Group + Row helpers ─────────────────────────────────────────────────────
 
@@ -693,9 +695,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await showWDialog<bool>(
       context,
       title: l.exportFailedTitle,
-      message: l.alkionDocumentFailureMessage(
-        e is DocumentException ? e.category : '$e',
-      ),
+      message:
+          compatibilityExportRefusalMessage(l, e) ??
+          l.alkionDocumentFailureMessage(
+            e is DocumentException ? e.category : '$e',
+          ),
       actions: [WDialogAction(label: l.commonOk, value: true)],
     );
   }
@@ -893,6 +897,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: tokens.faint,
                         ),
                         onTap: () => _pickLanguage(context, settings),
+                      ),
+                    ],
+                  ),
+
+                  _Group(
+                    label: l.trainingPreferences,
+                    children: [
+                      _Row(
+                        icon: WIcons.gear,
+                        title: l.trainingPreferences,
+                        sub: l.trainingPreferencesHint,
+                        right: Icon(
+                          WIcons.chevron,
+                          size: 16,
+                          color: tokens.faint,
+                        ),
+                        onTap: () =>
+                            showTrainingPreferencesSheet(context, settings),
                       ),
                     ],
                   ),

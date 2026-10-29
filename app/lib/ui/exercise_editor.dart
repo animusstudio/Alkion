@@ -16,6 +16,8 @@ import '../units/unit_format.dart';
 import '../units/unit_service.dart';
 import '../widgets/delete_button.dart';
 import '../widgets/plan_form.dart';
+import '../widgets/prescription_controls.dart';
+import '../util/prescription_format.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
@@ -69,18 +71,19 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
   double _plateStepKg = 2.5;
 
   // Prescription steppers
-  int _repLow = 8;
-  int _repHigh = 12;
-  int _workSets = 3;
-  int _warmupSets = 0;
+  int? _repLow;
+  int? _repHigh;
+  int? _workSets;
+  int? _warmupSets;
+  bool _advanced = false;
+  bool _hasBaseWeight = false;
 
-  // Default RIR; null = not set. The steppers show a null bound as 1, and
-  // only a touch writes both bounds, so an untouched editor saves nothing new.
+  // Optional defaults retain absent/invalid evidence until an explicit edit.
   int? _rirLow;
   int? _rirHigh;
 
-  // Per-exercise rest (seconds); 0 = "Default" = null (use the global default).
-  int _restSeconds = 0;
+  // Per-exercise rest in seconds. Null inherits; zero remains a saved value.
+  int? _restSeconds;
 
   // PR (kg, 0 = no PR); refresh independently of the editable draft.
   double _prKg = 0;
@@ -143,7 +146,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
     final unit = context.read<UnitService>().unit;
 
     if (widget.id == null) {
-      // New exercise — start with defaults.
+      // New exercise — identity only; training defaults remain absent.
       final stepDisplay = UnitService.fromKg(_plateStepKg, unit);
       if (mounted) {
         setState(() {
@@ -188,13 +191,6 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
         ? null
         : ex.muscleGroup;
 
-    // A half-set RIR range counts as not set; an inverted one (old data) is
-    // loaded in order.
-    final rirSet = ex.defaultRirLow != null && ex.defaultRirHigh != null;
-    final rir = rirSet
-        ? rirOrdered(ex.defaultRirLow!, ex.defaultRirHigh!)
-        : null;
-
     setState(() {
       _original = ex;
       _deleteBases = deleteBases;
@@ -206,13 +202,15 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       _plateStepKg = plateStep;
       _baseWeightDisplay = baseDisplay;
       _stepDisplay = stepDisplay;
-      _repLow = ex.defaultRepLow ?? 8;
-      _repHigh = ex.defaultRepHigh ?? 12;
-      _workSets = ex.defaultWorkingSets ?? 3;
-      _warmupSets = ex.defaultWarmupSets ?? 0;
-      _restSeconds = ex.defaultRestSeconds ?? 0;
-      _rirLow = rir?.low;
-      _rirHigh = rir?.high;
+      _hasBaseWeight =
+          ex.baseWeightEvidence?.raw != null || ex.baseWeightKg != null;
+      _repLow = ex.defaultRepLow;
+      _repHigh = ex.defaultRepHigh;
+      _workSets = ex.defaultWorkingSets;
+      _warmupSets = ex.defaultWarmupSets;
+      _restSeconds = ex.defaultRestSeconds;
+      _rirLow = ex.defaultRirLow;
+      _rirHigh = ex.defaultRirHigh;
       _extraMuscle = extra;
       _loadedDraft = _currentDraft();
       _baseline = exerciseSnapshot(_loadedDraft!);
@@ -245,10 +243,10 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
     // is still the old one, until the next build converts the value.
     final unit = _lastUnit ?? context.read<UnitService>().unit;
 
-    // Convert display weight back to kg; 0 → null (write NULL, not 0.00).
-    final baseKg = _baseWeightDisplay <= 0
-        ? null
-        : UnitService.toKg(_baseWeightDisplay, unit);
+    // Presence is explicit: a saved zero is distinct from an absent weight.
+    final baseKg = _hasBaseWeight
+        ? UnitService.toKg(_baseWeightDisplay, unit)
+        : null;
 
     final draft = ExerciseDraft(
       name: _nameCtrl.text.trim(),
@@ -263,7 +261,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       defaultWorkingSets: _workSets,
       defaultRirLow: _rirLow,
       defaultRirHigh: _rirHigh,
-      defaultRestSeconds: _restSeconds == 0 ? null : _restSeconds,
+      defaultRestSeconds: _restSeconds,
       localRevision: _original?.localRevision,
       rawFields: _original?.rawFields ?? const {},
       originalBaseWeightEvidence: _original?.baseWeightEvidence,
@@ -477,6 +475,94 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       _pendingSave != null ||
       _pendingDelete != null;
 
+  bool _retained(String key) =>
+      !_touched.contains(key) && _original?.rawFields[key] != null;
+
+  void _touchReps() => _touched.addAll({'default_rep_low', 'default_rep_high'});
+  void _touchRir() => _touched.addAll({'default_rir_low', 'default_rir_high'});
+
+  Widget _optional(
+    String label,
+    bool present,
+    VoidCallback add,
+    VoidCallback clear,
+    Widget child,
+  ) {
+    final l = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (present) ...[
+          child,
+          TrainingAction(
+            l.trainingRemove(label),
+            icon: WIcons.minus,
+            onTap: _controlsLocked ? null : () => setState(clear),
+          ),
+        ] else
+          TrainingAction(
+            l.trainingAdd(label),
+            onTap: _controlsLocked ? null : () => setState(add),
+          ),
+      ],
+    );
+  }
+
+  Widget _optionalNumber(
+    String label,
+    int? value,
+    int initial,
+    int min,
+    ValueChanged<int?> change,
+  ) => _optional(
+    label,
+    value != null,
+    () => change(initial),
+    () => change(null),
+    Field(
+      label: label,
+      child: WStepper(
+        value: (value ?? initial).toDouble(),
+        step: 1,
+        format: (v) => v.round().toString(),
+        min: min.toDouble(),
+        max: 99,
+        editable: !_controlsLocked,
+        allowDecimal: false,
+        semanticLabel: label,
+        onChanged: (v) {
+          if (_controlsLocked) return;
+          setState(() => change(v.round()));
+        },
+      ),
+    ),
+  );
+
+  Widget _rirField(String label, int value, bool low) => Field(
+    label: label,
+    child: WStepper(
+      value: value.toDouble(),
+      step: 1,
+      format: (v) => v.round().toString(),
+      min: rirMin.toDouble(),
+      max: rirMax.toDouble(),
+      editable: !_controlsLocked,
+      allowDecimal: false,
+      semanticLabel: label,
+      onChanged: (v) {
+        if (_controlsLocked) return;
+        final r = low
+            ? rirWithLow(_rirLow!, _rirHigh!, v.round())
+            : rirWithHigh(_rirLow!, _rirHigh!, v.round());
+        setState(() {
+          _rirLow = r.low;
+          _rirHigh = r.high;
+          _touchRir();
+        });
+      },
+    ),
+  );
+
   // ── build ──────────────────────────────────────────────────────────────────
 
   @override
@@ -590,9 +676,6 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                           if (_controlsLocked) return;
                           setState(() {
                             _compound = v;
-                            // Turning ON seeds defaultWarmupSets = 2 if null/0.
-                            if (v && _warmupSets == 0) _warmupSets = 2;
-                            // Leave untouched when toggling off.
                           });
                         },
                       ),
@@ -681,223 +764,181 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                   ),
                 ),
 
-                // Start-weight stepper in DISPLAY units, read like a live set's
-                // weight. step = fromKg(plateStepKg, unit) — NOT raw plateStepKg.
-                // No parseDisplay: the value is already in display units.
-                Field(
-                  label: l.exerciseEditorStartWeight,
-                  hint: l.exerciseEditorStartWeightHint,
-                  child: WStepper(
-                    value: _baseWeightDisplay,
-                    step: _stepDisplay,
-                    format: (v) => '${fmtLoad(v, units.unit)}${units.uLabel}',
-                    onChanged: (v) {
-                      if (_controlsLocked) return;
+                TrainingDisclosure(
+                  label: l.trainingAdvanced,
+                  expanded: _advanced,
+                  hint: l.trainingAdvancedHint,
+                  onTap: _controlsLocked
+                      ? null
+                      : () => setState(() => _advanced = !_advanced),
+                ),
+                if (_advanced) ...[
+                  _optional(
+                    l.exerciseEditorStartWeight,
+                    _hasBaseWeight,
+                    () {
+                      _hasBaseWeight = true;
                       _touched.add('base_weight_kg');
-                      setState(() => _baseWeightDisplay = v < 0 ? 0 : v);
                     },
-                    editable: !_controlsLocked,
-                    formatForEdit: (v) => fmtLoad(v, units.unit),
-                    min: 0,
-                    semanticLabel: l.exerciseEditorStartWeight,
+                    () {
+                      _hasBaseWeight = false;
+                      _touched.add('base_weight_kg');
+                    },
+                    Field(
+                      label: l.exerciseEditorStartWeight,
+                      hint: l.exerciseEditorStartWeightHint,
+                      child: WStepper(
+                        value: _baseWeightDisplay,
+                        step: _stepDisplay,
+                        format: (v) =>
+                            '${fmtLoad(v, units.unit)}${units.uLabel}',
+                        formatForEdit: (v) => fmtLoad(v, units.unit),
+                        min: 0,
+                        editable: !_controlsLocked,
+                        semanticLabel: l.exerciseEditorStartWeight,
+                        onChanged: (v) {
+                          if (_controlsLocked) return;
+                          setState(() {
+                            _hasBaseWeight = true;
+                            _baseWeightDisplay = v;
+                            _touched.add('base_weight_kg');
+                          });
+                        },
+                      ),
+                    ),
                   ),
-                ),
-
-                // ── Default prescription ───────────────────────────────────────────
-                PlanSection(
-                  l.exerciseEditorDefaultPrescription,
-                  hint: l.exerciseEditorDefaultPrescriptionHint,
-                ),
-
-                // Rep low + Rep high
-                Row(
-                  children: [
-                    Expanded(
-                      child: Field(
-                        label: l.dayEditorRepLow,
-                        child: WStepper(
-                          value: _repLow.toDouble(),
-                          step: 1,
-                          format: (v) => v.round().toString(),
-                          onChanged: (v) {
-                            if (_controlsLocked) return;
-                            final low = v.round().clamp(1, 99);
-                            setState(() {
-                              _repLow = low;
-                              if (_repHigh < low) _repHigh = low;
-                            });
-                          },
-                          editable: !_controlsLocked,
-                          allowDecimal: false,
-                          min: 1,
-                          max: 99,
-                          semanticLabel: l.dayEditorRepLow,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Field(
-                        label: l.dayEditorRepHigh,
-                        child: WStepper(
-                          value: _repHigh.toDouble(),
-                          step: 1,
-                          format: (v) => v.round().toString(),
-                          onChanged: (v) {
-                            if (_controlsLocked) return;
-                            final high = v.round().clamp(_repLow, 99);
-                            setState(() => _repHigh = high);
-                          },
-                          editable: !_controlsLocked,
-                          allowDecimal: false,
-                          min: _repLow.toDouble(),
-                          max: 99,
-                          semanticLabel: l.dayEditorRepHigh,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Working sets + Warmups
-                Row(
-                  children: [
-                    Expanded(
-                      child: Field(
-                        label: l.dayEditorWorkingSets,
-                        child: WStepper(
-                          value: _workSets.toDouble(),
-                          step: 1,
-                          format: (v) => v.round().toString(),
-                          onChanged: (v) {
-                            if (_controlsLocked) return;
-                            setState(() => _workSets = v.round().clamp(1, 99));
-                          },
-                          editable: !_controlsLocked,
-                          allowDecimal: false,
-                          min: 1,
-                          max: 99,
-                          semanticLabel: l.dayEditorWorkingSets,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Field(
-                        label: l.dayEditorWarmups,
-                        child: WStepper(
-                          value: _warmupSets.toDouble(),
-                          step: 1,
-                          format: (v) => v.round().toString(),
-                          onChanged: (v) {
-                            if (_controlsLocked) return;
-                            setState(
-                              () => _warmupSets = v.round().clamp(0, 99),
-                            );
-                          },
-                          editable: !_controlsLocked,
-                          allowDecimal: false,
-                          min: 0,
-                          max: 99,
-                          semanticLabel: l.dayEditorWarmups,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Per-exercise rest — 0 = "Default" = inherit the global rest default.
-                Field(
-                  label: l.exerciseEditorRest,
-                  hint: l.exerciseEditorRestHint,
-                  child: WStepper(
-                    value: _restSeconds.toDouble(),
-                    step: 15,
-                    format: (v) => v == 0
-                        ? l.exerciseEditorRestDefault
-                        : l.exerciseEditorRestSeconds(v.round()),
-                    onChanged: (v) => _pendingSave != null
-                        ? null
-                        : setState(
-                            () => _restSeconds = v.round() < 0 ? 0 : v.round(),
+                  PlanSection(
+                    l.exerciseEditorDefaultPrescription,
+                    hint: l.trainingAdvancedHint,
+                  ),
+                  _optional(
+                    l.trainingReps,
+                    _repLow != null ||
+                        _repHigh != null ||
+                        _retained('default_rep_low') ||
+                        _retained('default_rep_high'),
+                    () {
+                      _repLow = 8;
+                      _repHigh = 8;
+                      _touchReps();
+                    },
+                    () {
+                      _repLow = null;
+                      _repHigh = null;
+                      _touchReps();
+                    },
+                    qualifiedRepPair(_repLow, _repHigh) == null
+                        ? TrainingAction(
+                            l.trainingRepairReps,
+                            onTap: _controlsLocked
+                                ? null
+                                : () => setState(() {
+                                    _repLow = 8;
+                                    _repHigh = 8;
+                                    _touchReps();
+                                  }),
+                          )
+                        : RepControls(
+                            low: _repLow ?? 8,
+                            high: _repHigh ?? 8,
+                            enabled: !_controlsLocked,
+                            onChanged: (a, b) => setState(() {
+                              _repLow = a;
+                              _repHigh = b;
+                              _touchReps();
+                            }),
                           ),
-                    editable: !_controlsLocked,
-                    allowDecimal: false,
-                    min: 0,
-                    emptyValue: 0,
-                    formatForEdit: (v) => v == 0 ? '' : v.round().toString(),
-                    semanticLabel: l.exerciseEditorRest,
                   ),
-                ),
-
-                // RIR low + RIR high — stepping either past the other drags it along.
-                Row(
-                  children: [
-                    Expanded(
-                      child: Field(
-                        label: l.dayEditorRirLow,
-                        child: WStepper(
-                          value: (_rirLow ?? 1).toDouble(),
-                          step: 1,
-                          format: (v) => v.round().toString(),
-                          onChanged: (v) {
-                            if (_controlsLocked) return;
-                            _touched.addAll({
-                              'default_rir_low',
-                              'default_rir_high',
-                            });
-                            final r = rirWithLow(
-                              _rirLow ?? 1,
-                              _rirHigh ?? 1,
-                              v.round(),
-                            );
-                            setState(() {
-                              _rirLow = r.low;
-                              _rirHigh = r.high;
-                            });
-                          },
-                          editable: !_controlsLocked,
-                          allowDecimal: false,
-                          min: rirMin.toDouble(),
-                          max: rirMax.toDouble(),
-                          semanticLabel: l.dayEditorRirLow,
-                        ),
+                  _optionalNumber(l.dayEditorWorkingSets, _workSets, 3, 1, (v) {
+                    _workSets = v;
+                    _touched.add('default_working_sets');
+                  }),
+                  _optionalNumber(l.dayEditorWarmups, _warmupSets, 0, 0, (v) {
+                    _warmupSets = v;
+                    _touched.add('default_warmup_sets');
+                  }),
+                  _optional(
+                    l.exerciseEditorRest,
+                    _restSeconds != null,
+                    () {
+                      _restSeconds = 90;
+                      _touched.add('default_rest_seconds');
+                    },
+                    () {
+                      _restSeconds = null;
+                      _touched.add('default_rest_seconds');
+                    },
+                    Field(
+                      label: l.exerciseEditorRest,
+                      hint: l.exerciseEditorRestHint,
+                      child: WStepper(
+                        value: (_restSeconds ?? 90).toDouble(),
+                        step: 15,
+                        format: (v) => l.exerciseEditorRestSeconds(v.round()),
+                        formatForEdit: (v) => v.round().toString(),
+                        onChanged: (v) {
+                          if (_controlsLocked) return;
+                          setState(() {
+                            _restSeconds = v.round();
+                            _touched.add('default_rest_seconds');
+                          });
+                        },
+                        min: 0,
+                        editable: !_controlsLocked,
+                        allowDecimal: false,
+                        semanticLabel: l.exerciseEditorRest,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Field(
-                        label: l.dayEditorRirHigh,
-                        child: WStepper(
-                          value: (_rirHigh ?? 1).toDouble(),
-                          step: 1,
-                          format: (v) => v.round().toString(),
-                          onChanged: (v) {
-                            if (_controlsLocked) return;
-                            _touched.addAll({
-                              'default_rir_low',
-                              'default_rir_high',
-                            });
-                            final r = rirWithHigh(
-                              _rirLow ?? 1,
-                              _rirHigh ?? 1,
-                              v.round(),
-                            );
-                            setState(() {
-                              _rirLow = r.low;
-                              _rirHigh = r.high;
-                            });
-                          },
-                          editable: !_controlsLocked,
-                          allowDecimal: false,
-                          min: rirMin.toDouble(),
-                          max: rirMax.toDouble(),
-                          semanticLabel: l.dayEditorRirHigh,
+                  ),
+                  _optional(
+                    l.trainingRirTarget,
+                    _rirLow != null ||
+                        _rirHigh != null ||
+                        _retained('default_rir_low') ||
+                        _retained('default_rir_high'),
+                    () {
+                      _rirLow = 1;
+                      _rirHigh = 1;
+                      _touchRir();
+                    },
+                    () {
+                      _rirLow = null;
+                      _rirHigh = null;
+                      _touchRir();
+                    },
+                    Column(
+                      children: [
+                        Text(
+                          l.trainingRirExplanation,
+                          style: WorkoutType.body(size: 12, color: tokens.dim),
                         ),
-                      ),
+                        if (_rirLow != null &&
+                            _rirHigh != null &&
+                            _rirLow! >= rirMin &&
+                            _rirHigh! <= rirMax &&
+                            _rirLow! <= _rirHigh!) ...[
+                          _rirField(l.dayEditorRirLow, _rirLow!, true),
+                          _rirField(l.dayEditorRirHigh, _rirHigh!, false),
+                        ] else ...[
+                          Text(
+                            l.trainingRirUnavailable,
+                            style: WorkoutType.body(color: tokens.dim),
+                          ),
+                          TrainingAction(
+                            l.trainingRepairRir,
+                            onTap: _controlsLocked
+                                ? null
+                                : () => setState(() {
+                                    _rirLow = 1;
+                                    _rirHigh = 1;
+                                    _touchRir();
+                                  }),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ],
             ),
           ),

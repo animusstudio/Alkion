@@ -659,5 +659,85 @@
   "bodyPause": "Pausar rotación",
   "bodyResume": "Reanudar rotación",
   "bodyRetryArtwork": "Recargar ilustración",
-  "bodyLoadingArtwork": "Cargando ilustración…"
+  "bodyLoadingArtwork": "Cargando ilustración…",
+  "trainingPreferences": "Preferencias de entrenamiento",
+  "trainingPreferencesHint": "Valores para elementos nuevos. Los planes guardados y editores abiertos se mantienen.",
+  "trainingRepEntry": "Entrada de repeticiones",
+  "trainingFixedReps": "Repeticiones fijas",
+  "trainingRepRange": "Rango de repeticiones",
+  "trainingReps": "Repeticiones",
+  "trainingRirControls": "Controles de RIR",
+  "trainingRirOff": "Desactivado",
+  "trainingShow": "Mostrar",
+  "trainingAdvanced": "Avanzado",
+  "trainingAdvancedHint": "Valores opcionales. Puedes ajustarlos en un día de entrenamiento.",
+  "trainingAdd": "Añadir {label}",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "Quitar {label}",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Definir repeticiones",
+  "trainingRepairRir": "Definir objetivo de RIR",
+  "trainingRirTarget": "Objetivo de RIR",
+  "trainingRirExplanation": "Repeticiones en reserva: cuántas más podrías hacer. El objetivo es opcional.",
+  "trainingMoreOptions": "Más opciones",
+  "trainingAddRir": "Añadir objetivo de RIR",
+  "trainingRemoveRir": "Quitar objetivo de RIR",
+  "trainingUseExerciseDefault": "Usar valor del ejercicio",
+  "trainingUnavailable": "Prescripción no disponible",
+  "trainingRirUnavailable": "Objetivo de RIR no disponible",
+  "trainingAddWeekday": "Añadir día de la semana",
+  "trainingChangeWeekday": "Cambiar día de la semana",
+  "trainingRemoveWeekday": "Quitar día de la semana",
+  "trainingDisable": "Desactivar",
+  "trainingEnable": "Activar",
+  "trainingInactive": "Inactivos ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Acciones para {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Estado del día guardado",
+  "trainingSaving": "Guardando…",
+  "trainingRetryStatus": "Estado sin guardar. Reintenta el mismo cambio.",
+  "trainingRetry": "Reintentar",
+  "trainingCompatExportRefused": "Esta exportación no conserva las políticas de RIR ni los días inactivos. Crea una copia nativa en Copia de seguridad y restauración.",
+  "trainingDayUnavailable": "Estado del día no disponible",
+  "trainingDayEnabled": "{name} activado",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "{name} desactivado",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }
