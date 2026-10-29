@@ -6,6 +6,12 @@ observed: 2026-10-28
 
 # Alkion integrated acceptance
 
+## First-use visual polish — 2026-10-29
+
+The [approved plan](../plans/2026-10-29-entry-visual-polish.md) is complete at `da3a7392f8a6c88908fb4eb256e3828602deae95`: a large bounded character-logo opening hands off to concise entry choices, signup is one full actionable sentence, and local setup uses deliberate spacing. Tap skip, reduced motion, lifecycle and hidden keyboard-focus handling are covered. Existing-profile bypass, auth, store/recovery and native resume behavior remain unchanged.
+53 focused regressions, five final opening/visual checks, six post-fix opening tests, analyzer (zero issues), named formatting and final debug/optimized ARM64 APK builds PASS. These counts overlap. Independent source/visual review and keyboard fix-only recheck PASS with no remaining findings. Twenty-two actual synthetic Flutter captures cover both themes, opening/entry/local/unavailable and 320dp/200% German layouts.
+Optimized Dev APK SHA256 `a461c882fe9efae518d55e5964337ac2d25de9b03d6293a90bc6dfa9e522f9ae` was installed in place and opened on Nothing A024, with the matching development signer, four entry frames and six private body assets verified. No uninstall, data clear, owner-store/UI inspection, provider change or public push. Physical animation/performance was not measured; future artwork remains deferred.
+
 ## Animus sign-in and optional offline onboarding — 2026-10-28
 
 The [approved onboarding plan](../plans/2026-10-28-animus-login-onboarding.md)

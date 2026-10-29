@@ -1,7 +1,7 @@
 # Alkion first-use visual polish
 
 Date: 2026-10-29. Lane: standard, presentation and decorative motion only.
-Status: Approved by owner on 2026-10-29; implementation in progress.
+Status: Done; owner-approved implementation reviewed and installed on 2026-10-29.
 Base: d3a1e1c, including the reviewed Android resume correction.
 
 ## Outcome
@@ -103,5 +103,8 @@ No campaign suite, provider/database fixture or device-rendering claim.
 
 ## State
 
-Owner approved implementation and phone installation on 2026-10-29.
-Next: T1 implementation/review, bounded visual confirmation and phone update.
+T1 complete at `da3a7392f8a6c88908fb4eb256e3828602deae95`; independent A1–A6 review PASS, no remaining findings.
+Focused regressions: 53 PASS; final visual/opening check: 5 PASS; keyboard fix: 6 opening tests PASS; full/scoped analyzer: zero issues; named formatting and final debug/optimized ARM64 builds PASS.
+One corrected synthetic capture batch (22 actual Flutter images) confirms dark/light, opening/entry/local/unavailable and 320dp/200% German layouts. Keyboard correction changes no pixels; prior captures reused.
+APK SHA256 `a461c882fe9efae518d55e5964337ac2d25de9b03d6293a90bc6dfa9e522f9ae` installed in place and opened on Nothing A024. Signer, four frames and six body assets verified; no data clear, uninstall or owner-store/UI inspection.
+Existing profiles still bypass first-use. No physical animation/performance claim, new artwork, provider change or public push. No required work remains in this plan.
