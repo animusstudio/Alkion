@@ -160,6 +160,11 @@ android {
     if (isolatedCatalogTrial) {
         sourceSets.getByName("debug").manifest.srcFile("src/catalogTrial/AndroidManifest.xml")
         sourceSets.getByName("main").assets.srcDir(catalogTrialAssets)
+        // Exact JNI hash admission compares the generated and packaged bytes.
+        packaging.jniLibs.keepDebugSymbols.addAll(setOf(
+            "**/libsqlite3.so",
+            "**/libsqlite3_connection_pool.so",
+        ))
     }
     // Generated private inputs are included only by explicit local build opt-in.
     // Default/public builds contain the generic runtime and truthful absent-art UI.

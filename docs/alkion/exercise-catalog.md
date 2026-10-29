@@ -96,7 +96,9 @@ normal debug network permission. Build output is
 Before copying that named artifact, the mandatory APK guard verifies the selected
 ABI's Flutter, SQLite and connection-pool ELF64 machine headers, the native-asset
 loader mappings, and exact SQLite/pool hashes against the current generated
-Flutter JNI copies. Other-ABI plugin libraries may legitimately coexist. An
+Flutter JNI copies. Only the isolated catalog debug build keeps SQLite/pool
+symbols so AGP stripping cannot change the bytes admitted by that exact hash
+check. Other-ABI plugin libraries may legitimately coexist. An
 architecture switch exposed stale AGP JNI merge outputs despite a successful
 build; a matching manifest alone does not qualify the packaged libraries. Do not
 run host tests and Android builds concurrently in the same checkout. A guard
