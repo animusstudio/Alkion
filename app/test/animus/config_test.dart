@@ -48,7 +48,7 @@ void main() {
         for (final value in [
           'http://api.example.test',
           'http://127.0.0.1:8080',
-          'https://user:password@example.test',
+          'https://user:password@example.com',
           'https://example.test?query=1',
           'https://example.test#fragment',
           'https://example.test:0',
