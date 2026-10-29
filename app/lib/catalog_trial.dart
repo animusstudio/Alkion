@@ -117,7 +117,11 @@ class _CatalogTrialBootstrapState extends State<CatalogTrialBootstrap> {
         _runtime = runtime;
         _trial = CatalogTrialState(bundle);
       });
-    } catch (_) {
+    } catch (error, stack) {
+      if (kDebugMode) {
+        debugPrint('Catalog trial runtime start failed: $error');
+        debugPrintStack(stackTrace: stack);
+      }
       await runtime?.close();
       if (temporary != null) await temporary.delete(recursive: true);
       if (mounted) setState(() => _failed = true);
