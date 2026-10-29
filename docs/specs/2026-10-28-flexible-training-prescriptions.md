@@ -1,8 +1,8 @@
 # Flexible training prescriptions
 
-Date: 2026-10-28. Status: Proposed. Lane: Full, because explicit RIR opt-out
+Date: 2026-10-28. Status: Approved by owner on 2026-10-29. Lane: Full, because explicit RIR opt-out
 needs persisted semantics and forward-compatible store/recovery handling.
-Implementation is gated on owner approval of the [plan](../plans/2026-10-28-flexible-training-prescriptions.md).
+Implementation follows the approved [plan](../plans/2026-10-28-flexible-training-prescriptions.md).
 Boundaries: [repository guidance](../../AGENTS.md).
 
 ## Outcome and observed behavior

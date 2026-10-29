@@ -1,6 +1,6 @@
 # Flexible training prescriptions
 
-Date: 2026-10-28. Lane: Full. Status: **Proposed; awaiting owner approval.**
+Date: 2026-10-28. Lane: Full. Status: **Approved by owner on 2026-10-29; implementation in progress.**
 Base: `29f136a`. Branch: `feat/training-prescriptions-20261028`.
 Contract: [specification](../specs/2026-10-28-flexible-training-prescriptions.md).
 Boundary: [repository guidance](../../AGENTS.md).
@@ -119,7 +119,8 @@ change receive independent review, with fix-diff rechecks only.
   Owner added enable/disable for saved workout days. Activation amendment review
   PASS, with known-day reimport explicitly retaining later local Disable after
   reviewer clarification; fix recheck PASS, no remaining findings.
-- T1–T4: Not started. No runtime files changed.
+- Owner approval: "Ok approved", 2026-10-29, covers the final A1–A12 scope.
+- T1: In progress. T2–T4: Not started.
 - Checks: original, preferences and activation proposal Markdown references/
   whitespace and diff checks PASS. No runtime files changed.
-- Next: obtain owner approval of this concrete scope before T1.
+- Next: implement and independently review T1, then proceed through T2–T4.
