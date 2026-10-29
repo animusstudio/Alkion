@@ -128,6 +128,6 @@ change receive independent review, with fix-diff rechecks only.
 - T1 checks at `870b790`: offline locked get PASS; explicit owned formatting PASS;
   analyze no issues; focused migration/domain/transfer/preferences/draft tests
   68/68 PASS. Prior affected-suite fixture mismatches were corrected and rerun.
-- Draft fix at `35b5af1`: `make -C app test TEST='--concurrency=2 test/session/draft_json_test.dart'`
+- Draft fix at `35b5af1`: `make -C app test TEST='--concurrency=2 test/session/draft_json_test.dart test/session/controller_draft_access_test.dart'`
   → 23/23 PASS; analyze, owned formatting and diff check PASS.
 - Next: implement and independently review T2, then proceed through T3–T4.
