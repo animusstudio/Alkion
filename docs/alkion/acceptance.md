@@ -4,7 +4,138 @@ stage: development
 observed: 2026-10-29
 ---
 
-# Alkion integrated acceptance (T7)
+# Alkion integrated acceptance
+
+## First-use visual polish — 2026-10-29
+
+The [approved plan](../plans/2026-10-29-entry-visual-polish.md) is complete at `da3a7392f8a6c88908fb4eb256e3828602deae95`: a large bounded character-logo opening hands off to concise entry choices, signup is one full actionable sentence, and local setup uses deliberate spacing. Tap skip, reduced motion, lifecycle and hidden keyboard-focus handling are covered. Existing-profile bypass, auth, store/recovery and native resume behavior remain unchanged.
+53 focused regressions, five final opening/visual checks, six post-fix opening tests, analyzer (zero issues), named formatting and final debug/optimized ARM64 APK builds PASS. These counts overlap. Independent source/visual review and keyboard fix-only recheck PASS with no remaining findings. Twenty-two actual synthetic Flutter captures cover both themes, opening/entry/local/unavailable and 320dp/200% German layouts.
+Optimized Dev APK SHA256 `a461c882fe9efae518d55e5964337ac2d25de9b03d6293a90bc6dfa9e522f9ae` was installed in place and opened on Nothing A024, with the matching development signer, four entry frames and six private body assets verified. No uninstall, data clear, owner-store/UI inspection, provider change or public push. Physical animation/performance was not measured; future artwork remains deferred.
+
+## Animus sign-in and optional offline onboarding — 2026-10-28
+
+The [approved onboarding plan](../plans/2026-10-28-animus-login-onboarding.md)
+adds a first-use choice: Sign in to Animus, Create one when hosted enrollment is
+configured, or Go fully offline. Offline opens Start new/Restore backup with
+Back; cancelling the picker stays on those choices. Existing and restored
+profiles open directly. No authentication, browser, secret-store or network work
+runs before an explicit action. T1 authentication, T2 entry lifecycle and T3 UI
+have independent review PASS, including the required focused corrections. Final
+independent A1–A6 review is **PASS with no findings** for the owner-amended scope;
+the reviewer verified the hosted-method receipts and entry/native identities.
+
+Sign-in reserves an identity outside the fresh restore target. Account/space
+confirmation creates and verifies that exact local identity/store generation
+before retaining a session or reading the API. Cancellation and offline selection
+fence staged callbacks before exposing fresh local/restore choices. If the local
+profile was created but secret retention fails, Continue offline opens that same
+profile; it never offers a fresh restore over it. Interrupted restore and entry
+recovery preserve their original bytes. Profile retains connection controls after
+offline setup.
+
+| Executed coverage | Measured result |
+| --- | --- |
+| Broad app regression at `8ee61a8` | **1,828 passed, one opt-in skip, 89 seconds**; analyzer **0 issues**. This run precedes the later focused theme/scroll corrections and live-entry test addition. |
+| Production entry UI at `ca0f2e5` | **11 focused tests passed**, scoped analyzer **0 issues**. The actual first-start app follows system light/dark settings; entry/Back transitions start at scroll offset zero, and picker cancellation preserves the offline step. Four-locale 320dp/2× and interrupted-restore coverage remains in the focused UI/restore suite. |
+| Android native first-use confirmation at `ca0f2e5` | **PASS** in a disposable x86_64 emulator: 412×892 dark/1× and 320×640 light/2× captures, entry/offline/Back navigation, no profile/database before a choice, Start new creating the local profile/database, and restart returning to the app. |
+| Native artifact identity | Dev/debug APK SHA-256 `fe39b202a51f5ddeadc25ef6a282dd786ab2e76b4f28d3f53e5bd8303b6f06bf`. The configuration was synthetic; these captures make no live-API claim. |
+| Hosted methods on Authentik `2026.8.3` | **14 check groups passed**: synthetic signup and OIDC return, S256/single-use code checks, email/password login, resident passkey enrollment/passwordless assertion, and required passkey second factor. The required-MFA synthetic policy stopped password-only login and denied the passwordless bypass. |
+| Production Dart password and signup intents | **Both authentication-only runs passed** through the actual SDK and Linux callback listener against the loopback provider. Each made one code exchange, zero refreshes/API reads, opened no workout store and retained no session; the validated account remained awaiting confirmation. |
+| Integrated entry and API at `b835459` | **16/16 checks passed in 14 seconds** using the production entry lifecycle, OIDC SDK, Linux callback listener, HTTP/probe and production Go authorization/API handler. Two code exchanges and two definition reads returned `200`. The reserved store remained owned through runtime handoff; local datasets/outbox stayed empty, and Profile disconnect/reconnect required fresh confirmation while preserving local identity. |
+
+The integrated transport run retained secrets in memory; OS-secret behavior has
+separate native adapter evidence in the connection section below. Its synthetic
+local storage was removed, the API process stopped, the fixture/schema reclaimed
+and private fixture inputs removed. The newer live-entry case ran separately
+from the broad suite; its older long connection case was deliberately skipped.
+
+Email/password and passkeys are the requested hosted methods. Six-digit
+passwordless email is **DEFERRED by owner direction** and is not advertised or
+enabled. Hosted signup, password and passkey checks passed within the fixture
+scope above; final independent A1–A6 review passed with these same limits.
+Provider setup owns credentials, enrollment and MFA policy; Alkion collects no
+passwords, passkeys or email codes. Final infrastructure cleanup **PASS**:
+owned disposable provider/database containers, networks, volumes and private
+inputs were removed; Go/schema/handshake resources were cleared, the emulator
+was stopped, and existing resources were left untouched.
+
+Passkey proof used localhost and isolated Chromium headless-shell revision 1248
+with a virtual CTAP2 resident credential and required user verification. The
+production Dart password/signup checks used their exact `127.0.0.1` issuer.
+Required MFA was tested through a supplemental fixture flow and a synthetic
+account policy, not an audit of owner or production policy. The synthetic signup
+example creates a disposable provider account but does not verify email
+ownership, uses no SMTP and provisions no workout grants. These results do not
+qualify a physical authenticator or phone, production email/account provisioning,
+or every provider login route.
+
+The native confirmation qualifies these synthetic first-use screens and offline
+startup only. No physical phone, owner profile, body artwork, production mail,
+server synchronization, deployment, release or publication was qualified. Body
+assets were not staged for these artifacts. Work and artifacts remain local;
+no public push or deployment occurred.
+
+## Optional Animus connection — 2026-10-28
+
+The [approved connection plan](../plans/2026-10-28-animus-connection-foundation.md)
+implements optional Profile browser sign-in, explicit account/space confirmation,
+scoped session handling and one authorized definitions read. T1–T4 and their
+required fixes have independent review PASS. The connection remains disabled
+without explicit setup; local startup performs no auth, browser, key-store or
+network work. Sender, replica download and summary activation remain disabled.
+Runtime/client source is `93215b3`. Final independent A1–A6 review PASS verified
+the source, native helper/binary/APK identities and actual Linux/Android receipts
+with no findings. Existing API contract check/smoke PASS evidence is reused
+because production server source is unchanged.
+
+The opt-in `test/animus/live_connection_integration_test.dart` passed **23/23
+real checks in 76 seconds** through pinned Make/FVM. It used fresh synthetic
+provider accounts, two public clients with direct reader registrations, the
+production OIDC adapter/SDK and HTTP/probe, and the production API handler.
+Production authentication generated S256 code flow and validated the real
+provider's signed identity through discovery, token exchange and JWK retrieval.
+The real Linux browser adapter received the provider-issued callback through
+its actual loopback listener; a private test launcher drove provider login and
+consent. No app password UI, forged JWT or fake auth port supplied this proof.
+
+| Executed coverage | Measured result |
+| --- | --- |
+| Login, confirmation and direct read | Login remained staged with no retained secret or API read; confirmation produced a validated `200`; disconnect fenced reads and reconnect required confirmation. |
+| Genuine short-lived expiry | Idle expiry produced no auth/API request; explicit verification performed one refresh and a successful read. |
+| Real access revocation | The API returned `401`; one explicit refresh and one retry restored the read. |
+| Grant and reader revocation | Actual fixture revocation returned `403`; restored grant read succeeded. A revoked reader stayed denied after replacement; fresh admission configuration required reconnect and then read successfully. |
+| Wrong space and another real account | Both were denied with `403`; the new identity was staged without inheriting the prior connection or making a pre-confirmation API request. |
+| Offline restart and lifecycle fences | Offline stayed distinctly unavailable on explicit restore. Cancel, close and generation replacement prevented delayed browser callbacks from exchanging a code or reading the API. |
+| Focused checks | Auth/browser/controller: 55 passed; probe validation: 25 passed; Profile/runtime: 12 passed. Scoped T5 analysis: 0 issues; owned formatting and diff whitespace checks passed. |
+| Linux native adapter checkpoint | PASS on X11 with actual OS Secret Service storage and an external browser callback. Synthetic marker write/read, generation isolation and verified deletion all passed. |
+| Android native adapter checkpoint | PASS in an explicitly selected fresh x86_64 emulator with the stock WebView browser and OS callback return. Keystore storage, generation isolation and verified deletion all passed. |
+
+This real transport run used in-memory secret storage and opened no local
+workout store. Separate native runs used the cleanup-verified standalone helper
+at SHA-256 `4e8eb45bd617b7c2c073efe95eb2baa6e5d7b291664f98197d5885170abb8ff8`.
+They qualified actual OS storage and browser/callback transport with a
+noncredential callback; neither opened a local store nor performed real OIDC
+login. The provider/API integration above supplies the real authentication
+evidence. These bounded runs do not qualify every browser, OS version, keyring
+configuration or physical device. Existing local workout evidence below and
+focused runtime/UI checks retain their stated scope.
+
+Final full-suite confirmation **PASS: 1,796 passed, one skipped, 85 seconds**.
+The skip is the opt-in live integration, executed separately above with 23/23
+checks passing. The first broad run's obsolete ban on the now-approved
+secure-storage dependency was corrected; eight focused identity/isolation tests
+and the final broad run passed. Final analysis reports zero issues. The
+approved connection slice and final independent review are complete within
+the stated synthetic scope.
+
+No phone, owner profile, production grant, replica, outbox send, snapshot or
+whole-history coverage was exercised. The test-owned API server stopped, its
+fixture/schema was reclaimed, and the disposable provider, database and private
+inputs were removed. Cleanup confirmed that existing resources were untouched.
+
+See the [connection guide](animus-connection.md) for public setup and the generic
+live fixture contract. The R3 two-device and sender/replica conformance gates
+below remain UNRUN; this read-only connection slice does not satisfy them.
 
 ## Flexible prescriptions and reusable workout days (2026-10-29)
 
@@ -735,3 +866,10 @@ It has no Internet permission or debug runtime; compiled/merged and stripped/pac
 The [owner-directed correction](../plans/2026-10-28-body-rotation-responsiveness.md) coalesces manual/autoplay invalidations into one frame, bounds native evaluations to one in-flight plus one replaceable latest state, and uses cumulative relative turns with command/revision fences to prevent stale autoplay drag-start jumps. Geometry, masks, transforms, material decisions and workload remain unchanged.
 Production-runtime regression checks show120 drag updates→1draw and120 identical paused displays→0draws. All12,248 frozen-reference material cases, actual JDK queue cases, final controller5, existing gesture/controller15, scoped analyzer/format and final offline ARM64 APK compilation pass. Independent fix/exact-range review PASS at `af80b2f`, no findings. Initial full CI failed16 legacy navigation lookups after1,671 passing tests; the shared helper-only correction passes independent mechanical review and18 affected tests, with app behavior/assertions unchanged.
 Host CPU-only ellipse sampling median improves compact1.315→0.533ms and enlarged1.818→0.675ms. A desktop-browser real-model comparison retains identical held-view glyph counts/signatures in all four cases; full draw timing is mixed. Owner requested the local Flutter desktop development app, launched with separate test storage; its Android-only artwork remains unavailable. Physical Android gesture latency and smoothness have not been remeasured; no universal frame-rate claim or phone update is made.
+
+
+## Android runtime resume correction — 2026-10-28
+
+The [approved plan](../plans/2026-10-28-android-runtime-resume.md) is complete at `0e1a739c708a89cf950c006e2da6d4556b3af7fc`: one process-owned Flutter runtime preserves the store owner across Activity recreation; body views reattach and interrupted document requests finish once. Store locks and schemas remain unchanged. Independent review PASS, no findings.
+The baseline reproduced `profile_in_use` after actual Activity recreation in the same PID. Corrected source passed three recorded destroy/create cycles retaining an active synthetic draft, ordinary resume, root Back/reopen, cold restart with unchanged draft identity/state, and two DocumentsUI interruption/retry checks. All 35 focused tests, analyzer (zero issues), existing native bridge/runtime/material checks and both APK builds PASS.
+Optimized ARM64 Dev APK SHA256 `690f9063a34bc52b7be22796ce33ac062f06371cfc836cf539540969bb1975ba` was installed in place on Nothing A024; launch and ordinary background/reopen retained its process. No uninstall, data clear, owner-store/UI inspection or phone-setting change. The scratch emulator is stopped. Software-emulator artwork was unavailable; physical rendering/performance was not requalified. Private receipts retain exact commands/results; no public push.

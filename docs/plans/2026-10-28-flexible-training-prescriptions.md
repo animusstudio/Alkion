@@ -150,5 +150,9 @@ change receive independent review, with fix-diff rechecks only.
   all at `c0b0862`. Driver/transfer/backup proofs PASS at unchanged runtime inputs;
   selected store recovery proof → 59 PASS at `52981cc`.
 - Qualification and limits: [acceptance](../alkion/acceptance.md#flexible-prescriptions-and-reusable-workout-days-2026-10-29).
-- Next: exact-range public publication only with separate owner approval and the
-  owner-run publication workflow; Android/device qualification remains separate.
+- Delivery authorized by owner on 2026-10-29: align with current main, merge
+  through a PR and install in place on the selected device. Main alignment
+  preserves optional Animus entry/connection, the Android resume correction and
+  entry artwork; confirmed-login store admission uses schema v4 before handoff.
+- Next: reviewed exact-range PR delivery on green checks, then the matching
+  merged-source private APK update. Broader Android qualification stays separate.

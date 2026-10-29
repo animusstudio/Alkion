@@ -9,8 +9,13 @@ and the relevant approved plan before changing behavior; app rules are in
 
 ## Boundaries
 
-- No account, sender, OTA transport or Animus integration is enabled. Do not
-  introduce one as cleanup. Final release identity/signing remain open.
+- Local use remains account-free and offline. First use offers optional sign-in
+  or Go fully offline → Start new/Restore backup; existing profiles open directly.
+  Startup performs no connection I/O before an explicit action. The explicitly
+  configured [Animus connection](docs/alkion/animus-connection.md) permits
+  foreground browser authentication and a confirmed read-access check only.
+  No sender, replica download or OTA transport is enabled; do not introduce one
+  as cleanup. Final release identity/signing remain open.
 - Use explicit disposable storage and synthetic fixtures for qualification.
   Never discover/read owner profiles, keys, credentials, queues or real exports.
 - Preserve originals, corrections, derived results and provenance separately.
@@ -56,7 +61,9 @@ an explicit disposable Android user directory; never read inherited signing
 configuration. The sole release-mode exception is the opt-in private dev APK
 test route documented in `app/README.md`, using that disposable debug certificate.
 Other release tasks and implicit run/device/scaffold/clean routes fail closed.
-No backend is required. `app-ci.yml` keeps app analysis and tests; no
+No backend is required for local use or ordinary tests; the opt-in live Animus
+check needs a separate disposable synthetic provider/API fixture. `app-ci.yml`
+keeps app analysis and tests; no
 legacy signing/image publication workflow remains.
 
 ## Workflow

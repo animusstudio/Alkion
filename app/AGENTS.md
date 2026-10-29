@@ -2,9 +2,14 @@
 
 This is the standalone pre-1.0 Alkion app (see root AGENTS.md). Android is the
 product target; Linux supports development and synthetic qualification. Normal
-startup opens the selected profile/store generation and integrated local UI.
-No account, synchronization sender, OTA update transport or backend is enabled.
-Final release identity/signing and an Animus connection remain separate work.
+startup opens existing selected profiles/store generations directly. Fresh
+startup offers optional sign-in or Go fully offline → Start new/Restore backup;
+entering those offline choices alone creates no profile. Local use stays
+account-free and offline; no connection I/O precedes an explicit action.
+Explicit configuration enables the [optional Animus connection](../docs/alkion/animus-connection.md): external
+browser authentication, scoped session storage and a confirmed foreground
+read-access check. No synchronization sender, replica download or OTA update
+transport is enabled. Final release identity/signing remain separate work.
 
 ## Commands and boundaries
 
@@ -40,6 +45,8 @@ workflow, licensing/notices and publication boundaries apply.
   evidence import. Generation replacement drains owners and watches first.
 - `lib/session/`: draft/finished-session workflows, rest timers and notifications.
   `SessionManager` is owned above MaterialApp; minimize is distinct from finish.
+- `lib/animus/`: optional auth, scoped OS secrets and bounded foreground reads;
+  normal local startup performs no connection I/O.
 - `lib/ui/`, `lib/shell/`, `lib/widgets/`, `lib/theme/`: integrated Flutter UI.
 
 The retired backend and legacy release instructions are removed. Historical
