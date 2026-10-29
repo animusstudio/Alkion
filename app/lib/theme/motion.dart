@@ -5,6 +5,9 @@ class Motion {
   static const fast = Duration(milliseconds: 120);
   static const base = Duration(milliseconds: 200);
   static const slow = Duration(milliseconds: 300);
+
+  /// Rare first-use character material, followed by the normal base fade.
+  static const entryIntro = Duration(milliseconds: 1200);
   static const curve = Cubic(0.23, 1, 0.32, 1);
 
   /// Owner-requested canvas material: eight seconds per smooth half-cycle.

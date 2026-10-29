@@ -1,5 +1,7 @@
 # Alkion development and qualified driver handoff
 
+2026-10-29 · [First-use visual polish](../plans/2026-10-29-entry-visual-polish.md) · Done.
+
 2026-10-28 · [Android runtime resume correction](../plans/2026-10-28-android-runtime-resume.md) · Done.
 
 2026-10-28 · [Animus login and offline onboarding](../plans/2026-10-28-animus-login-onboarding.md) · Done.

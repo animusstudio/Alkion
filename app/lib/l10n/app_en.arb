@@ -1240,7 +1240,7 @@
       }
     }
   },
-  "alkionFirstStartBody": "Start with an empty library, or restore a backup. No account is needed.",
+  "alkionFirstStartBody": "Start fresh or bring your workouts from a backup. No account needed.",
   "alkionFirstStartLocal": "Start new",
   "alkionFirstRestoreTitle": "Restore backup",
   "alkionFirstRestoreConfirm": "Restore this verified backup onto this empty installation? Its profile and saved work will be kept; this installation gets a new identity.",
@@ -1321,15 +1321,17 @@
   "animusUnavailable": "Sign-in is unavailable. Try again.",
   "animusDisconnectBody": "Disconnect on this device? Local workouts, drafts, pending changes and backups are kept. This does not sign you out of your browser.",
   "animusReadOnly": "This connection only checks workout read access. It does not upload or synchronize workouts.",
-  "alkionEntryBody": "Sign in to Animus, or keep your workouts fully on this device. An account is optional.",
+  "alkionEntryBody": "Sign in with Animus, or train fully offline.",
   "alkionEntrySignIn": "Sign in to Animus",
   "alkionEntryNoAccount": "Don’t have an account?",
   "alkionEntryCreateAccount": "Create one",
   "alkionEntryOffline": "Go fully offline",
   "alkionEntryConnectLater": "Connect later in Profile.",
-  "alkionEntryUnavailable": "Animus sign-in is not configured in this build. You can use Alkion fully offline.",
+  "alkionEntryUnavailable": "Animus sign-in isn’t set up in this build.",
   "alkionEntrySignupUnavailable": "Account creation is unavailable in this setup.",
   "alkionEntryFailed": "Could not finish this step. Try again or go fully offline.",
-  "alkionOfflineTitle": "Your workouts, on this device",
-  "alkionEntryContinueOffline": "Continue offline"
+  "alkionOfflineTitle": "Start training offline",
+  "alkionEntryContinueOffline": "Continue offline",
+  "alkionEntryTitle": "Make every workout count.",
+  "alkionEntryJoin": "Don’t have an account? Join now"
 }
