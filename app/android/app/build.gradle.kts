@@ -1,4 +1,7 @@
 import java.io.File
+import java.nio.file.Files
+import java.security.MessageDigest
+import groovy.json.JsonSlurper
 
 plugins {
     id("com.android.application")
@@ -24,9 +27,56 @@ if (animusLoopbackHttp) {
 // A one-off synthetic device artifact, never a product flavor or release identity.
 val isolatedBodyPreview =
     providers.environmentVariable("ALKION_ISOLATED_BODY_PREVIEW").orNull == "1"
-require(!animusEnabled || (!isolatedBodyPreview &&
+val isolatedCatalogTrial =
+    providers.environmentVariable("ALKION_ISOLATED_CATALOG_TRIAL").orNull == "1"
+val catalogTrialAssets = file("../../build/private-catalog-trial/assets")
+val catalogTrialTarget = file("../../lib/catalog_trial.dart").canonicalFile
+val configuredTarget = providers.gradleProperty("target").orNull?.let {
+    val candidate = File(it)
+    (if (candidate.isAbsolute) candidate else File(file("../.."), it)).canonicalFile
+}
+require(!animusEnabled || (!isolatedBodyPreview && !isolatedCatalogTrial &&
     providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull != "1")) {
-    "An offline body preview cannot enable an Animus connection"
+    "An offline preview or catalog trial cannot enable an Animus connection"
+}
+require(!(isolatedBodyPreview && isolatedCatalogTrial)) {
+    "Select only one isolated development target"
+}
+if (isolatedCatalogTrial || configuredTarget == catalogTrialTarget) {
+    val requestedTasks = gradle.startParameter.taskNames
+    val onlyDebugApk = requestedTasks.size == 1 && requestedTasks.single() in
+        setOf("assembleDevDebug", ":app:assembleDevDebug")
+    val signerHome = providers.environmentVariable("ANDROID_USER_HOME").orNull
+    require(
+        isolatedCatalogTrial && onlyDebugApk && configuredTarget == catalogTrialTarget &&
+            !localReleaseTest && !animusEnabled &&
+            providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull != "1" &&
+            providers.environmentVariable("ALKION_PRIVATE_BODY_ASSETS").orNull != "1" &&
+            !signerHome.isNullOrBlank() && File(signerHome, "debug.keystore").isFile
+    ) {
+        "Catalog trial requires only assembleDevDebug, its isolated target, offline assets " +
+            "and an existing explicit disposable debug signer"
+    }
+    val relativeFiles = setOf(
+        "flutter_assets/assets/catalog_trial/catalog.dev.json",
+        "flutter_assets/assets/catalog_trial/manifest.dev.json",
+    )
+    require(catalogTrialAssets.isDirectory &&
+        catalogTrialAssets.walkTopDown().none { Files.isSymbolicLink(it.toPath()) } &&
+        catalogTrialAssets.walkTopDown().filter { it.isFile }
+            .map { it.relativeTo(catalogTrialAssets).invariantSeparatorsPath }.toSet() == relativeFiles
+    ) { "Stage and verify the exact private catalog trial assets first" }
+    val manifest = JsonSlurper().parse(
+        File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/manifest.dev.json")
+    ) as? Map<*, *>
+    val payload = File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/catalog.dev.json")
+    val payloadDigest = MessageDigest.getInstance("SHA-256").digest(payload.readBytes())
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    require(manifest != null && manifest["format"] == "alkion-catalog-trial-manifest" &&
+        manifest["schema_version"] == 1 && manifest["private_trial_only"] == true &&
+        manifest["redistribution_cleared"] == false && manifest["media_included"] == false &&
+        manifest["projection_sha256"] == payloadDigest
+    ) { "Private catalog trial admission manifest or projection digest is invalid" }
 }
 if (isolatedBodyPreview) {
     val requestedTasks = gradle.startParameter.taskNames
@@ -107,6 +157,15 @@ android {
     if (providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull == "1") {
         sourceSets.getByName("debug").manifest.srcFile("src/bodyPreview/AndroidManifest.xml")
     }
+    if (isolatedCatalogTrial) {
+        sourceSets.getByName("debug").manifest.srcFile("src/catalogTrial/AndroidManifest.xml")
+        sourceSets.getByName("main").assets.srcDir(catalogTrialAssets)
+        // Exact JNI hash admission compares the generated and packaged bytes.
+        packaging.jniLibs.keepDebugSymbols.addAll(setOf(
+            "**/libsqlite3.so",
+            "**/libsqlite3_connection_pool.so",
+        ))
+    }
     // Generated private inputs are included only by explicit local build opt-in.
     // Default/public builds contain the generic runtime and truthful absent-art UI.
     if (providers.environmentVariable("ALKION_PRIVATE_BODY_ASSETS").orNull == "1") {
@@ -132,7 +191,10 @@ android {
             dimension = "installation"
             applicationIdSuffix = ".dev"
             manifestPlaceholders["oidcRedirectScheme"] = "dev.animusstudio.alkion.dev"
-            if (isolatedBodyPreview) {
+            if (isolatedCatalogTrial) {
+                applicationId = "dev.animusstudio.alkion.catalogtrial"
+                manifestPlaceholders["alkionLabel"] = "Alkion Exercise Trial"
+            } else if (isolatedBodyPreview) {
                 applicationId = "dev.animusstudio.alkion.bodypreview"
                 manifestPlaceholders["alkionLabel"] = "Body renderer preview"
             } else {

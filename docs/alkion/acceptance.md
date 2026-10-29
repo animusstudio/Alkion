@@ -6,6 +6,83 @@ observed: 2026-10-29
 
 # Alkion integrated acceptance
 
+## Exercise catalog native trial — 2026-10-29
+
+The [approved plan](../plans/2026-10-29-exercise-catalog-integration.md) has
+completed T0–T2 with implementation and independent task reviews passing. The
+coherent T0 base is `41bfbe3`, including entry polish `3164f4e`, prescriptions
+`7015bbb` and the prepared store v4 handoff. The private candidate has 143
+families, 734 variants and eight profiles, projection SHA-256
+`8cc806c7adc3790895d8086dcf63ecd174475bb4f74e2e717cce6d1b6ca67f96`. Twelve
+synthetic tests, 531 queries and 293 admission checks passed locale-policy
+reference parity. Matching supports the documented Latin repertoire, with no
+general NFKC claim. T2 passed 23 focused UI tests and independent reviews
+`789c0d5`/`1f2cc11`. T0 storage passed eight tests at `1808e5d`; the 173-check
+consolidated suite passed at `4e152f4` before two additional provider tests.
+Existing session (86) and entry/prescription baseline (46) suites passed at their
+recorded SHAs in private receipts.
+
+T3's x86_64 native UI checkpoint is **reviewed** at source
+`d427235c45f166ff8886816500b030a6c39f7445`. Fix-only review from `1808e5d` to
+this source passed. Final affected consolidated checks passed: 177 tests, zero
+skipped, 51 seconds; whole-app analyze reported zero issues; Python
+candidate-staging checks passed 7/7. x86_64 and ARM64 builds passed. Both APKs'
+package identity, signer, removed INTERNET permission and candidate projection digest
+were verified. The x86_64 APK SHA-256 is
+`78e63f92c596543007aa4d471d27e5fd014b1af2ade4c59aa509bd8d3c477a54`; ARM64 APK
+SHA-256 is `0f969be54674f3fc3ae2028fc19f72333df26e03321c408d5ab03a502814e726`
+(156,780,457 bytes); this ARM64 artifact was subsequently **rejected**, as below.
+
+Native checks confirmed localized selection, two saved routine slots, upcoming-only
+equipment changes preserving the old pending set, timer continuity and typed
+30-second plank summary. Rest-next uses Plank + Duration seconds 30; the false
+20kg×8 and placeholder PR are gone, and all-done next content is empty. At 320dp,
+2× text and visible IME, custom fallback confirmed query prefill and return. Native
+confirmation verified the full “Carico kg + Ripetizioni” label wraps, Back hides
+the IME and Add remains accessible. The last custom picker action ended at y=2175,
+above the navigation bar at y=2208. Finish stays disabled in the isolated trial.
+
+Fresh native finish visual review disposition is **SHIP**, with no material fixes.
+Six required screens were reviewed, including EN-dark RDL, IT-light Lento,
+320dp/2× custom form with IME and after Back with Add visible, typed plank with 30-second next,
+and native bottom placement for the custom action. All five contract sections were
+valid. The reviewer used a fresh generic fallback because the dedicated agent type
+was unavailable. Owner hands-on feedback remains pending.
+
+The design documenter completed with no changes and confirmed the established
+system was preserved. An emulator graphics capture initially failed on color
+buffers. After restart with Vulkan disabled, the emulator booted and came online
+after about three minutes; valid captures were then obtained. No source fix was
+needed for this environment issue. Trial metadata is RAM-only, Finish is disabled,
+and no owner profile was accessed or migrated. Cold resume/recovery, hardware
+performance and durable T4–T6 qualification
+remain untested. Evidence and artifacts remain in ignored private receipts; no
+public push or publication occurred.
+
+The public-doc checker retains two unchanged MakeHuman links to missing
+`LICENSE.CODE.md` and `LICENSE.ASSETS.md` from baseline; they are outside this change.
+
+### Pre-installation correction
+
+Later inspection of that exact ARM64 hash found SQLite and pool libraries only
+under x86_64, despite the ARM64 Flutter engine and native-asset manifest. It and
+the affected aligned rebuilds were quarantined and never installed. The x86_64
+emulator observations and source reviews remain valid. Correct ARM64 ELF files
+existed in Flutter's JNI output; stale Gradle merge/strip outputs entered the APK.
+The trial build now requires matching selected-ABI ELF headers, native mappings
+and current generated SQLite/pool hashes before naming an APK. Eleven synthetic
+APK checks and seven staging checks pass; CI runs both sets.
+
+The SQLite close correction also exposed fake-time cleanup in the existing
+weight-sheet tests. Main's real-zone database fixture correction is retained
+unchanged; all six cases and assertions remain. The interrupted
+full run is failed, not a qualification. The serial ARM64 rebuild at `466993a`
+passes the mandatory ABI/current-JNI-hash guard, package, signature, no-network
+and catalog-digest checks. Flutter, SQLite and pool are all AArch64 ELF183.
+APK SHA-256: `7ed96a8a1bd47d952650a676a14b27216da7ac0b45f9f7c327fe5bf3dc80a452`
+(102,074,213 bytes). Final CI and the main merge remain pending; the owner
+explicitly retained installation after merge.
+
 ## First-use visual polish — 2026-10-29
 
 The [approved plan](../plans/2026-10-29-entry-visual-polish.md) is complete at `da3a7392f8a6c88908fb4eb256e3828602deae95`: a large bounded character-logo opening hands off to concise entry choices, signup is one full actionable sentence, and local setup uses deliberate spacing. Tap skip, reduced motion, lifecycle and hidden keyboard-focus handling are covered. Existing-profile bypass, auth, store/recovery and native resume behavior remain unchanged.

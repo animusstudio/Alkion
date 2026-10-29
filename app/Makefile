@@ -146,3 +146,23 @@ brand-icons:
 .PHONY: brand-entry-frames
 brand-entry-frames:
 	node tool/generate_entry_frames.mjs
+
+# Private candidate input never becomes an ordinary Flutter asset or app build.
+.PHONY: stage-catalog-trial verify-catalog-trial test-catalog-trial-staging test-catalog-trial-apk build-catalog-trial
+CATALOG_TRIAL_TARGET_PLATFORM ?= android-arm64
+stage-catalog-trial:
+	@test -n "$${CATALOG_TRIAL_INPUT}" && test -n "$${CATALOG_TRIAL_SHA256}" || (echo 'Set explicit CATALOG_TRIAL_INPUT and reviewed CATALOG_TRIAL_SHA256.' >&2; exit 2)
+	python3 tool/stage_catalog_trial.py --input "$${CATALOG_TRIAL_INPUT}" --expected-sha256 "$${CATALOG_TRIAL_SHA256}"
+verify-catalog-trial:
+	python3 tool/stage_catalog_trial.py --verify
+test-catalog-trial-staging:
+	python3 -m unittest discover -s tool -p test_stage_catalog_trial.py
+test-catalog-trial-apk:
+	python3 -m unittest discover -s tool -p test_verify_catalog_trial_apk.py
+build-catalog-trial:
+	@test -n "$${ANDROID_USER_HOME}" && test -f "$${ANDROID_USER_HOME}/debug.keystore" || (echo 'Set the existing explicit disposable Android debug signer directory.' >&2; exit 2)
+	@case "$(CATALOG_TRIAL_TARGET_PLATFORM)" in android-arm64|android-x64) ;; *) echo 'CATALOG_TRIAL_TARGET_PLATFORM must be android-arm64 or android-x64.' >&2; exit 2 ;; esac
+	$(MAKE) verify-catalog-trial
+	ALKION_ISOLATED_CATALOG_TRIAL=1 $(FLUTTER) build apk --debug --no-pub --flavor dev --target-platform "$(CATALOG_TRIAL_TARGET_PLATFORM)" --target lib/catalog_trial.dart --dart-define=ALKION_CATALOG_TRIAL=true
+	python3 tool/verify_catalog_trial_apk.py --apk build/app/outputs/flutter-apk/app-dev-debug.apk --platform "$(CATALOG_TRIAL_TARGET_PLATFORM)" --generated-jni-dir build/app/intermediates/flutter/devDebug/jniLibs
+	cp -- build/app/outputs/flutter-apk/app-dev-debug.apk build/app/outputs/flutter-apk/alkion-catalog-trial-$(CATALOG_TRIAL_TARGET_PLATFORM)-debug.apk

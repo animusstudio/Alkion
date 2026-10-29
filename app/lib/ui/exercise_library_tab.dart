@@ -1,3 +1,7 @@
+import '../catalog_ui/catalog_picker.dart';
+import '../catalog/catalog.dart';
+import '../catalog_ui/catalog_trial_scope.dart';
+import '../widgets/w_action_sheet.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -78,7 +82,34 @@ class _LibraryTabState extends State<LibraryTab> {
             // Pinned 'New exercise' accent button.
             _NewExerciseButton(
               tokens: tokens,
-              onTap: () => widget.onOpenEditor(null),
+              onTap: () async {
+                final trial = CatalogTrialScope.maybeOf(context);
+                if (trial == null) {
+                  widget.onOpenEditor(null);
+                  return;
+                }
+                final locale = Localizations.localeOf(context).languageCode;
+                final choices = await showCatalogPicker(context, state: trial);
+                if (choices != null && choices.isNotEmpty) {
+                  try {
+                    await trial.materialize(
+                      choices.single,
+                      _repo,
+                      locale: locale,
+                    );
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            AppLocalizations.of(context).catalogSaveFailed,
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
             ),
             const SizedBox(height: 24),
 
@@ -100,7 +131,37 @@ class _LibraryTabState extends State<LibraryTab> {
                 prMap: prMap,
                 units: units,
                 tokens: tokens,
-                onTap: (id) => widget.onOpenEditor(id),
+                onTap: (id) async {
+                  final trial = CatalogTrialScope.maybeOf(context);
+                  final choice = trial?.exercises[id];
+                  if (trial == null || choice == null) {
+                    widget.onOpenEditor(id);
+                    return;
+                  }
+                  final l = AppLocalizations.of(context);
+                  final result = await showWActionSheet<String>(
+                    context,
+                    title: trial.label(
+                      choice,
+                      Localizations.localeOf(context).languageCode,
+                    ),
+                    actions: [
+                      for (final metric
+                          in trial.measurement(choice).requiredMetrics)
+                        WSheetAction(
+                          label: catalogMetricLabel(l, metric),
+                          value: metric,
+                          enabled: false,
+                        ),
+                      WSheetAction(
+                        label: l.catalogFavorite,
+                        value: 'favorite',
+                        selected: trial.favorites.contains(choice.key),
+                      ),
+                    ],
+                  );
+                  if (result == 'favorite') trial.toggleFavorite(choice);
+                },
               ),
               const SizedBox(height: 16),
             ],
@@ -122,7 +183,13 @@ class _NewExerciseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return PrimaryBtn(l.planNewExercise, enabled: true, onTap: onTap);
+    return PrimaryBtn(
+      CatalogTrialScope.maybeOf(context) == null
+          ? l.planNewExercise
+          : l.catalogBrowse,
+      enabled: true,
+      onTap: onTap,
+    );
   }
 }
 
@@ -205,6 +272,10 @@ class _ExerciseRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final trial = CatalogTrialScope.maybeOf(context);
+    final choice = trial?.exercises[exercise.id];
+    final locale = Localizations.localeOf(context).languageCode;
+    final name = choice == null ? exercise.name : trial!.label(choice, locale);
     // Sub-label: '{equip ?? localizedMuscle(muscleGroup)}{ · compound}'
     final subParts = <String>[
       exercise.equip?.isNotEmpty == true
@@ -212,7 +283,13 @@ class _ExerciseRow extends StatelessWidget {
           : localizedMuscle(context, exercise.muscleGroup),
       if (exercise.compound) '· ${l.exerciseCompound}',
     ];
-    final subLabel = subParts.join(' ');
+    final subLabel = choice == null
+        ? subParts.join(' ')
+        : choice.variantId == null
+        ? CatalogLabels(locale).unknownMuscles
+        : CatalogLabels(
+            locale,
+          ).equipment(trial!.bundle.variants[choice.variantId]!.equipmentKind);
 
     return Semantics(
       button: true,
@@ -243,7 +320,7 @@ class _ExerciseRow extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FitLabel(
-                      exercise.name,
+                      name,
                       maxLines: 2,
                       style: WorkoutType.body(
                         size: 16,

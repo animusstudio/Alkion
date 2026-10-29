@@ -1,5 +1,9 @@
 # Alkion development and qualified driver handoff
 
+2026-10-29 · [Native exercise catalog integration](../plans/2026-10-29-exercise-catalog-integration.md) · Approved.
+2026-10-29 · [Exercise integration specification](../specs/2026-10-29-exercise-catalog-integration.md) · Approved.
+2026-10-29 · [Native catalog trial contract](exercise-catalog.md) · Approved.
+2026-10-29 · [Initial exercise-discovery UX/UI assessment](../design/exercise-discovery-assessment.md) · Proposed.
 2026-10-29 · [First-use visual polish](../plans/2026-10-29-entry-visual-polish.md) · Done.
 
 2026-10-28 · [Android runtime resume correction](../plans/2026-10-28-android-runtime-resume.md) · Done.

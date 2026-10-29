@@ -32,9 +32,9 @@ import '../widgets/stepper.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import 'alkion_recovery/recovery_screen.dart';
-import 'training_preferences_sheet.dart';
-import 'export_failure.dart';
 import 'animus_connection_panel.dart';
+import 'export_failure.dart';
+import 'training_preferences_sheet.dart';
 
 // ── Group + Row helpers ─────────────────────────────────────────────────────
 
