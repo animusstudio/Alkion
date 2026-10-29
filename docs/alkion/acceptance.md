@@ -74,8 +74,8 @@ and current generated SQLite/pool hashes before naming an APK. Eleven synthetic
 APK checks and seven staging checks pass; CI runs both sets.
 
 The SQLite close correction also exposed fake-time cleanup in the existing
-weight-sheet tests. Reusing the real-async harness preserves all six cases and
-assertions; the formerly stalled file now completes in two seconds. The interrupted
+weight-sheet tests. Main's real-zone database fixture correction is retained
+unchanged; all six cases and assertions remain. The interrupted
 full run is failed, not a qualification. The serial ARM64 rebuild at `466993a`
 passes the mandatory ABI/current-JNI-hash guard, package, signature, no-network
 and catalog-digest checks. Flutter, SQLite and pool are all AArch64 ELF183.
