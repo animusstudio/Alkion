@@ -132,6 +132,7 @@ void main() {
         expect(profile.profileId, reserved.profileId);
         final store = entry.preparedStore ?? handedStore!;
         expect(store.token.generation, reserved.generation);
+        expect(store.schema.latestVersion, 4);
         expect((await store.get('PRAGMA user_version')).values.single, 4);
         expect(await store.getAll('SELECT * FROM exercises'), isEmpty);
         await expectLater(
@@ -169,7 +170,22 @@ void main() {
       try {
         handedStore = runtime.store;
         expect(runtime.store, same(owned));
+        expect(runtime.store.schema.latestVersion, 4);
+        expect(
+          (await runtime.store.get('PRAGMA user_version')).values.single,
+          4,
+        );
         expect(runtime.animus, same(controller));
+        final plans = DayTemplateRepository.local(runtime.store);
+        await plans.saveDay(
+          draft: DayDraft(name: 'After sign-in', slots: []),
+        );
+        final day = (await plans.allDays()).single;
+        expect(day.active, isTrue);
+        await plans.commitPrepared(
+          plans.prepareSetActive(day.id, day.localRevision!, false),
+        );
+        expect((await plans.byId(day.id))!.active, isFalse);
         await runtime.animus.disconnect();
         await runtime.animus.connect();
         await runtime.animus.confirm();
@@ -523,6 +539,7 @@ void main() {
 }
 
 Future<void> _expectPrescriptionWrites(LocalStore store) async {
+  expect(store.schema.latestVersion, 4);
   expect((await store.get('PRAGMA user_version')).values.single, 4);
   final exercises = ExerciseRepository.local(store);
   final exerciseId = await exercises.createExercise(
@@ -536,13 +553,14 @@ Future<void> _expectPrescriptionWrites(LocalStore store) async {
     ),
   );
   final days = DayTemplateRepository.local(store);
-  await days.saveDay(
-    draft: DayDraft(
+  final intent = days.prepareDay(
+    DayDraft(
       name: 'Synthetic entry day',
       slots: [SlotDraft(exerciseId: exerciseId, rirPolicy: RirPolicy.off)],
     ),
   );
-  final day = (await days.allDays()).single;
+  await days.commitPrepared(intent);
+  final day = (await days.byId(intent.action.target.id))!;
   expect(day.isActive, isTrue);
   final slot = day.slots.single;
   expect(slot.rirPolicy, RirPolicy.off);
@@ -556,7 +574,7 @@ Future<void> _expectPrescriptionWrites(LocalStore store) async {
   );
   expect((await days.byId(day.id))!.isActive, isFalse);
   expect(await days.activeDays(), isEmpty);
-  expect((await days.allDays()).single.slots.single.id, slot.id);
+  expect((await days.byId(day.id))!.slots.single.id, slot.id);
 }
 
 AnimusEntryLifecycle _entry(

@@ -1158,6 +1158,8 @@ class _DaySlotRowState extends State<DaySlotRow> {
                       low: reps.low,
                       high: reps.high,
                       enabled: !widget.readOnly,
+                      currentValues: () =>
+                          resolveRepPair(_source, widget.exercise)!,
                       onChanged: _reps,
                     )
                   else ...[

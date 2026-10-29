@@ -132,5 +132,10 @@ Initial assessment, full design and independent task reviews passed. Planning ch
 Integrated base `41bfbe3` includes entry polish `3164f4e`, prescriptions `7015bbb` and the prepared store v4 handoff.
 See the [acceptance ledger](../alkion/acceptance.md) for exact source/artifacts and residual scope. Owner hands-on feedback is pending.
 
-Non-goals: public push/release, owner-data transfer, mass name merges, new auth/
+Owner delivery direction, 2026-10-29: align with current main, deliver this
+checkpoint through its own reviewed PR and merge on green checks, then install
+the separate private trial APK on the selected phone. Keep the full candidate
+private; durable T4–T6 enablement and replacement of the everyday app remain out of scope.
+
+Non-goals: release, owner-data transfer, mass name merges, new auth/
 sync flows, manufacturer catalog, broad heatmap/statistics rollout or medical claims.

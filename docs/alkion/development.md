@@ -12,7 +12,7 @@
 
 2026-10-28 · [Optional Animus connection foundation](../plans/2026-10-28-animus-connection-foundation.md) · Approved.
 
-2026-10-28 · [Flexible training prescriptions](../plans/2026-10-28-flexible-training-prescriptions.md) · Approved.
+2026-10-28 · [Flexible training prescriptions](../plans/2026-10-28-flexible-training-prescriptions.md) · Done.
 
 2026-10-28 · [Body rotation responsiveness](../plans/2026-10-28-body-rotation-responsiveness.md) · Approved.
 

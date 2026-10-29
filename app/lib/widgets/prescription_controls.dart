@@ -5,6 +5,7 @@ import '../theme/icons.dart';
 import '../theme/typography.dart';
 import 'fit_label.dart';
 import 'plan_form.dart';
+import 'pending_input.dart';
 import 'stepper.dart';
 
 /// A disclosure changes presentation only. Data changes belong to its children.
@@ -25,7 +26,12 @@ class TrainingDisclosure extends StatelessWidget {
     button: true,
     expanded: expanded,
     child: InkWell(
-      onTap: onTap,
+      onTap: onTap == null
+          ? null
+          : () {
+              commitPendingInput();
+              onTap!();
+            },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
@@ -87,7 +93,12 @@ class TrainingAction extends StatelessWidget {
       minimumSize: const Size(48, 48),
       alignment: Alignment.centerLeft,
     ),
-    onPressed: onTap,
+    onPressed: onTap == null
+        ? null
+        : () {
+            commitPendingInput();
+            onTap!();
+          },
     icon: Icon(icon, size: 18),
     label: FitLabel(
       label,
@@ -103,10 +114,14 @@ class RepControls extends StatelessWidget {
     required this.low,
     required this.high,
     required this.onChanged,
+    required this.currentValues,
     this.enabled = true,
   });
   final int low, high;
   final void Function(int low, int high) onChanged;
+
+  /// Read after pending typing commits, rather than using build-time values.
+  final ({int low, int high}) Function() currentValues;
   final bool enabled;
   @override
   Widget build(BuildContext context) {
@@ -123,9 +138,15 @@ class RepControls extends StatelessWidget {
             labelOf: (v) => v ? l.trainingRepRange : l.trainingFixedReps,
             onSelect: (v) {
               if (enabled) {
+                commitPendingInput();
+                final pair = currentValues();
                 onChanged(
-                  v && low == 99 && high == 99 ? 98 : low,
-                  v ? (high > low ? high : (low + 4).clamp(1, 99)) : low,
+                  v && pair.low == 99 && pair.high == 99 ? 98 : pair.low,
+                  v
+                      ? (pair.high > pair.low
+                            ? pair.high
+                            : (pair.low + 4).clamp(1, 99))
+                      : pair.low,
                 );
               }
             },

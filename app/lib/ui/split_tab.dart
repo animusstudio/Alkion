@@ -42,7 +42,18 @@ class DayStatusActions extends ChangeNotifier {
     _notify();
     try {
       await recovery?.recover();
-      await repository.commitPrepared(intent);
+      try {
+        await repository.commitPrepared(intent);
+      } on StoreException catch (error) {
+        // apply checks a matching committed operation before its revision base.
+        // This rejection therefore proves this exact intent was never applied.
+        // Retire it without rebasing; only a new explicit action may replace it.
+        if (error.category == 'revision_conflict' &&
+            identical(_pending[day.id], intent)) {
+          _pending.remove(day.id);
+        }
+        rethrow;
+      }
       _pending.remove(day.id);
       return enabling;
     } finally {

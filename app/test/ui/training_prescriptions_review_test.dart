@@ -10,7 +10,7 @@ import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/ui/day_editor.dart';
 import 'package:alkion/ui/editor_guard.dart';
 import 'package:alkion/ui/plan_screen.dart';
-import 'package:alkion/ui/split_tab.dart' show SplitTab;
+import 'package:alkion/ui/split_tab.dart' show SplitTab, DayStatusActions;
 import '../alkion/domains/local_screen_harness.dart';
 import '../alkion/domains/prepared_intent_retry_test.dart' show FaultDatabase;
 import 'training_prescriptions_test.dart' show tap, input;
@@ -225,6 +225,213 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'definitively rejected status retry retires only after conflict and needs a new explicit action',
+    (tester) async {
+      final h = ScreenHarness();
+      addTearDown(h.close);
+      await h.open(tester);
+      setPhone(tester, width: 412);
+      final original = (await tester.runAsync(
+        () => DayTemplateRepository.local(h.database).byId('d1'),
+      ))!;
+      final fault = FaultDatabase(h.database, beforeCommit: true);
+      h.overrideDatabase = fault;
+      await tester.pumpWidget(h.wrap(const Scaffold(body: PlanScreen())));
+      await settleReal(tester);
+      final owner = tester
+          .widget<SplitTab>(find.byType(SplitTab))
+          .statusActions!;
+      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await settleReal(tester);
+      await tester.tap(find.text('Disable'));
+      await settleReal(tester, ticks: 12);
+      expect(owner.hasPending('d1'), isTrue);
+      final first = fault.actions.single;
+      await tester.tap(find.text('OK'));
+      await settleReal(tester);
+      await tester.tap(find.text(longDay));
+      await settleReal(tester);
+      await tester.enterText(input('Day name'), 'Retained renamed day');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await settleReal(tester, ticks: 3);
+      await tap(tester, find.byType(DayEditor), 'Save changes');
+      await settleReal(tester, ticks: 12);
+      final edited = (await tester.runAsync(
+        () => DayTemplateRepository.local(h.database).byId('d1'),
+      ))!;
+      expect(edited.name, 'Retained renamed day');
+      expect(edited.localRevision, greaterThan(original.localRevision!));
+      expect(edited.active, true);
+      expect(owner.hasPending('d1'), isTrue);
+      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await settleReal(tester);
+      await tester.tap(find.text('Retry'));
+      await settleReal(tester, ticks: 8);
+      expect(find.textContaining('revision_conflict'), findsOneWidget);
+      expect(owner.hasPending('d1'), isFalse);
+      final rejected = fault.actions
+          .where((a) => a.action == LocalActionKind.planSetActive)
+          .toList();
+      expect(rejected, hasLength(2));
+      expect(rejected[1].operationId, first.operationId);
+      expect(rejected[1].bytes, first.bytes);
+      final attempts = fault.actions.length;
+      expect(
+        (await tester.runAsync(
+          () => h.database.getAll(
+            'SELECT * FROM operations WHERE operation_id=?',
+            [first.operationId],
+          ),
+        ))!,
+        isEmpty,
+      );
+      await tester.tap(find.text('OK'));
+      await settleReal(tester);
+      expect(
+        fault.actions.length,
+        attempts,
+        reason: 'no automatic replacement',
+      );
+      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await settleReal(tester);
+      expect(find.text('Retry'), findsNothing);
+      expect(find.text('Disable'), findsOneWidget);
+      expect(fault.actions.length, attempts);
+      await tester.tap(find.text('Disable'));
+      await settleReal(tester, ticks: 12);
+      final latest = fault.actions.last;
+      expect(latest.operationId, isNot(first.operationId));
+      expect(latest.baseLocalRevision, edited.localRevision);
+      final saved = (await tester.runAsync(
+        () => DayTemplateRepository.local(h.database).byId('d1'),
+      ))!;
+      expect(saved.active, false);
+      expect(saved.name, edited.name);
+      expect(saved.focus, original.focus);
+      expect(saved.scheduledWeekday, original.scheduledWeekday);
+      expect(
+        saved.slots.map(
+          (s) => (
+            s.id,
+            s.exerciseId,
+            s.position,
+            s.workSets,
+            s.warmupSets,
+            s.repLow,
+            s.repHigh,
+            s.rirLow,
+            s.rirHigh,
+            s.rirPolicy,
+          ),
+        ),
+        original.slots.map(
+          (s) => (
+            s.id,
+            s.exerciseId,
+            s.position,
+            s.workSets,
+            s.warmupSets,
+            s.repLow,
+            s.repHigh,
+            s.rirLow,
+            s.rirHigh,
+            s.rirPolicy,
+          ),
+        ),
+      );
+      final statusRows = (await tester.runAsync(
+        () => h.database.getAll(
+          "SELECT * FROM operations WHERE target_id=? AND action='planSetActive'",
+          ['d1'],
+        ),
+      ))!;
+      expect(statusRows, hasLength(1));
+      expect(statusRows.single['operation_id'], latest.operationId);
+      expect(owner.hasPending('d1'), isFalse);
+      await h.unmount(tester);
+    },
+  );
+
+  testWidgets(
+    'uncertain committed status intent survives a later content revision and replays exact bytes',
+    (tester) async {
+      final h = ScreenHarness();
+      addTearDown(h.close);
+      await h.open(tester);
+      await tester.runAsync(() async {
+        final repo = DayTemplateRepository.local(h.database),
+            original = (await DayTemplateRepository.local(
+              h.database,
+            ).byId('d1'))!;
+        final fault = FaultDatabase(h.database, afterCommit: true);
+        final owner = DayStatusActions(DayTemplateRepository.local(fault));
+        try {
+          await expectLater(
+            owner.perform(original),
+            throwsA(isA<StateError>()),
+          );
+          expect(owner.hasPending('d1'), isTrue);
+          final committed = (await repo.byId('d1'))!;
+          expect(committed.active, false);
+          await repo.saveDay(
+            id: committed.id,
+            draft: DayDraft(
+              name: 'Uncertain preserved content',
+              focus: committed.focus,
+              weekday: committed.scheduledWeekday,
+              localRevision: committed.localRevision,
+              rawFields: committed.rawFields,
+              changedFields: {'name'},
+              slots: [
+                for (final s in committed.slots)
+                  SlotDraft(
+                    itemId: s.id,
+                    exerciseId: s.exerciseId,
+                    workSets: s.workSets,
+                    warmupSets: s.warmupSets,
+                    repLow: s.repLow,
+                    repHigh: s.repHigh,
+                    rirLow: s.rirLow,
+                    rirHigh: s.rirHigh,
+                    rirPolicy: s.rirPolicy,
+                    localRevision: s.localRevision,
+                    rawFields: s.rawFields,
+                    changedFields: {},
+                  ),
+              ],
+            ),
+          );
+          final edited = (await repo.byId('d1'))!;
+          expect(owner.hasPending('d1'), isTrue);
+          expect(
+            await owner.perform(edited),
+            isFalse,
+            reason: 'reconcile the original Disable, never enable',
+          );
+          expect(fault.actions, hasLength(2));
+          expect(fault.actions[1].operationId, fault.actions[0].operationId);
+          expect(fault.actions[1].bytes, fault.actions[0].bytes);
+          expect(owner.hasPending('d1'), isFalse);
+          final finalDay = (await repo.byId('d1'))!;
+          expect(finalDay.active, false);
+          expect(finalDay.name, edited.name);
+          expect(finalDay.localRevision, edited.localRevision);
+          expect(
+            await h.database.getAll(
+              "SELECT * FROM operations WHERE target_id=? AND action='planSetActive'",
+              ['d1'],
+            ),
+            hasLength(1),
+          );
+        } finally {
+          owner.dispose();
+        }
+      });
+      await h.unmount(tester);
+    },
+  );
 
   for (final closePlan in [false, true]) {
     testWidgets(

@@ -1,6 +1,6 @@
 # Flexible training prescriptions
 
-Date: 2026-10-28. Lane: Full. Status: **Approved by owner on 2026-10-29; implementation in progress.**
+Date: 2026-10-28. Lane: Full. Status: **Implemented and independently accepted in Linux/synthetic scope on 2026-10-29.**
 Base: `29f136a`. Branch: `feat/training-prescriptions-20261028`.
 Contract: [specification](../specs/2026-10-28-flexible-training-prescriptions.md).
 Boundary: [repository guidance](../../AGENTS.md).
@@ -124,7 +124,9 @@ change receive independent review, with fix-diff rechecks only.
   admission issue, corrected at `35b5af1`; fix-only recheck PASS, no findings.
 - T2: Implemented at `b73ee0b`, copy/capture correction `ccae0e8`, review fixes
   `3236333`; independent review and fix recheck PASS, no remaining findings.
-- T3: In progress. T4: Not started.
+- T3: Implemented at `7015bbb`; independent review PASS, no findings.
+- T4: Complete within the scoped host qualification at `c0b0862`; final integrated
+  A1–A12 review PASS. Physical Android interaction remains UNRUN.
 - Checks: original, preferences and activation proposal Markdown references/
   whitespace and diff checks PASS.
 - T1 checks at `870b790`: offline locked get PASS; explicit owned formatting PASS;
@@ -137,4 +139,20 @@ change receive independent review, with fix-diff rechecks only.
   strengthened 8-case recheck PASS at `3236333`, analyze/owned format/diff PASS.
   Batched synthetic real-font visual inspection and sole confirmation PASS across
   captured dark/light, 320/412dp and enlarged text; Android/device remains unrun.
-- Next: implement and independently review T3, then integrated T4 qualification.
+- T3 checks: 149 existing regressions, 90 integration cases and 30 final dedicated
+  cases PASS; analyze/owned formatting PASS at `7015bbb`.
+- T4 corrections: current-schema fixture admission, bounded UI readiness and
+  German heading fixes at `52981cc`; definite status-conflict recovery at
+  `7be4733`; six reproduced pending-input transitions fixed at `c0b0862`.
+  Each received independent fix review PASS; 70 focused input/editor cases PASS.
+- Final `make -C app test TEST=--concurrency=2` → 1,786 PASS, 0 skipped (483 s);
+  analyze → 0 issues; format → 369 files, 0 changes; Linux build → PASS (24 s),
+  all at `c0b0862`. Driver/transfer/backup proofs PASS at unchanged runtime inputs;
+  selected store recovery proof → 59 PASS at `52981cc`.
+- Qualification and limits: [acceptance](../alkion/acceptance.md#flexible-prescriptions-and-reusable-workout-days-2026-10-29).
+- Delivery authorized by owner on 2026-10-29: align with current main, merge
+  through a PR and install in place on the selected device. Main alignment
+  preserves optional Animus entry/connection, the Android resume correction and
+  entry artwork; confirmed-login store admission uses schema v4 before handoff.
+- Next: reviewed exact-range PR delivery on green checks, then the matching
+  merged-source private APK update. Broader Android qualification stays separate.
