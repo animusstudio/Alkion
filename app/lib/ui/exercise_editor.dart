@@ -842,6 +842,8 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                             low: _repLow ?? 8,
                             high: _repHigh ?? 8,
                             enabled: !_controlsLocked,
+                            currentValues: () =>
+                                qualifiedRepPair(_repLow, _repHigh)!,
                             onChanged: (a, b) => setState(() {
                               _repLow = a;
                               _repHigh = b;
