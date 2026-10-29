@@ -332,22 +332,60 @@ class BlockState {
       defaultRestSeconds: json['exerciseDefaultRestSeconds'] as int?,
       isTemplate: false,
     );
+    final rirLow = json['resolvedRirLow'] as int?;
+    final rirHigh = json['resolvedRirHigh'] as int?;
+    final rirPolicy = json['resolvedRirPolicy'] as String?;
+    final qualifiedRir =
+        rirLow != null &&
+        rirHigh != null &&
+        rirLow >= rirMin &&
+        rirHigh <= rirMax &&
+        rirLow <= rirHigh;
+    final hasRirMetadata =
+        json.containsKey('resolvedRirPolicy') ||
+        json.containsKey('resolvedRirState');
+    final RirTargetState rirState;
+    if (hasRirMetadata) {
+      // New metadata is an admission boundary. Unknown literals must stay in
+      // the original draft bytes, never become an enabled target or normalize
+      // into a known value when the draft is reserialized.
+      if (rirPolicy != null &&
+          !const {
+            RirPolicy.inherit,
+            RirPolicy.off,
+            RirPolicy.target,
+          }.contains(rirPolicy)) {
+        throw const FormatException('Unknown draft RIR policy');
+      }
+      rirState = switch (json['resolvedRirState']) {
+        'available' => RirTargetState.available,
+        'unavailable' => RirTargetState.unavailable,
+        'absent' => RirTargetState.absent,
+        _ => throw const FormatException('Unknown draft RIR state'),
+      };
+      if (rirState == RirTargetState.available &&
+          (!qualifiedRir || rirPolicy == RirPolicy.off)) {
+        throw const FormatException('Unqualified draft RIR target');
+      }
+    } else {
+      // Old numeric drafts remain readable, including retained invalid pairs.
+      // Their bounds/observations stay exact; invalid targets are unavailable.
+      rirState = qualifiedRir
+          ? RirTargetState.available
+          : rirLow == null && rirHigh == null
+          ? RirTargetState.absent
+          : RirTargetState.unavailable;
+    }
     final resolved = ResolvedSlot(
       exercise: exercise,
       workSets: json['resolvedWorkSets'] as int,
       warmupSets: json['resolvedWarmupSets'] as int,
       repLow: json['resolvedRepLow'] as int,
       repHigh: json['resolvedRepHigh'] as int,
-      rirLow: json['resolvedRirLow'] as int?,
-      rirHigh: json['resolvedRirHigh'] as int?,
-      rirPolicy: json['resolvedRirPolicy'] as String?,
-      rirState: switch (json['resolvedRirState']) {
-        'available' => RirTargetState.available,
-        'unavailable' => RirTargetState.unavailable,
-        'absent' => RirTargetState.absent,
-        null => null,
-        _ => RirTargetState.unavailable,
-      },
+      rirLow: rirLow,
+      rirHigh: rirHigh,
+      rirPolicy: rirPolicy,
+      rirState: rirState,
     );
     final ltWeight = (json['lastTopWeight'] as num?)?.toDouble();
     final ltReps = json['lastTopReps'] as int?;

@@ -1,4 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:alkion/domain/evidence.dart';
+import 'package:alkion/store/local_store.dart';
+import '../alkion/domains/local_screen_harness.dart' show openDomainStore;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/active_session_draft.dart';
@@ -119,7 +125,7 @@ void main() {
           block['resolvedRirHigh'] = null;
           block['resolvedRirPolicy'] = state == 'absent'
               ? 'off'
-              : 'future-policy';
+              : RirPolicy.target;
           block['resolvedRirState'] = state;
           final copy = SessionDraft.fromJson(json).deepCopy().blocks.single;
           expect((copy.resolved.rirLow, copy.resolved.rirHigh), (null, null));
@@ -129,6 +135,23 @@ void main() {
           expect(copy.allSets.map((s) => s.id), ['w1', 's1', 's2']);
           expect(copy.workingSets.first.rir, 1);
         }
+      },
+    );
+
+    test(
+      'old invalid numeric pairs retain bounds and observations as unavailable',
+      () {
+        final old = _draft().toJson();
+        final block = (old['blocks'] as List).single as Map;
+        block.remove('resolvedRirPolicy');
+        block.remove('resolvedRirState');
+        block['resolvedRirLow'] = 9;
+        block['resolvedRirHigh'] = -1;
+        final copy = SessionDraft.fromJson(old).deepCopy().blocks.single;
+        expect((copy.resolved.rirLow, copy.resolved.rirHigh), (9, -1));
+        expect(copy.resolved.rirState, RirTargetState.unavailable);
+        expect(copy.resolved.hasRirTarget, isFalse);
+        expect(copy.workingSets.first.rir, 1);
       },
     );
 
@@ -168,6 +191,123 @@ void main() {
       expect(d?.sessionId, 'S');
     });
   });
+
+  final rejectedMetadata = <String, Map<String, Object?>>{
+    'unknown policy with available state': {
+      'resolvedRirPolicy': 'future-policy',
+      'resolvedRirState': 'available',
+    },
+    'unknown policy with missing state': {'resolvedRirPolicy': 'future-policy'},
+    'unknown state literal': {
+      'resolvedRirPolicy': null,
+      'resolvedRirState': 'future-state',
+    },
+    'known policy with missing state': {'resolvedRirPolicy': RirPolicy.inherit},
+    'available target missing low': {
+      'resolvedRirPolicy': RirPolicy.target,
+      'resolvedRirState': 'available',
+      'resolvedRirLow': null,
+    },
+    'available target missing high': {
+      'resolvedRirPolicy': RirPolicy.target,
+      'resolvedRirState': 'available',
+      'resolvedRirHigh': null,
+    },
+    'available target inverted': {
+      'resolvedRirPolicy': RirPolicy.target,
+      'resolvedRirState': 'available',
+      'resolvedRirLow': 3,
+      'resolvedRirHigh': 1,
+    },
+    'available target below range': {
+      'resolvedRirPolicy': RirPolicy.target,
+      'resolvedRirState': 'available',
+      'resolvedRirLow': -1,
+    },
+    'available target above range': {
+      'resolvedRirPolicy': RirPolicy.target,
+      'resolvedRirState': 'available',
+      'resolvedRirHigh': 6,
+    },
+    'Off with available target': {
+      'resolvedRirPolicy': RirPolicy.off,
+      'resolvedRirState': 'available',
+    },
+  };
+  Map<String, dynamic> withMetadata(Map<String, Object?> metadata) {
+    final json = _draft(sessionId: 'S').toJson();
+    final block = (json['blocks'] as List).single as Map;
+    block.remove('resolvedRirState');
+    block.remove('resolvedRirPolicy');
+    block.addAll(metadata);
+    return json;
+  }
+
+  for (final entry in rejectedMetadata.entries) {
+    test('draft decoder refuses ${entry.key}', () {
+      final json = withMetadata(entry.value);
+      expect(() => SessionDraft.fromJson(json), throwsFormatException);
+      expect(DraftStore.tryDecode(jsonEncode(json)), isNull);
+    });
+  }
+
+  test(
+    'rejected metadata preserves exact incoming files and SQLite draft/timer bytes on repeated load',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'alkion-draft-rir-admission-',
+      );
+      final store = await openDomainStore(root);
+      try {
+        final incoming = await Directory('${root.path}/incoming').create();
+        final file = File('${incoming.path}/${DraftStore.fileName}');
+        final incomingStore = DraftStore(directory: () async => incoming);
+        var revision = 0;
+        for (final entry in rejectedMetadata.entries) {
+          final raw = '  ${jsonEncode(withMetadata(entry.value))} \n';
+          final bytes = Uint8List.fromList(utf8.encode(raw));
+          final timer = localBytes(_draft(sessionId: 'S').timerJson);
+          await file.writeAsBytes(bytes, flush: true);
+          final base = revision;
+          await store.writeTransaction((tx) async {
+            await tx.putLocalState(
+              LocalStateKind.draft,
+              'active',
+              bytes,
+              expectedRevision: base,
+            );
+            await tx.putLocalState(
+              LocalStateKind.timer,
+              'active',
+              timer,
+              expectedRevision: base,
+            );
+          });
+          revision++;
+          final before = await store.inventory();
+          for (var attempt = 0; attempt < 2; attempt++) {
+            expect(await incomingStore.load(), isNull, reason: entry.key);
+            expect(await file.readAsBytes(), bytes, reason: entry.key);
+            await expectLater(
+              DraftStore.local(store).load(),
+              throwsA(
+                isA<StoreException>().having(
+                  (e) => e.category,
+                  'category',
+                  'malformed_draft_preserved',
+                ),
+              ),
+              reason: entry.key,
+            );
+            expect(await store.inventory(), before, reason: entry.key);
+          }
+        }
+      } finally {
+        await store.close();
+        await root.delete(recursive: true);
+      }
+    },
+  );
 
   group('FinishedSession JSON', () {
     FinishedSession snapshot() => FinishedSession(
