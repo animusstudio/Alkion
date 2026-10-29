@@ -156,7 +156,11 @@ class _CatalogPickerState extends State<CatalogPicker> {
         ...index.variantsFor(hit, filter: filter).map((v) => v.id),
     };
     bool admitted(CatalogChoice choice) => choice.variantId == null
-        ? _search.text.trim().isEmpty && _family == null && _equipment == null
+        ? _family == null &&
+              _equipment == null &&
+              catalogNormalize(
+                choice.customName ?? '',
+              ).contains(catalogNormalize(_search.text))
         : admittedIds.contains(choice.variantId);
     final recent = state.recents.where(admitted).toList();
     final showRecent =

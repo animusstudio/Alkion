@@ -553,6 +553,10 @@ void main() {
       state.toggleFavorite(curl);
       state.toggleFavorite(known);
       state.toggleFavorite(standing);
+      final customA = CatalogChoice.custom('My café hold', 'load_reps');
+      final customB = CatalogChoice.custom('My café hold', 'load_reps');
+      state.toggleFavorite(customA);
+      state.toggleFavorite(customB);
       await tester.pumpWidget(app(CatalogPicker(state: state, multiple: true)));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilterChip, 'Favorites'));
@@ -565,6 +569,15 @@ void main() {
       expect(find.byKey(ValueKey(standing.key)), findsOneWidget);
       expect(find.byKey(ValueKey(curl.key)), findsNothing);
       expect(find.byKey(ValueKey(known.key)), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('catalog-search')),
+        'MY CAFE HOLD',
+      );
+      await tester.pump();
+      expect(customA.key, isNot(customB.key));
+      expect(find.byKey(ValueKey(customA.key)), findsOneWidget);
+      expect(find.byKey(ValueKey(customB.key)), findsOneWidget);
+      expect(find.byKey(ValueKey(standing.key)), findsNothing);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(
         app(
@@ -581,6 +594,8 @@ void main() {
       expect(find.byKey(ValueKey(curl.key)), findsOneWidget);
       expect(find.byKey(ValueKey(known.key)), findsOneWidget);
       expect(find.byKey(ValueKey(standing.key)), findsNothing);
+      expect(find.byKey(ValueKey(customA.key)), findsNothing);
+      expect(find.byKey(ValueKey(customB.key)), findsNothing);
       await tester.enterText(
         find.byKey(const Key('catalog-search')),
         'Standing barbell shoulder press',
