@@ -1372,5 +1372,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "trainingWeekdayUnavailable": "Weekday unavailable"
 }

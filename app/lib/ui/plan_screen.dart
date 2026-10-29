@@ -78,6 +78,20 @@ class PlanScreenState extends State<PlanScreen> {
     (days) => days.length,
   );
 
+  late final DayStatusActions _dayStatusActions;
+
+  @override
+  void initState() {
+    super.initState();
+    _dayStatusActions = DayStatusActions(_dayRepo);
+  }
+
+  @override
+  void dispose() {
+    _dayStatusActions.dispose();
+    super.dispose();
+  }
+
   /// True while [requestClose] runs: a second call is refused rather than
   /// stacking a second prompt.
   bool _closing = false;
@@ -247,7 +261,10 @@ class PlanScreenState extends State<PlanScreen> {
         );
       }
     } else if (_activeTab == 'split') {
-      body = SplitTab(onOpenEditor: (id) => _openEditor('day', id));
+      body = SplitTab(
+        onOpenEditor: (id) => _openEditor('day', id),
+        statusActions: _dayStatusActions,
+      );
     } else if (_activeTab == 'targets') {
       body = const TargetsTab();
     } else {

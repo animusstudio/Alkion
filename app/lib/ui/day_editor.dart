@@ -29,15 +29,23 @@ import 'exercise_sheet.dart';
 
 /// Mutable UI state for a single slot row (wraps [SlotDraft]).
 class DaySlotState {
-  DaySlotState({required this.draft});
+  DaySlotState({required this.draft, this.showRirAdd = false});
 
   SlotDraft draft;
+
+  /// Captured disclosure for a new slot; never follows live preferences.
+  final bool showRirAdd;
 
   String get exerciseId => draft.exerciseId;
 }
 
-DaySlotState daySlotStateFromResolved(ResolvedSlot r, String? itemId) {
+DaySlotState daySlotStateFromResolved(
+  ResolvedSlot r,
+  String? itemId, {
+  bool showRirAdd = false,
+}) {
   return DaySlotState(
+    showRirAdd: showRirAdd,
     draft: SlotDraft(
       itemId: itemId,
       exerciseId: r.exercise.id,
@@ -326,7 +334,11 @@ class _DayEditorState extends State<DayEditor> {
         defaults ??
         (absent ? (low: 8, high: _repEntry == RepEntry.range ? 12 : 8) : null);
     setState(() {
-      final added = daySlotStateFromResolved(resolved, null);
+      final added = daySlotStateFromResolved(
+        resolved,
+        null,
+        showRirAdd: _rirControls == RirControls.show,
+      );
       added.draft.repLow = reps?.low;
       added.draft.repHigh = reps?.high;
       // Preserve unavailable exercise evidence through inheritance.
@@ -497,7 +509,9 @@ class _DayEditorState extends State<DayEditor> {
                     children: [
                       if (_weekday != null)
                         Text(
-                          weekdayShort(_weekday!, localeName),
+                          _weekday! >= 0 && _weekday! <= 6
+                              ? weekdayShort(_weekday!, localeName)
+                              : l.trainingWeekdayUnavailable,
                           style: WorkoutType.body(color: tokens.text),
                         ),
                       TrainingAction(
@@ -1004,6 +1018,14 @@ class _DaySlotRowState extends State<DaySlotRow> {
                       l.trainingRirUnavailable,
                       style: WorkoutType.body(color: tokens.dim),
                     ),
+                  if (widget.slot.showRirAdd &&
+                      !resolveSlot(_source, widget.exercise).hasRirTarget)
+                    TrainingAction(
+                      l.trainingAddRir,
+                      onTap: widget.readOnly
+                          ? null
+                          : () => _rirPolicy(RirPolicy.target),
+                    ),
                   TrainingDisclosure(
                     label: l.trainingMoreOptions,
                     expanded: _more,
@@ -1030,7 +1052,8 @@ class _DaySlotRowState extends State<DaySlotRow> {
                         semanticLabel: l.dayEditorWarmups,
                       ),
                     ),
-                    if (!resolveSlot(_source, widget.exercise).hasRirTarget)
+                    if (!widget.slot.showRirAdd &&
+                        !resolveSlot(_source, widget.exercise).hasRirTarget)
                       TrainingAction(
                         l.trainingAddRir,
                         onTap: widget.readOnly
