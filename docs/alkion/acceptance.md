@@ -22,7 +22,7 @@ consolidated suite passed at `4e152f4` before two additional provider tests.
 Existing session (86) and entry/prescription baseline (46) suites passed at their
 recorded SHAs in private receipts.
 
-T3 developer trial is **ready after review** at source
+T3's x86_64 native UI checkpoint is **reviewed** at source
 `d427235c45f166ff8886816500b030a6c39f7445`. Fix-only review from `1808e5d` to
 this source passed. Final affected consolidated checks passed: 177 tests, zero
 skipped, 51 seconds; whole-app analyze reported zero issues; Python
@@ -31,7 +31,7 @@ package identity, signer, removed INTERNET permission and candidate projection d
 were verified. The x86_64 APK SHA-256 is
 `78e63f92c596543007aa4d471d27e5fd014b1af2ade4c59aa509bd8d3c477a54`; ARM64 APK
 SHA-256 is `0f969be54674f3fc3ae2028fc19f72333df26e03321c408d5ab03a502814e726`
-(156,780,457 bytes).
+(156,780,457 bytes); this ARM64 artifact was subsequently **rejected**, as below.
 
 Native checks confirmed localized selection, two saved routine slots, upcoming-only
 equipment changes preserving the old pending set, timer continuity and typed
@@ -61,6 +61,23 @@ public push or publication occurred.
 
 The public-doc checker retains two unchanged MakeHuman links to missing
 `LICENSE.CODE.md` and `LICENSE.ASSETS.md` from baseline; they are outside this change.
+
+### Pre-installation correction
+
+Later inspection of that exact ARM64 hash found SQLite and pool libraries only
+under x86_64, despite the ARM64 Flutter engine and native-asset manifest. It and
+the affected aligned rebuilds were quarantined and never installed. The x86_64
+emulator observations and source reviews remain valid. Correct ARM64 ELF files
+existed in Flutter's JNI output; stale Gradle merge/strip outputs entered the APK.
+The trial build now requires matching selected-ABI ELF headers, native mappings
+and current generated SQLite/pool hashes before naming an APK. Eleven synthetic
+APK checks and seven staging checks pass; CI runs both sets.
+
+The SQLite close correction also exposed fake-time cleanup in the existing
+weight-sheet tests. Reusing the real-async harness preserves all six cases and
+assertions; the formerly stalled file now completes in two seconds. The interrupted
+full run is failed, not a qualification. Final CI and phone artifact admission
+remain pending before installation.
 
 ## First-use visual polish — 2026-10-29
 
