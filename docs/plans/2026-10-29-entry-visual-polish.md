@@ -1,7 +1,7 @@
 # Alkion first-use visual polish
 
 Date: 2026-10-29. Lane: standard, presentation and decorative motion only.
-Status: Proposed; implementation awaits owner approval.
+Status: Approved by owner on 2026-10-29; implementation in progress.
 Base: d3a1e1c, including the reviewed Android resume correction.
 
 ## Outcome
@@ -82,7 +82,8 @@ readability, scroll reachability, contrast, semantic order and 48dp targets.
 A5. Existing profiles, pending restore, account confirmation and offline/no-I/O
 contracts retain focused regressions. Android resume fix remains intact.
 A6. Independent source/visual review passes; one batched visual pass and at most
-one correction/confirmation round. No phone install or public push in this plan.
+one correction/confirmation round. Owner additionally authorized an in-place
+Nothing phone update after checks/review, without clearing data. No public push.
 
 ## Task and checks
 
@@ -102,5 +103,5 @@ No campaign suite, provider/database fixture or device-rendering claim.
 
 ## State
 
-Audit and concrete direction prepared. App implementation has not started.
-Next: owner approval, T1 implementation/review and bounded visual confirmation.
+Owner approved implementation and phone installation on 2026-10-29.
+Next: T1 implementation/review, bounded visual confirmation and phone update.
