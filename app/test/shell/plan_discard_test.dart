@@ -230,9 +230,14 @@ List<String?> _dayEditorIds(WidgetTester tester) => [
 ];
 
 Future<void> _tapVisible(WidgetTester tester, Finder target) async {
-  await tester.ensureVisible(target);
-  await tester.pump();
-  await tester.tap(target);
+  final editor = find.byType(ExerciseEditor).evaluate().isNotEmpty
+      ? find.byType(ExerciseEditor)
+      : find.byType(DayEditor);
+  await scrollIntoView(tester, editor, target);
+  await Scrollable.ensureVisible(tester.element(target), alignment: 0.5);
+  await settleReal(tester, ticks: 2);
+  expect(target.hitTestable(), findsOneWidget);
+  await tester.tap(target.hitTestable());
   await settleReal(tester, ticks: 3);
 }
 
@@ -757,6 +762,7 @@ void main() {
       expect(find.byType(ExerciseEditor), findsNothing);
 
       await _openExercise(tester);
+      await _tapVisible(tester, find.text(_l.trainingAdvanced));
       await _tapVisible(tester, _startWeightInc);
       await tester.tap(chevron);
       await settleReal(tester, ticks: 10);
@@ -784,6 +790,7 @@ void main() {
       setPhone(tester, width: 412);
       await _openPlan(tester, harness);
       await _openExercise(tester);
+      await _tapVisible(tester, find.text(_l.trainingAdvanced));
       await _tapVisible(tester, _startWeightInc);
       await _tapVisible(tester, _startWeightDec);
 
@@ -917,10 +924,12 @@ void main() {
           _inField(_l.exerciseEditorName, find.byType(TextField)),
           'Edited before disposal',
         );
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await settleReal(tester, ticks: 3);
         final save = find.text(_l.exerciseEditorSave);
         await scrollIntoView(tester, find.byType(ExerciseEditor), save);
         try {
-          await tester.tap(save);
+          await _tapVisible(tester, save);
           await _shortTicks(tester, until: () => gate.started.isCompleted);
           expect(gate.started.isCompleted, isTrue);
           expect(

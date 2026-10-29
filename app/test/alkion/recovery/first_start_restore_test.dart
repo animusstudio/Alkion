@@ -25,7 +25,8 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 import '../../../tool/alkion_backup_recovery.dart' as proof;
 import '../files/fake_documents.dart';
 import '../../support/app_fonts.dart';
-import '../acceptance/acceptance_support.dart' show mountReal, realSettle, act;
+import '../acceptance/acceptance_support.dart'
+    show mountReal, realSettle, settleWhile, act;
 import 'backup_restore_test.dart' show storeCategory, selectionCategory;
 import '../domains/local_screen_harness.dart'
     show settleReal, press, settleUntil;
@@ -143,6 +144,7 @@ void main() {
           tester,
           () => tester.testTextInput.receiveAction(TextInputAction.done),
         );
+        await realSettle(tester);
         final save = find.text('Create exercise');
         await act(
           tester,
@@ -157,10 +159,31 @@ void main() {
             const Offset(0, -400),
           ),
         );
-        await act(tester, () => tester.tap(save));
         await realSettle(tester);
+        await act(
+          tester,
+          () => Scrollable.ensureVisible(tester.element(save), alignment: 0.5),
+        );
+        await realSettle(tester);
+        expect(save.hitTestable(), findsOneWidget);
+        final primary = find.ancestor(
+          of: save,
+          matching: find.byType(FilledButton),
+        );
+        expect(tester.widget<FilledButton>(primary).onPressed, isNotNull);
+        await act(tester, () => tester.tap(save.hitTestable()));
+        await settleWhile(
+          tester,
+          () => find.byType(ExerciseEditor).evaluate().isNotEmpty,
+          maxTicks: 120,
+        );
         expect(find.byType(ExerciseEditor), findsNothing);
         expect(find.byType(PlanScreen), findsOneWidget);
+        await settleWhile(
+          tester,
+          () => find.text('Manual synthetic press').evaluate().isEmpty,
+          maxTicks: 120,
+        );
         expect(find.text('Manual synthetic press'), findsOneWidget);
         await tester.runAsync(() async {
           final exercises = await runtime!.store.getAll(

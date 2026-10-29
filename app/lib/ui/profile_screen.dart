@@ -53,8 +53,9 @@ class _Group extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 2, bottom: 8),
-            child: Text(
+            child: FitLabel(
               label.toUpperCase(),
+              maxLines: 2,
               style: WorkoutType.body(
                 size: 12,
                 weight: FontWeight.w500,

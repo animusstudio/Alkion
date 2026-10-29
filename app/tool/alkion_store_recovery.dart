@@ -44,7 +44,7 @@ Future<LocalStore> syntheticStore(
     schema: workflowCases.contains(caseName)
         ? prescriptionSchemaRegistry()
         : domainCases.contains(caseName)
-        ? domainSchemaRegistry()
+        ? prescriptionSchemaRegistry()
         : null,
   );
 }
