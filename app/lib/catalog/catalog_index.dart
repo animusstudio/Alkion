@@ -82,8 +82,13 @@ class CatalogHit {
     required this.tier,
     required this.label,
     required this.recognizedQuery,
+    this.admittedVariantIds,
   });
   final String kind, id, key, label, recognizedQuery;
+
+  /// Search-produced navigation pins its admitted children. Null is reserved
+  /// for a caller-created unfiltered browse hit; an empty list admits nothing.
+  final List<String>? admittedVariantIds;
 
   /// 0 exact, 1 composed/browse, 2 prefix, 3 visible spelling suggestion.
   final int tier;
@@ -277,11 +282,17 @@ class CatalogIndex {
   List<CatalogVariant> variantsFor(
     CatalogHit hit, {
     CatalogFilter filter = const CatalogFilter(),
-  }) => List.unmodifiable(
-    bundle.variants.values.where(
-      (v) => bundle.targetMatches(hit.kind, hit.id, v) && filter.matches(v),
-    ),
-  );
+  }) {
+    final admitted = hit.admittedVariantIds;
+    final candidates = admitted == null
+        ? bundle.variants.values
+        : admitted.map((id) => bundle.variants[id]).whereType<CatalogVariant>();
+    return List.unmodifiable(
+      candidates.where(
+        (v) => bundle.targetMatches(hit.kind, hit.id, v) && filter.matches(v),
+      ),
+    );
+  }
 
   String variantLabel(String id, {String query = ''}) =>
       labelFor('variant', id, query: query);
@@ -464,6 +475,7 @@ class CatalogIndex {
     final allowed = _qualified(words, filtered),
         literalQualified = _qualified(words, filtered, includeAliases: false);
     final found = <String, _Ranked>{};
+    final navigationAdmission = <String, Set<String>>{};
     void add(
       String kind,
       String id,
@@ -471,7 +483,13 @@ class CatalogIndex {
       bool direct = false,
       bool canonical = false,
       List<String>? recognized,
+      Set<String>? admitted,
     }) {
+      if (kind != 'variant') {
+        (navigationAdmission['$kind:$id'] ??= <String>{}).addAll(
+          admitted ?? _targetIds(kind, id).intersection(allowed),
+        );
+      }
       final e = bundle.entity(kind, id)!;
       final recognizedQuery = (recognized ?? words).join(' ');
       final row = _Ranked(
@@ -513,13 +531,19 @@ class CatalogIndex {
         }
         if (t.kind == 'equipment_model' ||
             label.ids.intersection(allowed).isNotEmpty) {
-          add(
-            t.kind,
-            t.targetId,
-            0,
-            direct: true,
-            canonical: t.source == 'canonical',
-          );
+          // A scoped term's target is an editorial vocabulary carrier, not
+          // permission to navigate to every execution in that family.
+          if (t.kind == 'variant' ||
+              (!t.qualifier && t.source != 'scoped_terms')) {
+            add(
+              t.kind,
+              t.targetId,
+              0,
+              direct: true,
+              canonical: t.source == 'canonical',
+              admitted: label.ids.intersection(allowed),
+            );
+          }
           for (final id in label.ids.intersection(allowed)) {
             add('variant', id, 1);
           }
@@ -593,10 +617,34 @@ class CatalogIndex {
     }
     final ordered = found.values.toList()
       ..sort((a, b) => _compare(a.rank, b.rank));
+    CatalogHit pinNavigation(_Ranked ranked) {
+      final hit = ranked.hit;
+      if (!hit.isNavigation) return hit;
+      final admitted = navigationAdmission['${hit.kind}:${hit.id}']!;
+      // Drill-down preserves concrete result ranking; browse has no concrete
+      // rows, so retain the bundle's stable order for its admitted children.
+      final children = ordered
+          .where((r) => r.hit.kind == 'variant' && admitted.contains(r.hit.id))
+          .map((r) => r.hit.id)
+          .toList();
+      if (children.isEmpty) {
+        children.addAll(bundle.variants.keys.where(admitted.contains));
+      }
+      return CatalogHit(
+        kind: hit.kind,
+        id: hit.id,
+        key: hit.key,
+        tier: hit.tier,
+        label: hit.label,
+        recognizedQuery: hit.recognizedQuery,
+        admittedVariantIds: List.unmodifiable(children),
+      );
+    }
+
     return result(
       words.isEmpty || key.length == 1 ? 'browse' : 'ok',
-      ordered.where((r) => r.hit.tier < 3).map((r) => r.hit).toList(),
-      ordered.where((r) => r.hit.tier == 3).map((r) => r.hit).toList(),
+      ordered.where((r) => r.hit.tier < 3).map(pinNavigation).toList(),
+      ordered.where((r) => r.hit.tier == 3).map(pinNavigation).toList(),
       corrections.toList()..sort(),
     );
   }

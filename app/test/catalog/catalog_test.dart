@@ -33,6 +33,123 @@ void main() {
       );
     },
   );
+  test('qualifiers and scoped vocabulary never expose a carrier family', () {
+    final source = syntheticCatalog();
+    source['scoped_terms'].add({
+      'id': 'synthetic-scoped-corner',
+      'text': 'curl corner',
+      'locale': 'en',
+      'target': {'kind': 'family', 'id': source['families'][0]['id']},
+      'selector': {
+        'facets': {
+          'grip': ['neutral'],
+        },
+        'excluded_facets': {
+          'support': ['preacher_bench'],
+        },
+      },
+    });
+    final i = CatalogIndex(CatalogBundle.fromJsonString(jsonEncode(source)));
+    for (final query in ['neutral', 'preacher', 'curl corner']) {
+      final result = i.search(query);
+      expect(result.rows, isNotEmpty);
+      expect(result.rows.every((h) => !h.isNavigation), isTrue, reason: query);
+      final children = result.rows.expand(i.variantsFor).toList();
+      expect(
+        children.map((v) => v.key),
+        isNot(contains('unknown_machine_curl')),
+        reason: query,
+      );
+      if (query == 'neutral') {
+        expect(children.map((v) => v.key).toSet(), {
+          'neutral_curl',
+          'preacher_neutral_curl',
+        });
+        expect(children.every((v) => v.facets['grip'] == 'neutral'), isTrue);
+      } else if (query == 'preacher') {
+        expect(children.map((v) => v.key).toSet(), {
+          'preacher_neutral_curl',
+          'preacher_cable_curl',
+        });
+      } else {
+        expect(children.map((v) => v.key).toSet(), {'neutral_curl'});
+      }
+    }
+  });
+
+  test('scoped family aliases pin admitted children through drill-down', () {
+    final source = syntheticCatalog();
+    source['aliases'].add({
+      'id': 'synthetic-familiar-corner',
+      'text': 'My neutral corner',
+      'locale': 'en',
+      'target': {'kind': 'family', 'id': source['families'][0]['id']},
+      'selector': {
+        'facets': {
+          'grip': ['neutral'],
+        },
+        'excluded_facets': {
+          'support': ['preacher_bench'],
+        },
+      },
+    });
+    final i = CatalogIndex(CatalogBundle.fromJsonString(jsonEncode(source)));
+    final result = i.search('My neutral corner');
+    final navigation = result.rows.single;
+    expect(navigation.kind, 'family');
+    expect(i.variantsFor(navigation).map((v) => v.key), ['neutral_curl']);
+    expect(
+      navigation.admittedVariantIds,
+      result.strict.where((h) => h.kind == 'variant').map((h) => h.id).toList(),
+    );
+    expect(
+      () => navigation.admittedVariantIds!.clear(),
+      throwsUnsupportedError,
+    );
+    expect(
+      i.variantsFor(
+        navigation,
+        filter: const CatalogFilter(equipmentKinds: ['machine']),
+      ),
+      isEmpty,
+    );
+  });
+
+  test(
+    'genuine family and collection navigation retain query and filter admission',
+    () {
+      final b = bundle(), i = CatalogIndex(b);
+      const filter = CatalogFilter(
+        facets: {
+          'grip': ['neutral'],
+        },
+      );
+      for (final result in [
+        i.search('Curl', filter: filter),
+        i.search('', filter: filter),
+      ]) {
+        final navigation = result.rows.single;
+        final children = i.variantsFor(navigation);
+        expect(children.map((v) => v.key).toSet(), {
+          'neutral_curl',
+          'preacher_neutral_curl',
+        });
+        expect(children.every((v) => v.facets['grip'] == 'neutral'), isTrue);
+      }
+      final hammer = i.search('Hammer curl').rows.single;
+      expect(i.variantsFor(hammer).map((v) => v.key).toSet(), {
+        'neutral_curl',
+        'preacher_neutral_curl',
+      });
+      final preacher = i.search('Preacher curl').rows.single;
+      expect(i.variantsFor(preacher).map((v) => v.key).toSet(), {
+        'preacher_neutral_curl',
+        'preacher_cable_curl',
+      });
+      expect(b.variantsForFamily(b.families.values.first.id).length, 4);
+    },
+  );
+
   test(
     'exact, prefix and visible bounded typo lanes protect literals and digits',
     () {
