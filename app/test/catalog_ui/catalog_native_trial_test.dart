@@ -16,6 +16,7 @@ import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/active_session_screen.dart';
 import 'package:alkion/session/session_manager.dart';
+import 'package:alkion/session/session_header.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
@@ -507,6 +508,100 @@ void main() {
   );
 
   testWidgets(
+    'custom selected measurement wraps fully at 320dp 2x with Italian IME',
+    (tester) async {
+      final state = trial();
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = FakeViewPadding(bottom: 220);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(
+        app(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showCatalogPicker(context, state: state),
+              child: const Text('Open picker'),
+            ),
+          ),
+          locale: const Locale('it'),
+        ),
+      );
+      await tester.tap(find.text('Open picker'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('catalog-search')),
+        'Movimento personale',
+      );
+      await tester.pump();
+      final create = find.text('Crea esercizio personale');
+      await tester.scrollUntilVisible(
+        create,
+        150,
+        scrollable: find
+            .descendant(
+              of: find.byType(CatalogPicker),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(create);
+      await tester.pumpAndSettle();
+      final selected = find.text('Carico (kg) + Ripetizioni');
+      final selector = find.byType(DropdownButtonFormField<String>);
+      expect(selected, findsOneWidget);
+      await tester.ensureVisible(selector);
+      await tester.pumpAndSettle();
+      final textBounds = tester.getRect(selected),
+          selectorBounds = tester.getRect(selector);
+      expect(textBounds.top, greaterThanOrEqualTo(selectorBounds.top));
+      expect(textBounds.bottom, lessThanOrEqualTo(selectorBounds.bottom));
+      expect(textBounds.right, lessThanOrEqualTo(selectorBounds.right));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      state.dispose();
+    },
+  );
+
+  testWidgets(
+    'single picker final action scrolls above Android bottom safe inset',
+    (tester) async {
+      final state = trial();
+      tester.view.physicalSize = const Size(393, 800);
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = FakeViewPadding(bottom: 48);
+      tester.view.viewPadding = FakeViewPadding(bottom: 48);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+      addTearDown(tester.view.resetViewPadding);
+      await tester.pumpWidget(
+        app(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showCatalogPicker(context, state: state),
+              child: const Text('Open picker'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open picker'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      final create = find.widgetWithText(TextButton, 'Create custom exercise');
+      expect(tester.getBottomRight(create).dy, lessThanOrEqualTo(752));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      state.dispose();
+    },
+  );
+
+  testWidgets(
     'selected equipment remains visible and clearable after narrowing',
     (tester) async {
       final state = trial();
@@ -804,6 +899,12 @@ void main() {
         'repetitions': '8',
       });
       expect(c.restStart, rest);
+      final header = tester.widget<SessionHeader>(find.byType(SessionHeader));
+      expect(header.prCount, 0);
+      expect(header.nextLabel, contains('Hotel pulley'));
+      expect(header.nextLabel, isNot(contains('20kg')));
+      expect(header.nextLabel, isNot(contains('55.50')));
+      expect(header.nextLabel, isNot(contains('×')));
       await tester.pumpWidget(screen(const Locale('it')));
       await tester.pump(const Duration(milliseconds: 300));
       expect(state.metricDrafts[pending.id]!['reported_load'], '55.50');
@@ -891,10 +992,32 @@ void main() {
       expect(find.byKey(const ValueKey('metric-repetitions')), findsNothing);
       await tester.enterText(
         find.byKey(const ValueKey('metric-duration')),
+        '30',
+      );
+      await tester.pump();
+      expect(
+        tester.widget<SessionHeader>(find.byType(SessionHeader)).nextLabel,
+        contains('Duration (seconds): 30'),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('metric-duration')),
         '42.50',
       );
+      await tester.pump();
+      final pendingHeader = tester.widget<SessionHeader>(
+        find.byType(SessionHeader),
+      );
+      expect(pendingHeader.nextLabel, contains('Duration (seconds): 42.50'));
+      expect(pendingHeader.nextLabel, isNot(contains('20kg')));
+      expect(pendingHeader.nextLabel, isNot(contains('×')));
+      expect(pendingHeader.prCount, 0);
       await tester.tap(find.byKey(const Key('catalog-log-set')));
       await tester.pump();
+      final loggedHeader = tester.widget<SessionHeader>(
+        find.byType(SessionHeader),
+      );
+      expect(loggedHeader.prCount, 0);
+      expect(loggedHeader.nextLabel, isEmpty);
       expect(state.loggedMetrics['typed-set'], {'duration': '42.50'});
       expect(set.done, isTrue);
       expect(

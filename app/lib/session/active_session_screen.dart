@@ -545,6 +545,39 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   bool _usesTrialForm(CatalogTrialState state, BlockState b) =>
       state.exercises.containsKey(b.exercise.id);
 
+  String _trialNextLabel(
+    CatalogTrialState state,
+    ActiveSessionController controller,
+    AppLocalizations l,
+    UnitService unit,
+  ) {
+    final next = controller.nextPendingSet;
+    // Finish is unavailable in this disposable trial; keep the timer without
+    // advertising a completion route or fabricating measurement targets.
+    if (next == null) return '';
+    if (!_usesTrialForm(state, next.block)) return restNextLabel(l, unit, next);
+    final choice = _choiceFor(state, next.block, next.set);
+    final locale = Localizations.localeOf(context).languageCode;
+    final profile = state.measurement(choice);
+    final values = state.metricDrafts[next.set.id] ?? const <String, String>{};
+    final distinction = state.distinction(choice, locale);
+    return l.sessionRestNext(
+      [
+        state.label(choice, locale),
+        if (distinction.isNotEmpty) distinction,
+        next.set.isWarmup
+            ? l.sessionLiveWarmup
+            : l.sessionLiveSet(next.block.workingSets.indexOf(next.set) + 1),
+        for (final metric in [
+          ...profile.requiredMetrics,
+          ...profile.optionalMetrics,
+        ])
+          if (values[metric]?.trim().isNotEmpty ?? false)
+            '${catalogMetricLabel(l, metric)}: ${values[metric]}',
+      ].join(' · '),
+    );
+  }
+
   Future<void> _changeTrialSetup(
     ActiveSessionController c,
     BlockState b,
@@ -642,16 +675,15 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     elapsed: controller.elapsed,
                     doneWork: controller.doneWork,
                     totalWork: controller.totalWork,
-                    prCount: controller.prCount,
+                    // The trial has no qualified per-context PR contract.
+                    prCount: trial == null ? controller.prCount : 0,
                     restStart: controller.restStart,
                     restTotal: controller.restTotal,
                     restEndedAt: controller.restEndedAt,
                     showRestRow: controller.hasLoggedSet,
-                    nextLabel: restNextLabel(
-                      l,
-                      unit,
-                      controller.nextPendingSet,
-                    ),
+                    nextLabel: trial == null
+                        ? restNextLabel(l, unit, controller.nextPendingSet)
+                        : _trialNextLabel(trial, controller, l, unit),
                     onMinimize: () => Navigator.of(context).pop(),
                     onMenu: () {
                       if (!controller.finishPending) {

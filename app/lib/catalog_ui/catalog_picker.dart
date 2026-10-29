@@ -216,7 +216,15 @@ class _CatalogPickerState extends State<CatalogPicker> {
               Expanded(
                 child: ListView(
                   controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    12 +
+                        (widget.multiple
+                            ? 0
+                            : MediaQuery.paddingOf(context).bottom),
+                  ),
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
@@ -551,6 +559,7 @@ class _CustomExerciseFormState extends State<_CustomExerciseForm> {
             DropdownButtonFormField<String>(
               initialValue: _profile,
               isExpanded: true,
+              isDense: false,
               itemHeight: null,
               decoration: InputDecoration(labelText: l.catalogMeasurement),
               items: [
