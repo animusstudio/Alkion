@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'animus/connection.dart';
 import 'catalog/catalog.dart';
 import 'catalog_ui/catalog_trial_scope.dart';
+import 'catalog_trial_storage.dart';
 import 'identity/alkion_identity.dart';
 import 'l10n/app_localizations.dart';
 import 'main.dart' show AlkionApp, AlkionRuntime;
@@ -21,7 +22,6 @@ import 'theme/tokens.dart';
 import 'theme/typography.dart';
 import 'widgets/fit_label.dart';
 
-const catalogTrialApplicationId = 'dev.animusstudio.alkion.catalogtrial.dev';
 const _catalogAsset = 'assets/catalog_trial/catalog.dev.json';
 const _manifestAsset = 'assets/catalog_trial/manifest.dev.json';
 
@@ -100,9 +100,7 @@ class _CatalogTrialBootstrapState extends State<CatalogTrialBootstrap> {
     try {
       // This fresh app-sandbox cache directory is the only selected store root.
       // Never query default support storage or enumerate earlier trial roots.
-      temporary = await Directory.systemTemp.createTemp(
-        'alkion-catalog-trial-',
-      );
+      temporary = await CatalogTrialStorage.createTemporaryDirectory();
       runtime = await AlkionRuntime.open(
         Directory('${temporary.path}/${AlkionIdentity.applicationId}'),
         connectionFactory: (_, _) => AnimusConnectionController(),
