@@ -120,7 +120,14 @@ change receive independent review, with fix-diff rechecks only.
   PASS, with known-day reimport explicitly retaining later local Disable after
   reviewer clarification; fix recheck PASS, no remaining findings.
 - Owner approval: "Ok approved", 2026-10-29, covers the final A1–A12 scope.
-- T1: In progress. T2–T4: Not started.
+- T1: Implemented at `870b790`; independent review found one draft-metadata
+  admission issue, corrected at `35b5af1`; fix-only recheck PASS, no findings.
+- T2: In progress after T1 acceptance. T3–T4: Not started.
 - Checks: original, preferences and activation proposal Markdown references/
-  whitespace and diff checks PASS. No runtime files changed.
-- Next: implement and independently review T1, then proceed through T2–T4.
+  whitespace and diff checks PASS.
+- T1 checks at `870b790`: offline locked get PASS; explicit owned formatting PASS;
+  analyze no issues; focused migration/domain/transfer/preferences/draft tests
+  68/68 PASS. Prior affected-suite fixture mismatches were corrected and rerun.
+- Draft fix at `35b5af1`: `make -C app test TEST='--concurrency=2 test/session/draft_json_test.dart'`
+  → 23/23 PASS; analyze, owned formatting and diff check PASS.
+- Next: implement and independently review T2, then proceed through T3–T4.
