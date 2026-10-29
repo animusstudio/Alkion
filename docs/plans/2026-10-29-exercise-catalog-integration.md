@@ -1,7 +1,7 @@
 # Alkion native exercise catalog integration
 
 Date: 2026-10-29. Lane: **Full** overall; isolated native trial is standard UI.
-Status: **Proposed; plan preparation requested, implementation not approved.**
+Status: **Approved by owner 2026-10-29; T0–T3 native trial starts first.**
 
 Parent: [development guide](../alkion/development.md). Related:
 [specification and acceptance A1–A13](../specs/2026-10-29-exercise-catalog-integration.md),
@@ -29,7 +29,7 @@ task. The browser trial also repeated names/facets/actions and mixed EN/IT label
   Setup changes affect upcoming sets; Use in this routine is explicit.
 - First trial uses disposable synthetic storage, the full candidate via a private
   development input and the actual reusable Flutter components. This is the
-  recommended staging assumption pending owner preference; no everyday-profile
+  approved first milestone; no everyday-profile
   migration is needed merely to judge the first native picker.
 - Durable persistence is full lane: versioned mappings/actions/migrations,
   exact per-set context/metrics and preservation/recovery tests precede enablement.
@@ -127,10 +127,9 @@ runtime paths must work offline; inspect the APK's permission/asset/code identit
 
 ## Task state and next
 
-Initial source/owner-feedback UX assessment prepared; no fresh native trial or
-implementation claimed. T0–T6 unstarted. Next: owner reviews this spec/plan and
-initial assessment; after implementation approval, start T0–T3 for the first
-native feel test while keeping durable work behind its preservation qualification.
+Owner approved the plan with "Ok proceed" on 2026-10-29. T0 in progress;
+T1–T6 unstarted. Start T0–T3 for the native feel test; durable work retains its
+preservation qualification. Initial assessment and full design review are complete.
 
 Planning checks at `bced7a7`: independent full design review PASS with two minor
 clarifications; changed-public-doc scope (4 files) and whitespace PASS. Full-tree

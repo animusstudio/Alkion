@@ -1,6 +1,6 @@
 # Native exercise discovery and execution tracking
 
-Date: 2026-10-29. Status: **Proposed; planning requested, implementation not approved.**
+Date: 2026-10-29. Status: **Approved by owner; native trial first.**
 Lane: **Full** for durable identity, measurements, migrations and recovery;
 the first native UX trial is an isolated standard-lane slice of this design.
 
@@ -17,7 +17,7 @@ choose its actual execution/equipment and continue the workout. A new machine
 does not create another movement definition or inherit an incompatible weight.
 The first deliverable is this interaction inside Alkion's Flutter routes, using
 a disposable synthetic profile; everyday-profile rollout follows preservation
-qualification. This staging assumption is pending owner preference, not approval.
+qualification. The owner approved this native-first implementation plan.
 
 The assessed published baseline is `29f136a`. The two pickers search owned names
 and muscle substrings, return different types and group by muscle. The library

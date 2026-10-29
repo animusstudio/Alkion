@@ -1,7 +1,7 @@
 # Alkion development and qualified driver handoff
 
-2026-10-29 · [Native exercise catalog integration](../plans/2026-10-29-exercise-catalog-integration.md) · Proposed.
-2026-10-29 · [Exercise integration specification](../specs/2026-10-29-exercise-catalog-integration.md) · Proposed.
+2026-10-29 · [Native exercise catalog integration](../plans/2026-10-29-exercise-catalog-integration.md) · Approved.
+2026-10-29 · [Exercise integration specification](../specs/2026-10-29-exercise-catalog-integration.md) · Approved.
 2026-10-29 · [Initial exercise-discovery UX/UI assessment](../design/exercise-discovery-assessment.md) · Proposed.
 
 2026-10-28 · [Body rotation responsiveness](../plans/2026-10-28-body-rotation-responsiveness.md) · Approved.
