@@ -68,10 +68,11 @@ brand and optional entry behavior; do not recreate or overwrite those slices.
    new shared picker widgets and their tests. Use typed intent adapters to retain
    Progress/bodyweight behavior. Implement concise rows, progressive ambiguity,
    recents/detail, multi-select/Add again, query-prefilled custom creation and
-   setup/routine actions against disposable in-memory repositories. The native
-   trial exercises all metric forms, pending input, timer and old/new setup
-   distinctions using the same widgets intended for durable integration.
-   No owner profile or production schema is touched by this trial entry.
+   setup/routine actions through injectable disposable adapters at the actual
+   route, shared metric-form and controller seams; no throwaway workout controller.
+   T2–T3 demonstrate in-process metric entry, pending input, timer and old/new
+   setup distinctions. Durable finish, cold resume and recovery are qualified in
+   T4–T6. No owner profile or production schema is touched by this trial entry.
 4. **T3 — First actual-app trial (A1–A6, A11–A13).** Deliver a private synthetic
    Android build with the existing build tooling and explicit disposable identity.
    Assess Add during workout, build routine, browse/custom, unfamiliar machine,
@@ -130,6 +131,11 @@ Initial source/owner-feedback UX assessment prepared; no fresh native trial or
 implementation claimed. T0–T6 unstarted. Next: owner reviews this spec/plan and
 initial assessment; after implementation approval, start T0–T3 for the first
 native feel test while keeping durable work behind its preservation qualification.
+
+Planning checks at `bced7a7`: independent full design review PASS with two minor
+clarifications; changed-public-doc scope (4 files) and whitespace PASS. Full-tree
+documentation retains two unchanged MakeHuman license-link issues. App tests and
+native checks remain UNRUN; subsequent wording fixes receive a focused recheck.
 
 Non-goals: public push/release, owner-data transfer, mass name merges, new auth/
 sync flows, manufacturer catalog, broad heatmap/statistics rollout or medical claims.

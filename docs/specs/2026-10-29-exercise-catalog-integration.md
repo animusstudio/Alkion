@@ -169,8 +169,8 @@ All eight catalog measurement profiles drive required/optional controls,
 validation, pending/logged/history summaries and serialization. Duration,
 distance, repetitions and reported load retain quantity, unit, exact raw value
 and missing/null/unknown distinctions. A plank is duration, not default reps;
-a run is distance/duration, not kg. Specify m/s observations for the first new
-metrics while preserving current kg/lb display and exact-value formatters.
+a run is distance/duration, not kg. Specify distance in metres and duration in
+seconds while preserving current kg/lb display and exact-value formatters.
 Do not place quantities in unrelated compatibility columns.
 
 Load progression remains restricted to supported compatible load/reps contexts;
