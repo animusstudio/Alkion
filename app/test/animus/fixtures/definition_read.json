@@ -1,0 +1,16 @@
+{
+  "kind": "exercise",
+  "definition": {
+    "ref": {
+      "kind": "exercise",
+      "id": "33333333-3333-4333-8333-333333333333"
+    },
+    "revision": 1,
+    "deleted_at": null,
+    "evidence": null,
+    "field_attribution": {},
+    "source_origin": "native",
+    "id": {"state": "valid", "raw": "synthetic-definition", "value": "synthetic-definition"},
+    "name": {"state": "valid", "raw": "Synthetic verification exercise", "value": "Synthetic verification exercise"}
+  }
+}

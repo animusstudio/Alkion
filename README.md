@@ -13,10 +13,12 @@ exercise catalog, history and progress views, manual backup/restore, and reviewe
 local transfer/import workflows. Originals and uncertain recovery state remain
 separate from corrections and derived results. Replicas are not backups.
 
-No account, synchronization sender or OTA update transport is enabled. A future
-Animus connection is a separate design and implementation task. Final release
-identity and signing remain open; this repository does not publish signed APKs
-or backend images automatically.
+An explicitly configured [optional Animus connection](docs/alkion/animus-connection.md)
+adds browser sign-in, account/space confirmation and a foreground read-access
+check in Profile. Default builds and local workout use remain account-free and
+offline. Synchronization sending, replica downloads and OTA updates remain
+separate work. Final release identity and signing remain open; this repository
+does not publish signed APKs or backend images automatically.
 
 ## Development
 

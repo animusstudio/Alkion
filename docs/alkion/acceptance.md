@@ -1,10 +1,72 @@
 ---
 app: alkion
 stage: development
-observed: 2026-10-22
+observed: 2026-10-28
 ---
 
-# Alkion integrated acceptance (T7)
+# Alkion integrated acceptance
+
+## Optional Animus connection — 2026-10-28
+
+The [approved connection plan](../plans/2026-10-28-animus-connection-foundation.md)
+implements optional Profile browser sign-in, explicit account/space confirmation,
+scoped session handling and one authorized definitions read. T1–T4 and their
+required fixes have independent review PASS. The connection remains disabled
+without explicit setup; local startup performs no auth, browser, key-store or
+network work. Sender, replica download and summary activation remain disabled.
+Runtime/client source is `93215b3`. Final independent A1–A6 review PASS verified
+the source, native helper/binary/APK identities and actual Linux/Android receipts
+with no findings. Existing API contract check/smoke PASS evidence is reused
+because production server source is unchanged.
+
+The opt-in `test/animus/live_connection_integration_test.dart` passed **23/23
+real checks in 76 seconds** through pinned Make/FVM. It used fresh synthetic
+provider accounts, two public clients with direct reader registrations, the
+production OIDC adapter/SDK and HTTP/probe, and the production API handler.
+Production authentication generated S256 code flow and validated the real
+provider's signed identity through discovery, token exchange and JWK retrieval.
+The real Linux browser adapter received the provider-issued callback through
+its actual loopback listener; a private test launcher drove provider login and
+consent. No app password UI, forged JWT or fake auth port supplied this proof.
+
+| Executed coverage | Measured result |
+| --- | --- |
+| Login, confirmation and direct read | Login remained staged with no retained secret or API read; confirmation produced a validated `200`; disconnect fenced reads and reconnect required confirmation. |
+| Genuine short-lived expiry | Idle expiry produced no auth/API request; explicit verification performed one refresh and a successful read. |
+| Real access revocation | The API returned `401`; one explicit refresh and one retry restored the read. |
+| Grant and reader revocation | Actual fixture revocation returned `403`; restored grant read succeeded. A revoked reader stayed denied after replacement; fresh admission configuration required reconnect and then read successfully. |
+| Wrong space and another real account | Both were denied with `403`; the new identity was staged without inheriting the prior connection or making a pre-confirmation API request. |
+| Offline restart and lifecycle fences | Offline stayed distinctly unavailable on explicit restore. Cancel, close and generation replacement prevented delayed browser callbacks from exchanging a code or reading the API. |
+| Focused checks | Auth/browser/controller: 55 passed; probe validation: 25 passed; Profile/runtime: 12 passed. Scoped T5 analysis: 0 issues; owned formatting and diff whitespace checks passed. |
+| Linux native adapter checkpoint | PASS on X11 with actual OS Secret Service storage and an external browser callback. Synthetic marker write/read, generation isolation and verified deletion all passed. |
+| Android native adapter checkpoint | PASS in an explicitly selected fresh x86_64 emulator with the stock WebView browser and OS callback return. Keystore storage, generation isolation and verified deletion all passed. |
+
+This real transport run used in-memory secret storage and opened no local
+workout store. Separate native runs used the cleanup-verified standalone helper
+at SHA-256 `4e8eb45bd617b7c2c073efe95eb2baa6e5d7b291664f98197d5885170abb8ff8`.
+They qualified actual OS storage and browser/callback transport with a
+noncredential callback; neither opened a local store nor performed real OIDC
+login. The provider/API integration above supplies the real authentication
+evidence. These bounded runs do not qualify every browser, OS version, keyring
+configuration or physical device. Existing local workout evidence below and
+focused runtime/UI checks retain their stated scope.
+
+Final full-suite confirmation **PASS: 1,796 passed, one skipped, 85 seconds**.
+The skip is the opt-in live integration, executed separately above with 23/23
+checks passing. The first broad run's obsolete ban on the now-approved
+secure-storage dependency was corrected; eight focused identity/isolation tests
+and the final broad run passed. Final analysis reports zero issues. The
+approved connection slice and final independent review are complete within
+the stated synthetic scope.
+
+No phone, owner profile, production grant, replica, outbox send, snapshot or
+whole-history coverage was exercised. The test-owned API server stopped, its
+fixture/schema was reclaimed, and the disposable provider, database and private
+inputs were removed. Cleanup confirmed that existing resources were untouched.
+
+See the [connection guide](animus-connection.md) for public setup and the generic
+live fixture contract. The R3 two-device and sender/replica conformance gates
+below remain UNRUN; this read-only connection slice does not satisfy them.
 
 ## UI refactor native adoption (2026-10-22)
 
