@@ -3,22 +3,71 @@ import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/widgets/alkion_brand.dart';
 import 'package:alkion/widgets/alkion_entry_opening.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/app_fonts.dart';
 
-Widget _app({bool enabled = true}) => MaterialApp(
+Widget _app({bool enabled = true, Widget? child}) => MaterialApp(
   theme: buildTheme(Brightness.dark, accents[0]),
   home: Scaffold(
     body: AlkionEntryOpening(
       enabled: enabled,
-      child: const Text('Functional choices', key: Key('choices')),
+      child: child ?? const Text('Functional choices', key: Key('choices')),
     ),
   ),
 );
 
 void main() {
   setUpAll(preloadAppFonts);
+
+  for (final skip in [false, true]) {
+    testWidgets(
+      'hidden choices reject Tab/Enter and regain focus after ${skip ? 'skip' : 'settle'}',
+      (tester) async {
+        final focus = FocusNode();
+        var activations = 0;
+        await tester.pumpWidget(
+          _app(
+            child: Center(
+              child: FilledButton(
+                focusNode: focus,
+                onPressed: () => activations++,
+                child: const Text('Functional action'),
+              ),
+            ),
+          ),
+        );
+        for (final elapsed in [
+          Duration.zero,
+          const Duration(milliseconds: 1300),
+        ]) {
+          await tester.pump(elapsed);
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          await tester.pump();
+          expect(focus.hasFocus, isFalse);
+          expect(activations, 0);
+        }
+        if (skip) {
+          await tester.tap(find.byKey(const Key('first-entry-opening')));
+          await tester.pump();
+        } else {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(find.byKey(const Key('first-entry-opening')), findsNothing);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(focus.hasFocus, isTrue);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        expect(activations, 1);
+        await tester.pumpWidget(const SizedBox());
+        focus.dispose();
+      },
+    );
+  }
 
   testWidgets('sparse frames advance at 400ms then fade to choices once', (
     tester,

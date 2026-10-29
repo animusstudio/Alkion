@@ -85,8 +85,10 @@ class _AlkionEntryOpeningState extends State<AlkionEntryOpening>
         fit: StackFit.expand,
         children: [
           ExcludeSemantics(
-            child: IgnorePointer(
-              child: Opacity(opacity: fade, child: child),
+            child: ExcludeFocus(
+              child: IgnorePointer(
+                child: Opacity(opacity: fade, child: child),
+              ),
             ),
           ),
           Semantics(
