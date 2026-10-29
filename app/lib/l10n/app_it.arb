@@ -186,7 +186,7 @@
   "exerciseEditorEquipment": "Attrezzo / macchina",
   "exerciseEditorEquipmentPlaceholder": "es. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Esercizio composto",
-  "exerciseEditorCompoundHint": "Caratteristica del movimento · regola recupero e riscaldamento",
+  "exerciseEditorCompoundHint": "Usato per suggerire recupero e carico.",
   "exerciseEditorStats": "Statistiche",
   "exerciseEditorStatsHint": "Tracciate per esercizio su ogni scheda.",
   "exerciseEditorPr": "Record personale",
@@ -740,5 +740,34 @@
       }
     }
   },
-  "trainingWeekdayUnavailable": "Giorno della settimana non disponibile"
+  "trainingWeekdayUnavailable": "Giorno della settimana non disponibile",
+  "sessionClearRir": "Rimuovi RIR",
+  "trainingOpenPlan": "Apri Piano",
+  "trainingEnableDayInPlan": "Attiva un giorno nel Piano",
+  "trainingNoActiveDays": "I giorni salvati non sono attivi. Controllali nel Piano o inizia un allenamento libero.",
+  "trainingStartUnavailable": "Allenamento non disponibile",
+  "trainingDayStartUnavailable": "{name} non è disponibile per un nuovo allenamento. Apri il Piano per attivare o controllare questo giorno.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "La prescrizione delle ripetizioni di {name} non è disponibile. Correggila nel Piano prima di iniziare un nuovo allenamento.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "La regola RIR di {name} non è supportata. Controllala nel Piano prima di iniziare un nuovo allenamento.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

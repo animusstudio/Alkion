@@ -14,6 +14,8 @@ import '../data/models.dart';
 import '../data/session_repository.dart';
 import '../data/session_writer.dart';
 import '../util/calendar_keys.dart';
+import '../util/prescription_format.dart';
+import '../settings/settings_service.dart';
 import '../store/local_store.dart';
 
 const uuid = Uuid();
@@ -34,7 +36,63 @@ class FreshSessionLimitException implements Exception {
   final String? exerciseName;
 }
 
+/// Fresh generation needs a qualified source prescription, never a mixed pair
+/// or a policy that the lossless draft decoder cannot admit.
+class FreshPrescriptionUnavailableException implements Exception {
+  const FreshPrescriptionUnavailableException(
+    this.exerciseName, {
+    this.rirPolicy = false,
+  });
+  final String exerciseName;
+  final bool rirPolicy;
+}
+
+ResolvedSlot resolveFreshPrescription(Slot slot, Exercise exercise) {
+  final reps = resolveRepPair(slot, exercise);
+  if (reps == null) throw FreshPrescriptionUnavailableException(exercise.name);
+  final resolved = resolveSlot(slot, exercise);
+  final result = ResolvedSlot(
+    exercise: exercise,
+    workSets: resolved.workSets,
+    warmupSets: resolved.warmupSets,
+    repLow: reps.low,
+    repHigh: reps.high,
+    rirLow: resolved.rirLow,
+    rirHigh: resolved.rirHigh,
+    rirState: resolved.rirState,
+    rirPolicy: resolved.rirPolicy,
+  );
+  _validateFreshCounts(result);
+  return result;
+}
+
 void _validateFreshCounts(ResolvedSlot resolved) {
+  if (qualifiedRepPair(resolved.repLow, resolved.repHigh) == null) {
+    throw FreshPrescriptionUnavailableException(resolved.exercise.name);
+  }
+  if (resolved.rirPolicy != null &&
+      !const {
+        RirPolicy.inherit,
+        RirPolicy.off,
+        RirPolicy.target,
+      }.contains(resolved.rirPolicy)) {
+    throw FreshPrescriptionUnavailableException(
+      resolved.exercise.name,
+      rirPolicy: true,
+    );
+  }
+  if (resolved.rirState == RirTargetState.available &&
+      (resolved.rirPolicy == RirPolicy.off ||
+          resolved.rirLow == null ||
+          resolved.rirHigh == null ||
+          resolved.rirLow! < rirMin ||
+          resolved.rirHigh! > rirMax ||
+          resolved.rirLow! > resolved.rirHigh!)) {
+    throw FreshPrescriptionUnavailableException(
+      resolved.exercise.name,
+      rirPolicy: true,
+    );
+  }
   if (resolved.workSets < 1 || resolved.workSets > 99) {
     throw FreshSessionLimitException(
       FreshSessionLimit.workingSets,
@@ -64,7 +122,7 @@ double roundTo(double v, double step) => (v / step).round() * step;
 ///   weight_i = roundTo(suggested * (0.5 + 0.18 * i), step)
 ///   reps_i   = max(1, 8 − 2*i)
 ///
-/// Working sets use [suggested] weight, [repLow] reps, RIR 1.
+/// Working sets use [suggested] weight and [repLow] reps; actual RIR is absent.
 BlockState buildBlock({required ResolvedSlot resolved, double? lastTopKg}) {
   _validateFreshCounts(resolved);
   final exercise = resolved.exercise;
@@ -101,7 +159,7 @@ BlockState buildBlock({required ResolvedSlot resolved, double? lastTopKg}) {
         id: uuid.v4(),
         weightKg: suggested,
         reps: resolved.repLow,
-        rir: 1,
+        rir: null,
         isWarmup: false,
         done: false,
       ),
@@ -919,7 +977,7 @@ class ActiveSessionController extends ChangeNotifier {
         continue;
       }
 
-      final resolved = resolveSlot(slot, exercise);
+      final resolved = resolveFreshPrescription(slot, exercise);
       _validateFreshCounts(resolved);
       // Subtract only validated bounded counts; stop before exceeding the cap.
       if (resolved.workSets > remaining ||
@@ -1158,7 +1216,7 @@ class ActiveSessionController extends ChangeNotifier {
   /// correction made in the live card. Focus then falls back to the first
   /// not-done set; when that is in another block, the block just finished
   /// collapses (only if every set in it is done) and the next one expands.
-  /// A newly logged working set opens the RIR strip on it; anything else closes it.
+  /// A valid target may offer the optional RIR strip; no-target logging closes it.
   /// Returns null when there is no live set.
   ({BlockState block, SetState set, bool newlyDone})? logLiveSet() {
     final live = liveSet;
@@ -1168,7 +1226,7 @@ class ActiveSessionController extends ChangeNotifier {
     final newlyDone = !live.set.done;
     live.set.done = true;
     _focusedSetId = null;
-    if (newlyDone && !live.set.isWarmup) {
+    if (newlyDone && !live.set.isWarmup && live.block.resolved.hasRirTarget) {
       _rirPromptSetId = live.set.id;
     } else {
       _closeRirPrompt();
@@ -1193,7 +1251,7 @@ class ActiveSessionController extends ChangeNotifier {
   }
 
   /// A tap on the RIR strip: stores [rir]; the strip stays open.
-  void setRirFromPrompt(SetState set, int rir) {
+  void setRirFromPrompt(SetState set, int? rir) {
     set.rir = rir;
     _rirPromptSetId = set.id;
     notifyListeners();
@@ -1263,7 +1321,7 @@ class ActiveSessionController extends ChangeNotifier {
         id: uuid.v4(),
         weightKg: last?.weightKg ?? suggested,
         reps: last?.reps ?? block.resolved.repLow,
-        rir: last?.rir ?? 1,
+        rir: null,
         isWarmup: false,
         done: false,
       ),
@@ -1380,7 +1438,8 @@ class ActiveSessionController extends ChangeNotifier {
   bool hasExercise(String exerciseId) =>
       draft.blocks.any((b) => b.exercise.id == exerciseId);
 
-  /// Appends a new block for [exercise] using the exercise's own defaults.
+  /// Appends a new block using qualified exercise defaults and captured
+  /// creation choices, without recomputing any existing block.
   /// Does nothing if the workout already has that exercise.
   ///
   /// Seeds the block from logged history exactly like [buildFromTemplate] so a
@@ -1391,10 +1450,29 @@ class ActiveSessionController extends ChangeNotifier {
   Future<void> addBlock(
     Exercise exercise, {
     required SessionRepository sessionRepo,
+    RepEntry repEntry = RepEntry.fixed,
+    RirControls rirControls = RirControls.off,
   }) async {
     // Build a default slot from the exercise's own defaults (no slot overrides).
-    final slot = Slot(exerciseId: exercise.id, position: draft.blocks.length);
-    final resolved = resolveSlot(slot, exercise);
+    final hasRepEvidence =
+        exercise.defaultRepLow != null ||
+        exercise.defaultRepHigh != null ||
+        exercise.rawFields['default_rep_low'] != null ||
+        exercise.rawFields['default_rep_high'] != null;
+    final slot = Slot(
+      exerciseId: exercise.id,
+      position: draft.blocks.length,
+      repLow: hasRepEvidence ? null : 8,
+      repHigh: hasRepEvidence
+          ? null
+          : repEntry == RepEntry.range
+          ? 12
+          : 8,
+      rirPolicy: rirControls == RirControls.off
+          ? RirPolicy.off
+          : RirPolicy.inherit,
+    );
+    final resolved = resolveFreshPrescription(slot, exercise);
     _validateFreshCounts(resolved);
     // A resumed workout's own finished rows stay in the DB until it is
     // finished again; exclude them so the PR baseline and the "Last" row are

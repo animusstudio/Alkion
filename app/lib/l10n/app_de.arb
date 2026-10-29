@@ -186,7 +186,7 @@
   "exerciseEditorEquipment": "Gerät / Maschine",
   "exerciseEditorEquipmentPlaceholder": "z. B. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Grundübung",
-  "exerciseEditorCompoundHint": "Bewegungsmerkmal · steuert Pause & Aufwärmen",
+  "exerciseEditorCompoundHint": "Wird für Pausen- und Gewichtsvorschläge verwendet.",
   "exerciseEditorStats": "Statistik",
   "exerciseEditorStatsHint": "Pro Übung über alle Splits hinweg erfasst.",
   "exerciseEditorPr": "Persönlicher Rekord",
@@ -740,5 +740,34 @@
       }
     }
   },
-  "trainingWeekdayUnavailable": "Wochentag nicht verfügbar"
+  "trainingWeekdayUnavailable": "Wochentag nicht verfügbar",
+  "sessionClearRir": "RIR löschen",
+  "trainingOpenPlan": "Plan öffnen",
+  "trainingEnableDayInPlan": "Trainingstag im Plan aktivieren",
+  "trainingNoActiveDays": "Deine gespeicherten Trainingstage sind nicht aktiv. Prüfe sie im Plan oder starte ein freies Training.",
+  "trainingStartUnavailable": "Training nicht verfügbar",
+  "trainingDayStartUnavailable": "{name} ist für ein neues Training nicht verfügbar. Öffne den Plan, um den Tag zu aktivieren oder zu prüfen.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "Die Wiederholungsvorgabe für {name} ist nicht verfügbar. Korrigiere sie im Plan, bevor du ein neues Training startest.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "Die RIR-Regel für {name} wird nicht unterstützt. Prüfe sie im Plan, bevor du ein neues Training startest.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

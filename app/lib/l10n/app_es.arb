@@ -186,7 +186,7 @@
   "exerciseEditorEquipment": "Equipo / máquina",
   "exerciseEditorEquipmentPlaceholder": "p. ej. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Ejercicio compuesto",
-  "exerciseEditorCompoundHint": "Rasgo del movimiento · regula descanso y calentamiento",
+  "exerciseEditorCompoundHint": "Se usa para sugerir descanso y peso.",
   "exerciseEditorStats": "Estadísticas",
   "exerciseEditorStatsHint": "Registradas por ejercicio en todas las rutinas.",
   "exerciseEditorPr": "Récord personal",
@@ -740,5 +740,34 @@
       }
     }
   },
-  "trainingWeekdayUnavailable": "Día de la semana no disponible"
+  "trainingWeekdayUnavailable": "Día de la semana no disponible",
+  "sessionClearRir": "Borrar RIR",
+  "trainingOpenPlan": "Abrir Plan",
+  "trainingEnableDayInPlan": "Activar un día en Plan",
+  "trainingNoActiveDays": "Tus días guardados no están activos. Revísalos en Plan o empieza un entrenamiento libre.",
+  "trainingStartUnavailable": "Entrenamiento no disponible",
+  "trainingDayStartUnavailable": "{name} no está disponible para un entrenamiento nuevo. Abre Plan para activar o revisar este día.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "La prescripción de repeticiones de {name} no está disponible. Corrígela en Plan antes de empezar un entrenamiento nuevo.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "La política de RIR de {name} no es compatible. Revísala en Plan antes de empezar un entrenamiento nuevo.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -432,7 +432,7 @@
   "exerciseEditorEquipment": "Equipment / machine",
   "exerciseEditorEquipmentPlaceholder": "e.g. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Compound lift",
-  "exerciseEditorCompoundHint": "Movement trait · drives rest & warmups",
+  "exerciseEditorCompoundHint": "Used for rest and weight suggestions.",
   "exerciseEditorStats": "Stats",
   "exerciseEditorStatsHint": "Tracked per exercise across every split.",
   "exerciseEditorPr": "Personal record",
@@ -1373,5 +1373,34 @@
       }
     }
   },
-  "trainingWeekdayUnavailable": "Weekday unavailable"
+  "trainingWeekdayUnavailable": "Weekday unavailable",
+  "sessionClearRir": "Clear RIR",
+  "trainingOpenPlan": "Open Plan",
+  "trainingEnableDayInPlan": "Enable a day in Plan",
+  "trainingNoActiveDays": "Your saved days are not active. Review them in Plan or start a custom workout.",
+  "trainingStartUnavailable": "Workout unavailable",
+  "trainingDayStartUnavailable": "{name} is not available for a new workout. Open Plan to enable or review this day.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "The rep prescription for {name} is unavailable. Correct it in Plan before starting a new workout.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "The RIR policy for {name} is unsupported. Review it in Plan before starting a new workout.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }
