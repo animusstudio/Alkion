@@ -102,6 +102,10 @@ class LiveSetCard extends StatelessWidget {
           ),
           if (set.done && !set.isWarmup) ...[
             const SizedBox(height: 12),
+            if (set.rir != null && (set.rir! < rirMin || set.rir! > rirMax))
+              inset(
+                FitLabel(l.sessionRir(set.rir!), maxLines: 2, style: caption()),
+              ),
             // When the chips wrap to two rows, the caption stays level with
             // the first.
             inset(
@@ -127,6 +131,23 @@ class LiveSetCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (set.rir != null)
+              TextButton(
+                key: const Key('live-clear-rir'),
+                onPressed: () {
+                  set.rir = null;
+                  onChanged();
+                },
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                  foregroundColor: tokens.text,
+                ),
+                child: FitLabel(
+                  l.sessionClearRir,
+                  maxLines: 2,
+                  style: WorkoutType.body(color: tokens.dim),
+                ),
+              ),
           ],
           const SizedBox(height: 10),
           inset(

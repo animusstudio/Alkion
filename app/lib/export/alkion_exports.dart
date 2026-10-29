@@ -273,6 +273,34 @@ Future<Map<String, Object?>> buildCompatTransferExport(
     final ids = exported[policy.table] = {};
     final list = data[policy.table] = [];
     for (final row in rows) {
+      if (policy.table == 'day_templates' &&
+          row.containsKey('is_active') &&
+          row['is_active'] != 1) {
+        throw const StoreException(
+          'compat_export_day_activation_requires_native_backup',
+        );
+      }
+      if (policy.table == 'day_template_items') {
+        final rirPolicy = row['rir_policy'];
+        // Null is frozen legacy semantics; explicit Target can be represented
+        // only by its complete qualified pair. Explicit inherit with old bounds
+        // would otherwise turn those ignored bounds back into a target.
+        final low = row['target_rir_low'], high = row['target_rir_high'];
+        final representable =
+            rirPolicy == null ||
+            rirPolicy == 'inherit' && low == null && high == null ||
+            rirPolicy == 'target' &&
+                low is int &&
+                high is int &&
+                low >= 0 &&
+                high <= 5 &&
+                low <= high;
+        if (!representable) {
+          throw const StoreException(
+            'compat_export_rir_policy_requires_native_backup',
+          );
+        }
+      }
       final out = <String, Object?>{'id': row['id']};
       var keep = true;
       for (final e in policy.fields.entries) {

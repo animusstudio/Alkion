@@ -118,6 +118,10 @@ class _PreferenceSnapshot {
   int? base;
 }
 
+enum RepEntry { fixed, range }
+
+enum RirControls { off, show }
+
 class SettingsService extends ChangeNotifier {
   SettingsService() : _preferences = null;
   SettingsService.local(LocalDatabase database)
@@ -128,6 +132,11 @@ class SettingsService extends ChangeNotifier {
   int _restCompoundSeconds = 180, _restIsolationSeconds = 90;
   String? _localeOverride;
   String _bodyStyle = 'male';
+  RepEntry _repEntry = RepEntry.fixed;
+  RirControls _rirControls = RirControls.off;
+  Map<String, dynamic> _loaded = {};
+  RepEntry get repEntry => _repEntry;
+  RirControls get rirControls => _rirControls;
   String get bodyStyle => _bodyStyle;
   BodyweightGoal _bodyweightGoal = BodyweightGoal.maintain;
   String get mode => _mode;
@@ -151,6 +160,13 @@ class SettingsService extends ChangeNotifier {
     final p = _preferences;
     if (p == null) return;
     final data = await p.load();
+    _loaded = Map.of(data);
+    _repEntry = data['training_rep_entry'] == 'range'
+        ? RepEntry.range
+        : RepEntry.fixed;
+    _rirControls = data['training_rir_controls'] == 'show'
+        ? RirControls.show
+        : RirControls.off;
     _bodyStyle = data['body_style'] == 'female' ? 'female' : 'male';
     _mode = data['mode'] as String? ?? 'dark';
     _profileName = data['profile_name'] as String? ?? 'Athlete';
@@ -170,6 +186,9 @@ class SettingsService extends ChangeNotifier {
   }
 
   Map<String, Object?> _snapshot() => {
+    ..._loaded,
+    'training_rep_entry': _repEntry.name,
+    'training_rir_controls': _rirControls.name,
     'mode': _mode,
     'body_style': _bodyStyle,
     'profile_name': _profileName,
@@ -197,6 +216,16 @@ class SettingsService extends ChangeNotifier {
   Future<void> flushPersistence() async {
     if (_unboundOwed) throw const StoreException('unbound_preferences');
     await _preferences?.flushPersistence();
+  }
+
+  Future<void> setRepEntry(RepEntry value) {
+    _repEntry = value;
+    return _save();
+  }
+
+  Future<void> setRirControls(RirControls value) {
+    _rirControls = value;
+    return _save();
   }
 
   Future<void> setBodyStyle(String value) {

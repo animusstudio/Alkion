@@ -171,7 +171,7 @@ void main() {
     expect(block.warmupSets[0].done, false);
     expect(block.warmupSets[0].isWarmup, true);
     expect(block.warmupSets[0].rir, isNull);
-    expect(block.workingSets[0].rir, 1);
+    expect(block.workingSets[0].rir, isNull);
     expect(block.workingSets[0].done, false);
   });
 

@@ -2,13 +2,13 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 /// Forward IDs are reserved: 1 foundation, 2 domain adapters, 3 workout,
-/// 4 transfer, 5 restore. Later tasks add only evidenced forward changes.
-const currentSchemaVersion = 1;
+/// 4 flexible prescriptions, 5 reserved. Frozen IDs 1–3 retain their digests.
+const currentSchemaVersion = 4;
 const alkionApplicationId = 0x414C4B31;
 const reservedMigrationIds = {
   2: 'domains',
   3: 'workout',
-  4: 'transfer',
+  4: 'flexible-prescriptions',
   5: 'restore',
 };
 
@@ -380,6 +380,44 @@ SchemaRegistry workflowSchemaRegistry() => SchemaRegistry(
         ...domainMigrationStatements,
         ...workflowMigrationStatements,
       ]),
+    ),
+  ],
+);
+
+/// Nullable policy preserves legacy slot targets/inheritance; unknown literals
+/// are retained as unavailable. A missing legacy active flag becomes 1, while
+/// explicit null/unknown flags remain available for recovery rather than active.
+const prescriptionMigrationStatements = [
+  'ALTER TABLE day_templates ADD COLUMN is_active INTEGER DEFAULT 1',
+  'ALTER TABLE day_template_items ADD COLUMN rir_policy TEXT',
+];
+
+/// sqlite_master's ALTER TABLE shape, without modifying foundation SQL/history.
+final _prescriptionSchemaStatements = [
+  for (final sql in schemaStatements)
+    if (sql.startsWith('CREATE TABLE day_templates '))
+      sql.replaceFirst(
+        'PRIMARY KEY(profile_id,id),',
+        'is_active INTEGER DEFAULT 1, PRIMARY KEY(profile_id,id),',
+      )
+    else if (sql.startsWith('CREATE TABLE day_template_items '))
+      sql.replaceFirst(
+        'FOREIGN KEY(profile_id,day_template_id)',
+        'rir_policy TEXT, FOREIGN KEY(profile_id,day_template_id)',
+      )
+    else
+      sql,
+  ...domainMigrationStatements,
+  ...workflowMigrationStatements,
+];
+
+SchemaRegistry prescriptionSchemaRegistry() => SchemaRegistry(
+  forward: [
+    ...workflowSchemaRegistry().migrations.skip(1),
+    ForwardMigration(
+      version: 4,
+      statements: prescriptionMigrationStatements,
+      expectedSchemaDigest: schemaSqlDigest(_prescriptionSchemaStatements),
     ),
   ],
 );

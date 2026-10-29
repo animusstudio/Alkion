@@ -24,7 +24,11 @@ import '../widgets/w_dialog.dart';
 /// a custom session), guards [BuildContext.mounted], and pushes
 /// [ActiveSessionScreen] on the **root** navigator wrapped in a
 /// [ChangeNotifierProvider].
-Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
+Future<void> startSession(
+  BuildContext context, {
+  DayTemplate? template,
+  VoidCallback? onOpenPlan,
+}) async {
   final manager = context.read<SessionManager>();
   final database = context.read<LocalDatabase>();
   // Read before any await so the context is still valid (used for the
@@ -45,6 +49,26 @@ Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
   ActiveSessionController? unregisteredController;
   var launchReleased = false;
   try {
+    // This committed read is the fresh-launch admission. Once admitted, a later
+    // Disable does not interrupt the pending build or its eventual workout.
+    DayTemplate? admittedTemplate;
+    if (template != null) {
+      admittedTemplate = await DayTemplateRepository.local(
+        database,
+      ).byId(template.id);
+      if (admittedTemplate == null || !admittedTemplate.isActive) {
+        if (context.mounted) {
+          await _showPlanRefusal(
+            context,
+            AppLocalizations.of(
+              context,
+            ).trainingDayStartUnavailable(template.name),
+            onOpenPlan: onOpenPlan,
+          );
+        }
+        return;
+      }
+    }
     final store = manager.draftStore;
     if (store == null) {
       throw const StoreException('local_store_required');
@@ -54,11 +78,11 @@ Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
     unregisteredController = controller;
     final sessionRepo = SessionRepository.local(database);
 
-    if (template != null) {
+    if (admittedTemplate != null) {
       while (true) {
         try {
           await controller.buildFromTemplate(
-            template,
+            admittedTemplate,
             exerciseRepo: ExerciseRepository.local(database),
             sessionRepo: sessionRepo,
           );
@@ -85,6 +109,15 @@ Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
     await controller.flushPersistence();
     manager.register(controller);
     unregisteredController = null; // SessionManager now owns the controller.
+  } on FreshPrescriptionUnavailableException catch (error) {
+    if (context.mounted) {
+      await showFreshPrescriptionUnavailable(
+        context,
+        error,
+        onOpenPlan: onOpenPlan,
+      );
+    }
+    return;
   } on FreshSessionLimitException catch (error) {
     manager.endLaunch();
     launchReleased = true;
@@ -106,6 +139,41 @@ Future<void> startSession(BuildContext context, {DayTemplate? template}) async {
     return;
   }
   await openActiveSession(context, manager);
+}
+
+Future<void> _showPlanRefusal(
+  BuildContext context,
+  String message, {
+  VoidCallback? onOpenPlan,
+}) async {
+  if (!context.mounted) return;
+  final l = AppLocalizations.of(context);
+  final open = await showWDialog<bool>(
+    context,
+    title: l.trainingStartUnavailable,
+    message: message,
+    actions: [
+      WDialogAction(label: l.commonOk, value: false),
+      if (onOpenPlan != null)
+        WDialogAction(label: l.trainingOpenPlan, value: true),
+    ],
+  );
+  if (open == true && context.mounted) onOpenPlan?.call();
+}
+
+Future<void> showFreshPrescriptionUnavailable(
+  BuildContext context,
+  FreshPrescriptionUnavailableException error, {
+  VoidCallback? onOpenPlan,
+}) {
+  final l = AppLocalizations.of(context);
+  return _showPlanRefusal(
+    context,
+    error.rirPolicy
+        ? l.trainingRirPolicyUnavailable(error.exerciseName)
+        : l.trainingRepStartUnavailable(error.exerciseName),
+    onOpenPlan: onOpenPlan,
+  );
 }
 
 /// Explains a refused fresh prescription without changing its source.

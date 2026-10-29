@@ -7,6 +7,9 @@ import 'package:alkion/animus/contracts.dart';
 import 'package:alkion/animus/entry.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:alkion/animus/probe.dart';
+import 'package:alkion/data/day_template_repository.dart';
+import 'package:alkion/data/exercise_repository.dart';
+import 'package:alkion/data/models.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/identity/alkion_profile.dart';
 import 'package:alkion/identity/entry_journal.dart';
@@ -115,7 +118,7 @@ void main() {
   );
 
   test(
-    'exact reserved store exists before retain and before read probe',
+    'exact reserved store hands current prescriptions to runtime without reopening',
     () async {
       final auth = _Auth();
       final probe = _Probe()..result = AnimusProbeResult.accessDenied;
@@ -129,12 +132,13 @@ void main() {
         expect(profile.profileId, reserved.profileId);
         final store = entry.preparedStore ?? handedStore!;
         expect(store.token.generation, reserved.generation);
+        expect((await store.get('PRAGMA user_version')).values.single, 4);
         expect(await store.getAll('SELECT * FROM exercises'), isEmpty);
         await expectLater(
           LocalStore.open(
             profile: profile,
             expectedProfileId: profile.profileId,
-            schema: workflowSchemaRegistry(),
+            schema: prescriptionSchemaRegistry(),
           ),
           throwsA(
             isA<StoreException>().having(
@@ -162,16 +166,20 @@ void main() {
         preparedStore: entry.takePreparedStore(),
         connectionFactory: (_, _) => handed!,
       );
-      handedStore = runtime.store;
-      expect(runtime.store, same(owned));
-      expect(runtime.animus, same(controller));
-      await runtime.animus.disconnect();
-      await runtime.animus.connect();
-      await runtime.animus.confirm();
-      expect(runtime.animus.state, AnimusConnectionState.accessDenied);
-      expect(auth.retains, 2);
-      expect(probe.verifications, 2);
-      await runtime.close();
+      try {
+        handedStore = runtime.store;
+        expect(runtime.store, same(owned));
+        expect(runtime.animus, same(controller));
+        await runtime.animus.disconnect();
+        await runtime.animus.connect();
+        await runtime.animus.confirm();
+        expect(runtime.animus.state, AnimusConnectionState.accessDenied);
+        expect(auth.retains, 2);
+        expect(probe.verifications, 2);
+        await _expectPrescriptionWrites(runtime.store);
+      } finally {
+        await runtime.close();
+      }
     },
   );
 
@@ -236,14 +244,20 @@ void main() {
         File('${root.path}/local-profile.json').readAsBytesSync(),
         identity,
       );
+      final owned = entry.preparedStore;
       final runtime = await AlkionRuntime.open(
         root,
         preparedStore: entry.takePreparedStore(),
       );
-      final store = runtime.store;
-      expect(store.token.generation, reserved.generation);
-      expect(await store.getAll('SELECT * FROM exercises'), isEmpty);
-      await runtime.close();
+      try {
+        final store = runtime.store;
+        expect(store, same(owned));
+        expect(store.token.generation, reserved.generation);
+        expect(await store.getAll('SELECT * FROM exercises'), isEmpty);
+        await _expectPrescriptionWrites(store);
+      } finally {
+        await runtime.close();
+      }
       expect(await RestoreService(root).freshState(), isNull);
     },
   );
@@ -323,7 +337,7 @@ void main() {
         final store = await LocalStore.open(
           profile: profile,
           expectedProfileId: reserved.profileId,
-          schema: workflowSchemaRegistry(),
+          schema: prescriptionSchemaRegistry(),
         );
         expect(store.token.generation, 1);
         await store.close();
@@ -506,6 +520,43 @@ void main() {
       expect(otherRoot.existsSync(), isFalse);
     },
   );
+}
+
+Future<void> _expectPrescriptionWrites(LocalStore store) async {
+  expect((await store.get('PRAGMA user_version')).values.single, 4);
+  final exercises = ExerciseRepository.local(store);
+  final exerciseId = await exercises.createExercise(
+    ExerciseDraft(
+      name: 'Synthetic entry exercise',
+      muscleGroup: 'chest',
+      compound: true,
+      plateStepKg: 2.5,
+      defaultRepLow: 8,
+      defaultRepHigh: 8,
+    ),
+  );
+  final days = DayTemplateRepository.local(store);
+  await days.saveDay(
+    draft: DayDraft(
+      name: 'Synthetic entry day',
+      slots: [SlotDraft(exerciseId: exerciseId, rirPolicy: RirPolicy.off)],
+    ),
+  );
+  final day = (await days.allDays()).single;
+  expect(day.isActive, isTrue);
+  final slot = day.slots.single;
+  expect(slot.rirPolicy, RirPolicy.off);
+  expect((slot.rirLow, slot.rirHigh), (null, null));
+  final exercise = (await exercises.byId(exerciseId))!;
+  final prescription = resolveSlot(slot, exercise);
+  expect(prescription.rirState, RirTargetState.absent);
+  expect((prescription.rirLow, prescription.rirHigh), (null, null));
+  await days.commitPrepared(
+    days.prepareSetActive(day.id, day.localRevision!, false),
+  );
+  expect((await days.byId(day.id))!.isActive, isFalse);
+  expect(await days.activeDays(), isEmpty);
+  expect((await days.allDays()).single.slots.single.id, slot.id);
 }
 
 AnimusEntryLifecycle _entry(

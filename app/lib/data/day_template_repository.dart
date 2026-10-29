@@ -211,17 +211,17 @@ List<({String sql, List<Object?> args})> reconcileDay({
 /// [lastId] of the most-recently-trained day template (or null), returns the
 /// next [DayTemplate] in the rotation.
 ///
-/// Rules:
-/// - [days] empty → null.
-/// - [lastId] null (no history or custom session) → `days.first`.
-/// - [lastId] not found in [days] (unknown id) → `days.first`.
-/// - Otherwise → `days[(indexOf(lastId) + 1) % days.length]` (wraps around).
+/// Walk the full saved order after a known last ID, skipping inactive and
+/// unavailable flags and wrapping. Unknown/no last ID starts at the first active
+/// day. An empty or all-inactive list has no recommendation.
 DayTemplate? selectNextDay(List<DayTemplate> days, String? lastId) {
   if (days.isEmpty) return null;
-  if (lastId == null) return days.first;
-  final i = days.indexWhere((d) => d.id == lastId);
-  if (i < 0) return days.first;
-  return days[(i + 1) % days.length];
+  final last = days.indexWhere((d) => d.id == lastId);
+  for (var offset = 1; offset <= days.length; offset++) {
+    final day = days[(last + offset) % days.length];
+    if (day.isActive) return day;
+  }
+  return null;
 }
 
 // ── resolveSlot ───────────────────────────────────────────────────────────────
@@ -231,8 +231,6 @@ const _defaultWorkSets = 3;
 const _defaultWarmupSets = 0;
 const _defaultRepLow = 8;
 const _defaultRepHigh = 12;
-const _defaultRirLow = 1;
-const _defaultRirHigh = 1;
 
 /// Resolves a [Slot] + [Exercise] pair into a fully-specified [ResolvedSlot].
 ///
@@ -240,7 +238,7 @@ const _defaultRirHigh = 1;
 ///   1. Slot value (if non-null) wins.
 ///   2. Exercise default (if non-null) wins.
 ///   3. Hardcoded fallback: workSets 3, warmupSets 0, repLow 8, repHigh 12,
-///      rirLow 1, rirHigh 1.
+///      no RIR target; RIR pairs qualify together and policy is authoritative.
 ResolvedSlot resolveSlot(Slot slot, Exercise exercise) {
   int pick(int? slotVal, int? exDefault, int hardcoded) {
     if (slotVal != null) return slotVal;
@@ -248,6 +246,50 @@ ResolvedSlot resolveSlot(Slot slot, Exercise exercise) {
     return hardcoded;
   }
 
+  // A pair belongs to one level. Never combine a partial slot with an
+  // unrelated exercise bound, normalize inverted evidence or invent RIR 1.
+  ({int? low, int? high, RirTargetState state}) pair(
+    int? low,
+    int? high,
+    Map<String, Object?> raw,
+    String prefix,
+  ) {
+    final rawLow = raw.containsKey('${prefix}rir_low')
+        ? raw['${prefix}rir_low']
+        : low;
+    final rawHigh = raw.containsKey('${prefix}rir_high')
+        ? raw['${prefix}rir_high']
+        : high;
+    if (rawLow == null && rawHigh == null) {
+      return (low: null, high: null, state: RirTargetState.absent);
+    }
+    if (rawLow is int &&
+        rawHigh is int &&
+        rawLow >= rirMin &&
+        rawHigh <= rirMax &&
+        rawLow <= rawHigh) {
+      return (low: rawLow, high: rawHigh, state: RirTargetState.available);
+    }
+    return (low: null, high: null, state: RirTargetState.unavailable);
+  }
+
+  final own = pair(slot.rirLow, slot.rirHigh, slot.rawFields, 'target_');
+  final inherited = pair(
+    exercise.defaultRirLow,
+    exercise.defaultRirHigh,
+    exercise.rawFields,
+    'default_',
+  );
+  final rir = switch (slot.rirPolicy) {
+    RirPolicy.off => (low: null, high: null, state: RirTargetState.absent),
+    RirPolicy.inherit => inherited,
+    RirPolicy.target =>
+      own.state == RirTargetState.absent
+          ? (low: null, high: null, state: RirTargetState.unavailable)
+          : own,
+    null => own.state == RirTargetState.absent ? inherited : own,
+    _ => (low: null, high: null, state: RirTargetState.unavailable),
+  };
   return ResolvedSlot(
     exercise: exercise,
     workSets: pick(
@@ -262,8 +304,10 @@ ResolvedSlot resolveSlot(Slot slot, Exercise exercise) {
     ),
     repLow: pick(slot.repLow, exercise.defaultRepLow, _defaultRepLow),
     repHigh: pick(slot.repHigh, exercise.defaultRepHigh, _defaultRepHigh),
-    rirLow: pick(slot.rirLow, exercise.defaultRirLow, _defaultRirLow),
-    rirHigh: pick(slot.rirHigh, exercise.defaultRirHigh, _defaultRirHigh),
+    rirLow: rir.low,
+    rirHigh: rir.high,
+    rirState: rir.state,
+    rirPolicy: slot.rirPolicy,
   );
 }
 
@@ -278,6 +322,7 @@ Map<String, Object?> slotDraftFields(SlotDraft d) {
     'target_rep_high': d.repHigh,
     'target_rir_low': d.rirLow,
     'target_rir_high': d.rirHigh,
+    'rir_policy': d.rirPolicy,
   };
   return d.rawFields.isNotEmpty && d.changedFields != null
       ? {
@@ -316,6 +361,11 @@ class DayTemplateRepository {
           scheduledWeekday: r['scheduled_weekday'] as int?,
           position: r['position'] as int? ?? 0,
           isTemplate: r['is_template'] == 1,
+          active: !r.containsKey('is_active') || r['is_active'] == 1
+              ? true
+              : r['is_active'] == 0
+              ? false
+              : null,
           localRevision: r['revision'] as int,
           rawFields: Map.unmodifiable(r),
           slots: items
@@ -334,6 +384,13 @@ class DayTemplateRepository {
         )
         .asyncMap((_) => db.readTransaction((tx) => _days(tx))),
   );
+
+  /// Management retains inactive/unavailable rows in their full saved order.
+  Future<List<DayTemplate>> allDays() => db.readTransaction(_days);
+  Future<List<DayTemplate>> activeDays() async =>
+      (await allDays()).where((d) => d.isActive).toList();
+  Stream<List<DayTemplate>> watchActiveDays() =>
+      watchDays().map((days) => days.where((d) => d.isActive).toList());
   Future<DayTemplate?> byId(String id) => db.readTransaction((tx) async {
     final rows = await _days(tx, id: id);
     return rows.isEmpty ? null : rows.single;
@@ -399,6 +456,23 @@ class DayTemplateRepository {
     );
   }
 
+  /// Freeze this exact status-only intent before awaiting, then commit/retry it
+  /// with commitPrepared. Concurrent content edits share the same day revision.
+  PreparedDomainAction prepareSetActive(
+    String id,
+    int revision,
+    bool active, {
+    String? operationId,
+  }) => prepareDomain(
+    db,
+    RecordKind.trainingDay,
+    LocalActionKind.planSetActive,
+    id,
+    revision,
+    {'is_active': active ? 1 : 0},
+    operationId: operationId,
+  );
+
   PreparedDomainAction prepareDelete(
     String id,
     int revision, {
@@ -453,7 +527,7 @@ class DayTemplateRepository {
       final ids = (input['ids'] as List).cast<String>(),
           bases = Map<String, dynamic>.from(input['bases'] as Map);
       final all = await tx.getAll(
-        'SELECT id FROM day_templates WHERE profile_id=? AND deleted=0',
+        'SELECT id FROM day_templates WHERE profile_id=? AND deleted=0 AND is_template IS NOT 1',
         [tx.profileId],
       );
       if (ids.toSet().length != ids.length ||
@@ -487,6 +561,23 @@ class DayTemplateRepository {
     final fields = previous == null
         ? <String, Object?>{}
         : projectionFields(previous);
+    if (a.action == LocalActionKind.planSetActive) {
+      if (previous == null || !const [0, 1].contains(input['is_active'])) {
+        throw const StoreException('malformed_value');
+      }
+      fields['is_active'] = input['is_active'];
+      final revision = await putDomain(
+        tx,
+        a.target,
+        fields,
+        sourceRevisionId: previous['source_revision_id'] as String?,
+      );
+      return {
+        'id': a.target.id,
+        'revision': revision,
+        'is_active': input['is_active'],
+      };
+    }
     final existing = await tx.getAll(
       'SELECT * FROM day_template_items WHERE profile_id=? AND day_template_id=? AND deleted=0',
       [tx.profileId, a.target.id],
@@ -536,6 +627,7 @@ class DayTemplateRepository {
         );
         fields.addAll({
           'position': next['n'],
+          'is_active': 1,
           'is_template': 0,
           'created_at': intent.createdAt,
         });

@@ -31,6 +31,7 @@ class SetLine extends StatelessWidget {
     required this.showRirPrompt,
     required this.onTap,
     required this.onRir,
+    this.onClearRir,
   });
 
   final SetState set;
@@ -43,6 +44,7 @@ class SetLine extends StatelessWidget {
   final bool showRirPrompt;
   final VoidCallback onTap;
   final ValueChanged<int> onRir;
+  final VoidCallback? onClearRir;
 
   @override
   Widget build(BuildContext context) {
@@ -187,28 +189,46 @@ class SetLine extends StatelessWidget {
                         padding: const EdgeInsets.only(left: 22, bottom: 8),
                         // When the chips wrap to two rows, the caption stays
                         // level with the first.
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            SizedBox(
-                              height: 48,
-                              child: Center(
-                                child: Text(
-                                  l.sessionColRir,
-                                  style: WorkoutType.body(
-                                    size: 12,
-                                    color: tokens.dim,
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  height: 48,
+                                  child: Center(
+                                    child: Text(
+                                      l.sessionColRir,
+                                      style: WorkoutType.body(
+                                        size: 12,
+                                        color: tokens.dim,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: RirPicker(
+                                    value: set.rir,
+                                    onChanged: onRir,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: RirPicker(
-                                value: set.rir,
-                                onChanged: onRir,
+                            if (set.rir != null && onClearRir != null)
+                              TextButton(
+                                onPressed: onClearRir,
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(48, 48),
+                                  foregroundColor: tokens.text,
+                                ),
+                                child: FitLabel(
+                                  l.sessionClearRir,
+                                  maxLines: 2,
+                                  style: WorkoutType.body(color: tokens.dim),
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),

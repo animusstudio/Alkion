@@ -158,7 +158,7 @@
   "dayEditorFocusPlaceholder": "es. Spinta",
   "dayEditorScheduledDay": "Giorno programmato",
   "dayEditorExercisesCount": "Esercizi · {count}",
-  "dayEditorSlotHint": "Serie, ripetizioni e RIR si impostano per giorno — tocca una riga per regolare la prescrizione di questo giorno.",
+  "dayEditorSlotHint": "Tocca un esercizio per modificare serie e ripetizioni.",
   "dayEditorWarmupShort": "{count}ris",
   "dayEditorWorkingSets": "Serie effettive",
   "dayEditorWarmups": "Riscaldamento",
@@ -186,7 +186,7 @@
   "exerciseEditorEquipment": "Attrezzo / macchina",
   "exerciseEditorEquipmentPlaceholder": "es. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Esercizio composto",
-  "exerciseEditorCompoundHint": "Caratteristica del movimento · regola recupero e riscaldamento",
+  "exerciseEditorCompoundHint": "Usato per suggerire recupero e carico.",
   "exerciseEditorStats": "Statistiche",
   "exerciseEditorStatsHint": "Tracciate per esercizio su ogni scheda.",
   "exerciseEditorPr": "Record personale",
@@ -700,5 +700,115 @@
   "alkionOfflineTitle": "Inizia ad allenarti offline",
   "alkionEntryContinueOffline": "Continua offline",
   "alkionEntryTitle": "Dai valore a ogni allenamento.",
-  "alkionEntryJoin": "Non hai un account? Registrati"
+  "alkionEntryJoin": "Non hai un account? Registrati",
+  "trainingPreferences": "Preferenze di allenamento",
+  "trainingPreferencesHint": "Valori per nuovi elementi. I piani salvati e gli editor aperti restano invariati.",
+  "trainingRepEntry": "Inserimento ripetizioni",
+  "trainingFixedReps": "Ripetizioni fisse",
+  "trainingRepRange": "Intervallo di ripetizioni",
+  "trainingReps": "Ripetizioni",
+  "trainingRirControls": "Controlli RIR",
+  "trainingRirOff": "Disattivato",
+  "trainingShow": "Mostra",
+  "trainingAdvanced": "Avanzate",
+  "trainingAdvancedHint": "Valori facoltativi. Puoi modificarli in un giorno di allenamento.",
+  "trainingAdd": "Aggiungi {label}",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "Rimuovi {label}",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Imposta le ripetizioni",
+  "trainingRepairRir": "Imposta un obiettivo RIR",
+  "trainingRirTarget": "Obiettivo RIR",
+  "trainingRirExplanation": "Ripetizioni in riserva: quante altre potresti fare. L’obiettivo è facoltativo.",
+  "trainingMoreOptions": "Altre opzioni",
+  "trainingAddRir": "Aggiungi obiettivo RIR",
+  "trainingRemoveRir": "Rimuovi obiettivo RIR",
+  "trainingUseExerciseDefault": "Usa il valore dell’esercizio",
+  "trainingUnavailable": "Prescrizione non disponibile",
+  "trainingRirUnavailable": "Obiettivo RIR non disponibile",
+  "trainingAddWeekday": "Aggiungi giorno della settimana",
+  "trainingChangeWeekday": "Cambia giorno della settimana",
+  "trainingRemoveWeekday": "Rimuovi giorno della settimana",
+  "trainingDisable": "Disattiva",
+  "trainingEnable": "Attiva",
+  "trainingInactive": "Inattivi ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Azioni per {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Stato del giorno salvato",
+  "trainingSaving": "Salvataggio…",
+  "trainingRetryStatus": "Stato non salvato. Riprova la stessa modifica.",
+  "trainingRetry": "Riprova",
+  "trainingCompatExportRefused": "Questa esportazione non conserva le regole RIR o i giorni inattivi. Crea un backup nativo in Backup e ripristino.",
+  "trainingDayUnavailable": "Stato del giorno non disponibile",
+  "trainingDayEnabled": "{name} attivato",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "{name} disattivato",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingWeekdayUnavailable": "Giorno della settimana non disponibile",
+  "sessionClearRir": "Rimuovi RIR",
+  "trainingOpenPlan": "Apri Piano",
+  "trainingEnableDayInPlan": "Attiva un giorno nel Piano",
+  "trainingNoActiveDays": "I giorni salvati non sono attivi. Controllali nel Piano o inizia un allenamento libero.",
+  "trainingStartUnavailable": "Allenamento non disponibile",
+  "trainingDayStartUnavailable": "{name} non è disponibile per un nuovo allenamento. Apri il Piano per attivare o controllare questo giorno.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "La prescrizione delle ripetizioni di {name} non è disponibile. Correggila nel Piano prima di iniziare un nuovo allenamento.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "La regola RIR di {name} non è supportata. Controllala nel Piano prima di iniziare un nuovo allenamento.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

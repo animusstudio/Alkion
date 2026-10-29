@@ -255,7 +255,7 @@ class FixtureDatabase extends RealZoneDatabase {
       await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       ),
     );
   }

@@ -266,6 +266,9 @@ void main() {
             input(day ? 'Day name' : 'Exercise name'),
             where: 'editor loaded',
           );
+          if (!day) {
+            await tapVisible(tester, editor, find.text('Advanced'));
+          }
           final name = input(day ? 'Day name' : 'Exercise name');
           await tester.enterText(name, 'Requested');
           expect(tester.testTextInput.hasAnyClients, isTrue);
@@ -320,13 +323,11 @@ void main() {
           );
           await tester.pump();
           expect(tester.widget<TextField>(name).controller!.text, 'Requested');
-          final chip = day ? find.text('Tue') : find.text('Back');
+          final chip = day ? find.text('Change weekday') : find.text('Back');
           await tapVisible(tester, editor, chip, blocked: true);
           if (day) {
-            final selector = tester.widget<ChipSelect<int>>(
-              find.byType(ChipSelect<int>),
-            );
-            expect(selector.selected, 0);
+            expect(find.text('Mon'), findsOneWidget);
+            expect(find.byType(BottomSheet), findsNothing);
             final rows = tester
                 .widgetList<DaySlotRow>(find.byType(DaySlotRow))
                 .toList();
@@ -608,6 +609,9 @@ void main() {
         );
         if (day) {
           await tapVisible(tester, editor, find.text('Bench'));
+        } else {
+          await tapVisible(tester, editor, find.text('Advanced'));
+          await tapVisible(tester, editor, find.text('Add Rest'));
         }
         final field = find.ancestor(
           of: find.text((day ? 'Working sets' : 'Rest').toUpperCase()),
@@ -615,7 +619,7 @@ void main() {
         );
         final value = find.descendant(
           of: field,
-          matching: find.text(day ? '3' : 'Default'),
+          matching: find.text(day ? '3' : '90s'),
         );
         await tapVisible(tester, editor, value);
         await tester.enterText(

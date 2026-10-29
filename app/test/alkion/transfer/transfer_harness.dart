@@ -38,7 +38,7 @@ final class TransferHarness {
   static Future<LocalStore> _open(AlkionProfile profile) => LocalStore.open(
     profile: profile,
     expectedProfileId: profile.profileId,
-    schema: workflowSchemaRegistry(),
+    schema: prescriptionSchemaRegistry(),
   );
 
   /// Closes, reopens twice independently and returns the second inventory

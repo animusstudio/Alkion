@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:alkion/theme/typography.dart';
 
@@ -7,10 +7,21 @@ const displayWeights = [FontWeight.w400, FontWeight.w500];
 const bodyWeights = [FontWeight.w400, FontWeight.w500];
 const monoWeights = [FontWeight.w400];
 
+Future<void>? _materialIcons;
+
+Future<void> _loadMaterialIcons() async {
+  final loader = FontLoader('MaterialIcons')
+    ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+  await loader.load();
+}
+
 /// Loads every bundled face the app draws, so a test lays out with the real
 /// metrics from its first frame. Call it outside fake time: in `setUpAll`,
 /// a plain `test`, or inside `tester.runAsync`.
 Future<void> preloadAppFonts() async {
+  // Widget tests do not automatically register the bundled Material icon face.
+  // Load the same asset as the app before any offscreen evidence is painted.
+  await (_materialIcons ??= _loadMaterialIcons());
   for (final w in displayWeights) {
     WorkoutType.display(weight: w);
   }
