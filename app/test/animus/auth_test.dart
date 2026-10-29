@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:alkion/animus/adapters/auth.dart';
 import 'package:alkion/animus/connection.dart';
+import 'package:alkion/animus/config.dart';
 import 'package:alkion/animus/contracts.dart';
 import 'package:alkion/animus/probe.dart';
 import 'package:alkion/animus/ports.dart';
@@ -35,6 +36,124 @@ void main() {
     expect(fixture.secrets.calls, 0);
     expect(fixture.browser.launches, 0);
   });
+
+  test('unconfigured account creation fails before connection I/O', () async {
+    await expectLater(
+      auth.authorize(intent: AnimusAuthIntent.createAccount),
+      throwsA(isA<AnimusAuthFailure>()),
+    );
+    expect(fixture.requests, 0);
+    expect(fixture.secrets.calls, 0);
+    expect(fixture.browser.launches, 0);
+  });
+
+  Future<void> configureEnrollment() async {
+    await auth.close();
+    await fixture.close();
+    fixture = AuthFixture(
+      config: AnimusConfig.fromEnvironment(
+        syntheticAnimusValues()
+          ..['ALKION_ANIMUS_ENROLLMENT_FLOW'] = 'alkion-enrollment',
+        platform: AnimusPlatform.linux,
+      ),
+    );
+    await fixture.initialize();
+    fixture.authorizationEndpoint =
+        'https://identity.example.test/application/o/authorize/';
+    auth = OidcAnimusAuth(
+      scope: fixture.scope,
+      secrets: fixture.secrets,
+      browser: fixture.browser,
+      httpClientFactory: fixture.client,
+    );
+  }
+
+  test(
+    'signup preserves the exact SDK transaction through enrollment',
+    () async {
+      await configureEnrollment();
+      final session = await auth.authorize(
+        intent: AnimusAuthIntent.createAccount,
+      );
+      expect(session, isNotNull);
+      final browser = fixture.browser.lastAuthorization!;
+      expect(browser.origin, fixture.scope.config.issuer.origin);
+      expect(browser.path, '/if/flow/alkion-enrollment/');
+      expect(browser.queryParameters.keys, ['next']);
+      final next = Uri.parse(browser.queryParameters['next']!);
+      expect(next.hasScheme, isFalse);
+      expect(next.hasAuthority, isFalse);
+      expect(next.hasFragment, isFalse);
+      expect(next.path, '/application/o/authorize/');
+      expect(
+        next.queryParameters['redirect_uri'],
+        fixture.scope.config.redirectUri.toString(),
+      );
+      expect(next.queryParameters['state'], isNotEmpty);
+      expect(next.queryParameters['nonce'], isNotEmpty);
+      expect(next.queryParameters['code_challenge_method'], 'S256');
+      expect(next.queryParameters.containsKey('prompt'), isFalse);
+      expect(next.queryParameters.containsKey('next'), isFalse);
+      expect(fixture.validPkce, isTrue);
+      expect(fixture.secrets.values, isEmpty);
+    },
+  );
+
+  test('signup rejects an unrelated callback before token exchange', () async {
+    await configureEnrollment();
+    fixture.browser.callback = (_, redirect) => redirect.replace(
+      queryParameters: {'code': 'unit-code', 'state': 'unrelated-transaction'},
+    );
+    await expectLater(
+      auth.authorize(intent: AnimusAuthIntent.createAccount),
+      throwsA(isA<AnimusAuthFailure>()),
+    );
+    expect(fixture.exchanges, 0);
+    expect(fixture.secrets.values, isEmpty);
+  });
+
+  test('cancelling signup fences the late enrollment callback', () async {
+    await configureEnrollment();
+    fixture.browser.gate = Completer<Uri?>();
+    final operation = auth.authorize(intent: AnimusAuthIntent.createAccount);
+    final assertion = expectLater(operation, throwsA(isA<AnimusAuthFailure>()));
+    await _until(() => fixture.browser.launches == 1);
+    final transaction = fixture.browser.lastTransaction!;
+    await auth.cancel();
+    fixture.browser.gate!.complete(
+      fixture.scope.config.redirectUri.replace(
+        queryParameters: {
+          'code': 'unit-code',
+          'state': transaction.queryParameters['state']!,
+        },
+      ),
+    );
+    await assertion;
+    await Future<void>.delayed(Duration.zero);
+    expect(fixture.exchanges, 0);
+    expect(fixture.secrets.values, isEmpty);
+  });
+
+  for (final endpoint in [
+    'https://other.example.test/application/o/authorize/',
+    'https://identity.example.test/other',
+    'https://identity.example.test/application/o/authorize/?next=/other',
+    'https://identity.example.test/application/o/authorize/#fragment',
+  ]) {
+    test(
+      'signup refuses an unrelated enrollment return destination $endpoint',
+      () async {
+        await configureEnrollment();
+        fixture.authorizationEndpoint = endpoint;
+        await expectLater(
+          auth.authorize(intent: AnimusAuthIntent.createAccount),
+          throwsA(isA<AnimusAuthFailure>()),
+        );
+        expect(fixture.browser.launches, 0);
+        expect(fixture.exchanges, 0);
+      },
+    );
+  }
 
   test(
     'real SDK uses S256 and validates signed identity before explicit retention',

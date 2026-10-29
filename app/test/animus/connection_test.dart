@@ -290,7 +290,9 @@ class _Auth implements AnimusAuthPort {
   }
 
   @override
-  Future<AnimusAuthSession?> authorize() async {
+  Future<AnimusAuthSession?> authorize({
+    AnimusAuthIntent intent = AnimusAuthIntent.signIn,
+  }) async {
     _call();
     return loginGate == null ? session : loginGate!.future;
   }

@@ -15,9 +15,10 @@ separate from corrections and derived results. Replicas are not backups.
 
 An explicitly configured [optional Animus connection](docs/alkion/animus-connection.md)
 adds browser sign-in, account/space confirmation and a foreground read-access
-check in Profile. Default builds and local workout use remain account-free and
-offline. Synchronization sending, replica downloads and OTA updates remain
-separate work. Final release identity and signing remain open; this repository
+check at first use or later in Profile. First use also offers Go fully offline,
+then Start new/Restore backup; existing profiles open directly. Default builds
+and local workout use remain account-free and offline. Synchronization sending,
+replica downloads and OTA updates remain separate work. Final release identity and signing remain open; this repository
 does not publish signed APKs or backend images automatically.
 
 ## Development

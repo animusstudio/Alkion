@@ -122,7 +122,11 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     );
   }
 
-  Future<_GuardedManager> _fresh(int epoch, {String? token}) async {
+  Future<_GuardedManager> _fresh(
+    int epoch, {
+    String? token,
+    AnimusAuthIntent intent = AnimusAuthIntent.signIn,
+  }) async {
     await _dropManager();
     _check(epoch);
     // These are the only logger families in the pinned SDK. No SDK exception
@@ -146,6 +150,7 @@ final class OidcAnimusAuth implements AnimusAuthPort {
       settings: createAnimusOidcSettings(scope.config),
       browser: _browser,
       checkCurrent: () => _check(epoch),
+      intent: intent,
     );
     _manager = manager;
     _client = client;
@@ -196,7 +201,13 @@ final class OidcAnimusAuth implements AnimusAuthPort {
   }
 
   @override
-  Future<AnimusAuthSession?> authorize() => _serialized((epoch) async {
+  Future<AnimusAuthSession?> authorize({
+    AnimusAuthIntent intent = AnimusAuthIntent.signIn,
+  }) => _serialized((epoch) async {
+    if (intent == AnimusAuthIntent.createAccount &&
+        !scope.config.supportsAccountCreation) {
+      throw const AnimusAuthFailure(AnimusAuthFailureKind.unavailable);
+    }
     await _secrets
         .checkAvailability(scope)
         .timeout(
@@ -206,7 +217,7 @@ final class OidcAnimusAuth implements AnimusAuthPort {
     _check(epoch);
     _retained = false;
     _session = null;
-    final manager = await _fresh(epoch);
+    final manager = await _fresh(epoch, intent: intent);
     // Reject plain-only discovery before preparing or launching any flow.
     final methods = manager.discoveryDocument.codeChallengeMethodsSupported;
     if (methods != null && !methods.contains('S256')) {
@@ -419,6 +430,7 @@ final class _GuardedManager extends OidcUserManager {
     required super.settings,
     required this.browser,
     required this.checkCurrent,
+    required this.intent,
   }) : super.lazy(
          discoveryDocumentUri: OidcUtils.getOpenIdConfigWellKnownUri(
            config.issuer,
@@ -429,6 +441,7 @@ final class _GuardedManager extends OidcUserManager {
          id: config.fingerprint,
        );
   final AnimusConfig config;
+  final AnimusAuthIntent intent;
   bool receivedCallback = false;
   final AnimusBrowserPort browser;
   final void Function() checkCurrent;
@@ -470,8 +483,26 @@ final class _GuardedManager extends OidcUserManager {
     if (endpoint == null || !_safeEndpoint(endpoint, config)) {
       throw const AnimusAuthFailure(AnimusAuthFailureKind.invalidResponse);
     }
+    final transaction = request.generateUri(endpoint);
+    Uri browserUri = transaction;
+    if (intent == AnimusAuthIntent.createAccount) {
+      // Authentik's enrollment executor accepts a relative `next`. Its only
+      // destination here is this SDK-created authorization request; neither
+      // configuration nor provider payloads can supply a different redirect.
+      if (config.enrollmentFlow == null ||
+          endpoint.origin != config.issuer.origin ||
+          endpoint.path != '/application/o/authorize/' ||
+          endpoint.hasQuery) {
+        throw const AnimusAuthFailure(AnimusAuthFailureKind.invalidResponse);
+      }
+      final next = Uri(path: transaction.path, query: transaction.query);
+      browserUri = config.issuer.replace(
+        path: '/if/flow/${config.enrollmentFlow}/',
+        queryParameters: {'next': next.toString()},
+      );
+    }
     final callback = await browser.authorize(
-      authorizationUri: request.generateUri(endpoint),
+      authorizationUri: browserUri,
       redirectUri: config.redirectUri,
     );
     checkCurrent();

@@ -1,5 +1,7 @@
 # Alkion development and qualified driver handoff
 
+2026-10-28 · [Animus login and offline onboarding](../plans/2026-10-28-animus-login-onboarding.md) · Done.
+
 2026-10-28 · [Optional Animus connection foundation](../plans/2026-10-28-animus-connection-foundation.md) · Approved.
 
 2026-10-28 · [Body rotation responsiveness](../plans/2026-10-28-body-rotation-responsiveness.md) · Approved.

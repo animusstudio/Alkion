@@ -628,8 +628,8 @@
   "alkionBackupSaveCopy": "Crear respaldo y guardar copia",
   "alkionBackupCopySaved": "{name}\nSHA-256 {digest}…\nRespaldo comprobado completamente aquí. Cópialo fuera de este dispositivo y verifica allí el archivo recibido.",
   "alkionDocumentFailureMessage": "{reason}\nCualquier copia externa puede estar incompleta. Se conservan el original local y los archivos privados temporales.",
-  "alkionFirstStartBody": "Empieza en este dispositivo o restaura un respaldo antes de crear un perfil. No necesitas una cuenta.",
-  "alkionFirstStartLocal": "Empezar localmente",
+  "alkionFirstStartBody": "Empieza con una biblioteca vacía o restaura una copia de seguridad. No necesitas una cuenta.",
+  "alkionFirstStartLocal": "Empezar de cero",
   "alkionFirstRestoreTitle": "Restaurar respaldo",
   "alkionFirstRestoreConfirm": "¿Restaurar este respaldo verificado en esta instalación vacía? Se conservarán el perfil y el trabajo guardado; esta instalación tendrá una identidad nueva.",
   "alkionFirstResumeBody": "La restauración tiene una preparación completa y verificada. Complétala para recuperar el mismo perfil. Se conserva el intento anterior.",
@@ -687,5 +687,16 @@
   "animusInvalidResponse": "No se pudo verificar la conexión. Conecta de nuevo o inténtalo más tarde.",
   "animusUnavailable": "El inicio de sesión no está disponible. Inténtalo de nuevo.",
   "animusDisconnectBody": "¿Desconectar en este dispositivo? Se conservan los entrenamientos locales, borradores, cambios pendientes y copias de seguridad. La sesión del navegador permanece abierta.",
-  "animusReadOnly": "Esta conexión solo comprueba el acceso de lectura a los entrenamientos. No los sube ni sincroniza."
+  "animusReadOnly": "Esta conexión solo comprueba el acceso de lectura a los entrenamientos. No los sube ni sincroniza.",
+  "alkionEntryBody": "Inicia sesión en Animus o guarda tus entrenamientos solo en este dispositivo. La cuenta es opcional.",
+  "alkionEntrySignIn": "Iniciar sesión en Animus",
+  "alkionEntryNoAccount": "¿No tienes una cuenta?",
+  "alkionEntryCreateAccount": "Crear una",
+  "alkionEntryOffline": "Usar sin conexión",
+  "alkionEntryConnectLater": "Conecta más tarde desde Perfil.",
+  "alkionEntryUnavailable": "El inicio de sesión en Animus no está configurado en esta versión. Puedes usar Alkion sin conexión.",
+  "alkionEntrySignupUnavailable": "La creación de cuentas no está disponible con esta configuración.",
+  "alkionEntryFailed": "No se pudo completar este paso. Inténtalo de nuevo o usa la aplicación sin conexión.",
+  "alkionOfflineTitle": "Tus entrenamientos, en este dispositivo",
+  "alkionEntryContinueOffline": "Continuar sin conexión"
 }

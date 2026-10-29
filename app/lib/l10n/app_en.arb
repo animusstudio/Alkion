@@ -1240,8 +1240,8 @@
       }
     }
   },
-  "alkionFirstStartBody": "Start on this device, or restore a backup before creating a profile. No account is needed.",
-  "alkionFirstStartLocal": "Start local",
+  "alkionFirstStartBody": "Start with an empty library, or restore a backup. No account is needed.",
+  "alkionFirstStartLocal": "Start new",
   "alkionFirstRestoreTitle": "Restore backup",
   "alkionFirstRestoreConfirm": "Restore this verified backup onto this empty installation? Its profile and saved work will be kept; this installation gets a new identity.",
   "alkionFirstResumeBody": "This restore has complete verified staging. Complete it to recover the same profile. Your previous attempt is kept.",
@@ -1320,5 +1320,16 @@
   "animusInvalidResponse": "The connection could not be verified. Connect again or try later.",
   "animusUnavailable": "Sign-in is unavailable. Try again.",
   "animusDisconnectBody": "Disconnect on this device? Local workouts, drafts, pending changes and backups are kept. This does not sign you out of your browser.",
-  "animusReadOnly": "This connection only checks workout read access. It does not upload or synchronize workouts."
+  "animusReadOnly": "This connection only checks workout read access. It does not upload or synchronize workouts.",
+  "alkionEntryBody": "Sign in to Animus, or keep your workouts fully on this device. An account is optional.",
+  "alkionEntrySignIn": "Sign in to Animus",
+  "alkionEntryNoAccount": "Don’t have an account?",
+  "alkionEntryCreateAccount": "Create one",
+  "alkionEntryOffline": "Go fully offline",
+  "alkionEntryConnectLater": "Connect later in Profile.",
+  "alkionEntryUnavailable": "Animus sign-in is not configured in this build. You can use Alkion fully offline.",
+  "alkionEntrySignupUnavailable": "Account creation is unavailable in this setup.",
+  "alkionEntryFailed": "Could not finish this step. Try again or go fully offline.",
+  "alkionOfflineTitle": "Your workouts, on this device",
+  "alkionEntryContinueOffline": "Continue offline"
 }

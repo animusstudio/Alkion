@@ -9,7 +9,9 @@ and the relevant approved plan before changing behavior; app rules are in
 
 ## Boundaries
 
-- Default local startup remains account-free and offline. The explicitly
+- Local use remains account-free and offline. First use offers optional sign-in
+  or Go fully offline → Start new/Restore backup; existing profiles open directly.
+  Startup performs no connection I/O before an explicit action. The explicitly
   configured [Animus connection](docs/alkion/animus-connection.md) permits
   foreground browser authentication and a confirmed read-access check only.
   No sender, replica download or OTA transport is enabled; do not introduce one

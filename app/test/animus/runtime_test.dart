@@ -138,7 +138,9 @@ class _Auth implements AnimusAuthPort {
   final login = Completer<AnimusAuthSession?>();
   final teardown = Completer<void>();
   @override
-  Future<AnimusAuthSession?> authorize() {
+  Future<AnimusAuthSession?> authorize({
+    AnimusAuthIntent intent = AnimusAuthIntent.signIn,
+  }) {
     calls++;
     return login.future;
   }

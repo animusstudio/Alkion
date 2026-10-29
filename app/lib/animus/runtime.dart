@@ -9,6 +9,21 @@ import 'contracts.dart';
 import 'ports.dart';
 import 'probe.dart';
 
+/// Setup parsing is inert and can describe unavailable first-use actions before
+/// any identity is reserved or authentication adapter is constructed.
+AnimusConfig? readAnimusEntryConfig({AnimusPlatform? platform}) {
+  final supported =
+      platform ??
+      (Platform.isAndroid
+          ? AnimusPlatform.android
+          : Platform.isLinux
+          ? AnimusPlatform.linux
+          : null);
+  return supported == null
+      ? null
+      : AnimusConfig.fromCompileTime(platform: supported);
+}
+
 /// Assembly only: opening the local app never restores secrets, authenticates,
 /// starts a listener or sends a request. Every adapter is inert until a tap.
 AnimusConnectionController createAnimusConnection({
@@ -19,6 +34,7 @@ AnimusConnectionController createAnimusConnection({
   AnimusConfig? Function(AnimusPlatform)? loadConfig,
   AnimusAuthPort Function(AnimusScope)? authFactory,
   AnimusProbePort Function(AnimusConfig)? probeFactory,
+  Future<void> Function()? beforeRetain,
 }) {
   final supported =
       platform ??
@@ -42,6 +58,7 @@ AnimusConnectionController createAnimusConnection({
     );
     return AnimusConnectionController(
       config: config,
+      beforeRetain: beforeRetain,
       auth:
           (authFactory ??
           (scope) => OidcAnimusAuth(

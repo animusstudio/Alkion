@@ -4,6 +4,9 @@ import 'package:crypto/crypto.dart';
 
 import 'config.dart';
 
+/// Both intents complete through the same validated OIDC transaction.
+enum AnimusAuthIntent { signIn, createAccount }
+
 /// Changes to a local generation or any remote setup create a fresh namespace.
 final class AnimusScope {
   AnimusScope({

@@ -2,9 +2,11 @@
 
 This is the standalone pre-1.0 Alkion app (see root AGENTS.md). Android is the
 product target; Linux supports development and synthetic qualification. Normal
-startup opens the selected profile/store generation and integrated local UI.
-Default startup stays account-free and offline. Explicit configuration enables
-the [optional Animus connection](../docs/alkion/animus-connection.md): external
+startup opens existing selected profiles/store generations directly. Fresh
+startup offers optional sign-in or Go fully offline → Start new/Restore backup;
+entering those offline choices alone creates no profile. Local use stays
+account-free and offline; no connection I/O precedes an explicit action.
+Explicit configuration enables the [optional Animus connection](../docs/alkion/animus-connection.md): external
 browser authentication, scoped session storage and a confirmed foreground
 read-access check. No synchronization sender, replica download or OTA update
 transport is enabled. Final release identity/signing remain separate work.

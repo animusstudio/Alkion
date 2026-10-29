@@ -628,8 +628,8 @@
   "alkionBackupSaveCopy": "Backup erstellen und Kopie speichern",
   "alkionBackupCopySaved": "{name}\nSHA-256 {digest}…\nBackup-Kopie hier vollständig geprüft. Kopiere sie auf ein anderes Gerät und prüfe die empfangene Datei dort.",
   "alkionDocumentFailureMessage": "{reason}\nEine externe Kopie kann unvollständig sein. Lokales Original und privater Zwischenstand bleiben erhalten.",
-  "alkionFirstStartBody": "Starte auf diesem Gerät oder stelle vor dem Anlegen eines Profils ein Backup wieder her. Kein Konto nötig.",
-  "alkionFirstStartLocal": "Lokal starten",
+  "alkionFirstStartBody": "Starte mit einer leeren Bibliothek oder stelle ein Backup wieder her. Du brauchst kein Konto.",
+  "alkionFirstStartLocal": "Neu starten",
   "alkionFirstRestoreTitle": "Backup wiederherstellen",
   "alkionFirstRestoreConfirm": "Dieses geprüfte Backup auf der leeren Installation wiederherstellen? Profil und gespeicherte Arbeit bleiben erhalten; diese Installation erhält eine neue Identität.",
   "alkionFirstResumeBody": "Die vollständige geprüfte Wiederherstellung liegt bereit. Schließe sie ab, um dasselbe Profil wiederherzustellen. Der bisherige Versuch bleibt erhalten.",
@@ -687,5 +687,16 @@
   "animusInvalidResponse": "Die Verbindung konnte nicht bestätigt werden. Verbinde dich erneut oder versuche es später.",
   "animusUnavailable": "Anmeldung nicht verfügbar. Versuche es erneut.",
   "animusDisconnectBody": "Auf diesem Gerät trennen? Lokale Trainings, Entwürfe, ausstehende Änderungen und Backups bleiben erhalten. Du wirst nicht vom Browser abgemeldet.",
-  "animusReadOnly": "Diese Verbindung prüft nur den Lesezugriff auf Trainings. Sie lädt keine Trainings hoch und synchronisiert sie nicht."
+  "animusReadOnly": "Diese Verbindung prüft nur den Lesezugriff auf Trainings. Sie lädt keine Trainings hoch und synchronisiert sie nicht.",
+  "alkionEntryBody": "Melde dich bei Animus an oder behalte deine Trainings vollständig auf diesem Gerät. Ein Konto ist optional.",
+  "alkionEntrySignIn": "Bei Animus anmelden",
+  "alkionEntryNoAccount": "Noch kein Konto?",
+  "alkionEntryCreateAccount": "Konto erstellen",
+  "alkionEntryOffline": "Vollständig offline nutzen",
+  "alkionEntryConnectLater": "Später im Profil verbinden.",
+  "alkionEntryUnavailable": "Die Animus-Anmeldung ist in dieser Version nicht eingerichtet. Du kannst Alkion vollständig offline nutzen.",
+  "alkionEntrySignupUnavailable": "Die Kontoerstellung ist in dieser Einrichtung nicht verfügbar.",
+  "alkionEntryFailed": "Dieser Schritt konnte nicht abgeschlossen werden. Versuche es erneut oder nutze Alkion vollständig offline.",
+  "alkionOfflineTitle": "Dein Training auf diesem Gerät",
+  "alkionEntryContinueOffline": "Offline fortfahren"
 }

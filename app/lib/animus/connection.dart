@@ -43,8 +43,10 @@ final class AnimusConnectionController extends ChangeNotifier {
     AnimusProbePort? probe,
     bool misconfigured = false,
     DateTime Function()? now,
+    Future<void> Function()? beforeRetain,
   }) : _auth = auth,
        _probe = probe,
+       _beforeRetain = beforeRetain,
        _now = now ?? DateTime.now,
        _state = misconfigured
            ? AnimusConnectionState.misconfigured
@@ -55,6 +57,7 @@ final class AnimusConnectionController extends ChangeNotifier {
   final AnimusConfig? config;
   final AnimusAuthPort? _auth;
   final AnimusProbePort? _probe;
+  final Future<void> Function()? _beforeRetain;
   final DateTime Function() _now;
   AnimusConnectionState _state;
   AnimusConnectionIssue? _issue;
@@ -70,6 +73,7 @@ final class AnimusConnectionController extends ChangeNotifier {
   AnimusIdentity? get identity => _session?.identity;
   String? get dataSpaceId => config?.dataSpaceId;
   bool get busy => _running != null;
+  bool get confirmed => _confirmed;
 
   bool get _enabled =>
       !_closed &&
@@ -120,13 +124,13 @@ final class AnimusConnectionController extends ChangeNotifier {
     return done.future;
   }
 
-  Future<void> connect() =>
+  Future<void> connect({AnimusAuthIntent intent = AnimusAuthIntent.signIn}) =>
       _run(AnimusConnectionState.authenticating, (epoch) async {
         _session = null;
         _confirmed = false;
         await _auth!.disconnect();
         if (!_current(epoch)) return;
-        final session = await _auth.authorize();
+        final session = await _auth.authorize(intent: intent);
         if (!_current(epoch)) return;
         _session = session;
         _publish(
@@ -160,6 +164,8 @@ final class AnimusConnectionController extends ChangeNotifier {
     }
     return _run(AnimusConnectionState.verifying, (epoch) async {
       final session = _session!;
+      if (_beforeRetain != null) await _beforeRetain();
+      if (!_current(epoch)) return;
       await _auth!.retain(session);
       if (!_current(epoch)) return;
       _confirmed = true;
