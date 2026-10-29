@@ -1,7 +1,7 @@
 # Alkion native exercise catalog integration
 
 Date: 2026-10-29. Lane: **Full** overall; isolated native trial is standard UI.
-Status: **Approved by owner 2026-10-29; T0–T3 native trial starts first.**
+Status: **Approved by owner 2026-10-29; first native checkpoint ready.**
 
 Parent: [development guide](../alkion/development.md). Related:
 [specification and acceptance A1–A13](../specs/2026-10-29-exercise-catalog-integration.md),
@@ -127,14 +127,10 @@ runtime paths must work offline; inspect the APK's permission/asset/code identit
 
 ## Task state and next
 
-Owner approved the plan with "Ok proceed" on 2026-10-29. T0 in progress;
-T1–T6 unstarted. Start T0–T3 for the native feel test; durable work retains its
-preservation qualification. Initial assessment and full design review are complete.
-
-Planning checks at `bced7a7`: independent full design review PASS with two minor
-clarifications; changed-public-doc scope (4 files) and whitespace PASS. Full-tree
-documentation retains two unchanged MakeHuman license-link issues. App tests and
-native checks remain UNRUN; subsequent wording fixes receive a focused recheck.
+Owner approved “Ok proceed” on 2026-10-29. T0–T2 implemented/reviewed; T3 developer trial ready/reviewed; T4–T6 unstarted.
+Initial assessment, full design and independent task reviews passed. Planning checks `bced7a7` passed.
+Integrated base `41bfbe3` includes entry polish `3164f4e`, prescriptions `7015bbb` and the prepared store v4 handoff.
+See the [acceptance ledger](../alkion/acceptance.md) for exact source/artifacts and residual scope. Owner hands-on feedback is pending.
 
 Non-goals: public push/release, owner-data transfer, mass name merges, new auth/
 sync flows, manufacturer catalog, broad heatmap/statistics rollout or medical claims.
