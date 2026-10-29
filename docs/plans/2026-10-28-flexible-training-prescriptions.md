@@ -168,3 +168,10 @@ change receive independent review, with fix-diff rechecks only.
   bounded independent investigation, preserve all refusal/integrity checks, add
   regression evidence for any proven correction, and independently review the
   fix before restarting green-check PR delivery and in-place installation.
+- Replan correction: a deterministic failed-COMMIT close regression fails on the
+  old dependencies and passes with sqlite_async 0.14.7, pool 0.2.15, sqlite3 3.5.0
+  (native 3.53.3) and required sqlite3_web 0.9.5; other lock entries are retained.
+  The prior stack's late physical close is proven; the exact masked CI exception
+  remains an inference. Focused 45 cases and fresh driver/store/transfer/backup
+  qualification pass, with corrected current producer metadata. Independent
+  repair and outgoing-delta review PASS; combined-head CI still gates delivery.

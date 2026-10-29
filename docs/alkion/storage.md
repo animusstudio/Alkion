@@ -4,7 +4,7 @@ This document describes the T2 production store boundary. Since T4 the
 production runtime opens it at normal startup; integrated evidence is in
 [acceptance](acceptance.md).
 There is no account, transport, PowerSync queue, acknowledgement or server
-allocation. The pinned driver is sqlite_async 0.14.2 / sqlite3 3.3.2, using T1's
+allocation. The pinned driver is sqlite_async 0.14.7 / sqlite3 3.5.0 (connection pool 0.2.15), using T1's
 qualified native factory configuration: WAL, synchronous FULL, foreign keys on
 every connection, two readers. Production auto-checkpoint is 1000 pages.
 Process-crash evidence is not physical power-loss or Android qualification.
