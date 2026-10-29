@@ -6,6 +6,7 @@ import 'package:alkion/catalog_ui/catalog_picker.dart';
 import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/exercise_library_tab.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
@@ -372,6 +373,221 @@ void main() {
         );
       });
       await h.unmount(tester);
+      state.dispose();
+    },
+  );
+
+  testWidgets(
+    'routine metric Save reopen Save and guarded Discard preserve exact saved text',
+    (tester) async {
+      final h = real.ScreenHarness();
+      await h.open(tester, seed: (_) async {});
+      addTearDown(h.close);
+      final state = trial();
+      final profile = state.bundle.measurementProfiles.values.firstWhere(
+        (p) =>
+            p.requiredMetrics.length == 1 &&
+            p.requiredMetrics.single == 'duration',
+      );
+      final choice = CatalogChoice.custom('Synthetic hold', profile.key);
+      late DayTemplate day;
+      final repo = DayTemplateRepository.local(h.database);
+      await tester.runAsync(() async {
+        final ex = await state.materialize(
+          choice,
+          ExerciseRepository.local(h.database),
+          locale: 'en',
+        );
+        await repo.saveDay(
+          draft: DayDraft(
+            name: 'Synthetic metric routine',
+            slots: [
+              SlotDraft(
+                exerciseId: ex.id,
+                workSets: 1,
+                warmupSets: 0,
+                repLow: 8,
+                repHigh: 8,
+              ),
+            ],
+          ),
+        );
+        day = (await repo.allDays()).single;
+      });
+      final slotId = day.slots.single.id!;
+      state.routineContexts[slotId] = choice;
+      final planKey = GlobalKey<PlanScreenState>();
+      await tester.pumpWidget(
+        CatalogTrialScope(
+          state: state,
+          child: h.wrap(Scaffold(body: PlanScreen(key: planKey))),
+        ),
+      );
+      await real.settleReal(tester);
+      Future<void> open() async {
+        await tester.tap(find.text('Synthetic metric routine'));
+        await real.settleReal(tester);
+      }
+
+      Future<void> save() async {
+        await tester.scrollUntilVisible(
+          find.text('Save changes'),
+          250,
+          scrollable: find
+              .descendant(
+                of: find.byType(DayEditor),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        await real.settleReal(tester, ticks: 2);
+        await tester.tap(find.text('Save changes'));
+        await real.settleReal(tester);
+      }
+
+      await open();
+      await tester.enterText(
+        find.byKey(const ValueKey('metric-duration')),
+        '42.50',
+      );
+      expect(planKey.currentState!.hasUnsavedEdits, isTrue);
+      expect(state.routineMetrics[slotId], isNull);
+      await save();
+      expect(state.routineMetrics[slotId], {'duration': '42.50'});
+      await open();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('metric-duration')))
+            .controller!
+            .text,
+        '42.50',
+      );
+      expect(planKey.currentState!.hasUnsavedEdits, isFalse);
+      await save();
+      expect(state.routineMetrics[slotId], {'duration': '42.50'});
+      await open();
+      await tester.enterText(
+        find.byKey(const ValueKey('metric-duration')),
+        '99.25',
+      );
+      expect(planKey.currentState!.hasUnsavedEdits, isTrue);
+      final close = planKey.currentState!.requestClose();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('Discard'));
+      await real.settleReal(tester);
+      expect(await close, isTrue);
+      expect(state.routineMetrics[slotId], {'duration': '42.50'});
+      await open();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('metric-duration')))
+            .controller!
+            .text,
+        '42.50',
+      );
+      // A concurrent real routine revision makes this editor's Save fail. Its
+      // unpublished targets must not overwrite the previously accepted values.
+      await tester.runAsync(() async {
+        final latest = (await repo.byId(day.id))!;
+        await repo.commitPrepared(
+          repo.prepareSetActive(day.id, latest.localRevision!, false),
+        );
+      });
+      await tester.enterText(
+        find.byKey(const ValueKey('metric-duration')),
+        '55.75',
+      );
+      await save();
+      expect(state.routineMetrics[slotId], {'duration': '42.50'});
+      expect(find.byType(DayEditor), findsOneWidget);
+      await h.unmount(tester);
+      state.dispose();
+    },
+  );
+
+  testWidgets(
+    'selected equipment remains visible and clearable after narrowing',
+    (tester) async {
+      final state = trial();
+      await tester.pumpWidget(app(CatalogPicker(state: state, multiple: true)));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('catalog-search')), 'curl');
+      await tester.pump();
+      await tester.tap(find.text('Curl'));
+      await tester.pump();
+      final machine = find.widgetWithText(FilterChip, 'Machine');
+      await tester.tap(machine);
+      await tester.pump();
+      expect(tester.widget<FilterChip>(machine).selected, isTrue);
+      expect(find.widgetWithText(FilterChip, 'Dumbbells'), findsOneWidget);
+      final other = state.bundle.variants.values.firstWhere(
+        (v) => v.key == 'neutral_curl',
+      );
+      expect(find.byKey(ValueKey('variant:${other.id}@default')), findsNothing);
+      await tester.tap(machine);
+      await tester.pump();
+      expect(tester.widget<FilterChip>(machine).selected, isFalse);
+      expect(
+        find.byKey(ValueKey('variant:${other.id}@default')),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox());
+      state.dispose();
+    },
+  );
+
+  testWidgets(
+    'favorites honor qualified query and Change setup movement admission',
+    (tester) async {
+      final state = trial();
+      final machine = state.bundle.variants.values.firstWhere(
+        (v) => v.equipmentKind == 'machine',
+      );
+      final press = state.bundle.variants.values.firstWhere(
+        (v) => v.key == 'standing_press',
+      );
+      final curl = CatalogChoice.variant(machine.id),
+          standing = CatalogChoice.variant(press.id);
+      final known = state.newSetup(curl, 'Hotel curl');
+      state.toggleFavorite(curl);
+      state.toggleFavorite(known);
+      state.toggleFavorite(standing);
+      await tester.pumpWidget(app(CatalogPicker(state: state, multiple: true)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Favorites'));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('catalog-search')),
+        'Standing barbell shoulder press',
+      );
+      await tester.pump();
+      expect(find.byKey(ValueKey(standing.key)), findsOneWidget);
+      expect(find.byKey(ValueKey(curl.key)), findsNothing);
+      expect(find.byKey(ValueKey(known.key)), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        app(
+          CatalogPicker(
+            state: state,
+            multiple: true,
+            familyId: machine.familyId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Favorites'));
+      await tester.pump();
+      expect(find.byKey(ValueKey(curl.key)), findsOneWidget);
+      expect(find.byKey(ValueKey(known.key)), findsOneWidget);
+      expect(find.byKey(ValueKey(standing.key)), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('catalog-search')),
+        'Standing barbell shoulder press',
+      );
+      await tester.pump();
+      expect(find.byType(CatalogPickerRow), findsNothing);
+      await tester.pumpWidget(const SizedBox());
       state.dispose();
     },
   );

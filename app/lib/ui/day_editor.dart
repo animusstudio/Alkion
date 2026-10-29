@@ -3,6 +3,7 @@ import '../catalog_ui/catalog_measurement_form.dart';
 import '../catalog_ui/catalog_trial_scope.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/services.dart' hide TextInput;
 
 import '../data/day_template_repository.dart';
@@ -101,6 +102,11 @@ class _DayEditorState extends State<DayEditor> {
   int? _weekday; // 0=Mon … 6=Sun
 
   final List<DaySlotState> _slots = [];
+  // Trial targets are editor-local snapshots. They are published only after
+  // the existing routine action commits, and vanish when this editor discards.
+  final Map<String, Map<String, String>> _trialMetrics = {};
+  final Map<String, Map<String, String>> _trialMetricsBaseline = {};
+  final Map<String, CatalogChoice> _trialChoices = {};
   String? _expandedExId; // keyed by exerciseId (NOT index)
 
   List<Exercise> _catalog = [];
@@ -216,6 +222,20 @@ class _DayEditorState extends State<DayEditor> {
       _focusCtrl.text = day.focus ?? '';
       _weekday = day.scheduledWeekday;
       _slots.addAll(slots);
+      final trial = CatalogTrialScope.maybeOf(context);
+      if (trial != null) {
+        for (final slot in slots) {
+          final key = slot.instanceKey;
+          final choice =
+              trial.routineContexts[key] ?? trial.exercises[slot.exerciseId];
+          if (choice != null) _trialChoices[key] = choice;
+          final metrics = Map<String, String>.of(
+            trial.routineMetrics[key] ?? {},
+          );
+          _trialMetrics[key] = metrics;
+          _trialMetricsBaseline[key] = Map.of(metrics);
+        }
+      }
       _baseline = daySnapshot(_currentDraft());
       _loaded = true;
     });
@@ -273,7 +293,13 @@ class _DayEditorState extends State<DayEditor> {
     if (baseline == null || _saving || _deleting) return false;
     return _pendingSave != null ||
         _pendingDelete != null ||
-        daySnapshot(_currentDraft()) != baseline;
+        daySnapshot(_currentDraft()) != baseline ||
+        _slots.any(
+          (slot) => !mapEquals(
+            _trialMetrics[slot.instanceKey] ?? const <String, String>{},
+            _trialMetricsBaseline[slot.instanceKey] ?? const <String, String>{},
+          ),
+        );
   }
 
   // ── slot actions ──────────────────────────────────────────────────────────
@@ -385,8 +411,8 @@ class _DayEditorState extends State<DayEditor> {
       added.draft.rirHigh = null;
       _slots.add(added);
       if (trialChoice != null) {
-        CatalogTrialScope.maybeOf(context)!.routineContexts[added.instanceKey] =
-            trialChoice;
+        _trialChoices[added.instanceKey] = trialChoice;
+        _trialMetrics[added.instanceKey] = {};
       }
     });
   }
@@ -425,10 +451,9 @@ class _DayEditorState extends State<DayEditor> {
           final key = _slots[i].instanceKey;
           final actualId = actionSlots[i]['id'] as String;
           final choice =
-              trial.routineContexts[key] ??
-              trial.exercises[_slots[i].exerciseId];
+              _trialChoices[key] ?? trial.exercises[_slots[i].exerciseId];
           if (choice != null) trial.routineContexts[actualId] = choice;
-          final metrics = trial.metricDrafts['routine:$key'];
+          final metrics = _trialMetrics[key];
           if (metrics != null) trial.routineMetrics[actualId] = Map.of(metrics);
         }
       }
@@ -632,7 +657,7 @@ class _DayEditorState extends State<DayEditor> {
                     );
                     final trial = CatalogTrialScope.maybeOf(context);
                     final choice =
-                        trial?.routineContexts[slot.instanceKey] ??
+                        _trialChoices[slot.instanceKey] ??
                         trial?.exercises[ex.id];
                     if (trial != null &&
                         choice != null &&
@@ -695,9 +720,11 @@ class _DayEditorState extends State<DayEditor> {
                             CatalogMeasurementForm(
                               key: ValueKey('routine-${slot.instanceKey}'),
                               profile: trial.measurement(choice),
-                              values: trial.metricDrafts.putIfAbsent(
-                                'routine:${slot.instanceKey}',
-                                () => {},
+                              values: _trialMetrics.putIfAbsent(
+                                slot.instanceKey,
+                                () => Map.of(
+                                  trial.routineMetrics[slot.instanceKey] ?? {},
+                                ),
                               ),
                               enabled: !_controlsLocked,
                               onChanged: () => setState(() {}),

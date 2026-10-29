@@ -138,23 +138,40 @@ class _CatalogPickerState extends State<CatalogPicker> {
       equipmentKinds: _equipment == null ? [] : [_equipment!],
     );
     final result = index.search(_search.text, filter: filter);
-    final List<CatalogVariant>? variants = _navigation == null
+    // Equipment options come from the admitted choices before this chip's
+    // own filter, so narrowing never removes the way to clear that choice.
+    final familyFilter = CatalogFilter(
+      familyIds: _family == null ? [] : [_family!],
+    );
+    final unfilteredVariants = _navigation == null
         ? null
-        : index.variantsFor(_navigation!, filter: filter);
-    final recent = state.recents
-        .where((c) => !_favorites || state.favorites.contains(c.key))
+        : index.variantsFor(_navigation!, filter: familyFilter);
+    final List<CatalogVariant>? variants = unfilteredVariants
+        ?.where(filter.matches)
         .toList();
+    final admittedIds = <String>{
+      for (final hit in result.strict)
+        if (hit.variantId != null) hit.variantId!,
+      for (final hit in result.strict.where((h) => h.isNavigation))
+        ...index.variantsFor(hit, filter: filter).map((v) => v.id),
+    };
+    bool admitted(CatalogChoice choice) => choice.variantId == null
+        ? _search.text.trim().isEmpty && _family == null && _equipment == null
+        : admittedIds.contains(choice.variantId);
+    final recent = state.recents.where(admitted).toList();
     final showRecent =
         _search.text.isEmpty && !_browse && _family == null && !_favorites;
     final favoriteChoices = state.choices.values
-        .where((c) => state.favorites.contains(c.key))
+        .where((c) => state.favorites.contains(c.key) && admitted(c))
         .toList();
     final rows = variants == null ? result.rows : <CatalogHit>[];
     final variantChoices = variants
         ?.map((v) => CatalogChoice.variant(v.id))
         .toList();
-    final equipment =
-        variants?.map((v) => v.equipmentKind).toSet().toList() ?? [];
+    final equipment = <String>{
+      ...?unfilteredVariants?.map((v) => v.equipmentKind),
+      if (_equipment != null) _equipment!,
+    }.toList();
     Widget choiceRow(CatalogChoice choice, {List<CatalogVariant>? siblings}) {
       final count = _selected.where((c) => c.key == choice.key).length;
       final variant = state.bundle.variants[choice.variantId];
@@ -285,7 +302,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                 _favorites = false;
                               }),
                             ),
-                          if (equipment.length > 1)
+                          if (equipment.length > 1 || _equipment != null)
                             for (final kind in equipment)
                               FilterChip(
                                 label: Text(labels.equipment(kind)),
