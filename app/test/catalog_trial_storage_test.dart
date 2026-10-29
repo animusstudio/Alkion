@@ -12,6 +12,7 @@ import 'package:path/path.dart' as paths;
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('dev.animusstudio.alkion/identity');
+  const cacheChannel = MethodChannel('plugins.flutter.io/path_provider');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   late Directory fixture, parent, cache;
@@ -39,8 +40,42 @@ void main() {
   });
   tearDown(() async {
     messenger.setMockMethodCallHandler(channel, null);
+    messenger.setMockMethodCallHandler(cacheChannel, null);
     await fixture.delete(recursive: true);
   });
+
+  test(
+    'default native cache provider selects only the attested cache',
+    () async {
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(cacheChannel, (call) async {
+        calls.add(call.method);
+        if (call.method != 'getTemporaryDirectory') {
+          throw StateError('Unexpected platform directory request');
+        }
+        return '$logicalData/cache';
+      });
+      final temporary = await CatalogTrialStorage.createTemporaryDirectory();
+      expect(calls, ['getTemporaryDirectory']);
+      expect(paths.dirname(temporary.path), cache.path);
+      expect(await temporary.list().toList(), isEmpty);
+    },
+  );
+
+  test(
+    'default native provider cannot substitute an engine code cache',
+    () async {
+      messenger.setMockMethodCallHandler(
+        cacheChannel,
+        (_) async => '$logicalData/code_cache',
+      );
+      await expectLater(
+        CatalogTrialStorage.createTemporaryDirectory(),
+        throwsFormatException,
+      );
+      expect(await cache.list().toList(), isEmpty);
+    },
+  );
 
   test('verified OS alias opens a fresh canonical-cache runtime', () async {
     var cacheCalls = 0;

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as paths;
+import 'package:path_provider/path_provider.dart' as platform_paths;
 
 const catalogTrialApplicationId = 'dev.animusstudio.alkion.catalogtrial.dev';
 
@@ -44,8 +45,10 @@ abstract final class CatalogTrialStorage {
       paths.join(parent, catalogTrialApplicationId, 'cache'),
     );
     await _requireUnlinkedDirectories(cache.path);
+    // Android's native Context cache is the attested location. Dart's VM temp
+    // location may instead be the engine's code_cache directory.
     final supplied =
-        await (temporaryDirectory ?? () async => Directory.systemTemp)();
+        await (temporaryDirectory ?? platform_paths.getTemporaryDirectory)();
     if (supplied.path != paths.join(data, 'cache')) {
       throw const FormatException('Catalog trial cache directory mismatch');
     }
