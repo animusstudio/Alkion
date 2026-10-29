@@ -158,7 +158,7 @@
   "dayEditorFocusPlaceholder": "z. B. Druck",
   "dayEditorScheduledDay": "Geplanter Tag",
   "dayEditorExercisesCount": "Übungen · {count}",
-  "dayEditorSlotHint": "Sätze, Wiederholungen & RIR werden pro Tag festgelegt — tippe auf eine Zeile, um die Vorgabe dieses Tages anzupassen.",
+  "dayEditorSlotHint": "Tippe auf eine Übung, um Sätze und Wiederholungen zu ändern.",
   "dayEditorWarmupShort": "{count}aw",
   "dayEditorWorkingSets": "Arbeitssätze",
   "dayEditorWarmups": "Aufwärmen",

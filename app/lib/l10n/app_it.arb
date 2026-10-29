@@ -158,7 +158,7 @@
   "dayEditorFocusPlaceholder": "es. Spinta",
   "dayEditorScheduledDay": "Giorno programmato",
   "dayEditorExercisesCount": "Esercizi · {count}",
-  "dayEditorSlotHint": "Serie, ripetizioni e RIR si impostano per giorno — tocca una riga per regolare la prescrizione di questo giorno.",
+  "dayEditorSlotHint": "Tocca un esercizio per modificare serie e ripetizioni.",
   "dayEditorWarmupShort": "{count}ris",
   "dayEditorWorkingSets": "Serie effettive",
   "dayEditorWarmups": "Riscaldamento",

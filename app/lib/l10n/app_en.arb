@@ -369,7 +369,7 @@
       }
     }
   },
-  "dayEditorSlotHint": "Sets, reps & RIR are set per day — tap a row to tune this day's prescription.",
+  "dayEditorSlotHint": "Tap an exercise to change its sets and reps.",
   "dayEditorWarmupShort": "{count}wu",
   "@dayEditorWarmupShort": {
     "placeholders": {

@@ -158,7 +158,7 @@
   "dayEditorFocusPlaceholder": "p. ej. Empuje",
   "dayEditorScheduledDay": "Día programado",
   "dayEditorExercisesCount": "Ejercicios · {count}",
-  "dayEditorSlotHint": "Series, repeticiones y RIR se definen por día — toca una fila para ajustar la prescripción de este día.",
+  "dayEditorSlotHint": "Toca un ejercicio para cambiar sus series y repeticiones.",
   "dayEditorWarmupShort": "{count}cal",
   "dayEditorWorkingSets": "Series efectivas",
   "dayEditorWarmups": "Calentamiento",
