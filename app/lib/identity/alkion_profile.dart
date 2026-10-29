@@ -130,6 +130,86 @@ class AlkionProfile {
     return profile;
   }
 
+  /// Completes only the exact first-use identity whose creation was already
+  /// authorized in the separate entry journal. Unknown or conflicting bytes
+  /// are preserved. This never adopts an established different profile.
+  static Future<AlkionProfile> createReserved({
+    required Directory supportRoot,
+    required String installationId,
+    required String profileId,
+  }) async {
+    if (!_validId(installationId) || !_validId(profileId)) {
+      throw const FormatException('Invalid reserved Alkion identity');
+    }
+    final root = await checkedRoot(supportRoot: supportRoot);
+    if (FileSystemEntity.typeSync(
+          freshPreparationDirectory(root.path, AlkionIdentity.applicationId),
+          followLinks: false,
+        ) !=
+        FileSystemEntityType.notFound) {
+      throw const GenerationSelectionException('fresh_restore_interrupted');
+    }
+    await root.create(recursive: true);
+    if (!_creating.add(root.path)) {
+      throw const FileSystemException('Profile creation already in progress');
+    }
+    ProfileOwnership? owner;
+    try {
+      final lockPath = p.join(root.path, '.identity.lock');
+      await _rejectLinks(lockPath);
+      owner = ProfileOwnership.acquire(lockPath);
+      final identity = File(p.join(root.path, 'local-profile.json'));
+      final temporary = File('${identity.path}.tmp');
+      await _rejectLinks(identity.path);
+      await _rejectLinks(temporary.path);
+      final expected = jsonEncode({
+        'version': 1,
+        'application_id': AlkionIdentity.applicationId,
+        'installation_id': installationId,
+        'profile_id': profileId,
+      });
+      if (identity.existsSync()) {
+        final current = await _readExisting(root);
+        if (current?.installationId != installationId ||
+            current?.profileId != profileId ||
+            temporary.existsSync()) {
+          throw const FormatException(
+            'Reserved Alkion identity conflicts; preserved',
+          );
+        }
+        return current!;
+      }
+      for (final entry in root.listSync(followLinks: false)) {
+        if (![
+              '.identity.lock',
+              'local-profile.json.tmp',
+            ].contains(p.basename(entry.path)) ||
+            entry is! File) {
+          throw const FormatException(
+            'Reserved Alkion root has unknown bytes; preserved',
+          );
+        }
+      }
+      if (temporary.existsSync()) {
+        if (temporary.lengthSync() > 4096 ||
+            temporary.readAsStringSync() != expected) {
+          throw const FormatException(
+            'Reserved Alkion identity interrupted; preserved',
+          );
+        }
+      } else {
+        await temporary.writeAsString(expected, flush: true);
+      }
+      await temporary.rename(identity.path);
+      flushDirectory(root.path);
+      flushDirectory(root.parent.path);
+      return AlkionProfile._(root, installationId, profileId);
+    } finally {
+      owner?.close();
+      _creating.remove(root.path);
+    }
+  }
+
   /// Reads an existing identity without creating one; null when [supportRoot]
   /// has none yet. Same canonical-root and link checks as [open]. A manual
   /// restore onto separate storage uses this instead of creating a profile.

@@ -11,9 +11,23 @@ val localReleaseTest =
     providers.environmentVariable("ALKION_LOCAL_RELEASE_TEST").orNull == "1" &&
         !providers.environmentVariable("ANDROID_USER_HOME").orNull.isNullOrBlank()
 
+// Browser callback is disabled unless the optional connection build opts in.
+val animusEnabled = providers.environmentVariable("ALKION_ANIMUS_NATIVE").orNull == "1"
+val animusLoopbackHttp =
+    providers.environmentVariable("ALKION_ANIMUS_LOOPBACK_HTTP").orNull == "1"
+if (animusLoopbackHttp) {
+    require(animusEnabled && gradle.startParameter.taskNames.all {
+        it == "assembleDevDebug" || it == ":app:assembleDevDebug"
+    }) { "Animus loopback HTTP is available only in explicit dev/debug connection builds" }
+}
+
 // A one-off synthetic device artifact, never a product flavor or release identity.
 val isolatedBodyPreview =
     providers.environmentVariable("ALKION_ISOLATED_BODY_PREVIEW").orNull == "1"
+require(!animusEnabled || (!isolatedBodyPreview &&
+    providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull != "1")) {
+    "An offline body preview cannot enable an Animus connection"
+}
 if (isolatedBodyPreview) {
     val requestedTasks = gradle.startParameter.taskNames
     val onlyDebugApk = requestedTasks.size == 1 && requestedTasks.single() in
@@ -75,6 +89,10 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["oidcRedirectScheme"] = "dev.animusstudio.alkion"
+        manifestPlaceholders["alkionAnimusEnabled"] = animusEnabled.toString()
+        manifestPlaceholders["alkionNetworkSecurityConfig"] = if (animusLoopbackHttp)
+            "@xml/animus_loopback_network_security_config" else "@xml/network_security_config"
         if (localReleaseTest) {
             ndk.abiFilters.clear()
             ndk.abiFilters.add("arm64-v8a")
@@ -113,6 +131,7 @@ android {
         create("dev") {
             dimension = "installation"
             applicationIdSuffix = ".dev"
+            manifestPlaceholders["oidcRedirectScheme"] = "dev.animusstudio.alkion.dev"
             if (isolatedBodyPreview) {
                 applicationId = "dev.animusstudio.alkion.bodypreview"
                 manifestPlaceholders["alkionLabel"] = "Body renderer preview"
@@ -124,6 +143,10 @@ android {
             dimension = "installation"
             manifestPlaceholders["alkionLabel"] = "Alkion"
         }
+    }
+    if (animusEnabled) {
+        sourceSets.getByName("dev").manifest.srcFile("src/animusConnection/AndroidManifest.xml")
+        sourceSets.getByName("supported").manifest.srcFile("src/animusConnection/AndroidManifest.xml")
     }
 }
 kotlin {

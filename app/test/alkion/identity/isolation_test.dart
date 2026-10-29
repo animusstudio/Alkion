@@ -197,7 +197,6 @@ void main() {
       for (final package in [
         'powersync:',
         'reps_capture_platform:',
-        'flutter_secure_storage:',
         'ota_update:',
       ]) {
         expect(pubspec, isNot(contains(package)));

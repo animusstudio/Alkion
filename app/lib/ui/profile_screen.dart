@@ -32,6 +32,7 @@ import '../widgets/stepper.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import 'alkion_recovery/recovery_screen.dart';
+import 'animus_connection_panel.dart';
 
 // ── Group + Row helpers ─────────────────────────────────────────────────────
 
@@ -949,6 +950,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ],
                   ),
+
+                  const AnimusConnectionPanel(),
 
                   // ── Data ────────────────────────────────────────────────────
                   _Group(

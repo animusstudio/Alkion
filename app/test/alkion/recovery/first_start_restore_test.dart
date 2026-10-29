@@ -62,6 +62,20 @@ Map<String, String> storageTree(Directory root) => {
     },
 };
 
+Future<void> openOfflineChoices(WidgetTester tester) async {
+  // These tests exercise recovery; decorative first-use motion is qualified
+  // separately and can always be skipped without touching a functional action.
+  final opening = find.byKey(const Key('first-entry-opening'));
+  if (opening.evaluate().isNotEmpty) {
+    await tester.tap(opening);
+    await tester.pump();
+  }
+  final offline = find.byKey(const Key('first-go-offline'));
+  await tester.ensureVisible(offline);
+  await tester.tap(offline);
+  await settleUntil(tester, find.byKey(const Key('first-start-local')));
+}
+
 Future<void> firstActionReady(WidgetTester tester) async {
   for (var i = 0; i < 120; i++) {
     await settleReal(tester, ticks: 1);
@@ -94,6 +108,7 @@ void main() {
         expect(root.existsSync(), isFalse);
         await tester.pumpWidget(presented.single);
         await tester.pump();
+        await openOfflineChoices(tester);
         expect(find.byKey(const Key('first-start-local')), findsOneWidget);
         expect(find.byKey(const Key('first-restore')), findsOneWidget);
         final action = tester
@@ -214,6 +229,7 @@ void main() {
           ),
         );
         await tester.pump();
+        await openOfflineChoices(tester);
         final staleLocal = tester
             .widget<FilledButton>(find.byKey(const Key('first-start-local')))
             .onPressed!;
@@ -317,6 +333,7 @@ void main() {
           ),
         );
         await tester.pump();
+        await openOfflineChoices(tester);
         final choose = tester
             .widget<OutlinedButton>(find.byKey(const Key('first-restore')))
             .onPressed!;

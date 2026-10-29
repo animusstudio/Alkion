@@ -56,6 +56,7 @@ class AndroidDocuments(private val activity: Activity, messenger: BinaryMessenge
         val source: File? = null,
         val length: Long? = null,
         val digest: String? = null,
+        val requestCode: Int = allocateRequestCode(),
         var awaitingResult: Boolean = true,
     )
     private class Refusal(val category: String) : Exception(category)
@@ -116,18 +117,25 @@ class AndroidDocuments(private val activity: Activity, messenger: BinaryMessenge
                 }
             }
             pending = request
-            activity.startActivityForResult(intent, REQUEST_CODE)
+            activity.startActivityForResult(intent, request.requestCode)
         } catch (error: Exception) {
+            pending?.let { outstandingRequestCodes.remove(it.requestCode) }
             pending = null
             result.error(category(error), null, null)
         }
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
-        if (requestCode != REQUEST_CODE) return false
-        val request = pending ?: return true // A process restart requires reselection.
+        if (requestCode !in FIRST_REQUEST_CODE..LAST_REQUEST_CODE) return false
+        val request = pending
+        if (destroyed || request == null || request.requestCode != requestCode) {
+            // A result from an interrupted host cannot complete a new picker.
+            outstandingRequestCodes.remove(requestCode)
+            return true
+        }
         if (!request.awaitingResult) return true
         request.awaitingResult = false
+        outstandingRequestCodes.remove(requestCode)
         if (resultCode == Activity.RESULT_CANCELED) {
             complete(request, null, null); return true
         }
@@ -274,6 +282,7 @@ class AndroidDocuments(private val activity: Activity, messenger: BinaryMessenge
     }
 
     fun close() {
+        if (destroyed) return
         destroyed = true
         worker.shutdownNow()
         pending?.let { complete(it, null, Refusal("document_interrupted")) }
@@ -281,7 +290,21 @@ class AndroidDocuments(private val activity: Activity, messenger: BinaryMessenge
     }
 
     companion object {
-        private const val REQUEST_CODE = 0xA1D0
+        private const val FIRST_REQUEST_CODE = 0xA1D0
+        private const val LAST_REQUEST_CODE = 0xFFFF
+        private var nextRequestCode = FIRST_REQUEST_CODE
+        // Main-thread only. Interrupted picker codes stay reserved until their
+        // result returns, even if another Activity has installed a new adapter.
+        private val outstandingRequestCodes = mutableSetOf<Int>()
+
+        private fun allocateRequestCode(): Int {
+            repeat(LAST_REQUEST_CODE - FIRST_REQUEST_CODE + 1) {
+                val code = nextRequestCode
+                nextRequestCode = if (code == LAST_REQUEST_CODE) FIRST_REQUEST_CODE else code + 1
+                if (outstandingRequestCodes.add(code)) return code
+            }
+            throw Refusal("document_busy")
+        }
         private const val MAX_BYTES = 512L * 1024 * 1024
     }
 }

@@ -7,7 +7,13 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:fullBackupContent="false"
+        android:networkSecurityConfig="${alkionNetworkSecurityConfig}"
         android:usesCleartextTraffic="false">
+        <!-- Merge the plugin receiver, disabled unless the build opts in. The
+             Dart adapter still verifies the complete redirect URI and state. -->
+        <activity
+            android:name="com.bdayadev.oidc.OidcRedirectActivity"
+            android:enabled="${alkionAnimusEnabled}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

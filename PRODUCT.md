@@ -12,7 +12,7 @@ People who plan and record strength-training workouts. The immediate operating c
 
 ## Product Purpose
 
-Alkion is an offline-first workout planner and logger. It lets a person manage exercises and training days, record sets, resume an interrupted workout, and review workout and bodyweight history without requiring an account or network connection. Optional Animus sync is a later workstream; it is not implemented in the current app.
+Alkion is an offline-first workout planner and logger. It lets a person manage exercises and training days, record sets, resume an interrupted workout, and review workout and bodyweight history without requiring an account or network connection. Explicit configuration adds optional Animus browser sign-in, account/space confirmation and a foreground read-access check. Synchronization sending and replica downloads remain later workstreams.
 
 ## Positioning
 
@@ -20,14 +20,14 @@ The app keeps the local workout workflow available without an account. A later o
 
 ## Operating Context
 
-People use Alkion on an Android phone before, during and after strength training. A workout can be minimized and resumed. The app also supports reviewing history and progress, editing plans and exercises, managing preferences, and using existing export and recovery flows. Current synthetic Linux tests exercise account-free local workflows; Android, owner storage and sync are not qualified by those tests.
+People use Alkion on an Android phone before, during and after strength training. A workout can be minimized and resumed. The app also supports reviewing history and progress, editing plans and exercises, managing preferences, and using existing export and recovery flows. Synthetic Linux tests exercise local workflows and the optional connection. A disposable Android emulator qualifies the measured first-use screens and offline startup; physical-phone, owner-storage and sync qualification remain separate.
 
 ## Capabilities and Constraints
 
-- First use offers Start local or Restore backup, then opens the app directly. New local profiles have an empty exercise library; existing and restored exercises are preserved. Current workflows include Today, Progress, History and Plan navigation; workout entry/resume/finish; exercise and training-day editing; bodyweight measurements; unit, language, theme and appearance settings; and existing export, backup and recovery surfaces.
-- The current app is local and account-free. Opening signup/login, account attachment and Animus transport belong to a later sync workstream.
+- First use offers optional Animus sign-in/account creation and Go fully offline. Offline opens Start new/Restore backup with Back; entering those choices alone creates no profile. Existing/restored profiles open directly. New local profiles have an empty exercise library; existing and restored exercises are preserved. Current workflows include Today, Progress, History and Plan navigation; workout entry/resume/finish; exercise and training-day editing; bodyweight measurements; unit, language, theme and appearance settings; and existing export, backup and recovery surfaces.
+- Local use remains account-free. Optional first-use or Profile → Animus connection opens the external provider browser and verifies access only after explicit account/space confirmation. Passwords, passkeys and account enrollment stay with the provider; six-digit email sign-in is deferred and unavailable. It does not attach local history to a server writer, send pending operations or download a replica.
 - Keep exact recorded values, ordering, dates, units and evidence distinctions. Missing or incomplete information must not be presented as a zero or as a medical conclusion.
-- The Android installation and owner-storage route remain unqualified. Synthetic Linux tests establish only the tested synthetic Linux behavior.
+- Physical-phone installation and owner-storage behavior remain unqualified. Synthetic host and emulator checks establish only their measured behavior; the onboarding emulator run does not qualify body artwork.
 - Flutter is the existing client implementation. No new runtime, backend or dependency is selected by this product record.
 
 ## Brand Commitments
@@ -36,7 +36,7 @@ The product name is Alkion, with the existing “Alkion, by Animus” endorsemen
 
 ## Evidence on Hand
 
-The repository contains the Flutter app, synthetic fixtures, focused widget/workflow tests, and a public workout-tracker visual handoff. Linux synthetic workflows are tested. No real personal data is included in the design fixtures. Android/device, owner-storage, and sync qualification evidence is not yet available.
+The repository contains the Flutter app, synthetic fixtures, focused widget/workflow tests, and a public workout-tracker visual handoff. Linux synthetic local workflows and real disposable-provider/API connection boundaries are tested. The [acceptance record](docs/alkion/acceptance.md) gives their scope and current native adapter limits. No real personal data is included in design fixtures; these checks do not qualify owner storage or synchronization.
 
 ## Product Principles
 
