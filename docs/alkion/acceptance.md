@@ -76,8 +76,12 @@ APK checks and seven staging checks pass; CI runs both sets.
 The SQLite close correction also exposed fake-time cleanup in the existing
 weight-sheet tests. Reusing the real-async harness preserves all six cases and
 assertions; the formerly stalled file now completes in two seconds. The interrupted
-full run is failed, not a qualification. Final CI and phone artifact admission
-remain pending before installation.
+full run is failed, not a qualification. The serial ARM64 rebuild at `466993a`
+passes the mandatory ABI/current-JNI-hash guard, package, signature, no-network
+and catalog-digest checks. Flutter, SQLite and pool are all AArch64 ELF183.
+APK SHA-256: `7ed96a8a1bd47d952650a676a14b27216da7ac0b45f9f7c327fe5bf3dc80a452`
+(102,074,213 bytes). Final CI and the main merge remain pending; the owner
+explicitly retained installation after merge.
 
 ## First-use visual polish — 2026-10-29
 
