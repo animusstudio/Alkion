@@ -47,6 +47,8 @@ app/.fvm/
 app/.flutter-plugins
 app/.flutter-plugins-dependencies
 app/*.iml
+# Explicit private development catalog projection and its admission manifest.
+app/assets/catalog_trial/*.dev.json
 # NOTE: app/build/ is already covered by the generic build/ rule above.
 # NOTE: app/pubspec.lock is intentionally NOT ignored — committed for reproducible builds.
 # NOTE: profile SQLite files live outside the repo; *.db/*.sqlite already covered.

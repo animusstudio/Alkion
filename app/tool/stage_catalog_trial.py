@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""Project explicit, hash-pinned catalog input for a private offline trial.
+
+The projection is not cleared for redistribution. Only the isolated Android
+target includes it; ordinary Flutter assets declare the public README alone.
+"""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import tempfile
+
+APP = Path(__file__).resolve().parents[1]
+ASSETS = APP / 'assets/catalog_trial'
+ANDROID_ASSETS = APP / 'build/private-catalog-trial/assets'
+CATALOG_NAME = 'catalog.dev.json'
+MANIFEST_NAME = 'manifest.dev.json'
+NOTICE = (
+    'Private development trial only. Publication and redistribution are not '
+    'cleared. Editorial names and partial or unknown muscle roles are not '
+    'verified manufacturer or measured activation claims. No media is included.'
+)
+TABLE_FIELDS = {
+    'families': ('id', 'key', 'names'),
+    'variants': ('id', 'key', 'family_id', 'revision', 'names',
+                 'equipment_kind', 'facets', 'measurement_profile'),
+    'collections': ('id', 'key', 'names', 'selector'),
+    'measurement_profiles': ('key', 'required_metrics', 'optional_metrics',
+                             'progression_policy'),
+    'anatomy_nodes': ('id', 'names'),
+    'muscle_profiles': ('variant_id', 'variant_revision', 'coverage',
+                        'relationships'),
+    **{key: ('id', 'text', 'locale', 'target', 'selector', 'qualifier', 'literal')
+       for key in ('aliases', 'scoped_terms', 'abbreviations')},
+}
+
+
+def _object_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('Duplicate JSON object key')
+        result[key] = value
+    return result
+
+
+def decode(data):
+    def invalid_constant(_):
+        raise ValueError('Non-JSON numeric constant')
+    return json.loads(data.decode('utf-8'), object_pairs_hook=_object_pairs,
+                      parse_constant=invalid_constant)
+
+
+def encode(value):
+    return (json.dumps(value, ensure_ascii=False, sort_keys=True,
+                       separators=(',', ':')) + '\n').encode('utf-8')
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def _object(value):
+    if not isinstance(value, dict):
+        raise ValueError('Expected a catalog object')
+    return value
+
+
+def _array(value):
+    if not isinstance(value, list):
+        raise ValueError('Expected a catalog array')
+    return value
+
+
+def _strings(value):
+    if any(not isinstance(v, str) for v in _array(value)):
+        raise ValueError('Expected catalog string values')
+    return value
+
+
+def _string_map(value):
+    if any(not isinstance(v, str) for v in _object(value).values()):
+        raise ValueError('Expected catalog string labels')
+    return value
+
+
+def _selector(value):
+    result = {}
+    for key, item in _object(value).items():
+        if key in ('family_ids', 'equipment_kinds'):
+            result[key] = _strings(item)
+        elif key in ('facets', 'excluded_facets'):
+            result[key] = {name: _strings(values)
+                           for name, values in _object(item).items()}
+    return result
+
+
+def project(source):
+    source = _object(source)
+    if (source.get('format') != 'alkion-exercise-catalog' or
+            type(source.get('schema_version')) is not int or
+            source['schema_version'] != 1):
+        raise ValueError('Unsupported catalog format/schema')
+    if _array(source.get('equipment_models')):
+        raise ValueError('Equipment models are not admitted for this trial')
+    result = {key: source[key] for key in
+              ('format', 'schema_version', 'catalog_revision', 'search_revision')}
+    for key in ('catalog_revision', 'search_revision'):
+        if not isinstance(result[key], str) or not result[key]:
+            raise ValueError('Missing catalog revision')
+    result['equipment_kinds'] = _strings(source.get('equipment_kinds'))
+    result['facet_vocabulary'] = {
+        key: _strings(values)
+        for key, values in _object(source.get('facet_vocabulary')).items()
+    }
+    result['equipment_models'] = []
+    for table, fields in TABLE_FIELDS.items():
+        result[table] = []
+        for original in _array(source.get(table)):
+            original = _object(original)
+            row = {key: original[key] for key in fields if key in original}
+            for key in ('names', 'facets'):
+                if key in row:
+                    row[key] = _string_map(row[key])
+            if 'selector' in row:
+                row['selector'] = _selector(row['selector'])
+            if 'target' in row:
+                target = _object(row['target'])
+                row['target'] = {key: target[key] for key in ('kind', 'id')}
+                if any(not isinstance(value, str) or not value
+                       for value in row['target'].values()):
+                    raise ValueError('Invalid catalog target')
+            for key in ('required_metrics', 'optional_metrics'):
+                if key in row:
+                    row[key] = _strings(row[key])
+            for key in ('id', 'key', 'family_id', 'equipment_kind',
+                        'measurement_profile', 'text', 'locale', 'variant_id',
+                        'progression_policy'):
+                if key in row and (not isinstance(row[key], str) or not row[key]):
+                    raise ValueError('Invalid catalog scalar')
+            for key in ('qualifier', 'literal'):
+                if key in row and type(row[key]) is not bool:
+                    raise ValueError('Invalid catalog term flag')
+            for key in ('revision', 'variant_revision'):
+                if key in row and (type(row[key]) is not int or row[key] < 1):
+                    raise ValueError('Invalid catalog revision')
+            if 'relationships' in row:
+                if row.get('coverage') not in ('unknown', 'partial'):
+                    raise ValueError('Only unknown/partial muscle coverage is admitted')
+                row['relationships'] = [
+                    {key: relation[key] for key in
+                     ('anatomy_node_id', 'role', 'emphasis') if key in relation}
+                    for relation in map(_object, _array(row['relationships']))
+                ]
+                if row['coverage'] == 'unknown' and row['relationships']:
+                    raise ValueError('Unknown muscle coverage must not contain claims')
+                for relation in row['relationships']:
+                    if (not isinstance(relation.get('anatomy_node_id'), str) or
+                            relation.get('role') not in ('primary', 'secondary', 'stabilizer') or
+                            ('emphasis' in relation and
+                             not isinstance(relation['emphasis'], (str, int, float)))):
+                        raise ValueError('Invalid editorial muscle relationship')
+            result[table].append(row)
+    return result
+
+
+def manifest_for(catalog, source_digest, projection_digest):
+    return {
+        'format': 'alkion-catalog-trial-manifest',
+        'schema_version': 1,
+        'private_trial_only': True,
+        'redistribution_cleared': False,
+        'source_sha256': source_digest,
+        'projection_sha256': projection_digest,
+        'catalog_revision': catalog['catalog_revision'],
+        'search_revision': catalog['search_revision'],
+        'counts': {key: len(catalog[key])
+                   for key in (*TABLE_FIELDS, 'equipment_models')},
+        'muscle_evidence': 'partial_or_unknown_editorial_roles',
+        'media_included': False,
+        'notices': [NOTICE],
+    }
+
+
+def _safe_output(path):
+    for ancestor in (path, *path.parents):
+        if ancestor.is_symlink():
+            raise ValueError('Staging output must not contain symlinks')
+        if ancestor == APP:
+            break
+
+
+def _write_files(directory, files):
+    _safe_output(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, data in files.items():
+        path = directory / name
+        if path.exists() and (path.is_symlink() or path.read_bytes() != data):
+            raise ValueError('Existing staging differs; preserve/review it before restaging')
+    with tempfile.TemporaryDirectory(prefix='.catalog-stage-', dir=directory) as temp:
+        for name, data in files.items():
+            path = Path(temp) / name
+            path.write_bytes(data)
+            path.replace(directory / name)
+
+
+def stage(source_path, expected_sha256):
+    if not re.fullmatch(r'[0-9a-f]{64}', expected_sha256):
+        raise ValueError('An explicit lowercase SHA-256 is required')
+    if source_path.is_symlink() or not source_path.is_file():
+        raise ValueError('Input must be an explicit regular file, not a symlink')
+    data = source_path.read_bytes()
+    if sha256(data) != expected_sha256:
+        raise ValueError('Input does not match the reviewed SHA-256')
+    catalog = project(decode(data))
+    projected = encode(catalog)
+    manifest = manifest_for(catalog, expected_sha256, sha256(projected))
+    files = {CATALOG_NAME: projected, MANIFEST_NAME: encode(manifest)}
+    mirror = ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
+    for directory in (ASSETS, mirror):
+        _safe_output(directory)
+        for name, output in files.items():
+            path = directory / name
+            if path.exists() and (path.is_symlink() or path.read_bytes() != output):
+                raise ValueError('Existing staging differs; preserve/review it before restaging')
+    _write_files(ASSETS, files)
+    _write_files(mirror, files)
+    return verify()
+
+
+def verify():
+    _safe_output(ASSETS)
+    _safe_output(ANDROID_ASSETS)
+    files = {}
+    for name in (CATALOG_NAME, MANIFEST_NAME):
+        path = ASSETS / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError('Private catalog staging is absent or redirected')
+        files[name] = path.read_bytes()
+    catalog = project(decode(files[CATALOG_NAME]))
+    if encode(catalog) != files[CATALOG_NAME]:
+        raise ValueError('Staged catalog contains unadmitted fields or encoding')
+    manifest = decode(files[MANIFEST_NAME])
+    source_digest = manifest.get('source_sha256', '')
+    if not isinstance(source_digest, str) or not re.fullmatch(r'[0-9a-f]{64}', source_digest):
+        raise ValueError('Invalid source digest in trial manifest')
+    expected = manifest_for(catalog, source_digest, sha256(files[CATALOG_NAME]))
+    if manifest != expected:
+        raise ValueError('Private trial manifest does not match the projection')
+    mirror = ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
+    _safe_output(mirror)
+    allowed_paths = {mirror / name for name in files}
+    for path in ANDROID_ASSETS.rglob('*'):
+        if path.is_symlink() or (path.is_file() and path not in allowed_paths):
+            raise ValueError('Unexpected private Android asset inventory')
+    if {p.name for p in mirror.iterdir()} != set(files):
+        raise ValueError('Unexpected private Android asset inventory')
+    for name, data in files.items():
+        path = mirror / name
+        if path.is_symlink() or not path.is_file() or path.read_bytes() != data:
+            raise ValueError('Private Android asset mirror differs')
+    return manifest
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--input', type=Path)
+    parser.add_argument('--expected-sha256')
+    parser.add_argument('--verify', action='store_true')
+    args = parser.parse_args()
+    if args.verify:
+        if args.input or args.expected_sha256:
+            parser.error('--verify uses only the previously staged private inputs')
+        manifest = verify()
+    else:
+        if not args.input or not args.expected_sha256:
+            parser.error('Explicit --input and --expected-sha256 are required')
+        manifest = stage(args.input, args.expected_sha256)
+    print('Private catalog trial verified: ' +
+          str(manifest['counts']['variants']) + ' variants; projection SHA-256 ' +
+          manifest['projection_sha256'] + '; redistribution remains uncleared')
+
+
+if __name__ == '__main__':
+    main()

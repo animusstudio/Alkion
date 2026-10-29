@@ -2,6 +2,7 @@
 
 2026-10-29 · [Native exercise catalog integration](../plans/2026-10-29-exercise-catalog-integration.md) · Approved.
 2026-10-29 · [Exercise integration specification](../specs/2026-10-29-exercise-catalog-integration.md) · Approved.
+2026-10-29 · [Native catalog trial contract](exercise-catalog.md) · Approved.
 2026-10-29 · [Initial exercise-discovery UX/UI assessment](../design/exercise-discovery-assessment.md) · Proposed.
 2026-10-29 · [First-use visual polish](../plans/2026-10-29-entry-visual-polish.md) · Done.
 
