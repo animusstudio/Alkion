@@ -1,62 +1,40 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:alkion/store/local_store.dart';
-import 'package:alkion/data/exercise_repository.dart';
-import '../alkion/domains/local_screen_harness.dart' show openDomainStore;
-import 'package:provider/provider.dart';
 import 'package:alkion/ui/add_weight_sheet.dart';
-import 'package:alkion/units/unit_service.dart';
 
-import '../support/l10n_harness.dart';
+import '../alkion/domains/local_screen_harness.dart' show ScreenHarness;
 import '../support/pump_until.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  late Directory dir;
-  late LocalStore database;
+  late ScreenHarness harness;
 
-  setUp(() async {
-    dir = await Directory.systemTemp.createTemp('reps-add-weight');
-    database = await openDomainStore(dir);
-  });
+  Future<void> open(WidgetTester tester) async {
+    final current = ScreenHarness();
+    harness = current;
+    // The sheet starts a real SQLite watch while building. Keep its work and
+    // complete native-pool shutdown outside Flutter's fake async zone.
+    addTearDown(current.close);
+    await current.open(tester, seed: (_) async {});
+    addTearDown(() => current.unmount(tester));
+  }
 
-  tearDown(() async {
-    await database.close();
-    await dir.delete(recursive: true);
-  });
-
-  Widget host() => wrapL10n(
-    Builder(
-      builder: (context) => ElevatedButton(
-        onPressed: () => showAddWeightSheet(context),
-        child: const Text('open'),
+  Widget wrapped() => harness.wrap(
+    Scaffold(
+      body: Builder(
+        builder: (context) => ElevatedButton(
+          onPressed: () => showAddWeightSheet(context),
+          child: const Text('open'),
+        ),
       ),
     ),
-  );
-
-  Widget wrapped() => MultiProvider(
-    providers: [
-      Provider<LocalDatabase>.value(value: database),
-      Provider<DomainRecovery>.value(value: DomainRecovery(database.recover)),
-      ChangeNotifierProvider<UnitService>(
-        create: (_) => UnitService.local(database),
-      ),
-    ],
-    child: host(),
   );
 
   testWidgets(
     'tapping the number opens a field seeded with the current value',
     (tester) async {
-      addTearDown(() async {
-        await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-      });
+      await open(tester);
       await tester.pumpWidget(wrapped());
       await tester.pumpAndSettle();
       await tester.runAsync(() => tester.tap(find.text('open')));
@@ -76,12 +54,7 @@ void main() {
   );
 
   testWidgets('typing a value and submitting shows it', (tester) async {
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox());
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-    });
+    await open(tester);
     await tester.pumpWidget(wrapped());
     await tester.pumpAndSettle();
     await tester.runAsync(() => tester.tap(find.text('open')));
@@ -117,12 +90,7 @@ void main() {
         // and Save's own tap handler never requests focus either — so without
         // flushing the in-flight edit as the FIRST statement of _save, this
         // writes the seeded 70.0 instead of what was typed.
-        addTearDown(() async {
-          await tester.pumpWidget(const SizedBox());
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 50)),
-          );
-        });
+        await open(tester);
         await tester.pumpWidget(wrapped());
         await tester.pumpAndSettle();
         await tester.runAsync(() => tester.tap(find.text('open')));
@@ -154,7 +122,7 @@ void main() {
         }
         expect(find.text('Save entry'), findsNothing);
         final rows = (await tester.runAsync(
-          () => database
+          () => harness.database
               .getAll(
                 'SELECT CAST(weight_kg AS REAL) AS weight FROM bodyweight_logs',
               )
@@ -175,12 +143,7 @@ void main() {
       // silently discards it: the bump lands on the stale pre-edit _val, then
       // the field's later (untouched-looking) commit overwrites the bump with
       // the typed text, and the button feels dead.
-      addTearDown(() async {
-        await tester.pumpWidget(const SizedBox());
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-      });
+      await open(tester);
       await tester.pumpWidget(wrapped());
       await tester.pumpAndSettle();
       await tester.runAsync(() => tester.tap(find.text('open')));
@@ -204,12 +167,7 @@ void main() {
   );
 
   testWidgets('typing a negative value clamps to 0', (tester) async {
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox());
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-    });
+    await open(tester);
     await tester.pumpWidget(wrapped());
     await tester.pumpAndSettle();
     await tester.runAsync(() => tester.tap(find.text('open')));
