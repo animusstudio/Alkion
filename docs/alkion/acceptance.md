@@ -234,6 +234,19 @@ input commits before mode changes, clear actions and disclosure collapse.
 | Selected current domain/workflow store recovery cases | PASS: 59 cases at `52981cc`, after correcting the probe's current-schema admission; historical migration probes stay frozen. |
 | Widget visual/layout/semantics checks | Batched dark/light 320/412dp and enlarged-text renders inspected, with one correction/confirmation pass; EN/DE/ES/IT layout and interaction assertions pass. |
 
+Delivery recovery correction: the old SQLite stack demonstrably left a failed
+prepared COMMIT statement holding WAL/SHM files after reported close. The scoped
+update uses sqlite_async 0.14.7, sqlite3_connection_pool 0.2.15, sqlite3 3.5.0
+(native SQLite 3.53.3), and required sqlite3_web 0.9.5; other locked packages stay
+unchanged. The close regression fails on the old stack and passes on the update.
+Both close regressions plus preference, domain and status cases pass (45 tests).
+Fresh native qualification passes: driver 13, store 59, transfer four crash
+boundaries plus split control, and backup 26 cases. Current producer receipts
+name the corrected stack; dated evidence remains unchanged. All admission,
+integrity and exact-intent checks remain in force. This proves the corrected
+close boundary; the original masked CI exception remains an inference, and
+combined-head CI must pass before merge.
+
 All fixtures and storage were disposable and synthetic. This acceptance does not
 establish physical Android/IME/back/lifecycle behavior: device interaction is
 **UNRUN** for this change. Owner-data transfer, synchronization, deployment,

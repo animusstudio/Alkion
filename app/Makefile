@@ -17,6 +17,10 @@ get:
 # Explicit connected bootstrap for a fresh dependency cache; never upgrades.
 get-online:
 	$(FLUTTER) pub get --enforce-lockfile
+# Owner-approved native close/fault correction; keep unrelated packages locked.
+.PHONY: upgrade-sqlite-recovery
+upgrade-sqlite-recovery:
+	$(FLUTTER) pub upgrade sqlite3 sqlite_async sqlite3_connection_pool
 analyze:
 	$(FLUTTER) analyze --no-pub
 test:

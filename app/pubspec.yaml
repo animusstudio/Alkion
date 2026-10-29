@@ -16,8 +16,8 @@ dependencies:
   # Message formatting / Locale support used by generated AppLocalizations.
   intl: any
   # Standalone SQLite; pinned native factory qualified for local workflows.
-  sqlite3: 3.3.2
-  sqlite_async: 0.14.2
+  sqlite3: 3.5.0
+  sqlite_async: 0.14.7
   # App-support dir for the local DB file.
   path_provider: ^2.1.4
   path: ^1.9.0
@@ -55,6 +55,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  # Existing native pool, pinned directly for leased close/fault regressions.
+  sqlite3_connection_pool: 0.2.15
   # Generates the Android launcher icon (incl. adaptive) from assets/icon/.
   # Config and approved source: flutter_launcher_icons.yaml and assets/icon/.
   flutter_launcher_icons: ^0.14.1

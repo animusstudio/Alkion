@@ -375,8 +375,8 @@ Map<String, Object?> backupManifest({
   'tool': {
     'writer': backupWriter,
     'application_id': AlkionIdentity.applicationId,
-    'sqlite_async': '0.14.2',
-    'sqlite3_package': '3.3.2',
+    'sqlite_async': '0.14.7',
+    'sqlite3_package': '3.5.0',
     'sqlite_native': sqlite.sqlite3.version.libVersion,
   },
   'profile': facts.profile,

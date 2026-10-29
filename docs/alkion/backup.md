@@ -34,7 +34,7 @@ One file, `alkion-backup-<profile8>-<UTC stamp>Z-<nonce>.alkionbackup`:
 | --- | --- |
 | `format`, `version` | `alkion-backup`, `1`. Another version is refused, never guessed. |
 | `created_at` | Offset-bearing creation instant. |
-| `tool` | Writer `alkion-backup-writer/1`, development application ID, pinned `sqlite_async` 0.14.2 / `sqlite3` 3.3.2 and the native SQLite version. |
+| `tool` | Writer `alkion-backup-writer/1`, development application ID, pinned `sqlite_async` 0.14.7 / `sqlite3` 3.5.0 and the native SQLite version. |
 | `profile` | Profile ID, installation ID and store generation of the snapshot. |
 | `schema` | `user_version`, application ID, every migration version/SQL digest and the resulting `sqlite_master` digest. |
 | `boundary` | `sqlite_online_backup_single_owned_read_lease`; committed WAL content included; durable input flushed by the caller first; uncommitted keystrokes excluded. Work after this boundary is not in the backup. |
