@@ -301,6 +301,8 @@ class BlockState {
     'resolvedRepHigh': resolved.repHigh,
     'resolvedRirLow': resolved.rirLow,
     'resolvedRirHigh': resolved.rirHigh,
+    'resolvedRirState': resolved.rirState.name,
+    'resolvedRirPolicy': resolved.rirPolicy,
     'warmupSets': warmupSets.map((s) => s.toJson()).toList(),
     'workingSets': workingSets.map((s) => s.toJson()).toList(),
     'expanded': expanded,
@@ -336,8 +338,16 @@ class BlockState {
       warmupSets: json['resolvedWarmupSets'] as int,
       repLow: json['resolvedRepLow'] as int,
       repHigh: json['resolvedRepHigh'] as int,
-      rirLow: json['resolvedRirLow'] as int,
-      rirHigh: json['resolvedRirHigh'] as int,
+      rirLow: json['resolvedRirLow'] as int?,
+      rirHigh: json['resolvedRirHigh'] as int?,
+      rirPolicy: json['resolvedRirPolicy'] as String?,
+      rirState: switch (json['resolvedRirState']) {
+        'available' => RirTargetState.available,
+        'unavailable' => RirTargetState.unavailable,
+        'absent' => RirTargetState.absent,
+        null => null,
+        _ => RirTargetState.unavailable,
+      },
     );
     final ltWeight = (json['lastTopWeight'] as num?)?.toDouble();
     final ltReps = json['lastTopReps'] as int?;

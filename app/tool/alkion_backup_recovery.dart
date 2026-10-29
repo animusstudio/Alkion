@@ -53,7 +53,7 @@ Future<LocalStore> openStore(Directory caseRoot) async {
   return LocalStore.open(
     profile: profile,
     expectedProfileId: profile.profileId,
-    schema: workflowSchemaRegistry(),
+    schema: prescriptionSchemaRegistry(),
   );
 }
 
@@ -1869,7 +1869,7 @@ final class Qualification {
     final db = sqlite.sqlite3.open(copy);
     db.select('PRAGMA journal_mode=DELETE');
     db.close();
-    final facts = await inspectSnapshot(copy, workflowSchemaRegistry());
+    final facts = await inspectSnapshot(copy, prescriptionSchemaRegistry());
     final database = File(copy).readAsBytesSync();
     final file = File(p.join(directory.path, 'hot-copy.alkionbackup'));
     await file.writeAsBytes(

@@ -42,7 +42,7 @@ Future<LocalStore> syntheticStore(
     profile: profile,
     expectedProfileId: profile.profileId,
     schema: workflowCases.contains(caseName)
-        ? workflowSchemaRegistry()
+        ? prescriptionSchemaRegistry()
         : domainCases.contains(caseName)
         ? domainSchemaRegistry()
         : null,

@@ -271,7 +271,7 @@ Future<VerifiedBackup> verifyBackupBytes(
   SchemaRegistry? schema,
   Directory? workDirectory,
 }) async {
-  final registry = schema ?? workflowSchemaRegistry();
+  final registry = schema ?? prescriptionSchemaRegistry();
   final headerEnd = bytes.indexOf(10);
   final header = headerEnd < 0
       ? ''

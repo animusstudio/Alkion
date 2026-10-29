@@ -73,6 +73,16 @@ const int rirMax = 5;
   return (low: low > h ? h : low, high: h);
 }
 
+/// Persisted RIR policies. Null alone retains the pre-policy slot override
+/// semantics. Unknown strings are never interpreted as inheritance.
+abstract final class RirPolicy {
+  static const inherit = 'inherit';
+  static const off = 'off';
+  static const target = 'target';
+}
+
+enum RirTargetState { absent, available, unavailable }
+
 // ── Exercise ─────────────────────────────────────────────────────────────────
 
 class Exercise {
@@ -139,8 +149,12 @@ class Exercise {
       defaultRepHigh: row['default_rep_high'] as int?,
       defaultWarmupSets: row['default_warmup_sets'] as int?,
       defaultWorkingSets: row['default_working_sets'] as int?,
-      defaultRirLow: row['default_rir_low'] as int?,
-      defaultRirHigh: row['default_rir_high'] as int?,
+      defaultRirLow: row['default_rir_low'] is int
+          ? row['default_rir_low'] as int
+          : null,
+      defaultRirHigh: row['default_rir_high'] is int
+          ? row['default_rir_high'] as int
+          : null,
       defaultRestSeconds: row['default_rest_seconds'] as int?,
       isTemplate: (row['is_template'] as int? ?? 0) != 0,
       baseWeightEvidence: DecimalEvidence.fromRow(row, 'base_weight_kg'),
@@ -164,6 +178,7 @@ class Slot {
   final int? repHigh;
   final int? rirLow;
   final int? rirHigh;
+  final String? rirPolicy;
   final int? localRevision;
   final Map<String, Object?> rawFields;
 
@@ -177,6 +192,7 @@ class Slot {
     this.repHigh,
     this.rirLow,
     this.rirHigh,
+    this.rirPolicy,
     this.localRevision,
     this.rawFields = const {},
   });
@@ -190,8 +206,13 @@ class Slot {
       warmupSets: row['target_warmup_sets'] as int?,
       repLow: row['target_rep_low'] as int?,
       repHigh: row['target_rep_high'] as int?,
-      rirLow: row['target_rir_low'] as int?,
-      rirHigh: row['target_rir_high'] as int?,
+      rirLow: row['target_rir_low'] is int
+          ? row['target_rir_low'] as int
+          : null,
+      rirHigh: row['target_rir_high'] is int
+          ? row['target_rir_high'] as int
+          : null,
+      rirPolicy: row['rir_policy']?.toString(),
       localRevision: row['revision'] as int?,
       rawFields: Map.unmodifiable(row),
     );
@@ -200,15 +221,26 @@ class Slot {
 
 // ── ResolvedSlot ─────────────────────────────────────────────────────────────
 
-/// A fully-resolved slot: all fields are non-null (fallback chain applied).
+/// A resolved slot with an optional qualified RIR target. Raw evidence lives
+/// on the source Slot/Exercise; unavailable never becomes an invented target.
 class ResolvedSlot {
   final Exercise exercise;
   final int workSets;
   final int warmupSets;
   final int repLow;
   final int repHigh;
-  final int rirLow;
-  final int rirHigh;
+  final int? rirLow;
+  final int? rirHigh;
+  final RirTargetState? _rirState;
+  RirTargetState get rirState =>
+      _rirState ??
+      (rirLow != null && rirHigh != null
+          ? RirTargetState.available
+          : RirTargetState.absent);
+  final String? rirPolicy;
+  bool get hasRirTarget =>
+      rirState == RirTargetState.available && rirLow != null && rirHigh != null;
+  bool get rirUnavailable => rirState == RirTargetState.unavailable;
 
   const ResolvedSlot({
     required this.exercise,
@@ -218,7 +250,9 @@ class ResolvedSlot {
     required this.repHigh,
     required this.rirLow,
     required this.rirHigh,
-  });
+    RirTargetState? rirState,
+    this.rirPolicy,
+  }) : _rirState = rirState;
 }
 
 // ── DayTemplate ──────────────────────────────────────────────────────────────
@@ -234,6 +268,10 @@ class DayTemplate {
   final bool isTemplate;
   final int? localRevision;
   final String? notes;
+
+  /// null is an unknown/unqualified flag, distinct from explicitly inactive.
+  final bool? active;
+  bool get isActive => active == true;
   final Map<String, Object?> rawFields;
 
   const DayTemplate({
@@ -247,6 +285,7 @@ class DayTemplate {
     this.isTemplate = false,
     this.localRevision,
     this.notes,
+    this.active = true,
     this.rawFields = const {},
   });
 }
@@ -264,6 +303,7 @@ class SlotDraft {
   int? repHigh;
   int? rirLow;
   int? rirHigh;
+  String? rirPolicy;
   int? localRevision;
   Map<String, Object?> rawFields;
   Set<String>? changedFields;
@@ -277,6 +317,7 @@ class SlotDraft {
     this.repHigh,
     this.rirLow,
     this.rirHigh,
+    this.rirPolicy,
     this.localRevision,
     this.rawFields = const {},
     this.changedFields,

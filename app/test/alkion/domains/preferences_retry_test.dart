@@ -125,6 +125,8 @@ Map<String, Object?> settingsSnapshot(SettingsService settings) => {
   'locale': settings.localeOverride,
   'bodyweight_goal': settings.bodyweightGoal.name,
   'body_style': settings.bodyStyle,
+  'training_rep_entry': settings.repEntry.name,
+  'training_rir_controls': settings.rirControls.name,
 };
 
 Future<void> recordPreferenceProof(

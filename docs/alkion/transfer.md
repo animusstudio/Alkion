@@ -30,8 +30,19 @@ Import & transfer. See also [exports](exports.md) and
 No schema migration was needed: transfer uses the foundation (migration 1)
 `source_artifacts`, `origin_mappings`, `source_revisions`, `source_projections`,
 `corrections`, `import_generations`, `import_journal`, `reviews`,
-`review_decisions` and `correspondence` tables. Reserved migration ID 4 remains
-unused.
+`review_decisions` and `correspondence` tables. The later flexible-prescription
+migration uses ID 4 for local fields; the frozen reader/projection stays unchanged.
+New legacy days use the current Active column default. Reimport never overwrites
+a later local Disable: unchanged source remains unchanged; changed source under
+that authored revision retains the overlay and creates the existing review.
+
+Current native domain output includes RIR policy and day activation under its
+schema metadata; native backup/restore retains them and preferences exactly.
+Compatibility export refuses inactive/unavailable activation, RIR Off/unknown
+policy, empty explicit Target, and explicit inheritance with ignored slot bounds.
+Representable complete Target bounds or empty inheritance can still export under
+frozen v1 semantics. Refusal happens before publishing any artifact; use native
+backup when compatibility cannot carry the saved state.
 
 ### Reader (`reps-full-reader/1`)
 

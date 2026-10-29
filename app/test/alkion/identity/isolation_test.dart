@@ -145,7 +145,7 @@ void main() {
       final store = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       );
       final identity = IdentityService.local(store);
       await identity.init(
@@ -241,7 +241,7 @@ void main() {
         );
         await tester.pump();
         expect(find.text('Welcome to Reps'), findsNothing);
-        expect(runtime.store.schema.latestVersion, 3);
+        expect(runtime.store.schema.latestVersion, 4);
         await tester.pumpWidget(const SizedBox());
         await tester.pump(const Duration(milliseconds: 150));
         await tester.runAsync(runtime.close);

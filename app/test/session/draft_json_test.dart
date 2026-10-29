@@ -97,6 +97,41 @@ void main() {
       expect(back.name, 'Upper A');
     });
 
+    test('old numeric targets stay readable without new policy/state keys', () {
+      final old = _draft().toJson();
+      final block = (old['blocks'] as List).single as Map;
+      block.remove('resolvedRirPolicy');
+      block.remove('resolvedRirState');
+      final copy = SessionDraft.fromJson(old).blocks.single;
+      expect((copy.resolved.rirLow, copy.resolved.rirHigh), (1, 2));
+      expect(copy.resolved.hasRirTarget, isTrue);
+      expect(copy.allSets.map((s) => s.id), ['w1', 's1', 's2']);
+      expect(copy.workingSets.first.rir, 1);
+    });
+
+    test(
+      'absent and unavailable targets retain policy without rewriting observed sets',
+      () {
+        for (final state in ['absent', 'unavailable']) {
+          final json = _draft().toJson();
+          final block = (json['blocks'] as List).single as Map;
+          block['resolvedRirLow'] = null;
+          block['resolvedRirHigh'] = null;
+          block['resolvedRirPolicy'] = state == 'absent'
+              ? 'off'
+              : 'future-policy';
+          block['resolvedRirState'] = state;
+          final copy = SessionDraft.fromJson(json).deepCopy().blocks.single;
+          expect((copy.resolved.rirLow, copy.resolved.rirHigh), (null, null));
+          expect(copy.resolved.rirState.name, state);
+          expect(copy.resolved.hasRirTarget, isFalse);
+          expect(copy.resolved.rirPolicy, block['resolvedRirPolicy']);
+          expect(copy.allSets.map((s) => s.id), ['w1', 's1', 's2']);
+          expect(copy.workingSets.first.rir, 1);
+        }
+      },
+    );
+
     test('per-exercise rest survives the round trip', () {
       final copy = _draft().deepCopy();
       expect(copy.blocks.single.exercise.defaultRestSeconds, 150);

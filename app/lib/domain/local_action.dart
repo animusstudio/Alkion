@@ -35,6 +35,7 @@ enum LocalActionKind {
   planDelete,
   planRestore,
   planReorder,
+  planSetActive,
   slotAdd,
   slotRemove,
   slotReplace,
@@ -65,7 +66,8 @@ extension ActionTarget on LocalActionKind {
     LocalActionKind.planClone ||
     LocalActionKind.planDelete ||
     LocalActionKind.planRestore ||
-    LocalActionKind.planReorder => RecordKind.trainingDay,
+    LocalActionKind.planReorder ||
+    LocalActionKind.planSetActive => RecordKind.trainingDay,
     LocalActionKind.slotAdd ||
     LocalActionKind.slotRemove ||
     LocalActionKind.slotReplace ||

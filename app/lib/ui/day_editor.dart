@@ -33,8 +33,6 @@ class DaySlotState {
 }
 
 DaySlotState daySlotStateFromResolved(ResolvedSlot r, String? itemId) {
-  // Old data can hold an inverted RIR range; load it in order.
-  final rir = rirOrdered(r.rirLow, r.rirHigh);
   return DaySlotState(
     draft: SlotDraft(
       itemId: itemId,
@@ -43,8 +41,8 @@ DaySlotState daySlotStateFromResolved(ResolvedSlot r, String? itemId) {
       warmupSets: r.warmupSets,
       repLow: r.repLow,
       repHigh: r.repHigh,
-      rirLow: rir.low,
-      rirHigh: rir.high,
+      rirLow: r.rirLow,
+      rirHigh: r.rirHigh,
     ),
   );
 }
