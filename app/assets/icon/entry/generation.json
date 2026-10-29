@@ -1,0 +1,48 @@
+{
+  "source": "../clean-arm-characters.svg",
+  "source_sha256": "0a9b29e9e4db171145645bcc74826b51180a054adf0303714c2746b0cec36c52",
+  "density_ramp": "@#S08Xx+=-;:.",
+  "bounds": {
+    "x": 90,
+    "y": 35,
+    "width": 872,
+    "height": 867
+  },
+  "frame_cadence_ms": 400,
+  "terminal_frame": 3,
+  "max_decode_pixels": 1628160,
+  "files": [
+    {
+      "file": "arm-0.png",
+      "width": 640,
+      "height": 636,
+      "sha256": "b09c97215c0ee54c9072286486d3245bd2c7313d1627e90b9a3903dc011770b0",
+      "changed_cells": 167,
+      "total_cells": 2272
+    },
+    {
+      "file": "arm-1.png",
+      "width": 640,
+      "height": 636,
+      "sha256": "2cd09a65f605d26cfd5d76e34ef8a0f0b5dd3f7db202264106b14d195d6554f8",
+      "changed_cells": 163,
+      "total_cells": 2272
+    },
+    {
+      "file": "arm-2.png",
+      "width": 640,
+      "height": 636,
+      "sha256": "6182e95a2926a9eff01de26df2b6b9ae959f77d9dceed92a20bd1d29a58949f1",
+      "changed_cells": 172,
+      "total_cells": 2272
+    },
+    {
+      "file": "arm-3.png",
+      "width": 640,
+      "height": 636,
+      "sha256": "a2b2fe5a47eed041370763f2af3001655df797e8752bfff33eda597cb884f38c",
+      "changed_cells": 0,
+      "total_cells": 2272
+    }
+  ]
+}

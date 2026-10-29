@@ -137,3 +137,8 @@ build-character-body-preview-isolated:
 brand-icons:
 	node tool/generate_brand_assets.mjs
 	$(DART) run flutter_launcher_icons -f flutter_launcher_icons.yaml
+
+# Decorative first-use frames only; preserves launcher and master assets.
+.PHONY: brand-entry-frames
+brand-entry-frames:
+	node tool/generate_entry_frames.mjs

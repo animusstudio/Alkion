@@ -638,6 +638,7 @@ void main() {
     'configured signup uses create-account intent; unconfigured setup is explicit',
     (tester) async {
       _narrow(tester);
+      final semantics = tester.ensureSemantics();
       final config = AnimusConfig.fromEnvironment(
         syntheticAnimusValues()
           ..['ALKION_ANIMUS_ENROLLMENT_FLOW'] = 'synthetic-enrollment',
@@ -665,8 +666,16 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.ensureVisible(find.byKey(const Key('first-animus-sign-up')));
-      await tester.tap(find.byKey(const Key('first-animus-sign-up')));
+      final signup = find.byKey(const Key('first-animus-sign-up'));
+      await tester.ensureVisible(signup);
+      expect(
+        tester.getSemantics(signup).label,
+        'Don’t have an account? Join now',
+      );
+      expect(find.text('Don’t have an account?'), findsNothing);
+      // The leading sentence belongs to the same action as “Join now”.
+      final target = tester.getRect(signup);
+      await tester.tapAt(Offset(target.left + 24, target.center.dy));
       await tester.pumpAndSettle();
       expect(auth.intent, AnimusAuthIntent.createAccount);
       expect(auth.retains, 0);
@@ -706,6 +715,7 @@ void main() {
       await openOfflineChoices(tester);
       expect(find.byKey(const Key('first-start-local')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
+      semantics.dispose();
     },
   );
 
