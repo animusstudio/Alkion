@@ -147,7 +147,9 @@ void main() {
       expect(probe.calls, 1);
       expect(find.text('Workout read access verified.'), findsOneWidget);
       expect(
-        find.textContaining('does not upload or synchronize'),
+        find.textContaining(
+          'Sending is manual; local workouts and backups remain available.',
+        ),
         findsOneWidget,
       );
       await tester.ensureVisible(find.text('Disconnect'));
