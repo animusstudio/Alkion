@@ -14,6 +14,7 @@ import tempfile
 APP = Path(__file__).resolve().parents[1]
 ASSETS = APP / 'assets/catalog_trial'
 ANDROID_ASSETS = APP / 'build/private-catalog-trial/assets'
+DEV_ANDROID_ASSETS = APP / 'build/private-catalog-dev/assets'
 CATALOG_NAME = 'catalog.dev.json'
 MANIFEST_NAME = 'manifest.dev.json'
 BROWSE_NAME = 'browse.dev.json'
@@ -25,6 +26,7 @@ NOTICE = (
     'cleared. Editorial names and partial or unknown muscle roles are not '
     'verified manufacturer or measured activation claims. No media is included.'
 )
+DEV_NOTICE = NOTICE.replace('Private development trial only.', 'Private development catalog only.')
 TABLE_FIELDS = {
     'families': ('id', 'key', 'names'),
     'variants': ('id', 'key', 'family_id', 'revision', 'names',
@@ -231,7 +233,7 @@ def project_browse(source, catalog, source_digest, projection_digest):
     return result
 
 
-def manifest_for(catalog, source_digest, projection_digest, browse=None):
+def manifest_for(catalog, source_digest, projection_digest, browse=None, *, development=False):
     manifest = {
         'format': 'alkion-catalog-trial-manifest',
         'schema_version': 1,
@@ -251,6 +253,12 @@ def manifest_for(catalog, source_digest, projection_digest, browse=None):
     if browse is not None:
         manifest['schema_version'] = 2
         manifest['browse'] = browse
+    if development:
+        manifest['format'] = 'alkion-catalog-development-manifest'
+        manifest['schema_version'] = 3
+        del manifest['private_trial_only']
+        manifest['private_development_only'] = True
+        manifest['notices'] = [DEV_NOTICE]
     return manifest
 
 
@@ -319,12 +327,15 @@ def stage(source_path, expected_sha256, browse_path=None, browse_sha256=None):
     return verify()
 
 
-def verify():
-    _safe_output(ASSETS)
-    _safe_output(ANDROID_ASSETS)
+def verify(*, development=False):
+    android_assets = DEV_ANDROID_ASSETS if development else ANDROID_ASSETS
+    mirror = android_assets / 'flutter_assets/assets/catalog_trial'
+    assets = mirror if development else ASSETS
+    _safe_output(assets)
+    _safe_output(android_assets)
     files = {}
     for name in (CATALOG_NAME, MANIFEST_NAME):
-        path = ASSETS / name
+        path = assets / name
         if path.is_symlink() or not path.is_file():
             raise ValueError('Private catalog staging is absent or redirected')
         files[name] = path.read_bytes()
@@ -343,7 +354,7 @@ def verify():
                     not re.fullmatch(r'[0-9a-f]{64}', browse_metadata[key])
                     for key in ('source_sha256', 'projection_sha256'))):
             raise ValueError('Invalid browse manifest')
-        path = ASSETS / BROWSE_NAME
+        path = assets / BROWSE_NAME
         if path.is_symlink() or not path.is_file():
             raise ValueError('Browse staging is absent or redirected')
         files[BROWSE_NAME] = path.read_bytes()
@@ -353,15 +364,15 @@ def verify():
                 sha256(files[BROWSE_NAME]) != browse_metadata['projection_sha256'] or
                 browse['classification_revision'] != browse_metadata['classification_revision']):
             raise ValueError('Browse manifest or projection mismatch')
-    elif (ASSETS / BROWSE_NAME).exists():
+    elif (assets / BROWSE_NAME).exists():
         raise ValueError('Unbound browse staging inventory')
-    expected = manifest_for(catalog, source_digest, sha256(files[CATALOG_NAME]), browse_metadata)
+    expected = manifest_for(catalog, source_digest, sha256(files[CATALOG_NAME]),
+                            browse_metadata, development=development)
     if manifest != expected:
         raise ValueError('Private trial manifest does not match the projection')
-    mirror = ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
     _safe_output(mirror)
     allowed_paths = {mirror / name for name in files}
-    for path in ANDROID_ASSETS.rglob('*'):
+    for path in android_assets.rglob('*'):
         if path.is_symlink() or (path.is_file() and path not in allowed_paths):
             raise ValueError('Unexpected private Android asset inventory')
     if {p.name for p in mirror.iterdir()} != set(files):
@@ -373,6 +384,27 @@ def verify():
     return manifest
 
 
+def stage_development():
+    """Admit the retained reviewed projection without rewriting either trial copy."""
+    trial = verify()
+    files = {name: (ASSETS / name).read_bytes()
+             for name in (CATALOG_NAME, BROWSE_NAME)
+             if name == CATALOG_NAME or trial.get('browse') is not None}
+    catalog = project(decode(files[CATALOG_NAME]))
+    files[MANIFEST_NAME] = encode(manifest_for(
+        catalog, trial['source_sha256'], trial['projection_sha256'],
+        trial.get('browse'), development=True))
+    directory = DEV_ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
+    _safe_output(DEV_ANDROID_ASSETS)
+    if DEV_ANDROID_ASSETS.exists():
+        allowed = {directory / name for name in files}
+        if any(p.is_symlink() or (p.is_file() and p not in allowed)
+               for p in DEV_ANDROID_ASSETS.rglob('*')):
+            raise ValueError('Unexpected private development asset inventory')
+    _write_files(directory, files)
+    return verify(development=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--input', type=Path)
@@ -380,18 +412,22 @@ def main():
     parser.add_argument('--browse-input')
     parser.add_argument('--browse-sha256')
     parser.add_argument('--verify', action='store_true')
+    parser.add_argument('--stage-dev', action='store_true')
+    parser.add_argument('--verify-dev', action='store_true')
     args = parser.parse_args()
-    if args.verify:
+    if sum((args.verify, args.stage_dev, args.verify_dev)) > 1:
+        parser.error('Select one staging or verification mode')
+    if args.verify or args.stage_dev or args.verify_dev:
         if args.input or args.expected_sha256 or args.browse_input or args.browse_sha256:
-            parser.error('--verify uses only the previously staged private inputs')
-        manifest = verify()
+            parser.error('This mode uses only the previously staged private inputs')
+        manifest = stage_development() if args.stage_dev else verify(development=args.verify_dev)
     else:
         if not args.input or not args.expected_sha256:
             parser.error('Explicit --input and --expected-sha256 are required')
         manifest = stage(args.input, args.expected_sha256,
                          Path(args.browse_input) if args.browse_input else None,
                          args.browse_sha256 or None)
-    print('Private catalog trial verified: ' +
+    print('Private catalog verified: ' +
           str(manifest['counts']['variants']) + ' variants; projection SHA-256 ' +
           manifest['projection_sha256'] + '; redistribution remains uncleared')
 
