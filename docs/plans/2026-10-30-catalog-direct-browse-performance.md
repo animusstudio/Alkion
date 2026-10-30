@@ -1,7 +1,7 @@
 # Direct exercise browsing and responsive discovery
 
 Date: 2026-10-30. Lane: **Standard — presentation and performance.**
-Status: **Approved** by the owner on 2026-10-30. Next: implement tasks 1–3.
+Status: **Approved**; tasks 1–3 reviewed. Next: native qualification and delivery.
 Parent: [development](../alkion/development.md).
 Related: [normal Dev integration](2026-10-30-catalog-in-alkion-dev.md),
 [discovery contract](2026-10-29-muscle-guided-exercise-discovery.md).
@@ -140,5 +140,10 @@ browser code reduces divergence but must keep browse taps distinct from selectio
 
 ## Task state
 
-Read-only source diagnosis and two private full-input timing probes complete.
-Task 1 in progress. Physical frame and input-latency baselines remain pending.
+Task 1 `b4e71fa` independently PASS: focused catalog/runtime tests 45 PASS,
+original/current parity 8,656 comparisons PASS, scoped analyzer clean.
+Identical host probe: blank computation 142.7 → 2.77 ms median; cold index plus
+computation 275.3 → 67.3 ms. Tasks 2–3 `a102b11`, native-found equipment fix
+`98559d8` independently PASS. Affected suite 178 PASS; later 25 browser cases and
+modal equipment check PASS; analyzer/format clean. Native layout/IME/Back PASS at
+normal and 320dp/2×. Physical A6 and final CI remain gates; host timing is diagnostic.
