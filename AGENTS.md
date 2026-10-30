@@ -13,9 +13,10 @@ and the relevant approved plan before changing behavior; app rules are in
   or Go fully offline → Start new/Restore backup; existing profiles open directly.
   Startup performs no connection I/O before an explicit action. The explicitly
   configured [Animus connection](docs/alkion/animus-connection.md) permits
-  foreground browser authentication and a confirmed read-access check only.
-  No sender, replica download or OTA transport is enabled; do not introduce one
-  as cleanup. Final release identity/signing remain open.
+  foreground browser authentication, a confirmed read-access check and a separate
+  manual send of one supported native History workout with its required exercise
+  definitions. No automatic/background/bulk sending, replica download or OTA
+  transport is enabled. Final release identity/signing remain open.
 - Use explicit disposable storage and synthetic fixtures for qualification.
   Never discover/read owner profiles, keys, credentials, queues or real exports.
 - Preserve originals, corrections, derived results and provenance separately.

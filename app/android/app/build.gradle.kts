@@ -49,7 +49,6 @@ val configuredTarget = providers.gradleProperty("target").orNull?.let {
     (if (candidate.isAbsolute) candidate else File(file("../.."), it)).canonicalFile
 }
 require(!animusEnabled || (!isolatedBodyPreview && !isolatedCatalogTrial &&
-    !privateCatalogDev &&
     providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull != "1")) {
     "An offline preview or catalog trial cannot enable an Animus connection"
 }
@@ -70,13 +69,14 @@ if (isolatedCatalogTrial || privateCatalogDev || configuredTarget == catalogTria
         ((isolatedCatalogTrial && onlyDebugApk && configuredTarget == catalogTrialTarget &&
             !localReleaseTest) ||
             (privateCatalogDev && (onlyDebugApk || onlyLocalReleaseApk) &&
-                configuredTarget == catalogDevTarget)) && !animusEnabled &&
+                configuredTarget == catalogDevTarget)) &&
+            (!animusEnabled || (privateCatalogDev && onlyDebugApk)) &&
             providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull != "1" &&
             (privateCatalogDev ||
                 providers.environmentVariable("ALKION_PRIVATE_BODY_ASSETS").orNull != "1") &&
             !signerHome.isNullOrBlank() && File(signerHome, "debug.keystore").isFile
     ) {
-        "Private catalog requires its exact Dev target/task, compatible offline assets " +
+        "Private catalog requires its exact Dev target/task, compatible assets " +
             "and an existing explicit disposable debug signer"
     }
     require(catalogTrialAssets.isDirectory &&
@@ -197,7 +197,9 @@ android {
         sourceSets.getByName("debug").manifest.srcFile("src/bodyPreview/AndroidManifest.xml")
     }
     if (isolatedCatalogTrial || privateCatalogDev) {
-        sourceSets.getByName("debug").manifest.srcFile("src/catalogTrial/AndroidManifest.xml")
+        if (!animusEnabled) {
+            sourceSets.getByName("debug").manifest.srcFile("src/catalogTrial/AndroidManifest.xml")
+        }
         sourceSets.getByName("main").assets.srcDir(catalogTrialAssets)
         // Exact JNI hash admission compares the generated and packaged bytes.
         if (!localReleaseTest) {

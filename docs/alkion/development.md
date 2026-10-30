@@ -13,6 +13,8 @@
 2026-10-29 · [Initial exercise-discovery UX/UI assessment](../design/exercise-discovery-assessment.md) · Proposed.
 2026-10-29 · [First-use visual polish](../plans/2026-10-29-entry-visual-polish.md) · Done.
 
+2026-10-29 · [Selected native workout send](../plans/2026-10-29-selected-workout-send.md) · Proposed.
+
 2026-10-28 · [Android runtime resume correction](../plans/2026-10-28-android-runtime-resume.md) · Done.
 
 2026-10-28 · [Animus login and offline onboarding](../plans/2026-10-28-animus-login-onboarding.md) · Done.
@@ -65,11 +67,27 @@ historical evidence.
 2026-10-21 · [Local profile and workout completion](../plans/2026-10-20-local-profile-workflows.md) · Done.
 Focused checks and the normal APK are recorded in [acceptance](acceptance.md#profile-import-removal-2026-10-21).
 
+## Combined private catalog and optional connection build
+
+Use the existing routes when an explicitly configured Dev APK needs both features.
+Stage the reviewed catalog/browse inputs with `make -C app stage-catalog-dev`,
+include `ALKION_CATALOG_DEV: true` alongside the public connection values in the
+explicit `ANIMUS_CONFIG` JSON, and run `build-apk-animus` with
+`ALKION_PRIVATE_CATALOG_DEV=1`. Select `ANIMUS_TARGET_PLATFORM=android-arm64` or
+`android-x64`, an existing disposable `ANDROID_USER_HOME`, and the existing
+`ANIMUS_LOOPBACK_HTTP` opt-in only for a local debug API. Then run the existing
+catalog APK verifier with `--development --build-mode debug` against that exact
+APK, staged mirror and current generated JNI directory. Keep the current private
+body-assets opt-in and verification when those assets are required. No extra
+build route or catalog redistribution grant is introduced. The isolated catalog
+trial and body-preview builds still cannot enable Animus; this combination is
+restricted to the ordinary Dev debug target.
+
 ## Current standalone development
 
 The [source cleanup](legacy-retirement.md) removed the retired backend,
 PowerSync service, deployment/API and legacy signing workflows. The app uses
-standalone SQLite with no account, backend or synchronization sender. See the
+standalone SQLite with account-free local use and an optional explicitly configured manual native-workout sender. See the
 [app README](../../app/README.md) for current commands: offline locked `get`,
 `analyze`, `test TEST=--concurrency=2`, check-only `format`, Linux `build` and
 debug `build-apk` through pinned FVM. Normal Android builds use an explicit

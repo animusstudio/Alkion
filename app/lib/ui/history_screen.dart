@@ -21,6 +21,7 @@ import '../session/resume.dart';
 import '../session/session_manager.dart';
 import '../shell/session_launcher.dart';
 import 'exercise_sheet.dart';
+import 'animus_workout_send.dart';
 import '../util/dates.dart';
 import '../util/group_by_week.dart';
 import '../widgets/card.dart';
@@ -37,7 +38,13 @@ import '../widgets/w_action_sheet.dart';
 /// The History tab — sessions grouped by ISO week, expandable to per-exercise
 /// top sets.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, @visibleForTesting this.sessions});
+  const HistoryScreen({
+    super.key,
+    @visibleForTesting this.sessions,
+    this.onOpenProfile,
+  });
+
+  final VoidCallback? onOpenProfile;
 
   /// Replaces the stats stream in tests, for rows storage never emits, such
   /// as one without History evidence.
@@ -253,6 +260,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               padding: const EdgeInsets.only(bottom: 12),
               child: SessionCard(
                 session: session,
+                onOpenProfile: widget.onOpenProfile,
                 catalogMap: catalogMap,
                 sessionRepo: _sessionRepo,
                 units: units,
@@ -629,8 +637,10 @@ class SessionCard extends StatefulWidget {
     this.resumeState = SessionResumeState.none,
     this.onResume,
     this.onDeleted,
+    this.onOpenProfile,
   });
 
+  final VoidCallback? onOpenProfile;
   final HistorySessionRow session;
   final Map<String, Exercise> catalogMap;
   final SessionRepository sessionRepo;
@@ -875,6 +885,16 @@ class _SessionCardState extends State<SessionCard> {
                   ),
                 ),
               ),
+
+              if (_expanded)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                  child: AnimusWorkoutSendPanel(
+                    key: ValueKey('animus-send-${session.id}'),
+                    sessionId: session.id,
+                    onOpenProfile: widget.onOpenProfile,
+                  ),
+                ),
 
               // ── Expanded exercise blocks ──────────────────────────────────────
               AnimatedSize(

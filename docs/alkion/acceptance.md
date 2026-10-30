@@ -1,10 +1,92 @@
 ---
 app: alkion
 stage: development
-observed: 2026-10-29
+observed: 2026-10-30
 ---
 
 # Alkion integrated acceptance
+
+## Current-main and selected-send integration — 2026-10-30
+
+The current-main integration retains schema 5 catalog execution, flexible
+prescriptions, discovery and typed History alongside the separately confirmed
+native weighted-workout sender. The current catalog boundary is recorded in the
+[selected-send contract](animus-workout-upload.md#current-catalog-boundary).
+The ordinary editor/repository defaults through a real controller and schema-5
+SQLite finish match new actual synthetic API definition/finish/read captures.
+All eight typed profiles retain complete evidence and remain local before any
+dependency write; generic native actions carrying typed execution definitions
+are also refused without changing their evidence.
+
+The bounded integration regression batch passes 143 tests, followed by 34
+sender/canonical checks after the positive current-default handler fixtures were
+added; these counts overlap. Whole-app analysis reports zero issues. Existing
+catalog staging and APK guard suites pass 38 checks. These are source/host checks.
+The combined normal Dev debug catalog/connection build retains the current
+catalog assets and normal network manifest; isolated trial/preview restrictions
+remain closed. Independent integration review and a fresh combined APK/device
+check remain pending. Earlier login/send/lost-ack and device observations below
+retain their exact source scope and do not qualify the merged catalog build.
+
+## Selected-workout live proof — 2026-10-30
+
+The [selected-workout plan](../plans/2026-10-29-selected-workout-send.md) has
+independent T1–T3 and bounded client-fix review PASS. Its integrated runtime
+proof and independent integrated A1–A8 final acceptance review PASS with no
+findings on 2026-10-30. The configured
+Dev/debug x86_64 APK uses source `a57a90f26464a25b3a06c7051c5b21e569cfd203`,
+SHA-256 `0a36bb59faafe236812286e206c24c7cf5b75f75df87ec079e6e76b3238125a6`.
+
+On a fresh Android 36 emulator, a workout was finished locally before connection,
+then Firefox 159 performed the actual provider login and custom-scheme return.
+The app confirmed the synthetic account/data space and made a real authorized
+read. After a diagnosed absent-notes bug and reviewed client-only correction,
+a new explicit native finish sent one selected workout with the acknowledged
+exercise definition. Its 42 elapsed seconds and recorded CET/+01:00 instant,
+saved day, `20.0` kg × 8, RIR 1, set order and pinned definition revision were
+preserved; the API returns one rounded minute. Exact local seconds remain intact.
+
+The relay withheld one actual successful finish response after remote commit.
+The UI showed **Saved locally / Send result uncertain**. An explicit UI retry
+sent the same 4,654 bytes with the same operation/target and SHA-256
+`96cec16207eed477ec789a563775bd7b1d12e28d3269bd583ca267e474f4c4ed`.
+The API returned `replayed: true`, its original record/position and an exact
+200 read-back; the UI showed **Sent to Animus · copy verified**. The synthetic
+remote workout count was 2 → 3 → 3 across send/lost-return/retry.
+
+Removing only the required capability from the actual discovery response caused
+zero dependency/workout POSTs. This controlled modified-discovery check does
+not claim an older server binary. The original rejected workout/operation
+returned 404; its immutable actions, attempts, outcomes and frozen selection
+remain unchanged with retry disabled. Creating the new selection advanced only
+attachment revision/time metadata, preserving the scoped attachment payload.
+
+Focused source/UI/recovery checks and configured APK build pass. Wrong-account,
+revocation, restore/generation and local COMMIT fences use the reviewed production
+SQLite/captured-protocol seams; they were not another live Android campaign.
+This Android login used the synthetic password flow. Prior hosted-method evidence
+was reused; no Android passkey/signup qualification is claimed. All six private body
+assets and their manifest were verified in the APK; **Artwork unavailable** was
+observed with Swiftshader, so renderer/physical-device behavior is unqualified.
+Phone work is **UNRUN**. No owner history, server planning/rollout, authority
+activation, release or public push is implied.
+
+## Selected-workout public contract T1 — 2026-10-30
+
+T1 of the [selected-workout plan](../plans/2026-10-29-selected-workout-send.md)
+is independently accepted PASS with no findings. The
+[public mapping and fixtures](animus-workout-upload.md) retain 42 actual
+synthetic HTTP cases through the configured provider/API and 17 measured typed
+canonical commands. Three focused fixture integrity/mapping/replay tests pass.
+Date/offset, exact decimal/null values, session order, definition pins, stale
+conflict without writes, same-request replay after a later edit and current
+scope/grant/reserved-source denials are covered.
+
+The actual duration is 601 input seconds → 10 remote rounded minutes; exact
+local elapsed remains preserved. This dated T1 evidence proves the public API contract. The later selected-workout
+live proof above records sender, durability and Android coverage at its named
+source; it does not qualify the later catalog integration or physical device.
+Owner-history, server rollout and publication remain separate gates.
 
 ## Exercise discovery usability — 2026-10-30
 

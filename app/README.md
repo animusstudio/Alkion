@@ -4,11 +4,14 @@ The account-free Alkion runtime stores local profiles, workouts, settings and
 immutable outbox entries in SQLite. Backup/restore and transfer preserve original
 bytes and uncertain recovery state. Local use requires no backend or account.
 An explicitly configured [optional Animus connection](../docs/alkion/animus-connection.md)
-provides browser sign-in and a confirmed foreground read-access check. Fresh
+provides browser sign-in, a confirmed foreground read-access check and a separate
+[manual selected-workout send](../docs/alkion/animus-workout-upload.md). Fresh
 startup offers optional sign-in or Go fully offline, then Start new/Restore
 backup. Existing profiles open directly; Profile retains connect/disconnect.
-Startup performs no connection I/O before an explicit action. No synchronization
-sender, replica download or update transport is enabled.
+Startup performs no connection I/O before an explicit action. Sending confirms
+one supported native workout and its required exercise definitions. Automatic
+or background sending, bulk history attachment, replica download and update
+transport remain unavailable.
 
 ## Toolchain and checks
 
@@ -70,7 +73,8 @@ final release identity/signing remain separate owner decisions.
   revisioned domain actions and immutable local outbox.
 - `lib/data/`, `lib/session/`: repositories, drafts, finished workouts and timers.
 - `lib/recovery/`, `lib/transfer/`: backup, restore, quarantine and import contracts.
-- `lib/animus/`: optional scoped auth, secret storage and foreground read verification.
+- `lib/animus/`: optional scoped auth, secret storage, foreground read verification
+  and explicit selected-native-workout transport.
 - `lib/ui/`, `lib/shell/`, `lib/widgets/`, `lib/theme/`: application UI.
 - `test/`, `tool/`: unit/widget/native-boundary tests and focused local proof tools.
 

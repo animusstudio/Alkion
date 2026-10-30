@@ -4,7 +4,9 @@ The connection is an explicit foreground feature. First use offers optional
 Animus sign-in and a complete offline path; existing profiles open directly.
 Before an explicit connection action, startup creates no authentication manager,
 opens no browser, reads no session secrets and contacts no server. Connection
-does not enable a sender, replica download, background refresh or summary API.
+alone sends no workouts. The separate [selected History workout action](animus-workout-upload.md#selected-workout-controls)
+requires another explicit confirmation before sending. Replica download,
+background refresh and summary APIs remain unavailable.
 
 ## First-use and offline behavior
 
@@ -27,8 +29,10 @@ that same profile instead of offering Start new/Restore over it. Disconnect
 keeps local workouts and does not force onboarding again.
 
 The [dated onboarding acceptance](acceptance.md#animus-sign-in-and-optional-offline-onboarding--2026-10-28)
-records tested entry, restore, native and real-provider coverage and remaining
-hosted-method limits.
+records tested entry, restore, native and real-provider coverage. The later
+[selected-workout proof](acceptance.md#selected-workout-live-proof--2026-10-30)
+records the actual Android browser return and sender, with separate phone and
+rendering limits.
 
 ## Dependencies and platform setup
 
@@ -108,6 +112,12 @@ client secrets, access/refresh/ID tokens or owner account data.
   "ALKION_ANIMUS_ALLOW_LOOPBACK_HTTP": "false"
 }
 ```
+
+`ALKION_ANIMUS_PROBE_RECORD_ID` is required and must name an actually readable
+synthetic definition for the chosen account/data space. Omitting it disables
+optional setup. Register the exact Android dev callback
+`dev.animusstudio.alkion.dev:/oauth2redirect` on the provider client as well as in
+the app configuration; configuration alone does not prove that allowlist.
 
 API origin and issuer require HTTPS with normal certificate verification.
 The API origin has no path prefix, query or fragment. The issuer may have its

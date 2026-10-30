@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/data/session_repository.dart';
@@ -154,6 +155,41 @@ void main() {
     },
   );
 
+  test(
+    'fresh native finish freezes explicit offset and exact elapsed before the atomic commit',
+    () async {
+      final at = DateTime(2026, 10, 29, 0, 15, 17);
+      final draft = SessionDraft.fromJson(
+        draftWith().toJson()
+          ..['startedAt'] = at
+              .subtract(const Duration(seconds: 601))
+              .toIso8601String(),
+      );
+      final c = await controller(draft);
+      final prepared = c.prepareFinish(WorkoutRepository.local(db), at: at);
+      final time = prepared.input['finish_time_evidence'] as Map;
+      final explicit = time['finished_at'] as String;
+      expect(explicit, matches(RegExp(r'[+-]\d{2}:\d{2}$')));
+      expect(DateTime.parse(explicit).isAtSameMomentAs(at), isTrue);
+      expect(time['offset_minutes'], at.timeZoneOffset.inMinutes);
+      expect(time['timezone'], at.timeZoneName);
+      expect(time['elapsed_seconds'], 601);
+      expect((prepared.input['session'] as Map)['date'], '2026-10-29');
+      expect(await db.getAll('SELECT * FROM sessions'), isEmpty);
+      await c.commitFinish(WorkoutRepository.local(db));
+      final row = await db.get(
+        'SELECT input_bytes FROM operations WHERE operation_id=?',
+        [prepared.action.operationId],
+      );
+      final immutable =
+          jsonDecode(utf8.decode((row['input_bytes'] as List).cast<int>()))
+              as Map;
+      expect((immutable['input'] as Map)['finish_time_evidence'], time);
+      expect(c.lastFinished!.elapsedSeconds, 601);
+      expect(c.lastFinished!.sessionDate, '2026-10-29');
+    },
+  );
+
   test('the snapshot is a copy the finished draft cannot change', () async {
     final original = draftWith();
     final c = await controller(original);
@@ -168,6 +204,8 @@ void main() {
       final c = await controller(
         draftWith(sessionId: 'S', sessionDate: '2026-09-20'),
       );
+      final prepared = c.prepareFinish(WorkoutRepository.local(db));
+      expect(prepared.input.containsKey('finish_time_evidence'), isFalse);
       final id = await c.commitFinish(WorkoutRepository.local(db));
       expect(id, 'S');
       final sessions = await db.getAll('SELECT * FROM sessions');

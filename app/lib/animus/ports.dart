@@ -85,3 +85,14 @@ abstract interface class AnimusHttpPort {
   Future<void> cancel();
   Future<void> close();
 }
+
+/// Bounded foreground action transport. It has no automatic retry policy.
+abstract interface class AnimusUploadHttpPort implements AnimusHttpPort {
+  Future<AnimusHttpResponse> post({
+    required Uri uri,
+    required Map<String, String> headers,
+    required List<int> body,
+    required int maxResponseBytes,
+    required Duration timeout,
+  });
+}
