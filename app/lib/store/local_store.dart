@@ -762,7 +762,9 @@ final class LocalStore implements LocalDatabase {
   });
   Future<Map<String, Object?>> inventory() => readTransaction(
     (tx) async => {
-      for (final table in preservedTables)
+      for (final table in preservedTablesAt(
+        (await tx.get('PRAGMA user_version')).values.single as int,
+      ))
         table: [
           for (final row in await tx.getAll(
             'SELECT * FROM $table ORDER BY rowid',

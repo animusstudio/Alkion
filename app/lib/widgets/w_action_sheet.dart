@@ -39,11 +39,13 @@ class WSheetAction<T> {
 /// least 56dp. Returns the tapped action's value, or null on dismiss.
 /// Disabled rows render faint and ignore taps. The title stays put and the
 /// rows scroll when they outgrow the sheet (a six-row menu on a short phone
-/// at large text).
+/// at large text). Opt into [scrollableTitle] when contextual text itself may
+/// exceed the sheet height; its full text then scrolls with the actions.
 Future<T?> showWActionSheet<T>(
   BuildContext context, {
   required String title,
   required List<WSheetAction<T>> actions,
+  bool scrollableTitle = false,
 }) {
   return showModalBottomSheet<T>(
     context: context,
@@ -53,15 +55,24 @@ Future<T?> showWActionSheet<T>(
       duration: Motion.of(context, Motion.base),
       reverseDuration: Motion.of(context, Motion.fast),
     ),
-    builder: (_) => _WActionSheetBody<T>(title: title, actions: actions),
+    builder: (_) => _WActionSheetBody<T>(
+      title: title,
+      actions: actions,
+      scrollableTitle: scrollableTitle,
+    ),
   );
 }
 
 class _WActionSheetBody<T> extends StatefulWidget {
-  const _WActionSheetBody({required this.title, required this.actions});
+  const _WActionSheetBody({
+    required this.title,
+    required this.actions,
+    required this.scrollableTitle,
+  });
 
   final String title;
   final List<WSheetAction<T>> actions;
+  final bool scrollableTitle;
 
   @override
   State<_WActionSheetBody<T>> createState() => _WActionSheetBodyState<T>();
@@ -93,6 +104,17 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
     final tokens = context.tokens;
     final actions = widget.actions;
     final selected = actions.indexWhere((a) => a.selected);
+    final heading = Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
+      child: Text(
+        widget.title,
+        style: WorkoutType.body(
+          size: 12,
+          color: tokens.faint,
+          letterSpacing: 0.06 * 12,
+        ),
+      ),
+    );
     return SafeArea(
       top: false,
       child: Container(
@@ -107,23 +129,14 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
-              child: Text(
-                widget.title,
-                style: WorkoutType.body(
-                  size: 12,
-                  color: tokens.faint,
-                  letterSpacing: 0.06 * 12,
-                ),
-              ),
-            ),
+            if (!widget.scrollableTitle) heading,
             Flexible(
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.scrollableTitle) heading,
                     for (var i = 0; i < actions.length; i++)
                       _row(
                         context,

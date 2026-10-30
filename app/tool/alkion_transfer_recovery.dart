@@ -58,7 +58,7 @@ Future<LocalStore> openStore(Directory root) async {
   return LocalStore.open(
     profile: profile,
     expectedProfileId: profile.profileId,
-    schema: workflowSchemaRegistry(),
+    schema: prescriptionSchemaRegistry(),
   );
 }
 
@@ -115,6 +115,18 @@ Object? _json(Object? value) => switch (value) {
 
 String digestOf(Map<String, Object?> inventory) => inventoryDigest(inventory);
 
+/// The transfer proof deliberately opens v4. Compare every domain table that
+/// belongs to the captured schema; a missing required inventory still fails.
+List<String> _domainTablesFor(Map<String, Object?> inv) {
+  final migrations = (inv['schema_migrations'] as List).cast<Map>();
+  final version = migrations.last['version'] as int;
+  final expected = version < 5 ? foundationDomainTables : domainTables;
+  for (final table in expected) {
+    require(inv[table] is List, 'Missing $table in schema $version inventory');
+  }
+  return expected;
+}
+
 /// Identity-independent view: local IDs/references become source origins.
 Map<String, Object?> normalized(Map<String, Object?> inv) {
   final origins = <String, String>{
@@ -123,7 +135,7 @@ Map<String, Object?> normalized(Map<String, Object?> inv) {
   };
   String? o(Object? id) => id == null ? null : (origins[id] ?? 'local:$id');
   return {
-    for (final table in domainTables)
+    for (final table in _domainTablesFor(inv))
       table: [
         for (final row in (inv[table] as List).cast<Map>())
           {
@@ -159,7 +171,6 @@ Map<String, Object?> normalized(Map<String, Object?> inv) {
 }
 
 const _selectionTables = [
-  ...domainTables,
   'origin_mappings',
   'source_revisions',
   'source_projections',
@@ -169,7 +180,8 @@ const _selectionTables = [
 ];
 
 Map<String, Object?> tables(Map<String, Object?> inv) => {
-  for (final table in _selectionTables) table: _json(inv[table]),
+  for (final table in [..._domainTablesFor(inv), ..._selectionTables])
+    table: _json(inv[table]),
 };
 
 Map<String, Object?> preserved(Map<String, Object?> inv) => {

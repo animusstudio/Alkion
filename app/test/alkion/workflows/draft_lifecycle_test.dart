@@ -149,7 +149,7 @@ void main() {
       final store = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       );
       ActiveSessionController? controller;
       try {
@@ -285,7 +285,7 @@ void main() {
           final reopened = await LocalStore.open(
             profile: profile,
             expectedProfileId: profile.profileId,
-            schema: workflowSchemaRegistry(),
+            schema: prescriptionSchemaRegistry(),
           );
           expect(await reopened.inventory(), expected);
           await checkpoint(reopened, root, 'reopen-$i');
@@ -310,7 +310,7 @@ void main() {
       final store = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       );
       ActiveSessionController? controller;
       StreamSubscription<RecoveryPhase>? subscription;
@@ -430,7 +430,7 @@ void main() {
           final reopened = await LocalStore.open(
             profile: profile,
             expectedProfileId: profile.profileId,
-            schema: workflowSchemaRegistry(),
+            schema: prescriptionSchemaRegistry(),
           );
           expect(await reopened.inventory(), expected);
           await checkpoint(reopened, root, 'reopen-$i');
@@ -457,7 +457,7 @@ void main() {
         final store = await LocalStore.open(
           profile: profile,
           expectedProfileId: profile.profileId,
-          schema: workflowSchemaRegistry(),
+          schema: prescriptionSchemaRegistry(),
         );
         final gate = PendingDraftGate(store, afterCommit: after);
         ActiveSessionController? controller;
@@ -566,7 +566,7 @@ void main() {
             final reopened = await LocalStore.open(
               profile: profile,
               expectedProfileId: profile.profileId,
-              schema: workflowSchemaRegistry(),
+              schema: prescriptionSchemaRegistry(),
             );
             expect(await reopened.inventory(), expected);
             await checkpoint(reopened, root, 'reopen-$i');

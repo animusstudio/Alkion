@@ -1,4 +1,5 @@
 import '../domain/evidence.dart';
+import '../domain/catalog_execution.dart';
 import 'history_numeric_evidence.dart';
 
 // Retained display models. Exact evidence is the source of untouched writes.
@@ -73,6 +74,16 @@ const int rirMax = 5;
   return (low: low > h ? h : low, high: h);
 }
 
+/// Persisted RIR policies. Null alone retains the pre-policy slot override
+/// semantics. Unknown strings are never interpreted as inheritance.
+abstract final class RirPolicy {
+  static const inherit = 'inherit';
+  static const off = 'off';
+  static const target = 'target';
+}
+
+enum RirTargetState { absent, available, unavailable }
+
 // ── Exercise ─────────────────────────────────────────────────────────────────
 
 class Exercise {
@@ -96,6 +107,9 @@ class Exercise {
   final DecimalEvidence? plateStepEvidence;
   final int? localRevision;
   final Map<String, Object?> rawFields;
+  final CatalogExecutionDefinition? executionDefinition;
+  CatalogMeasurementProfileEvidence? get measurementProfile =>
+      executionDefinition?.profile;
 
   const Exercise({
     required this.id,
@@ -118,6 +132,7 @@ class Exercise {
     this.plateStepEvidence,
     this.localRevision,
     this.rawFields = const {},
+    this.executionDefinition,
   });
 
   factory Exercise.fromRow(Map<String, dynamic> row) {
@@ -135,18 +150,31 @@ class Exercise {
       // throws, and one bad row would break the whole catalog stream's map().
       baseWeightKg: double.tryParse(baseWt?.toString() ?? ''),
       plateStepKg: double.tryParse(plateStep?.toString() ?? '') ?? 2.5,
-      defaultRepLow: row['default_rep_low'] as int?,
-      defaultRepHigh: row['default_rep_high'] as int?,
+      defaultRepLow: row['default_rep_low'] is int
+          ? row['default_rep_low'] as int
+          : null,
+      defaultRepHigh: row['default_rep_high'] is int
+          ? row['default_rep_high'] as int
+          : null,
       defaultWarmupSets: row['default_warmup_sets'] as int?,
       defaultWorkingSets: row['default_working_sets'] as int?,
-      defaultRirLow: row['default_rir_low'] as int?,
-      defaultRirHigh: row['default_rir_high'] as int?,
+      defaultRirLow: row['default_rir_low'] is int
+          ? row['default_rir_low'] as int
+          : null,
+      defaultRirHigh: row['default_rir_high'] is int
+          ? row['default_rir_high'] as int
+          : null,
       defaultRestSeconds: row['default_rest_seconds'] as int?,
       isTemplate: (row['is_template'] as int? ?? 0) != 0,
       baseWeightEvidence: DecimalEvidence.fromRow(row, 'base_weight_kg'),
       plateStepEvidence: DecimalEvidence.fromRow(row, 'plate_step_kg'),
       localRevision: row['revision'] as int?,
       rawFields: Map.unmodifiable(row),
+      executionDefinition: row['execution_definition_bytes'] == null
+          ? null
+          : CatalogExecutionDefinition.fromJson(
+              decodeCatalogBytes(row['execution_definition_bytes']!),
+            ),
     );
   }
 }
@@ -164,8 +192,11 @@ class Slot {
   final int? repHigh;
   final int? rirLow;
   final int? rirHigh;
+  final String? rirPolicy;
   final int? localRevision;
   final Map<String, Object?> rawFields;
+  final CatalogSelectionEvidence? catalog;
+  final Map<String, CatalogMetricEvidence> catalogTargets;
 
   const Slot({
     this.id,
@@ -177,38 +208,74 @@ class Slot {
     this.repHigh,
     this.rirLow,
     this.rirHigh,
+    this.rirPolicy,
     this.localRevision,
     this.rawFields = const {},
+    this.catalog,
+    this.catalogTargets = const {},
   });
 
   factory Slot.fromRow(Map<String, dynamic> row) {
+    final catalog = row['catalog_selection_bytes'] == null
+        ? null
+        : CatalogSelectionEvidence.fromJson(
+            decodeCatalogBytes(row['catalog_selection_bytes']!),
+          );
     return Slot(
       id: row['id'] as String?,
       exerciseId: row['exercise_id'] as String,
       position: row['position'] as int? ?? 0,
       workSets: row['target_working_sets'] as int?,
       warmupSets: row['target_warmup_sets'] as int?,
-      repLow: row['target_rep_low'] as int?,
-      repHigh: row['target_rep_high'] as int?,
-      rirLow: row['target_rir_low'] as int?,
-      rirHigh: row['target_rir_high'] as int?,
+      repLow: row['target_rep_low'] is int
+          ? row['target_rep_low'] as int
+          : null,
+      repHigh: row['target_rep_high'] is int
+          ? row['target_rep_high'] as int
+          : null,
+      rirLow: row['target_rir_low'] is int
+          ? row['target_rir_low'] as int
+          : null,
+      rirHigh: row['target_rir_high'] is int
+          ? row['target_rir_high'] as int
+          : null,
+      rirPolicy: row['rir_policy']?.toString(),
       localRevision: row['revision'] as int?,
       rawFields: Map.unmodifiable(row),
+      catalog: catalog,
+      catalogTargets: row['catalog_targets_bytes'] == null
+          ? const {}
+          : decodeCatalogTargets(
+              row['catalog_targets_bytes']!,
+              catalog ??
+                  (throw const FormatException('Targets without selection')),
+            ),
     );
   }
 }
 
 // ── ResolvedSlot ─────────────────────────────────────────────────────────────
 
-/// A fully-resolved slot: all fields are non-null (fallback chain applied).
+/// A resolved slot with an optional qualified RIR target. Raw evidence lives
+/// on the source Slot/Exercise; unavailable never becomes an invented target.
 class ResolvedSlot {
   final Exercise exercise;
   final int workSets;
   final int warmupSets;
   final int repLow;
   final int repHigh;
-  final int rirLow;
-  final int rirHigh;
+  final int? rirLow;
+  final int? rirHigh;
+  final RirTargetState? _rirState;
+  RirTargetState get rirState =>
+      _rirState ??
+      (rirLow != null && rirHigh != null
+          ? RirTargetState.available
+          : RirTargetState.absent);
+  final String? rirPolicy;
+  bool get hasRirTarget =>
+      rirState == RirTargetState.available && rirLow != null && rirHigh != null;
+  bool get rirUnavailable => rirState == RirTargetState.unavailable;
 
   const ResolvedSlot({
     required this.exercise,
@@ -218,7 +285,9 @@ class ResolvedSlot {
     required this.repHigh,
     required this.rirLow,
     required this.rirHigh,
-  });
+    RirTargetState? rirState,
+    this.rirPolicy,
+  }) : _rirState = rirState;
 }
 
 // ── DayTemplate ──────────────────────────────────────────────────────────────
@@ -234,6 +303,10 @@ class DayTemplate {
   final bool isTemplate;
   final int? localRevision;
   final String? notes;
+
+  /// null is an unknown/unqualified flag, distinct from explicitly inactive.
+  final bool? active;
+  bool get isActive => active == true;
   final Map<String, Object?> rawFields;
 
   const DayTemplate({
@@ -247,6 +320,7 @@ class DayTemplate {
     this.isTemplate = false,
     this.localRevision,
     this.notes,
+    this.active = true,
     this.rawFields = const {},
   });
 }
@@ -264,9 +338,12 @@ class SlotDraft {
   int? repHigh;
   int? rirLow;
   int? rirHigh;
+  String? rirPolicy;
   int? localRevision;
   Map<String, Object?> rawFields;
   Set<String>? changedFields;
+  CatalogSelectionEvidence? catalog;
+  Map<String, CatalogMetricEvidence> catalogTargets;
 
   SlotDraft({
     this.itemId,
@@ -277,9 +354,12 @@ class SlotDraft {
     this.repHigh,
     this.rirLow,
     this.rirHigh,
+    this.rirPolicy,
     this.localRevision,
     this.rawFields = const {},
     this.changedFields,
+    this.catalog,
+    this.catalogTargets = const {},
   });
 }
 
@@ -325,6 +405,7 @@ class ExerciseDraft {
   DecimalEvidence? originalBaseWeightEvidence;
   DecimalEvidence? originalPlateStepEvidence;
   int? localRevision;
+  CatalogExecutionDefinition? executionDefinition;
 
   ExerciseDraft({
     this.id,
@@ -344,6 +425,7 @@ class ExerciseDraft {
     this.originalBaseWeightEvidence,
     this.originalPlateStepEvidence,
     this.localRevision,
+    this.executionDefinition,
     this.rawFields = const {},
     this.changedFields,
   });
@@ -363,6 +445,9 @@ class LoggedSet {
   final bool isWarmup;
   final bool isTopSet;
   final bool isPr;
+  final CatalogSetEvidence? catalog;
+  final String? blockId, originSlotId;
+  final int? originSlotRevision;
 
   /// weightKg may show the named legacy zero fallback; this evidence never does.
   final DecimalEvidence? weightEvidence;
@@ -413,10 +498,19 @@ class LoggedSet {
     this.capturedPr,
     this.repsEvidence,
     this.setNumberEvidence,
+    this.catalog,
+    this.blockId,
+    this.originSlotId,
+    this.originSlotRevision,
   });
 
   factory LoggedSet.fromRow(Map<String, dynamic> row) {
     final wt = row['weight_kg'];
+    final catalog = row['catalog_set_bytes'] == null
+        ? null
+        : CatalogSetEvidence.fromJson(
+            decodeCatalogBytes(row['catalog_set_bytes']!),
+          );
     return LoggedSet(
       id: row['id'] as String,
       exerciseId: row['exercise_id'] as String,
@@ -426,11 +520,16 @@ class LoggedSet {
       rir: row['rir'] is int ? row['rir'] as int : null,
       isWarmup: row['is_warmup'] is int && row['is_warmup'] != 0,
       isTopSet:
-          (row['legacy_local_top'] ?? row['is_top_set']) is int &&
-          (row['legacy_local_top'] ?? row['is_top_set']) != 0,
+          (row['catalog_top'] ?? row['legacy_local_top'] ?? row['is_top_set'])
+              is int &&
+          (row['catalog_top'] ??
+                  row['legacy_local_top'] ??
+                  row['is_top_set']) !=
+              0,
       isPr:
-          (row['legacy_local_pr'] ?? row['is_pr']) is int &&
-          (row['legacy_local_pr'] ?? row['is_pr']) != 0,
+          (row['catalog_pr'] ?? row['legacy_local_pr'] ?? row['is_pr'])
+              is int &&
+          (row['catalog_pr'] ?? row['legacy_local_pr'] ?? row['is_pr']) != 0,
       rawFields: Map.unmodifiable(row),
       localRevision: row['revision'] as int?,
       workoutRevision: row['workout_revision'] as int?,
@@ -439,6 +538,10 @@ class LoggedSet {
       weightEvidence: DecimalEvidence.fromRow(row, 'weight_kg'),
       repsEvidence: _integerEvidence(row, 'reps'),
       setNumberEvidence: _integerEvidence(row, 'set_number'),
+      catalog: catalog,
+      blockId: row['block_id'] as String?,
+      originSlotId: row['origin_slot_id'] as String?,
+      originSlotRevision: row['origin_slot_revision'] as int?,
     );
   }
 }
@@ -506,6 +609,9 @@ HistoryVolumeEvidence historyVolumeOf(Iterable<LoggedSet> sets) {
 
 /// Aggregated data for one exercise within a session (for the summary/history views).
 class ExerciseBlockData {
+  String? get blockId => sets.isEmpty ? null : sets.first.blockId;
+  CatalogSelectionEvidence? get catalog =>
+      sets.isEmpty ? null : sets.first.catalog?.selection;
   final String exerciseId;
   final List<LoggedSet> sets;
   final double topWeight;

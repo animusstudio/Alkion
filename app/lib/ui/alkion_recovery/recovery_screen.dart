@@ -12,6 +12,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/workout_canvas.dart';
 import '../../theme/typography.dart';
 import '../../widgets/w_dialog.dart';
+import '../export_failure.dart';
 
 /// Manual Alkion backup, receiving check and restore. Nothing here schedules,
 /// reminds, uploads or shares: a backup is a verified local file the owner
@@ -77,11 +78,12 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     } catch (e) {
       await _message(
         l.alkionBackupFailed,
-        e is DocumentException
-            ? l.alkionDocumentFailureMessage(e.category)
-            : l.alkionBackupFailedMessage(
-                e is StoreException ? e.category : '$e',
-              ),
+        compatibilityExportRefusalMessage(l, e) ??
+            (e is DocumentException
+                ? l.alkionDocumentFailureMessage(e.category)
+                : l.alkionBackupFailedMessage(
+                    e is StoreException ? e.category : '$e',
+                  )),
       );
     } finally {
       if (mounted) {

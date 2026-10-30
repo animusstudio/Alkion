@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/session/session_summary_screen.dart';
+import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/theme/icons.dart';
 import 'package:alkion/ui/history_screen.dart';
@@ -11,6 +12,48 @@ import 'screen_harness.dart';
 void main() {
   final harness = ScreenHarness();
   tearDown(harness.close);
+
+  testWidgets('synthetic day INSERT defaults activation only when omitted', (
+    tester,
+  ) async {
+    await harness.open(
+      tester,
+      seed: (db) async {
+        await db.execute(
+          'INSERT INTO day_templates (id,name,position,is_template) VALUES (?,?,?,0)',
+          ['omitted', 'Default active', 0],
+        );
+        for (final (id, flag) in [
+          ('explicit-null', null),
+          ('inactive', 0),
+          ('unknown', 7),
+        ]) {
+          await db.execute(
+            'INSERT INTO day_templates (id,name,position,is_template,"is_active") VALUES (?,?,?,0,?)',
+            [id, id, 1, flag],
+          );
+        }
+      },
+    );
+    await tester.runAsync(() async {
+      final repo = DayTemplateRepository.local(harness.database);
+      final active = (await repo.byId('omitted'))!;
+      expect(active.rawFields['is_active'], 1);
+      expect(active.isActive, isTrue);
+      expect((await repo.byId('explicit-null'))!.active, isNull);
+      expect((await repo.byId('inactive'))!.active, isFalse);
+      final unknown = (await repo.byId('unknown'))!;
+      expect(unknown.active, isNull);
+      expect(unknown.rawFields['is_active'], 7);
+      await harness.database.execute(
+        'UPDATE day_templates SET name=? WHERE id=?',
+        ['Unrelated edit', 'explicit-null'],
+      );
+      expect((await repo.byId('explicit-null'))!.active, isNull);
+      expect((await repo.byId('unknown'))!.rawFields['is_active'], 7);
+    });
+    await harness.unmount(tester);
+  });
 
   testWidgets('mounts a screen with a one-shot read over the seeded database', (
     tester,

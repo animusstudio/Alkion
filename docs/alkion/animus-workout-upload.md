@@ -16,6 +16,17 @@ synthetic space UUID with `{space}`; endpoint origin, credentials and private
 setup/source identity are excluded. The fixtures are public contract evidence,
 not a runnable account or connection configuration.
 
+## Current catalog boundary
+
+Schema 5 retains this native weighted-workout translation alongside catalog and
+flexible-prescription workflows. Ordinary native exercise creation and its scalar
+weight/reps observations remain supported when the original finish has explicit
+time evidence. Catalog action families, typed measurements, tracking contexts,
+execution definitions and catalog/source provenance stay local, including custom
+load/reps choices created through the catalog picker. Their existing
+`unsupportedMapping` semantics are unchanged; no typed quantity or setup is
+flattened into this send format. Routine prescriptions remain local.
+
 ## Mapping and ordering
 
 Send definition actions first through

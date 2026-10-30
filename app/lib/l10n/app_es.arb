@@ -158,7 +158,7 @@
   "dayEditorFocusPlaceholder": "p. ej. Empuje",
   "dayEditorScheduledDay": "Día programado",
   "dayEditorExercisesCount": "Ejercicios · {count}",
-  "dayEditorSlotHint": "Series, repeticiones y RIR se definen por día — toca una fila para ajustar la prescripción de este día.",
+  "dayEditorSlotHint": "Toca un ejercicio para cambiar sus series y repeticiones.",
   "dayEditorWarmupShort": "{count}cal",
   "dayEditorWorkingSets": "Series efectivas",
   "dayEditorWarmups": "Calentamiento",
@@ -186,7 +186,7 @@
   "exerciseEditorEquipment": "Equipo / máquina",
   "exerciseEditorEquipmentPlaceholder": "p. ej. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Ejercicio compuesto",
-  "exerciseEditorCompoundHint": "Rasgo del movimiento · regula descanso y calentamiento",
+  "exerciseEditorCompoundHint": "Se usa para sugerir descanso y peso.",
   "exerciseEditorStats": "Estadísticas",
   "exerciseEditorStatsHint": "Registradas por ejercicio en todas las rutinas.",
   "exerciseEditorPr": "Récord personal",
@@ -701,6 +701,195 @@
   "alkionEntryContinueOffline": "Continuar sin conexión",
   "alkionEntryTitle": "Que cada entrenamiento cuente.",
   "alkionEntryJoin": "¿No tienes cuenta? Regístrate",
+  "trainingPreferences": "Preferencias de entrenamiento",
+  "trainingPreferencesHint": "Valores para elementos nuevos. Los planes guardados y editores abiertos se mantienen.",
+  "trainingRepEntry": "Entrada de repeticiones",
+  "trainingFixedReps": "Repeticiones fijas",
+  "trainingRepRange": "Rango de repeticiones",
+  "trainingReps": "Repeticiones",
+  "trainingRirControls": "Controles de RIR",
+  "trainingRirOff": "Desactivado",
+  "trainingShow": "Mostrar",
+  "trainingAdvanced": "Avanzado",
+  "trainingAdvancedHint": "Valores opcionales. Puedes ajustarlos en un día de entrenamiento.",
+  "trainingAdd": "Añadir {label}",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "Quitar {label}",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Definir repeticiones",
+  "trainingRepairRir": "Definir objetivo de RIR",
+  "trainingRirTarget": "Objetivo de RIR",
+  "trainingRirExplanation": "Repeticiones en reserva: cuántas más podrías hacer. El objetivo es opcional.",
+  "trainingMoreOptions": "Más opciones",
+  "trainingAddRir": "Añadir objetivo de RIR",
+  "trainingRemoveRir": "Quitar objetivo de RIR",
+  "trainingUseExerciseDefault": "Usar valor del ejercicio",
+  "trainingUnavailable": "Prescripción no disponible",
+  "trainingRirUnavailable": "Objetivo de RIR no disponible",
+  "trainingAddWeekday": "Añadir día de la semana",
+  "trainingChangeWeekday": "Cambiar día de la semana",
+  "trainingRemoveWeekday": "Quitar día de la semana",
+  "trainingDisable": "Desactivar",
+  "trainingEnable": "Activar",
+  "trainingInactive": "Inactivos ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Acciones para {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Estado del día guardado",
+  "trainingSaving": "Guardando…",
+  "trainingRetryStatus": "Estado sin guardar. Reintenta el mismo cambio.",
+  "trainingRetry": "Reintentar",
+  "trainingCompatExportRefused": "Esta exportación no conserva las políticas de RIR ni los días inactivos. Crea una copia nativa en Copia de seguridad y restauración.",
+  "trainingDayUnavailable": "Estado del día no disponible",
+  "trainingDayEnabled": "{name} activado",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "{name} desactivado",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingWeekdayUnavailable": "Día de la semana no disponible",
+  "sessionClearRir": "Borrar RIR",
+  "trainingOpenPlan": "Abrir Plan",
+  "trainingEnableDayInPlan": "Activar un día en Plan",
+  "trainingNoActiveDays": "Tus días guardados no están activos. Revísalos en Plan o empieza un entrenamiento libre.",
+  "trainingStartUnavailable": "Entrenamiento no disponible",
+  "trainingDayStartUnavailable": "{name} no está disponible para un entrenamiento nuevo. Abre Plan para activar o revisar este día.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "La prescripción de repeticiones de {name} no está disponible. Corrígela en Plan antes de empezar un entrenamiento nuevo.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "La política de RIR de {name} no es compatible. Revísala en Plan antes de empezar un entrenamiento nuevo.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "catalogBrowse": "Explorar catálogo",
+  "catalogRecent": "Elecciones recientes",
+  "catalogFavorites": "Favoritos",
+  "catalogDetails": "Detalles",
+  "catalogFavorite": "Cambiar favorito",
+  "catalogCreate": "Crear ejercicio propio",
+  "catalogName": "Nombre del ejercicio",
+  "catalogMeasurement": "Medidas",
+  "catalogLoad": "Carga (kg)",
+  "catalogRepetitions": "Repeticiones",
+  "catalogDuration": "Duración (segundos)",
+  "catalogDistance": "Distancia (metros)",
+  "catalogOptional": "Opcional",
+  "catalogRequired": "Introduce las medidas necesarias",
+  "catalogAddAgain": "Añadir otra vez",
+  "catalogAddSelected": "Añadir selección",
+  "catalogSelected": "Seleccionados",
+  "catalogChangeSetup": "Cambiar ejecución/equipamiento",
+  "catalogNewMachine": "Nueva máquina",
+  "catalogNickname": "Nombre (opcional)",
+  "catalogUpcoming": "Añadir una serie nueva",
+  "catalogRoutineUse": "Usar en esta rutina",
+  "catalogRoutineNotice": "Rutina sin cambios. Guarda la configuración en su editor.",
+  "catalogNoCarryover": "Sin carga anterior para esta configuración",
+  "catalogTrialFinish": "Esta prueba guarda medidas en memoria. Al terminar, reinicia o descarta.",
+  "catalogSuggested": "Coincidencias sugeridas — comprueba la elección",
+  "catalogNoResults": "Sin coincidencia exacta. Prueba otro nombre o crea tu ejercicio.",
+  "catalogSetup": "Configuración",
+  "catalogChoose": "Elige una ejecución",
+  "catalogSaveFailed": "No se pudo añadir el ejercicio. Inténtalo de nuevo.",
+  "catalogTrialTitle": "Prueba del catálogo de ejercicios",
+  "catalogTrialNotice": "Esta prueba se reinicia al abrir la app. Las medidas y configuraciones quedan en memoria. No se pueden finalizar ni restaurar entrenamientos.",
+  "catalogTrialStart": "Iniciar prueba",
+  "catalogTrialUnavailable": "No se pudo cargar el catálogo de prueba. Compila con un catálogo válido.",
+  "catalogLogSet": "Registrar serie",
+  "catalogAdd": "Añadir",
+  "catalogBrowseMuscles": "Explorar por músculo",
+  "catalogAllAZ": "Todos A–Z",
+  "catalogUnclassified": "Sin clasificar",
+  "catalogActivities": "Actividades",
+  "catalogIncludeSecondary": "Incluir músculos secundarios",
+  "catalogTargetMatches": "Músculos objetivo",
+  "catalogSecondaryMatches": "Solo músculos secundarios",
+  "catalogBrowseGroup": "Explorar {group}",
+  "catalogClearGroup": "Quitar músculo/actividad",
+  "catalogClearEquipment": "Quitar equipamiento",
+  "catalogClearSearch": "Borrar búsqueda",
+  "catalogClearFamily": "Salir de la familia",
+  "catalogClearFavorites": "Mostrar todos los resultados",
+  "catalogEquipment": "Equipamiento",
+  "catalogBasket": "Selección · {count}",
+  "catalogSelectedCount": "Elementos seleccionados: {count}",
+  "catalogRemoveOccurrence": "Eliminar elemento {position}: {name}",
+  "catalogMatchingExecutions": "{count} ejecuciones coincidentes · elige una",
+  "catalogInDay": "En este día",
+  "catalogCurrent": "Configuración actual",
+  "catalogCurrentSetup": "Actual: {name}",
+  "catalogNewSetNotice": "Elegir una configuración añade una serie nueva. Las series existentes se conservan.",
+  "catalogChooseExecution": "Elegir ejecución/equipamiento — añadir una serie",
+  "catalogKeepSelection": "Conservar selección",
+  "catalogDiscardSelection": "Descartar selección",
+  "catalogDiscardTitle": "¿Descartar los ejercicios seleccionados?",
+  "catalogDiscardBody": "La selección aún no se ha añadido. Consérvala para seguir eligiendo o descártala para cerrar.",
+  "catalogBrowseUnavailable": "La exploración por músculo no está disponible en este catálogo. Busca por nombre, abre Todos A–Z o crea tu ejercicio.",
+  "catalogMissingVocabulary": "Los nombres de ejercicios están incompletos en este idioma. Prueba un nombre en inglés, explora por músculo o crea tu ejercicio.",
+  "catalogNoFavorites": "Ningún favorito coincide con estos filtros. Quita un filtro o muestra todos los resultados.",
+  "catalogNoRecents": "Ninguna elección reciente coincide con estos filtros. Abre Todos A–Z o quita un filtro.",
+  "catalogPersonalGroups": "Grupos personales (opcional)",
+  "catalogPersonalGroupsHint": "Elige grupos para tu propia organización. No son datos anatómicos. Déjalo vacío para mantener el ejercicio sin clasificar.",
+  "catalogMuscleEvidence": "Datos musculares",
+  "catalogBrowseOnlyNotice": "Los grupos sirven para explorar. Los datos musculares pueden estar incompletos; un músculo omitido no se ha evaluado.",
+  "catalogPersonalExercises": "Ejercicios personales",
+  "catalogUnavailable": "El catálogo no está disponible. Tus ejercicios y entrenamientos guardados están disponibles.",
+  "catalogProgressUnsupported": "La progresión de carga no está disponible para estas medidas o este equipo.",
+  "catalogSelectSetup": "Elegir equipo",
+  "catalogUseLast": "Usar los últimos valores",
+  "catalogMarkPending": "Marcar como no registrada",
+  "catalogCustomExercise": "Ejercicio propio",
+  "catalogLegacyExercise": "Ejercicio anterior",
   "animusSavedLocally": "Guardado localmente",
   "animusSend": "Enviar a Animus",
   "animusSendRetry": "Reintentar el entrenamiento seleccionado",
@@ -720,8 +909,8 @@
   "animusSendOpenProfile": "Abrir Perfil",
   "animusSendDifferentScope": "Esta selección pertenece a otra cuenta o espacio de datos. Vuelve a conectar los originales para reintentar.",
   "animusSendMissingTime": "Faltan datos coherentes de la hora y zona horaria de finalización originales. No se puede enviar este entrenamiento.",
-  "animusSendUnsupportedWorkout": "Solo se puede enviar una finalización nativa nueva compatible. Los entrenamientos importados, reanudados o reemplazados se conservan localmente.",
-  "animusSendUnsupportedDefinition": "Un ejercicio incluido carece del historial de definición nativo necesario para el envío.",
+  "animusSendUnsupportedWorkout": "Solo se puede enviar una finalización nativa nueva y compatible con pesos. Los entrenamientos importados, reanudados, sustituidos o tipados del catálogo permanecen locales.",
+  "animusSendUnsupportedDefinition": "Un ejercicio incluido tiene un historial de definición o datos de ejecución que este formato de envío no admite.",
   "animusSendInvalidValues": "Animus no puede representar exactamente algunos valores registrados. Se conservan sin cambios localmente.",
   "animusSendCapabilityMissing": "Esta API de Animus no admite el envío con revisiones de ejercicios fijadas. No se envía ningún ejercicio ni entrenamiento.",
   "animusSendRecoveryBlocked": "La recuperación local o la revisión de datos restaurados debe finalizar antes de enviar esta selección.",

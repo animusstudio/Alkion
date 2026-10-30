@@ -1,5 +1,14 @@
 # Alkion development and qualified driver handoff
 
+2026-10-30 · [Direct catalog browsing and performance](../plans/2026-10-30-catalog-direct-browse-performance.md) · Approved.
+2026-10-30 · [Catalog in Alkion Dev](../plans/2026-10-30-catalog-in-alkion-dev.md) · Approved.
+2026-10-30 · [Catalog Dev preservation design](../specs/2026-10-30-catalog-in-alkion-dev.md) · Approved.
+2026-10-30 · [Exercise discovery and selection usability](../plans/2026-10-29-muscle-guided-exercise-discovery.md) · Approved.
+
+2026-10-29 · [Native exercise catalog integration](../plans/2026-10-29-exercise-catalog-integration.md) · Approved.
+2026-10-29 · [Exercise integration specification](../specs/2026-10-29-exercise-catalog-integration.md) · Approved.
+2026-10-29 · [Native catalog trial contract](exercise-catalog.md) · Approved.
+2026-10-29 · [Initial exercise-discovery UX/UI assessment](../design/exercise-discovery-assessment.md) · Proposed.
 2026-10-29 · [First-use visual polish](../plans/2026-10-29-entry-visual-polish.md) · Done.
 
 2026-10-29 · [Selected native workout send](../plans/2026-10-29-selected-workout-send.md) · Proposed.
@@ -9,6 +18,8 @@
 2026-10-28 · [Animus login and offline onboarding](../plans/2026-10-28-animus-login-onboarding.md) · Done.
 
 2026-10-28 · [Optional Animus connection foundation](../plans/2026-10-28-animus-connection-foundation.md) · Approved.
+
+2026-10-28 · [Flexible training prescriptions](../plans/2026-10-28-flexible-training-prescriptions.md) · Done.
 
 2026-10-28 · [Body rotation responsiveness](../plans/2026-10-28-body-rotation-responsiveness.md) · Approved.
 
@@ -54,11 +65,27 @@ historical evidence.
 2026-10-21 · [Local profile and workout completion](../plans/2026-10-20-local-profile-workflows.md) · Done.
 Focused checks and the normal APK are recorded in [acceptance](acceptance.md#profile-import-removal-2026-10-21).
 
+## Combined private catalog and optional connection build
+
+Use the existing routes when an explicitly configured Dev APK needs both features.
+Stage the reviewed catalog/browse inputs with `make -C app stage-catalog-dev`,
+include `ALKION_CATALOG_DEV: true` alongside the public connection values in the
+explicit `ANIMUS_CONFIG` JSON, and run `build-apk-animus` with
+`ALKION_PRIVATE_CATALOG_DEV=1`. Select `ANIMUS_TARGET_PLATFORM=android-arm64` or
+`android-x64`, an existing disposable `ANDROID_USER_HOME`, and the existing
+`ANIMUS_LOOPBACK_HTTP` opt-in only for a local debug API. Then run the existing
+catalog APK verifier with `--development --build-mode debug` against that exact
+APK, staged mirror and current generated JNI directory. Keep the current private
+body-assets opt-in and verification when those assets are required. No extra
+build route or catalog redistribution grant is introduced. The isolated catalog
+trial and body-preview builds still cannot enable Animus; this combination is
+restricted to the ordinary Dev debug target.
+
 ## Current standalone development
 
 The [source cleanup](legacy-retirement.md) removed the retired backend,
 PowerSync service, deployment/API and legacy signing workflows. The app uses
-standalone SQLite with no account, backend or synchronization sender. See the
+standalone SQLite with account-free local use and an optional explicitly configured manual native-workout sender. See the
 [app README](../../app/README.md) for current commands: offline locked `get`,
 `analyze`, `test TEST=--concurrency=2`, check-only `format`, Linux `build` and
 debug `build-apk` through pinned FVM. Normal Android builds use an explicit
@@ -104,7 +131,7 @@ SDK cache stamps required an automatically approved tool sandbox escalation. Exi
 
 ## Qualified primitives and limits
 
-Direct locked dependencies are `sqlite_async` 0.14.2 and `sqlite3` 3.3.2; native connection pool 0.2.5. Actual bundled SQLite is **3.53.1**. Build hooks use the packages' existing bundled native assets, without a new ORM/driver/plugin or custom source build. The qualification factory, harness and child process are in `app/tool/alkion_driver_qualification.dart`; they contain only synthetic probe tables, not an Alkion schema or operation store.
+Current locked dependencies are `sqlite_async` 0.14.7 and `sqlite3` 3.5.0; native connection pool 0.2.15. Actual bundled SQLite is **3.53.3**. Earlier dated qualification retains its recorded versions. Build hooks use the packages' existing bundled native assets, without a new ORM/driver/plugin or custom source build. The qualification factory, harness and child process are in `app/tool/alkion_driver_qualification.dart`; they contain only synthetic probe tables, not an Alkion schema or operation store.
 
 Factory: `SqliteDatabase.withFactory(NativeSqliteOpenFactory subclass)`, WAL, `synchronous=FULL`, `foreign_keys=ON` on every connection, two readers. The harness disables WAL auto-checkpoint to prove a committed WAL-only tail. A production store must state its checkpoint policy separately. Actual per-connection pragma checks pass, including read-only readers.
 

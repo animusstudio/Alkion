@@ -64,9 +64,7 @@ class ScreenHarness {
       _store = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: withWorkoutHistory
-            ? workflowSchemaRegistry()
-            : domainSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       );
       await seed(database);
       units = UnitService.local(localDatabase);
@@ -194,7 +192,7 @@ Future<LocalStore> openDomainStore(Directory root) async {
   return LocalStore.open(
     profile: profile,
     expectedProfileId: profile.profileId,
-    schema: domainSchemaRegistry(),
+    schema: prescriptionSchemaRegistry(),
   );
 }
 

@@ -158,7 +158,7 @@
   "dayEditorFocusPlaceholder": "z. B. Druck",
   "dayEditorScheduledDay": "Geplanter Tag",
   "dayEditorExercisesCount": "Übungen · {count}",
-  "dayEditorSlotHint": "Sätze, Wiederholungen & RIR werden pro Tag festgelegt — tippe auf eine Zeile, um die Vorgabe dieses Tages anzupassen.",
+  "dayEditorSlotHint": "Tippe auf eine Übung, um Sätze und Wiederholungen zu ändern.",
   "dayEditorWarmupShort": "{count}aw",
   "dayEditorWorkingSets": "Arbeitssätze",
   "dayEditorWarmups": "Aufwärmen",
@@ -186,7 +186,7 @@
   "exerciseEditorEquipment": "Gerät / Maschine",
   "exerciseEditorEquipmentPlaceholder": "z. B. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Grundübung",
-  "exerciseEditorCompoundHint": "Bewegungsmerkmal · steuert Pause & Aufwärmen",
+  "exerciseEditorCompoundHint": "Wird für Pausen- und Gewichtsvorschläge verwendet.",
   "exerciseEditorStats": "Statistik",
   "exerciseEditorStatsHint": "Pro Übung über alle Splits hinweg erfasst.",
   "exerciseEditorPr": "Persönlicher Rekord",
@@ -701,6 +701,195 @@
   "alkionEntryContinueOffline": "Offline fortfahren",
   "alkionEntryTitle": "Mach jedes Training stark.",
   "alkionEntryJoin": "Noch kein Konto? Jetzt registrieren",
+  "trainingPreferences": "Trainingseinstellungen",
+  "trainingPreferencesHint": "Vorgaben für neue Einträge. Gespeicherte Pläne und offene Editoren bleiben unverändert.",
+  "trainingRepEntry": "Wiederholungseingabe",
+  "trainingFixedReps": "Feste Wiederholungen",
+  "trainingRepRange": "Wiederholungsbereich",
+  "trainingReps": "Wiederholungen",
+  "trainingRirControls": "RIR-Eingabe",
+  "trainingRirOff": "Aus",
+  "trainingShow": "Anzeigen",
+  "trainingAdvanced": "Erweitert",
+  "trainingAdvancedHint": "Optionale Vorgaben. Im Trainingstag anpassbar.",
+  "trainingAdd": "{label} hinzufügen",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "{label} entfernen",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Wiederholungen festlegen",
+  "trainingRepairRir": "RIR-Ziel festlegen",
+  "trainingRirTarget": "RIR-Ziel",
+  "trainingRirExplanation": "Wiederholungen in Reserve: wie viele du noch schaffen würdest. Ein Ziel ist optional.",
+  "trainingMoreOptions": "Weitere Optionen",
+  "trainingAddRir": "RIR-Ziel hinzufügen",
+  "trainingRemoveRir": "RIR-Ziel entfernen",
+  "trainingUseExerciseDefault": "Übungsvorgabe verwenden",
+  "trainingUnavailable": "Vorgabe nicht verfügbar",
+  "trainingRirUnavailable": "RIR-Ziel nicht verfügbar",
+  "trainingAddWeekday": "Wochentag hinzufügen",
+  "trainingChangeWeekday": "Wochentag ändern",
+  "trainingRemoveWeekday": "Wochentag entfernen",
+  "trainingDisable": "Deaktivieren",
+  "trainingEnable": "Aktivieren",
+  "trainingInactive": "Inaktiv ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Aktionen für {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Status des Trainingstags gespeichert",
+  "trainingSaving": "Wird gespeichert…",
+  "trainingRetryStatus": "Status nicht gespeichert. Änderung erneut versuchen.",
+  "trainingRetry": "Erneut versuchen",
+  "trainingCompatExportRefused": "Dieser Export kann RIR-Regeln oder inaktive Trainingstage nicht erhalten. Erstelle unter Sicherung und Wiederherstellung eine native Sicherung.",
+  "trainingDayUnavailable": "Status nicht verfügbar",
+  "trainingDayEnabled": "{name} aktiviert",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "{name} deaktiviert",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingWeekdayUnavailable": "Wochentag nicht verfügbar",
+  "sessionClearRir": "RIR löschen",
+  "trainingOpenPlan": "Plan öffnen",
+  "trainingEnableDayInPlan": "Trainingstag im Plan aktivieren",
+  "trainingNoActiveDays": "Deine gespeicherten Trainingstage sind nicht aktiv. Prüfe sie im Plan oder starte ein freies Training.",
+  "trainingStartUnavailable": "Training nicht verfügbar",
+  "trainingDayStartUnavailable": "{name} ist für ein neues Training nicht verfügbar. Öffne den Plan, um den Tag zu aktivieren oder zu prüfen.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "Die Wiederholungsvorgabe für {name} ist nicht verfügbar. Korrigiere sie im Plan, bevor du ein neues Training startest.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "Die RIR-Regel für {name} wird nicht unterstützt. Prüfe sie im Plan, bevor du ein neues Training startest.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "catalogBrowse": "Katalog durchsuchen",
+  "catalogRecent": "Zuletzt gewählt",
+  "catalogFavorites": "Favoriten",
+  "catalogDetails": "Details",
+  "catalogFavorite": "Favorit umschalten",
+  "catalogCreate": "Eigene Übung erstellen",
+  "catalogName": "Übungsname",
+  "catalogMeasurement": "Messwerte",
+  "catalogLoad": "Last (kg)",
+  "catalogRepetitions": "Wiederholungen",
+  "catalogDuration": "Dauer (Sekunden)",
+  "catalogDistance": "Distanz (Meter)",
+  "catalogOptional": "Optional",
+  "catalogRequired": "Erforderliche Messwerte eingeben",
+  "catalogAddAgain": "Erneut hinzufügen",
+  "catalogAddSelected": "Auswahl hinzufügen",
+  "catalogSelected": "Ausgewählt",
+  "catalogChangeSetup": "Ausführung/Gerät ändern",
+  "catalogNewMachine": "Neue Maschine",
+  "catalogNickname": "Name (optional)",
+  "catalogUpcoming": "Einen neuen Satz hinzufügen",
+  "catalogRoutineUse": "In diesem Plan verwenden",
+  "catalogRoutineNotice": "Plan unverändert. Aufbau im Planeditor speichern.",
+  "catalogNoCarryover": "Keine bisherige Last für diesen Aufbau",
+  "catalogTrialFinish": "Dieser Test hält Messwerte im Speicher. Zum Abschluss zurücksetzen oder verwerfen.",
+  "catalogSuggested": "Vorgeschlagene Treffer — Auswahl prüfen",
+  "catalogNoResults": "Kein genauer Treffer. Anderen Namen versuchen oder eigene Übung erstellen.",
+  "catalogSetup": "Aufbau",
+  "catalogChoose": "Ausführung wählen",
+  "catalogSaveFailed": "Übung konnte nicht hinzugefügt werden. Erneut versuchen.",
+  "catalogTrialTitle": "Übungskatalog testen",
+  "catalogTrialNotice": "Dieser Test wird beim Neustart zurückgesetzt. Messwerte und Aufbauten bleiben im Speicher. Trainingsabschluss und Wiederherstellung sind nicht verfügbar.",
+  "catalogTrialStart": "Test starten",
+  "catalogTrialUnavailable": "Testkatalog konnte nicht geladen werden. Mit einem gültigen Katalog neu bauen.",
+  "catalogLogSet": "Satz speichern",
+  "catalogAdd": "Hinzufügen",
+  "catalogBrowseMuscles": "Nach Muskel durchsuchen",
+  "catalogAllAZ": "Alle A–Z",
+  "catalogUnclassified": "Nicht zugeordnet",
+  "catalogActivities": "Aktivitäten",
+  "catalogIncludeSecondary": "Sekundäre Muskeln einbeziehen",
+  "catalogTargetMatches": "Zielmuskeln",
+  "catalogSecondaryMatches": "Nur sekundäre Muskeln",
+  "catalogBrowseGroup": "{group} durchsuchen",
+  "catalogClearGroup": "Muskel/Aktivität zurücksetzen",
+  "catalogClearEquipment": "Gerätefilter zurücksetzen",
+  "catalogClearSearch": "Suche löschen",
+  "catalogClearFamily": "Übungsfamilie verlassen",
+  "catalogClearFavorites": "Alle Treffer anzeigen",
+  "catalogEquipment": "Geräte",
+  "catalogBasket": "Auswahl · {count}",
+  "catalogSelectedCount": "Ausgewählte Einträge: {count}",
+  "catalogRemoveOccurrence": "Eintrag {position} entfernen: {name}",
+  "catalogMatchingExecutions": "{count} passende Ausführungen · auswählen",
+  "catalogInDay": "In diesem Trainingstag",
+  "catalogCurrent": "Aktuelle Variante",
+  "catalogCurrentSetup": "Aktuell: {name}",
+  "catalogNewSetNotice": "Die Auswahl fügt einen neuen Satz hinzu. Bestehende Sätze bleiben unverändert.",
+  "catalogChooseExecution": "Ausführung/Gerät wählen — einen Satz hinzufügen",
+  "catalogKeepSelection": "Auswahl behalten",
+  "catalogDiscardSelection": "Auswahl verwerfen",
+  "catalogDiscardTitle": "Ausgewählte Übungen verwerfen?",
+  "catalogDiscardBody": "Die Auswahl wurde noch nicht hinzugefügt. Behalte sie, um weiter auszuwählen, oder verwirf sie zum Schließen.",
+  "catalogBrowseUnavailable": "Die Muskelsuche ist für diesen Katalog nicht verfügbar. Suche nach Übungsnamen, öffne Alle A–Z oder erstelle eine Übung.",
+  "catalogMissingVocabulary": "Die Übungsnamen sind in dieser Sprache unvollständig. Versuche einen englischen Namen, suche nach Muskeln oder erstelle eine Übung.",
+  "catalogNoFavorites": "Keine Favoriten passen zu diesen Filtern. Setze einen Filter zurück oder zeige alle Treffer.",
+  "catalogNoRecents": "Keine letzten Auswahlen passen zu diesen Filtern. Öffne Alle A–Z oder setze einen Filter zurück.",
+  "catalogPersonalGroups": "Eigene Gruppen (optional)",
+  "catalogPersonalGroupsHint": "Wähle Gruppen für deine eigene Ordnung. Dies sind keine anatomischen Angaben. Ohne Auswahl bleibt die Übung nicht zugeordnet.",
+  "catalogMuscleEvidence": "Muskelangaben",
+  "catalogBrowseOnlyNotice": "Gruppen dienen der Orientierung. Detaillierte Muskelangaben können unvollständig sein; ausgelassene Muskeln sind nicht bewertet.",
+  "catalogPersonalExercises": "Eigene Übungen",
+  "catalogUnavailable": "Der Katalog ist nicht verfügbar. Deine gespeicherten Übungen und Trainings sind verfügbar.",
+  "catalogProgressUnsupported": "Für dieses Messprofil oder Gerät ist keine Lastprogression verfügbar.",
+  "catalogSelectSetup": "Gerät auswählen",
+  "catalogUseLast": "Letzte Werte verwenden",
+  "catalogMarkPending": "Als nicht protokolliert markieren",
+  "catalogCustomExercise": "Eigene Übung",
+  "catalogLegacyExercise": "Bisherige Übung",
   "animusSavedLocally": "Lokal gespeichert",
   "animusSend": "An Animus senden",
   "animusSendRetry": "Ausgewähltes Training erneut versuchen",
@@ -720,8 +909,8 @@
   "animusSendOpenProfile": "Profil öffnen",
   "animusSendDifferentScope": "Diese Auswahl gehört zu einem anderen Konto oder Datenbereich. Verbinde zum Wiederholen wieder das ursprüngliche Konto und den ursprünglichen Bereich.",
   "animusSendMissingTime": "Die ursprüngliche Abschlusszeit und Zeitzonenangaben fehlen oder sind widersprüchlich. Dieses Training kann nicht gesendet werden.",
-  "animusSendUnsupportedWorkout": "Nur ein unterstützter neuer nativer Abschluss kann gesendet werden. Importierte, fortgesetzte oder ersetzte Trainings bleiben lokal.",
-  "animusSendUnsupportedDefinition": "Für eine enthaltene Übung fehlt der zum Senden erforderliche native Definitionsverlauf.",
+  "animusSendUnsupportedWorkout": "Nur ein unterstütztes neues natives Training mit Gewichten kann gesendet werden. Importierte, fortgesetzte, ersetzte und typisierte Katalogtrainings bleiben lokal.",
+  "animusSendUnsupportedDefinition": "Ein enthaltenes Trainingselement hat einen Definitionsverlauf oder Ausführungsdaten, die dieses Sendeformat nicht unterstützt.",
   "animusSendInvalidValues": "Einige aufgezeichnete Werte lassen sich in Animus nicht exakt darstellen. Sie bleiben lokal unverändert.",
   "animusSendCapabilityMissing": "Diese Animus-API unterstützt das Senden mit festgelegten Übungsrevisionen nicht. Es werden keine Übungen oder Trainings gesendet.",
   "animusSendRecoveryBlocked": "Die lokale Wiederherstellung oder Prüfung wiederhergestellter Daten muss vor dem Senden abgeschlossen sein.",

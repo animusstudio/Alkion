@@ -137,7 +137,7 @@ final class AnimusEntryLifecycle {
     final store = await LocalStore.open(
       profile: profile,
       expectedProfileId: reservation.profileId,
-      schema: workflowSchemaRegistry(),
+      schema: catalogExecutionSchemaRegistry(),
     );
     try {
       if (store.token.generation != reservation.generation ||

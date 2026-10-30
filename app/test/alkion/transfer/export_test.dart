@@ -111,7 +111,7 @@ void main() {
         expect(text, contains('"weight_kg": "-0.00"'));
         final doc = decode(bytes);
         expect(doc['format'], domainExportFormat);
-        expect(doc['version'], 1);
+        expect(doc['version'], exportFormatVersion);
         expect(doc['format'], isNot('reps-export'));
         expect(
           (doc['snapshot'] as Map)['coherence'],

@@ -17,6 +17,10 @@ get:
 # Explicit connected bootstrap for a fresh dependency cache; never upgrades.
 get-online:
 	$(FLUTTER) pub get --enforce-lockfile
+# Owner-approved native close/fault correction; keep unrelated packages locked.
+.PHONY: upgrade-sqlite-recovery
+upgrade-sqlite-recovery:
+	$(FLUTTER) pub upgrade sqlite3 sqlite_async sqlite3_connection_pool
 analyze:
 	$(FLUTTER) analyze --no-pub
 test:
@@ -142,3 +146,52 @@ brand-icons:
 .PHONY: brand-entry-frames
 brand-entry-frames:
 	node tool/generate_entry_frames.mjs
+
+# Private candidate input is never an ordinary Flutter asset or default build.
+.PHONY: stage-catalog-trial verify-catalog-trial test-catalog-trial-staging test-catalog-trial-apk build-catalog-trial
+CATALOG_TRIAL_TARGET_PLATFORM ?= android-arm64
+stage-catalog-trial:
+	@test -n "$${CATALOG_TRIAL_INPUT}" && test -n "$${CATALOG_TRIAL_SHA256}" || (echo 'Set explicit CATALOG_TRIAL_INPUT and reviewed CATALOG_TRIAL_SHA256.' >&2; exit 2)
+	python3 tool/stage_catalog_trial.py --input "$${CATALOG_TRIAL_INPUT}" --expected-sha256 "$${CATALOG_TRIAL_SHA256}" --browse-input "$${CATALOG_BROWSE_INPUT:-}" --browse-sha256 "$${CATALOG_BROWSE_SHA256:-}"
+verify-catalog-trial:
+	python3 tool/stage_catalog_trial.py --verify
+test-catalog-trial-staging:
+	python3 -m unittest discover -s tool -p test_stage_catalog_trial.py
+test-catalog-trial-apk:
+	python3 -m unittest discover -s tool -p test_verify_catalog_trial_apk.py
+build-catalog-trial:
+	@test -n "$${ANDROID_USER_HOME}" && test -f "$${ANDROID_USER_HOME}/debug.keystore" || (echo 'Set the existing explicit disposable Android debug signer directory.' >&2; exit 2)
+	@case "$(CATALOG_TRIAL_TARGET_PLATFORM)" in android-arm64|android-x64) ;; *) echo 'CATALOG_TRIAL_TARGET_PLATFORM must be android-arm64 or android-x64.' >&2; exit 2 ;; esac
+	$(MAKE) verify-catalog-trial
+	ALKION_ISOLATED_CATALOG_TRIAL=1 $(FLUTTER) build apk --debug --no-pub --flavor dev --target-platform "$(CATALOG_TRIAL_TARGET_PLATFORM)" --target lib/catalog_trial.dart --dart-define=ALKION_CATALOG_TRIAL=true
+	python3 tool/verify_catalog_trial_apk.py --apk build/app/outputs/flutter-apk/app-dev-debug.apk --platform "$(CATALOG_TRIAL_TARGET_PLATFORM)" --generated-jni-dir build/app/intermediates/flutter/devDebug/jniLibs --catalog-assets-dir build/private-catalog-trial/assets --build-mode debug
+	cp -- build/app/outputs/flutter-apk/app-dev-debug.apk build/app/outputs/flutter-apk/alkion-catalog-trial-$(CATALOG_TRIAL_TARGET_PLATFORM)-debug.apk
+
+# Explicit private normal-Dev route. Uses the existing Dev identity and signer;
+# trial inputs/mirror stay untouched and normal profile startup remains main.dart.
+.PHONY: stage-catalog-dev verify-catalog-dev build-catalog-dev build-catalog-dev-local-test-release verify-no-catalog-apk
+CATALOG_DEV_TARGET_PLATFORM ?= android-arm64
+stage-catalog-dev:
+	python3 tool/stage_catalog_trial.py --stage-dev
+verify-catalog-dev:
+	python3 tool/stage_catalog_trial.py --verify-dev
+build-catalog-dev:
+	@test -n "$${ANDROID_USER_HOME}" && test -f "$${ANDROID_USER_HOME}/debug.keystore" || (echo 'Set the existing explicit disposable Android debug signer directory.' >&2; exit 2)
+	@case "$(CATALOG_DEV_TARGET_PLATFORM)" in android-arm64|android-x64) ;; *) echo 'CATALOG_DEV_TARGET_PLATFORM must be android-arm64 or android-x64.' >&2; exit 2 ;; esac
+	$(MAKE) stage-catalog-dev
+	@if test "$${ALKION_PRIVATE_BODY_ASSETS}" = 1; then $(MAKE) verify-character-body; fi
+	ALKION_PRIVATE_CATALOG_DEV=1 $(FLUTTER) build apk --debug --no-pub --flavor dev --target-platform "$(CATALOG_DEV_TARGET_PLATFORM)" --target lib/main.dart --dart-define=ALKION_CATALOG_DEV=true
+	python3 tool/verify_catalog_trial_apk.py --apk build/app/outputs/flutter-apk/app-dev-debug.apk --platform "$(CATALOG_DEV_TARGET_PLATFORM)" --generated-jni-dir build/app/intermediates/flutter/devDebug/jniLibs --catalog-assets-dir build/private-catalog-dev/assets --development --build-mode debug
+	cp -- build/app/outputs/flutter-apk/app-dev-debug.apk build/app/outputs/flutter-apk/alkion-catalog-dev-$(CATALOG_DEV_TARGET_PLATFORM)-debug.apk
+build-catalog-dev-local-test-release:
+	@test "$${ALKION_LOCAL_RELEASE_TEST}" = 1 || (echo 'Set ALKION_LOCAL_RELEASE_TEST=1 for the existing private Dev release-mode test route.' >&2; exit 2)
+	@test -n "$${ANDROID_USER_HOME}" && test -f "$${ANDROID_USER_HOME}/debug.keystore" || (echo 'Set the existing explicit disposable Android debug signer directory.' >&2; exit 2)
+	@test -n "$${CATALOG_DEV_NDK}" || (echo 'Set CATALOG_DEV_NDK to the explicit Flutter-pinned NDK 28.2.13676358 directory.' >&2; exit 2)
+	$(MAKE) stage-catalog-dev
+	@if test "$${ALKION_PRIVATE_BODY_ASSETS}" = 1; then $(MAKE) verify-character-body; fi
+	ALKION_PRIVATE_CATALOG_DEV=1 $(FLUTTER) build apk --release --no-pub --flavor dev --target-platform android-arm64 --target lib/main.dart --dart-define=ALKION_CATALOG_DEV=true
+	python3 tool/verify_catalog_trial_apk.py --apk build/app/outputs/flutter-apk/app-dev-release.apk --platform android-arm64 --generated-jni-dir build/app/intermediates/flutter/devRelease/jniLibs --catalog-assets-dir build/private-catalog-dev/assets --development --build-mode release --ndk-dir "$${CATALOG_DEV_NDK}"
+	cp -- build/app/outputs/flutter-apk/app-dev-release.apk build/app/outputs/flutter-apk/alkion-catalog-dev-android-arm64-release.apk
+verify-no-catalog-apk:
+	@test -n "$(CATALOG_PUBLIC_APK)" || (echo 'Set CATALOG_PUBLIC_APK to an explicit no-input APK.' >&2; exit 2)
+	python3 tool/verify_catalog_trial_apk.py --apk "$(CATALOG_PUBLIC_APK)" --public-catalog-assets-only

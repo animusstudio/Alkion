@@ -369,7 +369,7 @@
       }
     }
   },
-  "dayEditorSlotHint": "Sets, reps & RIR are set per day — tap a row to tune this day's prescription.",
+  "dayEditorSlotHint": "Tap an exercise to change its sets and reps.",
   "dayEditorWarmupShort": "{count}wu",
   "@dayEditorWarmupShort": {
     "placeholders": {
@@ -432,7 +432,7 @@
   "exerciseEditorEquipment": "Equipment / machine",
   "exerciseEditorEquipmentPlaceholder": "e.g. Panatta, Hammer Strength…",
   "exerciseEditorCompound": "Compound lift",
-  "exerciseEditorCompoundHint": "Movement trait · drives rest & warmups",
+  "exerciseEditorCompoundHint": "Used for rest and weight suggestions.",
   "exerciseEditorStats": "Stats",
   "exerciseEditorStatsHint": "Tracked per exercise across every split.",
   "exerciseEditorPr": "Personal record",
@@ -1334,6 +1334,240 @@
   "alkionEntryContinueOffline": "Continue offline",
   "alkionEntryTitle": "Make every workout count.",
   "alkionEntryJoin": "Don’t have an account? Join now",
+  "trainingPreferences": "Training preferences",
+  "trainingPreferencesHint": "Defaults for new items. Saved plans and open editors stay as they are.",
+  "trainingRepEntry": "Rep entry",
+  "trainingFixedReps": "Fixed reps",
+  "trainingRepRange": "Rep range",
+  "trainingReps": "Reps",
+  "trainingRirControls": "RIR controls",
+  "trainingRirOff": "Off",
+  "trainingShow": "Show",
+  "trainingAdvanced": "Advanced",
+  "trainingAdvancedHint": "Optional defaults. You can adjust these in a training day.",
+  "trainingAdd": "Add {label}",
+  "@trainingAdd": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRemove": "Remove {label}",
+  "@trainingRemove": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepairReps": "Set a rep prescription",
+  "trainingRepairRir": "Set an RIR target",
+  "trainingRirTarget": "RIR target",
+  "trainingRirExplanation": "Repetitions in reserve: how many more reps you could do. A target is optional.",
+  "trainingMoreOptions": "More options",
+  "trainingAddRir": "Add RIR target",
+  "trainingRemoveRir": "Remove RIR target",
+  "trainingUseExerciseDefault": "Use exercise default",
+  "trainingUnavailable": "Prescription unavailable",
+  "trainingRirUnavailable": "RIR target unavailable",
+  "trainingAddWeekday": "Add weekday",
+  "trainingChangeWeekday": "Change weekday",
+  "trainingRemoveWeekday": "Remove weekday",
+  "trainingDisable": "Disable",
+  "trainingEnable": "Enable",
+  "trainingInactive": "Inactive ({count})",
+  "@trainingInactive": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "trainingDayActions": "Actions for {name}",
+  "@trainingDayActions": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayStatusSaved": "Training day status saved",
+  "trainingSaving": "Saving…",
+  "trainingRetryStatus": "Status not saved. Retry the same change.",
+  "trainingRetry": "Retry",
+  "trainingCompatExportRefused": "This export cannot preserve RIR policies or inactive training days. Use Backup and restore to create a native backup that keeps them.",
+  "trainingDayUnavailable": "Day status unavailable",
+  "trainingDayEnabled": "Enabled {name}",
+  "@trainingDayEnabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingDayDisabled": "Disabled {name}",
+  "@trainingDayDisabled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingWeekdayUnavailable": "Weekday unavailable",
+  "sessionClearRir": "Clear RIR",
+  "trainingOpenPlan": "Open Plan",
+  "trainingEnableDayInPlan": "Enable a day in Plan",
+  "trainingNoActiveDays": "Your saved days are not active. Review them in Plan or start a custom workout.",
+  "trainingStartUnavailable": "Workout unavailable",
+  "trainingDayStartUnavailable": "{name} is not available for a new workout. Open Plan to enable or review this day.",
+  "@trainingDayStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRepStartUnavailable": "The rep prescription for {name} is unavailable. Correct it in Plan before starting a new workout.",
+  "@trainingRepStartUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "trainingRirPolicyUnavailable": "The RIR policy for {name} is unsupported. Review it in Plan before starting a new workout.",
+  "@trainingRirPolicyUnavailable": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "catalogBrowse": "Browse catalog",
+  "catalogRecent": "Recent choices",
+  "catalogFavorites": "Favorites",
+  "catalogDetails": "Details",
+  "catalogFavorite": "Favorite / unfavorite",
+  "catalogCreate": "Create custom exercise",
+  "catalogName": "Exercise name",
+  "catalogMeasurement": "Measurements",
+  "catalogLoad": "Load (kg)",
+  "catalogRepetitions": "Repetitions",
+  "catalogDuration": "Duration (seconds)",
+  "catalogDistance": "Distance (metres)",
+  "catalogOptional": "Optional",
+  "catalogRequired": "Enter the required measurements",
+  "catalogAddAgain": "Add again",
+  "catalogAddSelected": "Add selected",
+  "catalogSelected": "Selected",
+  "catalogChangeSetup": "Change execution/equipment",
+  "catalogNewMachine": "New machine",
+  "catalogNickname": "Nickname (optional)",
+  "catalogUpcoming": "Add one new set",
+  "catalogRoutineUse": "Use in this routine",
+  "catalogRoutineNotice": "Routine unchanged. Save setup in the routine editor.",
+  "catalogNoCarryover": "No previous load for this setup",
+  "catalogTrialFinish": "This trial keeps measurements in memory. Reset or discard when finished.",
+  "catalogSuggested": "Suggested matches — check the choice",
+  "catalogNoResults": "No exact match. Try another name or create your exercise.",
+  "catalogSetup": "Setup",
+  "catalogChoose": "Choose an execution",
+  "catalogSaveFailed": "Could not add exercise. Try again.",
+  "catalogTrialTitle": "Exercise catalog trial",
+  "catalogTrialNotice": "This disposable trial resets when the app restarts. Measurements and setup choices stay in memory. Finishing and restoring workouts are unavailable.",
+  "catalogTrialStart": "Start trial",
+  "catalogTrialUnavailable": "The trial catalog could not be loaded. Rebuild it with a valid staged catalog.",
+  "catalogLogSet": "Log set",
+  "catalogAdd": "Add",
+  "catalogBrowseMuscles": "Browse by muscle",
+  "catalogAllAZ": "All A–Z",
+  "catalogUnclassified": "Unclassified",
+  "catalogActivities": "Activities",
+  "catalogIncludeSecondary": "Include secondary muscles",
+  "catalogTargetMatches": "Target muscles",
+  "catalogSecondaryMatches": "Secondary muscles only",
+  "catalogBrowseGroup": "Browse {group}",
+  "@catalogBrowseGroup": {
+    "placeholders": {
+      "group": {
+        "type": "String"
+      }
+    }
+  },
+  "catalogClearGroup": "Clear muscle/activity",
+  "catalogClearEquipment": "Clear equipment",
+  "catalogClearSearch": "Clear search",
+  "catalogClearFamily": "Leave exercise family",
+  "catalogClearFavorites": "Show all matches",
+  "catalogEquipment": "Equipment",
+  "catalogBasket": "Selection · {count}",
+  "@catalogBasket": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogSelectedCount": "Selected occurrences: {count}",
+  "@catalogSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogRemoveOccurrence": "Remove item {position}: {name}",
+  "@catalogRemoveOccurrence": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "position": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogMatchingExecutions": "{count} matching executions · choose one",
+  "@catalogMatchingExecutions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogInDay": "In this day",
+  "catalogCurrent": "Current setup",
+  "catalogCurrentSetup": "Current: {name}",
+  "@catalogCurrentSetup": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "catalogNewSetNotice": "Choosing a setup adds one new set. Existing sets stay unchanged.",
+  "catalogChooseExecution": "Choose execution/equipment — add one set",
+  "catalogKeepSelection": "Keep selection",
+  "catalogDiscardSelection": "Discard selection",
+  "catalogDiscardTitle": "Discard selected exercises?",
+  "catalogDiscardBody": "Your pending selection has not been added. Keep it to continue choosing, or discard it to close.",
+  "catalogBrowseUnavailable": "Muscle browsing is unavailable for this catalog. Search by exercise name, browse All A–Z, or create your exercise.",
+  "catalogMissingVocabulary": "Exercise vocabulary is incomplete in this language. Try a familiar English name, browse by muscle, or create your exercise.",
+  "catalogNoFavorites": "No favorites match these filters. Clear one filter or show all matches.",
+  "catalogNoRecents": "No recent choices match these filters. Browse All A–Z or clear one filter.",
+  "catalogPersonalGroups": "Personal groups (optional)",
+  "catalogPersonalGroupsHint": "Choose groups only for your own organization. These are not anatomical facts. Leave unset to keep this exercise unclassified.",
+  "catalogMuscleEvidence": "Muscle evidence",
+  "catalogBrowseOnlyNotice": "Browse groups are editorial navigation. Detailed muscle evidence may be incomplete; an omitted muscle is unassessed.",
+  "catalogPersonalExercises": "Personal exercises",
+  "catalogUnavailable": "The catalog is unavailable. Your saved exercises and workouts are available.",
+  "catalogProgressUnsupported": "Load progression is unavailable for this measurement profile or setup.",
+  "catalogSelectSetup": "Choose setup",
+  "catalogUseLast": "Use last values",
+  "catalogMarkPending": "Mark as not logged",
+  "catalogCustomExercise": "Custom exercise",
+  "catalogLegacyExercise": "Legacy exercise",
   "animusSavedLocally": "Saved locally",
   "animusSend": "Send to Animus",
   "animusSendRetry": "Retry selected workout",
@@ -1353,8 +1587,8 @@
   "animusSendOpenProfile": "Open Profile",
   "animusSendDifferentScope": "This selection belongs to another account or data space. Reconnect its original account and space to retry.",
   "animusSendMissingTime": "The original finish time and timezone evidence are missing or inconsistent. This workout cannot be sent.",
-  "animusSendUnsupportedWorkout": "Only a supported new native finish can be sent. Imported, resumed or replaced workouts stay local.",
-  "animusSendUnsupportedDefinition": "An included exercise lacks the native definition history required for sending.",
+  "animusSendUnsupportedWorkout": "Only a supported new native weighted finish can be sent. Imported, resumed, replaced or typed catalog workouts stay local.",
+  "animusSendUnsupportedDefinition": "An included exercise has definition history or execution evidence that this send format does not support.",
   "animusSendInvalidValues": "Some recorded values cannot be represented exactly by Animus. They remain unchanged locally.",
   "animusSendCapabilityMissing": "This Animus API does not support sending with pinned exercise revisions. No exercise or workout is sent.",
   "animusSendRecoveryBlocked": "Local recovery or restored-data review must finish before this selection can be sent.",

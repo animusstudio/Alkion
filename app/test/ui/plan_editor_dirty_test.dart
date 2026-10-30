@@ -21,7 +21,13 @@ Finder _stepperButton(String label, String key) => find.descendant(
 );
 
 Future<void> _tapVisible(WidgetTester tester, Finder target) async {
-  await tester.ensureVisible(target);
+  await scrollIntoView(
+    tester,
+    find.byType(ExerciseEditor).evaluate().isNotEmpty
+        ? find.byType(ExerciseEditor)
+        : find.byType(DayEditor),
+    target,
+  );
   await tester.pump();
   await tester.tap(target);
   await tester.pump();
@@ -76,6 +82,13 @@ Future<void> _mountExercise(
     ),
     where: 'exercise editor',
   );
+  await scrollIntoView(
+    tester,
+    find.byType(ExerciseEditor),
+    find.text('Advanced'),
+  );
+  await tester.tap(find.text('Advanced'));
+  await tester.pump();
 }
 
 void main() {

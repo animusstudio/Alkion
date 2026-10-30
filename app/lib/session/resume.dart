@@ -6,6 +6,7 @@ import '../data/finished_session_store.dart';
 import '../data/models.dart';
 import '../store/local_store.dart';
 import '../data/session_repository.dart';
+import '../data/catalog_execution_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../util/dates.dart';
 import 'active_session_controller.dart';
@@ -112,6 +113,7 @@ SetState loggedToSetState(LoggedSet r) => SetState(
   originalWeight: r.weightEvidence?.raw,
   rawFields: Map<String, Object?>.from(r.rawFields),
   localRevision: r.localRevision,
+  catalog: r.catalog,
 )..weightUnavailable = r.weightEvidence?.raw == null;
 
 /// Merges the finish-time [source] draft with the session's logged [rows].
@@ -158,6 +160,8 @@ SetState loggedToSetState(LoggedSet r) => SetState(
           ..rawFields = Map<String, Object?>.from(r.rawFields)
           ..repsTouched = false
           ..rirTouched = false
+          ..catalog = r.catalog
+          ..catalogTouched = false
           ..done = true;
         out.add(s);
       } else if (!s.done) {
@@ -176,23 +180,47 @@ SetState loggedToSetState(LoggedSet r) => SetState(
   final extra = <String, List<LoggedSet>>{};
   for (final r in rows) {
     if (!matched.contains(r.id)) {
-      extra.putIfAbsent(r.exerciseId, () => []).add(r);
+      final key = r.catalog == null ? r.exerciseId : 'catalog:${r.blockId}';
+      extra.putIfAbsent(key, () => []).add(r);
     }
   }
 
   final unmatched = <UnmatchedRows>[];
+  final typedSession =
+      copy.blocks.any((b) => b.catalogSelection != null) ||
+      rows.any((r) => r.catalog != null);
+  if (typedSession) {
+    final ordered = rows.where((r) => !matched.contains(r.id)).toList()
+      ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
+    String? previousKey;
+    List<LoggedSet>? run;
+    for (final row in ordered) {
+      final key = row.catalog == null
+          ? 'legacy:${row.exerciseId}'
+          : 'typed:${row.blockId}:${row.catalog!.selection.compatibilityKey}';
+      if (key != previousKey) {
+        run = <LoggedSet>[];
+        unmatched.add((exerciseId: row.exerciseId, rows: run));
+        previousKey = key;
+      }
+      run!.add(row);
+    }
+  }
   for (final entry in extra.entries) {
+    if (typedSession) break;
     final added = [...entry.value]
       ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
     BlockState? target;
     for (final b in copy.blocks) {
-      if (b.exercise.id == entry.key) {
+      if (added.first.catalog == null
+          ? b.exercise.id == entry.key
+          : b.blockId == added.first.blockId) {
         target = b;
         break;
       }
     }
     if (target == null) {
-      unmatched.add((exerciseId: entry.key, rows: added));
+      unmatched.add((exerciseId: added.first.exerciseId, rows: added));
       continue;
     }
     for (final r in added) {
@@ -214,6 +242,12 @@ SetState loggedToSetState(LoggedSet r) => SetState(
       identity: copy.draftId,
       localRevision: copy.localRevision,
       setBases: copy.setBases,
+      sessionDateEvidence: copy.sessionDateEvidence,
+      restStart: copy.restStart,
+      restTotal: copy.restTotal,
+      restEndedAt: copy.restEndedAt,
+      focusedSetId: copy.focusedSetId,
+      rirPromptSetId: copy.rirPromptSetId,
     ),
     unmatched: unmatched,
   );
@@ -251,24 +285,63 @@ Future<SessionDraft> restoreFinishedDraft(
   }
 
   for (final g in merged.unmatched) {
+    final sourceBlock = g.rows.first.blockId == null
+        ? null
+        : merged.draft.blocks
+              .where((b) => b.blockId == g.rows.first.blockId)
+              .firstOrNull;
     final exercise =
+        sourceBlock?.exercise ??
         await exerciseRepo.byId(g.exerciseId) ??
         _placeholderExercise(g.exerciseId);
-    final resolved = resolveSlot(
-      Slot(exerciseId: g.exerciseId, position: blocks.length),
-      exercise,
-    );
-    final bestKg = await sessionRepo.bestTopSet(
-      g.exerciseId,
-      excludeSessionId: f.sessionId,
-    );
-    final reference = await sessionRepo.lastTopSetEvidence(
-      g.exerciseId,
-      excludeSessionId: f.sessionId,
-    );
-    final lastTop = reference.value;
+    final resolved =
+        sourceBlock?.resolved ??
+        resolveSlot(
+          Slot(exerciseId: g.exerciseId, position: blocks.length),
+          exercise,
+        );
+    final typedSelection = g.rows.first.catalog?.selection;
+    final catalogReference = typedSelection == null
+        ? null
+        : await sessionRepo.catalogLoadReference(
+            typedSelection,
+            excludeSessionId: f.sessionId,
+          );
+    final bestKg = typedSelection != null
+        ? catalogReference!.bestKg
+        : await sessionRepo.bestTopSet(
+            g.exerciseId,
+            excludeSessionId: f.sessionId,
+          );
+    final reference = typedSelection != null
+        ? null
+        : await sessionRepo.lastTopSetEvidence(
+            g.exerciseId,
+            excludeSessionId: f.sessionId,
+          );
+    final typedLast = catalogReference?.last;
+    final lastTop = typedSelection == null
+        ? reference!.value
+        : typedLast == null
+        ? null
+        : (
+            weight: typedLast.weightKg,
+            reps: typedLast.reps,
+            date: typedLast.date,
+          );
     blocks.add(
       BlockState(
+        blockId: g.rows.first.blockId,
+        originSlotId: g.rows.first.originSlotId ?? sourceBlock?.originSlotId,
+        originSlotRevision:
+            g.rows.first.originSlotRevision ?? sourceBlock?.originSlotRevision,
+        catalogSelection: typedSelection,
+        catalogBaselines: {
+          if (typedSelection != null &&
+              catalogReference?.bestMetrics?['reported_load'] != null)
+            typedSelection.compatibilityKey:
+                catalogReference!.bestMetrics!['reported_load']!,
+        },
         exercise: exercise,
         resolved: resolved,
         warmupSets: [
@@ -282,12 +355,43 @@ Future<SessionDraft> restoreFinishedDraft(
         expanded: true,
         bestKg: bestKg,
         lastTop: lastTop,
-        lastTopUnavailable: reference.unavailable,
+        lastTopUnavailable: reference?.unavailable ?? false,
       ),
     );
   }
 
   final elapsed = max(f.elapsedSeconds, (durationMin ?? 0) * 60);
+  final executions = CatalogExecutionRepository.local(sessionRepo.db);
+  for (final block in blocks) {
+    final selections = {
+      for (final set in block.allSets)
+        if (set.catalog != null)
+          set.catalog!.selection.compatibilityKey: set.catalog!.selection,
+    };
+    for (final selection in selections.values) {
+      for (final dependency in await executions.dependenciesForSelection(
+        selection,
+      )) {
+        if (!block.catalogDependencies.any(
+          (known) => known.operationId == dependency.operationId,
+        )) {
+          block.catalogDependencies.add(dependency);
+        }
+      }
+      if (!block.catalogBaselines.containsKey(selection.compatibilityKey)) {
+        final reference = await sessionRepo.catalogLoadReference(
+          selection,
+          excludeSessionId: f.sessionId,
+        );
+        if (reference.bestMetrics?['reported_load'] case final best?) {
+          block.catalogBaselines[selection.compatibilityKey] = best;
+        }
+        if (reference.lastMetrics case final metrics?) {
+          block.catalogLastMetrics[selection.compatibilityKey] = metrics;
+        }
+      }
+    }
+  }
   return SessionDraft(
     templateId: merged.draft.templateId,
     name: merged.draft.name,
@@ -299,6 +403,7 @@ Future<SessionDraft> restoreFinishedDraft(
     identity: merged.draft.draftId,
     localRevision: merged.draft.localRevision,
     setBases: {for (final row in rows) row.id: row.localRevision ?? 0},
+    sessionDateEvidence: merged.draft.sessionDateEvidence,
   );
 }
 

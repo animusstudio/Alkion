@@ -42,9 +42,9 @@ Future<LocalStore> syntheticStore(
     profile: profile,
     expectedProfileId: profile.profileId,
     schema: workflowCases.contains(caseName)
-        ? workflowSchemaRegistry()
+        ? prescriptionSchemaRegistry()
         : domainCases.contains(caseName)
-        ? domainSchemaRegistry()
+        ? prescriptionSchemaRegistry()
         : null,
   );
 }
@@ -893,7 +893,9 @@ Future<Map<String, Object?>> checkpointReuseCase(
   late Map<String, Object?> checkpoint;
   late Map<String, Object?> layout;
   Map<String, Object?> nativeInventory(sqlite.Database reader) => {
-    for (final table in preservedTables)
+    for (final table in preservedTablesAt(
+      reader.select('PRAGMA user_version').single.values.single as int,
+    ))
       table: [
         for (final row in reader.select('SELECT * FROM $table ORDER BY rowid'))
           Map<String, Object?>.from(row),
@@ -1588,7 +1590,7 @@ Future<Map<String, Object?>> qualifyStore(
       'Recovery did not reconcile absent outcome',
     );
     final afterFailure = await store.inventory();
-    for (final table in preservedTables.where(
+    for (final table in beforeFailure.keys.where(
       (table) => table != 'local_state',
     )) {
       require(
@@ -1695,7 +1697,7 @@ Future<Map<String, Object?>> qualifyStore(
       localBytes({'complete': false}),
     );
     final afterReplica = await store.inventory();
-    for (final table in preservedTables.where(
+    for (final table in beforeReplica.keys.where(
       (table) => !['replica_rows', 'replica_checkpoints'].contains(table),
     )) {
       require(
@@ -1849,7 +1851,9 @@ Future<Map<String, Object?>> qualifyStore(
     );
     try {
       final actual = <String, Object?>{
-        for (final table in preservedTables)
+        for (final table in preservedTablesAt(
+          reader.select('PRAGMA user_version').single.values.single as int,
+        ))
           table: [
             for (final row in reader.select(
               'SELECT * FROM $table ORDER BY rowid',
@@ -2204,7 +2208,7 @@ Future<Map<String, Object?>> qualifyStore(
     'Registered upgrade did not advance',
   );
   final upgradeAfter = await upgraded.inventory();
-  for (final table in preservedTables.where(
+  for (final table in upgradeBefore.keys.where(
     (table) => table != 'schema_migrations',
   )) {
     require(
@@ -2362,8 +2366,8 @@ Future<Map<String, Object?>> qualifyStore(
     'format': 'alkion-store-proof/1',
     'cases': cases,
     'migration_digest': foundationMigrationDigest,
-    'sqlite_async': '0.14.2',
-    'sqlite3_package': '3.3.2',
+    'sqlite_async': '0.14.7',
+    'sqlite3_package': '3.5.0',
     'sqlite_native': sqlite.sqlite3.version.libVersion,
     'dart': Platform.version,
     'physical_power_loss': 'UNRUN',

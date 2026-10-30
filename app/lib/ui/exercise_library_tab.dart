@@ -1,3 +1,7 @@
+import '../catalog_ui/catalog_picker.dart';
+import '../catalog/catalog.dart';
+import '../catalog/catalog_development.dart';
+import '../catalog_ui/catalog_trial_scope.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,7 +23,13 @@ import '../widgets/plan_form.dart';
 ///
 /// [onOpenEditor] is called with the exercise id to edit (null = new exercise).
 class LibraryTab extends StatefulWidget {
-  const LibraryTab({super.key, required this.onOpenEditor});
+  const LibraryTab({
+    super.key,
+    required this.onOpenEditor,
+    this.browserController,
+  });
+
+  final CatalogBrowserController? browserController;
 
   /// Called with the exercise id to edit (null = new exercise).
   final void Function(String? id) onOpenEditor;
@@ -35,6 +45,9 @@ class _LibraryTabState extends State<LibraryTab> {
   /// One watch for all exercise best loads, retained across top-tab changes.
   StreamSubscription<Map<String, double>>? _prSubscription;
   Map<String, double>? _prMap;
+  final _fallbackSearch = TextEditingController();
+  late final _browserController =
+      widget.browserController ?? CatalogBrowserController();
 
   @override
   void initState() {
@@ -48,6 +61,7 @@ class _LibraryTabState extends State<LibraryTab> {
   @override
   void dispose() {
     _prSubscription?.cancel();
+    _fallbackSearch.dispose();
     super.dispose();
   }
 
@@ -56,55 +70,125 @@ class _LibraryTabState extends State<LibraryTab> {
     // Rebuild when unit changes so PR values re-display in new unit.
     final units = context.watch<UnitService>();
     final tokens = context.tokens;
+    final catalogInput = context.watch<CatalogDevelopmentInput?>();
 
     return StreamBuilder<List<Exercise>>(
       stream: _catalogStream,
       builder: (context, snap) {
-        final exercises = snap.data ?? [];
+        final exercises = snap.data ?? const <Exercise>[];
         final prMap = _prMap ?? {};
 
-        // Group by muscleGroup.
-        final groups = <String, List<Exercise>>{};
-        for (final ex in exercises) {
-          (groups[ex.muscleGroup] ??= []).add(ex);
+        final trial = CatalogTrialScope.maybeOf(context);
+        if (trial != null) {
+          return CatalogBrowser(
+            state: trial,
+            ownedExercises: exercises,
+            controller: _browserController,
+            onEditOwned: widget.onOpenEditor,
+            onCreateChoice: (choice) async {
+              try {
+                await trial.materialize(
+                  choice,
+                  _repo,
+                  locale: Localizations.localeOf(context).languageCode,
+                );
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        AppLocalizations.of(context).catalogSaveFailed,
+                      ),
+                    ),
+                  );
+                }
+              }
+            },
+          );
         }
 
-        // Order: known muscles in canonical order, then unknowns (other bucket).
-        final ordered = orderedMuscles(groups.keys);
-
-        return ListView(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, bottomNavInset(context)),
-          children: [
-            // Pinned 'New exercise' accent button.
-            _NewExerciseButton(
-              tokens: tokens,
-              onTap: () => widget.onOpenEditor(null),
-            ),
-            const SizedBox(height: 24),
-
-            if (snap.hasData && exercises.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text(
-                  AppLocalizations.of(context).progressEmpty,
-                  textAlign: TextAlign.center,
-                  style: WorkoutType.body(size: 16, color: tokens.dim),
-                ),
-              ),
-
-            // Muscle-group sections.
-            for (final muscle in ordered) ...[
-              _MuscleSection(
-                muscle: muscle,
-                exercises: groups[muscle]!,
-                prMap: prMap,
-                units: units,
-                tokens: tokens,
-                onTap: (id) => widget.onOpenEditor(id),
-              ),
-              const SizedBox(height: 16),
-            ],
+        final query = catalogNormalize(_fallbackSearch.text);
+        final groups = <String, List<Exercise>>{};
+        for (final exercise in exercises) {
+          if (catalogNormalize(exercise.name).contains(query)) {
+            (groups[exercise.muscleGroup] ??= []).add(exercise);
+          }
+        }
+        final rows = <Object>[
+          for (final muscle in orderedMuscles(groups.keys)) ...[
+            muscle,
+            ...groups[muscle]!,
           ],
+        ];
+        final l = AppLocalizations.of(context);
+        return ListView.builder(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, bottomNavInset(context)),
+          itemCount: rows.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _NewExerciseButton(
+                    tokens: tokens,
+                    onTap: () => widget.onOpenEditor(null),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    key: const Key('library-search'),
+                    controller: _fallbackSearch,
+                    decoration: InputDecoration(
+                      hintText: l.exerciseSheetSearchHint,
+                      prefixIcon: const Icon(Icons.search),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  if (catalogInput?.unavailable == true)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        l.catalogUnavailable,
+                        style: WorkoutType.body(size: 14, color: tokens.dim),
+                      ),
+                    ),
+                  if (snap.hasData && rows.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        query.isEmpty ? l.progressEmpty : l.catalogNoResults,
+                        style: WorkoutType.body(size: 16, color: tokens.dim),
+                      ),
+                    ),
+                ],
+              );
+            }
+            final row = rows[index - 1];
+            if (row is String) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(2, 24, 2, 8),
+                child: Text(
+                  (row.isEmpty
+                          ? l.catalogUnclassified
+                          : localizedMuscle(context, row))
+                      .toUpperCase(),
+                  style: WorkoutType.body(
+                    size: 12,
+                    weight: FontWeight.w500,
+                    color: tokens.faint,
+                    letterSpacing: .72,
+                  ),
+                ),
+              );
+            }
+            final exercise = row as Exercise;
+            return _ExerciseRow(
+              exercise: exercise,
+              pr: prMap[exercise.id] ?? 0,
+              units: units,
+              tokens: tokens,
+              onTap: () => widget.onOpenEditor(exercise.id),
+            );
+          },
         );
       },
     );
@@ -122,65 +206,12 @@ class _NewExerciseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return PrimaryBtn(l.planNewExercise, enabled: true, onTap: onTap);
-  }
-}
-
-// ── Muscle section ─────────────────────────────────────────────────────────────
-
-class _MuscleSection extends StatelessWidget {
-  const _MuscleSection({
-    required this.muscle,
-    required this.exercises,
-    required this.prMap,
-    required this.units,
-    required this.tokens,
-    required this.onTap,
-  });
-
-  final String muscle;
-  final List<Exercise> exercises;
-  final Map<String, double> prMap;
-  final UnitService units;
-  final WorkoutTokens tokens;
-  final void Function(String id) onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section label: muscle group name
-        Padding(
-          padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
-          child: Text(
-            localizedMuscle(context, muscle).toUpperCase(),
-            style: WorkoutType.body(
-              size: 12,
-              weight: FontWeight.w500,
-              color: tokens.faint,
-              letterSpacing: 0.06 * 12,
-            ),
-          ),
-        ),
-
-        // Exercise rows
-        Column(
-          children: [
-            for (int i = 0; i < exercises.length; i++)
-              Padding(
-                padding: EdgeInsets.only(bottom: 0),
-                child: _ExerciseRow(
-                  exercise: exercises[i],
-                  pr: prMap[exercises[i].id] ?? 0,
-                  units: units,
-                  tokens: tokens,
-                  onTap: () => onTap(exercises[i].id),
-                ),
-              ),
-          ],
-        ),
-      ],
+    return PrimaryBtn(
+      CatalogTrialScope.maybeOf(context) == null
+          ? l.planNewExercise
+          : l.catalogBrowse,
+      enabled: true,
+      onTap: onTap,
     );
   }
 }
@@ -205,6 +236,12 @@ class _ExerciseRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final trial = CatalogTrialScope.maybeOf(context);
+    final choice = trial?.exercises[exercise.id];
+    final locale = Localizations.localeOf(context).languageCode;
+    final name = choice == null
+        ? exercise.name
+        : trial!.identifyingLabel(choice, locale);
     // Sub-label: '{equip ?? localizedMuscle(muscleGroup)}{ · compound}'
     final subParts = <String>[
       exercise.equip?.isNotEmpty == true
@@ -212,7 +249,13 @@ class _ExerciseRow extends StatelessWidget {
           : localizedMuscle(context, exercise.muscleGroup),
       if (exercise.compound) '· ${l.exerciseCompound}',
     ];
-    final subLabel = subParts.join(' ');
+    final subLabel = choice == null
+        ? subParts.join(' ')
+        : choice.variantId == null
+        ? CatalogLabels(locale).unknownMuscles
+        : CatalogLabels(
+            locale,
+          ).equipment(trial!.bundle.variants[choice.variantId]!.equipmentKind);
 
     return Semantics(
       button: true,
@@ -243,7 +286,7 @@ class _ExerciseRow extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FitLabel(
-                      exercise.name,
+                      name,
                       maxLines: 2,
                       style: WorkoutType.body(
                         size: 16,

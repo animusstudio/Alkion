@@ -6,6 +6,28 @@ observed: 2026-10-30
 
 # Alkion integrated acceptance
 
+## Current-main and selected-send integration — 2026-10-30
+
+The current-main integration retains schema 5 catalog execution, flexible
+prescriptions, discovery and typed History alongside the separately confirmed
+native weighted-workout sender. The current catalog boundary is recorded in the
+[selected-send contract](animus-workout-upload.md#current-catalog-boundary).
+The ordinary editor/repository defaults through a real controller and schema-5
+SQLite finish match new actual synthetic API definition/finish/read captures.
+All eight typed profiles retain complete evidence and remain local before any
+dependency write; generic native actions carrying typed execution definitions
+are also refused without changing their evidence.
+
+The bounded integration regression batch passes 143 tests, followed by 34
+sender/canonical checks after the positive current-default handler fixtures were
+added; these counts overlap. Whole-app analysis reports zero issues. Existing
+catalog staging and APK guard suites pass 38 checks. These are source/host checks.
+The combined normal Dev debug catalog/connection build retains the current
+catalog assets and normal network manifest; isolated trial/preview restrictions
+remain closed. Independent integration review and a fresh combined APK/device
+check remain pending. Earlier login/send/lost-ack and device observations below
+retain their exact source scope and do not qualify the merged catalog build.
+
 ## Selected-workout live proof — 2026-10-30
 
 The [selected-workout plan](../plans/2026-10-29-selected-workout-send.md) has
@@ -61,11 +83,114 @@ conflict without writes, same-request replay after a later edit and current
 scope/grant/reserved-source denials are covered.
 
 The actual duration is 601 input seconds → 10 remote rounded minutes; exact
-local elapsed remains preserved. This proves the public API contract, not an
-app sender or device flow. T2 is next and remains unimplemented, including the
-required missing-capability/zero-dependency-write production-sender test.
-Local SQLite transport durability, emulator/phone qualification, owner-history,
-server rollout and publication remain separate gates.
+local elapsed remains preserved. This dated T1 evidence proves the public API contract. The later selected-workout
+live proof above records sender, durability and Android coverage at its named
+source; it does not qualify the later catalog integration or physical device.
+Owner-history, server rollout and publication remain separate gates.
+
+## Exercise discovery usability — 2026-10-30
+
+The [approved usability plan](../plans/2026-10-29-muscle-guided-exercise-discovery.md)
+is in progress. T1 `7f3d9d0` and T2 input plumbing `7ba38cb` passed independent
+source review. T1's catalog/UI run passed 41 tests before its final nickname fix;
+the final real-store naming regression passed separately and analyzer reported no issues.
+T2 passed six focused Dart tests, 11 staging tests and 16 APK guard tests, including
+missing/invalid classifications, exact input bindings and redirected staging rejection.
+T3 `e3b38a3` passed independent review, 31 catalog tests and an ignored full-candidate
+probe across all four locales. Group membership/role partitions, admitted children,
+equipment and explicit group actions matched the pinned classification input.
+Private mapping review passed: all entries accounted for; unresolved entries remain explicit.
+T4 `39ae615` passed independent review, 40 picker tests and two repaired existing
+journey regressions. T5 `4a8386b` passed independent review, seven setup-caller tests,
+nine shared-sheet tests and 380 affected session/live-layout tests. The 320dp/2×
+long-context setup overflow is fixed with opt-in title scrolling; ordinary sheets
+retain their pinned headings. The four locales across both widths, text scales and
+themes are covered by 32 picker cases. Counts overlap, not one combined total.
+Final combined catalog suite: 96 PASS, zero skipped. Analyzer: zero issues;
+formatting: zero changes across 424 files. ARM64 Gradle build and exact staged-asset,
+ELF/current-JNI guards PASS at source `4a8386b`; package/signature checks confirm
+the isolated trial identity, disposable signer and absent INTERNET permission.
+APK SHA-256: `de20e8246cbed8582b35617c34d9fb30eabbbdc0ee534841b50e211d98c43d6c`.
+Native
+layout/TalkBack, owner comparison and public delivery are UNRUN for this change.
+Ordinary profiles and the trial's disabled Finish/RAM-only boundary remain unchanged.
+
+## Exercise catalog native trial — 2026-10-29
+
+The [approved plan](../plans/2026-10-29-exercise-catalog-integration.md) has
+completed T0–T2 with implementation and independent task reviews passing. The
+coherent T0 base is `41bfbe3`, including entry polish `3164f4e`, prescriptions
+`7015bbb` and the prepared store v4 handoff. The private candidate has 143
+families, 734 variants and eight profiles, projection SHA-256
+`8cc806c7adc3790895d8086dcf63ecd174475bb4f74e2e717cce6d1b6ca67f96`. Twelve
+synthetic tests, 531 queries and 293 admission checks passed locale-policy
+reference parity. Matching supports the documented Latin repertoire, with no
+general NFKC claim. T2 passed 23 focused UI tests and independent reviews
+`789c0d5`/`1f2cc11`. T0 storage passed eight tests at `1808e5d`; the 173-check
+consolidated suite passed at `4e152f4` before two additional provider tests.
+Existing session (86) and entry/prescription baseline (46) suites passed at their
+recorded SHAs in private receipts.
+
+T3's x86_64 native UI checkpoint is **reviewed** at source
+`d427235c45f166ff8886816500b030a6c39f7445`. Fix-only review from `1808e5d` to
+this source passed. Final affected consolidated checks passed: 177 tests, zero
+skipped, 51 seconds; whole-app analyze reported zero issues; Python
+candidate-staging checks passed 7/7. x86_64 and ARM64 builds passed. Both APKs'
+package identity, signer, removed INTERNET permission and candidate projection digest
+were verified. The x86_64 APK SHA-256 is
+`78e63f92c596543007aa4d471d27e5fd014b1af2ade4c59aa509bd8d3c477a54`; ARM64 APK
+SHA-256 is `0f969be54674f3fc3ae2028fc19f72333df26e03321c408d5ab03a502814e726`
+(156,780,457 bytes); this ARM64 artifact was subsequently **rejected**, as below.
+
+Native checks confirmed localized selection, two saved routine slots, upcoming-only
+equipment changes preserving the old pending set, timer continuity and typed
+30-second plank summary. Rest-next uses Plank + Duration seconds 30; the false
+20kg×8 and placeholder PR are gone, and all-done next content is empty. At 320dp,
+2× text and visible IME, custom fallback confirmed query prefill and return. Native
+confirmation verified the full “Carico kg + Ripetizioni” label wraps, Back hides
+the IME and Add remains accessible. The last custom picker action ended at y=2175,
+above the navigation bar at y=2208. Finish stays disabled in the isolated trial.
+
+Fresh native finish visual review disposition is **SHIP**, with no material fixes.
+Six required screens were reviewed, including EN-dark RDL, IT-light Lento,
+320dp/2× custom form with IME and after Back with Add visible, typed plank with 30-second next,
+and native bottom placement for the custom action. All five contract sections were
+valid. The reviewer used a fresh generic fallback because the dedicated agent type
+was unavailable. Owner hands-on feedback remains pending.
+
+The design documenter completed with no changes and confirmed the established
+system was preserved. An emulator graphics capture initially failed on color
+buffers. After restart with Vulkan disabled, the emulator booted and came online
+after about three minutes; valid captures were then obtained. No source fix was
+needed for this environment issue. Trial metadata is RAM-only, Finish is disabled,
+and no owner profile was accessed or migrated. Cold resume/recovery, hardware
+performance and durable T4–T6 qualification
+remain untested. Evidence and artifacts remain in ignored private receipts; no
+public push or publication occurred.
+
+The public-doc checker retains two unchanged MakeHuman links to missing
+`LICENSE.CODE.md` and `LICENSE.ASSETS.md` from baseline; they are outside this change.
+
+### Pre-installation correction
+
+Later inspection of that exact ARM64 hash found SQLite and pool libraries only
+under x86_64, despite the ARM64 Flutter engine and native-asset manifest. It and
+the affected aligned rebuilds were quarantined and never installed. The x86_64
+emulator observations and source reviews remain valid. Correct ARM64 ELF files
+existed in Flutter's JNI output; stale Gradle merge/strip outputs entered the APK.
+The trial build now requires matching selected-ABI ELF headers, native mappings
+and current generated SQLite/pool hashes before naming an APK. Eleven synthetic
+APK checks and seven staging checks pass; CI runs both sets.
+
+The SQLite close correction also exposed fake-time cleanup in the existing
+weight-sheet tests. Main's real-zone database fixture correction is retained
+unchanged; all six cases and assertions remain. The interrupted
+full run is failed, not a qualification. The serial ARM64 rebuild at `466993a`
+passes the mandatory ABI/current-JNI-hash guard, package, signature, no-network
+and catalog-digest checks. Flutter, SQLite and pool are all AArch64 ELF183.
+APK SHA-256: `7ed96a8a1bd47d952650a676a14b27216da7ac0b45f9f7c327fe5bf3dc80a452`
+(102,074,213 bytes). Final CI and the main merge remain pending; the owner
+explicitly retained installation after merge.
 
 ## First-use visual polish — 2026-10-29
 
@@ -197,6 +322,65 @@ inputs were removed. Cleanup confirmed that existing resources were untouched.
 See the [connection guide](animus-connection.md) for public setup and the generic
 live fixture contract. The R3 two-device and sender/replica conformance gates
 below remain UNRUN; this read-only connection slice does not satisfy them.
+
+## Flexible prescriptions and reusable workout days (2026-10-29)
+
+The owner-approved [plan](../plans/2026-10-28-flexible-training-prescriptions.md)
+and [contract](../specs/2026-10-28-flexible-training-prescriptions.md) are
+implemented and independently accepted at source `c0b086263c9ce958cf970f07957fa6f27453b19c`.
+Final integrated A1–A12 review PASS, no remaining findings within the recorded
+Linux/synthetic qualification scope.
+
+Exercise starting weight and reusable training defaults are optional under a
+collapsed Advanced section. Fixed reps render as `3×8`; ranges render as
+`3×8–12`. Profile training preferences initialize new items without rewriting
+saved prescriptions, open editors or workouts. RIR targets and observations stay
+separate: new actual working sets start without RIR, logging does not require it,
+and manual entry/clear preserves known zero and untouched older observations.
+Weekday assignment is optional through Add/Change/Remove.
+
+Saved workout days can be enabled or disabled independently. Inactive days remain
+editable and reusable in Plan; only active days enter fresh-workout choices and
+planned previews. Rotation retains the full saved ordering, including an inactive
+last-trained anchor. Committed launch eligibility rejects stale inactive choices;
+already admitted, minimized and historical workouts still resume and finish.
+
+Forward schema v4 preserves frozen v1–v3 migration evidence, adds explicit slot
+RIR policy and day activation, and retains atomic revision/action/outbox writes.
+Native backup/restore preserves these choices. Frozen legacy compatibility export
+refuses settings it cannot represent and directs the user to native backup.
+Unknown/partial source values remain evidence until explicit repair. Retried
+status actions preserve exact intent on uncertain outcomes; a definite revision
+rejection requires a new explicit action against the current day. Pending numeric
+input commits before mode changes, clear actions and disclosure collapse.
+
+| Check | Result and source |
+| --- | --- |
+| `make -C app test TEST=--concurrency=2` | PASS: 1,786 tests, 0 skipped, 483 s at `c0b0862`. |
+| `make -C app analyze` | PASS: 0 issues at `c0b0862`. |
+| `make -C app format` | PASS: 369 files, 0 changes at `c0b0862`. |
+| `make -C app build` | PASS: Linux bundle, 24 s at `c0b0862`; no application launch or installation. |
+| Driver, transfer and backup recovery tools | PASS at `7015bbb`; their exercised runtime inputs are unchanged by the later UI/test fixes. |
+| Selected current domain/workflow store recovery cases | PASS: 59 cases at `52981cc`, after correcting the probe's current-schema admission; historical migration probes stay frozen. |
+| Widget visual/layout/semantics checks | Batched dark/light 320/412dp and enlarged-text renders inspected, with one correction/confirmation pass; EN/DE/ES/IT layout and interaction assertions pass. |
+
+Delivery recovery correction: the old SQLite stack demonstrably left a failed
+prepared COMMIT statement holding WAL/SHM files after reported close. The scoped
+update uses sqlite_async 0.14.7, sqlite3_connection_pool 0.2.15, sqlite3 3.5.0
+(native SQLite 3.53.3), and required sqlite3_web 0.9.5; other locked packages stay
+unchanged. The close regression fails on the old stack and passes on the update.
+Both close regressions plus preference, domain and status cases pass (45 tests).
+Fresh native qualification passes: driver 13, store 59, transfer four crash
+boundaries plus split control, and backup 26 cases. Current producer receipts
+name the corrected stack; dated evidence remains unchanged. All admission,
+integrity and exact-intent checks remain in force. This proves the corrected
+close boundary; the original masked CI exception remains an inference, and
+combined-head CI must pass before merge.
+
+All fixtures and storage were disposable and synthetic. This acceptance does not
+establish physical Android/IME/back/lifecycle behavior: device interaction is
+**UNRUN** for this change. Owner-data transfer, synchronization, deployment,
+publication, signing and release are outside this qualification.
 
 ## UI refactor native adoption (2026-10-22)
 
@@ -888,3 +1072,84 @@ Host CPU-only ellipse sampling median improves compact1.315→0.533ms and enlarg
 The [approved plan](../plans/2026-10-28-android-runtime-resume.md) is complete at `0e1a739c708a89cf950c006e2da6d4556b3af7fc`: one process-owned Flutter runtime preserves the store owner across Activity recreation; body views reattach and interrupted document requests finish once. Store locks and schemas remain unchanged. Independent review PASS, no findings.
 The baseline reproduced `profile_in_use` after actual Activity recreation in the same PID. Corrected source passed three recorded destroy/create cycles retaining an active synthetic draft, ordinary resume, root Back/reopen, cold restart with unchanged draft identity/state, and two DocumentsUI interruption/retry checks. All 35 focused tests, analyzer (zero issues), existing native bridge/runtime/material checks and both APK builds PASS.
 Optimized ARM64 Dev APK SHA256 `690f9063a34bc52b7be22796ce33ac062f06371cfc836cf539540969bb1975ba` was installed in place on Nothing A024; launch and ordinary background/reopen retained its process. No uninstall, data clear, owner-store/UI inspection or phone-setting change. The scratch emulator is stopped. Software-emulator artwork was unavailable; physical rendering/performance was not requalified. Private receipts retain exact commands/results; no public push.
+
+
+## Catalog in the normal Dev app — 2026-10-30
+
+The [owner-directed integration](../plans/2026-10-30-catalog-in-alkion-dev.md)
+activates durable catalog discovery in the normal private Dev build, preserving
+its package/profile identity and owned/custom exercises. Product source through
+`21b3dd6` adds schema-5 bindings and contexts, exact typed measurements, versioned
+drafts, supported exact-context load progression and version-aware recovery.
+Catalog absence keeps saved typed workouts readable and resumable. Independent
+design, task and final integration reviews PASS after bounded preservation fixes.
+
+Storage tests **87 PASS**, runtime/UI focused tests **186 PASS**, final retained-RIR
+recheck **9 PASS**, packaging tests **38 PASS**, analyzer and owned formatting PASS.
+The first full-suite run recorded **2059 passed, 18 failed, 2 optional skips**;
+all failures came from outdated current-schema/export expectations and a
+qualification helper using current tables against an older fixture. Bounded
+fixture/tool fixes retain historical fixtures and evidence assertions: **68
+related tests PASS**, **35 real store-recovery cases PASS**, and **4 transfer crash
+boundaries plus split negative control PASS**. Final full CI remains the merge gate.
+
+A fresh synthetic Android profile exercises actual private muscle/name discovery,
+a 65.25-second duration entry surviving process death, a 20.5-kg/eight-repetition
+set, mixed-profile Finish and typed History. Normal UI widget journeys also cover
+History correction, uncertain-COMMIT retry, routine counts and 320dp/2× text;
+a native 320dp/2× History spot check retains scrollable measurements. Legacy
+aggregate volume reports its compatibility coverage instead of mixing quantities.
+
+The x86_64 debug and optimized ARM64 private Dev APKs pass exact catalog-byte and
+current-code/native-library checks, with approved artwork staged. The actual
+default APK passes private-catalog exclusion. Guards detected stale local JNI
+merge outputs; bounded generated-output cleanup and repackaging passed with guards
+intact. TalkBack is unavailable on the scratch image; physical artwork/gesture
+performance is not requalified. Owner-profile inspection remains excluded. Source
+merged through [PR #41](https://github.com/animusstudio/Alkion/pull/41) at `6489526`
+on green CI; the verified Dev APK updated the authorized phone in place. Receipts
+record the installed executable hash and launch, without owner-profile inspection.
+
+## Direct catalog browsing and responsiveness — 2026-10-30
+
+The [approved plan](../plans/2026-10-30-catalog-direct-browse-performance.md)
+makes Plan → Exercises the catalog browser. Families lead to concrete variations
+and details; ordinary browsing does not materialize owned exercises. Explicit
+custom creation retains typed measurement profiles, while day/workout selection
+continues using the existing durable action. Personal entries remain searchable
+and editable, and absence of the private bundle retains the owned/custom library.
+
+Source `b4e71fa` caches normalized sort keys, bounded query/filter snapshots and
+equipment results; recents/favorites no longer rebuild immutable vocabulary.
+Source `a102b11` shares a lazy browser between embedded inspection and modal
+selection, retains navigation/scroll, and derives search results after input paint.
+Independent reviews PASS, including fixes for parent-list scroll restoration,
+unsupported legacy favorites and single-owner Android Back handling.
+
+Focused index/runtime checks **45 PASS**; private original/current comparisons
+**8,656 PASS** across four locales. Final affected catalog, UI, day, Plan and
+session suite **178 PASS**, analyzer clean, formatting **438 files/0 changes**.
+Actual-app tests cover browsing without domain writes, nested keyboard/family/group
+Back, typed-custom save/edit, retained sub-tab state, durable favorite reload,
+lazy semantics and embedded 320/412dp at 2× text in all four locales/both themes.
+
+Same-input host JIT diagnostics reduce median blank-catalog computation from
+142.7 to 2.77 ms and cold index plus computation from 275.3 to 67.3 ms. These
+exclude native input delivery, layout/raster and storage; they are not phone
+responsiveness qualification. Native inspection of the full private input found
+that expanded equipment choices hid every exercise at normal text size. Reviewed
+fix `98559d8` uses compact explicit equipment selection and a clearable active chip.
+The 25 browser cases and existing modal equipment check pass across focused runs.
+
+One bounded native confirmation on the disposable Android emulator shows four
+complete family rows immediately at approximately 411dp/1×. Selecting and clearing
+equipment changes the same family from six matching variations to two and back
+to six. At 320dp/2×, actual keyboard rendering, visible search/clear controls,
+Android Back and scrolling to readable matching rows pass; light/dark and retained
+family/detail/sub-tab navigation were checked. Software-emulator artwork and
+actual TalkBack traversal remain unqualified. Full Dev x64 and optimized ARM64
+artifacts pass exact private assets, signer and current native-code checks.
+
+Optimized physical A6 timing, final CI and this change's authorized Dev update
+remain pending. A separate synthetic benchmark identity isolates measurement
+from owner-profile contents; emulator layout evidence is not phone performance.

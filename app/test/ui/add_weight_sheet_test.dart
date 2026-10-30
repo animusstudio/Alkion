@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/data/exercise_repository.dart';
-import '../alkion/domains/local_screen_harness.dart' show openDomainStore;
+import '../alkion/domains/local_screen_harness.dart'
+    show openDomainStore, RealZoneDatabase;
 import 'package:provider/provider.dart';
 import 'package:alkion/ui/add_weight_sheet.dart';
 import 'package:alkion/units/unit_service.dart';
@@ -17,16 +19,20 @@ void main() {
 
   late Directory dir;
   late LocalStore database;
+  late RealZoneDatabase realDatabase;
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('reps-add-weight');
     database = await openDomainStore(dir);
+    realDatabase = RealZoneDatabase(database, Zone.current);
   });
 
-  tearDown(() async {
-    await database.close();
-    await dir.delete(recursive: true);
-  });
+  tearDown(
+    () => realDatabase.zone.run(() async {
+      await database.close();
+      await dir.delete(recursive: true);
+    }),
+  );
 
   Widget host() => wrapL10n(
     Builder(
@@ -39,10 +45,12 @@ void main() {
 
   Widget wrapped() => MultiProvider(
     providers: [
-      Provider<LocalDatabase>.value(value: database),
-      Provider<DomainRecovery>.value(value: DomainRecovery(database.recover)),
+      Provider<LocalDatabase>.value(value: realDatabase),
+      Provider<DomainRecovery>.value(
+        value: DomainRecovery(() => realDatabase.zone.run(database.recover)),
+      ),
       ChangeNotifierProvider<UnitService>(
-        create: (_) => UnitService.local(database),
+        create: (_) => UnitService.local(realDatabase),
       ),
     ],
     child: host(),

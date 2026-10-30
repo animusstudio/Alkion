@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:provider/provider.dart';
 
 import '../data/bodyweight_repository.dart';
@@ -28,6 +29,7 @@ import '../util/dates.dart';
 import '../widgets/card.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
+import '../widgets/prescription_controls.dart';
 import '../widgets/section_label.dart';
 import '../widgets/sparkline.dart';
 import '../widgets/split_card.dart';
@@ -80,6 +82,7 @@ class TodayScreen extends StatefulWidget {
     required this.onOpenExercise,
     required this.onOpenProfile,
     required this.onResume,
+    this.onOpenPlan,
     this.auth,
     this.visible = true,
   });
@@ -96,6 +99,7 @@ class TodayScreen extends StatefulWidget {
 
   /// Called when the user taps Resume on the active-workout hero.
   final VoidCallback onResume;
+  final VoidCallback? onOpenPlan;
 
   /// Its session-expired flag drives the sync-paused banner, and the
   /// banner's sign-in-again flow logs in through it.
@@ -137,6 +141,7 @@ class _TodayScreenState extends State<TodayScreen> {
   StreamSubscription<List<DayTemplate>>? _daysSub;
 
   // ── Current days list (for SplitCard + WeekStrip) ────────────────────────────
+  List<DayTemplate> _allDays = [];
   List<DayTemplate> _dayList = [];
   List<Exercise>? _workloadCatalog;
   bool _workloadReadFailed = false;
@@ -229,7 +234,15 @@ class _TodayScreenState extends State<TodayScreen> {
         }
         setState(() {
           _daysReadFailed = false;
-          _dayList = days;
+          final active = days.where((day) => day.isActive).toList();
+          if (!listEquals(
+            _dayList.map((d) => d.id).toList(),
+            active.map((d) => d.id).toList(),
+          )) {
+            _selectedIndex = null;
+          }
+          _allDays = days;
+          _dayList = active;
           _rotationLoaded = true;
           _recomputeRotation();
         });
@@ -261,7 +274,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 orElse: () => _recentSessions.first,
               )
               .dayTemplateId;
-    _nextDay = selectNextDay(_dayList, lastId);
+    _nextDay = selectNextDay(_allDays, lastId);
     final newest = _recentSessions.isEmpty ? null : _recentSessions.first.id;
     if (_nextDay?.id != previous || newest != _newestSessionId) {
       _selectedIndex = null;
@@ -304,7 +317,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final now = DateTime.now();
 
     final activeName = manager.hasActive
-        ? resumeSessionTitle(manager.active!, _dayList, l)
+        ? resumeSessionTitle(manager.active!, _allDays, l)
         : null;
     final header = todayHeaderLine(
       l,
@@ -349,7 +362,7 @@ class _TodayScreenState extends State<TodayScreen> {
               if (manager.hasActive)
                 _ResumeHero(
                   controller: manager.active!,
-                  dayList: _dayList,
+                  dayList: _allDays,
                   onResume: widget.onResume,
                 )
               else if (_rotationLoaded) ...[
@@ -473,14 +486,16 @@ class _TodayScreenState extends State<TodayScreen> {
     if (catalog == null) return WorkoutWorkload.loading(mode);
     final byId = {for (final exercise in catalog) exercise.id: exercise};
     final slots = <ResolvedSlot>[];
-    for (final slot in _dayList[index].slots) {
-      final exercise = byId[slot.exerciseId];
-      if (exercise == null) return WorkoutWorkload.unavailable(mode);
-      slots.add(resolveSlot(slot, exercise));
-    }
     try {
+      for (final slot in _dayList[index].slots) {
+        final exercise = byId[slot.exerciseId];
+        if (exercise == null) return WorkoutWorkload.unavailable(mode);
+        slots.add(resolveFreshPrescription(slot, exercise));
+      }
       return plannedWorkoutWorkload(slots);
     } on FreshSessionLimitException {
+      return WorkoutWorkload.unavailable(mode);
+    } on FreshPrescriptionUnavailableException {
       return WorkoutWorkload.unavailable(mode);
     }
   }
@@ -494,7 +509,7 @@ class _TodayScreenState extends State<TodayScreen> {
       return (day: day, exerciseCount: day.slots.length, lastAgo: lastAgo);
     }).toList();
 
-    return SplitCard(
+    final card = SplitCard(
       workload: _selectedWorkload(),
       visible: widget.visible,
       days: entries,
@@ -502,6 +517,25 @@ class _TodayScreenState extends State<TodayScreen> {
       selectedIndex: _heroIndex(),
       onSelectedChanged: (i) => setState(() => _selectedIndex = i),
       onStart: widget.onStart,
+    );
+    if (_allDays.isEmpty || _dayList.isNotEmpty) return card;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        card,
+        const SizedBox(height: 12),
+        Text(
+          l.trainingNoActiveDays,
+          style: WorkoutType.body(color: context.tokens.dim),
+        ),
+        if (widget.onOpenPlan != null)
+          TrainingAction(
+            _allDays.any((d) => d.active == false)
+                ? l.trainingEnableDayInPlan
+                : l.trainingOpenPlan,
+            onTap: widget.onOpenPlan,
+          ),
+      ],
     );
   }
 

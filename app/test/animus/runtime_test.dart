@@ -64,6 +64,11 @@ void main() {
           Directory('${temp.path}/dev.animusstudio.alkion.dev'),
         );
         expect(runtime.animus.state, AnimusConnectionState.disabled);
+        expect(runtime.store.schema.latestVersion, 5);
+        expect(
+          (await runtime.store.get('PRAGMA user_version')).values.single,
+          5,
+        );
         await runtime.flushPersistence();
         await runtime.close();
         expect(trap.attempts, isEmpty);

@@ -219,6 +219,15 @@ final class WorkoutUploadRepository {
       _block(AnimusWorkoutSendIssue.missingTimeEvidence);
     }
     final sets = (input['sets'] as List).map(uploadMap).toList();
+    // Typed quantities/setup/provenance must never become scalar observations.
+    if (input.containsKey('catalog_contract') ||
+        sets.any(
+          (set) =>
+              set['catalog_set_bytes'] != null ||
+              set['tracking_context_id'] != null,
+        )) {
+      _block(AnimusWorkoutSendIssue.unsupportedWorkout);
+    }
     if (sets.isEmpty || sets.length > 1000) {
       _block(AnimusWorkoutSendIssue.invalidValues);
     }
@@ -296,7 +305,8 @@ final class WorkoutUploadRepository {
       if (row == null ||
           row['deleted'] != 0 ||
           row['source_revision_id'] != null ||
-          row['is_template'] != 0) {
+          row['is_template'] != 0 ||
+          row['execution_definition_bytes'] != null) {
         _block(AnimusWorkoutSendIssue.unsupportedDefinition);
       }
       final history = await tx.getAll(
@@ -330,7 +340,11 @@ final class WorkoutUploadRepository {
           _block(AnimusWorkoutSendIssue.unsupportedDefinition);
         }
         try {
-          nativeDefinitionPatch(uploadMap(patch['fields']), create: base == 0);
+          final fields = uploadMap(patch['fields']);
+          final translated = nativeDefinitionPatch(fields, create: base == 0);
+          if (fields.keys.any((key) => !translated.containsKey(key))) {
+            _block(AnimusWorkoutSendIssue.unsupportedDefinition);
+          }
         } on FormatException {
           _block(AnimusWorkoutSendIssue.invalidValues);
         }

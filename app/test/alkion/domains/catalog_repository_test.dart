@@ -35,7 +35,7 @@ void main() {
       final numeric = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       );
       try {
         final bytes = importedBytes(includeOverflow: true);

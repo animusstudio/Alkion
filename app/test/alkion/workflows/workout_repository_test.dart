@@ -21,7 +21,7 @@ void main() {
       LocalStore store = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
-        schema: workflowSchemaRegistry(),
+        schema: prescriptionSchemaRegistry(),
       );
       try {
         await ExerciseRepository.local(store).commitPrepared(
@@ -110,7 +110,7 @@ void main() {
           store = await LocalStore.open(
             profile: profile,
             expectedProfileId: profile.profileId,
-            schema: workflowSchemaRegistry(),
+            schema: prescriptionSchemaRegistry(),
           );
           expect(await store.inventory(), expected);
           await checkpoint(store, root, 'reopen-$i');

@@ -1,5 +1,7 @@
 import '../domain/local_action.dart';
 import '../domain/evidence.dart';
+import '../domain/catalog_execution.dart';
+import 'catalog_execution_repository.dart';
 import '../store/local_store.dart';
 import '../util/calendar_keys.dart';
 import 'exercise_repository.dart';
@@ -211,17 +213,17 @@ List<({String sql, List<Object?> args})> reconcileDay({
 /// [lastId] of the most-recently-trained day template (or null), returns the
 /// next [DayTemplate] in the rotation.
 ///
-/// Rules:
-/// - [days] empty → null.
-/// - [lastId] null (no history or custom session) → `days.first`.
-/// - [lastId] not found in [days] (unknown id) → `days.first`.
-/// - Otherwise → `days[(indexOf(lastId) + 1) % days.length]` (wraps around).
+/// Walk the full saved order after a known last ID, skipping inactive and
+/// unavailable flags and wrapping. Unknown/no last ID starts at the first active
+/// day. An empty or all-inactive list has no recommendation.
 DayTemplate? selectNextDay(List<DayTemplate> days, String? lastId) {
   if (days.isEmpty) return null;
-  if (lastId == null) return days.first;
-  final i = days.indexWhere((d) => d.id == lastId);
-  if (i < 0) return days.first;
-  return days[(i + 1) % days.length];
+  final last = days.indexWhere((d) => d.id == lastId);
+  for (var offset = 1; offset <= days.length; offset++) {
+    final day = days[(last + offset) % days.length];
+    if (day.isActive) return day;
+  }
+  return null;
 }
 
 // ── resolveSlot ───────────────────────────────────────────────────────────────
@@ -231,8 +233,6 @@ const _defaultWorkSets = 3;
 const _defaultWarmupSets = 0;
 const _defaultRepLow = 8;
 const _defaultRepHigh = 12;
-const _defaultRirLow = 1;
-const _defaultRirHigh = 1;
 
 /// Resolves a [Slot] + [Exercise] pair into a fully-specified [ResolvedSlot].
 ///
@@ -240,7 +240,7 @@ const _defaultRirHigh = 1;
 ///   1. Slot value (if non-null) wins.
 ///   2. Exercise default (if non-null) wins.
 ///   3. Hardcoded fallback: workSets 3, warmupSets 0, repLow 8, repHigh 12,
-///      rirLow 1, rirHigh 1.
+///      no RIR target; RIR pairs qualify together and policy is authoritative.
 ResolvedSlot resolveSlot(Slot slot, Exercise exercise) {
   int pick(int? slotVal, int? exDefault, int hardcoded) {
     if (slotVal != null) return slotVal;
@@ -248,6 +248,50 @@ ResolvedSlot resolveSlot(Slot slot, Exercise exercise) {
     return hardcoded;
   }
 
+  // A pair belongs to one level. Never combine a partial slot with an
+  // unrelated exercise bound, normalize inverted evidence or invent RIR 1.
+  ({int? low, int? high, RirTargetState state}) pair(
+    int? low,
+    int? high,
+    Map<String, Object?> raw,
+    String prefix,
+  ) {
+    final rawLow = raw.containsKey('${prefix}rir_low')
+        ? raw['${prefix}rir_low']
+        : low;
+    final rawHigh = raw.containsKey('${prefix}rir_high')
+        ? raw['${prefix}rir_high']
+        : high;
+    if (rawLow == null && rawHigh == null) {
+      return (low: null, high: null, state: RirTargetState.absent);
+    }
+    if (rawLow is int &&
+        rawHigh is int &&
+        rawLow >= rirMin &&
+        rawHigh <= rirMax &&
+        rawLow <= rawHigh) {
+      return (low: rawLow, high: rawHigh, state: RirTargetState.available);
+    }
+    return (low: null, high: null, state: RirTargetState.unavailable);
+  }
+
+  final own = pair(slot.rirLow, slot.rirHigh, slot.rawFields, 'target_');
+  final inherited = pair(
+    exercise.defaultRirLow,
+    exercise.defaultRirHigh,
+    exercise.rawFields,
+    'default_',
+  );
+  final rir = switch (slot.rirPolicy) {
+    RirPolicy.off => (low: null, high: null, state: RirTargetState.absent),
+    RirPolicy.inherit => inherited,
+    RirPolicy.target =>
+      own.state == RirTargetState.absent
+          ? (low: null, high: null, state: RirTargetState.unavailable)
+          : own,
+    null => own.state == RirTargetState.absent ? inherited : own,
+    _ => (low: null, high: null, state: RirTargetState.unavailable),
+  };
   return ResolvedSlot(
     exercise: exercise,
     workSets: pick(
@@ -262,8 +306,10 @@ ResolvedSlot resolveSlot(Slot slot, Exercise exercise) {
     ),
     repLow: pick(slot.repLow, exercise.defaultRepLow, _defaultRepLow),
     repHigh: pick(slot.repHigh, exercise.defaultRepHigh, _defaultRepHigh),
-    rirLow: pick(slot.rirLow, exercise.defaultRirLow, _defaultRirLow),
-    rirHigh: pick(slot.rirHigh, exercise.defaultRirHigh, _defaultRirHigh),
+    rirLow: rir.low,
+    rirHigh: rir.high,
+    rirState: rir.state,
+    rirPolicy: slot.rirPolicy,
   );
 }
 
@@ -278,16 +324,63 @@ Map<String, Object?> slotDraftFields(SlotDraft d) {
     'target_rep_high': d.repHigh,
     'target_rir_low': d.rirLow,
     'target_rir_high': d.rirHigh,
+    'rir_policy': d.rirPolicy,
+    if (d.catalog != null) ...{
+      'tracking_context_id': d.catalog!.contextId,
+      'catalog_selection_bytes': localBytes(d.catalog!.toJson()),
+      'catalog_targets_bytes': localBytes(catalogTargetsJson(d.catalogTargets)),
+    },
   };
   return d.rawFields.isNotEmpty && d.changedFields != null
       ? {
           for (final key in d.changedFields!)
             if (values.containsKey(key)) key: values[key],
+          if (d.catalog != null &&
+              d.changedFields!.any(
+                (key) =>
+                    key == 'catalog' ||
+                    key == 'catalogTargets' ||
+                    key == 'exercise_id',
+              ))
+            for (final key in [
+              'tracking_context_id',
+              'catalog_selection_bytes',
+              'catalog_targets_bytes',
+            ])
+              key: values[key],
         }
       : values;
 }
 
 class DayTemplateRepository {
+  PreparedDomainAction prepareSlotContext({
+    required String slotId,
+    required int slotRevision,
+    required String dayId,
+    required int dayRevision,
+    required String expectedExerciseId,
+    required CatalogSelectionEvidence selection,
+    Map<String, CatalogMetricEvidence> targets = const {},
+    String? operationId,
+    List<OperationDependency> dependencies = const [],
+  }) => prepareDomain(
+    db,
+    RecordKind.trainingSlot,
+    LocalActionKind.catalogSlotContextSet,
+    slotId,
+    slotRevision,
+    {
+      'catalog_contract': 1,
+      'day_id': dayId,
+      'day_revision': dayRevision,
+      'expected_exercise_id': expectedExerciseId,
+      'selection': selection.toJson(),
+      'targets': catalogTargetsJson(targets),
+    },
+    operationId: operationId,
+    dependencies: dependencies,
+    eligibility: SyncEligibility.unsupportedMapping,
+  );
   const DayTemplateRepository(Object legacy) : _database = null;
   const DayTemplateRepository.local(LocalDatabase database)
     : _database = database;
@@ -316,6 +409,11 @@ class DayTemplateRepository {
           scheduledWeekday: r['scheduled_weekday'] as int?,
           position: r['position'] as int? ?? 0,
           isTemplate: r['is_template'] == 1,
+          active: !r.containsKey('is_active') || r['is_active'] == 1
+              ? true
+              : r['is_active'] == 0
+              ? false
+              : null,
           localRevision: r['revision'] as int,
           rawFields: Map.unmodifiable(r),
           slots: items
@@ -334,6 +432,13 @@ class DayTemplateRepository {
         )
         .asyncMap((_) => db.readTransaction((tx) => _days(tx))),
   );
+
+  /// Management retains inactive/unavailable rows in their full saved order.
+  Future<List<DayTemplate>> allDays() => db.readTransaction(_days);
+  Future<List<DayTemplate>> activeDays() async =>
+      (await allDays()).where((d) => d.isActive).toList();
+  Stream<List<DayTemplate>> watchActiveDays() =>
+      watchDays().map((days) => days.where((d) => d.isActive).toList());
   Future<DayTemplate?> byId(String id) => db.readTransaction((tx) async {
     final rows = await _days(tx, id: id);
     return rows.isEmpty ? null : rows.single;
@@ -381,7 +486,13 @@ class DayTemplateRepository {
     return prepareDomain(
       db,
       RecordKind.trainingDay,
-      cloneId != null
+      draft.slots.any((slot) => slot.catalog != null)
+          ? (cloneId != null
+                ? LocalActionKind.catalogPlanClone
+                : id == null
+                ? LocalActionKind.catalogPlanCreate
+                : LocalActionKind.catalogPlanEdit)
+          : cloneId != null
           ? LocalActionKind.planClone
           : id == null
           ? LocalActionKind.planCreate
@@ -389,6 +500,8 @@ class DayTemplateRepository {
       id ?? domainUuid.v4(),
       draft.localRevision ?? 0,
       {
+        if (draft.slots.any((slot) => slot.catalog != null))
+          'catalog_contract': 1,
         'fields': patch,
         'slots': slots,
         'clone_id': cloneId,
@@ -396,8 +509,28 @@ class DayTemplateRepository {
       },
       operationId: operationId,
       dependencies: dependencies,
+      eligibility: draft.slots.any((slot) => slot.catalog != null)
+          ? SyncEligibility.unsupportedMapping
+          : SyncEligibility.awaitingAttachment,
     );
   }
+
+  /// Freeze this exact status-only intent before awaiting, then commit/retry it
+  /// with commitPrepared. Concurrent content edits share the same day revision.
+  PreparedDomainAction prepareSetActive(
+    String id,
+    int revision,
+    bool active, {
+    String? operationId,
+  }) => prepareDomain(
+    db,
+    RecordKind.trainingDay,
+    LocalActionKind.planSetActive,
+    id,
+    revision,
+    {'is_active': active ? 1 : 0},
+    operationId: operationId,
+  );
 
   PreparedDomainAction prepareDelete(
     String id,
@@ -447,13 +580,56 @@ class DayTemplateRepository {
     if (tx.action?.hash != a.hash) {
       throw const StoreException('prepared_action_mismatch');
     }
+    if (a.action == LocalActionKind.catalogSlotContextSet) {
+      final input = intent.input;
+      if (input['catalog_contract'] != 1) {
+        throw const StoreException('catalog_contract_required');
+      }
+      final previous = await observedRecord(tx, a.target, a.baseLocalRevision);
+      final dayRef = LocalRef(
+        tx.profileId,
+        RecordKind.trainingDay,
+        input['day_id'] as String,
+      );
+      final day = await observedRecord(
+        tx,
+        dayRef,
+        input['day_revision'] as int,
+      );
+      if (previous['day_template_id'] != dayRef.id ||
+          previous['exercise_id'] != input['expected_exercise_id']) {
+        throw const StoreException('revision_conflict');
+      }
+      final selection = CatalogSelectionEvidence.fromJson(
+        catalogEvidenceObject(input['selection']),
+      );
+      await validateCatalogSelection(tx, selection);
+      final targets = decodeCatalogTargets(
+        localBytes(input['targets']),
+        selection,
+      );
+      final revision = await putDomain(tx, a.target, {
+        ...projectionFields(previous),
+        'exercise_id': selection.exerciseId,
+        'tracking_context_id': selection.contextId,
+        'catalog_selection_bytes': localBytes(selection.toJson()),
+        'catalog_targets_bytes': localBytes(catalogTargetsJson(targets)),
+      }, sourceRevisionId: previous['source_revision_id'] as String?);
+      await putDomain(
+        tx,
+        dayRef,
+        projectionFields(day),
+        sourceRevisionId: day['source_revision_id'] as String?,
+      );
+      return {'id': a.target.id, 'revision': revision};
+    }
     tx.requireRef(a.target, kind: RecordKind.trainingDay);
     final input = intent.input;
     if (a.action == LocalActionKind.planReorder) {
       final ids = (input['ids'] as List).cast<String>(),
           bases = Map<String, dynamic>.from(input['bases'] as Map);
       final all = await tx.getAll(
-        'SELECT id FROM day_templates WHERE profile_id=? AND deleted=0',
+        'SELECT id FROM day_templates WHERE profile_id=? AND deleted=0 AND is_template IS NOT 1',
         [tx.profileId],
       );
       if (ids.toSet().length != ids.length ||
@@ -487,6 +663,23 @@ class DayTemplateRepository {
     final fields = previous == null
         ? <String, Object?>{}
         : projectionFields(previous);
+    if (a.action == LocalActionKind.planSetActive) {
+      if (previous == null || !const [0, 1].contains(input['is_active'])) {
+        throw const StoreException('malformed_value');
+      }
+      fields['is_active'] = input['is_active'];
+      final revision = await putDomain(
+        tx,
+        a.target,
+        fields,
+        sourceRevisionId: previous['source_revision_id'] as String?,
+      );
+      return {
+        'id': a.target.id,
+        'revision': revision,
+        'is_active': input['is_active'],
+      };
+    }
     final existing = await tx.getAll(
       'SELECT * FROM day_template_items WHERE profile_id=? AND day_template_id=? AND deleted=0',
       [tx.profileId, a.target.id],
@@ -508,6 +701,9 @@ class DayTemplateRepository {
         LocalActionKind.planCreate,
         LocalActionKind.planEdit,
         LocalActionKind.planClone,
+        LocalActionKind.catalogPlanCreate,
+        LocalActionKind.catalogPlanEdit,
+        LocalActionKind.catalogPlanClone,
       }.contains(a.action)) {
         throw const StoreException('unsupported_action');
       }
@@ -536,6 +732,7 @@ class DayTemplateRepository {
         );
         fields.addAll({
           'position': next['n'],
+          'is_active': 1,
           'is_template': 0,
           'created_at': intent.createdAt,
         });
@@ -580,6 +777,22 @@ class DayTemplateRepository {
         );
         if (ex == null || ex['deleted'] == 1) {
           throw const StoreException('unavailable_definition');
+        }
+        if (values['catalog_selection_bytes'] != null) {
+          if (input['catalog_contract'] != 1) {
+            throw const StoreException('catalog_contract_required');
+          }
+          final selection = CatalogSelectionEvidence.fromJson(
+            decodeCatalogBytes(values['catalog_selection_bytes']!),
+          );
+          if (selection.exerciseId != values['exercise_id'] ||
+              selection.contextId != values['tracking_context_id']) {
+            throw const StoreException('catalog_context_mismatch');
+          }
+          await validateCatalogSelection(tx, selection);
+          if (values['catalog_targets_bytes'] != null) {
+            decodeCatalogTargets(values['catalog_targets_bytes']!, selection);
+          }
         }
         // In clone, carry the exact original override fields and slot ancestry.
         if (input['clone_id'] != null && slot['original_id'] != null) {

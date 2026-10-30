@@ -86,7 +86,7 @@ Future<void> seed(
 Future<LocalStore> reopen(AlkionProfile p) => LocalStore.open(
   profile: p,
   expectedProfileId: p.profileId,
-  schema: workflowSchemaRegistry(),
+  schema: prescriptionSchemaRegistry(),
 );
 
 SessionDraft rawResumeDraft(Exercise exercise, LoggedSet row) => SessionDraft(

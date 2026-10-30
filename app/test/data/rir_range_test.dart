@@ -45,7 +45,7 @@ void main() {
     expect(rirOrdered(0, 2), (low: 0, high: 2));
   });
 
-  test('a day slot loaded with an inverted RIR range gets it swapped', () {
+  test('an untouched inverted RIR range retains its exact bounds', () {
     const resolved = ResolvedSlot(
       exercise: _ex,
       workSets: 3,
@@ -56,7 +56,7 @@ void main() {
       rirHigh: 1,
     );
     final s = daySlotStateFromResolved(resolved, 'item');
-    expect(s.draft.rirLow, 1);
-    expect(s.draft.rirHigh, 3);
+    expect(s.draft.rirLow, 3);
+    expect(s.draft.rirHigh, 1);
   });
 }

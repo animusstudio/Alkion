@@ -31,9 +31,12 @@ with `GenerationSelectionException`:
 | `selected_generation_invalid` | Malformed or linked selection bytes; preserved. |
 | `selected_generation_missing` | The selected file is absent; it is never recreated empty. |
 
-No schema migration was needed: the T2 `restore_journal`, `reviews`,
-`review_decisions` and `profile_state` fence carry everything. Reserved migration
-IDs 4 and 5 remain unused.
+No restore-specific schema migration is needed: the T2 `restore_journal`,
+`reviews`, `review_decisions` and `profile_state` fence carry restore selection
+and lineage. Current normal-app storage is schema 5 for catalog execution;
+migrations 1–4 remain frozen and schema-specific backup inventories preserve
+older snapshots. See the [durable catalog integration contract](../specs/2026-10-30-catalog-in-alkion-dev.md)
+(2026-10-30, Approved).
 
 ## Restore procedure
 

@@ -11,6 +11,11 @@ import 'package:alkion/animus/workout_send.dart';
 import 'package:alkion/animus/workout_translation.dart';
 import 'package:alkion/animus/workout_upload_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/data/active_session_draft.dart';
+import 'package:alkion/data/catalog_execution_repository.dart';
+import 'package:alkion/domain/catalog_execution.dart';
+import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/data/session_writer.dart';
 import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/domain/local_action.dart';
@@ -227,6 +232,84 @@ final class _UiCapturedApi extends _CapturedApi {
       return _response(_uiRemap('definition-create.response', selected));
     }
     return _response(_uiBytes('finish-null-notes.response'), status: 400);
+  }
+}
+
+final _v5Fixtures = Directory('test/fixtures/animus_v5_native_finish');
+Map<String, dynamic> _v5Json(String name) => uploadMap(
+  jsonDecode(File('${_v5Fixtures.path}/$name.json').readAsStringSync()),
+);
+
+final class _V5CapturedApi extends _CapturedApi {
+  List<int> remap(String name) {
+    var text = File('${_v5Fixtures.path}/$name.json').readAsStringSync();
+    for (final e in replacements.entries) {
+      text = text.replaceAll(e.key, e.value);
+    }
+    return utf8.encode(text);
+  }
+
+  @override
+  Future<AnimusHttpResponse> post({
+    required Uri uri,
+    required Map<String, String> headers,
+    required List<int> body,
+    required int maxResponseBytes,
+    required Duration timeout,
+  }) async {
+    posts.add(List<int>.from(body));
+    final command = uploadMap(jsonDecode(utf8.decode(body)));
+    final name = command['definition'] != null ? 'definition' : 'finish';
+    final original = _v5Json('$name.request');
+    replacements[original['operation_id'] as String] =
+        command['operation_id'] as String;
+    replacements[uploadMap(original['target'])['id'] as String] =
+        uploadMap(command['target'])['id'] as String;
+    if (name == 'finish') {
+      final oldBlock = uploadMap(
+        (uploadMap(uploadMap(original['workout'])['draft'])['blocks'] as List)
+            .single,
+      );
+      final newBlock = uploadMap(
+        (uploadMap(uploadMap(command['workout'])['draft'])['blocks'] as List)
+            .single,
+      );
+      replacements[oldBlock['id'] as String] = newBlock['id'] as String;
+      final oldSet = uploadMap(
+        uploadMap((oldBlock['sets'] as List).single)['set'],
+      );
+      final newSet = uploadMap(
+        uploadMap((newBlock['sets'] as List).single)['set'],
+      );
+      replacements[uploadMap(oldSet['id'])['value'] as String] =
+          uploadMap(newSet['id'])['value'] as String;
+    }
+    expect(
+      deepUploadEqual(command, jsonDecode(utf8.decode(remap('$name.request')))),
+      isTrue,
+      reason:
+          'Complete production v5-native command matches actual handler capture after UUID substitution',
+    );
+    return _response(remap('$name.response'));
+  }
+
+  @override
+  Future<AnimusHttpResponse> get({
+    required Uri uri,
+    required Map<String, String> headers,
+    required int maxResponseBytes,
+    required Duration timeout,
+  }) async {
+    if (uri.path.endsWith('/system/info')) {
+      return super.get(
+        uri: uri,
+        headers: headers,
+        maxResponseBytes: maxResponseBytes,
+        timeout: timeout,
+      );
+    }
+    gets.add(uri.path);
+    return _response(remap('read.response'));
   }
 }
 
@@ -473,6 +556,116 @@ Future<String> _seed(LocalStore store, {bool time = true}) async {
   return id;
 }
 
+final _v5At = DateTime.utc(2026, 10, 30, 14, 51, 50, 666, 62);
+Future<String> _finishV5Controller(
+  LocalStore store,
+  Exercise exercise, {
+  CatalogOwnedSelection? typed,
+}) async {
+  final drafts = DraftStore.local(store);
+  await drafts.load();
+  final set = SetState(
+    id: _uuid.v4(),
+    weightKg: 20,
+    reps: 8,
+    rir: null,
+    isWarmup: false,
+    done: true,
+    catalog: typed == null
+        ? null
+        : CatalogSetEvidence(
+            selection: typed.selection,
+            metrics: {
+              for (final metric in typed.selection.profile.requiredMetrics)
+                metric: CatalogMetricEvidence.fromInput(
+                  metric == 'repetitions'
+                      ? '8'
+                      : metric == 'reported_load'
+                      ? '20.000000000000001'
+                      : '30.250000000000001',
+                  metric: metric,
+                  unit: CatalogMetricEvidence.defaultUnit(metric),
+                ),
+            },
+          ),
+  );
+  final controller = ActiveSessionController(draftStore: drafts)
+    ..seedForTest(
+      SessionDraft(
+        templateId: null,
+        name: 'Custom',
+        focus: '',
+        startedAt: _v5At.subtract(const Duration(seconds: 260)),
+        blocks: [
+          BlockState(
+            exercise: exercise,
+            resolved: ResolvedSlot(
+              exercise: exercise,
+              workSets: 1,
+              warmupSets: 0,
+              repLow: 8,
+              repHigh: 8,
+              rirLow: null,
+              rirHigh: null,
+              rirPolicy: 'off',
+            ),
+            warmupSets: [],
+            workingSets: [set],
+            expanded: true,
+            catalogSelection: typed?.selection,
+            catalogDependencies: typed?.dependencies ?? const [],
+          ),
+        ],
+      ),
+    );
+  try {
+    await controller.flushPersistence();
+    final repository = WorkoutRepository.local(store);
+    final prepared = controller.prepareFinish(repository, at: _v5At);
+    expect(
+      (prepared.input['finish_time_evidence'] as Map)['elapsed_seconds'],
+      260,
+    );
+    final frozen = prepared.action.bytes;
+    final id = await controller.commitFinish(repository);
+    expect(prepared.action.bytes, frozen);
+    expect(controller.lastFinished!.elapsedSeconds, 260);
+    return id;
+  } finally {
+    controller.dispose();
+  }
+}
+
+Future<Exercise> _defaultV5NativeExercise(
+  LocalStore store, {
+  bool typedDefinition = false,
+}) async {
+  final repository = ExerciseRepository.local(store);
+  // These are the ordinary ExerciseEditor's actual default fields. Optional
+  // training defaults and executionDefinition are absent unless explicitly set.
+  final intent = repository.prepareExercise(
+    ExerciseDraft(
+      name: 'T4SyntheticPress',
+      muscleGroup: 'chest',
+      compound: false,
+      plateStepKg: 2.5,
+      executionDefinition: typedDefinition
+          ? CatalogExecutionDefinition(
+              profile: CatalogMeasurementProfileEvidence.forKey(
+                'duration_distance_optional',
+              ),
+              displayLabel: 'T4SyntheticPress',
+            )
+          : null,
+    ),
+  );
+  await repository.commitPrepared(intent);
+  final exercise = (await repository.byId(intent.action.target.id))!;
+  expect(intent.action.action, LocalActionKind.definitionCreate);
+  expect(exercise.executionDefinition == null, !typedDefinition);
+  return exercise;
+}
+
 /// Inject a deferred FK violation after the production transaction callback,
 /// making SQLite itself reject COMMIT and execute the mandatory pool recovery.
 final class _CommitFailure implements LocalDatabase {
@@ -561,7 +754,7 @@ void main() {
     store = await LocalStore.open(
       profile: profile,
       expectedProfileId: profile.profileId,
-      schema: workflowSchemaRegistry(),
+      schema: catalogExecutionSchemaRegistry(),
     );
   }
 
@@ -619,6 +812,118 @@ void main() {
     await store.close();
     await root.delete(recursive: true);
   });
+
+  test(
+    'v5 ordinary default native definition and real controller finish stay eligible',
+    () async {
+      expect((await store.get('PRAGMA user_version')).values.single, 5);
+      final exercise = await _defaultV5NativeExercise(store);
+      final id = await _finishV5Controller(store, exercise);
+      final before = await store.inventory();
+      final selected = await sender.select(id);
+      expect(selected.status, AnimusWorkoutSendStatus.ready);
+      expect(selected.exerciseCount, 1);
+      expect(selected.setCount, 1);
+      final operation = await store.get(
+        'SELECT action,input_bytes FROM operations WHERE target_id=?',
+        [id],
+      );
+      expect(operation['action'], 'workoutFinish');
+      final input = uploadMap(
+        uploadMap(
+          jsonDecode(
+            utf8.decode((operation['input_bytes'] as List).cast<int>()),
+          ),
+        )['input'],
+      );
+      expect((input['sets'] as List).single['rir'], isNull);
+      expect(input.containsKey('catalog_contract'), isFalse);
+      // Selection adds only credential-free local state; original actions/evidence
+      // remain exact. The positive captured-handler send is exercised below.
+      final after = await store.inventory();
+      for (final table in before.keys.where((k) => k != 'local_state')) {
+        expect(after[table], before[table], reason: table);
+      }
+      await sender.close();
+      final captured = _V5CapturedApi();
+      sender = AnimusWorkoutSender(
+        database: store,
+        installationId: store.profile.installationId,
+        connection: connection,
+        http: captured,
+      );
+      await sender.send(selected);
+      final result = (await sender.selectionFor(id))!;
+      expect(captured.posts.length, 2);
+      expect(result.status, AnimusWorkoutSendStatus.sent);
+      expect(result.readBackVerified, isTrue);
+    },
+  );
+
+  test(
+    'v5 generic native action with typed execution definition stays local before writes',
+    () async {
+      final exercise = await _defaultV5NativeExercise(
+        store,
+        typedDefinition: true,
+      );
+      final id = await _finishV5Controller(store, exercise);
+      final before = await store.inventory();
+      final selected = await sender.select(id);
+      expect(selected.issue, AnimusWorkoutSendIssue.unsupportedDefinition);
+      await sender.send(selected);
+      expect(api.posts, isEmpty);
+      expect(api.gets, isEmpty);
+      expect(await store.inventory(), before);
+    },
+  );
+
+  for (final profile in CatalogMeasurementProfileEvidence.definitions.keys) {
+    test(
+      'v5 typed $profile controller finish preserves complete evidence and stays local',
+      () async {
+        final repository = CatalogExecutionRepository.local(store);
+        final owned = await repository.commitPrepared(
+          await repository.prepareSelection(
+            displayLabel: 'Typed $profile',
+            customId: _uuid.v4(),
+            profile: CatalogMeasurementProfileEvidence.forKey(profile),
+            resistanceSource: 'external',
+            loadConvention: 'reported_mass',
+          ),
+        );
+        final id = await _finishV5Controller(
+          store,
+          owned.exercise,
+          typed: owned,
+        );
+        final op = await store.get(
+          'SELECT action,eligibility,input_bytes FROM operations WHERE target_id=?',
+          [id],
+        );
+        expect(op['action'], 'catalogWorkoutFinish');
+        expect(op['eligibility'], 'unsupportedMapping');
+        final input = uploadMap(
+          uploadMap(
+            jsonDecode(utf8.decode((op['input_bytes'] as List).cast<int>())),
+          )['input'],
+        );
+        expect(input['catalog_contract'], 1);
+        final set = uploadMap((input['sets'] as List).single);
+        expect(set['weight_kg'], isNull);
+        expect(set['reps'], isNull);
+        expect(set['catalog_set_bytes'], isNotNull);
+        expect(set['tracking_context_id'], owned.selection.contextId);
+        final before = await store.inventory();
+        final selected = await sender.select(id);
+        expect(selected.issue, AnimusWorkoutSendIssue.unsupportedWorkout);
+        await sender.send(selected);
+        expect(api.posts, isEmpty);
+        expect(api.gets, isEmpty);
+        expect(await store.inventory(), before);
+      },
+    );
+  }
 
   test(
     'actual UI absent notes are omitted by the production sender; workout400 is a value rejection',
