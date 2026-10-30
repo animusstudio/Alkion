@@ -57,6 +57,26 @@ def synthetic_catalog():
     }
 
 
+def synthetic_browse(catalog, source_digest):
+    return {
+        'format': 'alkion-catalog-browse', 'schema_version': 1,
+        'classification_revision': 'synthetic-browse.1',
+        'catalog_revision': catalog['catalog_revision'], 'source_sha256': source_digest,
+        'private_review': '/private/synthetic-review',
+        'groups': [{'key': 'biceps', 'kind': 'muscle',
+                    'names': {locale: 'Synthetic group' for locale in stager.LOCALES},
+                    'synonyms': {locale: ['Synthetic synonym'] for locale in stager.LOCALES}},
+                   {'key': 'mobility', 'kind': 'activity',
+                    'names': {locale: 'Synthetic mobility' for locale in stager.LOCALES},
+                    'synonyms': {locale: [] for locale in stager.LOCALES}}],
+        'variants': [{'variant_id': row['id'], 'variant_revision': row['revision'],
+                      'status': 'reviewed', 'target_groups': ['biceps'],
+                      'secondary_groups': [], 'activity_groups': [],
+                      'private_note': '/private/synthetic-exception'}
+                     for row in catalog['variants']],
+    }
+
+
 class CatalogStagerTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='catalog-stage-synthetic-')
@@ -177,6 +197,82 @@ class CatalogStagerTest(unittest.TestCase):
         self.assertEqual((stager.ASSETS / stager.CATALOG_NAME).read_bytes(), original)
         (stager.ANDROID_ASSETS / 'unadmitted-media.bin').write_bytes(b'synthetic')
         with self.assertRaisesRegex(ValueError, 'inventory'):
+            stager.verify()
+
+    def stage_browse(self, browse=None):
+        digest = self.write_source()
+        browse = browse if browse is not None else synthetic_browse(synthetic_catalog(), digest)
+        path = self.root / 'browse.json'
+        path.write_bytes(stager.encode(browse))
+        return stager.stage(self.source, digest, path, stager.sha256(path.read_bytes()))
+
+    def test_browse_is_separate_bound_allowlisted_and_original_anatomy_is_unchanged(self):
+        manifest = self.stage_browse()
+        self.assertEqual(manifest['schema_version'], 2)
+        projected = stager.decode((stager.ASSETS / stager.BROWSE_NAME).read_bytes())
+        self.assertEqual(projected['projection_sha256'], manifest['projection_sha256'])
+        self.assertEqual(projected['variants'][0]['target_groups'], ['biceps'])
+        self.assertNotIn('/private/', json.dumps(projected) + json.dumps(manifest))
+        original = stager.project(synthetic_catalog())['muscle_profiles']
+        actual = stager.decode((stager.ASSETS / stager.CATALOG_NAME).read_bytes())
+        self.assertEqual(actual['muscle_profiles'], original)
+        self.assertEqual(stager.verify(), manifest)
+
+    def test_rejects_browse_missing_stale_duplicate_unsupported_or_conflicting_memberships(self):
+        digest = self.write_source()
+        base = synthetic_browse(synthetic_catalog(), digest)
+        mutations = [
+            lambda c: c.update(source_sha256='0' * 64),
+            lambda c: c.update(schema_version=2),
+            lambda c: c.update(schema_version=1.0),
+            lambda c: c.update(catalog_revision='stale'),
+            lambda c: c.update(variants=[]),
+            lambda c: c['variants'].append(copy.deepcopy(c['variants'][0])),
+            lambda c: c['groups'].append(copy.deepcopy(c['groups'][0])),
+            lambda c: c['groups'][0].update(key='unsupported'),
+            lambda c: c['variants'][0].update(variant_revision=2),
+            lambda c: c['variants'][0].update(status='inferred'),
+            lambda c: c['variants'][0].update(status='unresolved'),
+            lambda c: c['variants'][0].update(target_groups=[]),
+            lambda c: c['variants'][0].update(target_groups=[], secondary_groups=['biceps']),
+            lambda c: c['variants'][0].update(secondary_groups=['biceps']),
+            lambda c: c['variants'][0].update(target_groups=['biceps', 'biceps']),
+            lambda c: c['variants'][0].update(activity_groups=['biceps']),
+            lambda c: c['variants'][0].update(target_groups=['unknown']),
+            lambda c: c['groups'][0]['names'].pop('de'),
+            lambda c: c['groups'][0]['synonyms'].update(de=['same', 'same']),
+        ]
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                browse = copy.deepcopy(base)
+                mutate(browse)
+                with self.assertRaises(ValueError):
+                    self.stage_browse(browse)
+                self.assertFalse(stager.ASSETS.exists())
+
+    def test_explicit_unresolved_and_activity_memberships_are_valid(self):
+        digest = self.write_source()
+        for membership in [dict(status='unresolved', target_groups=[]),
+                           dict(target_groups=[], activity_groups=['mobility'])]:
+            browse = synthetic_browse(synthetic_catalog(), digest)
+            browse['variants'][0].update(membership)
+            projected = stager.project_browse(browse, stager.project(synthetic_catalog()), digest, '1' * 64)
+            self.assertEqual(projected['variants'][0]['status'], membership.get('status', 'reviewed'))
+
+    def test_browse_digest_tampering_extra_assets_and_sidecar_symlink_are_rejected(self):
+        digest = self.write_source()
+        path = self.root / 'browse.json'
+        path.write_bytes(stager.encode(synthetic_browse(synthetic_catalog(), digest)))
+        with self.assertRaisesRegex(ValueError, 'reviewed SHA-256'):
+            stager.stage(self.source, digest, path, '0' * 64)
+        link = self.root / 'browse-link.json'
+        link.symlink_to(path)
+        with self.assertRaisesRegex(ValueError, 'regular file'):
+            stager.stage(self.source, digest, link, stager.sha256(path.read_bytes()))
+        self.stage_browse()
+        output = stager.ASSETS / stager.BROWSE_NAME
+        output.write_bytes(output.read_bytes() + b' ')
+        with self.assertRaisesRegex(ValueError, 'Browse manifest'):
             stager.verify()
 
 

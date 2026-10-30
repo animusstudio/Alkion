@@ -141,7 +141,7 @@ class _LibraryTabState extends State<LibraryTab> {
                   final l = AppLocalizations.of(context);
                   final result = await showWActionSheet<String>(
                     context,
-                    title: trial.label(
+                    title: trial.identifyingLabel(
                       choice,
                       Localizations.localeOf(context).languageCode,
                     ),
@@ -221,7 +221,10 @@ class _MuscleSection extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
           child: Text(
-            localizedMuscle(context, muscle).toUpperCase(),
+            (muscle.isEmpty
+                    ? AppLocalizations.of(context).catalogUnclassified
+                    : localizedMuscle(context, muscle))
+                .toUpperCase(),
             style: WorkoutType.body(
               size: 12,
               weight: FontWeight.w500,
@@ -275,7 +278,9 @@ class _ExerciseRow extends StatelessWidget {
     final trial = CatalogTrialScope.maybeOf(context);
     final choice = trial?.exercises[exercise.id];
     final locale = Localizations.localeOf(context).languageCode;
-    final name = choice == null ? exercise.name : trial!.label(choice, locale);
+    final name = choice == null
+        ? exercise.name
+        : trial!.identifyingLabel(choice, locale);
     // Sub-label: '{equip ?? localizedMuscle(muscleGroup)}{ · compound}'
     final subParts = <String>[
       exercise.equip?.isNotEmpty == true

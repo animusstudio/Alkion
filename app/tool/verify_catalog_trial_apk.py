@@ -6,6 +6,7 @@ or invoking Android tools. Other ABI plugin libraries may legitimately coexist.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import struct
@@ -78,7 +79,66 @@ def _elf_hash(stream, machine, label):
     return digest.hexdigest()
 
 
-def verify(apk, platform, generated_jni_dir):
+def _verify_catalog_assets(archive, entries, assets_dir):
+    """Bind the packaged private inventory to explicitly selected staged bytes."""
+    spec = importlib.util.spec_from_file_location(
+        'catalog_trial_stager', Path(__file__).with_name('stage_catalog_trial.py'))
+    stager = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stager)
+    root = Path(assets_dir)
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError('Missing or redirected staged catalog assets')
+    prefix = 'flutter_assets/assets/catalog_trial/'
+    directory = root / prefix
+    for path in (directory, *directory.parents):
+        if path.is_symlink():
+            raise ValueError('Redirected staged catalog assets')
+    if any(path.is_symlink() for path in root.rglob('*')):
+        raise ValueError('Redirected staged catalog assets')
+    manifest_path = directory / stager.MANIFEST_NAME
+    manifest = stager.decode(manifest_path.read_bytes())
+    names = {stager.CATALOG_NAME, stager.MANIFEST_NAME}
+    metadata = manifest.get('browse')
+    if metadata is not None:
+        names.add(stager.BROWSE_NAME)
+    allowed = {directory / name for name in names}
+    if any(p.is_symlink() or (p.is_file() and p not in allowed) for p in root.rglob('*')):
+        raise ValueError('Unexpected staged catalog asset inventory')
+    data = {name: (directory / name).read_bytes() for name in names}
+    catalog = stager.project(stager.decode(data[stager.CATALOG_NAME]))
+    catalog_digest = stager.sha256(data[stager.CATALOG_NAME])
+    if stager.encode(catalog) != data[stager.CATALOG_NAME]:
+        raise ValueError('Unadmitted catalog APK projection')
+    if metadata is not None:
+        if (not isinstance(metadata, dict) or
+                set(metadata) != {'source_sha256', 'projection_sha256', 'classification_revision'} or
+                not isinstance(metadata.get('source_sha256'), str) or
+                not stager.re.fullmatch(r'[0-9a-f]{64}', metadata['source_sha256'])):
+            raise ValueError('Invalid browse APK manifest')
+        browse = stager.project_browse(stager.decode(data[stager.BROWSE_NAME]), catalog,
+                                      manifest.get('source_sha256'), catalog_digest)
+        if (stager.encode(browse) != data[stager.BROWSE_NAME] or
+                stager.sha256(data[stager.BROWSE_NAME]) != metadata.get('projection_sha256') or
+                browse['classification_revision'] != metadata.get('classification_revision')):
+            raise ValueError('Browse APK manifest mismatch')
+    source_digest = manifest.get('source_sha256')
+    if (not isinstance(source_digest, str) or not stager.re.fullmatch(r'[0-9a-f]{64}', source_digest) or
+            manifest != stager.manifest_for(catalog, source_digest, catalog_digest, metadata)):
+        raise ValueError('Invalid catalog APK manifest')
+    packaged = {name for name in entries if name.startswith('assets/' + prefix) and
+                not entries[name].is_dir()}
+    # The ordinary pubspec's public README may coexist with the private mirror.
+    packaged.discard('assets/' + prefix + 'README.md')
+    if packaged != {'assets/' + prefix + name for name in names}:
+        raise ValueError('Unexpected packaged catalog asset inventory')
+    for name, expected in data.items():
+        member = 'assets/' + prefix + name
+        if entries[member].file_size != len(expected) or archive.read(entries[member]) != expected:
+            raise ValueError('Packaged catalog asset differs from staged bytes')
+    return {name: stager.sha256(value) for name, value in data.items()}
+
+
+def verify(apk, platform, generated_jni_dir, catalog_assets_dir=None):
     """Return verified selected-ABI library digests, or fail closed."""
     if platform not in TARGETS:
         raise ValueError('Unsupported Android platform')
@@ -94,6 +154,9 @@ def verify(apk, platform, generated_jni_dir):
         if MANIFEST not in entries:
             raise ValueError('Missing NativeAssetsManifest.json')
         _verify_manifest(archive, entries[MANIFEST], target)
+        catalog_assets = None
+        if catalog_assets_dir is not None:
+            catalog_assets = _verify_catalog_assets(archive, entries, catalog_assets_dir)
         digests = {}
         for library in REQUIRED_LIBRARIES:
             member = f'lib/{abi}/{library}'
@@ -109,8 +172,11 @@ def verify(apk, platform, generated_jni_dir):
                 current = _elf_hash(stream, machine, f'generated {library}')
             if current != digests[library]:
                 raise ValueError(f'Stale packaged library differs from generated JNI: {library}')
-    return {'platform': platform, 'abi': abi, 'elf_machine': machine,
-            'sha256': digests}
+    receipt = {'platform': platform, 'abi': abi, 'elf_machine': machine,
+               'sha256': digests}
+    if catalog_assets is not None:
+        receipt['catalog_assets_sha256'] = catalog_assets
+    return receipt
 
 
 def main(argv=None):
@@ -118,9 +184,10 @@ def main(argv=None):
     parser.add_argument('--apk', type=Path, required=True)
     parser.add_argument('--platform', choices=TARGETS, required=True)
     parser.add_argument('--generated-jni-dir', type=Path, required=True)
+    parser.add_argument('--catalog-assets-dir', type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        receipt = verify(args.apk, args.platform, args.generated_jni_dir)
+        receipt = verify(args.apk, args.platform, args.generated_jni_dir, args.catalog_assets_dir)
     except (OSError, ValueError, BadZipFile, RuntimeError) as error:
         print(f'Catalog trial APK verification failed: {error}', file=sys.stderr)
         return 1

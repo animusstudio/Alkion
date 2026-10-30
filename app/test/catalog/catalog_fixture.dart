@@ -256,6 +256,7 @@ Map<String, dynamic> syntheticCatalog() {
       term(1, 'Hammer curl', 'en', 'collection', 5),
       term(2, 'Scott curl', 'en', 'collection', 6),
       term(3, 'Lento avanti', 'it', 'family', 2),
+      term(6, 'Lento avanti', 'it', 'variant', 14),
       term(4, 'RDL', 'en', 'variant', 14),
       term(5, 'Curl café', 'en', 'family', 1),
     ],

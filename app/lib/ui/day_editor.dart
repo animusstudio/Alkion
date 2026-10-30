@@ -329,6 +329,13 @@ class _DayEditorState extends State<DayEditor> {
         context,
         state: trial,
         multiple: true,
+        inDayChoiceKeys: {
+          for (final slot in _slots)
+            if ((_trialChoices[slot.instanceKey] ??
+                    trial.exercises[slot.exerciseId])
+                case final choice?)
+              choice.key,
+        },
       );
       if (!mounted || _controlsLocked || choices == null) return;
       try {
@@ -681,7 +688,7 @@ class _DayEditorState extends State<DayEditor> {
                                 ),
                                 Expanded(
                                   child: FitLabel(
-                                    trial.label(
+                                    trial.identifyingLabel(
                                       choice,
                                       Localizations.localeOf(
                                         context,
@@ -746,7 +753,7 @@ class _DayEditorState extends State<DayEditor> {
                           exercise: ex,
                           displayName: choice == null
                               ? null
-                              : trial!.label(
+                              : trial!.identifyingLabel(
                                   choice,
                                   Localizations.localeOf(context).languageCode,
                                 ),

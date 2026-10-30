@@ -166,13 +166,14 @@ class CatalogTrialApkTest(unittest.TestCase):
                     self.verify()
 
     def test_cli_returns_failure_before_an_invalid_artifact_can_be_named(self):
-        entries = self.fixture()
+        entries, assets = self.catalog_fixture()
         entries['lib/arm64-v8a/libsqlite3.so'] = synthetic_elf(183, b'synthetic-old')
         self.write(entries)
         stdout, stderr = io.StringIO(), io.StringIO()
         with redirect_stdout(stdout), redirect_stderr(stderr):
             status = verifier.main(['--apk', str(self.apk), '--platform', 'android-arm64',
-                                    '--generated-jni-dir', str(self.generated)])
+                                    '--generated-jni-dir', str(self.generated),
+                                    '--catalog-assets-dir', str(assets)])
         self.assertEqual(status, 1)
         self.assertEqual(stdout.getvalue(), '')
         self.assertIn('Stale packaged library', stderr.getvalue())
@@ -189,6 +190,85 @@ class CatalogTrialApkTest(unittest.TestCase):
                     current.write_bytes(data)
                 with self.assertRaisesRegex(ValueError, 'Missing current|Wrong ELF machine'):
                     self.verify()
+
+    def test_cli_requires_explicit_catalog_assets_for_full_apk_qualification(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            verifier.main(['--apk', str(self.apk), '--platform', 'android-arm64',
+                           '--generated-jni-dir', str(self.generated)])
+        self.assertEqual(error.exception.code, 2)
+
+    def catalog_fixture(self, browse=True):
+        from test_stage_catalog_trial import stager, synthetic_catalog, synthetic_browse
+        catalog = synthetic_catalog()
+        source_digest = stager.sha256(stager.encode(catalog))
+        projected = stager.encode(stager.project(catalog))
+        projection_digest = stager.sha256(projected)
+        files = {stager.CATALOG_NAME: projected}
+        metadata = None
+        if browse:
+            source_browse = synthetic_browse(catalog, source_digest)
+            projected_browse = stager.encode(stager.project_browse(
+                source_browse, catalog, source_digest, projection_digest))
+            metadata = {'source_sha256': stager.sha256(stager.encode(source_browse)),
+                        'projection_sha256': stager.sha256(projected_browse),
+                        'classification_revision': source_browse['classification_revision']}
+            files[stager.BROWSE_NAME] = projected_browse
+        files[stager.MANIFEST_NAME] = stager.encode(stager.manifest_for(
+            catalog, source_digest, projection_digest, metadata))
+        assets = self.root / 'catalog-assets'
+        prefix = 'flutter_assets/assets/catalog_trial/'
+        directory = assets / prefix
+        directory.mkdir(parents=True, exist_ok=True)
+        entries = self.fixture()
+        for name, data in files.items():
+            (directory / name).write_bytes(data)
+            entries['assets/' + prefix + name] = data
+        return entries, assets
+
+    def test_catalog_assets_bind_exact_packaged_bytes_with_old_and_browse_manifests(self):
+        for browse in [True, False]:
+            with self.subTest(browse=browse):
+                # Separate root inventories for old and new bundles.
+                if (self.root / 'catalog-assets').exists():
+                    import shutil
+                    shutil.rmtree(self.root / 'catalog-assets')
+                entries, assets = self.catalog_fixture(browse)
+                entries['assets/flutter_assets/assets/catalog_trial/README.md'] = b'Public notice'
+                self.write(entries)
+                receipt = verifier.verify(self.apk, 'android-arm64', self.generated, assets)
+                self.assertEqual(len(receipt['catalog_assets_sha256']), 3 if browse else 2)
+
+    def test_rejects_staged_asset_parent_symlink_before_reading(self):
+        entries, assets = self.catalog_fixture()
+        self.write(entries)
+        link = self.root / 'synthetic-root-link'
+        link.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'Redirected staged catalog assets'):
+            verifier.verify(self.apk, 'android-arm64', self.generated, link / assets.name)
+
+    def test_rejects_staged_manifest_symlink_before_reading_redirected_bytes(self):
+        entries, assets = self.catalog_fixture()
+        self.write(entries)
+        target = self.root / 'synthetic-redirected-manifest.json'
+        target.write_bytes(b'not-json-must-not-be-decoded')
+        manifest = assets / 'flutter_assets/assets/catalog_trial/manifest.dev.json'
+        manifest.unlink()
+        manifest.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, 'Redirected staged catalog assets'):
+            verifier.verify(self.apk, 'android-arm64', self.generated, assets)
+
+    def test_rejects_missing_changed_or_extra_packaged_private_assets(self):
+        base, assets = self.catalog_fixture()
+        key = 'assets/flutter_assets/assets/catalog_trial/browse.dev.json'
+        cases = [dict(base), dict(base), dict(base)]
+        del cases[0][key]
+        cases[1][key] += b' '
+        cases[2]['assets/flutter_assets/assets/catalog_trial/private-review.json'] = b'{}'
+        for entries in cases:
+            with self.subTest(entries=len(entries)):
+                self.write(entries)
+                with self.assertRaisesRegex(ValueError, 'catalog asset'):
+                    verifier.verify(self.apk, 'android-arm64', self.generated, assets)
 
 
 if __name__ == '__main__':

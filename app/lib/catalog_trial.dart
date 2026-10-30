@@ -42,17 +42,42 @@ Future<CatalogBundle> _loadCatalog() async {
   final manifest = jsonDecode(await rootBundle.loadString(_manifestAsset));
   if (manifest is! Map<String, dynamic> ||
       manifest['format'] != 'alkion-catalog-trial-manifest' ||
-      manifest['schema_version'] != 1 ||
+      ![1, 2].contains(manifest['schema_version']) ||
       manifest['private_trial_only'] != true ||
       manifest['redistribution_cleared'] != false ||
       manifest['media_included'] != false ||
       manifest['projection_sha256'] is! String) {
     throw const FormatException('Unsupported trial manifest');
   }
+  List<int>? browseBytes;
+  final browse = manifest['browse'];
+  if (manifest['schema_version'] == 2 && browse is Map<String, dynamic>) {
+    try {
+      final data = await rootBundle.load(
+        'assets/catalog_trial/browse.dev.json',
+      );
+      browseBytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+    } on Object {
+      // Optional discovery can fail while the pinned catalog remains usable.
+    }
+  }
   final data = await rootBundle.load(_catalogAsset);
   final bundle = CatalogBundle.fromBytes(
     data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
     expectedSha256: manifest['projection_sha256'] as String,
+    browseBytes: browseBytes,
+    browseSha256: browse is Map && browse['projection_sha256'] is String
+        ? browse['projection_sha256'] as String
+        : null,
+    browseRevision: browse is Map && browse['classification_revision'] is String
+        ? browse['classification_revision'] as String
+        : null,
+    sourceSha256: manifest['source_sha256'] is String
+        ? manifest['source_sha256'] as String
+        : null,
   );
   if (bundle.catalogRevision != manifest['catalog_revision'] ||
       bundle.searchRevision != manifest['search_revision']) {

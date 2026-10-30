@@ -57,26 +57,37 @@ if (isolatedCatalogTrial || configuredTarget == catalogTrialTarget) {
         "Catalog trial requires only assembleDevDebug, its isolated target, offline assets " +
             "and an existing explicit disposable debug signer"
     }
-    val relativeFiles = setOf(
-        "flutter_assets/assets/catalog_trial/catalog.dev.json",
-        "flutter_assets/assets/catalog_trial/manifest.dev.json",
-    )
     require(catalogTrialAssets.isDirectory &&
-        catalogTrialAssets.walkTopDown().none { Files.isSymbolicLink(it.toPath()) } &&
-        catalogTrialAssets.walkTopDown().filter { it.isFile }
-            .map { it.relativeTo(catalogTrialAssets).invariantSeparatorsPath }.toSet() == relativeFiles
-    ) { "Stage and verify the exact private catalog trial assets first" }
+        generateSequence(catalogTrialAssets) { it.parentFile }
+            .none { Files.isSymbolicLink(it.toPath()) } &&
+        catalogTrialAssets.walkTopDown().none { Files.isSymbolicLink(it.toPath()) }
+    ) { "Stage the private catalog trial assets without redirected paths first" }
     val manifest = JsonSlurper().parse(
         File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/manifest.dev.json")
     ) as? Map<*, *>
+    val browseMetadata = manifest?.get("browse") as? Map<*, *>
+    val relativeFiles = setOf(
+        "flutter_assets/assets/catalog_trial/catalog.dev.json",
+        "flutter_assets/assets/catalog_trial/manifest.dev.json",
+    ) + if (manifest?.get("schema_version") == 2 && browseMetadata != null)
+        setOf("flutter_assets/assets/catalog_trial/browse.dev.json") else emptySet()
+    require(catalogTrialAssets.walkTopDown().filter { it.isFile }
+            .map { it.relativeTo(catalogTrialAssets).invariantSeparatorsPath }.toSet() == relativeFiles
+    ) { "Stage and verify the exact private catalog trial assets first" }
     val payload = File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/catalog.dev.json")
     val payloadDigest = MessageDigest.getInstance("SHA-256").digest(payload.readBytes())
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     require(manifest != null && manifest["format"] == "alkion-catalog-trial-manifest" &&
-        manifest["schema_version"] == 1 && manifest["private_trial_only"] == true &&
+        manifest["schema_version"] in setOf(1, 2) && manifest["private_trial_only"] == true &&
         manifest["redistribution_cleared"] == false && manifest["media_included"] == false &&
         manifest["projection_sha256"] == payloadDigest
     ) { "Private catalog trial admission manifest or projection digest is invalid" }
+    require((manifest["schema_version"] == 1 && browseMetadata == null) ||
+        (manifest["schema_version"] == 2 && browseMetadata != null &&
+            browseMetadata["projection_sha256"] == MessageDigest.getInstance("SHA-256").digest(
+                File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/browse.dev.json").readBytes()
+            ).joinToString("") { "%02x".format(it.toInt() and 0xff) })
+    ) { "Private catalog browse admission digest is invalid" }
 }
 if (isolatedBodyPreview) {
     val requestedTasks = gradle.startParameter.taskNames

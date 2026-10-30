@@ -400,16 +400,32 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
   }
 
-  Future<void> _openBlockMenu(ActiveSessionController c, BlockState b) async {
+  Future<void> _openBlockMenu(
+    ActiveSessionController c,
+    BlockState b, {
+    SetState? contextSet,
+  }) async {
     final l = AppLocalizations.of(context);
     final blocks = c.draft.blocks;
     final trial = CatalogTrialScope.maybeOf(context);
+    CatalogChoice? contextChoice;
+    if (trial != null && trial.exercises.containsKey(b.exercise.id)) {
+      contextChoice = contextSet == null
+          ? trial.upcomingContexts[b] ??
+                trial.blockContexts[b] ??
+                trial.exercises[b.exercise.id]!
+          : _choiceFor(trial, b, contextSet);
+    }
+    final locale = Localizations.localeOf(context).languageCode;
     final picked = await showWActionSheet<String>(
       context,
-      title: b.exercise.name,
+      title: contextChoice == null
+          ? b.exercise.name
+          : _trialContextLabel(trial!, contextChoice, locale),
       actions: [
         if (trial?.exercises[b.exercise.id] != null) ...[
-          WSheetAction(label: l.catalogChangeSetup, value: 'setup'),
+          if (contextChoice?.variantId != null)
+            WSheetAction(label: l.catalogChangeSetup, value: 'setup'),
           WSheetAction(label: l.catalogAddAgain, value: 'again'),
           WSheetAction(label: l.catalogRoutineUse, value: 'routine'),
         ],
@@ -450,7 +466,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
     switch (picked) {
       case 'setup':
-        await _changeTrialSetup(c, b, trial!);
+        await _changeTrialSetup(c, b, trial!, currentChoice: contextChoice);
       case 'routine':
         final origin = c.originSlotIdFor(b);
         final templateId = c.draft.templateId;
@@ -466,9 +482,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           final slot = template?.slots.where((s) => s.id == origin).firstOrNull;
           final applied = trial!.useInRoutine(
             origin,
-            trial.upcomingContexts[b] ??
-                trial.blockContexts[b] ??
-                trial.exercises[b.exercise.id]!,
+            contextChoice!,
             actualSlot: slot,
             exerciseId: b.exercise.id,
             expectedRevision: c.originSlotRevisionFor(b),
@@ -480,11 +494,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           }
         }
       case 'again':
-        final choice =
-            trial!.upcomingContexts[b] ??
-            trial.blockContexts[b] ??
-            trial.exercises[b.exercise.id]!;
-        final ex = await trial.materialize(
+        final choice = contextChoice!;
+        final ex = await trial!.materialize(
           choice,
           ExerciseRepository.local(context.read<LocalDatabase>()),
           locale: Localizations.localeOf(context).languageCode,
@@ -542,6 +553,24 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     );
   }
 
+  Set<String> _trialInDayKeys(
+    CatalogTrialState state,
+    ActiveSessionController controller,
+  ) => {
+    for (final block in controller.draft.blocks)
+      if (state.exercises.containsKey(block.exercise.id))
+        for (final set in block.allSets) _choiceFor(state, block, set).key,
+  };
+
+  String _trialContextLabel(
+    CatalogTrialState state,
+    CatalogChoice choice,
+    String locale,
+  ) => [
+    state.identifyingLabel(choice, locale),
+    if (choice.setupId != 'default') state.distinction(choice, locale),
+  ].where((part) => part.isNotEmpty).join(' · ');
+
   bool _usesTrialForm(CatalogTrialState state, BlockState b) =>
       state.exercises.containsKey(b.exercise.id);
 
@@ -581,10 +610,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   Future<void> _changeTrialSetup(
     ActiveSessionController c,
     BlockState b,
-    CatalogTrialState trial,
-  ) async {
+    CatalogTrialState trial, {
+    CatalogChoice? currentChoice,
+  }) async {
     commitPendingInput();
     final current =
+        currentChoice ??
         trial.upcomingContexts[b] ??
         trial.blockContexts[b] ??
         trial.exercises[b.exercise.id]!;
@@ -596,9 +627,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final locale = Localizations.localeOf(context).languageCode;
     final choice = await showWActionSheet<String>(
       context,
-      title: l.catalogChangeSetup,
+      title:
+          '${l.catalogCurrentSetup(_trialContextLabel(trial, current, locale))}\n${l.catalogNewSetNotice}',
+      scrollableTitle: true,
       actions: [
-        WSheetAction(label: trial.label(current, locale), value: 'execution'),
+        WSheetAction(label: l.catalogChooseExecution, value: 'execution'),
         for (final known
             in trial.setups[current.variantId] ?? <CatalogChoice>[])
           WSheetAction(
@@ -617,6 +650,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         context,
         state: trial,
         familyId: variant.familyId,
+        currentChoice: current,
+        setupIntent: true,
+        inDayChoiceKeys: _trialInDayKeys(trial, c),
       );
       selected = choices?.firstOrNull;
     } else if (choice == 'new') {
@@ -737,8 +773,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                                         controller.focusSet(s);
                                         setState(() {});
                                       },
-                                      onMenu: () =>
-                                          _openBlockMenu(controller, block),
+                                      onMenu: () => _openBlockMenu(
+                                        controller,
+                                        block,
+                                        contextSet: s,
+                                      ),
                                     ),
                                 ],
                               )
@@ -793,7 +832,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         final sessionRepo = SessionRepository.local(
                           context.read<LocalDatabase>(),
                         );
-                        // Exercises already in the workout aren't offered again.
+                        // The ordinary owned-exercise picker keeps its duplicate guard.
                         final all = [
                           for (final e in await repo.all())
                             if (!controller.hasExercise(e.id)) e,
@@ -806,6 +845,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                           context,
                           exercises: all,
                           onCatalogChoice: (choice) => catalogChoice = choice,
+                          inDayChoiceKeys: trial == null
+                              ? const {}
+                              : _trialInDayKeys(trial, controller),
                         );
                         if (picked != null) {
                           try {
@@ -814,6 +856,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                               sessionRepo: sessionRepo,
                               repEntry: repEntry,
                               rirControls: rirControls,
+                              allowRepeat:
+                                  trial != null && catalogChoice != null,
                             );
                             if (trial != null &&
                                 catalogChoice != null &&

@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'catalog_browse.dart';
+export 'catalog_browse.dart';
+
 /// Invalid, incompatible or tampered inputs are surfaced to the caller. The
 /// caller owns recovery and may continue offering owned/custom exercises.
 class CatalogFormatException implements Exception {
@@ -113,7 +116,14 @@ class CatalogFilter {
     this.equipmentKinds = const [],
     this.facets = const {},
     this.excludedFacets = const {},
+    this.groupKey,
+    this.includeSecondary = false,
   });
+
+  /// Null is All. Unclassified means explicitly unresolved browse membership.
+  static const unclassified = 'unclassified';
+  final String? groupKey;
+  final bool includeSecondary;
   final List<String> familyIds;
   final List<String> equipmentKinds;
   final Map<String, List<String>> facets;
@@ -136,16 +146,66 @@ class CatalogFilter {
       excludedFacets: group('excluded_facets'),
     );
   }
-  bool matches(CatalogVariant v) =>
+  CatalogFilter copyWith({
+    List<String>? familyIds,
+    List<String>? equipmentKinds,
+    Map<String, List<String>>? facets,
+    Map<String, List<String>>? excludedFacets,
+    String? groupKey,
+    bool clearGroup = false,
+    bool? includeSecondary,
+  }) => CatalogFilter(
+    familyIds: familyIds ?? this.familyIds,
+    equipmentKinds: equipmentKinds ?? this.equipmentKinds,
+    facets: facets ?? this.facets,
+    excludedFacets: excludedFacets ?? this.excludedFacets,
+    groupKey: clearGroup ? null : groupKey ?? this.groupKey,
+    includeSecondary: includeSecondary ?? this.includeSecondary,
+  );
+
+  /// Runtime group scopes require the reviewed browse input. A caller that
+  /// omits it fails closed; catalog-authored legacy selectors stay unscoped.
+  bool matches(
+    CatalogVariant v, {
+    CatalogBrowse? browse,
+    bool secondaryOnly = false,
+  }) =>
       (familyIds.isEmpty || familyIds.contains(v.familyId)) &&
       (equipmentKinds.isEmpty || equipmentKinds.contains(v.equipmentKind)) &&
       facets.entries.every((e) => e.value.contains(v.facets[e.key])) &&
-      excludedFacets.entries.every((e) => !e.value.contains(v.facets[e.key]));
+      excludedFacets.entries.every((e) => !e.value.contains(v.facets[e.key])) &&
+      _matchesGroup(v, browse, secondaryOnly);
+
+  bool _matchesGroup(
+    CatalogVariant v,
+    CatalogBrowse? browse,
+    bool secondaryOnly,
+  ) {
+    if (groupKey == null) return !secondaryOnly;
+    final membership = browse?.variants[v.id];
+    if (membership == null) return false;
+    if (groupKey == unclassified) {
+      return !secondaryOnly && membership.status == 'unresolved';
+    }
+    final group = browse?.groups[groupKey];
+    if (group == null || membership.status != 'reviewed') return false;
+    if (group.kind == 'activity') {
+      return !secondaryOnly && membership.activityGroups.contains(groupKey);
+    }
+    final target = membership.targetGroups.contains(groupKey);
+    final secondary = membership.secondaryGroups.contains(groupKey);
+    return secondaryOnly
+        ? includeSecondary && secondary && !target
+        : target || (includeSecondary && secondary);
+  }
+
   Map<String, dynamic> toJson() => {
     'family_ids': familyIds,
     'equipment_kinds': equipmentKinds,
     'facets': facets,
     'excluded_facets': excludedFacets,
+    'group_key': groupKey,
+    'include_secondary': includeSecondary,
   };
 }
 
@@ -186,8 +246,14 @@ class CatalogBundle {
     required this.terms,
     required this.equipmentKinds,
     required this.facetVocabulary,
+    this.browse,
+    this.browseUnavailableReason = 'missing',
   });
   final String digest, catalogRevision, searchRevision;
+  final CatalogBrowse? browse;
+
+  /// Stable reason code for localized UI; never contains source details.
+  final String? browseUnavailableReason;
   final Map<String, CatalogEntity> families, equipmentModels;
   final Map<String, CatalogVariant> variants;
   final Map<String, CatalogCollection> collections;
@@ -214,7 +280,14 @@ class CatalogBundle {
         expectedSha256: expectedSha256,
       );
 
-  factory CatalogBundle.fromBytes(List<int> bytes, {String? expectedSha256}) {
+  factory CatalogBundle.fromBytes(
+    List<int> bytes, {
+    String? expectedSha256,
+    List<int>? browseBytes,
+    String? browseSha256,
+    String? browseRevision,
+    String? sourceSha256,
+  }) {
     final digest = sha256.convert(bytes).toString();
     if (expectedSha256 != null && expectedSha256 != digest) {
       throw const CatalogFormatException('Catalog digest mismatch');
@@ -529,7 +602,27 @@ class CatalogBundle {
           );
         }
       }
+      CatalogBrowse? browse;
+      String? browseUnavailableReason = 'missing';
+      if (browseBytes != null) {
+        try {
+          browse = CatalogBrowse.fromBytes(
+            browseBytes,
+            catalogDigest: digest,
+            catalogRevision: revision,
+            catalogVariants: variants,
+            sourceSha256: sourceSha256 ?? '',
+            expectedSha256: browseSha256 ?? '',
+            expectedRevision: browseRevision ?? '',
+          );
+          browseUnavailableReason = null;
+        } on Object {
+          browseUnavailableReason = 'invalid';
+        }
+      }
       final bundle = CatalogBundle._(
+        browse: browse,
+        browseUnavailableReason: browseUnavailableReason,
         digest: digest,
         catalogRevision: revision,
         searchRevision: search,
