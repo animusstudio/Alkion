@@ -29,12 +29,17 @@ Future<Exercise?> showExercisePicker(
   BuildContext context, {
   required List<Exercise> exercises,
   ValueChanged<CatalogChoice>? onCatalogChoice,
+  Set<String> inDayChoiceKeys = const {},
 }) async {
   final trial = CatalogTrialScope.maybeOf(context);
   if (trial != null) {
     final locale = Localizations.localeOf(context).languageCode;
     final repo = ExerciseRepository.local(context.read<LocalDatabase>());
-    final picked = await showCatalogPicker(context, state: trial);
+    final picked = await showCatalogPicker(
+      context,
+      state: trial,
+      inDayChoiceKeys: inDayChoiceKeys,
+    );
     if (picked == null || picked.isEmpty) return null;
     onCatalogChoice?.call(picked.single);
     try {

@@ -15,16 +15,26 @@ class CatalogChoice {
   }) : variantId = id,
        customName = null,
        customProfile = null,
-       customId = null;
-  CatalogChoice.custom(String name, String profile, {String? id})
-    : customName = name,
-      customProfile = profile,
-      variantId = null,
-      customId = id ?? const Uuid().v4(),
-      setupId = 'default',
-      nickname = null;
+       customId = null,
+       personalGroups = const {};
+  CatalogChoice.custom(
+    String name,
+    String profile, {
+    String? id,
+    Set<String> personalGroups = const {},
+  }) : customName = name,
+       customProfile = profile,
+       personalGroups = Set.unmodifiable(personalGroups),
+       variantId = null,
+       customId = id ?? const Uuid().v4(),
+       setupId = 'default',
+       nickname = null;
   final String? variantId, customName, customProfile, nickname, customId;
   final String setupId;
+
+  /// Optional personal organization, never copied into anatomical profiles or
+  /// the legacy single-muscle column. Empty means explicitly unclassified.
+  final Set<String> personalGroups;
   String get definitionKey =>
       variantId == null ? 'custom:$customId' : 'variant:$variantId';
   String get key => '$definitionKey@$setupId';

@@ -221,7 +221,10 @@ class _MuscleSection extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 0, 2, 8),
           child: Text(
-            localizedMuscle(context, muscle).toUpperCase(),
+            (muscle.isEmpty
+                    ? AppLocalizations.of(context).catalogUnclassified
+                    : localizedMuscle(context, muscle))
+                .toUpperCase(),
             style: WorkoutType.body(
               size: 12,
               weight: FontWeight.w500,

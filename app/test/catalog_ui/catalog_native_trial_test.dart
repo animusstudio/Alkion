@@ -169,18 +169,32 @@ void main() {
       final neutralRow = find.byKey(ValueKey('variant:$neutralId@default'));
       expect(neutralRow, findsOneWidget);
       expect(find.text('Add selected · 0'), findsOneWidget);
+      await tester.ensureVisible(neutralRow);
+      await tester.pump();
       await tester.tap(neutralRow);
       await tester.pump();
       expect(find.text('Add selected · 1'), findsOneWidget);
-      // Duplicate tap is idempotent; explicit menu action adds an occurrence.
+      // Selected tap removes the last occurrence; Add again explicitly repeats.
+      await tester.ensureVisible(neutralRow);
+      await tester.pump();
       await tester.tap(neutralRow);
       await tester.pump();
-      expect(find.text('Add selected · 1'), findsOneWidget);
-      await tester.tap(find.byTooltip('Details').first);
+      expect(find.text('Add selected · 0'), findsOneWidget);
+      await tester.ensureVisible(neutralRow);
+      await tester.pump();
+      await tester.tap(neutralRow);
+      await tester.pump();
+      await tester.tap(
+        find.descendant(of: neutralRow, matching: find.byTooltip('Details')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add again'));
       await tester.pumpAndSettle();
       expect(find.text('Add selected · 2'), findsOneWidget);
+      if (find.byTooltip('Leave exercise family').evaluate().isNotEmpty) {
+        await tester.tap(find.byTooltip('Leave exercise family').first);
+        await tester.pump();
+      }
       await tester.enterText(
         find.byKey(const Key('catalog-search')),
         'Standing barbell shoulder press',
@@ -869,11 +883,11 @@ void main() {
       );
       await tester.pumpWidget(screen(const Locale('en')));
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.byTooltip('Change setup').first);
+      await tester.tap(find.byTooltip('Change execution/equipment').first);
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.ensureVisible(find.text('Change setup'));
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.text('Change setup'));
+      await tester.ensureVisible(find.text('Change execution/equipment'));
+      await tester.tap(find.text('Change execution/equipment'));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.ensureVisible(find.text('New machine'));
@@ -881,7 +895,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.enterText(find.byType(TextField).last, 'Hotel pulley');
-      await tester.tap(find.text('Apply to upcoming sets'));
+      await tester.tap(find.text('Add one new set'));
       await tester.pump(const Duration(milliseconds: 300));
       expect(block.exercise.id, 'machine');
       expect(block.allSets.length, 3);

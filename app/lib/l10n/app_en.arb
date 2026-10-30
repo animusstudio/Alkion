@@ -1461,10 +1461,10 @@
   "catalogAddAgain": "Add again",
   "catalogAddSelected": "Add selected",
   "catalogSelected": "Selected",
-  "catalogChangeSetup": "Change setup",
+  "catalogChangeSetup": "Change execution/equipment",
   "catalogNewMachine": "New machine",
   "catalogNickname": "Nickname (optional)",
-  "catalogUpcoming": "Apply to upcoming sets",
+  "catalogUpcoming": "Add one new set",
   "catalogRoutineUse": "Use in this routine",
   "catalogRoutineNotice": "Routine unchanged. Save setup in the routine editor.",
   "catalogNoCarryover": "No previous load for this setup",
@@ -1479,5 +1479,86 @@
   "catalogTrialStart": "Start trial",
   "catalogTrialUnavailable": "The trial catalog could not be loaded. Rebuild it with a valid staged catalog.",
   "catalogLogSet": "Log set",
-  "catalogAdd": "Add"
+  "catalogAdd": "Add",
+  "catalogBrowseMuscles": "Browse by muscle",
+  "catalogAllAZ": "All A–Z",
+  "catalogUnclassified": "Unclassified",
+  "catalogActivities": "Activities",
+  "catalogIncludeSecondary": "Include secondary muscles",
+  "catalogTargetMatches": "Target muscles",
+  "catalogSecondaryMatches": "Secondary muscles only",
+  "catalogBrowseGroup": "Browse {group}",
+  "@catalogBrowseGroup": {
+    "placeholders": {
+      "group": {
+        "type": "String"
+      }
+    }
+  },
+  "catalogClearGroup": "Clear muscle/activity",
+  "catalogClearEquipment": "Clear equipment",
+  "catalogClearSearch": "Clear search",
+  "catalogClearFamily": "Leave exercise family",
+  "catalogClearFavorites": "Show all matches",
+  "catalogEquipment": "Equipment",
+  "catalogBasket": "Selection · {count}",
+  "@catalogBasket": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogSelectedCount": "Selected occurrences: {count}",
+  "@catalogSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogRemoveOccurrence": "Remove item {position}: {name}",
+  "@catalogRemoveOccurrence": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "position": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogMatchingExecutions": "{count} matching executions · choose one",
+  "@catalogMatchingExecutions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "catalogInDay": "In this day",
+  "catalogCurrent": "Current setup",
+  "catalogCurrentSetup": "Current: {name}",
+  "@catalogCurrentSetup": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "catalogNewSetNotice": "Choosing a setup adds one new set. Existing sets stay unchanged.",
+  "catalogChooseExecution": "Choose execution/equipment — add one set",
+  "catalogKeepSelection": "Keep selection",
+  "catalogDiscardSelection": "Discard selection",
+  "catalogDiscardTitle": "Discard selected exercises?",
+  "catalogDiscardBody": "Your pending selection has not been added. Keep it to continue choosing, or discard it to close.",
+  "catalogBrowseUnavailable": "Muscle browsing is unavailable for this catalog. Search by exercise name, browse All A–Z, or create your exercise.",
+  "catalogMissingVocabulary": "Exercise vocabulary is incomplete in this language. Try a familiar English name, browse by muscle, or create your exercise.",
+  "catalogNoFavorites": "No favorites match these filters. Clear one filter or show all matches.",
+  "catalogNoRecents": "No recent choices match these filters. Browse All A–Z or clear one filter.",
+  "catalogPersonalGroups": "Personal groups (optional)",
+  "catalogPersonalGroupsHint": "Choose groups only for your own organization. These are not anatomical facts. Leave unset to keep this exercise unclassified.",
+  "catalogMuscleEvidence": "Muscle evidence",
+  "catalogBrowseOnlyNotice": "Browse groups are editorial navigation. Detailed muscle evidence may be incomplete; an omitted muscle is unassessed.",
+  "catalogPersonalExercises": "Personal exercises"
 }
