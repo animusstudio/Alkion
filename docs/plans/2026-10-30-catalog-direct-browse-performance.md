@@ -1,7 +1,7 @@
 # Direct exercise browsing and responsive discovery
 
 Date: 2026-10-30. Lane: **Standard — presentation and performance.**
-Status: **Proposed.** Next: confirm this change, then implement tasks 1–3.
+Status: **Approved** by the owner on 2026-10-30. Next: implement tasks 1–3.
 Parent: [development](../alkion/development.md).
 Related: [normal Dev integration](2026-10-30-catalog-in-alkion-dev.md),
 [discovery contract](2026-10-29-muscle-guided-exercise-discovery.md).
@@ -141,4 +141,4 @@ browser code reduces divergence but must keep browse taps distinct from selectio
 ## Task state
 
 Read-only source diagnosis and two private full-input timing probes complete.
-No product changes. Physical frame and input-latency baselines remain pending.
+Task 1 in progress. Physical frame and input-latency baselines remain pending.
