@@ -5,7 +5,9 @@ uses translation contract `alkion-native-workout-send/1`. The
 [synthetic fixtures](../../app/test/fixtures/animus_workout_upload/manifest.json)
 were captured through a configured provider and actual Animus API on 2026-10-30.
 They contain 42 actual HTTP cases, including six invalid-base requests and their
-workout/operation absence checks. No sender or device result is implied.
+workout/operation absence checks. Those T1 fixtures alone imply no sender or
+device result; the later [actual emulator proof](acceptance.md#selected-workout-live-proof--2026-10-30)
+records the production sender/browser flow separately.
 
 Request and response body files retain their captured bytes, synthetic UUIDs,
 timestamps, decimal text and nulls. The manifest records their SHA-256 and size,
@@ -46,9 +48,10 @@ routine links and legacy PR/top flags are outside the public finish mapping.
 
 Explicit send preflight requires `workout_finish_definition_bases_v1` in
 `GET /v1/system/info` → `training.implemented` before any dependency write.
-The actual capture proves the capability is present. A missing capability
-causing **zero dependency writes remains a T2 production-sender test**; no
-missing-capability runtime result is claimed here.
+The T1 capture proves the capability is present. The later production-sender
+check removed only that flag from the actual discovery response: the UI kept
+the workout local and made zero definition/workout POSTs. This was a controlled
+modified-discovery test, not evidence from an older API binary.
 
 The stale pinned finish returns `409 revision_conflict`; reads of its workout
 and operation return 404. A separate current pinned finish succeeds, and its
@@ -89,8 +92,8 @@ python3 -m unittest discover -s tests -p test_animus_workout_upload_fixtures.py
 ```
 
 That check verifies unchanged body bytes, mapping, replay identity, statuses and
-captured budget measurements. It does not recreate the provider/API or qualify
-the future production sender, SQLite durability or an Android device.
+captured budget measurements. It does not recreate the provider/API or itself
+qualify the production sender, SQLite durability or an Android device.
 
 ## Selected-workout controls
 
@@ -110,3 +113,18 @@ A sent workout whose ordinary read-back failed remains **Sent** and offers
 **Verify sent copy**; this does not allocate another workout. Disconnect stops
 further scoped requests while retaining uncertain evidence for explicit retry.
 These controls are localized in English, German, Spanish and Italian.
+
+
+## Fresh notes and preserved rejections
+
+A fresh local finish may omit notes. The sender omits that field from the
+public request; it does not invent an explicit null or empty note. Supported
+string and empty-string values remain distinct. Explicit null is unsupported
+by this native command and blocks before network I/O.
+
+The first live UI attempt exposed an absent-to-null translation bug and received
+400 after its definition was acknowledged. The bounded client fix preserves
+that failed selection and exact request as non-retryable review evidence. It
+never rewrites those frozen bytes. A newly finished synthetic workout then
+passed real send, lost-acknowledgement recovery and exact read-back. No backend
+policy or authorization change was required.

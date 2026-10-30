@@ -8,8 +8,10 @@ entering those offline choices alone creates no profile. Local use stays
 account-free and offline; no connection I/O precedes an explicit action.
 Explicit configuration enables the [optional Animus connection](../docs/alkion/animus-connection.md): external
 browser authentication, scoped session storage and a confirmed foreground
-read-access check. No synchronization sender, replica download or OTA update
-transport is enabled. Final release identity/signing remain separate work.
+read-access check. A separate confirmed History action may manually send one
+supported native workout and its required definitions. No automatic/background
+sending, bulk history attachment, replica download or OTA update transport is
+enabled. Final release identity/signing remain separate work.
 
 ## Commands and boundaries
 
@@ -61,7 +63,7 @@ visual contract is `docs/superpowers/specs/2026-09-24-live-set-focus-design.md`.
 
 **Data:**
 - Imported numeric text may be empty, invalid or unknown: parse display values with `double.tryParse`, preserve exact source evidence, and never replace unknown data with zero. Compatibility booleans are 0/1. Calendar days and timestamps have separate validation/timezone contracts; never normalize an invalid calendar rollover.
-- Domain writes use the local revision/action contracts and commit an immutable outbox entry atomically. No sender or server authority is enabled. Preserve exact imported evidence; do not invent a server base or normalize unknown values.
+- Domain writes use the local revision/action contracts and commit an immutable outbox entry atomically. Only an explicit selected-native-workout send is enabled; source writer authority stays closed. Preserve exact imported evidence; do not invent a server base or normalize unknown values.
 - `is_template=1` compatibility rows stay out of owned catalog/day views. Keep deterministic template IDs and existing absorption/import behavior.
 - Import `package:uuid/uuid.dart` directly for UUIDs; `sqlite_async`, `crypto` and `uuid` have active local-store/backup/transfer callers.
 - Custom-exercise slugs: `uniqueSlug(name, id)` = slugify + `-id8` suffix (local dedup can't see other users' slugs).

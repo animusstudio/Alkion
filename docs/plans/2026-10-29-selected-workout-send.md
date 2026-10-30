@@ -1,6 +1,6 @@
 # Selected native workout send plan
 
-Date: 2026-10-29. Lane: full. Status: Approved; T1 accepted on 2026-10-30; T2 next.
+Date: 2026-10-29. Lane: full. Status: T1–T4 and integrated A1–A8 final review PASS (2026-10-30).
 Specification: [one selected native workout](../specs/2026-10-29-selected-workout-send.md).
 Starting client source: `b157fe5`. No sender/UI implementation is included in T1.
 
@@ -23,8 +23,9 @@ retain 42 real synthetic HTTP cases and 17 typed canonical measurements. The
 source contract preserves date/offset, exact decimal/nulls and set order;
 601 elapsed seconds produces 10 remote rounded minutes. Independent T1 source,
 live-evidence and public-fixture review PASS with no findings on 2026-10-30. T2
-is next and remains unimplemented. Missing capability causing zero
-dependency writes is an explicit T2 production-sender gate, not a T1 live claim.
+was next at that checkpoint; T2 and T3 subsequently passed independent review.
+The later T4 production-sender modified-discovery check proves zero dependency
+writes, separately from the T1 present-capability evidence.
 
 T2 — Durable selection, mapping and foreground sender.
 Freeze one consistent native finish/definition closure. Persist scoped attachment
@@ -54,3 +55,18 @@ review. Broad app checks run at integrated qualification; broaden earlier only
 for changed inputs or unresolved concerns. Two failures on the same problem
 require diagnosis/replanning. A public outgoing range requires owner review and
 approval; no delivery or installation is authorized by this plan.
+
+
+## Current state — 2026-10-30
+
+T1 contract, T2 sender and T3 controls passed independent review. The bounded
+absent-notes/classification fix also passed independent review at `a57a90f`.
+Actual Android 36 x86_64 / Firefox 159 proof reaches offline finish, real
+browser login/return, explicit account/space confirmation, selected manual send,
+Uncertain after a withheld successful acknowledgement, explicit same-byte retry
+and exact verified read-back. One new remote workout is retained; no duplicate.
+The old rejected selection/bytes remain unchanged and non-retryable. Local
+exact elapsed remains intact while the remote duration is rounded minutes.
+Independent integrated A1–A8 final review PASS with no findings on 2026-10-30.
+Phone, renderer qualification,
+server rollout and publication remain separate; see current [acceptance](../alkion/acceptance.md#selected-workout-live-proof--2026-10-30).

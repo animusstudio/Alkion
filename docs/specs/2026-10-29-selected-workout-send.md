@@ -45,7 +45,7 @@ target, server base zero, `training-workout-v1` and action `finish`.
 | Local evidence | Public representation |
 | --- | --- |
 | Native definition/action closure | Explicit mapped exercise targets and acknowledged server revisions |
-| Split label and notes | Typed string values, retaining null/empty distinctions |
+| Split label and optional notes | Preserve supported string/empty values; omit absent notes, block unsupported explicit null |
 | Completed sets | Draft blocks in saved session order; warm-ups then working sets as produced by a fresh finish |
 | Exact kg text | Typed decimal strings; never binary-float reformatting |
 | Unknown weight or RIR | Typed null where supported; never zero |
@@ -90,8 +90,10 @@ the original receipt after a later definition edit. Older omitted-field commands
 retain their current behavior. Explicit null cannot downgrade the precondition;
 an empty array must match the actual exercise closure. This client requires
 advertised support on the connected API, including after reconnecting.
-The actual T1 capture proves advertised support is present. T2 must prove that
-an absent capability causes zero dependency writes through the production sender.
+The actual T1 capture proves advertised support is present. The production
+sender later proved zero dependency writes when only that flag was removed
+from the real discovery response; this is a controlled modified-response test,
+not an older-server binary claim.
 
 ## Attempts and outcomes
 

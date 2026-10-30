@@ -15,10 +15,13 @@ separate from corrections and derived results. Replicas are not backups.
 
 An explicitly configured [optional Animus connection](docs/alkion/animus-connection.md)
 adds browser sign-in, account/space confirmation and a foreground read-access
-check at first use or later in Profile. First use also offers Go fully offline,
+check at first use or later in Profile. A separate confirmed History action can
+[manually send one supported native workout](docs/alkion/animus-workout-upload.md)
+and its required exercise definitions. First use also offers Go fully offline,
 then Start new/Restore backup; existing profiles open directly. Default builds
-and local workout use remain account-free and offline. Synchronization sending,
-replica downloads and OTA updates remain separate work. Final release identity and signing remain open; this repository
+and local workout use remain account-free and offline. Automatic/background
+sending, bulk history attachment, replica downloads and OTA updates remain
+separate work. Final release identity and signing remain open; this repository
 does not publish signed APKs or backend images automatically.
 
 ## Development
