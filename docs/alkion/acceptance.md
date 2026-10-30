@@ -6,6 +6,33 @@ observed: 2026-10-29
 
 # Alkion integrated acceptance
 
+## Exercise discovery usability — 2026-10-30
+
+The [approved usability plan](../plans/2026-10-29-muscle-guided-exercise-discovery.md)
+is in progress. T1 `7f3d9d0` and T2 input plumbing `7ba38cb` passed independent
+source review. T1's catalog/UI run passed 41 tests before its final nickname fix;
+the final real-store naming regression passed separately and analyzer reported no issues.
+T2 passed six focused Dart tests, 11 staging tests and 16 APK guard tests, including
+missing/invalid classifications, exact input bindings and redirected staging rejection.
+T3 `e3b38a3` passed independent review, 31 catalog tests and an ignored full-candidate
+probe across all four locales. Group membership/role partitions, admitted children,
+equipment and explicit group actions matched the pinned classification input.
+Private mapping review passed: all entries accounted for; unresolved entries remain explicit.
+T4 `39ae615` passed independent review, 40 picker tests and two repaired existing
+journey regressions. T5 `4a8386b` passed independent review, seven setup-caller tests,
+nine shared-sheet tests and 380 affected session/live-layout tests. The 320dp/2×
+long-context setup overflow is fixed with opt-in title scrolling; ordinary sheets
+retain their pinned headings. The four locales across both widths, text scales and
+themes are covered by 32 picker cases. Counts overlap, not one combined total.
+Final combined catalog suite: 96 PASS, zero skipped. Analyzer: zero issues;
+formatting: zero changes across 424 files. ARM64 Gradle build and exact staged-asset,
+ELF/current-JNI guards PASS at source `4a8386b`; package/signature checks confirm
+the isolated trial identity, disposable signer and absent INTERNET permission.
+APK SHA-256: `de20e8246cbed8582b35617c34d9fb30eabbbdc0ee534841b50e211d98c43d6c`.
+Native
+layout/TalkBack, owner comparison and public delivery are UNRUN for this change.
+Ordinary profiles and the trial's disabled Finish/RAM-only boundary remain unchanged.
+
 ## Exercise catalog native trial — 2026-10-29
 
 The [approved plan](../plans/2026-10-29-exercise-catalog-integration.md) has
