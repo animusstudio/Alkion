@@ -139,3 +139,7 @@ private; durable T4–T6 enablement and replacement of the everyday app remain o
 
 Non-goals: release, owner-data transfer, mass name merges, new auth/
 sync flows, manufacturer catalog, broad heatmap/statistics rollout or medical claims.
+
+Owner follow-up, 2026-10-30: “I want the new catalog on Alkion dev” activates
+durable T4–T6 and normal Dev rollout through the [execution addendum](2026-10-30-catalog-in-alkion-dev.md).
+The earlier trial-only delivery restriction is superseded; the dataset remains private.
