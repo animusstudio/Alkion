@@ -183,6 +183,8 @@ class CatalogIndex {
     this.bundle, {
     this.locale = 'en',
     this.profileId,
+    int? generation,
+    String? overlayIdentity,
     List<CatalogPersonalAlias> personalAliases = const [],
   }) {
     final effective =
@@ -213,6 +215,8 @@ class CatalogIndex {
         'labels-stable-identity-v2',
         locale,
         profileId,
+        generation,
+        overlayIdentity,
         effective.map((a) => a.toJson()).toList(),
       ]),
     );

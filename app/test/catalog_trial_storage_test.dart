@@ -97,7 +97,7 @@ void main() {
     try {
       expect(runtime.supportRoot.path, root.path);
       expect(runtime.animus.state, AnimusConnectionState.disabled);
-      expect((await runtime.store.get('PRAGMA user_version')).values.single, 4);
+      expect((await runtime.store.get('PRAGMA user_version')).values.single, 5);
       final next = await CatalogTrialStorage.createTemporaryDirectory(
         temporaryDirectory: selectedCache,
       );

@@ -1,6 +1,10 @@
 import 'package:provider/provider.dart';
 import '../catalog_ui/catalog_picker.dart';
 import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_runtime_state.dart';
+import '../data/catalog_execution_repository.dart';
+import '../domain/catalog_execution.dart';
+import '../widgets/w_action_sheet.dart';
 import '../data/exercise_repository.dart';
 import '../store/local_store.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +33,7 @@ Future<Exercise?> showExercisePicker(
   BuildContext context, {
   required List<Exercise> exercises,
   ValueChanged<CatalogChoice>? onCatalogChoice,
+  ValueChanged<CatalogSelectionEvidence>? onExecutionSelection,
   Set<String> inDayChoiceKeys = const {},
 }) async {
   final trial = CatalogTrialScope.maybeOf(context);
@@ -43,7 +48,17 @@ Future<Exercise?> showExercisePicker(
     if (picked == null || picked.isEmpty) return null;
     onCatalogChoice?.call(picked.single);
     try {
-      return await trial.materialize(picked.single, repo, locale: locale);
+      final exercise = await trial.materialize(
+        picked.single,
+        repo,
+        locale: locale,
+      );
+      if (!context.mounted || !trial.active) return null;
+      if (trial is CatalogRuntimeState &&
+          trial.selectionFor(picked.single) != null) {
+        onExecutionSelection?.call(trial.selectionFor(picked.single)!);
+      }
+      return exercise;
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -55,7 +70,7 @@ Future<Exercise?> showExercisePicker(
       return null;
     }
   }
-  return showModalBottomSheet<Exercise>(
+  final picked = await showModalBottomSheet<Exercise>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -66,6 +81,33 @@ Future<Exercise?> showExercisePicker(
         : null,
     builder: (_) => _ExercisePickerSheet(exercises: exercises),
   );
+  if (picked == null ||
+      !context.mounted ||
+      picked.executionDefinition == null) {
+    return picked;
+  }
+  final selections = await CatalogExecutionRepository.local(
+    context.read<LocalDatabase>(),
+  ).selectionsForExercise(picked.id);
+  if (!context.mounted || selections.isEmpty) return null;
+  final selection = selections.length == 1
+      ? selections.single
+      : await showWActionSheet<CatalogSelectionEvidence>(
+          context,
+          title: picked.name,
+          actions: [
+            for (final selection in selections)
+              WSheetAction(
+                label: selection.contextLabel.isEmpty
+                    ? picked.name
+                    : selection.contextLabel,
+                value: selection,
+              ),
+          ],
+        );
+  if (selection == null || !context.mounted) return null;
+  onExecutionSelection?.call(selection);
+  return picked;
 }
 
 class _ExercisePickerSheet extends StatefulWidget {

@@ -266,6 +266,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       rawFields: _original?.rawFields ?? const {},
       originalBaseWeightEvidence: _original?.baseWeightEvidence,
       originalPlateStepEvidence: _original?.plateStepEvidence,
+      executionDefinition: _original?.executionDefinition,
     );
     final loaded = _loadedDraft;
     if (loaded != null) {

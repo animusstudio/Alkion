@@ -7,6 +7,9 @@ import '../data/finished_session_store.dart';
 import '../data/models.dart';
 import '../data/muscles.dart';
 import '../data/progress_repository.dart';
+import '../data/catalog_execution_repository.dart';
+import '../domain/catalog_execution.dart';
+import '../widgets/w_action_sheet.dart';
 import '../data/stats_repository.dart';
 import '../session/session_manager.dart';
 import '../store/local_store.dart';
@@ -195,6 +198,16 @@ class _ProgressScreenState extends State<ProgressScreen> {
         // alphabetical entry, which is safe now that the list is non-empty.
         final ex = found ?? catalog.first;
 
+        if (ex.executionDefinition != null) {
+          return _CatalogProgressView(
+            key: ValueKey('catalog-progress:${ex.id}'),
+            exercise: ex,
+            catalog: catalog,
+            repository: _progressRepo,
+            onOpenPicker: openPicker,
+          );
+        }
+
         return StreamBuilder<List<ProgressPoint>>(
           stream: _seriesFor(exId),
           builder: (context, seriesSnap) {
@@ -215,6 +228,169 @@ class _ProgressScreenState extends State<ProgressScreen> {
           },
         );
       },
+    );
+  }
+}
+
+class _CatalogProgressView extends StatefulWidget {
+  const _CatalogProgressView({
+    super.key,
+    required this.exercise,
+    required this.catalog,
+    required this.repository,
+    required this.onOpenPicker,
+  });
+  final Exercise exercise;
+  final List<Exercise> catalog;
+  final ProgressRepository repository;
+  final VoidCallback onOpenPicker;
+  @override
+  State<_CatalogProgressView> createState() => _CatalogProgressViewState();
+}
+
+class _CatalogProgressViewState extends State<_CatalogProgressView> {
+  List<CatalogSelectionEvidence>? _contexts;
+  CatalogSelectionEvidence? _selected;
+  Stream<List<ProgressPoint>>? _stream;
+  String _metric = 'top';
+  Object? _error;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final contexts = await CatalogExecutionRepository.local(
+        context.read<LocalDatabase>(),
+      ).selectionsForExercise(widget.exercise.id);
+      if (!mounted) return;
+      setState(() {
+        _contexts = contexts;
+        if (contexts.length == 1) _select(contexts.single);
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
+  }
+
+  void _select(CatalogSelectionEvidence selection) {
+    _selected = selection;
+    _stream = selection.supportsLoadProgression
+        ? widget.repository.watchCatalogSeriesFor(selection)
+        : null;
+  }
+
+  String _label(CatalogSelectionEvidence selection) {
+    final sameLabel = _contexts!
+        .where((s) => s.contextLabel == selection.contextLabel)
+        .length;
+    final label = selection.contextLabel.isEmpty
+        ? selection.displayLabel
+        : selection.contextLabel;
+    return sameLabel > 1
+        ? '$label · ${_contexts!.indexOf(selection) + 1}'
+        : label;
+  }
+
+  Future<void> _pickContext() async {
+    final selected = await showWActionSheet<CatalogSelectionEvidence>(
+      context,
+      title: AppLocalizations.of(context).catalogSelectSetup,
+      actions: [
+        for (final selection in _contexts ?? <CatalogSelectionEvidence>[])
+          WSheetAction(
+            label: _label(selection),
+            value: selection,
+            selected: selection.contextId == _selected?.contextId,
+          ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _select(selected));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final selected = _selected;
+    return Column(
+      children: [
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    key: const Key('catalog-progress-context'),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                    ),
+                    onPressed: _contexts?.isNotEmpty == true
+                        ? _pickContext
+                        : null,
+                    icon: const Icon(Icons.fitness_center),
+                    label: FitLabel(
+                      selected == null
+                          ? l.catalogSelectSetup
+                          : _label(selected),
+                      maxLines: 3,
+                      style: WorkoutType.body(
+                        size: 16,
+                        color: context.tokens.text,
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: widget.onOpenPicker,
+                  tooltip: l.exerciseSheetTitle,
+                  icon: const Icon(Icons.search),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: _contexts == null && _error == null
+              ? const Center(child: CircularProgressIndicator())
+              : selected == null ||
+                    !selected.supportsLoadProgression ||
+                    _stream == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      selected == null &&
+                              _error == null &&
+                              _contexts!.isNotEmpty
+                          ? l.catalogSelectSetup
+                          : l.catalogProgressUnsupported,
+                      style: WorkoutType.body(
+                        size: 16,
+                        color: context.tokens.dim,
+                      ),
+                    ),
+                  ),
+                )
+              : StreamBuilder<List<ProgressPoint>>(
+                  stream: _stream,
+                  builder: (context, snapshot) => _LiftView(
+                    catalog: widget.catalog,
+                    exercise: widget.exercise,
+                    metricId: _metric,
+                    metric: kMetrics.firstWhere((m) => m.id == _metric),
+                    rawSeries: snapshot.data ?? [],
+                    unitService: context.watch<UnitService>(),
+                    onPickerTap: widget.onOpenPicker,
+                    onMetricChanged: (value) => setState(() => _metric = value),
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }

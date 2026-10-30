@@ -37,17 +37,36 @@ class CatalogMeasurementForm extends StatefulWidget {
     required this.values,
     required this.onChanged,
     this.enabled = true,
+    this.units = const {},
+    this.onMetricChanged,
   });
   final CatalogMeasurementProfile profile;
   final Map<String, String> values;
   final VoidCallback onChanged;
   final bool enabled;
+  final Map<String, String> units;
+  final void Function(String metric, String text)? onMetricChanged;
   @override
   State<CatalogMeasurementForm> createState() => _CatalogMeasurementFormState();
 }
 
 class _CatalogMeasurementFormState extends State<CatalogMeasurementForm> {
   final _controllers = <String, TextEditingController>{};
+  @override
+  void didUpdateWidget(CatalogMeasurementForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    for (final entry in _controllers.entries) {
+      final before = oldWidget.values[entry.key] ?? '';
+      final after = widget.values[entry.key] ?? '';
+      if (before != after && entry.value.text == before) {
+        entry.value.value = TextEditingValue(
+          text: after,
+          selection: TextSelection.collapsed(offset: after.length),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     for (final c in _controllers.values) {
@@ -79,18 +98,21 @@ class _CatalogMeasurementFormState extends State<CatalogMeasurementForm> {
               ),
               textInputAction: TextInputAction.next,
               inputFormatters: [
-                TextInputFormatter.withFunction(
-                  (old, next) =>
-                      RegExp(r'^\d*\.?\d*$').hasMatch(next.text) ? next : old,
-                ),
+                TextInputFormatter.withFunction((old, next) {
+                  final text = next.text.replaceAll(',', '.');
+                  return RegExp(r'^\d*\.?\d*$').hasMatch(text)
+                      ? next.copyWith(text: text)
+                      : old;
+                }),
               ],
               style: WorkoutType.mono(size: 20, color: context.tokens.text),
               decoration: InputDecoration(
                 labelText:
-                    '${catalogMetricLabel(l, metric)}${widget.profile.optionalMetrics.contains(metric) ? ' · ${l.catalogOptional}' : ''}',
+                    '${catalogMetricLabel(l, metric, unit: widget.units[metric])}${widget.profile.optionalMetrics.contains(metric) ? ' · ${l.catalogOptional}' : ''}',
               ),
               onChanged: (v) {
                 widget.values[metric] = v;
+                widget.onMetricChanged?.call(metric, v);
                 widget.onChanged();
               },
             ),

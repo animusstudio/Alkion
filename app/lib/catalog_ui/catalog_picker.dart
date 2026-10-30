@@ -7,6 +7,7 @@ import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
+import '../ui/exercise_sheet.dart';
 import 'catalog_trial_scope.dart';
 
 /// The explicit Close/Back paths protect pending occurrences. Modal drag and
@@ -599,6 +600,34 @@ class _CatalogPickerState extends State<CatalogPicker> {
                         ),
                       ),
                     ),
+                    if (!widget.setupIntent && state.ownedExercises.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          key: const Key('catalog-owned-exercises'),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                          ),
+                          icon: const Icon(Icons.bookmark_outline),
+                          label: Text(l.catalogPersonalExercises),
+                          onPressed: () async {
+                            final exercises = state.ownedExercises;
+                            final id = await showExerciseSheet(
+                              context,
+                              exercises: exercises,
+                              current: null,
+                              showBodyweight: false,
+                            );
+                            if (!mounted || !state.active || id == null) return;
+                            final exercise = exercises
+                                .where((e) => e.id == id)
+                                .firstOrNull;
+                            if (exercise != null) {
+                              _choose(state.choiceForOwned(exercise));
+                            }
+                          },
+                        ),
+                      ),
                     Wrap(
                       spacing: 8,
                       runSpacing: 4,
@@ -1230,9 +1259,12 @@ class _CustomExerciseFormState extends State<_CustomExerciseForm> {
   }
 }
 
-String catalogMetricLabel(AppLocalizations l, String metric) =>
+String catalogMetricLabel(AppLocalizations l, String metric, {String? unit}) =>
     switch (metric) {
-      'reported_load' => l.catalogLoad,
+      'reported_load' =>
+        unit == null
+            ? l.catalogLoad
+            : l.catalogLoad.replaceAll('(kg)', '($unit)'),
       'repetitions' => l.catalogRepetitions,
       'duration' => l.catalogDuration,
       'distance' => l.catalogDistance,
