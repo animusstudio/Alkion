@@ -1,5 +1,7 @@
 # Alkion development and qualified driver handoff
 
+2026-10-30 · [Catalog workout controls](../plans/2026-10-30-catalog-workout-controls.md) · Approved.
+
 2026-10-30 · [Direct catalog browsing and performance](../plans/2026-10-30-catalog-direct-browse-performance.md) · Approved.
 2026-10-30 · [Catalog in Alkion Dev](../plans/2026-10-30-catalog-in-alkion-dev.md) · Approved.
 2026-10-30 · [Catalog Dev preservation design](../specs/2026-10-30-catalog-in-alkion-dev.md) · Approved.
