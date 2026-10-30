@@ -1,6 +1,6 @@
 # Exercise discovery and selection usability
 Date: 2026-10-29; revised 2026-10-30. Lane: **Standard — isolated trial UI and inputs.**
-Status: **Proposed; planning requested, implementation not yet approved.**
+Status: **Approved by owner 2026-10-30; implementation in progress.**
 Confirmed preference: target muscles by default, optional secondary-muscles toggle.
 Parent: [development](../alkion/development.md). Related: [catalog contract](../alkion/exercise-catalog.md),
 [integration plan](2026-10-29-exercise-catalog-integration.md), [boundaries](../../AGENTS.md).
@@ -142,7 +142,7 @@ add TalkBack/large-text proof, no invented scores. One bounded feedback batch.
 
 ## Task state and next
 
-T1–T6 unstarted. Planning baseline inspected; implementation/native checks UNRUN.
-Next: owner review of this revised scope, then T1 and the private T2 input contract.
+Owner approved “Ok plan approved” on 2026-10-30. T1/T2 starting; T3–T6 unstarted.
+Next: implement names/order and the private classification input contract, then review.
 At `b50c66f` + this plan diff: `git diff --check` PASS; public-tree docs check FAIL
 only on two unchanged MakeHuman license targets. Runtime evidence belongs in acceptance.
