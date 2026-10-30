@@ -201,6 +201,7 @@ class WorkoutRepository {
     required String draftId,
     String? operationId,
     List<OperationDependency> dependencies = const [],
+    Map<String, Object?>? finishTimeEvidence,
   }) => prepareDomain(
     db,
     RecordKind.workout,
@@ -242,6 +243,8 @@ class WorkoutRepository {
       'recovery': recovery,
       'draft_revision': draftRevision,
       'draft_id': draftId,
+      if (finishTimeEvidence != null)
+        'finish_time_evidence': finishTimeEvidence,
     },
     operationId: operationId,
     dependencies: dependencies,

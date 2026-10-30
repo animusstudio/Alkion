@@ -260,6 +260,63 @@ void main() {
   );
 
   test(
+    'foreground POST writes exact frozen bytes once and never follows a redirect',
+    () async {
+      final body = File(
+        'test/fixtures/animus_workout_upload/01-definition-create.request.json',
+      ).readAsBytesSync();
+      final receipt = File(
+        'test/fixtures/animus_workout_upload/01-definition-create.response.json',
+      ).readAsBytesSync();
+      var calls = 0;
+      var redirect = false;
+      final uri = await serve((request) async {
+        calls++;
+        expect(request.method, 'POST');
+        expect(request.headers.contentType?.mimeType, 'application/json');
+        expect(request.headers.value('authorization'), 'Bearer synthetic-post');
+        expect(request.cookies, isEmpty);
+        expect(
+          await request.fold<List<int>>([], (all, chunk) => all..addAll(chunk)),
+          body,
+        );
+        request.response.headers.contentType = ContentType.json;
+        if (redirect) {
+          request.response.statusCode = 307;
+          request.response.headers.set(
+            HttpHeaders.locationHeader,
+            '/never-follow',
+          );
+        }
+        request.response.add(receipt);
+        await request.response.close();
+      });
+      Future<AnimusHttpResponse> post() => http.post(
+        uri: uri,
+        headers: {'Authorization': 'Bearer synthetic-post'},
+        body: body,
+        maxResponseBytes: 64 * 1024,
+        timeout: const Duration(seconds: 2),
+      );
+      expect((await post()).body, receipt);
+      redirect = true;
+      expect((await post()).statusCode, 307);
+      expect(calls, 2);
+      await expectLater(
+        http.post(
+          uri: uri,
+          headers: const {},
+          body: List.filled(1024 * 1024 + 1, 32),
+          maxResponseBytes: 1024,
+          timeout: const Duration(seconds: 2),
+        ),
+        _failure(AnimusHttpFailureKind.invalidResponse),
+      );
+      expect(calls, 2);
+    },
+  );
+
+  test(
     'production probe performs the exact authorized read over real HTTP',
     () async {
       var status = 200;

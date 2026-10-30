@@ -2,12 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../contracts.dart';
 import '../ports.dart';
 
 /// One fresh client per foreground request: no shared cookies, connections or
 /// automatic retry state. Construction does not open sockets.
-final class IoAnimusHttpPort implements AnimusHttpPort {
+final class IoAnimusHttpPort implements AnimusUploadHttpPort {
   final _pending = <_Request>{};
   bool _closed = false;
 
@@ -18,14 +17,35 @@ final class IoAnimusHttpPort implements AnimusHttpPort {
     required int maxResponseBytes,
     required Duration timeout,
   }) {
+    return _request('GET', uri, headers, null, maxResponseBytes, timeout);
+  }
+
+  @override
+  Future<AnimusHttpResponse> post({
+    required Uri uri,
+    required Map<String, String> headers,
+    required List<int> body,
+    required int maxResponseBytes,
+    required Duration timeout,
+  }) => _request('POST', uri, headers, body, maxResponseBytes, timeout);
+
+  Future<AnimusHttpResponse> _request(
+    String method,
+    Uri uri,
+    Map<String, String> headers,
+    List<int>? body,
+    int maxResponseBytes,
+    Duration timeout,
+  ) {
     if (_closed) {
       return Future.error(
         const AnimusHttpFailure(AnimusHttpFailureKind.closed),
       );
     }
     if (maxResponseBytes < 1 ||
-        maxResponseBytes > AnimusDefinitionReadContract.maxResponseBytes ||
+        maxResponseBytes > 8 * 1024 * 1024 ||
         timeout <= Duration.zero ||
+        (body != null && body.length > 1024 * 1024) ||
         headers.keys.any((key) => key.toLowerCase() == 'cookie')) {
       return Future.error(
         const AnimusHttpFailure(AnimusHttpFailureKind.invalidResponse),
@@ -42,18 +62,20 @@ final class IoAnimusHttpPort implements AnimusHttpPort {
       timeout,
       () => pending.fail(AnimusHttpFailureKind.timeout),
     );
-    unawaited(_read(pending, uri, headers, maxResponseBytes));
+    unawaited(_read(pending, method, uri, headers, body, maxResponseBytes));
     return pending.result.future.whenComplete(() => _pending.remove(pending));
   }
 
   Future<void> _read(
     _Request pending,
+    String method,
     Uri uri,
     Map<String, String> headers,
+    List<int>? body,
     int limit,
   ) async {
     try {
-      final request = await pending.client.getUrl(uri);
+      final request = await pending.client.openUrl(method, uri);
       pending.request = request;
       if (pending.done) {
         request.abort();
@@ -66,6 +88,11 @@ final class IoAnimusHttpPort implements AnimusHttpPort {
         request.headers.set(entry.key, entry.value);
       }
       request.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
+      if (body != null) {
+        request.headers.contentType = ContentType.json;
+        request.contentLength = body.length;
+        request.add(body);
+      }
       final response = await request.close();
       if (pending.done) return;
       // Only representation metadata is needed. In particular, Set-Cookie and
@@ -78,7 +105,7 @@ final class IoAnimusHttpPort implements AnimusHttpPort {
         final values = response.headers[name];
         if (values != null) metadata[name] = values.join(',');
       }
-      if (response.statusCode != HttpStatus.ok) {
+      if (response.statusCode != HttpStatus.ok && method == 'GET') {
         pending.succeed(
           AnimusHttpResponse(
             statusCode: response.statusCode,

@@ -1500,6 +1500,15 @@ class ActiveSessionController extends ChangeNotifier {
           ? store.persistedRevision
           : store.pending!.expectedRevision + 1,
       draftId: d.draftId,
+      finishTimeEvidence: d.sessionId == null
+          ? {
+              'format': 'alkion-native-finish-time/1',
+              'finished_at': _explicitOffsetInstant(now),
+              'offset_minutes': now.timeZoneOffset.inMinutes,
+              'timezone': now.timeZoneName,
+              'elapsed_seconds': elapsedAtFinish.inSeconds,
+            }
+          : null,
     );
     _saveDebounce?.cancel();
     _saveEpoch++;
@@ -1593,4 +1602,14 @@ class ActiveSessionController extends ChangeNotifier {
     _savePending = false;
     super.notifyListeners();
   }
+}
+
+// Dart local ISO strings omit the offset. Preserve the observed wall clock and
+// numeric offset together before the immutable local finish is prepared.
+String _explicitOffsetInstant(DateTime at) {
+  if (at.isUtc) return at.toIso8601String();
+  final minutes = at.timeZoneOffset.inMinutes;
+  final sign = minutes < 0 ? '-' : '+';
+  final magnitude = minutes.abs();
+  return '${at.toIso8601String()}$sign${(magnitude ~/ 60).toString().padLeft(2, '0')}:${(magnitude % 60).toString().padLeft(2, '0')}';
 }

@@ -66,6 +66,7 @@ final class AnimusConnectionController extends ChangeNotifier {
   bool _closed = false;
   bool _disposed = false;
   int _epoch = 0;
+  int _foregroundRefreshes = 0;
   Future<void>? _running;
 
   AnimusConnectionState get state => _state;
@@ -74,6 +75,34 @@ final class AnimusConnectionController extends ChangeNotifier {
   String? get dataSpaceId => config?.dataSpaceId;
   bool get busy => _running != null;
   bool get confirmed => _confirmed;
+
+  /// A tap-owned upload leases this epoch. Disconnect/cancel/close fence it
+  /// synchronously; bearer material never enters the local attachment.
+  int get foregroundEpoch => _epoch;
+  int get foregroundRefreshes => _foregroundRefreshes;
+  bool foregroundCurrent(int epoch, AnimusIdentity identity) =>
+      _current(epoch) &&
+      _confirmed &&
+      _session != null &&
+      _session!.identity.sameAccount(identity);
+
+  Future<AnimusAuthSession> sessionForForeground(
+    int epoch, {
+    bool refresh = false,
+  }) async {
+    final previous = _session;
+    if (previous == null || !_confirmed || !_current(epoch)) {
+      throw const AnimusAuthFailure(AnimusAuthFailureKind.cancelled);
+    }
+    if (refresh || !previous.expiresAt.isAfter(_now().toUtc())) {
+      final session = await _refresh(previous, epoch);
+      if (!foregroundCurrent(epoch, previous.identity)) {
+        throw const AnimusAuthFailure(AnimusAuthFailureKind.cancelled);
+      }
+      return session;
+    }
+    return previous;
+  }
 
   bool get _enabled =>
       !_closed &&
@@ -243,6 +272,7 @@ final class AnimusConnectionController extends ChangeNotifier {
     AnimusAuthSession previous,
     int epoch,
   ) async {
+    _foregroundRefreshes++;
     final fresh = await _auth!.refresh();
     if (!_current(epoch)) return previous;
     if (fresh == null ||
