@@ -882,5 +882,10 @@
   "catalogPersonalGroupsHint": "Wähle Gruppen für deine eigene Ordnung. Dies sind keine anatomischen Angaben. Ohne Auswahl bleibt die Übung nicht zugeordnet.",
   "catalogMuscleEvidence": "Muskelangaben",
   "catalogBrowseOnlyNotice": "Gruppen dienen der Orientierung. Detaillierte Muskelangaben können unvollständig sein; ausgelassene Muskeln sind nicht bewertet.",
-  "catalogPersonalExercises": "Eigene Übungen"
+  "catalogPersonalExercises": "Eigene Übungen",
+  "catalogUnavailable": "Der Katalog ist nicht verfügbar. Deine gespeicherten Übungen und Trainings sind verfügbar.",
+  "catalogProgressUnsupported": "Für dieses Messprofil oder Gerät ist keine Lastprogression verfügbar.",
+  "catalogSelectSetup": "Gerät auswählen",
+  "catalogUseLast": "Letzte Werte verwenden",
+  "catalogMarkPending": "Als nicht protokolliert markieren"
 }

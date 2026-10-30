@@ -1,6 +1,10 @@
 import '../catalog_ui/catalog_picker.dart';
 import '../catalog_ui/catalog_measurement_form.dart';
 import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_runtime_state.dart';
+import '../catalog_ui/catalog_evidence_widgets.dart';
+import '../domain/catalog_execution.dart';
+import '../domain/local_action.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show mapEquals;
@@ -8,6 +12,7 @@ import 'package:flutter/services.dart' hide TextInput;
 
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
+import '../data/catalog_execution_repository.dart';
 import '../data/models.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
@@ -209,6 +214,8 @@ class _DayEditorState extends State<DayEditor> {
             localRevision: slot.localRevision,
             rawFields: slot.rawFields,
             changedFields: {},
+            catalog: slot.catalog,
+            catalogTargets: slot.catalogTargets,
           ),
         ),
       );
@@ -227,10 +234,19 @@ class _DayEditorState extends State<DayEditor> {
         for (final slot in slots) {
           final key = slot.instanceKey;
           final choice =
-              trial.routineContexts[key] ?? trial.exercises[slot.exerciseId];
+              trial is CatalogRuntimeState && slot.draft.catalog != null
+              ? trial.choiceForSelection(slot.draft.catalog!)
+              : trial.routineContexts[key] ?? trial.exercises[slot.exerciseId];
           if (choice != null) _trialChoices[key] = choice;
           final metrics = Map<String, String>.of(
-            trial.routineMetrics[key] ?? {},
+            slot.draft.catalog == null
+                ? trial.routineMetrics[key] ?? {}
+                : catalogInputValues(
+                    CatalogSetEvidence(
+                      selection: slot.draft.catalog!,
+                      metrics: slot.draft.catalogTargets,
+                    ),
+                  ),
           );
           _trialMetrics[key] = metrics;
           _trialMetricsBaseline[key] = Map.of(metrics);
@@ -368,17 +384,43 @@ class _DayEditorState extends State<DayEditor> {
       return;
     }
 
-    // Dedupe by exerciseId.
-    if (_slots.any((s) => s.exerciseId == r)) return;
-
     final ex = _catalog.firstWhere(
       (e) => e.id == r,
       orElse: () => throw StateError('exercise $r not in catalog'),
     );
-    _appendExercise(ex);
+    if (ex.executionDefinition != null) {
+      final selections = await CatalogExecutionRepository.local(
+        context.read<LocalDatabase>(),
+      ).selectionsForExercise(ex.id);
+      if (!mounted || selections.isEmpty) return;
+      final selected = selections.length == 1
+          ? selections.single
+          : await showWActionSheet<CatalogSelectionEvidence>(
+              context,
+              title: ex.name,
+              actions: [
+                for (final selection in selections)
+                  WSheetAction(
+                    label: selection.contextLabel.isEmpty
+                        ? ex.name
+                        : selection.contextLabel,
+                    value: selection,
+                  ),
+              ],
+            );
+      if (!mounted || selected == null) return;
+      _appendExercise(ex, selection: selected);
+    } else {
+      if (_slots.any((s) => s.exerciseId == r)) return;
+      _appendExercise(ex);
+    }
   }
 
-  void _appendExercise(Exercise ex, {CatalogChoice? trialChoice}) {
+  void _appendExercise(
+    Exercise ex, {
+    CatalogChoice? trialChoice,
+    CatalogSelectionEvidence? selection,
+  }) {
     final r = ex.id;
     final slot = Slot(
       exerciseId: r,
@@ -417,7 +459,21 @@ class _DayEditorState extends State<DayEditor> {
       added.draft.rirLow = null;
       added.draft.rirHigh = null;
       _slots.add(added);
-      if (trialChoice != null) {
+      final runtime = CatalogTrialScope.maybeOf(context);
+      if (trialChoice != null &&
+          runtime is CatalogRuntimeState &&
+          !trialChoice.isOwned) {
+        selection = runtime.selectionFor(trialChoice);
+      }
+      if (selection != null) {
+        added.draft.catalog = selection;
+        added.draft.catalogTargets = {};
+        added.draft.repLow = null;
+        added.draft.repHigh = null;
+        added.draft.workSets = ex.defaultWorkingSets ?? 1;
+        added.draft.warmupSets = ex.defaultWarmupSets ?? 0;
+      }
+      if (trialChoice != null && !trialChoice.isOwned) {
         _trialChoices[added.instanceKey] = trialChoice;
         _trialMetrics[added.instanceKey] = {};
       }
@@ -449,10 +505,29 @@ class _DayEditorState extends State<DayEditor> {
     final trial = CatalogTrialScope.maybeOf(context);
     final recovery = context.read<DomainRecovery?>();
     try {
-      _pendingSave ??= repository.prepareDay(draft, id: _editId);
+      if (_pendingSave == null) {
+        final dependencies = <String, OperationDependency>{};
+        final executions = CatalogExecutionRepository.local(
+          context.read<LocalDatabase>(),
+        );
+        for (final slot in draft.slots) {
+          if (slot.catalog case final selection?) {
+            for (final dependency in await executions.dependenciesForSelection(
+              selection,
+            )) {
+              dependencies[dependency.operationId] = dependency;
+            }
+          }
+        }
+        _pendingSave = repository.prepareDay(
+          draft,
+          id: _editId,
+          dependencies: dependencies.values.toList(),
+        );
+      }
       await recovery?.recover();
       await repository.commitPrepared(_pendingSave!);
-      if (trial != null) {
+      if (trial != null && !trial.durable) {
         final actionSlots = (_pendingSave!.input['slots'] as List).cast<Map>();
         for (var i = 0; i < _slots.length; i++) {
           final key = _slots[i].instanceKey;
@@ -666,9 +741,10 @@ class _DayEditorState extends State<DayEditor> {
                     final choice =
                         _trialChoices[slot.instanceKey] ??
                         trial?.exercises[ex.id];
-                    if (trial != null &&
-                        choice != null &&
-                        trial.measurement(choice).key != 'load_reps') {
+                    if (slot.draft.catalog != null ||
+                        (trial != null &&
+                            choice != null &&
+                            trial.measurement(choice).key != 'load_reps')) {
                       return Padding(
                         key: ValueKey(slot.instanceKey),
                         padding: const EdgeInsets.only(bottom: 16),
@@ -688,12 +764,14 @@ class _DayEditorState extends State<DayEditor> {
                                 ),
                                 Expanded(
                                   child: FitLabel(
-                                    trial.identifyingLabel(
-                                      choice,
-                                      Localizations.localeOf(
-                                        context,
-                                      ).languageCode,
-                                    ),
+                                    slot.draft.catalog != null
+                                        ? slot.draft.catalog!.displayLabel
+                                        : trial!.identifyingLabel(
+                                            choice!,
+                                            Localizations.localeOf(
+                                              context,
+                                            ).languageCode,
+                                          ),
                                     maxLines: 3,
                                     style: WorkoutType.body(
                                       size: 16,
@@ -710,30 +788,131 @@ class _DayEditorState extends State<DayEditor> {
                                 ),
                               ],
                             ),
-                            WStepper(
-                              semanticLabel: l.dayEditorWorkingSets,
-                              format: (v) => v.round().toString(),
-                              value: (slot.draft.workSets ?? 1).toDouble(),
-                              min: 1,
-                              max: 99,
-                              step: 1,
-                              onChanged: _controlsLocked
-                                  ? (_) {}
-                                  : (v) => setState(
-                                      () => slot.draft.workSets = v.round(),
-                                    ),
+                            Field(
+                              label: l.dayEditorWorkingSets,
+                              child: WStepper(
+                                semanticLabel: l.dayEditorWorkingSets,
+                                format: (v) => v.round().toString(),
+                                value:
+                                    (slot.draft.workSets ??
+                                            ex.defaultWorkingSets ??
+                                            1)
+                                        .toDouble(),
+                                min: 1,
+                                max: 99,
+                                step: 1,
+                                onChanged: _controlsLocked
+                                    ? (_) {}
+                                    : (v) => setState(() {
+                                        slot.draft.workSets = v.round();
+                                        slot.draft.changedFields?.add(
+                                          'target_working_sets',
+                                        );
+                                      }),
+                              ),
                             ),
+                            if (slot.draft.catalog != null) ...[
+                              if (slot.draft.workSets != null)
+                                TrainingAction(
+                                  l.trainingRemove(l.dayEditorWorkingSets),
+                                  onTap: _controlsLocked
+                                      ? null
+                                      : () => setState(() {
+                                          slot.draft.workSets = null;
+                                          slot.draft.changedFields?.add(
+                                            'target_working_sets',
+                                          );
+                                        }),
+                                ),
+                              Field(
+                                label: l.dayEditorWarmups,
+                                child: WStepper(
+                                  semanticLabel: l.dayEditorWarmups,
+                                  format: (v) => v.round().toString(),
+                                  value:
+                                      (slot.draft.warmupSets ??
+                                              ex.defaultWarmupSets ??
+                                              0)
+                                          .toDouble(),
+                                  min: 0,
+                                  max: 99,
+                                  step: 1,
+                                  editable: !_controlsLocked,
+                                  onChanged: (v) {
+                                    if (!_controlsLocked) {
+                                      setState(() {
+                                        slot.draft.warmupSets = v.round();
+                                        slot.draft.changedFields?.add(
+                                          'target_warmup_sets',
+                                        );
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                              if (slot.draft.warmupSets != null)
+                                TrainingAction(
+                                  l.trainingRemove(l.dayEditorWarmups),
+                                  onTap: _controlsLocked
+                                      ? null
+                                      : () => setState(() {
+                                          slot.draft.warmupSets = null;
+                                          slot.draft.changedFields?.add(
+                                            'target_warmup_sets',
+                                          );
+                                        }),
+                                ),
+                            ],
                             const SizedBox(height: 12),
                             CatalogMeasurementForm(
                               key: ValueKey('routine-${slot.instanceKey}'),
-                              profile: trial.measurement(choice),
-                              values: _trialMetrics.putIfAbsent(
-                                slot.instanceKey,
-                                () => Map.of(
-                                  trial.routineMetrics[slot.instanceKey] ?? {},
-                                ),
-                              ),
+                              profile:
+                                  slot.draft.catalog?.profile
+                                      .toCatalogMeasurementProfile() ??
+                                  trial!.measurement(choice!),
+                              values: slot.draft.catalog != null
+                                  ? catalogInputValues(
+                                      CatalogSetEvidence(
+                                        selection: slot.draft.catalog!,
+                                        metrics: slot.draft.catalogTargets,
+                                      ),
+                                    )
+                                  : _trialMetrics.putIfAbsent(
+                                      slot.instanceKey,
+                                      () => Map.of(
+                                        trial!.routineMetrics[slot
+                                                .instanceKey] ??
+                                            {},
+                                      ),
+                                    ),
                               enabled: !_controlsLocked,
+                              units: {
+                                for (final entry
+                                    in slot.draft.catalogTargets.entries)
+                                  entry.key: entry.value.unit,
+                              },
+                              onMetricChanged: slot.draft.catalog == null
+                                  ? null
+                                  : (metric, text) {
+                                      slot.draft.changedFields?.add(
+                                        'catalogTargets',
+                                      );
+                                      slot.draft.catalogTargets = {
+                                        ...slot.draft.catalogTargets,
+                                        metric: CatalogMetricEvidence.fromInput(
+                                          text,
+                                          metric: metric,
+                                          unit:
+                                              slot
+                                                  .draft
+                                                  .catalogTargets[metric]
+                                                  ?.unit ??
+                                              CatalogMetricEvidence.defaultUnit(
+                                                metric,
+                                              ),
+                                        ),
+                                      };
+                                    },
                               onChanged: () => setState(() {}),
                             ),
                           ],

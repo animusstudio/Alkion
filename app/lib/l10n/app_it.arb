@@ -882,5 +882,10 @@
   "catalogPersonalGroupsHint": "Scegli i gruppi solo per organizzarti. Non sono dati anatomici. Lascia vuoto per mantenere l’esercizio non classificato.",
   "catalogMuscleEvidence": "Evidenze sui muscoli",
   "catalogBrowseOnlyNotice": "I gruppi servono a orientare la ricerca. Le evidenze sui muscoli possono essere incomplete; un muscolo omesso non è valutato.",
-  "catalogPersonalExercises": "Esercizi personali"
+  "catalogPersonalExercises": "Esercizi personali",
+  "catalogUnavailable": "Il catalogo non è disponibile. I tuoi esercizi e allenamenti salvati sono disponibili.",
+  "catalogProgressUnsupported": "La progressione del carico non è disponibile per queste misure o questo attrezzo.",
+  "catalogSelectSetup": "Scegli attrezzatura",
+  "catalogUseLast": "Usa gli ultimi valori",
+  "catalogMarkPending": "Segna come non registrata"
 }

@@ -125,11 +125,11 @@ expectedSchemaDigest)`. IDs must be contiguous, at most 5:
 
 | ID | Owner | Concrete scope |
 | --- | --- | --- |
-| 1 | T2 | Profile, seven projections and preservation/action/local-state ledgers |
+| 1 | T2 | Profile, frozen foundation projections and preservation/action/local-state ledgers |
 | 2 | T3 | Catalog/plans/bodyweight/goals/settings additions actually required |
 | 3 | T4 | Draft/workout/timer/history additions actually required |
 | 4 | Flexible prescriptions | `day_template_items.rir_policy TEXT`; `day_templates.is_active INTEGER DEFAULT 1` |
-| 5 | T6 | Backup/restore-generation additions actually required (reserved; unused) |
+| 5 | Catalog integration | Catalog bindings, tracking contexts and typed execution evidence |
 
 Pass the same registry to `LocalStore.open(..., schema: registry)` on every open.
 Each appended migration supplies a independently verified resulting sqlite_master
@@ -141,14 +141,19 @@ generation. No down migration or new empty replacement is permitted. Later tasks
 append IDs; they do not edit migration 1 or rewrite its identity.
 
 Current runtime, native backup verification and restore use
-`prescriptionSchemaRegistry()` (version 4). `domainSchemaRegistry()` (2) and
+`catalogExecutionSchemaRegistry()` (version 5). `domainSchemaRegistry()` (2) and
 `workflowSchemaRegistry()` (3) retain their exact history for older snapshots.
-Version 4 adds columns only: existing actions, revisions, source artifacts and
-projections are unchanged. `rir_policy` null retains legacy slot overrides and
-inheritance; `inherit` uses the exercise pair, `off` suppresses RIR and `target`
-uses the slot pair. Only complete ordered 0–5 pairs resolve. Missing targets are
-absent; partial/invalid pairs and unknown policy strings are unavailable, retained
-in raw evidence, and never become a synthetic RIR target.
+Migration 5 appends `catalogBinding` and `trackingContext` to current domain
+projections and adds nullable typed-execution columns; it does not rewrite
+existing domain rows. Migrations 1–4 and their digests remain frozen. See the
+[durable catalog integration contract](../specs/2026-10-30-catalog-in-alkion-dev.md)
+(2026-10-30, Approved). Schema 4 added columns only: existing actions,
+revisions, source artifacts and projections were unchanged. `rir_policy` null
+retains legacy slot overrides and inheritance; `inherit` uses the exercise pair,
+`off` suppresses RIR and `target` uses the slot pair. Only complete ordered 0–5
+pairs resolve. Missing targets are absent; partial/invalid pairs and unknown
+policy strings are unavailable, retained in raw evidence, and never become a
+synthetic RIR target.
 
 Saved days migrate to Active (`is_active=1`). Explicit 0 is inactive; null or any
 other value is unavailable and excluded from fresh-workout eligibility. Management
@@ -169,7 +174,7 @@ inheritance. Native backup includes the snapshot with all other local state.
 
 | Layer | Storage and replacement behavior |
 | --- | --- |
-| Current domain projections | Seven retained tables, TEXT kilograms, local revision and recoverable tombstone. Hard deletion is refused; immutable revision payloads retain history. |
+| Current domain projections | Existing projections plus catalog-binding and tracking-context projections, TEXT kilograms, local revision and recoverable tombstone. Typed catalog evidence is separately versioned; legacy rows remain unclassified. Hard deletion is refused; immutable revision payloads retain history. |
 | Original source evidence | Immutable artifact BLOB/digest/parser/disposition and observation evidence; scoped origin mappings, source revisions and versioned projections. Equal UUID/name/content in another namespace/kind is distinct. |
 | Authored work | Immutable record revisions, corrections/availability and separately versioned derived results. Local revisions are never server bases. |
 | Actions and review | Immutable operation/result bytes, same-family dependencies, reviews/decisions, separately immutable attempts/outcomes. No retention purge. |

@@ -16,27 +16,43 @@ class CatalogChoice {
        customName = null,
        customProfile = null,
        customId = null,
-       personalGroups = const {};
+       personalGroups = const {},
+       ownedExerciseId = null;
   CatalogChoice.custom(
     String name,
     String profile, {
     String? id,
     Set<String> personalGroups = const {},
+    this.setupId = 'default',
+    this.nickname,
   }) : customName = name,
        customProfile = profile,
        personalGroups = Set.unmodifiable(personalGroups),
        variantId = null,
        customId = id ?? const Uuid().v4(),
-       setupId = 'default',
-       nickname = null;
+       ownedExerciseId = null;
+  CatalogChoice.owned(Exercise exercise)
+    : ownedExerciseId = exercise.id,
+      customName = exercise.name,
+      customProfile = null,
+      customId = null,
+      variantId = null,
+      setupId = 'default',
+      nickname = null,
+      personalGroups = const {};
   final String? variantId, customName, customProfile, nickname, customId;
+  final String? ownedExerciseId;
+  bool get isOwned => ownedExerciseId != null;
   final String setupId;
 
   /// Optional personal organization, never copied into anatomical profiles or
   /// the legacy single-muscle column. Empty means explicitly unclassified.
   final Set<String> personalGroups;
-  String get definitionKey =>
-      variantId == null ? 'custom:$customId' : 'variant:$variantId';
+  String get definitionKey => isOwned
+      ? 'owned:$ownedExerciseId'
+      : variantId == null
+      ? 'custom:$customId'
+      : 'variant:$variantId';
   String get key => '$definitionKey@$setupId';
 }
 
@@ -45,6 +61,12 @@ class CatalogChoice {
 class CatalogTrialState extends ChangeNotifier {
   CatalogTrialState(this.bundle);
   final CatalogBundle bundle;
+  bool get durable => false;
+  bool get active => true;
+  String get indexProfileId => 'disposable-catalog-trial';
+  List<Exercise> get ownedExercises => const [];
+  CatalogChoice choiceForOwned(Exercise exercise) =>
+      exercises[exercise.id] ?? CatalogChoice.owned(exercise);
   final List<CatalogChoice> recents = [];
   final Set<String> favorites = {};
   final Map<String, CatalogChoice> choices = {};
@@ -83,15 +105,11 @@ class CatalogTrialState extends ChangeNotifier {
   final _indexes = <String, CatalogIndex>{};
   CatalogIndex index(String locale) => _indexes.putIfAbsent(
     locale,
-    () => CatalogIndex(
-      bundle,
-      locale: locale,
-      profileId: 'disposable-catalog-trial',
-    ),
+    () => CatalogIndex(bundle, locale: locale, profileId: indexProfileId),
   );
   CatalogMeasurementProfile measurement(CatalogChoice choice) =>
       choice.variantId == null
-      ? bundle.measurementProfiles[choice.customProfile]!
+      ? bundle.measurementProfiles[choice.customProfile ?? 'load_reps']!
       : bundle.measurementFor(bundle.variants[choice.variantId]!);
   String label(CatalogChoice choice, String locale, {String? query}) =>
       choice.customName ??
@@ -152,6 +170,11 @@ class CatalogTrialState extends ChangeNotifier {
     ExerciseRepository repo, {
     required String locale,
   }) async {
+    if (choice.isOwned) {
+      final owned = await repo.byId(choice.ownedExerciseId!);
+      if (owned == null) throw StateError('Owned exercise is unavailable');
+      return owned;
+    }
     if (_materialized.containsKey(choice.definitionKey)) {
       return _materialized[choice.definitionKey]!;
     }

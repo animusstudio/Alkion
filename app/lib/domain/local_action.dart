@@ -12,6 +12,8 @@ enum RecordKind {
   workoutSet,
   bodyweight,
   muscleTarget,
+  catalogBinding,
+  trackingContext,
 }
 
 extension RecordFamily on RecordKind {
@@ -53,14 +55,30 @@ enum LocalActionKind {
   targetDelete,
   targetRestore,
   targetKeepEmpty,
+  catalogDefinitionCreate,
+  catalogContextCreate,
+  catalogContextRename,
+  catalogPlanCreate,
+  catalogPlanEdit,
+  catalogPlanClone,
+  catalogSlotContextSet,
+  catalogWorkoutFinish,
+  catalogWorkoutReplace,
+  catalogWorkoutEdit,
 }
 
 extension ActionTarget on LocalActionKind {
   RecordKind get targetKind => switch (this) {
+    LocalActionKind.catalogDefinitionCreate ||
     LocalActionKind.definitionCreate ||
     LocalActionKind.definitionEdit ||
     LocalActionKind.definitionDelete ||
     LocalActionKind.definitionRestore => RecordKind.exercise,
+    LocalActionKind.catalogContextCreate ||
+    LocalActionKind.catalogContextRename => RecordKind.trackingContext,
+    LocalActionKind.catalogPlanCreate ||
+    LocalActionKind.catalogPlanEdit ||
+    LocalActionKind.catalogPlanClone ||
     LocalActionKind.planCreate ||
     LocalActionKind.planEdit ||
     LocalActionKind.planClone ||
@@ -68,10 +86,14 @@ extension ActionTarget on LocalActionKind {
     LocalActionKind.planRestore ||
     LocalActionKind.planReorder ||
     LocalActionKind.planSetActive => RecordKind.trainingDay,
+    LocalActionKind.catalogSlotContextSet ||
     LocalActionKind.slotAdd ||
     LocalActionKind.slotRemove ||
     LocalActionKind.slotReplace ||
     LocalActionKind.slotReorder => RecordKind.trainingSlot,
+    LocalActionKind.catalogWorkoutFinish ||
+    LocalActionKind.catalogWorkoutReplace ||
+    LocalActionKind.catalogWorkoutEdit ||
     LocalActionKind.workoutFinish ||
     LocalActionKind.workoutReplace ||
     LocalActionKind.workoutEdit ||

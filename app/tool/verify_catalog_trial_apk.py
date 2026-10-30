@@ -10,7 +10,9 @@ import importlib.util
 import json
 from pathlib import Path
 import struct
+import subprocess
 import sys
+import tempfile
 from zipfile import BadZipFile, ZipFile
 
 TARGETS = {
@@ -25,6 +27,8 @@ SQLITE_LOADERS = {
         'libsqlite3_connection_pool.so',
 }
 REQUIRED_LIBRARIES = ('libflutter.so', *SQLITE_LOADERS.values())
+PINNED_NDK = '28.2.13676358'  # Flutter 3.44.0's pinned default.
+DEBUG_CODE = ('kernel_blob.bin', 'isolate_snapshot_data', 'vm_snapshot_data')
 
 
 def _object_pairs(pairs):
@@ -79,7 +83,7 @@ def _elf_hash(stream, machine, label):
     return digest.hexdigest()
 
 
-def _verify_catalog_assets(archive, entries, assets_dir):
+def _verify_catalog_assets(archive, entries, assets_dir, *, development=False):
     """Bind the packaged private inventory to explicitly selected staged bytes."""
     spec = importlib.util.spec_from_file_location(
         'catalog_trial_stager', Path(__file__).with_name('stage_catalog_trial.py'))
@@ -123,7 +127,8 @@ def _verify_catalog_assets(archive, entries, assets_dir):
             raise ValueError('Browse APK manifest mismatch')
     source_digest = manifest.get('source_sha256')
     if (not isinstance(source_digest, str) or not stager.re.fullmatch(r'[0-9a-f]{64}', source_digest) or
-            manifest != stager.manifest_for(catalog, source_digest, catalog_digest, metadata)):
+            manifest != stager.manifest_for(catalog, source_digest, catalog_digest, metadata,
+                                           development=development)):
         raise ValueError('Invalid catalog APK manifest')
     packaged = {name for name in entries if name.startswith('assets/' + prefix) and
                 not entries[name].is_dir()}
@@ -138,7 +143,112 @@ def _verify_catalog_assets(archive, entries, assets_dir):
     return {name: stager.sha256(value) for name, value in data.items()}
 
 
-def verify(apk, platform, generated_jni_dir, catalog_assets_dir=None):
+def verify_public_catalog_assets(apk):
+    """A no-input/public APK may contain only the public catalog notice."""
+    with ZipFile(apk) as archive:
+        names = [entry.filename for entry in archive.infolist()]
+        if len(names) != len(set(names)):
+            raise ValueError('Duplicate APK ZIP member')
+        prefix = 'assets/flutter_assets/assets/catalog_trial/'
+        if any(name.startswith(prefix) and not name.endswith('/') and
+               name != prefix + 'README.md' for name in names):
+            raise ValueError('Private catalog assets in a public/no-input APK')
+    return {'private_catalog_assets': 'absent'}
+
+
+def _regular_file(path):
+    path = Path(path)
+    if any(item.is_symlink() for item in (path, *path.parents)) or not path.is_file():
+        raise ValueError(f'Missing or redirected current build artifact: {path.name}')
+    return path
+
+
+def _file_elf_hash(path, machine):
+    with _regular_file(path).open('rb') as stream:
+        return _elf_hash(stream, machine, path.name)
+
+
+def _stripped_hash(source, machine, ndk_dir):
+    """Independently reproduce AGP's strip transform with the pinned NDK."""
+    if ndk_dir is None:
+        raise ValueError('Release verification requires the explicit pinned NDK directory')
+    ndk = Path(ndk_dir)
+    properties = _regular_file(ndk / 'source.properties').read_text()
+    if not any(line.strip() == f'Pkg.Revision = {PINNED_NDK}'
+               for line in properties.splitlines()):
+        raise ValueError('Release verification requires the pinned Flutter NDK revision')
+    bin_dir = ndk / 'toolchains/llvm/prebuilt/linux-x86_64/bin'
+    tool = bin_dir / 'llvm-strip'
+    # The official NDK llvm-strip is a same-directory llvm-objcopy symlink.
+    if not tool.is_file() or tool.resolve().parent != bin_dir.resolve():
+        raise ValueError('Missing or redirected pinned NDK llvm-strip')
+    with tempfile.TemporaryDirectory(prefix='catalog-apk-strip-') as temp:
+        output = Path(temp) / source.name
+        subprocess.run([str(tool), '--strip-unneeded', '-o', str(output), str(source)],
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return _file_elf_hash(output, machine)
+
+
+def _verify_code_chain(archive, entries, generated_jni, platform, build_mode,
+                       intermediates_dir=None, ndk_dir=None):
+    if build_mode not in ('debug', 'release'):
+        raise ValueError('Unsupported catalog APK build mode')
+    _, abi, machine = TARGETS[platform]
+    generated_jni = Path(generated_jni)
+    variant = 'devDebug' if build_mode == 'debug' else 'devRelease'
+    capital = 'DevDebug' if build_mode == 'debug' else 'DevRelease'
+    intermediates = (Path(intermediates_dir) if intermediates_dir is not None
+                     else generated_jni.parents[2])
+    libraries = [*SQLITE_LOADERS.values()]
+    if build_mode == 'release':
+        libraries.append('libapp.so')
+    elif any(name.startswith('lib/') and name.endswith('/libapp.so') for name in entries):
+        raise ValueError('Unexpected AOT library in a debug catalog APK')
+    receipt = {}
+    for library in libraries:
+        source = (generated_jni.parent / abi / 'app.so' if library == 'libapp.so'
+                  else generated_jni.parent / 'native_assets/jniLibs/lib' / abi / library)
+        upstream = _file_elf_hash(source, machine)
+        generated = _file_elf_hash(generated_jni / abi / library, machine)
+        merged_jni = _file_elf_hash(
+            intermediates / 'merged_jni_libs' / variant /
+            f'merge{capital}JniLibFolders/out' / abi / library, machine)
+        merged_native = _file_elf_hash(
+            intermediates / 'merged_native_libs' / variant /
+            f'merge{capital}NativeLibs/out/lib' / abi / library, machine)
+        if len({upstream, generated, merged_jni, merged_native}) != 1:
+            raise ValueError(f'Stale upstream/generated/merged JNI library: {library}')
+        transformed = (_stripped_hash(source, machine, ndk_dir)
+                       if build_mode == 'release' else generated)
+        stripped = _file_elf_hash(
+            intermediates / 'stripped_native_libs' / variant /
+            f'strip{capital}DebugSymbols/out/lib' / abi / library, machine)
+        member = f'lib/{abi}/{library}'
+        if member not in entries:
+            raise ValueError(f'Missing selected-ABI library: {library}')
+        with archive.open(entries[member]) as stream:
+            packaged = _elf_hash(stream, machine, f'APK {library}')
+        if transformed != stripped or stripped != packaged:
+            raise ValueError(f'Stale stripped/packaged library: {library}')
+        receipt[library] = {'upstream_sha256': upstream, 'packaged_sha256': packaged}
+    code = {}
+    if build_mode == 'debug':
+        generated_assets = generated_jni.parent / 'flutter_assets'
+        merged_assets = intermediates / 'assets' / variant / f'merge{capital}Assets/flutter_assets'
+        for name in DEBUG_CODE:
+            source = _regular_file(generated_assets / name).read_bytes()
+            merged = _regular_file(merged_assets / name).read_bytes()
+            member = 'assets/flutter_assets/' + name
+            if member not in entries or archive.read(entries[member]) != source or merged != source:
+                raise ValueError(f'Stale or missing debug code asset: {name}')
+            code[name] = hashlib.sha256(source).hexdigest()
+    elif any('assets/flutter_assets/' + name in entries for name in DEBUG_CODE):
+        raise ValueError('Unexpected debug code assets in a release catalog APK')
+    return {'build_mode': build_mode, 'libraries': receipt, 'debug_code_sha256': code}
+
+
+def verify(apk, platform, generated_jni_dir, catalog_assets_dir=None, *, development=False,
+           build_mode=None, intermediates_dir=None, ndk_dir=None):
     """Return verified selected-ABI library digests, or fail closed."""
     if platform not in TARGETS:
         raise ValueError('Unsupported Android platform')
@@ -156,7 +266,8 @@ def verify(apk, platform, generated_jni_dir, catalog_assets_dir=None):
         _verify_manifest(archive, entries[MANIFEST], target)
         catalog_assets = None
         if catalog_assets_dir is not None:
-            catalog_assets = _verify_catalog_assets(archive, entries, catalog_assets_dir)
+            catalog_assets = _verify_catalog_assets(archive, entries, catalog_assets_dir,
+                                                    development=development)
         digests = {}
         for library in REQUIRED_LIBRARIES:
             member = f'lib/{abi}/{library}'
@@ -164,7 +275,7 @@ def verify(apk, platform, generated_jni_dir, catalog_assets_dir=None):
                 raise ValueError(f'Missing selected-ABI library: {library}')
             with archive.open(entries[member]) as stream:
                 digests[library] = _elf_hash(stream, machine, f'APK {library}')
-        for library in SQLITE_LOADERS.values():
+        for library in (() if build_mode == 'release' else SQLITE_LOADERS.values()):
             generated = generated_jni_dir / abi / library
             if not generated.is_file() or generated.is_symlink():
                 raise ValueError(f'Missing current generated library: {library}')
@@ -172,23 +283,46 @@ def verify(apk, platform, generated_jni_dir, catalog_assets_dir=None):
                 current = _elf_hash(stream, machine, f'generated {library}')
             if current != digests[library]:
                 raise ValueError(f'Stale packaged library differs from generated JNI: {library}')
+        code_chain = None
+        if development and build_mode is None:
+            raise ValueError('Development APK verification requires an explicit build mode')
+        if build_mode is not None:
+            code_chain = _verify_code_chain(archive, entries, generated_jni_dir, platform,
+                                           build_mode, intermediates_dir, ndk_dir)
     receipt = {'platform': platform, 'abi': abi, 'elf_machine': machine,
                'sha256': digests}
     if catalog_assets is not None:
         receipt['catalog_assets_sha256'] = catalog_assets
+    if code_chain is not None:
+        receipt['code_chain'] = code_chain
     return receipt
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apk', type=Path, required=True)
-    parser.add_argument('--platform', choices=TARGETS, required=True)
-    parser.add_argument('--generated-jni-dir', type=Path, required=True)
-    parser.add_argument('--catalog-assets-dir', type=Path, required=True)
+    parser.add_argument('--platform', choices=TARGETS)
+    parser.add_argument('--generated-jni-dir', type=Path)
+    parser.add_argument('--catalog-assets-dir', type=Path)
+    parser.add_argument('--development', action='store_true')
+    parser.add_argument('--public-catalog-assets-only', action='store_true')
+    parser.add_argument('--build-mode', choices=('debug', 'release'))
+    parser.add_argument('--intermediates-dir', type=Path)
+    parser.add_argument('--ndk-dir', type=Path)
     args = parser.parse_args(argv)
+    if not args.public_catalog_assets_only and not all((args.platform, args.generated_jni_dir,
+                                                       args.catalog_assets_dir)):
+        parser.error('Explicit platform, generated JNI and catalog assets are required')
+    if args.public_catalog_assets_only and any((args.platform, args.generated_jni_dir,
+            args.catalog_assets_dir, args.development, args.build_mode, args.intermediates_dir,
+            args.ndk_dir)):
+        parser.error('Public asset verification accepts only the explicit APK')
     try:
-        receipt = verify(args.apk, args.platform, args.generated_jni_dir, args.catalog_assets_dir)
-    except (OSError, ValueError, BadZipFile, RuntimeError) as error:
+        receipt = (verify_public_catalog_assets(args.apk) if args.public_catalog_assets_only else
+                   verify(args.apk, args.platform, args.generated_jni_dir, args.catalog_assets_dir,
+                          development=args.development, build_mode=args.build_mode,
+                          intermediates_dir=args.intermediates_dir, ndk_dir=args.ndk_dir))
+    except (OSError, ValueError, BadZipFile, RuntimeError, subprocess.CalledProcessError) as error:
         print(f'Catalog trial APK verification failed: {error}', file=sys.stderr)
         return 1
     print(json.dumps(receipt, sort_keys=True))

@@ -27,6 +27,7 @@ typedef SlotValues = ({
   int? rirHigh,
   String? rirPolicy,
   String prescriptionEvidence,
+  String catalogEvidence,
 });
 
 /// What saving a [DayDraft] would write, compared by value.
@@ -87,6 +88,13 @@ DaySnapshot daySnapshot(DayDraft d) {
           rirLow: s.rirLow,
           rirHigh: s.rirHigh,
           rirPolicy: s.rirPolicy,
+          catalogEvidence: jsonEncode({
+            'selection': s.catalog?.toJson(),
+            'targets': {
+              for (final entry in s.catalogTargets.entries)
+                entry.key: entry.value.toJson(),
+            },
+          }),
           prescriptionEvidence:
               _prescriptionEvidence(s.rawFields, s.changedFields, {
                 'target_rep_low': s.repLow,

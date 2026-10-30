@@ -32,6 +32,7 @@ internal class AlkionRuntime private constructor(context: Context) {
                         mapOf(
                             "applicationId" to application.packageName,
                             "flavor" to BuildConfig.FLAVOR,
+                            "privateCatalogDev" to BuildConfig.PRIVATE_CATALOG_DEV,
                             "displayName" to application.applicationInfo.loadLabel(application.packageManager).toString(),
                             "dataDirectory" to dataDirectory.absolutePath,
                             // Resolve only the OS-owned parent. Never canonicalize

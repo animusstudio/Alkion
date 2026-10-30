@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../data/models.dart' show hasQualifiedCalendarDay;
 import '../domain/evidence.dart';
+import '../domain/catalog_execution.dart';
 import '../store/local_store.dart';
 import '../store/schema.dart';
 import '../transfer/full_v1.dart';
@@ -14,7 +15,7 @@ import 'exact_json.dart';
 const domainExportFormat = 'alkion-domain-export';
 const historyExportFormat = 'alkion-history-export';
 const compatExportFormat = 'alkion-reps-compat-export/1';
-const exportFormatVersion = 1;
+const exportFormatVersion = 2;
 
 /// Shared domain/preference state included in the domain export. Draft,
 /// timer and finished-recovery state is recovery evidence for manual backup.
@@ -61,7 +62,20 @@ Future<Map<String, Object?>> buildDomainExport(
       'generation': tx.token.generation,
       'schema_user_version': version.values.single,
     },
-    'domain': {for (final table in domainTables) table: await all(table, 'id')},
+    'domain': {
+      for (final table
+          in (version.values.single as int) < 5
+              ? foundationDomainTables
+              : domainTables)
+        table: await all(table, 'id'),
+    },
+    'catalog_codecs': {
+      'selection': 1,
+      'set': 1,
+      'targets': 1,
+      'definition': 1,
+      'measurement_profile': 1,
+    },
     'record_revisions': await all(
       'record_revisions',
       'kind,record_id,revision',
@@ -160,6 +174,7 @@ Future<Map<String, Object?>?> buildHistoryExport(
         : 'invalid',
   };
   final out = <Map<String, Object?>>[];
+  final contextOrdinals = <String, int>{};
   for (final s in inRange) {
     final sets = await tx.getAll(
       'SELECT * FROM sets WHERE profile_id=? AND deleted=0 AND session_id=? ORDER BY id',
@@ -186,8 +201,28 @@ Future<Map<String, Object?>?> buildHistoryExport(
         }
         return (a['id'] as String).compareTo(b['id'] as String);
       });
+    final hasTyped = sorted.any(
+      (row) => row['catalog_set_bytes'] != null || row['block_id'] != null,
+    );
+    String? previousKey;
+    var segment = -1;
     for (final r in sorted) {
-      (groups[r['exercise_id'] as String] ??= []).add(r);
+      final catalog = r['catalog_set_bytes'] == null
+          ? null
+          : CatalogSetEvidence.fromJson(
+              decodeCatalogBytes(r['catalog_set_bytes']!),
+            );
+      final baseKey = catalog == null
+          ? '${r['block_id'] ?? r['exercise_id']}:${r['exercise_id']}'
+          : '${r['block_id']}:${catalog.selection.compatibilityKey}';
+      if (baseKey != previousKey) {
+        segment++;
+        previousKey = baseKey;
+      }
+      final key = hasTyped
+          ? 'segment:$segment:$baseKey'
+          : r['exercise_id'] as String;
+      (groups[key] ??= []).add(r);
     }
     out.add({
       'date': s['date'],
@@ -197,20 +232,50 @@ Future<Map<String, Object?>?> buildHistoryExport(
       'exercises': [
         for (final e in groups.entries)
           {
-            'name': exercises[e.key]?['name'],
-            'muscle_group': exercises[e.key]?['muscle_group'],
+            'name': exercises[e.value.first['exercise_id']]?['name'],
+            'muscle_group':
+                exercises[e.value.first['exercise_id']]?['muscle_group'],
+            if (e.value.first['catalog_set_bytes'] != null)
+              'execution': () {
+                final selection = CatalogSetEvidence.fromJson(
+                  decodeCatalogBytes(e.value.first['catalog_set_bytes']!),
+                ).selection;
+                return {
+                  'label': selection.displayLabel,
+                  'setup': selection.contextLabel,
+                  'setup_ordinal': contextOrdinals.putIfAbsent(
+                    selection.contextId,
+                    () => contextOrdinals.length + 1,
+                  ),
+                  'measurement_profile': selection.profile.toJson(),
+                  'resistance_source': selection.resistanceSource,
+                  'load_convention': selection.loadConvention,
+                };
+              }(),
             'sets': [
               for (final r in e.value)
                 () {
                   final w = DecimalEvidence.fromRow(r, 'weight_kg');
+                  final catalog = r['catalog_set_bytes'] == null
+                      ? null
+                      : CatalogSetEvidence.fromJson(
+                          decodeCatalogBytes(r['catalog_set_bytes']!),
+                        );
                   final validLoad = w.state == ValueState.valid;
-                  if (!validLoad) unknownLoads++;
+                  if (catalog == null && !validLoad) unknownLoads++;
                   return <String, Object?>{
-                    'weight_kg': {
-                      'value': validLoad ? w.raw : null,
-                      'state': w.state.name,
+                    if (catalog != null)
+                      'measurements': {
+                        for (final metric in catalog.metrics.entries)
+                          metric.key: metric.value.toJson(),
+                      },
+                    if (catalog == null) ...{
+                      'weight_kg': {
+                        'value': validLoad ? w.raw : null,
+                        'state': w.state.name,
+                      },
+                      'reps': state(r['reps'], r['reps'] is int),
                     },
-                    'reps': state(r['reps'], r['reps'] is int),
                     'rir': state(r['rir'], r['rir'] is int),
                     'warmup': state(
                       r['is_warmup'] is int
@@ -262,6 +327,40 @@ Future<Map<String, Object?>> buildCompatTransferExport(
   required String exportedAt,
 }) async {
   OperationInstant(exportedAt);
+  final schemaVersion =
+      (await tx.get('PRAGMA user_version')).values.single as int;
+  if (schemaVersion >= 5) {
+    for (final table in [
+      'exercise_catalog_bindings',
+      'exercise_tracking_contexts',
+    ]) {
+      if (await tx.getOptional(
+            'SELECT id FROM $table WHERE profile_id=? LIMIT 1',
+            [tx.profileId],
+          ) !=
+          null) {
+        throw const StoreException(
+          'compat_export_catalog_requires_native_backup',
+        );
+      }
+    }
+    for (final pair in [
+      ('exercises', 'execution_definition_bytes'),
+      ('day_template_items', 'catalog_selection_bytes'),
+      ('day_template_items', 'catalog_targets_bytes'),
+      ('sets', 'catalog_set_bytes'),
+    ]) {
+      if (await tx.getOptional(
+            'SELECT id FROM ${pair.$1} WHERE profile_id=? AND ${pair.$2} IS NOT NULL LIMIT 1',
+            [tx.profileId],
+          ) !=
+          null) {
+        throw const StoreException(
+          'compat_export_catalog_requires_native_backup',
+        );
+      }
+    }
+  }
   final data = <String, List<Map<String, Object?>>>{};
   final exported = <String, Set<String>>{};
   var cascaded = 0, cleared = 0;

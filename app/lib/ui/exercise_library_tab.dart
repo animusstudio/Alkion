@@ -1,5 +1,6 @@
 import '../catalog_ui/catalog_picker.dart';
 import '../catalog/catalog.dart';
+import '../catalog/catalog_development.dart';
 import '../catalog_ui/catalog_trial_scope.dart';
 import '../widgets/w_action_sheet.dart';
 import 'dart:async';
@@ -60,6 +61,7 @@ class _LibraryTabState extends State<LibraryTab> {
     // Rebuild when unit changes so PR values re-display in new unit.
     final units = context.watch<UnitService>();
     final tokens = context.tokens;
+    final catalogInput = context.watch<CatalogDevelopmentInput?>();
 
     return StreamBuilder<List<Exercise>>(
       stream: _catalogStream,
@@ -112,6 +114,14 @@ class _LibraryTabState extends State<LibraryTab> {
               },
             ),
             const SizedBox(height: 24),
+            if (catalogInput?.unavailable == true)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  AppLocalizations.of(context).catalogUnavailable,
+                  style: WorkoutType.body(size: 14, color: tokens.dim),
+                ),
+              ),
 
             if (snap.hasData && exercises.isEmpty)
               Padding(

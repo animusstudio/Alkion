@@ -17,8 +17,18 @@ import '../util/calendar_keys.dart';
 import '../util/prescription_format.dart';
 import '../settings/settings_service.dart';
 import '../store/local_store.dart';
+import '../domain/catalog_execution.dart';
+import '../domain/local_action.dart';
+import '../domain/evidence.dart';
+import '../data/catalog_execution_repository.dart';
 
 const uuid = Uuid();
+
+void _draftFields(Map<String, dynamic> json, Set<String> fields) {
+  if (json.keys.any((key) => !fields.contains(key))) {
+    throw const FormatException('Unknown session draft field');
+  }
+}
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -123,7 +133,12 @@ double roundTo(double v, double step) => (v / step).round() * step;
 ///   reps_i   = max(1, 8 − 2*i)
 ///
 /// Working sets use [suggested] weight and [repLow] reps; actual RIR is absent.
-BlockState buildBlock({required ResolvedSlot resolved, double? lastTopKg}) {
+BlockState buildBlock({
+  required ResolvedSlot resolved,
+  double? lastTopKg,
+  String? originSlotId,
+  int? originSlotRevision,
+}) {
   _validateFreshCounts(resolved);
   final exercise = resolved.exercise;
   final step = exercise.plateStepKg;
@@ -167,10 +182,48 @@ BlockState buildBlock({required ResolvedSlot resolved, double? lastTopKg}) {
   }
 
   return BlockState(
+    originSlotId: originSlotId,
+    originSlotRevision: originSlotRevision,
     exercise: exercise,
     resolved: resolved,
     warmupSets: warmups,
     workingSets: working,
+    expanded: true,
+  );
+}
+
+/// Catalog quantities have their own policy. Numeric compatibility defaults
+/// are deliberately inert; only the per-set evidence is authored at finish.
+BlockState buildCatalogBlock({
+  required ResolvedSlot resolved,
+  required CatalogSelectionEvidence selection,
+  Map<String, CatalogMetricEvidence> targets = const {},
+  String? originSlotId,
+  int? originSlotRevision,
+}) {
+  if (resolved.workSets < 1 ||
+      resolved.workSets > 99 ||
+      resolved.warmupSets < 0 ||
+      resolved.warmupSets > 99) {
+    throw const FreshSessionLimitException(FreshSessionLimit.generatedSets);
+  }
+  SetState fresh(bool warmup) => SetState(
+    id: uuid.v4(),
+    weightKg: 0,
+    reps: 0,
+    rir: null,
+    isWarmup: warmup,
+    done: false,
+    catalog: CatalogSetEvidence(selection: selection, metrics: targets),
+  )..weightUnavailable = true;
+  return BlockState(
+    exercise: resolved.exercise,
+    resolved: resolved,
+    originSlotId: originSlotId,
+    originSlotRevision: originSlotRevision,
+    catalogSelection: selection,
+    warmupSets: List.generate(resolved.warmupSets, (_) => fresh(true)),
+    workingSets: List.generate(resolved.workSets, (_) => fresh(false)),
     expanded: true,
   );
 }
@@ -182,6 +235,32 @@ typedef LiveSet = ({BlockState block, SetState set});
 /// block's all-time best (no history counts as a PR). The same rule the
 /// block header and the finish-time PR flag use.
 ({double topKg, bool isPr}) liveTopOf(BlockState block) {
+  if (block.catalogSelection != null) {
+    final selection = block.catalogSelection!;
+    if (!selection.supportsLoadProgression) return (topKg: 0, isPr: false);
+    ExactDecimal? exactTop;
+    final top = block.workingSets
+        .where(
+          (s) =>
+              s.done &&
+              s.catalog?.selection.compatibilityKey ==
+                  selection.compatibilityKey,
+        )
+        .fold<double>(0, (best, set) {
+          final exact = set.catalog?.metrics['reported_load']?.loadKg;
+          if (exact != null &&
+              (exactTop == null || exact.compareTo(exactTop!) > 0)) {
+            exactTop = exact;
+          }
+          final load = exact?.displayDouble;
+          return load != null && load.isFinite && load > best ? load : best;
+        });
+    final best = block.catalogBaselines[selection.compatibilityKey]?.loadKg;
+    return (
+      topKg: top,
+      isPr: exactTop != null && best != null && exactTop!.compareTo(best) > 0,
+    );
+  }
   final top = block.workingSets
       .where((s) => s.done)
       .fold<double>(0, (m, s) => s.weightKg > m ? s.weightKg : m);
@@ -249,6 +328,11 @@ class SetState {
   final bool isWarmup;
   bool done;
 
+  /// The performed execution and exact typed input belong to this set. A
+  /// block's default is never used to reinterpret an existing observation.
+  CatalogSetEvidence? catalog;
+  bool catalogTouched;
+
   SetState({
     required this.id,
     required double weightKg,
@@ -262,6 +346,8 @@ class SetState {
     this.rirTouched = false,
     required this.isWarmup,
     required this.done,
+    this.catalog,
+    this.catalogTouched = false,
   }) : _weightKg = weightKg,
        _reps = reps,
        _rir = rir {
@@ -282,9 +368,28 @@ class SetState {
     'rir': rir,
     'isWarmup': isWarmup,
     'done': done,
+    if (catalog != null) 'catalog': catalog!.toJson(),
+    'catalogTouched': catalogTouched,
   };
 
   factory SetState.fromJson(Map<String, dynamic> json) {
+    _draftFields(json, {
+      'id',
+      'weightKg',
+      'originalWeight',
+      'weightUnavailable',
+      'weightTouched',
+      'localRevision',
+      'rawFields',
+      'repsTouched',
+      'rirTouched',
+      'reps',
+      'rir',
+      'isWarmup',
+      'done',
+      'catalog',
+      'catalogTouched',
+    });
     final value = SetState(
       id: json['id'] as String,
       weightKg: (json['weightKg'] as num).toDouble(),
@@ -300,6 +405,12 @@ class SetState {
       rir: json['rir'] as int?,
       isWarmup: json['isWarmup'] as bool,
       done: json['done'] as bool,
+      catalog: json['catalog'] == null
+          ? null
+          : CatalogSetEvidence.fromJson(
+              Map<String, dynamic>.from(json['catalog'] as Map),
+            ),
+      catalogTouched: json['catalogTouched'] == true,
     );
     value.weightUnavailable = json['weightUnavailable'] == true;
     return value;
@@ -308,6 +419,13 @@ class SetState {
 
 /// State for one exercise block (accordion) in the active session.
 class BlockState {
+  final String blockId;
+  final String? originSlotId;
+  final int? originSlotRevision;
+  CatalogSelectionEvidence? catalogSelection;
+  final Map<String, CatalogMetricEvidence> catalogBaselines;
+  final List<OperationDependency> catalogDependencies;
+  final Map<String, Map<String, CatalogMetricEvidence>> catalogLastMetrics;
   final Exercise exercise;
   final ResolvedSlot resolved;
   List<SetState> warmupSets;
@@ -324,6 +442,14 @@ class BlockState {
   bool lastTopUnavailable;
 
   BlockState({
+    String? blockId,
+    this.originSlotId,
+    this.originSlotRevision,
+    this.catalogSelection,
+    Map<String, CatalogMetricEvidence> catalogBaselines = const {},
+    List<OperationDependency> catalogDependencies = const [],
+    Map<String, Map<String, CatalogMetricEvidence>> catalogLastMetrics =
+        const {},
     required this.exercise,
     required this.resolved,
     required this.warmupSets,
@@ -332,12 +458,39 @@ class BlockState {
     this.bestKg,
     this.lastTop,
     this.lastTopUnavailable = false,
-  });
+  }) : blockId = blockId ?? uuid.v4(),
+       catalogBaselines = Map.of(catalogBaselines),
+       catalogDependencies = List.of(catalogDependencies),
+       catalogLastMetrics = Map.of(catalogLastMetrics);
 
   /// All sets in display order: warm-ups first, then working.
   List<SetState> get allSets => [...warmupSets, ...workingSets];
 
   Map<String, dynamic> toJson() => {
+    'blockId': blockId,
+    'originSlotId': originSlotId,
+    'originSlotRevision': originSlotRevision,
+    if (catalogSelection != null)
+      'catalogSelection': catalogSelection!.toJson(),
+    'catalogBaselines': {
+      for (final entry in catalogBaselines.entries)
+        entry.key: entry.value.toJson(),
+    },
+    'catalogDependencies': [
+      for (final dependency in catalogDependencies)
+        {
+          'profileId': dependency.profileId,
+          'family': dependency.family.name,
+          'operationId': dependency.operationId,
+        },
+    ],
+    'catalogLastMetrics': {
+      for (final entry in catalogLastMetrics.entries)
+        entry.key: {
+          for (final metric in entry.value.entries)
+            metric.key: metric.value.toJson(),
+        },
+    },
     'exerciseId': exercise.id,
     'exerciseName': exercise.name,
     'exerciseSlug': exercise.slug,
@@ -372,6 +525,46 @@ class BlockState {
   };
 
   factory BlockState.fromJson(Map<String, dynamic> json) {
+    _draftFields(json, {
+      'blockId',
+      'originSlotId',
+      'originSlotRevision',
+      'catalogSelection',
+      'catalogBaselines',
+      'catalogDependencies',
+      'catalogLastMetrics',
+      'exerciseId',
+      'exerciseName',
+      'exerciseSlug',
+      'exerciseMuscleGroup',
+      'exerciseEquip',
+      'exerciseCompound',
+      'exerciseBaseWeightKg',
+      'exercisePlateStepKg',
+      'exerciseDefaultRepLow',
+      'exerciseDefaultRepHigh',
+      'exerciseDefaultWarmupSets',
+      'exerciseDefaultWorkingSets',
+      'exerciseDefaultRirLow',
+      'exerciseDefaultRirHigh',
+      'exerciseDefaultRestSeconds',
+      'resolvedWorkSets',
+      'resolvedWarmupSets',
+      'resolvedRepLow',
+      'resolvedRepHigh',
+      'resolvedRirLow',
+      'resolvedRirHigh',
+      'resolvedRirState',
+      'resolvedRirPolicy',
+      'warmupSets',
+      'workingSets',
+      'expanded',
+      'bestKg',
+      'lastTopWeight',
+      'lastTopReps',
+      'lastTopDate',
+      'lastTopUnavailable',
+    });
     final exercise = Exercise(
       id: json['exerciseId'] as String,
       name: json['exerciseName'] as String,
@@ -452,7 +645,44 @@ class BlockState {
         ? (weight: ltWeight, reps: ltReps, date: ltDate)
         : null;
 
-    return BlockState(
+    final block = BlockState(
+      blockId: json['blockId'] as String?,
+      originSlotId: json['originSlotId'] as String?,
+      originSlotRevision: json['originSlotRevision'] as int?,
+      catalogSelection: json['catalogSelection'] == null
+          ? null
+          : CatalogSelectionEvidence.fromJson(
+              Map<String, dynamic>.from(json['catalogSelection'] as Map),
+            ),
+      catalogBaselines: (json['catalogBaselines'] as Map? ?? {}).map(
+        (key, value) => MapEntry(
+          key as String,
+          CatalogMetricEvidence.fromJson(
+            Map<String, dynamic>.from(value as Map),
+          ),
+        ),
+      ),
+      catalogDependencies: [
+        for (final raw in json['catalogDependencies'] as List? ?? [])
+          OperationDependency(
+            (raw as Map)['profileId'] as String,
+            GrantFamily.values.byName(raw['family'] as String),
+            raw['operationId'] as String,
+          ),
+      ],
+      catalogLastMetrics: (json['catalogLastMetrics'] as Map? ?? {}).map(
+        (key, values) => MapEntry(
+          key as String,
+          (values as Map).map(
+            (metric, value) => MapEntry(
+              metric as String,
+              CatalogMetricEvidence.fromJson(
+                Map<String, dynamic>.from(value as Map),
+              ),
+            ),
+          ),
+        ),
+      ),
       exercise: exercise,
       resolved: resolved,
       warmupSets: (json['warmupSets'] as List)
@@ -466,6 +696,13 @@ class BlockState {
       lastTop: lastTop,
       lastTopUnavailable: json['lastTopUnavailable'] == true,
     );
+    if ((block.catalogSelection != null &&
+            block.allSets.any((set) => set.catalog == null)) ||
+        (block.catalogSelection == null &&
+            block.allSets.any((set) => set.catalog != null))) {
+      throw const FormatException('Missing per-set execution evidence');
+    }
+    return block;
   }
 }
 
@@ -521,6 +758,8 @@ class SessionDraft {
   });
 
   Map<String, dynamic> toJson() => {
+    'format': 'alkion-session-draft',
+    'version': 2,
     'templateId': templateId,
     'name': name,
     'focus': focus,
@@ -539,29 +778,88 @@ class SessionDraft {
     'rirPromptSetId': rirPromptSetId,
   };
 
-  factory SessionDraft.fromJson(Map<String, dynamic> json) => SessionDraft(
-    templateId: json['templateId'] as String?,
-    name: json['name'] as String,
-    focus: json['focus'] as String,
-    startedAt: DateTime.parse(json['startedAt'] as String),
-    blocks: (json['blocks'] as List)
-        .map((e) => BlockState.fromJson(e as Map<String, dynamic>))
-        .toList(),
-    // Absent in drafts written by older builds → a fresh workout.
-    sessionId: json['sessionId'] as String?,
-    sessionDate: json['sessionDate'] as String?,
-    sessionDateEvidence: json['sessionDateEvidence'] == null
-        ? null
-        : Map<String, Object?>.from(json['sessionDateEvidence'] as Map),
-    identity: json['draftId'] as String?,
-    localRevision: json['localRevision'] as int?,
-    setBases: Map<String, int>.from(json['setBases'] as Map? ?? {}),
-    restStart: DateTime.tryParse(json['restStart'] as String? ?? ''),
-    restTotal: json['restTotal'] as int? ?? 0,
-    restEndedAt: DateTime.tryParse(json['restEndedAt'] as String? ?? ''),
-    focusedSetId: json['focusedSetId'] as String?,
-    rirPromptSetId: json['rirPromptSetId'] as String?,
-  );
+  factory SessionDraft.fromJson(Map<String, dynamic> json) {
+    _draftFields(json, {
+      'format',
+      'version',
+      'templateId',
+      'name',
+      'focus',
+      'startedAt',
+      'blocks',
+      'sessionId',
+      'sessionDate',
+      'sessionDateEvidence',
+      'draftId',
+      'localRevision',
+      'setBases',
+      'restStart',
+      'restTotal',
+      'restEndedAt',
+      'focusedSetId',
+      'rirPromptSetId',
+    });
+    final versioned = json.containsKey('format') || json.containsKey('version');
+    if (versioned &&
+        (json['format'] != 'alkion-session-draft' || json['version'] != 2)) {
+      throw const FormatException('Unsupported session draft');
+    }
+    if (!versioned) {
+      final blocks = json['blocks'];
+      if (blocks is List &&
+          blocks.any(
+            (block) =>
+                block is Map &&
+                (block.keys.any(
+                      const {
+                        'blockId',
+                        'originSlotId',
+                        'originSlotRevision',
+                        'catalogSelection',
+                        'catalogBaselines',
+                        'catalogDependencies',
+                        'catalogLastMetrics',
+                      }.contains,
+                    ) ||
+                    [block['warmupSets'], block['workingSets']].any(
+                      (sets) =>
+                          sets is List &&
+                          sets.any(
+                            (set) =>
+                                set is Map &&
+                                set.keys.any(
+                                  const {'catalog', 'catalogTouched'}.contains,
+                                ),
+                          ),
+                    )),
+          )) {
+        throw const FormatException('Catalog draft requires a version');
+      }
+    }
+    return SessionDraft(
+      templateId: json['templateId'] as String?,
+      name: json['name'] as String,
+      focus: json['focus'] as String,
+      startedAt: DateTime.parse(json['startedAt'] as String),
+      blocks: (json['blocks'] as List)
+          .map((e) => BlockState.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      // Absent in drafts written by older builds → a fresh workout.
+      sessionId: json['sessionId'] as String?,
+      sessionDate: json['sessionDate'] as String?,
+      sessionDateEvidence: json['sessionDateEvidence'] == null
+          ? null
+          : Map<String, Object?>.from(json['sessionDateEvidence'] as Map),
+      identity: json['draftId'] as String?,
+      localRevision: json['localRevision'] as int?,
+      setBases: Map<String, int>.from(json['setBases'] as Map? ?? {}),
+      restStart: DateTime.tryParse(json['restStart'] as String? ?? ''),
+      restTotal: json['restTotal'] as int? ?? 0,
+      restEndedAt: DateTime.tryParse(json['restEndedAt'] as String? ?? ''),
+      focusedSetId: json['focusedSetId'] as String?,
+      rirPromptSetId: json['rirPromptSetId'] as String?,
+    );
+  }
 
   /// An independent copy made through the same JSON path the draft files use,
   /// so no [BlockState]/[SetState] is shared with this draft.
@@ -958,9 +1256,11 @@ class ActiveSessionController extends ChangeNotifier {
   /// Resolves each slot, queries the last/best top set for seeding and PR
   /// detection, then builds the block list.
   final Map<BlockState, String> _originSlotIds = {};
-  String? originSlotIdFor(BlockState block) => _originSlotIds[block];
+  String? originSlotIdFor(BlockState block) =>
+      block.originSlotId ?? _originSlotIds[block];
   final Map<BlockState, int?> _originSlotRevisions = {};
-  int? originSlotRevisionFor(BlockState block) => _originSlotRevisions[block];
+  int? originSlotRevisionFor(BlockState block) =>
+      block.originSlotRevision ?? _originSlotRevisions[block];
 
   Future<void> buildFromTemplate(
     DayTemplate template, {
@@ -977,6 +1277,8 @@ class ActiveSessionController extends ChangeNotifier {
     final prescriptions = <ResolvedSlot>[];
     final originSlotIds = <String?>[];
     final originSlotRevisions = <int?>[];
+    final selections = <CatalogSelectionEvidence?>[];
+    final catalogTargets = <Map<String, CatalogMetricEvidence>>[];
     var remaining = freshGeneratedSetLimit;
     for (final slot in template.slots) {
       final exercise = await exerciseRepo.byId(slot.exerciseId);
@@ -984,8 +1286,17 @@ class ActiveSessionController extends ChangeNotifier {
         continue;
       }
 
-      final resolved = resolveFreshPrescription(slot, exercise);
-      _validateFreshCounts(resolved);
+      final resolved = slot.catalog == null
+          ? resolveFreshPrescription(slot, exercise)
+          : resolveSlot(slot, exercise);
+      if (slot.catalog == null) {
+        _validateFreshCounts(resolved);
+      } else if (resolved.workSets < 1 ||
+          resolved.workSets > 99 ||
+          resolved.warmupSets < 0 ||
+          resolved.warmupSets > 99) {
+        throw const FreshSessionLimitException(FreshSessionLimit.generatedSets);
+      }
       // Subtract only validated bounded counts; stop before exceeding the cap.
       if (resolved.workSets > remaining ||
           resolved.warmupSets > remaining - resolved.workSets) {
@@ -998,6 +1309,8 @@ class ActiveSessionController extends ChangeNotifier {
       prescriptions.add(resolved);
       originSlotIds.add(slot.id);
       originSlotRevisions.add(slot.localRevision);
+      selections.add(slot.catalog);
+      catalogTargets.add(slot.catalogTargets);
     }
 
     // No generated block, per-set UUID or draft mutation precedes preflight.
@@ -1007,11 +1320,43 @@ class ActiveSessionController extends ChangeNotifier {
     for (var i = 0; i < prescriptions.length; i++) {
       final resolved = prescriptions[i];
       final exerciseId = resolved.exercise.id;
+      if (selections[i] case final selection?) {
+        final reference = await sessionRepo.catalogLoadReference(selection);
+        final dependencies = await CatalogExecutionRepository.local(
+          sessionRepo.db,
+        ).dependenciesForSelection(selection);
+        final block = buildCatalogBlock(
+          resolved: resolved,
+          selection: selection,
+          targets: catalogTargets[i],
+          originSlotId: originSlotIds[i],
+          originSlotRevision: originSlotRevisions[i],
+        );
+        block.bestKg = reference.bestKg;
+        block.catalogDependencies.addAll(dependencies);
+        if (reference.lastMetrics case final metrics?) {
+          block.catalogLastMetrics[selection.compatibilityKey] = metrics;
+        }
+        if (reference.bestMetrics?['reported_load'] case final best?) {
+          block.catalogBaselines[selection.compatibilityKey] = best;
+        }
+        final last = reference.last;
+        block.lastTop = last == null
+            ? null
+            : (weight: last.weightKg, reps: last.reps, date: last.date);
+        blocks.add(block);
+        continue;
+      }
       final reference = await sessionRepo.lastTopSetEvidence(exerciseId);
       final lastTop = reference.value;
       final bestKg = await sessionRepo.bestTopSet(exerciseId);
 
-      final block = buildBlock(resolved: resolved, lastTopKg: lastTop?.weight);
+      final block = buildBlock(
+        resolved: resolved,
+        lastTopKg: lastTop?.weight,
+        originSlotId: originSlotIds[i],
+        originSlotRevision: originSlotRevisions[i],
+      );
       block.bestKg = bestKg;
       block.lastTop = lastTop;
       block.lastTopUnavailable = reference.unavailable;
@@ -1239,6 +1584,9 @@ class ActiveSessionController extends ChangeNotifier {
     if (live == null) {
       return null;
     }
+    if (live.set.catalog != null && !live.set.catalog!.validForLogging) {
+      throw const StoreException('catalog_measurements_required');
+    }
     final newlyDone = !live.set.done;
     live.set.done = true;
     _focusedSetId = null;
@@ -1286,13 +1634,43 @@ class ActiveSessionController extends ChangeNotifier {
   int get totalWork => draft.blocks.fold(0, (n, b) => n + b.workingSets.length);
 
   /// Whether the session can be finished (at least one working set done).
-  bool get canFinish => doneWork >= 1;
+  bool get canFinish =>
+      doneWork >= 1 &&
+      !draft.blocks
+          .expand((b) => b.allSets)
+          .any(
+            (s) =>
+                s.done &&
+                s.catalog != null &&
+                !s.catalog!.validForLogging &&
+                (s.localRevision == null || s.catalogTouched),
+          );
 
   /// Number of exercise blocks that have beaten their all-time best in this
   /// session, using the current local best evidence.
   int get prCount {
     var count = 0;
     for (final block in draft.blocks) {
+      if (block.catalogSelection != null) {
+        final contexts = <String, List<SetState>>{};
+        for (final set in block.workingSets.where((s) => s.done)) {
+          final selection = set.catalog?.selection;
+          if (selection?.supportsLoadProgression == true) {
+            (contexts[selection!.compatibilityKey] ??= []).add(set);
+          }
+        }
+        for (final entry in contexts.entries) {
+          final best = block.catalogBaselines[entry.key]?.loadKg;
+          if (best != null &&
+              entry.value.any((s) {
+                final load = s.catalog!.metrics['reported_load']?.loadKg;
+                return load != null && load.compareTo(best) > 0;
+              })) {
+            count++;
+          }
+        }
+        continue;
+      }
       final maxDoneWorking = block.workingSets
           .where((s) => s.done)
           .fold<double>(0, (m, s) => s.weightKg > m ? s.weightKg : m);
@@ -1313,10 +1691,84 @@ class ActiveSessionController extends ChangeNotifier {
   /// by the UI and this method propagates the rebuild).
   void markChanged() => notifyListeners();
 
+  void updateCatalogMetric(
+    SetState set,
+    String metric,
+    String text, {
+    String? unit,
+  }) {
+    final evidence = set.catalog;
+    if (evidence == null) throw const StoreException('catalog_set_required');
+    set.catalog = CatalogSetEvidence(
+      selection: evidence.selection,
+      metrics: {
+        ...evidence.metrics,
+        metric: CatalogMetricEvidence.fromInput(
+          text,
+          metric: metric,
+          unit:
+              unit ??
+              evidence.metrics[metric]?.unit ??
+              CatalogMetricEvidence.defaultUnit(metric),
+        ),
+      },
+    );
+    set.catalogTouched = true;
+    notifyListeners();
+  }
+
+  void useCatalogValues(
+    SetState set,
+    Map<String, CatalogMetricEvidence> metrics,
+  ) {
+    if (finishPending) throw const StoreException('finish_retry_required');
+    set.catalog = CatalogSetEvidence(
+      selection: set.catalog!.selection,
+      metrics: metrics,
+    );
+    set.catalogTouched = true;
+    notifyListeners();
+  }
+
+  /// Appends one new occurrence and preserves all prior pending/logged sets,
+  /// their measurements and the running timer.
+  SetState appendCatalogSet(
+    BlockState block,
+    CatalogSelectionEvidence selection, {
+    bool isWarmup = false,
+    List<OperationDependency> dependencies = const [],
+  }) {
+    if (finishPending) throw const StoreException('finish_retry_required');
+    final added = SetState(
+      id: uuid.v4(),
+      weightKg: 0,
+      reps: 0,
+      rir: null,
+      isWarmup: isWarmup,
+      done: false,
+      catalog: CatalogSetEvidence(selection: selection, metrics: const {}),
+    )..weightUnavailable = true;
+    block.catalogSelection = selection;
+    for (final dependency in dependencies) {
+      if (!block.catalogDependencies.any(
+        (known) => known.operationId == dependency.operationId,
+      )) {
+        block.catalogDependencies.add(dependency);
+      }
+    }
+    (isWarmup ? block.warmupSets : block.workingSets).add(added);
+    _closeRirPrompt();
+    notifyListeners();
+    return added;
+  }
+
   /// Toggles [set] within [block] between done and not done.
   void toggleDone(BlockState block, SetState set) {
     if (finishPending) {
       throw const StoreException('finish_retry_required');
+    }
+    if (!set.done && set.catalog != null && !set.catalog!.validForLogging) {
+      throw const StoreException('catalog_measurements_required');
     }
     set.done = !set.done;
     notifyListeners();
@@ -1325,6 +1777,10 @@ class ActiveSessionController extends ChangeNotifier {
   /// Appends a new working set to [block] (cloning weight/reps from the last
   /// working set in the block, or using the block's default suggested weight).
   void addSet(BlockState block) {
+    if (block.catalogSelection case final selection?) {
+      appendCatalogSet(block, selection);
+      return;
+    }
     final last = block.workingSets.isNotEmpty ? block.workingSets.last : null;
     final step = block.exercise.plateStepKg;
     final seed = block.resolved.exercise.baseWeightKg ?? 20.0;
@@ -1380,6 +1836,10 @@ class ActiveSessionController extends ChangeNotifier {
   /// weight), rounded to the plate step and never above it; reps
   /// `max(1, 8 - 2 * i)`.
   void addWarmupSet(BlockState block) {
+    if (block.catalogSelection case final selection?) {
+      appendCatalogSet(block, selection, isWarmup: true);
+      return;
+    }
     final step = block.exercise.plateStepKg;
     final seed = block.exercise.baseWeightKg ?? 20.0;
     final reference = block.workingSets.isNotEmpty
@@ -1469,7 +1929,17 @@ class ActiveSessionController extends ChangeNotifier {
     RepEntry repEntry = RepEntry.fixed,
     RirControls rirControls = RirControls.off,
     bool allowRepeat = false,
+    CatalogSelectionEvidence? catalogSelection,
   }) async {
+    if (catalogSelection != null) {
+      await addCatalogBlock(
+        exercise,
+        catalogSelection,
+        sessionRepo: sessionRepo,
+        allowRepeat: allowRepeat,
+      );
+      return;
+    }
     // Build a default slot from the exercise's own defaults (no slot overrides).
     final hasRepEvidence =
         exercise.defaultRepLow != null ||
@@ -1514,6 +1984,51 @@ class ActiveSessionController extends ChangeNotifier {
     block.lastTop = lastTop;
     block.lastTopUnavailable = reference.unavailable;
     draft.blocks.add(block);
+    _closeRirPrompt();
+    notifyListeners();
+  }
+
+  Future<void> addCatalogBlock(
+    Exercise exercise,
+    CatalogSelectionEvidence selection, {
+    required SessionRepository sessionRepo,
+    bool allowRepeat = false,
+  }) async {
+    final current = draft;
+    final reference = await sessionRepo.catalogLoadReference(
+      selection,
+      excludeSessionId: current.sessionId,
+    );
+    final dependencies = await CatalogExecutionRepository.local(
+      sessionRepo.db,
+    ).dependenciesForSelection(selection);
+    if (!identical(draftOrNull, current) || finishPending) return;
+    if (!allowRepeat &&
+        current.blocks.any(
+          (b) =>
+              b.catalogSelection?.compatibilityKey ==
+              selection.compatibilityKey,
+        )) {
+      return;
+    }
+    final resolved = resolveSlot(
+      Slot(exerciseId: exercise.id, position: current.blocks.length),
+      exercise,
+    );
+    final block = buildCatalogBlock(resolved: resolved, selection: selection);
+    block.bestKg = reference.bestKg;
+    block.catalogDependencies.addAll(dependencies);
+    if (reference.lastMetrics case final metrics?) {
+      block.catalogLastMetrics[selection.compatibilityKey] = metrics;
+    }
+    if (reference.bestMetrics?['reported_load'] case final best?) {
+      block.catalogBaselines[selection.compatibilityKey] = best;
+    }
+    final last = reference.last;
+    block.lastTop = last == null
+        ? null
+        : (weight: last.weightKg, reps: last.reps, date: last.date);
+    current.blocks.add(block);
     _closeRirPrompt();
     notifyListeners();
   }
@@ -1563,6 +2078,34 @@ class ActiveSessionController extends ChangeNotifier {
     var setNum = 1;
     for (final block in d.blocks) {
       final blockSets = <SetWrite>[];
+      if (block.catalogSelection != null) {
+        for (final s in block.allSets.where((s) => s.done)) {
+          final evidence = s.catalog;
+          if (evidence == null ||
+              (!evidence.validForLogging &&
+                  (s.localRevision == null || s.catalogTouched))) {
+            throw const StoreException('catalog_measurements_required');
+          }
+          blockSets.add(
+            SetWrite(
+              id: s.id,
+              exerciseId: evidence.selection.exerciseId,
+              setNumber: setNum++,
+              weightKg: null,
+              reps: 0,
+              rir: s.isWarmup ? null : s.rir,
+              isWarmup: s.isWarmup,
+              catalog: evidence,
+              rawUntouched: s.rawUntouched,
+              blockId: block.blockId,
+              originSlotId: block.originSlotId,
+              originSlotRevision: block.originSlotRevision,
+            ),
+          );
+        }
+        sets.addAll(blockSets);
+        continue;
+      }
       for (final s in block.warmupSets.where((s) => s.done)) {
         blockSets.add(
           SetWrite(
@@ -1643,6 +2186,11 @@ class ActiveSessionController extends ChangeNotifier {
           ? store.persistedRevision
           : store.pending!.expectedRevision + 1,
       draftId: d.draftId,
+      dependencies: {
+        for (final block in d.blocks)
+          for (final dependency in block.catalogDependencies)
+            dependency.operationId: dependency,
+      }.values.toList(),
     );
     _saveDebounce?.cancel();
     _saveEpoch++;

@@ -111,7 +111,7 @@ final class RestoreService {
     SchemaRegistry? schema,
     this.checkpoint,
     this.workDirectory,
-  }) : schema = schema ?? prescriptionSchemaRegistry();
+  }) : schema = schema ?? catalogExecutionSchemaRegistry();
   final Directory supportRoot;
   final SchemaRegistry schema;
   final RecoveryCheckpoint? checkpoint;
@@ -1222,17 +1222,43 @@ _Plan _reconcile(
     'review_decisions' => lineageReviews.contains(row['review_id']),
     _ => false,
   };
-  Map<String, Object?> comparable(String table, Map<String, Object?> row) =>
-      table == 'local_state' ? ({...row}..remove('generation')) : row;
-  for (final table in preservedTables) {
+  Map<String, Object?> comparable(String table, Map<String, Object?> row) {
+    final value = Map<String, Object?>.from(row);
+    if (table == 'local_state') value.remove('generation');
+    // Bare forward migration is not authored work. Nonnull metadata is always
+    // retained as newer-work evidence when the backup predates these columns.
+    const nullableCatalogColumns = {
+      'exercises': {'execution_definition_bytes'},
+      'day_template_items': {
+        'tracking_context_id',
+        'catalog_selection_bytes',
+        'catalog_targets_bytes',
+      },
+      'sets': {
+        'tracking_context_id',
+        'catalog_set_bytes',
+        'block_id',
+        'origin_slot_id',
+        'origin_slot_revision',
+      },
+    };
+    for (final key in nullableCatalogColumns[table] ?? const <String>{}) {
+      if (value[key] == null) value.remove(key);
+    }
+    return value;
+  }
+
+  for (final table in {...backup.tables.keys, ...previous.tables.keys}) {
     if (_selectionMetadata.contains(table)) {
       continue;
     }
     final before = {
-      for (final row in backup.tables[table]!) backup.rowKey(table, row): row,
+      for (final row in backup.tables[table] ?? const <Map<String, Object?>>[])
+        backup.rowKey(table, row): row,
     };
     final after = {
-      for (final row in previous.tables[table]!)
+      for (final row
+          in previous.tables[table] ?? const <Map<String, Object?>>[])
         previous.rowKey(table, row): row,
     };
     void review(

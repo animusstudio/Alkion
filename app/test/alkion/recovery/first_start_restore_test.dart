@@ -124,7 +124,7 @@ void main() {
         });
         expect(presented.last, isA<AlkionApp>());
         runtime = (presented.last as AlkionApp).runtime;
-        expect(runtime.store.schema.latestVersion, 4);
+        expect(runtime.store.schema.latestVersion, 5);
         expect(runtime.settings.repEntry, RepEntry.fixed);
         expect(runtime.settings.rirControls, RirControls.off);
         expect(runtime.identity.onboardingComplete, isFalse);

@@ -19,6 +19,7 @@ import '../widgets/fit_label.dart';
 import '../widgets/pr_badge.dart';
 import '../widgets/tag.dart';
 import '../widgets/plan_form.dart';
+import '../catalog_ui/catalog_evidence_widgets.dart';
 
 /// Post-session summary overlay.
 ///
@@ -285,7 +286,9 @@ class _SummaryBody extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        l.summaryTopSets,
+                        blocks.any((b) => b.catalog != null)
+                            ? l.catalogMeasurement
+                            : l.summaryTopSets,
                         style: WorkoutType.body(
                           size: 12,
                           weight: FontWeight.w500,
@@ -457,6 +460,35 @@ class _TopSetRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (block.sets.first.catalog case final evidence?) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FitLabel(
+              evidence.selection.displayLabel,
+              maxLines: 3,
+              style: WorkoutType.body(size: 16, color: tokens.text),
+            ),
+            if (evidence.selection.contextLabel.isNotEmpty)
+              Text(
+                evidence.selection.contextLabel,
+                style: WorkoutType.body(size: 14, color: tokens.dim),
+              ),
+            const SizedBox(height: 8),
+            for (final set in block.sets)
+              Text(
+                catalogEvidenceSummary(
+                  set.catalog!,
+                  AppLocalizations.of(context),
+                ),
+                style: WorkoutType.mono(size: 14, color: tokens.text),
+              ),
+          ],
+        ),
+      );
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

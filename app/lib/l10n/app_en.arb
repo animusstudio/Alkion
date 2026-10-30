@@ -1560,5 +1560,10 @@
   "catalogPersonalGroupsHint": "Choose groups only for your own organization. These are not anatomical facts. Leave unset to keep this exercise unclassified.",
   "catalogMuscleEvidence": "Muscle evidence",
   "catalogBrowseOnlyNotice": "Browse groups are editorial navigation. Detailed muscle evidence may be incomplete; an omitted muscle is unassessed.",
-  "catalogPersonalExercises": "Personal exercises"
+  "catalogPersonalExercises": "Personal exercises",
+  "catalogUnavailable": "The catalog is unavailable. Your saved exercises and workouts are available.",
+  "catalogProgressUnsupported": "Load progression is unavailable for this measurement profile or setup.",
+  "catalogSelectSetup": "Choose setup",
+  "catalogUseLast": "Use last values",
+  "catalogMarkPending": "Mark as not logged"
 }

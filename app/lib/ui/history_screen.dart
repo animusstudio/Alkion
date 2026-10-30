@@ -28,6 +28,11 @@ import '../widgets/fit_label.dart';
 import '../widgets/pr_badge.dart';
 import '../widgets/w_dialog.dart';
 import 'set_editor_sheet.dart';
+import 'catalog_history_editor.dart';
+import '../catalog_ui/catalog_evidence_widgets.dart';
+import '../data/catalog_execution_repository.dart';
+import '../domain/catalog_execution.dart';
+import '../widgets/w_action_sheet.dart';
 
 /// The History tab — sessions grouped by ISO week, expandable to per-exercise
 /// top sets.
@@ -971,6 +976,22 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
 
   /// Opens the per-exercise set editor, then reloads.
   Future<void> _editExercise(ExerciseBlockData block) async {
+    if (block.sets.first.catalog != null) {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        isDismissible: false,
+        enableDrag: false,
+        useSafeArea: true,
+        builder: (_) => CatalogHistoryEditor(
+          sessionId: widget.session.id,
+          block: block,
+          repository: widget.sessionRepo,
+        ),
+      );
+      if (mounted) _reload();
+      return;
+    }
     final exercise = widget.catalogMap[block.exerciseId];
     if (exercise == null) {
       return;
@@ -1005,6 +1026,65 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       return;
     }
     final ex = widget.catalogMap[exId];
+    if (!mounted) return;
+    if (ex?.executionDefinition != null) {
+      final selections = await CatalogExecutionRepository.local(
+        context.read<LocalDatabase>(),
+      ).selectionsForExercise(exId);
+      if (!mounted || selections.isEmpty) return;
+      final selected = selections.length == 1
+          ? selections.single
+          : await showWActionSheet<CatalogSelectionEvidence>(
+              context,
+              title: AppLocalizations.of(context).catalogSelectSetup,
+              actions: [
+                for (final selection in selections)
+                  WSheetAction(
+                    label: selection.contextLabel.isEmpty
+                        ? selection.displayLabel
+                        : selection.contextLabel,
+                    value: selection,
+                  ),
+              ],
+            );
+      if (!mounted || selected == null) return;
+      await widget.sessionRepo.preloadCatalogDependencies(selected);
+      if (!mounted) return;
+      final row = LoggedSet(
+        id: domainUuid.v4(),
+        exerciseId: exId,
+        setNumber: 0,
+        weightKg: 0,
+        reps: 0,
+        isWarmup: false,
+        isTopSet: false,
+        isPr: false,
+        workoutRevision: widget.session.localRevision,
+        blockId: domainUuid.v4(),
+        catalog: CatalogSetEvidence(selection: selected, metrics: const {}),
+      );
+      final block = ExerciseBlockData(
+        exerciseId: exId,
+        sets: [row],
+        topWeight: 0,
+        topReps: 0,
+        isPr: false,
+      );
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        isDismissible: false,
+        enableDrag: false,
+        useSafeArea: true,
+        builder: (_) => CatalogHistoryEditor(
+          sessionId: widget.session.id,
+          block: block,
+          repository: widget.sessionRepo,
+        ),
+      );
+      if (mounted) _reload();
+      return;
+    }
     try {
       await widget.sessionRepo.addSet(
         widget.session.id,
@@ -1142,7 +1222,7 @@ class SessionCardBody extends StatelessWidget {
           const SizedBox(height: 8),
           for (final block in blocks)
             Reveal(
-              key: ValueKey(block.exerciseId),
+              key: ValueKey(block.sets.first.id),
               child: _BlockRow(
                 block: block,
                 catalogMap: catalogMap,
@@ -1152,6 +1232,7 @@ class SessionCardBody extends StatelessWidget {
             ),
           if (blocks.any(
             (b) =>
+                b.sets.first.catalog == null &&
                 historyDisplayLoadKg(historyTopSet(b.sets), units.unit) == null,
           ))
             SizedBox(
@@ -1265,6 +1346,42 @@ class _BlockRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
+    if (block.sets.first.catalog case final evidence?) {
+      return Semantics(
+        button: onTap != null,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FitLabel(
+                    evidence.selection.displayLabel,
+                    maxLines: 3,
+                    style: WorkoutType.body(size: 14, color: tokens.text),
+                  ),
+                  if (evidence.selection.contextLabel.isNotEmpty)
+                    Text(
+                      evidence.selection.contextLabel,
+                      style: WorkoutType.body(size: 12, color: tokens.dim),
+                    ),
+                  const SizedBox(height: 8),
+                  for (final set in block.sets)
+                    Text(
+                      catalogEvidenceSummary(set.catalog!, l),
+                      style: WorkoutType.mono(size: 12.5, color: tokens.text),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final exercise = catalogMap[block.exerciseId];
     final isCompound = exercise?.compound ?? false;
     final name = exercise?.name ?? block.exerciseId;

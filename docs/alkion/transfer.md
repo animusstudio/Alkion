@@ -44,6 +44,15 @@ Representable complete Target bounds or empty inheritance can still export under
 frozen v1 semantics. Refusal happens before publishing any artifact; use native
 backup when compatibility cannot carry the saved state.
 
+Catalog execution extends that refusal boundary: compatibility export also
+refuses catalog bindings, tracking contexts, typed observations or targets, and
+personal execution metadata that frozen `reps-export/1` cannot express. The
+reader remains `reps-full-reader/1`; imported rows remain unclassified legacy
+records. Use version-2 native domain/history exports for their declared sharing
+semantics, or backup version 2 for exact schema-5 recovery. See the
+[durable catalog integration contract](../specs/2026-10-30-catalog-in-alkion-dev.md)
+(2026-10-30, Approved).
+
 ### Reader (`reps-full-reader/1`)
 
 * Strict UTF-8 (overlong, surrogate and truncated sequences refused); a leading

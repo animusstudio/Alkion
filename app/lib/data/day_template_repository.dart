@@ -1,5 +1,7 @@
 import '../domain/local_action.dart';
 import '../domain/evidence.dart';
+import '../domain/catalog_execution.dart';
+import 'catalog_execution_repository.dart';
 import '../store/local_store.dart';
 import '../util/calendar_keys.dart';
 import 'exercise_repository.dart';
@@ -323,16 +325,62 @@ Map<String, Object?> slotDraftFields(SlotDraft d) {
     'target_rir_low': d.rirLow,
     'target_rir_high': d.rirHigh,
     'rir_policy': d.rirPolicy,
+    if (d.catalog != null) ...{
+      'tracking_context_id': d.catalog!.contextId,
+      'catalog_selection_bytes': localBytes(d.catalog!.toJson()),
+      'catalog_targets_bytes': localBytes(catalogTargetsJson(d.catalogTargets)),
+    },
   };
   return d.rawFields.isNotEmpty && d.changedFields != null
       ? {
           for (final key in d.changedFields!)
             if (values.containsKey(key)) key: values[key],
+          if (d.catalog != null &&
+              d.changedFields!.any(
+                (key) =>
+                    key == 'catalog' ||
+                    key == 'catalogTargets' ||
+                    key == 'exercise_id',
+              ))
+            for (final key in [
+              'tracking_context_id',
+              'catalog_selection_bytes',
+              'catalog_targets_bytes',
+            ])
+              key: values[key],
         }
       : values;
 }
 
 class DayTemplateRepository {
+  PreparedDomainAction prepareSlotContext({
+    required String slotId,
+    required int slotRevision,
+    required String dayId,
+    required int dayRevision,
+    required String expectedExerciseId,
+    required CatalogSelectionEvidence selection,
+    Map<String, CatalogMetricEvidence> targets = const {},
+    String? operationId,
+    List<OperationDependency> dependencies = const [],
+  }) => prepareDomain(
+    db,
+    RecordKind.trainingSlot,
+    LocalActionKind.catalogSlotContextSet,
+    slotId,
+    slotRevision,
+    {
+      'catalog_contract': 1,
+      'day_id': dayId,
+      'day_revision': dayRevision,
+      'expected_exercise_id': expectedExerciseId,
+      'selection': selection.toJson(),
+      'targets': catalogTargetsJson(targets),
+    },
+    operationId: operationId,
+    dependencies: dependencies,
+    eligibility: SyncEligibility.unsupportedMapping,
+  );
   const DayTemplateRepository(Object legacy) : _database = null;
   const DayTemplateRepository.local(LocalDatabase database)
     : _database = database;
@@ -438,7 +486,13 @@ class DayTemplateRepository {
     return prepareDomain(
       db,
       RecordKind.trainingDay,
-      cloneId != null
+      draft.slots.any((slot) => slot.catalog != null)
+          ? (cloneId != null
+                ? LocalActionKind.catalogPlanClone
+                : id == null
+                ? LocalActionKind.catalogPlanCreate
+                : LocalActionKind.catalogPlanEdit)
+          : cloneId != null
           ? LocalActionKind.planClone
           : id == null
           ? LocalActionKind.planCreate
@@ -446,6 +500,8 @@ class DayTemplateRepository {
       id ?? domainUuid.v4(),
       draft.localRevision ?? 0,
       {
+        if (draft.slots.any((slot) => slot.catalog != null))
+          'catalog_contract': 1,
         'fields': patch,
         'slots': slots,
         'clone_id': cloneId,
@@ -453,6 +509,9 @@ class DayTemplateRepository {
       },
       operationId: operationId,
       dependencies: dependencies,
+      eligibility: draft.slots.any((slot) => slot.catalog != null)
+          ? SyncEligibility.unsupportedMapping
+          : SyncEligibility.awaitingAttachment,
     );
   }
 
@@ -520,6 +579,49 @@ class DayTemplateRepository {
     final a = intent.action;
     if (tx.action?.hash != a.hash) {
       throw const StoreException('prepared_action_mismatch');
+    }
+    if (a.action == LocalActionKind.catalogSlotContextSet) {
+      final input = intent.input;
+      if (input['catalog_contract'] != 1) {
+        throw const StoreException('catalog_contract_required');
+      }
+      final previous = await observedRecord(tx, a.target, a.baseLocalRevision);
+      final dayRef = LocalRef(
+        tx.profileId,
+        RecordKind.trainingDay,
+        input['day_id'] as String,
+      );
+      final day = await observedRecord(
+        tx,
+        dayRef,
+        input['day_revision'] as int,
+      );
+      if (previous['day_template_id'] != dayRef.id ||
+          previous['exercise_id'] != input['expected_exercise_id']) {
+        throw const StoreException('revision_conflict');
+      }
+      final selection = CatalogSelectionEvidence.fromJson(
+        catalogEvidenceObject(input['selection']),
+      );
+      await validateCatalogSelection(tx, selection);
+      final targets = decodeCatalogTargets(
+        localBytes(input['targets']),
+        selection,
+      );
+      final revision = await putDomain(tx, a.target, {
+        ...projectionFields(previous),
+        'exercise_id': selection.exerciseId,
+        'tracking_context_id': selection.contextId,
+        'catalog_selection_bytes': localBytes(selection.toJson()),
+        'catalog_targets_bytes': localBytes(catalogTargetsJson(targets)),
+      }, sourceRevisionId: previous['source_revision_id'] as String?);
+      await putDomain(
+        tx,
+        dayRef,
+        projectionFields(day),
+        sourceRevisionId: day['source_revision_id'] as String?,
+      );
+      return {'id': a.target.id, 'revision': revision};
     }
     tx.requireRef(a.target, kind: RecordKind.trainingDay);
     final input = intent.input;
@@ -599,6 +701,9 @@ class DayTemplateRepository {
         LocalActionKind.planCreate,
         LocalActionKind.planEdit,
         LocalActionKind.planClone,
+        LocalActionKind.catalogPlanCreate,
+        LocalActionKind.catalogPlanEdit,
+        LocalActionKind.catalogPlanClone,
       }.contains(a.action)) {
         throw const StoreException('unsupported_action');
       }
@@ -672,6 +777,22 @@ class DayTemplateRepository {
         );
         if (ex == null || ex['deleted'] == 1) {
           throw const StoreException('unavailable_definition');
+        }
+        if (values['catalog_selection_bytes'] != null) {
+          if (input['catalog_contract'] != 1) {
+            throw const StoreException('catalog_contract_required');
+          }
+          final selection = CatalogSelectionEvidence.fromJson(
+            decodeCatalogBytes(values['catalog_selection_bytes']!),
+          );
+          if (selection.exerciseId != values['exercise_id'] ||
+              selection.contextId != values['tracking_context_id']) {
+            throw const StoreException('catalog_context_mismatch');
+          }
+          await validateCatalogSelection(tx, selection);
+          if (values['catalog_targets_bytes'] != null) {
+            decodeCatalogTargets(values['catalog_targets_bytes']!, selection);
+          }
         }
         // In clone, carry the exact original override fields and slot ancestry.
         if (input['clone_id'] != null && slot['original_id'] != null) {

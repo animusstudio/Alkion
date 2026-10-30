@@ -1,5 +1,6 @@
 """Independently authored ELF-header/ZIP fixtures, never real binary assets."""
 import copy
+import hashlib
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import importlib.util
@@ -8,6 +9,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest import mock
 import warnings
 from zipfile import ZipFile
 
@@ -197,7 +199,7 @@ class CatalogTrialApkTest(unittest.TestCase):
                            '--generated-jni-dir', str(self.generated)])
         self.assertEqual(error.exception.code, 2)
 
-    def catalog_fixture(self, browse=True):
+    def catalog_fixture(self, browse=True, development=False):
         from test_stage_catalog_trial import stager, synthetic_catalog, synthetic_browse
         catalog = synthetic_catalog()
         source_digest = stager.sha256(stager.encode(catalog))
@@ -214,7 +216,7 @@ class CatalogTrialApkTest(unittest.TestCase):
                         'classification_revision': source_browse['classification_revision']}
             files[stager.BROWSE_NAME] = projected_browse
         files[stager.MANIFEST_NAME] = stager.encode(stager.manifest_for(
-            catalog, source_digest, projection_digest, metadata))
+            catalog, source_digest, projection_digest, metadata, development=development))
         assets = self.root / 'catalog-assets'
         prefix = 'flutter_assets/assets/catalog_trial/'
         directory = assets / prefix
@@ -269,6 +271,159 @@ class CatalogTrialApkTest(unittest.TestCase):
                 self.write(entries)
                 with self.assertRaisesRegex(ValueError, 'catalog asset'):
                     verifier.verify(self.apk, 'android-arm64', self.generated, assets)
+
+    def code_fixture(self, mode='debug'):
+        entries, assets = self.catalog_fixture(development=True)
+        variant = 'devDebug' if mode == 'debug' else 'devRelease'
+        capital = 'DevDebug' if mode == 'debug' else 'DevRelease'
+        intermediates = self.root / 'intermediates'
+        libraries = [*verifier.SQLITE_LOADERS.values()]
+        if mode == 'release':
+            libraries.append('libapp.so')
+        transformed = {}
+        for library in libraries:
+            data = synthetic_elf(183, ('current-unstripped-' + library).encode())
+            generated = self.generated / 'arm64-v8a' / library
+            generated.parent.mkdir(parents=True, exist_ok=True)
+            generated.write_bytes(data)
+            source = (self.generated.parent / 'arm64-v8a/app.so' if library == 'libapp.so'
+                      else self.generated.parent / 'native_assets/jniLibs/lib/arm64-v8a' / library)
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(data)
+            for directory in (
+                    intermediates / 'merged_jni_libs' / variant /
+                    f'merge{capital}JniLibFolders/out/arm64-v8a',
+                    intermediates / 'merged_native_libs' / variant /
+                    f'merge{capital}NativeLibs/out/lib/arm64-v8a'):
+                directory.mkdir(parents=True, exist_ok=True)
+                (directory / library).write_bytes(data)
+            output = (synthetic_elf(183, ('independently-stripped-' + library).encode())
+                      if mode == 'release' else data)
+            directory = (intermediates / 'stripped_native_libs' / variant /
+                         f'strip{capital}DebugSymbols/out/lib/arm64-v8a')
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / library).write_bytes(output)
+            entries['lib/arm64-v8a/' + library] = output
+            transformed['app.so' if library == 'libapp.so' else library] = hashlib.sha256(output).hexdigest()
+        if mode == 'debug':
+            for name in verifier.DEBUG_CODE:
+                data = ('current-code-' + name).encode()
+                for directory in (self.generated.parent / 'flutter_assets',
+                                  intermediates / 'assets/devDebug/mergeDevDebugAssets/flutter_assets'):
+                    directory.mkdir(parents=True, exist_ok=True)
+                    (directory / name).write_bytes(data)
+                entries['assets/flutter_assets/' + name] = data
+        self.write(entries)
+        return entries, assets, intermediates, transformed
+
+    def verify_code(self, assets, intermediates, mode='debug'):
+        return verifier.verify(self.apk, 'android-arm64', self.generated, assets,
+                               development=True, build_mode=mode, intermediates_dir=intermediates)
+
+    def test_debug_dev_binds_all_jit_code_and_native_merge_layers(self):
+        entries, assets, intermediates, _ = self.code_fixture()
+        receipt = self.verify_code(assets, intermediates)
+        self.assertEqual(set(receipt['code_chain']['debug_code_sha256']), set(verifier.DEBUG_CODE))
+        entries['assets/flutter_assets/kernel_blob.bin'] = b'stale-code'
+        self.write(entries)
+        with self.assertRaisesRegex(ValueError, 'debug code asset'):
+            self.verify_code(assets, intermediates)
+
+    def test_release_dev_binds_current_aot_and_independent_strip_transform(self):
+        _, assets, intermediates, transformed = self.code_fixture('release')
+        with mock.patch.object(verifier, '_stripped_hash', side_effect=lambda source, *_: transformed[source.name]):
+            receipt = self.verify_code(assets, intermediates, 'release')
+            self.assertIn('libapp.so', receipt['code_chain']['libraries'])
+            upstream = self.generated.parent / 'arm64-v8a/app.so'
+            upstream.write_bytes(synthetic_elf(183, b'fresh-aot-but-stale-jni'))
+            with self.assertRaisesRegex(ValueError, 'upstream/generated/merged'):
+                self.verify_code(assets, intermediates, 'release')
+
+    def test_rejects_stale_each_merge_layer_and_stripped_aot(self):
+        for layer, suffix in (
+                ('merged_jni_libs', 'mergeDevReleaseJniLibFolders/out/arm64-v8a'),
+                ('merged_native_libs', 'mergeDevReleaseNativeLibs/out/lib/arm64-v8a'),
+                ('stripped_native_libs', 'stripDevReleaseDebugSymbols/out/lib/arm64-v8a')):
+            with self.subTest(layer=layer):
+                if (self.root / 'catalog-assets').exists():
+                    import shutil
+                    shutil.rmtree(self.root / 'catalog-assets')
+                _, assets, intermediates, transformed = self.code_fixture('release')
+                (intermediates / layer / 'devRelease' / suffix / 'libapp.so').write_bytes(
+                    synthetic_elf(183, b'stale-aot'))
+                with mock.patch.object(verifier, '_stripped_hash', side_effect=lambda source, *_: transformed[source.name]):
+                    with self.assertRaisesRegex(ValueError, 'Stale'):
+                        self.verify_code(assets, intermediates, 'release')
+
+    def test_rejects_missing_or_foreign_machine_aot(self):
+        entries, assets, intermediates, transformed = self.code_fixture('release')
+        for data in (None, synthetic_elf(62)):
+            changed = dict(entries)
+            member = 'lib/arm64-v8a/libapp.so'
+            if data is None:
+                del changed[member]
+            else:
+                changed[member] = data
+            self.write(changed)
+            with mock.patch.object(verifier, '_stripped_hash', side_effect=lambda source, *_: transformed[source.name]):
+                with self.assertRaisesRegex(ValueError, 'Missing selected-ABI|Wrong ELF machine'):
+                    self.verify_code(assets, intermediates, 'release')
+
+    def test_dev_requires_schema3_and_explicit_code_mode(self):
+        _, assets = self.catalog_fixture()
+        with ZipFile(self.apk, 'w'):
+            pass
+        entries = self.fixture()
+        self.write(entries)
+        with self.assertRaisesRegex(ValueError, 'explicit build mode'):
+            verifier.verify(self.apk, 'android-arm64', self.generated, development=True)
+        with ZipFile(self.apk) as archive:
+            with self.assertRaisesRegex(ValueError, 'Invalid catalog APK manifest'):
+                verifier._verify_catalog_assets(archive, {}, assets, development=True)
+
+    def test_public_no_input_inventory_rejects_any_private_payload(self):
+        prefix = 'assets/flutter_assets/assets/catalog_trial/'
+        self.write({prefix + 'README.md': b'public notice', 'assets/icon.png': b'public'})
+        self.assertEqual(verifier.verify_public_catalog_assets(self.apk), {'private_catalog_assets': 'absent'})
+        for name in ('catalog.dev.json', 'manifest.dev.json', 'browse.dev.json', 'review.json'):
+            self.write({prefix + name: b'private-synthetic'})
+            with self.assertRaisesRegex(ValueError, 'public/no-input'):
+                verifier.verify_public_catalog_assets(self.apk)
+
+    def test_strip_requires_explicit_pinned_ndk_before_invoking_tool(self):
+        source = self.root / 'synthetic.so'
+        source.write_bytes(synthetic_elf(183))
+        with self.assertRaisesRegex(ValueError, 'explicit pinned NDK'):
+            verifier._stripped_hash(source, 183, None)
+        ndk = self.root / 'wrong-ndk'
+        ndk.mkdir()
+        (ndk / 'source.properties').write_text('Pkg.Revision = 0.0.0\n')
+        with self.assertRaisesRegex(ValueError, 'pinned Flutter NDK'):
+            verifier._stripped_hash(source, 183, ndk)
+
+    def test_strip_uses_pinned_tool_and_independent_output_not_gradle_stripped_copy(self):
+        source = self.root / 'current.so'
+        source.write_bytes(synthetic_elf(183, b'current-unstripped'))
+        expected = synthetic_elf(183, b'independent-stripped-output')
+        ndk = self.root / 'pinned-ndk'
+        bin_dir = ndk / 'toolchains/llvm/prebuilt/linux-x86_64/bin'
+        bin_dir.mkdir(parents=True)
+        (ndk / 'source.properties').write_text(f'Pkg.Revision = {verifier.PINNED_NDK}\n')
+        (bin_dir / 'llvm-objcopy').write_bytes(b'synthetic-not-executable')
+        (bin_dir / 'llvm-strip').symlink_to('llvm-objcopy')
+
+        def transform(command, **kwargs):
+            self.assertEqual(command[0], str(bin_dir / 'llvm-strip'))
+            self.assertEqual(command[1:3], ['--strip-unneeded', '-o'])
+            self.assertEqual(command[4], str(source))
+            self.assertTrue(kwargs['check'])
+            Path(command[3]).write_bytes(expected)
+
+        with mock.patch.object(verifier.subprocess, 'run', side_effect=transform) as strip:
+            digest = verifier._stripped_hash(source, 183, ndk)
+        self.assertEqual(digest, hashlib.sha256(expected).hexdigest())
+        self.assertEqual(strip.call_count, 1)
+        self.assertEqual(source.read_bytes(), synthetic_elf(183, b'current-unstripped'))
 
 
 if __name__ == '__main__':

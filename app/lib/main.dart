@@ -36,11 +36,15 @@ import 'ui/alkion_recovery/recovery_app.dart';
 import 'ui/alkion_recovery/first_start_screen.dart';
 import 'units/unit_service.dart';
 import 'widgets/pending_input.dart';
+import 'catalog/catalog.dart';
+import 'catalog/catalog_development.dart';
+import 'catalog_ui/catalog_runtime_state.dart';
+import 'catalog_ui/catalog_trial_scope.dart';
 
 Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
   profile: profile,
   expectedProfileId: profile.profileId,
-  schema: prescriptionSchemaRegistry(),
+  schema: catalogExecutionSchemaRegistry(),
 );
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -57,6 +61,8 @@ class AlkionRuntime with WidgetsBindingObserver {
     this.identity,
     this.sessions,
     this.animus,
+    this.catalog,
+    this.catalogUnavailable,
   );
   final Directory supportRoot;
   final LocalStore store;
@@ -65,11 +71,15 @@ class AlkionRuntime with WidgetsBindingObserver {
   final IdentityService identity;
   final SessionManager sessions;
   final AnimusConnectionController animus;
+  final CatalogRuntimeState? catalog;
+  final bool catalogUnavailable;
   static Future<AlkionRuntime> open(
     Directory supportRoot, {
     WorkoutNotification? notifications,
     AnimusConnectionController Function(AlkionProfile, int)? connectionFactory,
     LocalStore? preparedStore,
+    CatalogBundle? catalogBundle,
+    Future<CatalogDevelopmentInput> Function()? catalogLoader,
   }) async {
     GoogleFonts.config.allowRuntimeFetching = false;
     late final AlkionProfile profile;
@@ -98,6 +108,20 @@ class AlkionRuntime with WidgetsBindingObserver {
       await settings.load();
       await units.load();
       await identity.load();
+      final catalogInput = catalogBundle == null
+          ? await (catalogLoader ?? loadDevelopmentCatalog)()
+          : CatalogDevelopmentInput(bundle: catalogBundle);
+      var catalog = catalogInput.bundle == null
+          ? null
+          : CatalogRuntimeState(catalogInput.bundle!, store);
+      var catalogUnavailable = catalogInput.unavailable;
+      try {
+        await catalog?.initialize();
+      } on Object {
+        catalog?.dispose();
+        catalog = null;
+        catalogUnavailable = true;
+      }
       final drafts = DraftStore.local(store);
       final sessions = SessionManager(
         draftStore: drafts,
@@ -119,6 +143,8 @@ class AlkionRuntime with WidgetsBindingObserver {
               profileId: profile.profileId,
               generation: generation,
             ))(profile, store.token.generation),
+        catalog,
+        catalogUnavailable,
       );
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
@@ -161,6 +187,7 @@ class AlkionRuntime with WidgetsBindingObserver {
       await settings.flushPersistence();
       await units.flushPersistence();
       await identity.flushPersistence();
+      await catalog?.flushPersistence();
       persistenceFailure.value = null;
     } catch (error) {
       persistenceFailure.value = error;
@@ -191,6 +218,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     await sessions.closeNotifications();
     sessions.dispose();
+    catalog?.dispose();
     await store.close();
     settings.dispose();
     units.dispose();
@@ -397,96 +425,113 @@ final class RuntimeRecoveryHost implements RecoveryHost {
 }
 
 class AlkionApp extends StatelessWidget {
-  const AlkionApp({super.key, required this.runtime, this.recovery});
+  const AlkionApp({
+    super.key,
+    required this.runtime,
+    this.recovery,
+    @visibleForTesting this.databaseOverride,
+  });
   final AlkionRuntime runtime;
   final RecoveryHost? recovery;
+  final LocalDatabase? databaseOverride;
   @override
-  Widget build(BuildContext context) => MultiProvider(
-    providers: [
-      Provider<LocalDatabase>.value(value: runtime.store),
-      Provider<RecoveryHost?>.value(value: recovery),
-      ChangeNotifierProvider<AnimusConnectionController?>.value(
-        value: runtime.animus,
-      ),
-      Provider<DomainRecovery>.value(
-        value: DomainRecovery(runtime.store.recover),
-      ),
-      ChangeNotifierProvider.value(value: runtime.settings),
-      ChangeNotifierProvider.value(value: runtime.units),
-      ChangeNotifierProvider.value(value: runtime.identity),
-      ChangeNotifierProvider.value(value: runtime.sessions),
-    ],
-    child: Builder(
-      builder: (context) {
-        final settings = context.watch<SettingsService>();
-        return MaterialApp(
-          navigatorKey: appNavigatorKey,
-          scaffoldMessengerKey: appScaffoldMessengerKey,
-          title: AlkionIdentity.displayName,
-          builder: (context, child) => ValueListenableBuilder<Object?>(
-            valueListenable: runtime.persistenceFailure,
-            builder: (context, error, _) => _RuntimeNotificationNavigation(
-              runtime: runtime,
-              child: Stack(
-                children: [
-                  if (child != null) child,
-                  if (error != null)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: SafeArea(
-                        child: Material(
-                          color: Theme.of(context).colorScheme.errorContainer,
-                          elevation: 4,
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  AppLocalizations.of(
-                                    context,
-                                  ).alkionStoreRecoveryTitle,
-                                ),
-                                Text(
-                                  AppLocalizations.of(
-                                    context,
-                                  ).alkionStoreRecoveryBody,
-                                ),
-                                TextButton(
-                                  style: TextButton.styleFrom(
-                                    minimumSize: const Size(48, 48),
+  Widget build(BuildContext context) {
+    final app = MultiProvider(
+      providers: [
+        Provider<LocalDatabase>.value(value: databaseOverride ?? runtime.store),
+        Provider<RecoveryHost?>.value(value: recovery),
+        Provider<CatalogDevelopmentInput>.value(
+          value: CatalogDevelopmentInput(
+            bundle: runtime.catalog?.bundle,
+            unavailable: runtime.catalogUnavailable,
+          ),
+        ),
+        ChangeNotifierProvider<AnimusConnectionController?>.value(
+          value: runtime.animus,
+        ),
+        Provider<DomainRecovery>.value(
+          value: DomainRecovery(runtime.store.recover),
+        ),
+        ChangeNotifierProvider.value(value: runtime.settings),
+        ChangeNotifierProvider.value(value: runtime.units),
+        ChangeNotifierProvider.value(value: runtime.identity),
+        ChangeNotifierProvider.value(value: runtime.sessions),
+      ],
+      child: Builder(
+        builder: (context) {
+          final settings = context.watch<SettingsService>();
+          return MaterialApp(
+            navigatorKey: appNavigatorKey,
+            scaffoldMessengerKey: appScaffoldMessengerKey,
+            title: AlkionIdentity.displayName,
+            builder: (context, child) => ValueListenableBuilder<Object?>(
+              valueListenable: runtime.persistenceFailure,
+              builder: (context, error, _) => _RuntimeNotificationNavigation(
+                runtime: runtime,
+                child: Stack(
+                  children: [
+                    if (child != null) child,
+                    if (error != null)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: SafeArea(
+                          child: Material(
+                            color: Theme.of(context).colorScheme.errorContainer,
+                            elevation: 4,
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    AppLocalizations.of(
+                                      context,
+                                    ).alkionStoreRecoveryTitle,
                                   ),
-                                  onPressed: runtime.retryPersistence,
-                                  child: Text(
-                                    AppLocalizations.of(context).alkionRetry,
+                                  Text(
+                                    AppLocalizations.of(
+                                      context,
+                                    ).alkionStoreRecoveryBody,
                                   ),
-                                ),
-                              ],
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      minimumSize: const Size(48, 48),
+                                    ),
+                                    onPressed: runtime.retryPersistence,
+                                    child: Text(
+                                      AppLocalizations.of(context).alkionRetry,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          theme: buildTheme(settings.brightness, settings.accent),
-          locale: settings.locale,
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: const AppShell(),
-        );
-      },
-    ),
-  );
+            theme: buildTheme(settings.brightness, settings.accent),
+            locale: settings.locale,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const AppShell(),
+          );
+        },
+      ),
+    );
+    return runtime.catalog == null
+        ? app
+        : CatalogTrialScope(state: runtime.catalog!, child: app);
+  }
 }
 
 final appScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();

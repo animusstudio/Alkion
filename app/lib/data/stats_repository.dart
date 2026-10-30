@@ -3,6 +3,7 @@ import '../store/local_store.dart';
 import '../util/calendar_keys.dart';
 import 're_listenable.dart';
 import '../domain/evidence.dart';
+import 'catalog_load_history.dart';
 
 // Qualification for the pinned SQLite calendar projection. Equality rejects
 // SQLite rollover normalization; the original date text stays in its record.
@@ -96,7 +97,7 @@ class StatsRepository {
             'FROM reps_compat1_legacy_local s '
             'JOIN sessions se ON se.id = s.session_id '
             'JOIN exercises ex ON ex.id = s.exercise_id '
-            'WHERE s.deleted=0 AND se.deleted=0 AND s.is_warmup = 0 AND $_qualifiedStatsDay AND se.date >= ?',
+            "WHERE s.deleted=0 AND se.deleted=0 AND s.is_warmup = 0 AND trim(COALESCE(ex.muscle_group,''))<>'' AND $_qualifiedStatsDay AND se.date >= ?",
             parameters: [isoDate(weekStart)],
           )
           .map((rs) => rs.first['n'] as int? ?? 0),
@@ -111,7 +112,7 @@ class StatsRepository {
             'SELECT COUNT(*) AS n '
             'FROM reps_compat1_legacy_local s '
             'JOIN sessions se ON se.id = s.session_id '
-            'WHERE s.deleted=0 AND se.deleted=0 AND s.legacy_local_pr = 1 AND $_qualifiedStatsDay AND se.date >= ?',
+            'WHERE s.deleted=0 AND se.deleted=0 AND s.legacy_local_pr = 1 AND $legacySetOnlySql AND $_qualifiedStatsDay AND se.date >= ?',
             parameters: [isoDate(weekStart)],
           )
           .map((rs) => rs.first['n'] as int? ?? 0),
@@ -176,7 +177,7 @@ class StatsRepository {
             's.reps, se.date '
             'FROM reps_compat1_legacy_local s '
             'JOIN sessions se ON se.id = s.session_id '
-            'WHERE s.deleted=0 AND se.deleted=0 AND s.legacy_local_pr = 1 AND s.is_warmup = 0 '
+            'WHERE s.deleted=0 AND se.deleted=0 AND s.legacy_local_pr = 1 AND s.is_warmup = 0 AND $legacySetOnlySql '
             'ORDER BY se.date DESC, se.created_at DESC '
             'LIMIT ?',
             parameters: [limit],

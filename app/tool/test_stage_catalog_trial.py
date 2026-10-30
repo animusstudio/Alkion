@@ -81,20 +81,75 @@ class CatalogStagerTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='catalog-stage-synthetic-')
         self.root = Path(self.temp.name)
-        self.original = stager.APP, stager.ASSETS, stager.ANDROID_ASSETS
+        self.original = stager.APP, stager.ASSETS, stager.ANDROID_ASSETS, stager.DEV_ANDROID_ASSETS
         stager.APP = self.root / 'app'
         stager.ASSETS = stager.APP / 'assets/catalog_trial'
         stager.ANDROID_ASSETS = stager.APP / 'build/private-catalog-trial/assets'
+        stager.DEV_ANDROID_ASSETS = stager.APP / 'build/private-catalog-dev/assets'
         self.source = self.root / 'source.json'
 
     def tearDown(self):
-        stager.APP, stager.ASSETS, stager.ANDROID_ASSETS = self.original
+        stager.APP, stager.ASSETS, stager.ANDROID_ASSETS, stager.DEV_ANDROID_ASSETS = self.original
         self.temp.cleanup()
 
     def write_source(self, catalog=None):
         data = stager.encode(catalog or synthetic_catalog())
         self.source.write_bytes(data)
         return stager.sha256(data)
+
+    def test_development_admission_preserves_trial_and_exact_catalog_browse_bytes(self):
+        digest = self.write_source()
+        browse = self.root / 'browse.json'
+        browse.write_bytes(stager.encode(synthetic_browse(synthetic_catalog(), digest)))
+        stager.stage(self.source, digest, browse, stager.sha256(browse.read_bytes()))
+        retained = {path: path.read_bytes() for root in (stager.ASSETS, stager.ANDROID_ASSETS)
+                    for path in root.rglob('*') if path.is_file()}
+        manifest = stager.stage_development()
+        self.assertEqual(manifest['format'], 'alkion-catalog-development-manifest')
+        self.assertEqual(manifest['schema_version'], 3)
+        self.assertTrue(manifest['private_development_only'])
+        self.assertNotIn('private_trial_only', manifest)
+        self.assertFalse(manifest['redistribution_cleared'])
+        mirror = stager.DEV_ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
+        for name in (stager.CATALOG_NAME, stager.BROWSE_NAME):
+            self.assertEqual((mirror / name).read_bytes(), (stager.ASSETS / name).read_bytes())
+        for path, data in retained.items():
+            self.assertEqual(path.read_bytes(), data)
+        self.assertEqual(stager.stage_development(), manifest)
+        self.assertEqual(stager.verify(development=True), manifest)
+        self.assertTrue(stager.verify()['private_trial_only'])
+
+    def test_development_admission_refuses_corrupt_trial_or_changed_existing_mirror(self):
+        stager.stage(self.source, self.write_source())
+        stager.stage_development()
+        mirror = stager.DEV_ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
+        (mirror / stager.CATALOG_NAME).write_bytes(b'preserve-existing-evidence')
+        with self.assertRaisesRegex(ValueError, 'Existing staging differs'):
+            stager.stage_development()
+        self.assertEqual((mirror / stager.CATALOG_NAME).read_bytes(), b'preserve-existing-evidence')
+        (stager.ASSETS / stager.CATALOG_NAME).write_bytes(b'corrupt-synthetic')
+        with self.assertRaises(ValueError):
+            stager.stage_development()
+
+    def test_development_verifier_rejects_trial_scope_extra_files_and_redirected_paths(self):
+        stager.stage(self.source, self.write_source())
+        stager.stage_development()
+        mirror = stager.DEV_ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
+        manifest = mirror / stager.MANIFEST_NAME
+        admitted = manifest.read_bytes()
+        manifest.write_bytes((stager.ASSETS / stager.MANIFEST_NAME).read_bytes())
+        with self.assertRaisesRegex(ValueError, 'manifest'):
+            stager.verify(development=True)
+        manifest.write_bytes(admitted)
+        extra = mirror / 'private-review.json'
+        extra.write_bytes(b'{}')
+        with self.assertRaisesRegex(ValueError, 'inventory'):
+            stager.verify(development=True)
+        extra.unlink()
+        manifest.unlink()
+        manifest.symlink_to(stager.ASSETS / stager.MANIFEST_NAME)
+        with self.assertRaisesRegex(ValueError, 'redirected'):
+            stager.verify(development=True)
 
     def test_projects_only_admitted_fields_and_verifies_exact_private_mirror(self):
         source_digest = self.write_source()

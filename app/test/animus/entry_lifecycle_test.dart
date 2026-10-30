@@ -132,14 +132,14 @@ void main() {
         expect(profile.profileId, reserved.profileId);
         final store = entry.preparedStore ?? handedStore!;
         expect(store.token.generation, reserved.generation);
-        expect(store.schema.latestVersion, 4);
-        expect((await store.get('PRAGMA user_version')).values.single, 4);
+        expect(store.schema.latestVersion, 5);
+        expect((await store.get('PRAGMA user_version')).values.single, 5);
         expect(await store.getAll('SELECT * FROM exercises'), isEmpty);
         await expectLater(
           LocalStore.open(
             profile: profile,
             expectedProfileId: profile.profileId,
-            schema: prescriptionSchemaRegistry(),
+            schema: catalogExecutionSchemaRegistry(),
           ),
           throwsA(
             isA<StoreException>().having(
@@ -170,10 +170,10 @@ void main() {
       try {
         handedStore = runtime.store;
         expect(runtime.store, same(owned));
-        expect(runtime.store.schema.latestVersion, 4);
+        expect(runtime.store.schema.latestVersion, 5);
         expect(
           (await runtime.store.get('PRAGMA user_version')).values.single,
-          4,
+          5,
         );
         expect(runtime.animus, same(controller));
         final plans = DayTemplateRepository.local(runtime.store);
@@ -353,7 +353,7 @@ void main() {
         final store = await LocalStore.open(
           profile: profile,
           expectedProfileId: reserved.profileId,
-          schema: prescriptionSchemaRegistry(),
+          schema: catalogExecutionSchemaRegistry(),
         );
         expect(store.token.generation, 1);
         await store.close();
@@ -539,8 +539,8 @@ void main() {
 }
 
 Future<void> _expectPrescriptionWrites(LocalStore store) async {
-  expect(store.schema.latestVersion, 4);
-  expect((await store.get('PRAGMA user_version')).values.single, 4);
+  expect(store.schema.latestVersion, 5);
+  expect((await store.get('PRAGMA user_version')).values.single, 5);
   final exercises = ExerciseRepository.local(store);
   final exerciseId = await exercises.createExercise(
     ExerciseDraft(

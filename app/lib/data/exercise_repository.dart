@@ -43,7 +43,14 @@ PreparedDomainAction prepareDomain(
     baseLocalRevision: base,
     createdAt: OperationInstant.now(),
     input: input,
-    dependencies: dependencies,
+    dependencies: {
+      for (final dependency in dependencies)
+        jsonEncode([
+          dependency.profileId,
+          dependency.family.name,
+          dependency.operationId,
+        ]): dependency,
+    }.values.toList(),
     eligibility: eligibility,
   ),
   db.token,
@@ -67,7 +74,8 @@ Future<int> putDomain(
   String? sourceRevisionId,
 }) async {
   fields = Map<String, Object?>.from(fields);
-  for (final key in ['ancestry_bytes', 'evidence_bytes']) {
+  for (final key
+      in fields.keys.where((key) => key.endsWith('_bytes')).toList()) {
     final value = fields[key];
     if (value is List && value is! Uint8List) {
       fields[key] = Uint8List.fromList(value.cast<int>());
@@ -119,6 +127,8 @@ Map<String, Object?> exerciseDraftFields(ExerciseDraft d) {
     'default_rir_low': d.defaultRirLow,
     'default_rir_high': d.defaultRirHigh,
     'default_rest_seconds': d.defaultRestSeconds,
+    if (d.executionDefinition != null)
+      'execution_definition_bytes': localBytes(d.executionDefinition!.toJson()),
   };
   if (d.rawFields.isNotEmpty && d.changedFields != null) {
     return {
@@ -278,7 +288,7 @@ class ExerciseRepository {
 
   Future<List<Exercise>> all() => watchCatalog().first;
   static const _bestLoadsSql =
-      'SELECT s.exercise_id,s.weight_kg FROM reps_compat1_legacy_local s '
+      'SELECT s.* FROM reps_compat1_legacy_local s '
       'JOIN sessions se ON se.id=s.session_id AND se.profile_id=s.profile_id '
       'WHERE s.profile_id=? AND s.deleted=0 AND se.deleted=0 '
       'AND s.legacy_local_top=1 AND s.is_warmup=0';
@@ -286,6 +296,7 @@ class ExerciseRepository {
   static Map<String, double> _bestLoads(List<Map<String, dynamic>> rows) {
     final best = <String, double>{};
     for (final row in rows) {
+      if (row['catalog_set_bytes'] != null) continue;
       final evidence = DecimalEvidence.fromRow(row, 'weight_kg');
       if (evidence.state != ValueState.valid) continue;
       final value = evidence.exact!.displayDouble;
