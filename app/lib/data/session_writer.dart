@@ -2,6 +2,9 @@ import 'dart:convert';
 import '../store/local_store.dart';
 import '../domain/evidence.dart';
 import '../domain/local_action.dart';
+import '../domain/catalog_execution.dart';
+import 'catalog_execution_repository.dart';
+import 'catalog_load_history.dart';
 import 'exercise_repository.dart';
 
 // ── SqlExecutor abstraction ───────────────────────────────────────────────────
@@ -48,6 +51,9 @@ class SetWrite {
   final bool isTopSet;
 
   final bool isPr;
+  final CatalogSetEvidence? catalog;
+  final String? blockId, originSlotId;
+  final int? originSlotRevision;
 
   const SetWrite({
     required this.id,
@@ -60,6 +66,10 @@ class SetWrite {
     required this.isWarmup,
     this.isTopSet = false,
     this.isPr = false,
+    this.catalog,
+    this.blockId,
+    this.originSlotId,
+    this.originSlotRevision,
   });
 }
 
@@ -91,7 +101,7 @@ int topSetIndex(List<SetWrite> sets) {
   var best = -1;
   for (var i = 0; i < sets.length; i++) {
     final s = sets[i];
-    if (s.isWarmup) {
+    if (s.isWarmup || s.catalog != null) {
       continue;
     }
     if (best == -1) {
@@ -204,12 +214,17 @@ class WorkoutRepository {
   }) => prepareDomain(
     db,
     RecordKind.workout,
-    baseRevision == 0
-        ? LocalActionKind.workoutFinish
-        : LocalActionKind.workoutReplace,
+    write.sets.any((set) => set.catalog != null)
+        ? (baseRevision == 0
+              ? LocalActionKind.catalogWorkoutFinish
+              : LocalActionKind.catalogWorkoutReplace)
+        : (baseRevision == 0
+              ? LocalActionKind.workoutFinish
+              : LocalActionKind.workoutReplace),
     write.id,
     baseRevision,
     {
+      if (write.sets.any((set) => set.catalog != null)) 'catalog_contract': 1,
       'session': {
         'date': write.dateIso,
         'original_day_id': write.dayTemplateId,
@@ -222,8 +237,10 @@ class WorkoutRepository {
             'id': set.id,
             'exercise_id': set.exerciseId,
             'set_number': set.setNumber,
-            'weight_kg': set.weightKg,
-            'reps': set.rawUntouched.containsKey('reps')
+            'weight_kg': set.catalog != null ? null : set.weightKg,
+            'reps': set.catalog != null
+                ? null
+                : set.rawUntouched.containsKey('reps')
                 ? set.rawUntouched['reps']
                 : set.reps,
             'rir': set.rawUntouched.containsKey('rir')
@@ -236,6 +253,14 @@ class WorkoutRepository {
                 : 0,
             'legacy_local_top': set.isTopSet ? 1 : 0,
             'legacy_local_pr': set.isPr ? 1 : 0,
+            if (set.catalog != null) ...{
+              'catalog_set_bytes': set.catalog!.bytes,
+              'tracking_context_id': set.catalog!.selection.contextId,
+            },
+            if (set.blockId != null) 'block_id': set.blockId,
+            if (set.originSlotId != null) 'origin_slot_id': set.originSlotId,
+            if (set.originSlotRevision != null)
+              'origin_slot_revision': set.originSlotRevision,
           },
       ],
       'set_bases': setBases,
@@ -245,6 +270,9 @@ class WorkoutRepository {
     },
     operationId: operationId,
     dependencies: dependencies,
+    eligibility: write.sets.any((set) => set.catalog != null)
+        ? SyncEligibility.unsupportedMapping
+        : SyncEligibility.awaitingAttachment,
   );
 
   Future<LocalActionResult> commitPrepared(PreparedDomainAction intent) =>
@@ -360,6 +388,33 @@ class WorkoutRepository {
       if (exercise == null || (exercise['deleted'] == 1 && previous == null)) {
         throw const StoreException('missing_reference');
       }
+      CatalogSetEvidence? catalog;
+      if (values['catalog_set_bytes'] != null) {
+        if (input['catalog_contract'] != 1) {
+          throw const StoreException('catalog_contract_required');
+        }
+        catalog = CatalogSetEvidence.fromJson(
+          decodeCatalogBytes(values['catalog_set_bytes']!),
+        );
+        if (catalog.selection.exerciseId != values['exercise_id'] ||
+            catalog.selection.contextId != values['tracking_context_id'] ||
+            !catalogLoggingChangeAllowed(
+              catalog,
+              previous: previous?['catalog_set_bytes'] == null
+                  ? null
+                  : CatalogSetEvidence.fromJson(
+                      decodeCatalogBytes(previous!['catalog_set_bytes']!),
+                    ),
+            ) ||
+            values['block_id'] == null) {
+          throw const StoreException('malformed_catalog_set');
+        }
+        await validateCatalogSelection(tx, catalog.selection);
+        values['weight_kg'] = null;
+        values['reps'] = null;
+      } else if (previous?['catalog_set_bytes'] != null) {
+        throw const StoreException('catalog_evidence_required');
+      }
       values.addAll({
         'session_id': a.target.id,
         'set_number': index + 1,
@@ -374,13 +429,18 @@ class WorkoutRepository {
         if (previous != null) ...projectionFields(previous),
         ...values,
       }, sourceRevisionId: previous?['source_revision_id'] as String?);
-      await writeCompatibleSet(
-        tx,
-        id,
-        setRevision,
-        top: top as int,
-        pr: pr as int,
-      );
+      if (catalog == null) {
+        await writeCompatibleSet(
+          tx,
+          id,
+          setRevision,
+          top: top as int,
+          pr: pr as int,
+        );
+      }
+    }
+    if (sets.any((set) => set['catalog_set_bytes'] != null)) {
+      await writeCatalogDerivations(tx, a.target.id, revision);
     }
     await tx.putLocalState(
       LocalStateKind.draft,

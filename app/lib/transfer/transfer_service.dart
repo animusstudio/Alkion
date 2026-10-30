@@ -798,6 +798,8 @@ final class TransferService {
         RecordKind.workoutSet => LocalActionKind.workoutEdit,
         RecordKind.bodyweight => LocalActionKind.bodyweightDelete,
         RecordKind.muscleTarget => LocalActionKind.targetDelete,
+        RecordKind.catalogBinding || RecordKind.trackingContext =>
+          throw const StoreException('unsupported_source_kind'),
       },
       baseLocalRevision: base,
       createdAt: OperationInstant.now(),

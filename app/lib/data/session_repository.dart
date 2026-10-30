@@ -4,6 +4,10 @@ import 'package:crypto/crypto.dart';
 import '../store/local_store.dart';
 import '../domain/local_action.dart';
 import '../domain/evidence.dart';
+import '../domain/catalog_execution.dart';
+import 'catalog_execution_repository.dart';
+import 'catalog_load_history.dart';
+export 'catalog_load_history.dart' show CatalogLoadReference;
 import 'exercise_repository.dart';
 import 'session_writer.dart';
 import 'models.dart';
@@ -64,13 +68,26 @@ import 'top_set_backfill.dart';
 List<ExerciseBlockData> groupSetsIntoBlocks(List<LoggedSet> sets) {
   final order = <String>[];
   final byExercise = <String, List<LoggedSet>>{};
+  final hasTyped = sets.any(
+    (set) => set.catalog != null || set.blockId != null,
+  );
+  String? previousKey;
+  var segment = -1;
 
   for (final s in sets) {
-    if (!byExercise.containsKey(s.exerciseId)) {
-      order.add(s.exerciseId);
-      byExercise[s.exerciseId] = [];
+    final baseKey = s.catalog == null
+        ? '${s.blockId ?? s.exerciseId}:${s.exerciseId}'
+        : '${s.blockId}:${s.catalog!.selection.compatibilityKey}';
+    if (baseKey != previousKey) {
+      segment++;
+      previousKey = baseKey;
     }
-    byExercise[s.exerciseId]!.add(s);
+    final key = hasTyped ? 'segment:$segment:$baseKey' : s.exerciseId;
+    if (!byExercise.containsKey(key)) {
+      order.add(key);
+      byExercise[key] = [];
+    }
+    byExercise[key]!.add(s);
   }
 
   return order.map((exId) {
@@ -87,7 +104,7 @@ List<ExerciseBlockData> groupSetsIntoBlocks(List<LoggedSet> sets) {
     );
 
     return ExerciseBlockData(
-      exerciseId: exId,
+      exerciseId: exSets.first.exerciseId,
       sets: exSets,
       topWeight: topSet.weightKg,
       topReps: topSet.reps,
@@ -101,7 +118,7 @@ List<ExerciseBlockData> groupSetsIntoBlocks(List<LoggedSet> sets) {
 /// exercises in workout order. Callers append their `WHERE` (on alias `s`)
 /// and `ORDER BY first_set, s.exercise_id, s.set_number`.
 const workoutOrderSelect =
-    'SELECT s.*, (SELECT revision FROM sessions se WHERE se.profile_id=s.profile_id AND se.id=s.session_id) AS workout_revision, (SELECT MIN(f.set_number) FROM sets f '
+    "SELECT s.*, (SELECT json_extract(CAST(d.result_bytes AS TEXT),'\$.is_top_set') FROM derived_results d WHERE d.profile_id=s.profile_id AND d.result_id='catalog-workout:'||s.session_id||':'||(SELECT revision FROM sessions parent WHERE parent.profile_id=s.profile_id AND parent.id=s.session_id)||':set:'||s.id||':'||s.revision) AS catalog_top, (SELECT json_extract(CAST(d.result_bytes AS TEXT),'\$.is_pr') FROM derived_results d WHERE d.profile_id=s.profile_id AND d.result_id='catalog-workout:'||s.session_id||':'||(SELECT revision FROM sessions parent WHERE parent.profile_id=s.profile_id AND parent.id=s.session_id)||':set:'||s.id||':'||s.revision) AS catalog_pr, (SELECT revision FROM sessions se WHERE se.profile_id=s.profile_id AND se.id=s.session_id) AS workout_revision, (SELECT MIN(f.set_number) FROM sets f "
     'WHERE f.session_id = s.session_id AND f.exercise_id = s.exercise_id AND f.deleted=0) AS first_set '
     'FROM reps_compat1_legacy_local s';
 
@@ -109,6 +126,26 @@ const workoutOrderSelect =
 ///
 /// Queries and JOINs use the profile-scoped local [LocalDatabase].
 class SessionRepository {
+  final _catalogDependencies = <String, List<OperationDependency>>{};
+  Future<void> preloadCatalogDependencies(
+    CatalogSelectionEvidence selection,
+  ) async {
+    _catalogDependencies[selection.compatibilityKey] =
+        await CatalogExecutionRepository.local(
+          db,
+        ).dependenciesForSelection(selection);
+  }
+
+  Future<CatalogLoadReference> catalogLoadReference(
+    CatalogSelectionEvidence selection, {
+    String? excludeSessionId,
+  }) => db.readTransaction(
+    (tx) => readCatalogLoadReference(
+      tx,
+      selection,
+      excludeSessionId: excludeSessionId,
+    ),
+  );
   final LocalDatabase db;
 
   SessionRepository.local(this.db);
@@ -197,7 +234,7 @@ class SessionRepository {
     final exercise = scope.substring(5);
     return tx
         .getAll(
-          "SELECT s.id,s.revision,s.session_id,s.weight_kg,s.reps,s.set_number,se.revision AS workout_revision,se.date,se.created_at,se.split_label FROM reps_compat1_legacy_local s JOIN sessions se ON se.id=s.session_id AND se.profile_id=s.profile_id WHERE s.profile_id=? AND s.deleted=0 AND se.deleted=0 AND s.exercise_id=? AND s.legacy_local_top=1 AND s.is_warmup=0"
+          "SELECT s.id,s.revision,s.session_id,s.weight_kg,s.reps,s.set_number,se.revision AS workout_revision,se.date,se.created_at,se.split_label FROM reps_compat1_legacy_local s JOIN sessions se ON se.id=s.session_id AND se.profile_id=s.profile_id WHERE s.profile_id=? AND s.deleted=0 AND se.deleted=0 AND s.exercise_id=? AND s.legacy_local_top=1 AND s.is_warmup=0 AND $legacySetOnlySql"
           "${excludeSessionId == null ? '' : ' AND s.session_id!=?'} ORDER BY se.date DESC,CASE WHEN se.created_at IS NULL OR se.created_at='' THEN 0 ELSE 1 END,se.created_at DESC,se.id DESC,s.id",
           [
             tx.profileId,
@@ -367,6 +404,7 @@ class SessionRepository {
       [exerciseId, if (excludeSessionId != null) excludeSessionId],
     );
     final values = rows
+        .where((row) => row['catalog_set_bytes'] == null)
         .map((row) => DecimalEvidence.fromRow(row, 'weight_kg'))
         .where((e) => e.state == ValueState.valid)
         .map((e) => e.exact!.displayDouble)
@@ -484,8 +522,27 @@ class SessionRepository {
       'ORDER BY first_set, s.exercise_id, s.set_number',
       [sessionId],
     );
+    if (rows.any(
+      (row) => row['catalog_set_bytes'] != null || row['block_id'] != null,
+    )) {
+      rows.sort((a, b) {
+        final order = (a['set_number'] as int).compareTo(
+          b['set_number'] as int,
+        );
+        return order != 0
+            ? order
+            : (a['id'] as String).compareTo(b['id'] as String);
+      });
+    }
     for (final row in rows) {
       _observedSets[row['id'] as String] = Map.from(row);
+      if (row['catalog_set_bytes'] != null) {
+        await preloadCatalogDependencies(
+          CatalogSetEvidence.fromJson(
+            decodeCatalogBytes(row['catalog_set_bytes']!),
+          ).selection,
+        );
+      }
     }
     final session = await sessionById(sessionId);
     if (session == null) {
@@ -505,14 +562,99 @@ class SessionRepository {
     int base,
     Map<String, Object?> input, {
     String? operationId,
-  }) => prepareDomain(
-    db,
-    RecordKind.workout,
-    LocalActionKind.workoutEdit,
+  }) => _prepareHistoryEdit(sessionId, base, input, operationId: operationId);
+
+  PreparedDomainAction _prepareHistoryEdit(
+    String sessionId,
+    int base,
+    Map<String, Object?> input, {
+    String? operationId,
+    List<OperationDependency> dependencies = const [],
+  }) {
+    final set = input['set'] as Map?;
+    final typed =
+        input['catalog_contract'] == 1 ||
+        _observedSets[set?['id']]?['catalog_set_bytes'] != null;
+    final catalog = set?['catalog'] == null
+        ? null
+        : CatalogSetEvidence.fromJson(catalogEvidenceObject(set!['catalog']));
+    final previousCatalog = _observedSets[set?['id']]?['catalog_set_bytes'];
+    final selection =
+        catalog?.selection ??
+        (previousCatalog == null
+            ? null
+            : CatalogSetEvidence.fromJson(
+                decodeCatalogBytes(previousCatalog),
+              ).selection);
+    return prepareDomain(
+      db,
+      RecordKind.workout,
+      typed ? LocalActionKind.catalogWorkoutEdit : LocalActionKind.workoutEdit,
+      sessionId,
+      base,
+      {...input, if (typed) 'catalog_contract': 1},
+      operationId: operationId,
+      dependencies: [
+        ...dependencies,
+        if (selection != null)
+          ...?_catalogDependencies[selection.compatibilityKey],
+      ],
+      eligibility: typed
+          ? SyncEligibility.unsupportedMapping
+          : SyncEligibility.awaitingAttachment,
+    );
+  }
+
+  PreparedDomainAction prepareCatalogSetEdit({
+    required String sessionId,
+    required int workoutRevision,
+    required String setId,
+    required int setRevision,
+    required CatalogSetEvidence evidence,
+    String? operationId,
+    List<OperationDependency> dependencies = const [],
+  }) => _prepareHistoryEdit(
     sessionId,
-    base,
-    input,
+    workoutRevision,
+    {
+      'catalog_contract': 1,
+      'mode': 'edit',
+      'set': {'id': setId, 'base': setRevision, 'catalog': evidence.toJson()},
+    },
     operationId: operationId,
+    dependencies: dependencies,
+  );
+  PreparedDomainAction prepareCatalogSetAdd({
+    required String sessionId,
+    required int workoutRevision,
+    String? setId,
+    required CatalogSetEvidence evidence,
+    required String blockId,
+    String? originSlotId,
+    int? originSlotRevision,
+    bool isWarmup = false,
+    int? rir,
+    String? operationId,
+    List<OperationDependency> dependencies = const [],
+  }) => _prepareHistoryEdit(
+    sessionId,
+    workoutRevision,
+    {
+      'catalog_contract': 1,
+      'mode': 'add',
+      'set': {
+        'id': setId ?? domainUuid.v4(),
+        'base': 0,
+        'catalog': evidence.toJson(),
+        'block_id': blockId,
+        'origin_slot_id': originSlotId,
+        'origin_slot_revision': originSlotRevision,
+        'is_warmup': isWarmup ? 1 : 0,
+        'rir': rir,
+      },
+    },
+    operationId: operationId,
+    dependencies: dependencies,
   );
   PreparedDomainAction prepareDelete(
     String id,
@@ -564,6 +706,9 @@ class SessionRepository {
         deleted: deleting,
         sourceRevisionId: old['source_revision_id'] as String?,
       );
+      if (!deleting) {
+        await writeCatalogDerivations(tx, a.target.id, revision);
+      }
       // Sets retain their identities and evidence; workout tombstone scopes visibility.
       final recovery = await tx.localState(
         LocalStateKind.finishedRecovery,
@@ -592,6 +737,95 @@ class SessionRepository {
         );
       }
       return {'id': a.target.id, 'revision': revision};
+    }
+    if (a.action == LocalActionKind.catalogWorkoutEdit) {
+      final input = intent.input;
+      if (input['catalog_contract'] != 1) {
+        throw const StoreException('catalog_contract_required');
+      }
+      final change = catalogEvidenceObject(input['set']);
+      final ref = LocalRef(
+        tx.profileId,
+        RecordKind.workoutSet,
+        change['id'] as String,
+      );
+      final previous = await tx.record(ref);
+      final mode = input['mode'];
+      if ((previous?['revision'] ?? 0) != change['base'] ||
+          previous != null &&
+              (previous['deleted'] == 1 ||
+                  previous['session_id'] != a.target.id) ||
+          previous == null && mode != 'add') {
+        throw const StoreException('revision_conflict');
+      }
+      final next = previous == null
+          ? <String, Object?>{}
+          : projectionFields(previous);
+      if (mode != 'delete') {
+        final evidence = CatalogSetEvidence.fromJson(
+          catalogEvidenceObject(change['catalog']),
+        );
+        if (!catalogLoggingChangeAllowed(
+          evidence,
+          previous: previous?['catalog_set_bytes'] == null
+              ? null
+              : CatalogSetEvidence.fromJson(
+                  decodeCatalogBytes(previous!['catalog_set_bytes']!),
+                ),
+        )) {
+          throw const StoreException('malformed_catalog_set');
+        }
+        await validateCatalogSelection(tx, evidence.selection);
+        next.addAll({
+          'exercise_id': evidence.selection.exerciseId,
+          'tracking_context_id': evidence.selection.contextId,
+          'catalog_set_bytes': evidence.bytes,
+          'weight_kg': null,
+          'reps': null,
+        });
+      }
+      if (previous == null) {
+        if (change['block_id'] is! String) {
+          throw const StoreException('catalog_block_required');
+        }
+        final ordinal = await tx.get(
+          'SELECT COALESCE(MAX(set_number),0)+1 AS n FROM sets WHERE profile_id=? AND session_id=?',
+          [tx.profileId, a.target.id],
+        );
+        next.addAll({
+          'session_id': a.target.id,
+          'set_number': ordinal['n'],
+          'block_id': change['block_id'],
+          'origin_slot_id': change['origin_slot_id'],
+          'origin_slot_revision': change['origin_slot_revision'],
+          'is_warmup': change['is_warmup'],
+          'rir': change['is_warmup'] == 1 ? null : change['rir'],
+          'is_top_set': 0,
+          'is_pr': 0,
+          'created_at': intent.createdAt,
+        });
+      }
+      next['updated_at'] = intent.createdAt;
+      final setRevision = await putDomain(
+        tx,
+        ref,
+        next,
+        deleted: mode == 'delete',
+        sourceRevisionId: previous?['source_revision_id'] as String?,
+      );
+      final revision = await putDomain(
+        tx,
+        a.target,
+        fields,
+        sourceRevisionId: old['source_revision_id'] as String?,
+      );
+      await writeCatalogDerivations(tx, a.target.id, revision);
+      return {
+        'id': a.target.id,
+        'revision': revision,
+        'set_id': ref.id,
+        'sets': {ref.id: setRevision},
+      };
     }
     if (a.action != LocalActionKind.workoutEdit) {
       throw const StoreException('unsupported_action');
@@ -663,7 +897,7 @@ class SessionRepository {
       sourceRevisionId: previous?['source_revision_id'] as String?,
     );
     final group = await tx.getAll(
-      'SELECT * FROM reps_compat1_legacy_local WHERE profile_id=? AND session_id=? AND exercise_id=? AND deleted=0',
+      'SELECT s.* FROM reps_compat1_legacy_local s WHERE s.profile_id=? AND s.session_id=? AND s.exercise_id=? AND s.deleted=0 AND $legacySetOnlySql',
       [tx.profileId, a.target.id, ex],
     );
     final top = heaviestNonWarmupId(
@@ -698,6 +932,7 @@ class SessionRepository {
       fields,
       sourceRevisionId: old['source_revision_id'] as String?,
     );
+    await writeCatalogDerivations(tx, a.target.id, revision);
     return {
       'id': a.target.id,
       'revision': revision,

@@ -1,4 +1,5 @@
 import '../domain/evidence.dart';
+import '../domain/catalog_execution.dart';
 import 'history_numeric_evidence.dart';
 
 // Retained display models. Exact evidence is the source of untouched writes.
@@ -106,6 +107,9 @@ class Exercise {
   final DecimalEvidence? plateStepEvidence;
   final int? localRevision;
   final Map<String, Object?> rawFields;
+  final CatalogExecutionDefinition? executionDefinition;
+  CatalogMeasurementProfileEvidence? get measurementProfile =>
+      executionDefinition?.profile;
 
   const Exercise({
     required this.id,
@@ -128,6 +132,7 @@ class Exercise {
     this.plateStepEvidence,
     this.localRevision,
     this.rawFields = const {},
+    this.executionDefinition,
   });
 
   factory Exercise.fromRow(Map<String, dynamic> row) {
@@ -165,6 +170,11 @@ class Exercise {
       plateStepEvidence: DecimalEvidence.fromRow(row, 'plate_step_kg'),
       localRevision: row['revision'] as int?,
       rawFields: Map.unmodifiable(row),
+      executionDefinition: row['execution_definition_bytes'] == null
+          ? null
+          : CatalogExecutionDefinition.fromJson(
+              decodeCatalogBytes(row['execution_definition_bytes']!),
+            ),
     );
   }
 }
@@ -185,6 +195,8 @@ class Slot {
   final String? rirPolicy;
   final int? localRevision;
   final Map<String, Object?> rawFields;
+  final CatalogSelectionEvidence? catalog;
+  final Map<String, CatalogMetricEvidence> catalogTargets;
 
   const Slot({
     this.id,
@@ -199,9 +211,16 @@ class Slot {
     this.rirPolicy,
     this.localRevision,
     this.rawFields = const {},
+    this.catalog,
+    this.catalogTargets = const {},
   });
 
   factory Slot.fromRow(Map<String, dynamic> row) {
+    final catalog = row['catalog_selection_bytes'] == null
+        ? null
+        : CatalogSelectionEvidence.fromJson(
+            decodeCatalogBytes(row['catalog_selection_bytes']!),
+          );
     return Slot(
       id: row['id'] as String?,
       exerciseId: row['exercise_id'] as String,
@@ -223,6 +242,14 @@ class Slot {
       rirPolicy: row['rir_policy']?.toString(),
       localRevision: row['revision'] as int?,
       rawFields: Map.unmodifiable(row),
+      catalog: catalog,
+      catalogTargets: row['catalog_targets_bytes'] == null
+          ? const {}
+          : decodeCatalogTargets(
+              row['catalog_targets_bytes']!,
+              catalog ??
+                  (throw const FormatException('Targets without selection')),
+            ),
     );
   }
 }
@@ -315,6 +342,8 @@ class SlotDraft {
   int? localRevision;
   Map<String, Object?> rawFields;
   Set<String>? changedFields;
+  CatalogSelectionEvidence? catalog;
+  Map<String, CatalogMetricEvidence> catalogTargets;
 
   SlotDraft({
     this.itemId,
@@ -329,6 +358,8 @@ class SlotDraft {
     this.localRevision,
     this.rawFields = const {},
     this.changedFields,
+    this.catalog,
+    this.catalogTargets = const {},
   });
 }
 
@@ -374,6 +405,7 @@ class ExerciseDraft {
   DecimalEvidence? originalBaseWeightEvidence;
   DecimalEvidence? originalPlateStepEvidence;
   int? localRevision;
+  CatalogExecutionDefinition? executionDefinition;
 
   ExerciseDraft({
     this.id,
@@ -393,6 +425,7 @@ class ExerciseDraft {
     this.originalBaseWeightEvidence,
     this.originalPlateStepEvidence,
     this.localRevision,
+    this.executionDefinition,
     this.rawFields = const {},
     this.changedFields,
   });
@@ -412,6 +445,9 @@ class LoggedSet {
   final bool isWarmup;
   final bool isTopSet;
   final bool isPr;
+  final CatalogSetEvidence? catalog;
+  final String? blockId, originSlotId;
+  final int? originSlotRevision;
 
   /// weightKg may show the named legacy zero fallback; this evidence never does.
   final DecimalEvidence? weightEvidence;
@@ -462,10 +498,19 @@ class LoggedSet {
     this.capturedPr,
     this.repsEvidence,
     this.setNumberEvidence,
+    this.catalog,
+    this.blockId,
+    this.originSlotId,
+    this.originSlotRevision,
   });
 
   factory LoggedSet.fromRow(Map<String, dynamic> row) {
     final wt = row['weight_kg'];
+    final catalog = row['catalog_set_bytes'] == null
+        ? null
+        : CatalogSetEvidence.fromJson(
+            decodeCatalogBytes(row['catalog_set_bytes']!),
+          );
     return LoggedSet(
       id: row['id'] as String,
       exerciseId: row['exercise_id'] as String,
@@ -475,11 +520,16 @@ class LoggedSet {
       rir: row['rir'] is int ? row['rir'] as int : null,
       isWarmup: row['is_warmup'] is int && row['is_warmup'] != 0,
       isTopSet:
-          (row['legacy_local_top'] ?? row['is_top_set']) is int &&
-          (row['legacy_local_top'] ?? row['is_top_set']) != 0,
+          (row['catalog_top'] ?? row['legacy_local_top'] ?? row['is_top_set'])
+              is int &&
+          (row['catalog_top'] ??
+                  row['legacy_local_top'] ??
+                  row['is_top_set']) !=
+              0,
       isPr:
-          (row['legacy_local_pr'] ?? row['is_pr']) is int &&
-          (row['legacy_local_pr'] ?? row['is_pr']) != 0,
+          (row['catalog_pr'] ?? row['legacy_local_pr'] ?? row['is_pr'])
+              is int &&
+          (row['catalog_pr'] ?? row['legacy_local_pr'] ?? row['is_pr']) != 0,
       rawFields: Map.unmodifiable(row),
       localRevision: row['revision'] as int?,
       workoutRevision: row['workout_revision'] as int?,
@@ -488,6 +538,10 @@ class LoggedSet {
       weightEvidence: DecimalEvidence.fromRow(row, 'weight_kg'),
       repsEvidence: _integerEvidence(row, 'reps'),
       setNumberEvidence: _integerEvidence(row, 'set_number'),
+      catalog: catalog,
+      blockId: row['block_id'] as String?,
+      originSlotId: row['origin_slot_id'] as String?,
+      originSlotRevision: row['origin_slot_revision'] as int?,
     );
   }
 }
@@ -555,6 +609,9 @@ HistoryVolumeEvidence historyVolumeOf(Iterable<LoggedSet> sets) {
 
 /// Aggregated data for one exercise within a session (for the summary/history views).
 class ExerciseBlockData {
+  String? get blockId => sets.isEmpty ? null : sets.first.blockId;
+  CatalogSelectionEvidence? get catalog =>
+      sets.isEmpty ? null : sets.first.catalog?.selection;
   final String exerciseId;
   final List<LoggedSet> sets;
   final double topWeight;

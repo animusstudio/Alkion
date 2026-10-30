@@ -53,7 +53,7 @@ Future<LocalStore> openStore(Directory caseRoot) async {
   return LocalStore.open(
     profile: profile,
     expectedProfileId: profile.profileId,
-    schema: prescriptionSchemaRegistry(),
+    schema: catalogExecutionSchemaRegistry(),
   );
 }
 
@@ -247,7 +247,8 @@ CoveredState stateFromJson(Map<String, Object?> json) => CoveredState(
 String _canon(Object? value) => utf8.decode(localBytes(value));
 
 Map<String, String> _rows(CoveredState state, String table) => {
-  for (final row in state.tables[table]!) state.rowKey(table, row): _canon(row),
+  for (final row in state.tables[table] ?? const <Map<String, Object?>>[])
+    state.rowKey(table, row): _canon(row),
 };
 
 bool _lineageReview(Map<String, Object?> row) =>
@@ -1869,7 +1870,7 @@ final class Qualification {
     final db = sqlite.sqlite3.open(copy);
     db.select('PRAGMA journal_mode=DELETE');
     db.close();
-    final facts = await inspectSnapshot(copy, prescriptionSchemaRegistry());
+    final facts = await inspectSnapshot(copy, catalogExecutionSchemaRegistry());
     final database = File(copy).readAsBytesSync();
     final file = File(p.join(directory.path, 'hot-copy.alkionbackup'));
     await file.writeAsBytes(

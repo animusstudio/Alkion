@@ -9,6 +9,7 @@ import 'session_writer.dart';
 String? heaviestNonWarmupId(List<Map<String, Object?>> groupRows) {
   Map<String, Object?>? best;
   for (final r in groupRows) {
+    if (r['catalog_set_bytes'] != null) continue;
     if ((r['is_warmup'] as int? ?? 0) != 0) {
       continue;
     }
@@ -40,6 +41,7 @@ String? heaviestNonWarmupId(List<Map<String, Object?>> groupRows) {
 Set<String> topSetIdsToStamp(List<Map<String, Object?>> rows) {
   final groups = <String, List<Map<String, Object?>>>{};
   for (final r in rows) {
+    if (r['catalog_set_bytes'] != null) continue;
     final key = '${r['session_id']}|${r['exercise_id']}';
     (groups[key] ??= []).add(r);
   }

@@ -2,17 +2,17 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 /// Forward IDs are reserved: 1 foundation, 2 domain adapters, 3 workout,
-/// 4 flexible prescriptions, 5 reserved. Frozen IDs 1–3 retain their digests.
-const currentSchemaVersion = 4;
+/// 4 flexible prescriptions, 5 catalog execution. IDs 1–4 remain frozen.
+const currentSchemaVersion = 5;
 const alkionApplicationId = 0x414C4B31;
 const reservedMigrationIds = {
   2: 'domains',
   3: 'workout',
   4: 'flexible-prescriptions',
-  5: 'restore',
+  5: 'catalog-execution',
 };
 
-const domainTables = [
+const foundationDomainTables = [
   'exercises',
   'day_templates',
   'day_template_items',
@@ -21,7 +21,7 @@ const domainTables = [
   'bodyweight_logs',
   'muscle_targets',
 ];
-const domainKinds = [
+const foundationDomainKinds = [
   'exercise',
   'trainingDay',
   'trainingSlot',
@@ -30,7 +30,17 @@ const domainKinds = [
   'bodyweight',
   'muscleTarget',
 ];
-const preservedTables = [
+const domainTables = [
+  ...foundationDomainTables,
+  'exercise_catalog_bindings',
+  'exercise_tracking_contexts',
+];
+const domainKinds = [
+  ...foundationDomainKinds,
+  'catalogBinding',
+  'trackingContext',
+];
+const foundationPreservedTables = [
   'profile_state',
   'schema_migrations',
   'operations',
@@ -54,8 +64,15 @@ const preservedTables = [
   'replica_rows',
   'replica_checkpoints',
   'restore_journal',
-  ...domainTables,
+  ...foundationDomainTables,
 ];
+const preservedTables = [
+  ...foundationPreservedTables,
+  'exercise_catalog_bindings',
+  'exercise_tracking_contexts',
+];
+List<String> preservedTablesAt(int version) =>
+    version < 5 ? foundationPreservedTables : preservedTables;
 
 final schemaStatements = <String>[
   '''CREATE TABLE profile_state (
@@ -272,7 +289,7 @@ final schemaStatements = <String>[
     'restore_journal',
   ])
     ..._immutable(table),
-  for (final table in domainTables)
+  for (final table in foundationDomainTables)
     "CREATE TRIGGER ${table}_retain BEFORE DELETE ON $table BEGIN SELECT RAISE(ABORT,'recoverable_tombstone_required'); END",
   "CREATE TRIGGER profile_retain BEFORE DELETE ON profile_state BEGIN SELECT RAISE(ABORT,'profile_preserved'); END",
 ];
@@ -418,6 +435,83 @@ SchemaRegistry prescriptionSchemaRegistry() => SchemaRegistry(
       version: 4,
       statements: prescriptionMigrationStatements,
       expectedSchemaDigest: schemaSqlDigest(_prescriptionSchemaStatements),
+    ),
+  ],
+);
+
+final catalogExecutionMigrationStatements = <String>[
+  'ALTER TABLE exercises ADD COLUMN execution_definition_bytes BLOB',
+  'ALTER TABLE day_template_items ADD COLUMN tracking_context_id TEXT',
+  'ALTER TABLE day_template_items ADD COLUMN catalog_selection_bytes BLOB',
+  'ALTER TABLE day_template_items ADD COLUMN catalog_targets_bytes BLOB',
+  'ALTER TABLE sets ADD COLUMN tracking_context_id TEXT',
+  'ALTER TABLE sets ADD COLUMN catalog_set_bytes BLOB',
+  'ALTER TABLE sets ADD COLUMN block_id TEXT',
+  'ALTER TABLE sets ADD COLUMN origin_slot_id TEXT',
+  'ALTER TABLE sets ADD COLUMN origin_slot_revision INTEGER',
+  _domain(
+    'exercise_catalog_bindings',
+    'catalogBinding',
+    '''exercise_id TEXT NOT NULL, catalog_namespace TEXT NOT NULL,
+    family_id TEXT NOT NULL, variant_id TEXT NOT NULL,
+    variant_revision INTEGER NOT NULL CHECK(variant_revision>=1),
+    bundle_digest TEXT NOT NULL, label_policy TEXT NOT NULL,
+    stable_label TEXT NOT NULL, measurement_profile_bytes BLOB NOT NULL,
+    UNIQUE(profile_id,catalog_namespace,variant_id), UNIQUE(profile_id,exercise_id),
+    FOREIGN KEY(profile_id,exercise_id) REFERENCES exercises(profile_id,id) DEFERRABLE INITIALLY DEFERRED''',
+  ),
+  _domain(
+    'exercise_tracking_contexts',
+    'trackingContext',
+    '''exercise_id TEXT NOT NULL, binding_id TEXT, binding_revision INTEGER,
+    label TEXT NOT NULL, resistance_source TEXT NOT NULL,
+    load_convention TEXT NOT NULL, execution_bytes BLOB NOT NULL,
+    CHECK((binding_id IS NULL)=(binding_revision IS NULL)),
+    FOREIGN KEY(profile_id,exercise_id) REFERENCES exercises(profile_id,id) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(profile_id,binding_id) REFERENCES exercise_catalog_bindings(profile_id,id) DEFERRABLE INITIALLY DEFERRED''',
+  ),
+  'CREATE INDEX catalog_context_exercise ON exercise_tracking_contexts(profile_id,exercise_id,deleted)',
+  'CREATE INDEX catalog_sets_context ON sets(profile_id,tracking_context_id,session_id,set_number)',
+  for (final table in [
+    'exercise_catalog_bindings',
+    'exercise_tracking_contexts',
+  ])
+    "CREATE TRIGGER ${table}_retain BEFORE DELETE ON $table BEGIN SELECT RAISE(ABORT,'recoverable_tombstone_required'); END",
+];
+
+// ALTER TABLE appends columns immediately before table constraints in
+// sqlite_master, even though the executed statements are kept immutable above.
+final _catalogExecutionSchemaStatements = [
+  for (final sql in _prescriptionSchemaStatements)
+    if (sql.startsWith('CREATE TABLE exercises '))
+      sql.replaceFirst(
+        'PRIMARY KEY(profile_id,id),',
+        'execution_definition_bytes BLOB, PRIMARY KEY(profile_id,id),',
+      )
+    else if (sql.startsWith('CREATE TABLE day_template_items '))
+      sql.replaceFirst(
+        'FOREIGN KEY(profile_id,day_template_id)',
+        'tracking_context_id TEXT, catalog_selection_bytes BLOB, catalog_targets_bytes BLOB, FOREIGN KEY(profile_id,day_template_id)',
+      )
+    else if (sql.startsWith('CREATE TABLE sets '))
+      sql.replaceFirst(
+        'FOREIGN KEY(profile_id,session_id)',
+        'tracking_context_id TEXT, catalog_set_bytes BLOB, block_id TEXT, origin_slot_id TEXT, origin_slot_revision INTEGER, FOREIGN KEY(profile_id,session_id)',
+      )
+    else
+      sql,
+  ...catalogExecutionMigrationStatements.where(
+    (sql) => !sql.startsWith('ALTER TABLE '),
+  ),
+];
+
+SchemaRegistry catalogExecutionSchemaRegistry() => SchemaRegistry(
+  forward: [
+    ...prescriptionSchemaRegistry().migrations.skip(1),
+    ForwardMigration(
+      version: 5,
+      statements: catalogExecutionMigrationStatements,
+      expectedSchemaDigest: schemaSqlDigest(_catalogExecutionSchemaStatements),
     ),
   ],
 );

@@ -14,16 +14,16 @@ import '../identity/directory_durability.dart';
 import '../store/local_store.dart';
 import '../store/schema.dart';
 
-/// Manual Alkion backup container, version 1.
+/// Manual Alkion backup container, version 2 (reader also accepts version 1).
 ///
-/// Bytes: the ASCII line `alkion-backup/1`, one line of canonical local JSON
+/// Bytes: the ASCII line `alkion-backup/2`, one line of canonical local JSON
 /// (the manifest), then the exact SQLite snapshot bytes. The manifest records
 /// version, tool, profile, generation, schema, boundary, covered-state
 /// inventory, snapshot digest and exclusions. Only a name without the
 /// `.partial-` prefix is ever published, and only after its bytes are flushed.
 const backupFormat = 'alkion-backup';
-const backupVersion = 1;
-const backupWriter = 'alkion-backup-writer/1';
+const backupVersion = 2;
+const backupWriter = 'alkion-backup-writer/2';
 const backupExtension = '.alkionbackup';
 const maxBackupBytes = 512 * 1024 * 1024;
 final Uint8List _header = Uint8List.fromList(
@@ -65,7 +65,7 @@ final class CoveredState {
   String digest({Set<String> excluding = const {}}) => sha256
       .convert(
         localBytes({
-          for (final table in preservedTables)
+          for (final table in tables.keys)
             if (!excluding.contains(table)) table: tableDigest(table),
         }),
       )
@@ -76,7 +76,7 @@ final class CoveredState {
 
   Map<String, Object?> manifestInventory() => {
     'tables': {
-      for (final table in preservedTables)
+      for (final table in tables.keys)
         table: {'rows': tables[table]!.length, 'sha256': tableDigest(table)},
     },
     'rows': rowCount,
@@ -104,9 +104,12 @@ SqlSelect rawSelect(sqlite.Database db) =>
 
 /// Reads the covered state through one caller-provided snapshot context.
 Future<CoveredState> readCoveredState(SqlSelect select) async {
+  final version =
+      (await select('PRAGMA user_version')).single.values.single as int;
+  final coveredTables = preservedTablesAt(version);
   final tables = <String, List<Map<String, Object?>>>{};
   final keys = <String, List<String>>{};
-  for (final table in preservedTables) {
+  for (final table in coveredTables) {
     final columns =
         (await select(
             'PRAGMA table_info($table)',
@@ -122,7 +125,7 @@ Future<CoveredState> readCoveredState(SqlSelect select) async {
     ];
   }
   final state = CoveredState(tables, keys);
-  for (final table in preservedTables) {
+  for (final table in coveredTables) {
     tables[table]!.sort(
       (a, b) => state.rowKey(table, a).compareTo(state.rowKey(table, b)),
     );
@@ -186,7 +189,9 @@ Future<SnapshotFacts> inspectSnapshot(
           "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
         )
         .map((row) => row['name'] as String);
-    if (tables.any((table) => !preservedTables.contains(table))) {
+    final expectedTables = preservedTablesAt(version);
+    if (tables.length != expectedTables.length ||
+        tables.any((table) => !expectedTables.contains(table))) {
       throw const StoreException('backup_uncovered_table');
     }
     final metadata = db.select('SELECT * FROM profile_state');
@@ -271,7 +276,7 @@ Future<VerifiedBackup> verifyBackupBytes(
   SchemaRegistry? schema,
   Directory? workDirectory,
 }) async {
-  final registry = schema ?? prescriptionSchemaRegistry();
+  final registry = schema ?? catalogExecutionSchemaRegistry();
   final headerEnd = bytes.indexOf(10);
   final header = headerEnd < 0
       ? ''
@@ -280,7 +285,8 @@ Future<VerifiedBackup> verifyBackupBytes(
   if (version == null) {
     throw const StoreException('backup_format_unsupported');
   }
-  if (version.group(1) != '$backupVersion') {
+  final containerVersion = int.parse(version.group(1)!);
+  if (containerVersion != 1 && containerVersion != backupVersion) {
     throw const StoreException('backup_version_unsupported');
   }
   final manifestEnd = bytes.indexOf(10, headerEnd + 1);
@@ -300,7 +306,7 @@ Future<VerifiedBackup> verifyBackupBytes(
     final decoded = jsonDecode(const Utf8Decoder().convert(manifestBytes));
     manifest = Map<String, Object?>.from(decoded as Map);
     if (manifest['format'] != backupFormat ||
-        manifest['version'] != backupVersion ||
+        manifest['version'] != containerVersion ||
         !_sameBytes(localBytes(manifest), manifestBytes)) {
       throw const FormatException('manifest');
     }
