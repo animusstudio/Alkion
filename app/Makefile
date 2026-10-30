@@ -152,7 +152,7 @@ brand-entry-frames:
 CATALOG_TRIAL_TARGET_PLATFORM ?= android-arm64
 stage-catalog-trial:
 	@test -n "$${CATALOG_TRIAL_INPUT}" && test -n "$${CATALOG_TRIAL_SHA256}" || (echo 'Set explicit CATALOG_TRIAL_INPUT and reviewed CATALOG_TRIAL_SHA256.' >&2; exit 2)
-	python3 tool/stage_catalog_trial.py --input "$${CATALOG_TRIAL_INPUT}" --expected-sha256 "$${CATALOG_TRIAL_SHA256}"
+	python3 tool/stage_catalog_trial.py --input "$${CATALOG_TRIAL_INPUT}" --expected-sha256 "$${CATALOG_TRIAL_SHA256}" --browse-input "$${CATALOG_BROWSE_INPUT:-}" --browse-sha256 "$${CATALOG_BROWSE_SHA256:-}"
 verify-catalog-trial:
 	python3 tool/stage_catalog_trial.py --verify
 test-catalog-trial-staging:
@@ -164,5 +164,5 @@ build-catalog-trial:
 	@case "$(CATALOG_TRIAL_TARGET_PLATFORM)" in android-arm64|android-x64) ;; *) echo 'CATALOG_TRIAL_TARGET_PLATFORM must be android-arm64 or android-x64.' >&2; exit 2 ;; esac
 	$(MAKE) verify-catalog-trial
 	ALKION_ISOLATED_CATALOG_TRIAL=1 $(FLUTTER) build apk --debug --no-pub --flavor dev --target-platform "$(CATALOG_TRIAL_TARGET_PLATFORM)" --target lib/catalog_trial.dart --dart-define=ALKION_CATALOG_TRIAL=true
-	python3 tool/verify_catalog_trial_apk.py --apk build/app/outputs/flutter-apk/app-dev-debug.apk --platform "$(CATALOG_TRIAL_TARGET_PLATFORM)" --generated-jni-dir build/app/intermediates/flutter/devDebug/jniLibs
+	python3 tool/verify_catalog_trial_apk.py --apk build/app/outputs/flutter-apk/app-dev-debug.apk --platform "$(CATALOG_TRIAL_TARGET_PLATFORM)" --generated-jni-dir build/app/intermediates/flutter/devDebug/jniLibs --catalog-assets-dir build/private-catalog-trial/assets
 	cp -- build/app/outputs/flutter-apk/app-dev-debug.apk build/app/outputs/flutter-apk/alkion-catalog-trial-$(CATALOG_TRIAL_TARGET_PLATFORM)-debug.apk

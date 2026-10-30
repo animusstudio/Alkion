@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'catalog_browse.dart';
+export 'catalog_browse.dart';
+
 /// Invalid, incompatible or tampered inputs are surfaced to the caller. The
 /// caller owns recovery and may continue offering owned/custom exercises.
 class CatalogFormatException implements Exception {
@@ -186,8 +189,14 @@ class CatalogBundle {
     required this.terms,
     required this.equipmentKinds,
     required this.facetVocabulary,
+    this.browse,
+    this.browseUnavailableReason = 'missing',
   });
   final String digest, catalogRevision, searchRevision;
+  final CatalogBrowse? browse;
+
+  /// Stable reason code for localized UI; never contains source details.
+  final String? browseUnavailableReason;
   final Map<String, CatalogEntity> families, equipmentModels;
   final Map<String, CatalogVariant> variants;
   final Map<String, CatalogCollection> collections;
@@ -214,7 +223,14 @@ class CatalogBundle {
         expectedSha256: expectedSha256,
       );
 
-  factory CatalogBundle.fromBytes(List<int> bytes, {String? expectedSha256}) {
+  factory CatalogBundle.fromBytes(
+    List<int> bytes, {
+    String? expectedSha256,
+    List<int>? browseBytes,
+    String? browseSha256,
+    String? browseRevision,
+    String? sourceSha256,
+  }) {
     final digest = sha256.convert(bytes).toString();
     if (expectedSha256 != null && expectedSha256 != digest) {
       throw const CatalogFormatException('Catalog digest mismatch');
@@ -529,7 +545,27 @@ class CatalogBundle {
           );
         }
       }
+      CatalogBrowse? browse;
+      String? browseUnavailableReason = 'missing';
+      if (browseBytes != null) {
+        try {
+          browse = CatalogBrowse.fromBytes(
+            browseBytes,
+            catalogDigest: digest,
+            catalogRevision: revision,
+            catalogVariants: variants,
+            sourceSha256: sourceSha256 ?? '',
+            expectedSha256: browseSha256 ?? '',
+            expectedRevision: browseRevision ?? '',
+          );
+          browseUnavailableReason = null;
+        } on Object {
+          browseUnavailableReason = 'invalid';
+        }
+      }
       final bundle = CatalogBundle._(
+        browse: browse,
+        browseUnavailableReason: browseUnavailableReason,
         digest: digest,
         catalogRevision: revision,
         searchRevision: search,

@@ -57,6 +57,60 @@ digests, revisions and collection counts. It states `private_trial_only: true`,
 `redistribution_cleared: false`, `media_included: false`, the partial/unknown
 evidence policy and a publication notice. It contains no source filesystem path.
 
+## Optional reviewed browsing sidecar
+
+Muscle discovery uses a separate private input; it never rewrites candidate bytes
+or anatomical profiles. There is no runtime inference from exercise names,
+family membership or anatomy. Authoring defaults must be expanded and reviewed
+before staging. Every variant receives an explicit reviewed or unresolved row.
+The private review report records coverage and exceptions separately from assets.
+
+The sidecar format is `alkion-catalog-browse`, `schema_version: 1`:
+
+| Field | Contract |
+| --- | --- |
+| `classification_revision` | Nonempty version of the reviewed mapping |
+| `source_sha256` | SHA-256 of the exact original candidate bytes |
+| `catalog_revision` | Exact candidate catalog revision |
+| `groups` | Rows with `key`, `kind`, `names` and `synonyms` |
+| `variants` | Exactly one row for every candidate variant |
+
+Group `kind` is `muscle` or `activity`. Muscle keys are `chest`, `back`,
+`shoulders`, `biceps`, `triceps`, `forearms`, `quads`, `hamstrings`, `glutes`,
+`calves`, `core`, `adductors` and `abductors`. Activity keys are `mobility`,
+`conditioning` and `whole_body`. Only declared groups can be referenced;
+groups without useful reviewed movements should not be offered as browse scopes.
+Each group has nonempty `names` for `en`, `it`, `de`, `es` and `synonyms` maps
+with the same locale keys and lists of nonempty strings (empty lists are legal).
+These localized editorial labels and query terms do not translate exercise names.
+
+Variant rows contain `variant_id`, exact integer `variant_revision`,
+`status: reviewed|unresolved`, `target_groups`, `secondary_groups` and
+`activity_groups`. The last three fields are explicit arrays without duplicates.
+Targets and secondary muscles are disjoint and reference muscle groups; activities
+reference activity groups. Multiple targets are legal. Unresolved rows require
+all memberships empty. Reviewed rows require at least one target or activity;
+secondary-only or unassigned records remain unresolved. Unknown membership
+does not assert non-involvement. Activity membership is separate from strengthening
+roles, and these discovery fields do not represent measured activation.
+
+Projection admits only the fields above and adds `projection_sha256`, binding the
+sidecar to the exact catalog projection. It strips private notes, authoring inputs
+and review paths. Original anatomy, names and IDs remain unchanged. Unsupported
+versions, stale digests/revisions, duplicate groups/variant rows, invalid role
+references and incomplete variant accounting are refused before staging.
+
+With a sidecar the trial manifest uses schema 2 and adds `browse`, containing
+`source_sha256` (original sidecar bytes), `projection_sha256` (browse asset bytes)
+and `classification_revision`. Catalog manifest fields retain their schema-1
+meaning. Without a sidecar, schema-1 manifests and older trial bundles remain
+readable. Cache identity includes browse digest/revision alongside catalog identity.
+At runtime absent or rejected optional browsing metadata disables muscle browsing
+with a stable localizable reason (`missing` or `invalid`); valid catalog name
+search and custom creation remain available. Core catalog digest, revision or
+admission failures still reject the catalog. Build/staging guards refuse invalid
+optional assets rather than silently packaging different reviewed inputs.
+
 ## Staging and isolated build
 
 Run from the repository root with an explicitly selected private input:
@@ -64,6 +118,9 @@ Run from the repository root with an explicitly selected private input:
 ```sh
 CATALOG_TRIAL_INPUT=/explicit/private/catalog.json \
 CATALOG_TRIAL_SHA256=<reviewed-sha256> make -C app stage-catalog-trial
+# Optionally add both variables to the staging command above:
+# CATALOG_BROWSE_INPUT=/explicit/private/browse.json
+# CATALOG_BROWSE_SHA256=<reviewed-sidecar-sha256>
 make -C app verify-catalog-trial
 make -C app test-catalog-trial-staging
 make -C app test-catalog-trial-apk
@@ -77,8 +134,13 @@ is read. These commands build only. Device selection and installation require
 their own explicit scope.
 
 Staging writes ignored `app/assets/catalog_trial/{catalog,manifest}.dev.json`
+and optional `browse.dev.json`
 and an identical ignored mirror under `app/build/private-catalog-trial/assets/`.
-Existing different staging is refused and preserved for review. Verification
+Existing different staging is refused and preserved for review. To change a
+reviewed input set, explicitly move both existing staging directories to a private
+archive outside the source tree, then stage the complete new input set; the tool
+never deletes or overwrites a differing artifact. A sidecar cannot be silently
+removed by restaging only the catalog. Verification
 rejects altered digests/manifests, redirected paths and extra Android assets.
 The ordinary pubspec declares only the public trial README; it never globs the
 private directory. Only the isolated Android source set adds the verified mirror
@@ -93,7 +155,10 @@ The manifest removes Internet and network-state permissions, including the
 normal debug network permission. Build output is
 `app/build/app/outputs/flutter-apk/alkion-catalog-trial-<platform>-debug.apk`.
 
-Before copying that named artifact, the mandatory APK guard verifies the selected
+Before copying that named artifact, the mandatory APK guard compares the exact
+packaged catalog/browse/manifest inventory and bytes to the explicit staged mirror
+(the public README may coexist). Missing, extra or stale private assets fail.
+It also verifies the selected
 ABI's Flutter, SQLite and connection-pool ELF64 machine headers, the native-asset
 loader mappings, and exact SQLite/pool hashes against the current generated
 Flutter JNI copies. Only the isolated catalog debug build keeps SQLite/pool
