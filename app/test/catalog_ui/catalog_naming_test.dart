@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_picker.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/models.dart';
@@ -92,6 +93,25 @@ void main() {
           ),
         );
         await settleReal(tester, ticks: 8);
+        if (route == 'library') {
+          final family = find.byKey(
+            ValueKey(
+              'catalog-navigation-family-${source['families'][1]['id']}',
+            ),
+          );
+          await tester.scrollUntilVisible(
+            family,
+            120,
+            scrollable: find
+                .descendant(
+                  of: find.byType(CatalogBrowser),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.tap(family);
+          await settleReal(tester, ticks: 4);
+        }
         expect(
           find.text('Lento avanti · Bilanciere'),
           findsWidgets,

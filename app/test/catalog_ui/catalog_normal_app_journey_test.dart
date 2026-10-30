@@ -66,6 +66,21 @@ void main() {
           });
         });
         Future<void> tap(Finder finder) async {
+          if (find.byType(CatalogPicker).evaluate().isNotEmpty) {
+            // A search first paints its input, then commits and lazily builds rows.
+            await tester.pump();
+            await tester.pump();
+            await tester.scrollUntilVisible(
+              finder,
+              100,
+              scrollable: find
+                  .descendant(
+                    of: find.byType(CatalogPicker),
+                    matching: find.byType(Scrollable),
+                  )
+                  .first,
+            );
+          }
           await tester.ensureVisible(finder);
           await Scrollable.ensureVisible(tester.element(finder), alignment: .2);
           await tester.pump();

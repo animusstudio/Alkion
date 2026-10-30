@@ -163,6 +163,8 @@ class CatalogRuntimeState extends CatalogTrialState {
   @override
   void toggleFavorite(CatalogChoice choice) {
     _requireActive();
+    // Legacy owned choices are not supported by the durable personal envelope.
+    if (choice.isOwned) return;
     choices[choice.key] = choice;
     if (!favorites.add(choice.key)) favorites.remove(choice.key);
     _changedPersonal();

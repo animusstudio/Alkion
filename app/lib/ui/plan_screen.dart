@@ -18,6 +18,7 @@ import 'day_editor.dart';
 import 'editor_guard.dart';
 import 'exercise_editor.dart';
 import 'exercise_library_tab.dart';
+import '../catalog_ui/catalog_picker.dart';
 import 'split_tab.dart';
 import 'targets_tab.dart';
 
@@ -66,6 +67,7 @@ class PlanScreenState extends State<PlanScreen> {
 
   /// Active sub-tab while at the list level.
   String _activeTab = 'split';
+  final _catalogBrowser = CatalogBrowserController();
 
   // The header's eyebrow needs the day count regardless of which sub-tab is
   // active, so it watches the same repository stream SplitTab does rather
@@ -151,7 +153,9 @@ class PlanScreenState extends State<PlanScreen> {
   /// Consumes a back press when the in-tab editor is open. Returns true if
   /// handled; the editor then closes, or asks first, on its own.
   bool handleBack() {
-    if (_editor == null) return false;
+    if (_editor == null) {
+      return _activeTab == 'exercises' && _catalogBrowser.handleBack();
+    }
     unawaited(requestClose());
     return true;
   }
@@ -268,7 +272,10 @@ class PlanScreenState extends State<PlanScreen> {
     } else if (_activeTab == 'targets') {
       body = const TargetsTab();
     } else {
-      body = LibraryTab(onOpenEditor: (id) => _openEditor('exercise', id));
+      body = LibraryTab(
+        browserController: _catalogBrowser,
+        onOpenEditor: (id) => _openEditor('exercise', id),
+      );
     }
 
     return AnimatedSwitcher(

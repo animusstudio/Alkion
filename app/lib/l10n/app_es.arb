@@ -887,5 +887,7 @@
   "catalogProgressUnsupported": "La progresión de carga no está disponible para estas medidas o este equipo.",
   "catalogSelectSetup": "Elegir equipo",
   "catalogUseLast": "Usar los últimos valores",
-  "catalogMarkPending": "Marcar como no registrada"
+  "catalogMarkPending": "Marcar como no registrada",
+  "catalogCustomExercise": "Ejercicio propio",
+  "catalogLegacyExercise": "Ejercicio anterior"
 }
