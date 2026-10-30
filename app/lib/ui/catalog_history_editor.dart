@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 
-import '../catalog_ui/catalog_evidence_widgets.dart';
-import '../catalog_ui/catalog_measurement_form.dart';
+import 'package:provider/provider.dart';
+import '../session/catalog_set_values_editor.dart';
+import '../units/unit_service.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../data/session_repository.dart';
@@ -276,40 +277,32 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
                                 ],
                               ),
                               if (!row.deleted)
-                                CatalogMeasurementForm(
+                                CatalogSetValuesEditor(
                                   key: ValueKey(row.id),
-                                  profile: row.evidence.selection.profile
-                                      .toCatalogMeasurementProfile(),
-                                  values: catalogInputValues(row.evidence),
+                                  evidence: row.evidence,
+                                  unit: context.watch<UnitService>(),
                                   enabled: !_locked,
-                                  units: {
-                                    for (final entry
-                                        in row.evidence.metrics.entries)
-                                      entry.key: entry.value.unit,
-                                  },
-                                  onMetricChanged: (metric, text) => setState(() {
-                                    row.evidence = CatalogSetEvidence(
-                                      selection: row.evidence.selection,
-                                      metrics: {
-                                        ...row.evidence.metrics,
-                                        metric: CatalogMetricEvidence.fromInput(
-                                          text,
-                                          metric: metric,
-                                          unit:
-                                              row
-                                                  .evidence
-                                                  .metrics[metric]
-                                                  ?.unit ??
-                                              CatalogMetricEvidence.defaultUnit(
-                                                metric,
-                                              ),
-                                        ),
-                                      },
-                                    );
-                                    row.changed = true;
-                                    row.touched.add(metric);
-                                  }),
-                                  onChanged: () {},
+                                  onMetricChanged:
+                                      (
+                                        metric,
+                                        text,
+                                        quantityUnit,
+                                      ) => setState(() {
+                                        row.evidence = CatalogSetEvidence(
+                                          selection: row.evidence.selection,
+                                          metrics: {
+                                            ...row.evidence.metrics,
+                                            metric:
+                                                CatalogMetricEvidence.fromInput(
+                                                  text,
+                                                  metric: metric,
+                                                  unit: quantityUnit,
+                                                ),
+                                          },
+                                        );
+                                        row.changed = true;
+                                        row.touched.add(metric);
+                                      }),
                                 ),
                             ],
                           ),

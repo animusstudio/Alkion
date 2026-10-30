@@ -21,8 +21,39 @@ Future<double?> showNumberEntrySheet(
   required String initialText,
   required bool allowDecimal,
   required double? Function(String text) parse,
+}) => _showNumberEntrySheet<double>(
+  context,
+  title: title,
+  initialText: initialText,
+  allowDecimal: allowDecimal,
+  parse: parse,
+);
+
+/// The same protected modal interaction for exact, typed quantity evidence.
+/// Callers validate the text without converting its original decimal spelling
+/// through a double. An unchanged Done or dismissal produces no edit.
+Future<String?> showExactNumberEntrySheet(
+  BuildContext context, {
+  required String title,
+  required String initialText,
+  required bool allowDecimal,
+  required String? Function(String text) parse,
+}) => _showNumberEntrySheet<String>(
+  context,
+  title: title,
+  initialText: initialText,
+  allowDecimal: allowDecimal,
+  parse: parse,
+);
+
+Future<T?> _showNumberEntrySheet<T>(
+  BuildContext context, {
+  required String title,
+  required String initialText,
+  required bool allowDecimal,
+  required T? Function(String text) parse,
 }) {
-  return showModalBottomSheet<double>(
+  return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -31,7 +62,7 @@ Future<double?> showNumberEntrySheet(
     sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
         ? AnimationStyle.noAnimation
         : null,
-    builder: (_) => _NumberEntrySheet(
+    builder: (_) => _NumberEntrySheet<T>(
       title: title,
       initialText: initialText,
       allowDecimal: allowDecimal,
@@ -40,7 +71,7 @@ Future<double?> showNumberEntrySheet(
   );
 }
 
-class _NumberEntrySheet extends StatefulWidget {
+class _NumberEntrySheet<T> extends StatefulWidget {
   const _NumberEntrySheet({
     required this.title,
     required this.initialText,
@@ -51,13 +82,13 @@ class _NumberEntrySheet extends StatefulWidget {
   final String title;
   final String initialText;
   final bool allowDecimal;
-  final double? Function(String) parse;
+  final T? Function(String) parse;
 
   @override
-  State<_NumberEntrySheet> createState() => _NumberEntrySheetState();
+  State<_NumberEntrySheet<T>> createState() => _NumberEntrySheetState<T>();
 }
 
-class _NumberEntrySheetState extends State<_NumberEntrySheet> {
+class _NumberEntrySheetState<T> extends State<_NumberEntrySheet<T>> {
   late final TextEditingController _ctrl =
       TextEditingController(text: widget.initialText)
         ..selection = TextSelection(

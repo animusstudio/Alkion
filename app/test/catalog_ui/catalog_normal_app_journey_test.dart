@@ -14,6 +14,7 @@ import 'package:alkion/data/models.dart';
 import 'package:alkion/main.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/session_summary_screen.dart';
+import 'package:alkion/session/catalog_set_values_editor.dart';
 import 'package:alkion/shell/session_launcher.dart';
 import 'package:alkion/ui/catalog_history_editor.dart';
 import 'package:alkion/ui/history_screen.dart';
@@ -89,6 +90,21 @@ void main() {
           await settleReal(tester, ticks: 10);
         }
 
+        Future<void> typeMetric(String metric, String text) async {
+          final missing = find.byKey(ValueKey('catalog-type-$metric'));
+          await tap(
+            missing.evaluate().isNotEmpty
+                ? missing
+                : find.byKey(ValueKey('catalog-ruler-$metric')),
+          );
+          expect(find.byKey(const Key('number-entry-field')), findsOneWidget);
+          await tester.enterText(
+            find.byKey(const Key('number-entry-field')),
+            text,
+          );
+          await tap(find.byKey(const Key('number-entry-done')));
+        }
+
         await tester.pumpWidget(
           AlkionApp(runtime: runtime, databaseOverride: database),
         );
@@ -113,12 +129,13 @@ void main() {
           controller.draft.blocks.single.workingSets.single.catalog,
           isNotNull,
         );
-        await tester.enterText(
-          find.byKey(const Key('metric-duration')),
+        expect(find.byType(TextField), findsNothing);
+        await typeMetric(
+          'duration',
           width == 320 ? '65,000000000000000001' : '65.000000000000000001',
         );
         await tester.pump();
-        await tap(find.byKey(const Key('catalog-log-set')));
+        await tap(find.byKey(const Key('log-set-bar')));
         expect(controller.canFinish, isTrue);
         await tap(find.text('Finish workout'));
         expect(find.byType(SessionSummaryScreen), findsOneWidget);
@@ -153,17 +170,16 @@ void main() {
           );
           await tester.pump();
           await settleReal(tester, ticks: 10);
-          await tester.enterText(
-            find.byKey(const Key('metric-duration')),
-            '75.000000000000000003',
-          );
+          await typeMetric('duration', '75.000000000000000003');
           await tester.pump();
           await tap(find.text('Save changes'));
           expect(find.text("Couldn't save"), findsOneWidget);
           await tap(find.text('OK'));
           expect(
             tester
-                .widget<TextField>(find.byKey(const Key('metric-duration')))
+                .widget<CatalogSetValuesEditor>(
+                  find.byType(CatalogSetValuesEditor),
+                )
                 .enabled,
             isFalse,
           );
@@ -234,10 +250,7 @@ void main() {
         final name = runtime.catalog!.index('en').variantLabel(variant.id);
         await tap(find.text(name).last);
         expect(find.byType(CatalogHistoryEditor), findsOneWidget);
-        await tester.enterText(
-          find.byKey(const Key('metric-duration')),
-          '70.000000000000000009',
-        );
+        await typeMetric('duration', '70.000000000000000009');
         await tester.pump();
         await tap(find.text('Save changes'));
         await tester.runAsync(() async {

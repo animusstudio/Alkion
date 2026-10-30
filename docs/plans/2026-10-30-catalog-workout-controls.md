@@ -1,7 +1,7 @@
 # Catalog workout controls
 
 Date: 2026-10-30. Lane: **Standard — interface integration**.
-Status: **Approved by owner direction to complete the remaining integrations.**
+Status: **Done — locally implemented, qualified and independently reviewed.**
 Parent: [development](../alkion/development.md). Related:
 [durable catalog contract](../specs/2026-10-30-catalog-in-alkion-dev.md),
 [live-set visual contract](../superpowers/specs/2026-09-24-live-set-focus-design.md).
@@ -53,6 +53,31 @@ no publication, owner-profile inspection, installation or release.
 ## Task state and next
 
 Owner approval recorded from the current direction to finish remaining
-integrations after identifying the numeric-input regression. Plan prepared;
-implementation next. Checks have not yet run on changed bytes. Native physical
-appearance, gestures and accessibility remain separately qualified evidence.
+integrations after identifying the numeric-input regression. Plan commit
+`1ea906b`; implementation is based on `8e4e7ce`. Tasks 1–3 complete. Independent
+task review PASS after two minor display fixes: empty compact rows name required
+evidence, and exact nonzero values whose display underflows remain modal-only.
+
+Checks on the final reviewed source:
+
+```sh
+make -C app test TEST='test/catalog_ui/catalog_normal_app_journey_test.dart test/session/active_session_screen_test.dart test/session/live_set_card_test.dart test/session/set_line_test.dart test/session/exercise_block_accordion_test.dart test/session/exercise_block_edit_test.dart test/session/log_set_bar_test.dart test/catalog_ui/catalog_metric_controls_test.dart --concurrency=2'
+make -C app analyze
+make -C app format
+```
+
+Focused tests **172 PASS**, including 48 shared metric cases; analyzer **0 issues**;
+named formatting and check-only formatting PASS; `git diff --check` PASS.
+Normal real-app synthetic journeys retain exact duration through Finish and
+History correction, including refused/uncertain-save retry. Screen tests cover
+mixed contexts/repeated blocks, load modal entry, RIR correction/clear/unlog,
+mid-fling Log/next barriers and 320/412dp × 1×/2× × four locales × both themes.
+
+One bounded host visual batch covered editor/modal states and a full workout at
+320dp/light/2×; readable ruler labels were confirmed after concise display-only
+formatting. The additional full-workout 412dp capture is UNRUN: its disposable
+capture harness stalled and was stopped/removed. Separate 412dp editor/modal
+captures and layout tests pass. These are host Flutter renders, not Android
+device/gesture/TalkBack qualification. No APK, installation or publication ran.
+
+Next: coordinator local delivery; native qualification stays separately scoped.

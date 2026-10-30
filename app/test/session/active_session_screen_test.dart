@@ -4,6 +4,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:alkion/data/models.dart';
+import 'package:alkion/domain/catalog_execution.dart';
+import 'package:alkion/session/catalog_set_values_editor.dart';
+import 'package:alkion/session/live_set_card.dart';
+import 'package:alkion/widgets/pending_input.dart';
 import 'package:alkion/data/active_session_draft.dart';
 import 'package:alkion/data/finished_session_store.dart';
 import 'package:alkion/store/local_store.dart';
@@ -30,6 +34,8 @@ import '../alkion/domains/prepared_intent_retry_test.dart' show FaultDatabase;
 Widget _harness(
   ActiveSessionController controller, {
   SettingsService? settings,
+  Locale locale = const Locale('en'),
+  Brightness brightness = Brightness.dark,
 }) {
   return MultiProvider(
     providers: [
@@ -41,7 +47,8 @@ Widget _harness(
       ChangeNotifierProvider<UnitService>(create: (_) => UnitService()),
     ],
     child: MaterialApp(
-      theme: buildTheme(Brightness.dark, accents[0]),
+      theme: buildTheme(brightness, accents[0]),
+      locale: locale,
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
@@ -107,6 +114,64 @@ SessionDraft _draftWith(List<BlockState> blocks) => SessionDraft(
 /// for pending timers.
 Future<void> _teardown(WidgetTester tester) =>
     tester.pumpWidget(const SizedBox());
+
+CatalogSetEvidence _typedEvidence({
+  String context = 'Machine A',
+  String profile = 'load_reps',
+  String load = '020.500',
+  String unit = 'lb',
+}) => CatalogSetEvidence(
+  selection: CatalogSelectionEvidence(
+    exerciseId: _compound.id,
+    contextId: context,
+    contextRevision: 1,
+    profile: CatalogMeasurementProfileEvidence.forKey(profile),
+    displayLabel: 'Synthetic execution',
+    contextLabel: context,
+    resistanceSource: 'external',
+    loadConvention: 'reported_mass',
+  ),
+  metrics: {
+    if (profile == 'load_reps') ...{
+      'reported_load': CatalogMetricEvidence.fromInput(
+        load,
+        metric: 'reported_load',
+        unit: unit,
+      ),
+      'repetitions': CatalogMetricEvidence.fromInput(
+        '08',
+        metric: 'repetitions',
+        unit: 'count',
+      ),
+    } else ...{
+      'duration': CatalogMetricEvidence.fromInput(
+        '00065.250',
+        metric: 'duration',
+        unit: 's',
+      ),
+      'distance': CatalogMetricEvidence.fromInput(
+        '100.125',
+        metric: 'distance',
+        unit: 'm',
+      ),
+    },
+  },
+);
+
+SetState _typedSet(
+  String id,
+  CatalogSetEvidence evidence, {
+  bool done = false,
+  bool warmup = false,
+}) => SetState(
+  id: id,
+  weightKg: 0,
+  reps: 0,
+  rir: null,
+  isWarmup: warmup,
+  done: done,
+  catalog: evidence,
+);
 
 void main() {
   setUpAll(preloadAppFonts);
@@ -667,4 +732,196 @@ void main() {
       await _teardown(tester);
     },
   );
+  for (final mode in ['log', 'next']) {
+    testWidgets('catalog $mode settles a fling on its own immutable evidence', (
+      tester,
+    ) async {
+      real.setPhone(tester, width: 412);
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final a = _typedSet('typed-a', _typedEvidence(load: '60', unit: 'kg'));
+      final b = _typedSet('typed-b', _typedEvidence(context: 'Machine B'));
+      final block = _block(warm: [], work: [a, b])
+        ..catalogSelection = a.catalog!.selection;
+      controller.seedForTest(_draftWith([block]));
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(LiveSetCard), findsOneWidget);
+      expect(find.byType(CatalogSetValuesEditor), findsOneWidget);
+      expect(find.byType(SetLine), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      await tester.fling(
+        find.byKey(const Key('catalog-ruler-reported_load')),
+        const Offset(-150, 0),
+        3000,
+      );
+      await tester.pump(const Duration(milliseconds: 32));
+      final shown = a.catalog!.toJson();
+      if (mode == 'log') {
+        await tester.tap(find.byKey(const Key('log-set-bar')));
+      } else {
+        await tester.ensureVisible(find.byType(SetLine));
+        await tester.tap(find.byType(SetLine));
+      }
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(a.catalog!.toJson(), shown);
+      expect(a.done, mode == 'log');
+      expect(controller.liveSet!.set, same(b));
+      expect(b.catalog!.metrics['reported_load']!.raw, '020.500');
+      expect(b.catalog!.metrics['reported_load']!.unit, 'lb');
+      expect(controller.resting, mode == 'log');
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    });
+  }
+
+  testWidgets(
+    'catalog modal, done correction and RIR use the incumbent focused card',
+    (tester) async {
+      real.setPhone(tester, width: 412);
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final a = _typedSet('typed-a', _typedEvidence())..rir = 99;
+      final b = _typedSet('typed-b', _typedEvidence(context: 'Machine B'));
+      final block = _block(warm: [], work: [a, b])
+        ..catalogSelection = a.catalog!.selection;
+      final repeat =
+          _block(
+              warm: [],
+              work: [_typedSet('repeat', _typedEvidence(context: 'Machine C'))],
+            )
+            ..catalogSelection = _typedEvidence(context: 'Machine C').selection
+            ..expanded = false;
+      controller.seedForTest(_draftWith([block, repeat]));
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump(const Duration(milliseconds: 400));
+      final before = a.catalog!.toJson();
+      await tester.tap(find.byKey(const Key('catalog-ruler-reported_load')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const Key('number-entry-field')), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('number-entry-field')),
+        '060.250000000000001',
+      );
+      expect(
+        a.catalog!.toJson(),
+        before,
+        reason: 'the modal protects uncommitted input',
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const Key('number-entry-done')).hitTestable(),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('number-entry-done')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(a.catalog!.metrics['reported_load']!.raw, '060.250000000000001');
+      expect(a.catalog!.metrics['reported_load']!.unit, 'kg');
+      expect(a.catalog!.metrics['repetitions']!.raw, '08');
+      await tester.tap(find.byKey(const Key('log-set-bar')));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(a.done, isTrue);
+      expect(controller.rirPromptSetId, a.id);
+      expect(a.rir, 99, reason: 'logging never normalizes an untouched RIR');
+      final prompt = find.descendant(
+        of: find.byType(SetLine).first,
+        matching: find.byKey(const Key('rir-2')),
+      );
+      await tester.ensureVisible(prompt);
+      await tester.tap(prompt);
+      await tester.pump();
+      expect(a.rir, 2);
+      final compactLabel = find.text('Synthetic execution · Machine A');
+      await Scrollable.ensureVisible(
+        tester.element(compactLabel),
+        alignment: .5,
+      );
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(compactLabel.hitTestable(), findsOneWidget);
+      await tester.tap(compactLabel);
+      await tester.pump();
+      expect(controller.liveSet!.set, same(a));
+      expect(find.byType(LiveSetCard), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('live-clear-rir')));
+      await tester.tap(find.byKey(const Key('live-clear-rir')));
+      await tester.pump();
+      expect(a.rir, isNull);
+      await tester.ensureVisible(find.byKey(const Key('live-mark-not-done')));
+      await tester.tap(find.byKey(const Key('live-mark-not-done')));
+      await tester.pump();
+      expect(a.done, isFalse);
+      expect(controller.liveSet!.set, same(a));
+      expect(block.blockId, isNot(repeat.blockId));
+      expect(b.catalog!.selection.contextLabel, 'Machine B');
+      expect(
+        repeat.workingSets.single.catalog!.selection.contextLabel,
+        'Machine C',
+      );
+      commitPendingInput();
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    },
+  );
+
+  for (final width in [320.0, 412.0]) {
+    for (final scale in [1.0, 2.0]) {
+      for (final brightness in Brightness.values) {
+        for (final code in ['en', 'de', 'es', 'it']) {
+          testWidgets(
+            'typed workout hierarchy $width $scale $code ${brightness.name}',
+            (tester) async {
+              real.setPhone(tester, width: width, textScale: scale);
+              final controller = ActiveSessionController();
+              addTearDown(controller.dispose);
+              final evidence = _typedEvidence(profile: 'distance_duration');
+              final a = _typedSet('duration-a', evidence);
+              final b = _typedSet(
+                'duration-b',
+                _typedEvidence(
+                  profile: 'distance_duration',
+                  context: 'Other setup',
+                ),
+                done: true,
+              );
+              final block = _block(warm: [], work: [a, b])
+                ..catalogSelection = a.catalog!.selection;
+              controller.seedForTest(_draftWith([block]));
+              await tester.pumpWidget(
+                _harness(
+                  controller,
+                  locale: Locale(code),
+                  brightness: brightness,
+                ),
+              );
+              await tester.pump(const Duration(milliseconds: 400));
+              expect(find.byType(LiveSetCard), findsOneWidget);
+              expect(find.byType(SetLine), findsOneWidget);
+              expect(find.byType(CatalogSetValuesEditor), findsOneWidget);
+              expect(find.byType(TextField), findsNothing);
+              expect(
+                find.byKey(const Key('catalog-ruler-duration')),
+                findsOneWidget,
+              );
+              expect(
+                find.byKey(const Key('catalog-ruler-distance')),
+                findsOneWidget,
+              );
+              expect(find.textContaining('kg'), findsNothing);
+              expect(find.textContaining('8–10'), findsNothing);
+              expect(tester.takeException(), isNull);
+              await _teardown(tester);
+            },
+          );
+        }
+      }
+    }
+  }
 }

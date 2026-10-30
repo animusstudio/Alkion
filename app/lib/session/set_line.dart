@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../catalog_ui/catalog_evidence_widgets.dart';
+
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
@@ -55,6 +57,9 @@ class SetLine extends StatelessWidget {
     // A logged working set with no RIR (resumed, or added in History) shows
     // none, as History's line does.
     final rir = done && !set.isWarmup ? set.rir : null;
+    final typedSummary = set.catalog == null
+        ? null
+        : catalogEvidenceSummary(set.catalog!, l);
 
     return Semantics(
       button: true,
@@ -89,80 +94,122 @@ class SetLine extends StatelessWidget {
                     // when the row is too narrow for it, scales down as a
                     // whole. The RIR text takes whatever is left and gives
                     // way first.
-                    child: LayoutBuilder(
-                      builder: (context, box) => Row(
-                        children: [
-                          ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: box.maxWidth),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text.rich(
-                                TextSpan(
-                                  children: [
-                                    TextSpan(
-                                      text:
-                                          (!set.weightTouched &&
-                                              (set.weightUnavailable ||
-                                                  double.tryParse(
-                                                        set.weightText,
-                                                      ) ==
-                                                      null))
-                                          ? '—'
-                                          : unit.fmtWt(set.weightKg),
-                                      style: WorkoutType.mono(
-                                        size: 15,
-                                        weight: FontWeight.w500,
-                                        color: done ? tokens.text : tokens.dim,
-                                      ),
-                                    ),
-                                    TextSpan(
-                                      text: unit.uLabel,
-                                      style: WorkoutType.mono(
-                                        size: 12,
-                                        color: tokens.dim,
-                                      ),
-                                    ),
-                                    TextSpan(
-                                      text: '  ×  ',
-                                      style: WorkoutType.mono(
-                                        size: 12,
-                                        color: tokens.faint,
-                                      ),
-                                    ),
-                                    TextSpan(
-                                      text: set.repsAvailable
-                                          ? '${set.reps}'
-                                          : '—',
-                                      style: WorkoutType.mono(
-                                        size: 15,
-                                        weight: FontWeight.w500,
-                                        color: done ? tokens.text : tokens.dim,
-                                      ),
-                                    ),
-                                  ],
+                    child: set.catalog != null
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              FitLabel(
+                                [
+                                  set.catalog!.selection.displayLabel,
+                                  set.catalog!.selection.contextLabel,
+                                ].where((text) => text.isNotEmpty).join(' · '),
+                                maxLines: 2,
+                                style: WorkoutType.body(
+                                  size: 12,
+                                  color: tokens.dim,
                                 ),
-                                maxLines: 1,
-                                softWrap: false,
                               ),
-                            ),
-                          ),
-                          if (rir != null)
-                            Flexible(
-                              child: Padding(
-                                padding: const EdgeInsets.only(left: 10),
-                                child: FitLabel(
+                              FitLabel(
+                                typedSummary!.isEmpty
+                                    ? l.catalogRequired
+                                    : typedSummary,
+                                maxLines: 3,
+                                style: WorkoutType.mono(
+                                  size: 14,
+                                  color: done ? tokens.text : tokens.dim,
+                                ),
+                              ),
+                              if (rir != null)
+                                FitLabel(
                                   l.sessionRir(rir),
+                                  maxLines: 2,
                                   style: WorkoutType.mono(
                                     size: 12,
                                     color: tokens.dim,
                                   ),
                                 ),
-                              ),
+                            ],
+                          )
+                        : LayoutBuilder(
+                            builder: (context, box) => Row(
+                              children: [
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: box.maxWidth,
+                                  ),
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text:
+                                                (!set.weightTouched &&
+                                                    (set.weightUnavailable ||
+                                                        double.tryParse(
+                                                              set.weightText,
+                                                            ) ==
+                                                            null))
+                                                ? '—'
+                                                : unit.fmtWt(set.weightKg),
+                                            style: WorkoutType.mono(
+                                              size: 15,
+                                              weight: FontWeight.w500,
+                                              color: done
+                                                  ? tokens.text
+                                                  : tokens.dim,
+                                            ),
+                                          ),
+                                          TextSpan(
+                                            text: unit.uLabel,
+                                            style: WorkoutType.mono(
+                                              size: 12,
+                                              color: tokens.dim,
+                                            ),
+                                          ),
+                                          TextSpan(
+                                            text: '  ×  ',
+                                            style: WorkoutType.mono(
+                                              size: 12,
+                                              color: tokens.faint,
+                                            ),
+                                          ),
+                                          TextSpan(
+                                            text: set.repsAvailable
+                                                ? '${set.reps}'
+                                                : '—',
+                                            style: WorkoutType.mono(
+                                              size: 15,
+                                              weight: FontWeight.w500,
+                                              color: done
+                                                  ? tokens.text
+                                                  : tokens.dim,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      maxLines: 1,
+                                      softWrap: false,
+                                    ),
+                                  ),
+                                ),
+                                if (rir != null)
+                                  Flexible(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 10),
+                                      child: FitLabel(
+                                        l.sessionRir(rir),
+                                        style: WorkoutType.mono(
+                                          size: 12,
+                                          color: tokens.dim,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                        ],
-                      ),
-                    ),
+                          ),
                   ),
                   if (isLivePr)
                     const PRBadge(small: true)

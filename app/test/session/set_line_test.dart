@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/session/active_session_controller.dart';
+import 'package:alkion/domain/catalog_execution.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/set_line.dart';
 import 'package:alkion/units/unit_service.dart';
 
@@ -77,6 +79,33 @@ void main() {
     await tester.tap(find.byType(SetLine));
     expect(taps, 1);
   });
+
+  testWidgets(
+    'an empty pending catalog row names required evidence without fabricated quantities',
+    (tester) async {
+      final set = _s()
+        ..catalog = CatalogSetEvidence(
+          selection: CatalogSelectionEvidence(
+            exerciseId: 'synthetic-exercise',
+            contextId: 'synthetic-context',
+            contextRevision: 1,
+            displayLabel: 'Synthetic duration',
+            profile: CatalogMeasurementProfileEvidence.forKey(
+              'duration_distance_optional',
+            ),
+          ),
+          metrics: const {},
+        );
+      await tester.pumpWidget(wrapL10n(line(set)));
+      final l = AppLocalizations.of(tester.element(find.byType(SetLine)));
+      expect(find.text(l.catalogRequired), findsOneWidget);
+      expect(find.textContaining('kg'), findsNothing);
+      expect(find.textContaining('140'), findsNothing);
+      expect(set.catalog!.metrics, isEmpty);
+      await tester.tap(find.byType(SetLine));
+      expect(taps, 1);
+    },
+  );
 
   testWidgets('a logged line shows its RIR and the TOP tag', (tester) async {
     await tester.pumpWidget(wrapL10n(line(_s(done: true), top: true)));

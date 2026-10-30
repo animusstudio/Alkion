@@ -30,6 +30,10 @@ class LiveSetCard extends StatelessWidget {
     required this.unit,
     required this.onChanged,
     required this.onMarkNotDone,
+    this.valuesEditor,
+    this.reference,
+    this.selectionLabel,
+    this.onMenu,
   });
 
   final SetState set;
@@ -44,6 +48,9 @@ class LiveSetCard extends StatelessWidget {
   /// Called after the card mutates [set] in place.
   final VoidCallback onChanged;
   final VoidCallback onMarkNotDone;
+  final Widget? valuesEditor, reference;
+  final String? selectionLabel;
+  final VoidCallback? onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -75,31 +82,48 @@ class LiveSetCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           inset(
-            Text(
-              label,
-              style: WorkoutType.body(
-                size: 14,
-                weight: FontWeight.w500,
-                color: tokens.text,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: FitLabel(
+                    label,
+                    maxLines: 2,
+                    style: WorkoutType.body(
+                      size: 14,
+                      weight: FontWeight.w500,
+                      color: tokens.text,
+                    ),
+                  ),
+                ),
+                if (onMenu != null)
+                  IconButton(
+                    tooltip: l.sessionExerciseOptions,
+                    onPressed: onMenu,
+                    icon: const Icon(Icons.more_horiz),
+                  ),
+              ],
             ),
           ),
+          if (selectionLabel != null)
+            inset(FitLabel(selectionLabel!, maxLines: 3, style: caption())),
           const SizedBox(height: 10),
-          if (!set.weightAvailable || !set.repsAvailable)
+          if (valuesEditor == null &&
+              (!set.weightAvailable || !set.repsAvailable))
             inset(Text(l.alkionLegacyFallback, style: caption())),
-          SetValuesEditor(
-            weightKg: set.weightKg,
-            reps: set.reps,
-            unit: unit,
-            onWeight: (v) {
-              set.weightKg = v;
-              onChanged();
-            },
-            onReps: (v) {
-              set.reps = v;
-              onChanged();
-            },
-          ),
+          valuesEditor ??
+              SetValuesEditor(
+                weightKg: set.weightKg,
+                reps: set.reps,
+                unit: unit,
+                onWeight: (v) {
+                  set.weightKg = v;
+                  onChanged();
+                },
+                onReps: (v) {
+                  set.reps = v;
+                  onChanged();
+                },
+              ),
           if (set.done && !set.isWarmup) ...[
             const SizedBox(height: 12),
             if (set.rir != null && (set.rir! < rirMin || set.rir! > rirMax))
@@ -150,21 +174,22 @@ class LiveSetCard extends StatelessWidget {
               ),
           ],
           const SizedBox(height: 10),
-          inset(
-            FitLabel(
-              lastTopUnavailable
-                  ? l.alkionBaselineUnavailable
-                  : last == null
-                  ? l.sessionNoPreviousData
-                  : l.sessionLastRef(
-                      '${unit.fmtWt(last.weight)}${unit.uLabel}',
-                      last.reps,
-                      localizedDaysAgo(l, last.date),
-                    ),
-              maxLines: 3,
-              style: WorkoutType.body(size: 12, color: tokens.dim),
-            ),
-          ),
+          reference ??
+              inset(
+                FitLabel(
+                  lastTopUnavailable
+                      ? l.alkionBaselineUnavailable
+                      : last == null
+                      ? l.sessionNoPreviousData
+                      : l.sessionLastRef(
+                          '${unit.fmtWt(last.weight)}${unit.uLabel}',
+                          last.reps,
+                          localizedDaysAgo(l, last.date),
+                        ),
+                  maxLines: 3,
+                  style: WorkoutType.body(size: 12, color: tokens.dim),
+                ),
+              ),
           if (set.done)
             TextButton(
               key: const Key('live-mark-not-done'),

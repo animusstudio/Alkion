@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../domain/evidence.dart';
 import '../theme/app_theme.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
@@ -14,6 +15,35 @@ import '../widgets/w_dialog.dart';
 import 'active_session_controller.dart';
 import 'live_set_card.dart';
 import 'set_line.dart';
+
+/// A display badge is scoped to the performed set's exact context, even when a
+/// block changed setup. It never uses compatibility weight/reps placeholders.
+({String? id, bool isPr}) catalogTopForSet(BlockState block, SetState set) {
+  final selection = set.catalog?.selection;
+  if (set.isWarmup || selection == null || !selection.supportsLoadProgression) {
+    return (id: null, isPr: false);
+  }
+  ExactDecimal? top;
+  String? id;
+  for (final candidate in block.workingSets) {
+    if (!candidate.done ||
+        candidate.catalog?.selection.compatibilityKey !=
+            selection.compatibilityKey) {
+      continue;
+    }
+    final value = candidate.catalog?.metrics['reported_load']?.loadKg;
+    if (value != null && (top == null || value.compareTo(top) > 0)) {
+      top = value;
+      id = candidate.id;
+    }
+  }
+  final best = block.catalogBaselines[selection.compatibilityKey]?.loadKg;
+  return (
+    id: id,
+    isPr:
+        id == set.id && top != null && best != null && top.compareTo(best) > 0,
+  );
+}
 
 /// A collapsible accordion card for one exercise in the active session.
 ///
@@ -39,6 +69,10 @@ class ExerciseBlock extends StatefulWidget {
     required this.onMarkNotDone,
     this.onRemoveSet,
     required this.onMenu,
+    this.valuesEditorBuilder,
+    this.referenceBuilder,
+    this.selectionLabel,
+    this.onSetMenu,
   });
 
   final BlockState block;
@@ -70,6 +104,9 @@ class ExerciseBlock extends StatefulWidget {
 
   /// The header's ⋯ button (add set / warm-up, reorder, remove exercise).
   final void Function(BlockState) onMenu;
+  final Widget Function(SetState)? valuesEditorBuilder, referenceBuilder;
+  final String Function(SetState)? selectionLabel;
+  final void Function(SetState)? onSetMenu;
 
   @override
   State<ExerciseBlock> createState() => _ExerciseBlockState();
@@ -113,6 +150,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         widget.liveSetId != null &&
         block.allSets.any((s) => s.id == widget.liveSetId);
     final showSets = block.expanded || containsLive;
+    final typed = block.allSets.any((set) => set.catalog != null);
 
     final prescription = formatPrescription(
       workSets: resolved.workSets,
@@ -177,7 +215,16 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         FitLabel(
-                          ex.name,
+                          typed
+                              ? (block.catalogSelection ??
+                                        block.allSets
+                                            .firstWhere(
+                                              (s) => s.catalog != null,
+                                            )
+                                            .catalog!
+                                            .selection)
+                                    .displayLabel
+                              : ex.name,
                           maxLines: 2,
                           style: WorkoutType.body(
                             size: 16,
@@ -187,11 +234,20 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                         ),
                         const SizedBox(height: 4),
                         FitLabel(
-                          subLabel,
+                          typed
+                              ? (block.catalogSelection ??
+                                        block.allSets
+                                            .firstWhere(
+                                              (s) => s.catalog != null,
+                                            )
+                                            .catalog!
+                                            .selection)
+                                    .contextLabel
+                              : subLabel,
                           maxLines: 3,
                           style: WorkoutType.body(size: 12, color: tokens.dim),
                         ),
-                        if (top.topKg > 0) ...[
+                        if (!typed && top.topKg > 0) ...[
                           const SizedBox(height: 8),
                           Row(
                             children: [
@@ -301,18 +357,31 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         unit: widget.unit,
         onChanged: () => widget.onSetChanged(block, s),
         onMarkNotDone: () => widget.onMarkNotDone(block, s),
+        valuesEditor: s.catalog == null
+            ? null
+            : widget.valuesEditorBuilder?.call(s),
+        reference: s.catalog == null ? null : widget.referenceBuilder?.call(s),
+        selectionLabel: s.catalog == null
+            ? null
+            : widget.selectionLabel?.call(s),
+        onMenu: s.catalog == null || widget.onSetMenu == null
+            ? null
+            : () => widget.onSetMenu!(s),
       );
       child = widget.liveCardKey == null
           ? card
           : KeyedSubtree(key: widget.liveCardKey, child: card);
     } else {
-      final isLiveTop = s.id == topSetId;
+      final catalogTop = catalogTopForSet(block, s);
+      final isLiveTop = s.catalog == null
+          ? s.id == topSetId
+          : s.id == catalogTop.id;
       child = SetLine(
         set: s,
         workIndex: workIdx,
         unit: widget.unit,
         isLiveTop: isLiveTop,
-        isLivePr: isLiveTop && top.isPr,
+        isLivePr: s.catalog == null ? isLiveTop && top.isPr : catalogTop.isPr,
         showRirPrompt: s.id == widget.rirPromptSetId,
         onTap: () => widget.onFocusSet(block, s),
         onRir: (v) => widget.onRir(block, s, v),
