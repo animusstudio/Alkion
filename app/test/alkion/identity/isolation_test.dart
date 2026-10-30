@@ -240,7 +240,7 @@ void main() {
         );
         await tester.pump();
         expect(find.text('Welcome to Reps'), findsNothing);
-        expect(runtime.store.schema.latestVersion, 4);
+        expect(runtime.store.schema.latestVersion, 5);
         await tester.pumpWidget(const SizedBox());
         await tester.pump(const Duration(milliseconds: 150));
         await tester.runAsync(runtime.close);

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkion/store/schema.dart' show foundationPreservedTables;
 
 import '../../../tool/alkion_store_recovery.dart' show checkpointReuseCase;
 
@@ -19,6 +20,10 @@ void main() {
           );
           expect(result['status'], 'PASS');
           expect(result['reopens'], 2);
+          expect(
+            (result['expected'] as Map).keys.toSet(),
+            foundationPreservedTables.toSet(),
+          );
           final layout = result['layout'] as Map;
           expect(layout['older_tail_frames'], greaterThan(0));
           expect(layout['old_tail_unchanged'], isTrue);

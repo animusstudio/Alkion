@@ -212,7 +212,7 @@ void main() {
         await tester.runAsync(() async {
           expect(
             (await runtime!.store.get('PRAGMA user_version')).values.single,
-            4,
+            5,
           );
           expect(
             await runtime!.store.getAll('SELECT * FROM operations'),
@@ -565,7 +565,7 @@ void main() {
               final store = await LocalStore.open(
                 profile: profile,
                 expectedProfileId: profile.profileId,
-                schema: prescriptionSchemaRegistry(),
+                schema: catalogExecutionSchemaRegistry(),
               );
               expect(await store.inventory(), expected);
               await checkpoint(store, root, 'reopen-$i');
@@ -863,7 +863,7 @@ void main() {
               final store = await LocalStore.open(
                 profile: profile,
                 expectedProfileId: profile.profileId,
-                schema: prescriptionSchemaRegistry(),
+                schema: catalogExecutionSchemaRegistry(),
               );
               debugPrint('F5PHASE reopen-$i-inventory-enter');
               expect(await store.inventory(), inventory);
@@ -998,7 +998,7 @@ void main() {
             final store = await LocalStore.open(
               profile: profile,
               expectedProfileId: profile.profileId,
-              schema: prescriptionSchemaRegistry(),
+              schema: catalogExecutionSchemaRegistry(),
             );
             expect(await store.inventory(), inventory);
             await checkpoint(store, root, 'reopen-$i');

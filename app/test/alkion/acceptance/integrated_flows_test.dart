@@ -466,7 +466,7 @@ void main() {
           );
           final domain = await _decodeExport(full.path!);
           expect(domain['format'], 'alkion-domain-export');
-          expect(domain['version'], 1);
+          expect(domain['version'], 2);
           expect(jsonEncode(domain), contains(sessionId));
           final now = DateTime.now();
           final history = await service.exportHistory(
@@ -624,7 +624,7 @@ void main() {
             final store = await LocalStore.open(
               profile: profile,
               expectedProfileId: profile.profileId,
-              schema: prescriptionSchemaRegistry(),
+              schema: catalogExecutionSchemaRegistry(),
             );
             final inventory = await store.inventory();
             expect(_domain(inventory), _domain(restoredInventory));
@@ -647,7 +647,7 @@ void main() {
             final store = await LocalStore.open(
               profile: profile,
               expectedProfileId: profile.profileId,
-              schema: prescriptionSchemaRegistry(),
+              schema: catalogExecutionSchemaRegistry(),
             );
             expect(await store.inventory(), expected);
             await store.close();
