@@ -11,6 +11,7 @@ import 'package:alkion/data/models.dart';
 import 'package:alkion/main.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:alkion/ui/exercise_library_tab.dart';
+import 'package:alkion/ui/plan_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -115,8 +116,195 @@ CatalogTrialState largeBrowserState() {
   return CatalogTrialState(CatalogBundle.fromJsonString(jsonEncode(source)));
 }
 
+CatalogTrialState wideEquipmentState() {
+  const kinds = [
+    'barbell',
+    'dumbbell',
+    'cable',
+    'machine',
+    'smith_machine',
+    'bodyweight',
+    'band',
+    'ez_bar',
+    'neutral_grip_bar',
+    'ab_wheel',
+    'bicycle',
+    'cardio_machine',
+    'jump_rope',
+    'kettlebell',
+    'landmine',
+    'none',
+    'plate',
+    'safety_bar',
+    'sled',
+    'trap_bar',
+    'dowel',
+    'medicine_ball',
+    'wrist_roller',
+    'battle_rope',
+    'hand_gripper',
+    'axle_bar',
+    'sandbag',
+    'suspension_trainer',
+    'towel',
+    'weight_vest',
+  ];
+  final source = syntheticCatalog();
+  source['equipment_kinds'] = {
+    ...(source['equipment_kinds'] as List).cast<String>(),
+    ...kinds,
+  }.toList();
+  for (var i = 0; i < kinds.length; i++) {
+    // Reuse an existing identical fixture execution instead of duplicating it.
+    if ((source['variants'] as List).any(
+      (v) =>
+          v['family_id'] == fixtureId(1) &&
+          v['equipment_kind'] == kinds[i] &&
+          (v['facets'] as Map).isEmpty &&
+          v['measurement_profile'] == 'load_reps',
+    )) {
+      continue;
+    }
+    final id = fixtureId(2000 + i);
+    source['variants'].add({
+      'id': id,
+      'key': 'synthetic_equipment_$i',
+      'family_id': fixtureId(1),
+      'revision': 1,
+      'names': {'en': 'Synthetic curl ${kinds[i]}'},
+      'equipment_kind': kinds[i],
+      'facets': <String, String>{},
+      'measurement_profile': 'load_reps',
+    });
+    source['muscle_profiles'].add({
+      'id': 'synthetic-equipment-muscle-$i',
+      'variant_id': id,
+      'variant_revision': 1,
+      'coverage': 'unknown',
+      'relationships': <Map<String, String>>[],
+    });
+  }
+  final bytes = utf8.encode(jsonEncode(source));
+  final bundle = CatalogBundle.fromBytes(bytes);
+  const sourceDigest =
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  final browse = jsonEncode({
+    'format': 'alkion-catalog-browse',
+    'schema_version': 1,
+    'classification_revision': 'synthetic-wide-equipment.1',
+    'source_sha256': sourceDigest,
+    'catalog_revision': bundle.catalogRevision,
+    'projection_sha256': bundle.digest,
+    'groups': [
+      {
+        'key': 'biceps',
+        'kind': 'muscle',
+        'names': {
+          for (final locale in ['en', 'it', 'de', 'es']) locale: 'Biceps',
+        },
+        'synonyms': {
+          for (final locale in ['en', 'it', 'de', 'es']) locale: <String>[],
+        },
+      },
+    ],
+    'variants': [
+      for (final v in bundle.variants.values)
+        {
+          'variant_id': v.id,
+          'variant_revision': v.revision,
+          'status': v.familyId == fixtureId(1) ? 'reviewed' : 'unresolved',
+          'target_groups': v.familyId == fixtureId(1) ? ['biceps'] : <String>[],
+          'secondary_groups': <String>[],
+          'activity_groups': <String>[],
+        },
+    ],
+  });
+  return CatalogTrialState(
+    CatalogBundle.fromBytes(
+      bytes,
+      browseBytes: utf8.encode(browse),
+      browseSha256: catalogHash(browse),
+      browseRevision: 'synthetic-wide-equipment.1',
+      sourceSha256: sourceDigest,
+    ),
+  );
+}
+
 void main() {
   setUpAll(preloadAppFonts);
+
+  testWidgets(
+    'wide equipment vocabulary keeps first Plan family visible; explicit equipment intersects query and muscle',
+    (tester) async {
+      setPhone(tester, width: 412, height: 890);
+      final h = ScreenHarness();
+      await h.open(tester, seed: (_) async {});
+      addTearDown(h.close);
+      final state = wideEquipmentState();
+      addTearDown(state.dispose);
+      expect(
+        state.index('en').availableEquipment('').length,
+        greaterThanOrEqualTo(30),
+      );
+      await tester.pumpWidget(
+        CatalogTrialScope(
+          state: state,
+          child: h.wrap(const Scaffold(body: PlanScreen())),
+        ),
+      );
+      await settleReal(tester, ticks: 6);
+      await tester.tap(find.text('Exercises'));
+      await settleReal(tester, ticks: 6);
+      final first = find.byKey(
+        ValueKey('catalog-navigation-family-${fixtureId(1)}'),
+      );
+      expect(tester.state<ScrollableState>(browserScroll()).position.pixels, 0);
+      expect(first.hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(const Key('catalog-browse-equipment')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(FilterChip, 'Barbell'), findsNothing);
+      await tester.tap(find.byKey(const Key('catalog-browse-equipment')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Cable').last);
+      await tester.tap(find.text('Cable').last);
+      await tester.pumpAndSettle();
+      final active = find.byKey(const Key('catalog-equipment-scope'));
+      expect(find.widgetWithText(InputChip, 'Cable'), findsOneWidget);
+      expect(active.hitTestable(), findsOneWidget);
+      expect(find.widgetWithText(FilterChip, 'Barbell'), findsNothing);
+      await tester.tap(find.byKey(const Key('catalog-browse-muscles')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Biceps').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('catalog-search')), 'curl');
+      await tester.pumpAndSettle();
+      await showRow(tester, first);
+      await tester.tap(first);
+      await tester.pumpAndSettle();
+      final cable = find.byKey(ValueKey('variant:${fixtureId(12)}@default'));
+      await showRow(tester, cable);
+      expect(cable, findsOneWidget);
+      expect(
+        find.byKey(ValueKey('variant:${fixtureId(10)}@default')),
+        findsNothing,
+      );
+      await browserTop(tester);
+      await tester.tap(find.byTooltip('Clear equipment'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('catalog-equipment-scope')), findsNothing);
+      await showRow(
+        tester,
+        find.byKey(ValueKey('variant:${fixtureId(10)}@default')),
+      );
+      expect(
+        find.byKey(ValueKey('variant:${fixtureId(10)}@default')),
+        findsOneWidget,
+      );
+      await h.unmount(tester);
+    },
+  );
 
   testWidgets(
     'direct browser inspects full catalog without creating bindings or recents; favorite refreshes stable index',
@@ -191,9 +379,10 @@ void main() {
       await tester.tap(family);
       await tester.pumpAndSettle();
       await browserTop(tester);
-      final dumbbell = find.widgetWithText(FilterChip, 'Dumbbells');
-      await tester.ensureVisible(dumbbell);
-      await tester.tap(dumbbell);
+      await tester.tap(find.byKey(const Key('catalog-browse-equipment')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Dumbbells').last);
+      await tester.tap(find.text('Dumbbells').last);
       await tester.pumpAndSettle();
       await tester.drag(browserScroll(), const Offset(0, -150));
       await tester.pumpAndSettle();
@@ -212,7 +401,18 @@ void main() {
         'curl',
       );
       expect(find.byKey(const Key('catalog-back')), findsOneWidget);
-      expect(tester.widget<FilterChip>(dumbbell).selected, isTrue);
+      expect(find.widgetWithText(InputChip, 'Dumbbells'), findsOneWidget);
+      expect(
+        find
+            .byType(FilterChip)
+            .evaluate()
+            .any(
+              (e) =>
+                  (e.widget as FilterChip).label is Text &&
+                  ((e.widget as FilterChip).label as Text).data == 'Dumbbells',
+            ),
+        isFalse,
+      );
       expect(
         tester.state<ScrollableState>(browserScroll()).position.pixels,
         closeTo(offset, 1),

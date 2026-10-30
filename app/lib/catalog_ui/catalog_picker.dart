@@ -553,6 +553,26 @@ class _CatalogPickerState extends State<CatalogPicker> {
     if (mounted && selected != null) _openGroup(selected);
   }
 
+  Future<void> _pickEquipment() async {
+    final l = AppLocalizations.of(context);
+    final selected = await showWActionSheet<String>(
+      context,
+      title: l.catalogEquipment,
+      actions: [
+        for (final kind in _results.equipment)
+          WSheetAction(
+            label: _results.labels.equipment(kind),
+            value: kind,
+            selected: _equipment == kind,
+          ),
+        if (_equipment != null)
+          WSheetAction(label: l.catalogClearEquipment, value: ''),
+      ],
+    );
+    if (!mounted || !widget.state.active || selected == null) return;
+    _update(() => _equipment = selected.isEmpty ? null : selected);
+  }
+
   Widget _heading(String label) => Padding(
     padding: const EdgeInsets.fromLTRB(0, 20, 0, 8),
     child: Text(
@@ -1247,6 +1267,24 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                   label: Text(l.catalogBrowseMuscles),
                                   onPressed: _pickGroup,
                                 ),
+                              if (widget.embedded) ...[
+                                ActionChip(
+                                  key: const Key('catalog-browse-equipment'),
+                                  label: Text(l.catalogEquipment),
+                                  onPressed: equipment.isEmpty
+                                      ? null
+                                      : _pickEquipment,
+                                ),
+                                if (_equipment != null)
+                                  InputChip(
+                                    key: const Key('catalog-equipment-scope'),
+                                    label: Text(labels.equipment(_equipment!)),
+                                    onDeleted: () =>
+                                        _update(() => _equipment = null),
+                                    deleteButtonTooltipMessage:
+                                        l.catalogClearEquipment,
+                                  ),
+                              ],
                               if (groupLabel != null)
                                 InputChip(
                                   key: const Key('catalog-group-scope'),
@@ -1267,7 +1305,9 @@ class _CatalogPickerState extends State<CatalogPicker> {
                             ],
                           ),
                           if (!home || _equipment != null) ...[
-                            if (equipment.length > 1 || _equipment != null) ...[
+                            if (!widget.embedded &&
+                                (equipment.length > 1 ||
+                                    _equipment != null)) ...[
                               _heading(l.catalogEquipment),
                               Wrap(
                                 spacing: 8,
