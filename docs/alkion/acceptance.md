@@ -1071,3 +1071,29 @@ artifacts pass exact private assets, signer and current native-code checks.
 Optimized physical A6 timing, final CI and this change's authorized Dev update
 remain pending. A separate synthetic benchmark identity isolates measurement
 from owner-profile contents; emulator layout evidence is not phone performance.
+
+## Catalog workout controls — 2026-10-30
+
+The [controls integration](../plans/2026-10-30-catalog-workout-controls.md) restores
+the incumbent focused workout card, compact set rows, ruler/modal interaction,
+RIR correction/clear, mark-not-done and pinned Log action for durable catalog
+sets. History uses the same exact-evidence metric editor. Setup identity, typed
+quantities and prepared persistence keep their existing contracts; no storage
+or evidence-codec change is involved. Untouched exact decimals/source units stay
+unchanged, optional quantities can be cleared, and unknown/overflow/underflow
+display states never become fabricated zeros. Last values and UI TOP/PR badges
+are scoped to each performed set's compatible context.
+
+Independent local task review PASS, including recheck of the empty-row placeholder
+and exact underflow display fixes. Final affected tests **172 PASS** (48 shared
+metric cases), analyzer **0 issues**, named/check-only formatting and diff checks
+PASS. Synthetic normal-app journeys cover modal entry, Finish and History
+correction with the same immutable-intent retry after a lost commit result;
+session checks cover fling barriers, context/repeat identity and RIR behavior.
+Both widths, text scales, themes and all four locales are covered by host tests.
+
+Host Flutter visual inspection covers editor/modal states at 320/412dp and a
+320dp/light/2× full workout. A separate 412dp full-workout capture stalled in the
+disposable capture harness and was stopped; that capture remains UNRUN. No
+Android screenshots, physical gesture/TalkBack qualification, APK, installation,
+owner-profile access or public publication is claimed by this local task.

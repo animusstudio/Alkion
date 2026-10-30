@@ -34,6 +34,7 @@ import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import 'active_session_controller.dart';
 import 'exercise_block.dart';
+import 'catalog_set_values_editor.dart';
 import 'exercise_picker_sheet.dart';
 import 'log_set_bar.dart';
 import 'reorder_exercises_sheet.dart';
@@ -286,22 +287,18 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   /// in-flight typed value), starts rest after a newly logged working set,
   /// and scrolls the next live set into view.
   void _logLive(ActiveSessionController c) {
+    // Settling may synchronously report the ruler's final value. Read the
+    // immutable evidence only after the barrier, never from a stale snapshot.
+    commitPendingInput();
     final trial = CatalogTrialScope.maybeOf(context);
     final live = c.liveSet;
     if (live?.set.catalog case final evidence?) {
-      commitPendingInput();
       if (!evidence.validForLogging) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(AppLocalizations.of(context).catalogRequired)),
         );
         return;
       }
-      final result = c.logLiveSet();
-      if (result?.newlyDone == true && !result!.set.isWarmup) {
-        c.startRest(_restSecondsFor(result.block));
-      }
-      HapticFeedback.mediumImpact();
-      return;
     }
     if (trial != null && live != null && _usesTrialForm(trial, live.block)) {
       commitPendingInput();
@@ -336,7 +333,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
     if (r.newlyDone) {
       final top = liveTopOf(r.block);
-      final isPr = !r.set.isWarmup && top.isPr && r.set.weightKg == top.topKg;
+      final isPr = r.set.catalog != null
+          ? catalogTopForSet(r.block, r.set).isPr
+          : !r.set.isWarmup && top.isPr && r.set.weightKg == top.topKg;
       isPr ? HapticFeedback.heavyImpact() : HapticFeedback.mediumImpact();
       if (!r.set.isWarmup) {
         c.startRest(_restSecondsFor(r.block));
@@ -925,64 +924,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     for (final block in draft.blocks)
                       Reveal(
                         key: ObjectKey(block),
-                        child: block.catalogSelection != null
-                            ? Column(
-                                children: [
-                                  for (final set in block.allSets)
-                                    CatalogEvidenceCard(
-                                      key: ValueKey(set.id),
-                                      evidence: set.catalog!,
-                                      done: set.done && live?.set.id != set.id,
-                                      enabled: !controller.finishPending,
-                                      loadUnit: unit.uLabel,
-                                      onUseLast:
-                                          block.catalogLastMetrics[set
-                                                  .catalog!
-                                                  .selection
-                                                  .compatibilityKey] ==
-                                              null
-                                          ? null
-                                          : () {
-                                              commitPendingInput();
-                                              controller.useCatalogValues(
-                                                set,
-                                                block.catalogLastMetrics[set
-                                                    .catalog!
-                                                    .selection
-                                                    .compatibilityKey]!,
-                                              );
-                                              controller.focusSet(set);
-                                            },
-                                      title: _typedSetLabel(
-                                        trial,
-                                        set.catalog!.selection,
-                                      ),
-                                      onFocus: () {
-                                        commitPendingInput();
-                                        controller.focusSet(set);
-                                      },
-                                      onMetricChanged:
-                                          (metric, text, quantityUnit) {
-                                            controller.updateCatalogMetric(
-                                              set,
-                                              metric,
-                                              text,
-                                              unit: quantityUnit,
-                                            );
-                                            controller.focusSet(set);
-                                          },
-                                      onMenu: () {
-                                        commitPendingInput();
-                                        _openBlockMenu(
-                                          controller,
-                                          block,
-                                          contextSet: set,
-                                        );
-                                      },
-                                    ),
-                                ],
-                              )
-                            : trial != null && _usesTrialForm(trial, block)
+                        child: trial != null && _usesTrialForm(trial, block)
                             ? Column(
                                 children: [
                                   for (final s in block.allSets)
@@ -1032,17 +974,98 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                                   commitPendingInput();
                                   controller.focusSet(s);
                                 },
+                                valuesEditorBuilder: (set) =>
+                                    CatalogSetValuesEditor(
+                                      evidence: set.catalog!,
+                                      unit: unit,
+                                      enabled: !controller.finishPending,
+                                      onMetricChanged:
+                                          (metric, text, quantityUnit) =>
+                                              controller.updateCatalogMetric(
+                                                set,
+                                                metric,
+                                                text,
+                                                unit: quantityUnit,
+                                              ),
+                                    ),
+                                selectionLabel: (set) => [
+                                  _typedSetLabel(trial, set.catalog!.selection),
+                                  set.catalog!.selection.contextLabel,
+                                ].where((part) => part.isNotEmpty).join(' · '),
+                                referenceBuilder: (set) {
+                                  final selection = set.catalog!.selection;
+                                  final metrics =
+                                      block.catalogLastMetrics[selection
+                                          .compatibilityKey];
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        FitLabel(
+                                          metrics == null
+                                              ? l.sessionNoPreviousData
+                                              : catalogEvidenceSummary(
+                                                  CatalogSetEvidence(
+                                                    selection: selection,
+                                                    metrics: metrics,
+                                                  ),
+                                                  l,
+                                                ),
+                                          maxLines: 3,
+                                          style: WorkoutType.body(
+                                            size: 12,
+                                            color: tokens.dim,
+                                          ),
+                                        ),
+                                        if (metrics != null && !set.done)
+                                          TextButton(
+                                            onPressed: () {
+                                              commitPendingInput();
+                                              controller.useCatalogValues(
+                                                set,
+                                                metrics,
+                                              );
+                                            },
+                                            style: TextButton.styleFrom(
+                                              minimumSize: const Size(48, 48),
+                                            ),
+                                            child: Text(l.catalogUseLast),
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                onSetMenu: (set) {
+                                  commitPendingInput();
+                                  _openBlockMenu(
+                                    controller,
+                                    block,
+                                    contextSet: set,
+                                  );
+                                },
                                 onSetChanged: (_, __) =>
                                     controller.markChanged(),
                                 onRir: (_, s, v) =>
                                     controller.setRirFromPrompt(s, v),
                                 onClearRir: (_, s) =>
                                     controller.setRirFromPrompt(s, null),
-                                onMarkNotDone: (_, s) =>
-                                    controller.markNotDone(s),
+                                onMarkNotDone: (_, s) {
+                                  commitPendingInput();
+                                  controller.markNotDone(s);
+                                },
                                 onRemoveSet: (b, s) =>
                                     _removeSet(controller, b, s),
-                                onMenu: (b) => _openBlockMenu(controller, b),
+                                onMenu: (b) => _openBlockMenu(
+                                  controller,
+                                  b,
+                                  contextSet: identical(live?.block, b)
+                                      ? live?.set
+                                      : null,
+                                ),
                               ),
                       ),
                     const SizedBox(height: 10),
@@ -1133,9 +1156,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       ),
       // In bottomNavigationBar (not the body) so the undo snackbar floats above it.
       bottomNavigationBar:
-          live != null &&
-              (live.set.catalog != null ||
-                  trial != null && _usesTrialForm(trial, live.block))
+          live != null && trial != null && _usesTrialForm(trial, live.block)
           ? SafeArea(
               top: false,
               child: Padding(

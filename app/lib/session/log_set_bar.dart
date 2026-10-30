@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../catalog_ui/catalog_evidence_widgets.dart';
+
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -44,6 +46,10 @@ class LogSetBar extends StatelessWidget {
     final index = live.block.workingSets.indexOf(s) + 1;
     if (s.done) {
       return s.isWarmup ? l.sessionUpdateWarmup : l.sessionUpdateSet(index);
+    }
+    if (s.catalog case final evidence?) {
+      final summary = catalogEvidenceSummary(evidence, l);
+      return '${l.catalogLogSet} ${s.isWarmup ? l.sessionLiveWarmup : index} · ${summary.isEmpty ? l.catalogRequired : summary}';
     }
     final weight = '${unit.fmtWt(s.weightKg)}${unit.uLabel}';
     return s.isWarmup
