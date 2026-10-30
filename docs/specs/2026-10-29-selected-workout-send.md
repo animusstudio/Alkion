@@ -60,9 +60,11 @@ the existing atomic finish commit; absent/inconsistent old evidence blocks this
 translation without editing local rows. Do not send recovery internals, local
 settings or legacy PR/top flags.
 
-Native writes require current workout read/write grants. Direct verification
-also requires an explicitly registered ordinary direct reader. Writer headers do
-not create admission or authority. Migrated/reserved source gates remain closed.
+Native writes require current workout read/write grants. This client uses its
+explicitly registered ordinary direct reader for verification. On native
+non-enforcing scopes the API may allow an omitted reader; an invalid supplied
+reader remains denied. Writer headers do not create admission or authority.
+Migrated/reserved source gates remain closed.
 
 ## Definition fidelity gate
 
@@ -74,7 +76,8 @@ Do not implement a sender that silently accepts a newer referenced definition.
 
 The bounded extension is an optional `workout.definition_bases` array,
 containing exactly one positive exercise revision for every distinct block
-exercise. Real handler fixture acceptance remains a protocol gate.
+exercise. Actual [handler fixtures](../alkion/animus-workout-upload.md) now
+capture that contract; independent T1 acceptance PASS on 2026-10-30.
 The `workout_finish_definition_bases_v1` entry in the existing
 `/v1/system/info` → `training.implemented` list lets this client check support
 before its first dependency write. An absent flag or incompatible API blocks
@@ -87,6 +90,8 @@ the original receipt after a later definition edit. Older omitted-field commands
 retain their current behavior. Explicit null cannot downgrade the precondition;
 an empty array must match the actual exercise closure. This client requires
 advertised support on the connected API, including after reconnecting.
+The actual T1 capture proves advertised support is present. T2 must prove that
+an absent capability causes zero dependency writes through the production sender.
 
 ## Attempts and outcomes
 

@@ -1,0 +1,1021 @@
+{
+  "format": "alkion-native-workout-send-capture/1",
+  "captured_date": "2026-10-30",
+  "provenance": "Actual synthetic configured-provider and production API HTTP capture; request/response body bytes unchanged. Endpoint origin, credentials and private source identity are excluded.",
+  "translation_contract": "alkion-native-workout-send/1",
+  "required_capability": "workout_finish_definition_bases_v1",
+  "scope": "Public contract fixtures only; no sender or device qualification.",
+  "missing_capability_zero_dependency_writes": "PENDING T2 production sender acceptance",
+  "cases": [
+    {
+      "case": "00-system-info",
+      "method": "GET",
+      "path": "/v1/system/info",
+      "read_admission_present": false,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "00-system-info.response.json",
+        "bytes": 2243,
+        "sha256": "ec6c21386a873d70b17b09adf9e4cfc4bbd396f248ef023619c4aa6c26ec579f"
+      }
+    },
+    {
+      "case": "01-definition-create",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "01-definition-create.request.json",
+        "bytes": 641,
+        "sha256": "f10dc8c93e145317d02a1a8acf61c62d7fbc223fde2e654a137cc30405ea242c"
+      },
+      "response": {
+        "file": "01-definition-create.response.json",
+        "bytes": 3527,
+        "sha256": "224b2c47b783b0a61307d052f93ad8c4ad535215da114cee4d37cac801321cae"
+      },
+      "canonical": {
+        "request": "01-definition-create.request.json",
+        "wire_bytes": 641,
+        "canonical_bytes": 1610,
+        "canonical_limit": 65536,
+        "canonical_sha256": "9443f2cbaa8edda5b9553e0781ee70fa74bb6d4d4f506eb2640669247e367ffc",
+        "accepted": true
+      }
+    },
+    {
+      "case": "02-definition-edit",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "02-definition-edit.request.json",
+        "bytes": 418,
+        "sha256": "134e98da9a4b190080b02801b9b79479d5ba2c96004999a344799f39240b41c8"
+      },
+      "response": {
+        "file": "02-definition-edit.response.json",
+        "bytes": 3511,
+        "sha256": "1ade77f48d03efffcc6529b09f6810d0d3c0fc7559a23c239228304e2368e33e"
+      },
+      "canonical": {
+        "request": "02-definition-edit.request.json",
+        "wire_bytes": 418,
+        "canonical_bytes": 1508,
+        "canonical_limit": 65536,
+        "canonical_sha256": "ed4ad20c04926b314409664d278b34d380a7fcdaf62af1203c81c473d5b5ef49",
+        "accepted": true
+      }
+    },
+    {
+      "case": "03-definition-b-create",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "03-definition-b-create.request.json",
+        "bytes": 491,
+        "sha256": "342a8bc1df5823a95928955476dc307a210e33fd7ce66500dc954aae23cddc74"
+      },
+      "response": {
+        "file": "03-definition-b-create.response.json",
+        "bytes": 3462,
+        "sha256": "f95dfd62a54e3251c354f1acc36709a822fac1ca9a981addef82aa854e0024bf"
+      },
+      "canonical": {
+        "request": "03-definition-b-create.request.json",
+        "wire_bytes": 491,
+        "canonical_bytes": 1537,
+        "canonical_limit": 65536,
+        "canonical_sha256": "d34667191e47fb64ff45769850636d32e8f1f22d991a8382128601bbd4fa517a",
+        "accepted": true
+      }
+    },
+    {
+      "case": "04-interleaving-definition-edit",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "04-interleaving-definition-edit.request.json",
+        "bytes": 406,
+        "sha256": "c6183a11acb76c810557e55d4df2ddeee4e0bfd0a013e4ddb6fb3bc2114396ac"
+      },
+      "response": {
+        "file": "04-interleaving-definition-edit.response.json",
+        "bytes": 3537,
+        "sha256": "e8ff8194c3dc975fa869136485baaf6ea6f8f60e9492558ddf6a3a62097039b7"
+      },
+      "canonical": {
+        "request": "04-interleaving-definition-edit.request.json",
+        "wire_bytes": 406,
+        "canonical_bytes": 1496,
+        "canonical_limit": 65536,
+        "canonical_sha256": "2c959f4b0be8c7859b30fa1ac6266e157c1f1615f53ab9bf1dfa639ea6e92ae3",
+        "accepted": true
+      }
+    },
+    {
+      "case": "05-existing-related-base-refused",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 409,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "05-existing-related-base-refused.request.json",
+        "bytes": 9924,
+        "sha256": "80e522057a9bcd73f41874642621416e2cf6c7b5847c600f1af75b261385be86"
+      },
+      "response": {
+        "file": "05-existing-related-base-refused.response.json",
+        "bytes": 33,
+        "sha256": "e5961ed8627aff52e775c5b7fef5a9022ff38cd6c958e65b92d426b7ade17acc"
+      },
+      "canonical": {
+        "request": "05-existing-related-base-refused.request.json",
+        "wire_bytes": 9924,
+        "canonical_bytes": 14397,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "0025c6172ea175e799f995883d55e2e2c4fdd9984490a05a7baab878af2a1459",
+        "accepted": false
+      }
+    },
+    {
+      "case": "06-legacy-omitted-field-finish",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "06-legacy-omitted-field-finish.request.json",
+        "bytes": 9837,
+        "sha256": "0ed65e97604a576b1cbb0a5298655e86a1f32d4630c7044b5a553c54080f75e1"
+      },
+      "response": {
+        "file": "06-legacy-omitted-field-finish.response.json",
+        "bytes": 12958,
+        "sha256": "c2239539f3f609c87c2d174e94cb3b2f705488553a4525a5c0440ffb5494a9fc"
+      },
+      "canonical": {
+        "request": "06-legacy-omitted-field-finish.request.json",
+        "wire_bytes": 9837,
+        "canonical_bytes": 14310,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "1ff30bd8221ddaf3bf3ff3d06875b572682c6e65ddf43ed70d575680db8a77c4",
+        "accepted": true
+      }
+    },
+    {
+      "case": "07-pinned-stale-conflict",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 409,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "07-pinned-stale-conflict.request.json",
+        "bytes": 10034,
+        "sha256": "b087ed5f345ec0f37ddf19d7de8edf4b2f8cd5e351d6468180481ec31ec3acb0"
+      },
+      "response": {
+        "file": "07-pinned-stale-conflict.response.json",
+        "bytes": 30,
+        "sha256": "6fc066192828d024e45a6c7738de9dba7c00a6085246a435bc6bdc280c79a2c1"
+      },
+      "canonical": {
+        "request": "07-pinned-stale-conflict.request.json",
+        "wire_bytes": 10034,
+        "canonical_bytes": 14507,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "833654465641f1126404545da5cb556f7317c81abde5dd52708887f6b85e152a",
+        "accepted": true
+      }
+    },
+    {
+      "case": "08-conflict-has-no-workout",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/b798142e-d8fe-4e16-b0cf-c6af7d6f875d",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "08-conflict-has-no-workout.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "09-conflict-has-no-operation",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/operations/workouts/cbde81b2-c3b8-49a7-8b0f-9cd88de7c5ca",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "09-conflict-has-no-operation.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "10-pinned-workout-finish",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "10-pinned-workout-finish.request.json",
+        "bytes": 10060,
+        "sha256": "e88d471c5fc0c899ad77c26201da6391eef889a99b06416ac502730ef858526a"
+      },
+      "response": {
+        "file": "10-pinned-workout-finish.response.json",
+        "bytes": 12976,
+        "sha256": "7c0bb632d70d983fac42bf9d9db9ea2c0dd250d018bbc472bd3f8911eabc9152"
+      },
+      "canonical": {
+        "request": "10-pinned-workout-finish.request.json",
+        "wire_bytes": 10060,
+        "canonical_bytes": 14533,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "95f75f89ebfe65bad994e305b713e492591151cf87022706d480b2ec08a80a14",
+        "accepted": true
+      }
+    },
+    {
+      "case": "11-workout-read",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/6960731b-8d9d-4562-b349-b58e274933c7",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "11-workout-read.response.json",
+        "bytes": 12922,
+        "sha256": "6b3235f17a9f32b6c0a917db54c834b7c3d6f4997766a620f87247f687b1afda"
+      }
+    },
+    {
+      "case": "12-workout-operation-status",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/operations/workouts/6b0790ef-4921-41b8-b44d-0cedf00492b4",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "12-workout-operation-status.response.json",
+        "bytes": 270,
+        "sha256": "a3dadef6b0321aff1a3d456ae1db87d0733c6df8ab8dde26d8636335affaf031"
+      }
+    },
+    {
+      "case": "13-definition-edit-after-commit",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "13-definition-edit-after-commit.request.json",
+        "bytes": 406,
+        "sha256": "6088ec80ff3ac7a0076a653fb35e99b5e60bb9e042e17eafffb12d7ea3045ad3"
+      },
+      "response": {
+        "file": "13-definition-edit-after-commit.response.json",
+        "bytes": 3537,
+        "sha256": "2338d4ac52ecb1388d8fb97b4016faf294bf3e146e2cb054a454652469f885d7"
+      },
+      "canonical": {
+        "request": "13-definition-edit-after-commit.request.json",
+        "wire_bytes": 406,
+        "canonical_bytes": 1496,
+        "canonical_limit": 65536,
+        "canonical_sha256": "85aae8c1dc3f5c3a423dcb384c2f9f84c1777f52a06519176a1e84d5ed6bedd4",
+        "accepted": true
+      }
+    },
+    {
+      "case": "14-pinned-workout-identical-replay",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "14-pinned-workout-identical-replay.request.json",
+        "bytes": 10060,
+        "sha256": "e88d471c5fc0c899ad77c26201da6391eef889a99b06416ac502730ef858526a"
+      },
+      "response": {
+        "file": "14-pinned-workout-identical-replay.response.json",
+        "bytes": 12975,
+        "sha256": "9c4f47f12d340837c4810ee93e7e133e68227f0df311d37b461e092fca837b78"
+      },
+      "canonical": {
+        "request": "14-pinned-workout-identical-replay.request.json",
+        "wire_bytes": 10060,
+        "canonical_bytes": 14533,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "95f75f89ebfe65bad994e305b713e492591151cf87022706d480b2ec08a80a14",
+        "accepted": true
+      }
+    },
+    {
+      "case": "15-native-read-without-reader-legacy-allow",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/6960731b-8d9d-4562-b349-b58e274933c7",
+      "read_admission_present": false,
+      "extra_header_names": [],
+      "status": 200,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "15-native-read-without-reader-legacy-allow.response.json",
+        "bytes": 12922,
+        "sha256": "6b3235f17a9f32b6c0a917db54c834b7c3d6f4997766a620f87247f687b1afda"
+      }
+    },
+    {
+      "case": "15b-unknown-supplied-reader-denied",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/6960731b-8d9d-4562-b349-b58e274933c7",
+      "read_admission_present": true,
+      "extra_header_names": [
+        "X-Hub-Read-Admission"
+      ],
+      "status": 403,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "15b-unknown-supplied-reader-denied.response.json",
+        "bytes": 22,
+        "sha256": "b0d2df3ed9997f16da66684351204f2801753b44c7c9da45bc404c7674f16243"
+      }
+    },
+    {
+      "case": "16-wrong-space",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 403,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "16-wrong-space.request.json",
+        "bytes": 10060,
+        "sha256": "e88d471c5fc0c899ad77c26201da6391eef889a99b06416ac502730ef858526a"
+      },
+      "response": {
+        "file": "16-wrong-space.response.json",
+        "bytes": 22,
+        "sha256": "b0d2df3ed9997f16da66684351204f2801753b44c7c9da45bc404c7674f16243"
+      },
+      "canonical": {
+        "request": "16-wrong-space.request.json",
+        "wire_bytes": 10060,
+        "canonical_bytes": 14533,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "95f75f89ebfe65bad994e305b713e492591151cf87022706d480b2ec08a80a14",
+        "accepted": true
+      }
+    },
+    {
+      "case": "17-epoch-without-client-context-parser-denied",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [
+        "X-Hub-Expected-Authority-Epoch"
+      ],
+      "status": 400,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "17-epoch-without-client-context-parser-denied.request.json",
+        "bytes": 10060,
+        "sha256": "e88d471c5fc0c899ad77c26201da6391eef889a99b06416ac502730ef858526a"
+      },
+      "response": {
+        "file": "17-epoch-without-client-context-parser-denied.response.json",
+        "bytes": 28,
+        "sha256": "e7316a421dd2538cb55696b15062462d0689c695d94f454350935a6f2e3b44ef"
+      },
+      "canonical": {
+        "request": "17-epoch-without-client-context-parser-denied.request.json",
+        "wire_bytes": 10060,
+        "canonical_bytes": 14533,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "95f75f89ebfe65bad994e305b713e492591151cf87022706d480b2ec08a80a14",
+        "accepted": true
+      }
+    },
+    {
+      "case": "18-replay-without-write-grant",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 403,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "18-replay-without-write-grant.request.json",
+        "bytes": 10060,
+        "sha256": "e88d471c5fc0c899ad77c26201da6391eef889a99b06416ac502730ef858526a"
+      },
+      "response": {
+        "file": "18-replay-without-write-grant.response.json",
+        "bytes": 22,
+        "sha256": "b0d2df3ed9997f16da66684351204f2801753b44c7c9da45bc404c7674f16243"
+      },
+      "canonical": {
+        "request": "18-replay-without-write-grant.request.json",
+        "wire_bytes": 10060,
+        "canonical_bytes": 14533,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "95f75f89ebfe65bad994e305b713e492591151cf87022706d480b2ec08a80a14",
+        "accepted": true
+      }
+    },
+    {
+      "case": "19-reserved-source-native-write-denied",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 403,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "19-reserved-source-native-write-denied.request.json",
+        "bytes": 376,
+        "sha256": "954ae41e1cbde6478778059b58a5af48217b3d273772b7e2b5a0af6a12943ba0"
+      },
+      "response": {
+        "file": "19-reserved-source-native-write-denied.response.json",
+        "bytes": 22,
+        "sha256": "b0d2df3ed9997f16da66684351204f2801753b44c7c9da45bc404c7674f16243"
+      },
+      "canonical": {
+        "request": "19-reserved-source-native-write-denied.request.json",
+        "wire_bytes": 376,
+        "canonical_bytes": 1466,
+        "canonical_limit": 65536,
+        "canonical_sha256": "4c1a6a7aec56ee211dce8e13c9516726b7fe6a366db99c26ba5fbab6fcc4c71e",
+        "accepted": true
+      }
+    },
+    {
+      "case": "20-definition-canonical-budget",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 400,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "20-definition-canonical-budget.request.json",
+        "bytes": 24593,
+        "sha256": "0acfbd6cff12682bf72af3c0ce4994f7d04727b87c6fd65653f4d993a67b218e"
+      },
+      "response": {
+        "file": "20-definition-canonical-budget.response.json",
+        "bytes": 28,
+        "sha256": "defae3fc5461de014e19533a2818c8721d197845af094bed28926888ec084ec8"
+      },
+      "canonical": {
+        "request": "20-definition-canonical-budget.request.json",
+        "wire_bytes": 24593,
+        "canonical_bytes": 145532,
+        "canonical_limit": 65536,
+        "canonical_sha256": "c2025311dff5d2f6adbddcd717a97703ed759175d26a384213ea2106b00d36f8",
+        "accepted": false
+      }
+    },
+    {
+      "case": "21-workout-canonical-budget",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 400,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "21-workout-canonical-budget.request.json",
+        "bytes": 210032,
+        "sha256": "302c06dc450d5304c3aab9e7613415e7f25314aee58c4dcec4f53f03a2513931"
+      },
+      "response": {
+        "file": "21-workout-canonical-budget.response.json",
+        "bytes": 28,
+        "sha256": "defae3fc5461de014e19533a2818c8721d197845af094bed28926888ec084ec8"
+      },
+      "canonical": {
+        "request": "21-workout-canonical-budget.request.json",
+        "wire_bytes": 210032,
+        "canonical_bytes": 1214505,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "5f8cef2c4fbbeb8107cebb9fca56db7de69ff29d17539a3493e3f2e110a5c032",
+        "accepted": false
+      }
+    },
+    {
+      "case": "22-workout-wire-budget",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 413,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "22-workout-wire-budget.request.json",
+        "bytes": 1210032,
+        "sha256": "5abb8813c7c4b7cbf3d8177ef0d0ed24968327146b8929fb56586ec35e1b9f2c"
+      },
+      "response": {
+        "file": "22-workout-wire-budget.response.json",
+        "bytes": 30,
+        "sha256": "d32750b4b366cba2c3a3cf5f3db705e33902887a0f3db97f24fabdbb410436d2"
+      },
+      "canonical": {
+        "request": "22-workout-wire-budget.request.json",
+        "wire_bytes": 1210032,
+        "canonical_bytes": 7214505,
+        "canonical_limit": 1048576,
+        "canonical_sha256": "e23d617a767967f8e72f453c84289b73fadc637493eaff68ba71e11a347f491e",
+        "accepted": false
+      }
+    },
+    {
+      "case": "23-null-bases",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 400,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "23-null-bases.request.json",
+        "bytes": 9887,
+        "sha256": "433f7efdf48c5d6f9f1299643b069e39d4ee4c5848a612a689a214aa5a62db64"
+      },
+      "response": {
+        "file": "23-null-bases.response.json",
+        "bytes": 28,
+        "sha256": "e7316a421dd2538cb55696b15062462d0689c695d94f454350935a6f2e3b44ef"
+      }
+    },
+    {
+      "case": "23-null-bases-no-workout",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/641f92ca-16c8-4bc6-af22-2d8328cbaf92",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "23-null-bases-no-workout.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "23-null-bases-no-operation",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/operations/workouts/47ea7498-180d-416b-a295-1dbec7c33a87",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "23-null-bases-no-operation.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "24-empty-bases",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 409,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "24-empty-bases.request.json",
+        "bytes": 9885,
+        "sha256": "cbfc335600d38413449f07806b16339db48b21ece286fb8eb351810ea78ceeb9"
+      },
+      "response": {
+        "file": "24-empty-bases.response.json",
+        "bytes": 33,
+        "sha256": "e5961ed8627aff52e775c5b7fef5a9022ff38cd6c958e65b92d426b7ade17acc"
+      }
+    },
+    {
+      "case": "24-empty-bases-no-workout",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/00b807e4-d38b-463e-a07a-e8ec3ffdd904",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "24-empty-bases-no-workout.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "24-empty-bases-no-operation",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/operations/workouts/c3cbe83e-6dd9-422f-bd3a-1465cc081f80",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "24-empty-bases-no-operation.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "25-zero-revision",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 400,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "25-zero-revision.request.json",
+        "bytes": 10060,
+        "sha256": "b1748bc8c2ea8984aab0c466fc187186abde3de63d55c6604a32791cc9ac4c7f"
+      },
+      "response": {
+        "file": "25-zero-revision.response.json",
+        "bytes": 28,
+        "sha256": "defae3fc5461de014e19533a2818c8721d197845af094bed28926888ec084ec8"
+      }
+    },
+    {
+      "case": "25-zero-revision-no-workout",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/be7104ad-07b7-4584-afd6-13b3f36d43dd",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "25-zero-revision-no-workout.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "25-zero-revision-no-operation",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/operations/workouts/3ac5793c-caad-47db-be62-ce1b263f4a6c",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "25-zero-revision-no-operation.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "26-duplicate-bases",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 400,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "26-duplicate-bases.request.json",
+        "bytes": 10148,
+        "sha256": "15e5ee1c8db808c71203f9c883ad58b9b0477a46d21bf6a6a540c30a08a9ac52"
+      },
+      "response": {
+        "file": "26-duplicate-bases.response.json",
+        "bytes": 28,
+        "sha256": "defae3fc5461de014e19533a2818c8721d197845af094bed28926888ec084ec8"
+      }
+    },
+    {
+      "case": "26-duplicate-bases-no-workout",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/7d19e69a-bd87-4b79-b05d-c854c3f84c6f",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "26-duplicate-bases-no-workout.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "26-duplicate-bases-no-operation",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/operations/workouts/a3e6e307-d51f-4a21-8518-feab53b6924d",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "26-duplicate-bases-no-operation.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "27-wrong-base-kind",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 400,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "27-wrong-base-kind.request.json",
+        "bytes": 10062,
+        "sha256": "5fb21c7446390bb30ab8bc5fdf751fc06faf2cf427e3a2d07adc20d8a4c95765"
+      },
+      "response": {
+        "file": "27-wrong-base-kind.response.json",
+        "bytes": 28,
+        "sha256": "defae3fc5461de014e19533a2818c8721d197845af094bed28926888ec084ec8"
+      }
+    },
+    {
+      "case": "27-wrong-base-kind-no-workout",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/ae92bf8c-ef05-449d-a864-3437536b6fe9",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "27-wrong-base-kind-no-workout.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "27-wrong-base-kind-no-operation",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/operations/workouts/0d89f5b1-9b88-4d64-9b87-f8f94bad6ac6",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "27-wrong-base-kind-no-operation.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "28-over-100-bases",
+      "method": "POST",
+      "path": "/v1/data-spaces/{space}/training/actions",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 400,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "request": {
+        "file": "28-over-100-bases.request.json",
+        "bytes": 18772,
+        "sha256": "5f8c8bd5d01c60aba7f78304e4a0e366906c977bd6352441d5037bc7605a9e90"
+      },
+      "response": {
+        "file": "28-over-100-bases.response.json",
+        "bytes": 28,
+        "sha256": "defae3fc5461de014e19533a2818c8721d197845af094bed28926888ec084ec8"
+      }
+    },
+    {
+      "case": "28-over-100-bases-no-workout",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/workouts/53253fdd-27bd-46fc-ae6f-0de037c0d170",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch, X-Hub-Read-Admission",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "28-over-100-bases-no-workout.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    },
+    {
+      "case": "28-over-100-bases-no-operation",
+      "method": "GET",
+      "path": "/v1/data-spaces/{space}/training/operations/workouts/da4f7482-c4ba-4028-9311-a0e160440d08",
+      "read_admission_present": true,
+      "extra_header_names": [],
+      "status": 404,
+      "response_headers": {
+        "Cache-Control": "no-store",
+        "Vary": "Authorization, X-Hub-Installation-ID, X-Hub-Binding-ID, X-Hub-Contract-ID, X-Hub-Contract-Revision, X-Hub-Expected-Authority-Epoch",
+        "Content-Type": "application/json"
+      },
+      "response": {
+        "file": "28-over-100-bases-no-operation.response.json",
+        "bytes": 22,
+        "sha256": "fef916c279def93f790d739d8525fc7ffd697a4a492029472c5752bda04a4faf"
+      }
+    }
+  ]
+}

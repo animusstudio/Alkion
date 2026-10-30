@@ -6,6 +6,24 @@ observed: 2026-10-28
 
 # Alkion integrated acceptance
 
+## Selected-workout public contract T1 — 2026-10-30
+
+T1 of the [selected-workout plan](../plans/2026-10-29-selected-workout-send.md)
+is independently accepted PASS with no findings. The
+[public mapping and fixtures](animus-workout-upload.md) retain 42 actual
+synthetic HTTP cases through the configured provider/API and 17 measured typed
+canonical commands. Three focused fixture integrity/mapping/replay tests pass.
+Date/offset, exact decimal/null values, session order, definition pins, stale
+conflict without writes, same-request replay after a later edit and current
+scope/grant/reserved-source denials are covered.
+
+The actual duration is 601 input seconds → 10 remote rounded minutes; exact
+local elapsed remains preserved. This proves the public API contract, not an
+app sender or device flow. T2 is next and remains unimplemented, including the
+required missing-capability/zero-dependency-write production-sender test.
+Local SQLite transport durability, emulator/phone qualification, owner-history,
+server rollout and publication remain separate gates.
+
 ## First-use visual polish — 2026-10-29
 
 The [approved plan](../plans/2026-10-29-entry-visual-polish.md) is complete at `da3a7392f8a6c88908fb4eb256e3828602deae95`: a large bounded character-logo opening hands off to concise entry choices, signup is one full actionable sentence, and local setup uses deliberate spacing. Tap skip, reduced motion, lifecycle and hidden keyboard-focus handling are covered. Existing-profile bypass, auth, store/recovery and native resume behavior remain unchanged.

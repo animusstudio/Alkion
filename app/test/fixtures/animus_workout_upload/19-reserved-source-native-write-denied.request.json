@@ -1,0 +1,1 @@
+{"operation_id":"8dd31ddc-5d1c-4f9e-8f32-7d48f5572f28","target":{"kind":"exercise","id":"a6e1f685-0af6-489e-a515-a7c8884790b7"},"base_revision":0,"semantic_version":"training-definition-v1","dependencies":[],"related_bases":[],"definition":{"action":"create","definition":{"name":{"state":"valid","raw":"Synthetic reserved reference","value":"Synthetic reserved reference"}}}}

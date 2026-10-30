@@ -1,6 +1,6 @@
 # Selected native workout send plan
 
-Date: 2026-10-29. Lane: full. Status: Approved client outcome; T1 protocol gate open.
+Date: 2026-10-29. Lane: full. Status: Approved; T1 accepted on 2026-10-30; T2 next.
 Specification: [one selected native workout](../specs/2026-10-29-selected-workout-send.md).
 Starting client source: `b157fe5`. No sender/UI implementation is included in T1.
 
@@ -18,6 +18,13 @@ canonical budgets. Prove wrong-space/grant/reader and reserved-source denials.
 Before sender implementation, resolve definition-version fidelity and preflight
 capability discovery; embedded definitions/dependency UUIDs alone are insufficient.
 Keep local provider/database setup and credentials outside this public tree.
+Actual 2026-10-30 [public contract fixtures](../alkion/animus-workout-upload.md)
+retain 42 real synthetic HTTP cases and 17 typed canonical measurements. The
+source contract preserves date/offset, exact decimal/nulls and set order;
+601 elapsed seconds produces 10 remote rounded minutes. Independent T1 source,
+live-evidence and public-fixture review PASS with no findings on 2026-10-30. T2
+is next and remains unimplemented. Missing capability causing zero
+dependency writes is an explicit T2 production-sender gate, not a T1 live claim.
 
 T2 — Durable selection, mapping and foreground sender.
 Freeze one consistent native finish/definition closure. Persist scoped attachment
