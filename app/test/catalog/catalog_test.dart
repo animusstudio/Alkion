@@ -188,7 +188,7 @@ void main() {
           bundle().families.values.first.id,
           query: 'curl café',
         ),
-        'Curl café',
+        'Curl',
       );
     },
   );
@@ -196,8 +196,11 @@ void main() {
     final b = bundle();
     final en = CatalogIndex(b), it = CatalogIndex(b, locale: 'it');
     expect(en.search('Lento avanti').strict, isEmpty);
-    expect(it.search('Lento avanti').rows.single.label, 'Lento avanti');
-    expect(it.search('RDL').strict.first.label, 'RDL');
+    expect(
+      it.search('Lento avanti').rows.first.label,
+      'Distensioni sopra la testa',
+    );
+    expect(it.search('RDL').strict.first.label, 'Lento avanti');
     for (final locale in ['de', 'es']) {
       final i = CatalogIndex(b, locale: locale);
       expect(i.search('Lento avanti').strict, isEmpty);
@@ -259,6 +262,15 @@ void main() {
       final same = CatalogIndex(b, profileId: 'one', personalAliases: [a]);
       expect(active.identity, same.identity);
       expect(active.variantLabel(id), 'My café 💪');
+      expect(
+        CatalogIndex(
+          b,
+          profileId: 'one',
+          locale: 'it',
+          personalAliases: [a],
+        ).variantLabel(id),
+        'My café 💪',
+      );
       expect(active.search('Forbidden word').strict, isEmpty);
       expect(
         CatalogIndex(

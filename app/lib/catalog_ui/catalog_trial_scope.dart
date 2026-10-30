@@ -38,7 +38,6 @@ class CatalogTrialState extends ChangeNotifier {
   final List<CatalogChoice> recents = [];
   final Set<String> favorites = {};
   final Map<String, CatalogChoice> choices = {};
-  final Map<String, String> _rememberedLabels = {};
   final Map<String, CatalogChoice> routineContexts = {};
   bool useInRoutine(
     String originSlotId,
@@ -86,10 +85,13 @@ class CatalogTrialState extends ChangeNotifier {
       : bundle.measurementFor(bundle.variants[choice.variantId]!);
   String label(CatalogChoice choice, String locale, {String? query}) =>
       choice.customName ??
-      ((query?.trim().isNotEmpty ?? false)
-          ? index(locale).variantLabel(choice.variantId!, query: query!)
-          : _rememberedLabels['$locale:${choice.variantId}'] ??
-                index(locale).variantLabel(choice.variantId!));
+      (choice.setupId == 'default'
+          ? index(locale).variantLabel(choice.variantId!)
+          : identifyingLabel(choice, locale));
+  String identifyingLabel(CatalogChoice choice, String locale) =>
+      choice.customName ??
+      index(locale).identifyingVariantLabel(choice.variantId!);
+
   String distinction(CatalogChoice choice, String locale) {
     if (choice.nickname?.isNotEmpty == true) return choice.nickname!;
     final variant = bundle.variants[choice.variantId];
@@ -109,13 +111,6 @@ class CatalogTrialState extends ChangeNotifier {
   }
 
   void remember(CatalogChoice choice, {String? locale, String? query}) {
-    if (choice.variantId != null &&
-        locale != null &&
-        (query?.trim().isNotEmpty ?? false)) {
-      _rememberedLabels['$locale:${choice.variantId}'] = index(
-        locale,
-      ).variantLabel(choice.variantId!, query: query!);
-    }
     choices[choice.key] = choice;
     recents.removeWhere((c) => c.key == choice.key);
     recents.insert(0, choice);
@@ -158,7 +153,7 @@ class CatalogTrialState extends ChangeNotifier {
         choice.definitionKey,
         () => repo.prepareExercise(
           ExerciseDraft(
-            name: label(choice, locale),
+            name: identifyingLabel(choice, locale),
             muscleGroup: '',
             equip: choice.variantId == null
                 ? null

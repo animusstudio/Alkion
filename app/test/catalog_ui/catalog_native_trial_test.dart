@@ -767,7 +767,7 @@ void main() {
         expect(find.text('RDL'), findsWidgets, reason: route);
         await tester.pumpWidget(screen(const Locale('it')));
         await real.settleReal(tester, ticks: 5);
-        expect(find.text(variant.names['it']!), findsWidgets, reason: route);
+        expect(find.text('Lento avanti'), findsWidgets, reason: route);
         expect(find.text('RDL'), findsNothing, reason: route);
         expect(tester.takeException(), isNull);
         await h.unmount(tester);

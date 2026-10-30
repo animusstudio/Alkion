@@ -1,4 +1,5 @@
 import 'catalog_bundle.dart';
+import 'catalog_labels.dart';
 import 'catalog_normalize.dart';
 
 export 'catalog_normalize.dart'
@@ -149,21 +150,29 @@ class CatalogIndex {
     this.profileId,
     List<CatalogPersonalAlias> personalAliases = const [],
   }) {
-    final effective = personalAliases
-        .where(
-          (a) =>
-              profileId != null &&
-              a.profileId == profileId &&
-              !a.hidden &&
-              a.locale == locale,
-        )
-        .toList();
+    final effective =
+        personalAliases
+            .where(
+              (a) => profileId != null && a.profileId == profileId && !a.hidden,
+            )
+            .toList()
+          ..sort((a, b) {
+            final localA = a.locale == locale, localB = b.locale == locale;
+            if (localA != localB) return localA ? -1 : 1;
+            return a.id.compareTo(b.id);
+          });
+    for (final alias in effective) {
+      _personalNames.putIfAbsent(
+        '${alias.kind}:${alias.targetId}',
+        () => alias.text,
+      );
+    }
     identity = catalogHash(
       catalogCanonicalJson([
         bundle.digest,
         bundle.searchRevision,
         catalogNormalizationPolicy,
-        'labels-local-english-v1',
+        'labels-stable-identity-v2',
         locale,
         profileId,
         effective.map((a) => a.toJson()).toList(),
@@ -197,6 +206,7 @@ class CatalogIndex {
     }
     terms.addAll(bundle.terms);
     for (final alias in effective) {
+      if (alias.locale != locale) continue;
       terms.add(
         CatalogTerm(
           id: alias.id,
@@ -266,6 +276,9 @@ class CatalogIndex {
   late final String identity;
   final _familyMembers = <String, Set<String>>{};
   final _labels = <_Label>[];
+  final _personalNames = <String, String>{};
+  final _displayNames = <String, String>{};
+  final _identifyingNames = <String, String>{};
   final _tokens = <String, Set<String>>{},
       _anchors = <String, Set<String>>{},
       _movementAnchors = <String, Set<String>>{},
@@ -287,45 +300,103 @@ class CatalogIndex {
     final candidates = admitted == null
         ? bundle.variants.values
         : admitted.map((id) => bundle.variants[id]).whereType<CatalogVariant>();
-    return List.unmodifiable(
-      candidates.where(
-        (v) => bundle.targetMatches(hit.kind, hit.id, v) && filter.matches(v),
-      ),
-    );
+    final variants = candidates
+        .where(
+          (v) => bundle.targetMatches(hit.kind, hit.id, v) && filter.matches(v),
+        )
+        .toList();
+    if (admitted == null) {
+      variants.sort((a, b) => compareVariants(a.id, b.id));
+    }
+    return List.unmodifiable(variants);
+  }
+
+  int compareVariants(String a, String b) {
+    final left = variantLabel(a), right = variantLabel(b);
+    final normalized = catalogNormalize(
+      left,
+    ).compareTo(catalogNormalize(right));
+    if (normalized != 0) return normalized;
+    final displayed = left.compareTo(right);
+    return displayed != 0 ? displayed : a.compareTo(b);
   }
 
   String variantLabel(String id, {String query = ''}) =>
       labelFor('variant', id, query: query);
 
-  String labelFor(String kind, String id, {String query = ''}) {
+  String labelFor(String kind, String id, {String query = ''}) =>
+      _displayNames.putIfAbsent('$kind:$id', () => _stableLabel(kind, id));
+
+  String _stableLabel(String kind, String id) {
     final entity = bundle.entity(kind, id);
     if (entity == null) {
       throw ArgumentError.value(id, 'id', 'Unknown catalog entity');
     }
-    final words = catalogNormalize(query).split(' ');
+    final canonical = entity.names[locale] ?? entity.names['en']!;
+    // Vocabulary admits results; it must never turn the query into their name.
+    // Personal names retain their exact text across interface locale changes.
+    final personal = _personalNames['$kind:$id'];
+    if (personal != null) return personal;
+    if (kind != 'variant') return canonical;
+    final variant = bundle.variants[id]!;
     final candidates = _labels.where((label) {
       final t = label.term;
-      if (t.qualifier || t.source == 'scoped_terms') return false;
-      if (!((kind == 'variant' && label.ids.contains(id)) ||
-          (t.kind == kind && t.targetId == id))) {
+      if (t.qualifier ||
+          t.source == 'canonical' ||
+          t.source == 'personal' ||
+          t.source == 'scoped_terms' ||
+          !_eligibleDisplay(t) ||
+          !label.ids.contains(id)) {
         return false;
       }
-      if (t.source == 'personal') return t.locale == locale;
-      if (!_eligibleDisplay(t)) return false;
-      return query.isNotEmpty && _contains(words, label.words);
+      final direct = t.kind == 'variant' && t.targetId == id;
+      // RDL is an established familiar term across the supported locales.
+      // Other broad acronyms/aliases remain retrieval-only vocabulary.
+      final familiarAcronym =
+          t.kind == 'family' &&
+          t.targetId == variant.familyId &&
+          t.text == 'RDL';
+      return direct || familiarAcronym;
     }).toList();
     candidates.sort((a, b) {
-      final personalA = a.term.source == 'personal',
-          personalB = b.term.source == 'personal';
-      if (personalA != personalB) return personalA ? -1 : 1;
-      final length = b.words.length.compareTo(a.words.length);
-      if (length != 0) return length;
       final localA = a.term.locale == locale, localB = b.term.locale == locale;
       if (localA != localB) return localA ? -1 : 1;
+      final length = b.words.length.compareTo(a.words.length);
+      if (length != 0) return length;
       return a.term.id.compareTo(b.term.id);
     });
-    if (candidates.isNotEmpty) return candidates.first.term.text;
-    return entity.names[locale] ?? entity.names['en']!;
+    if (candidates.isEmpty) return canonical;
+    final familiar = candidates.first.term.text;
+    return catalogNormalize(familiar) == catalogNormalize(canonical)
+        ? canonical
+        : familiar;
+  }
+
+  /// A self-contained execution name for surfaces without a separate subtitle.
+  /// Picker rows use variantLabel plus distinctions among their visible siblings.
+  String identifyingVariantLabel(String id) =>
+      _identifyingNames.putIfAbsent(id, () => _identifyingLabel(id));
+
+  String _identifyingLabel(String id) {
+    final label = variantLabel(id);
+    if (_personalNames.containsKey('variant:$id')) return label;
+    final variant = bundle.variants[id]!;
+    final siblings = bundle.variants.values
+        .where((v) => variantLabel(v.id) == label)
+        .toList();
+    if (siblings.length == 1) return label;
+    final distinction = CatalogLabels(locale).distinction(variant, siblings);
+    if (distinction.isEmpty) {
+      return variant.names[locale] ?? variant.names['en']!;
+    }
+    final matching = siblings.where(
+      (v) => CatalogLabels(locale).distinction(v, siblings) == distinction,
+    );
+    // Missing or identical dimensions cannot justify a fabricated distinction.
+    if (matching.length > 1) {
+      return variant.names[locale] ?? variant.names['en']!;
+    }
+    return '$label · $distinction';
   }
 
   bool _eligibleDisplay(CatalogTerm t) {
@@ -505,7 +576,11 @@ class CatalogIndex {
           tier,
           direct ? 0 : 1,
           canonical ? 0 : 1,
-          e is CatalogVariant ? e.facets.length : 0,
+          if (words.isEmpty || key.length == 1) ...[
+            catalogNormalize(labelFor(kind, id)),
+            labelFor(kind, id),
+          ] else
+            e is CatalogVariant ? e.facets.length : 0,
           id,
         ],
       );
@@ -621,14 +696,15 @@ class CatalogIndex {
       final hit = ranked.hit;
       if (!hit.isNavigation) return hit;
       final admitted = navigationAdmission['${hit.kind}:${hit.id}']!;
-      // Drill-down preserves concrete result ranking; browse has no concrete
-      // rows, so retain the bundle's stable order for its admitted children.
+      // Drill-down preserves concrete result ranking; browse children follow
+      // their displayed labels, independently of incidental bundle/UUID order.
       final children = ordered
           .where((r) => r.hit.kind == 'variant' && admitted.contains(r.hit.id))
           .map((r) => r.hit.id)
           .toList();
       if (children.isEmpty) {
         children.addAll(bundle.variants.keys.where(admitted.contains));
+        children.sort(compareVariants);
       }
       return CatalogHit(
         kind: hit.kind,
@@ -676,20 +752,6 @@ Set<String> _intersect(Iterable<Set<String>> spans) {
     result = result.intersection(iterator.current);
   }
   return result;
-}
-
-bool _contains(List<String> words, List<String> phrase) {
-  for (var i = 0; i <= words.length - phrase.length; i++) {
-    var equal = true;
-    for (var j = 0; j < phrase.length; j++) {
-      if (words[i + j] != phrase[j]) {
-        equal = false;
-        break;
-      }
-    }
-    if (equal) return true;
-  }
-  return false;
 }
 
 int _compare(List<Comparable<dynamic>> a, List<Comparable<dynamic>> b) {

@@ -681,7 +681,7 @@ class _DayEditorState extends State<DayEditor> {
                                 ),
                                 Expanded(
                                   child: FitLabel(
-                                    trial.label(
+                                    trial.identifyingLabel(
                                       choice,
                                       Localizations.localeOf(
                                         context,
@@ -746,7 +746,7 @@ class _DayEditorState extends State<DayEditor> {
                           exercise: ex,
                           displayName: choice == null
                               ? null
-                              : trial!.label(
+                              : trial!.identifyingLabel(
                                   choice,
                                   Localizations.localeOf(context).languageCode,
                                 ),
