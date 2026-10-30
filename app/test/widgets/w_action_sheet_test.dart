@@ -55,6 +55,7 @@ void main() {
   Widget sheetHost(
     List<WSheetAction<String>> Function(AppLocalizations l) actions, {
     String title = 'Options',
+    bool scrollableTitle = false,
     Locale locale = const Locale('en'),
     ThemeData? theme,
   }) => MaterialApp(
@@ -69,6 +70,7 @@ void main() {
             result = await showWActionSheet<String>(
               context,
               title: title,
+              scrollableTitle: scrollableTitle,
               actions: actions(AppLocalizations.of(context)),
             );
           },
@@ -190,6 +192,40 @@ void main() {
     await tester.tap(last);
     await tester.pumpAndSettle();
     expect(result, 'remove');
+  });
+
+  testWidgets('optional contextual title scrolls in full at 320x640dp 2x', (
+    tester,
+  ) async {
+    setPhone(tester, width: 320, height: 640, textScale: 2);
+    const title =
+        'Current: cable station beside the hotel window with the adjustable high pulley.\nChoosing this setup adds one new set and keeps all earlier sets unchanged.';
+    await tester.pumpWidget(
+      sheetHost(
+        title: title,
+        scrollableTitle: true,
+        (_) => const [
+          WSheetAction(label: 'Choose execution', value: 'execution'),
+          WSheetAction(label: 'New machine', value: 'new'),
+        ],
+      ),
+    );
+    await open(tester);
+    expect(tester.takeException(), isNull);
+    final heading = find.text(title);
+    final paragraph = tester.renderObject<RenderParagraph>(heading);
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(paragraph.textScaler.scale(12), 24);
+    final before = tester.getRect(heading);
+    final action = find.byKey(const ValueKey('sheet-action-1'));
+    await tester.ensureVisible(action);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(heading).top, lessThan(before.top));
+    expect(action.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(result, 'new');
   });
 
   // In Spanish at large text on a short phone, the two-line system row pushes
