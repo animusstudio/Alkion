@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../animus/connection.dart';
+import '../animus/workout_send.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/typography.dart';
@@ -18,8 +19,9 @@ class AnimusConnectionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final connection = context.watch<AnimusConnectionController?>();
     if (connection == null) return const SizedBox.shrink();
+    final sender = context.watch<AnimusWorkoutSendPort?>();
     return ListenableBuilder(
-      listenable: connection,
+      listenable: Listenable.merge([connection, if (sender != null) sender]),
       builder: (context, _) {
         if (connection.state == AnimusConnectionState.disabled) {
           return const SizedBox.shrink();
@@ -135,7 +137,9 @@ class AnimusConnectionPanel extends StatelessWidget {
                   ],
                   const SizedBox(height: 8),
                   Text(
-                    l.animusReadOnly,
+                    sender?.busy == true
+                        ? l.animusSendConnectionBusy
+                        : l.animusReadOnly,
                     style: WorkoutType.body(size: 12, color: tokens.dim),
                   ),
                 ],

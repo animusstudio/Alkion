@@ -1320,7 +1320,7 @@
   "animusInvalidResponse": "The connection could not be verified. Connect again or try later.",
   "animusUnavailable": "Sign-in is unavailable. Try again.",
   "animusDisconnectBody": "Disconnect on this device? Local workouts, drafts, pending changes and backups are kept. This does not sign you out of your browser.",
-  "animusReadOnly": "This connection only checks workout read access. It does not upload or synchronize workouts.",
+  "animusReadOnly": "Send one selected workout from History after confirming its account, data space and included exercises. Sending is manual; local workouts and backups remain available.",
   "alkionEntryBody": "Sign in with Animus, or train fully offline.",
   "alkionEntrySignIn": "Sign in to Animus",
   "alkionEntryNoAccount": "Don’t have an account?",
@@ -1333,5 +1333,76 @@
   "alkionOfflineTitle": "Start training offline",
   "alkionEntryContinueOffline": "Continue offline",
   "alkionEntryTitle": "Make every workout count.",
-  "alkionEntryJoin": "Don’t have an account? Join now"
+  "alkionEntryJoin": "Don’t have an account? Join now",
+  "animusSavedLocally": "Saved locally",
+  "animusSend": "Send to Animus",
+  "animusSendRetry": "Retry selected workout",
+  "animusSendVerifyCopy": "Verify sent copy",
+  "animusSendReady": "Selected for sending",
+  "animusSendPreparing": "Preparing selected workout…",
+  "animusSendSending": "Sending to Animus…",
+  "animusSendSent": "Sent to Animus",
+  "animusSendSentVerified": "Sent to Animus · copy verified",
+  "animusSendUncertain": "Send result uncertain",
+  "animusSendNeedsReview": "Send needs review",
+  "animusSendUnsupported": "This workout stays local",
+  "animusSendConfirmTitle": "Send to Animus?",
+  "animusSendConfirmBody": "Account:\n{account}\n\nData space:\n{space}\n\nIncluded workout and exercise definitions:\n{scope}\n\nOnly this frozen selection is sent. Your local workout is kept. A retry uses the same selection.",
+  "animusSendScope": "1 workout · Exercises: {exercises} · Sets: {sets}",
+  "animusSendConnectInProfile": "Connect and confirm your account and data space in Profile to send this workout.",
+  "animusSendOpenProfile": "Open Profile",
+  "animusSendDifferentScope": "This selection belongs to another account or data space. Reconnect its original account and space to retry.",
+  "animusSendMissingTime": "The original finish time and timezone evidence are missing or inconsistent. This workout cannot be sent.",
+  "animusSendUnsupportedWorkout": "Only a supported new native finish can be sent. Imported, resumed or replaced workouts stay local.",
+  "animusSendUnsupportedDefinition": "An included exercise lacks the native definition history required for sending.",
+  "animusSendInvalidValues": "Some recorded values cannot be represented exactly by Animus. They remain unchanged locally.",
+  "animusSendCapabilityMissing": "This Animus API does not support sending with pinned exercise revisions. No exercise or workout is sent.",
+  "animusSendRecoveryBlocked": "Local recovery or restored-data review must finish before this selection can be sent.",
+  "animusSendAccessDenied": "Animus denied access. Check the account, data space and workout permissions in Profile before retrying.",
+  "animusSendDependencyFailed": "An exercise definition was not acknowledged. The workout has not been sent. Review access, then retry this selection.",
+  "animusSendNetwork": "The connection ended without a confirmed result. Retry this same selection to check or complete the send.",
+  "animusSendInvalidResponse": "Animus returned a response that could not be validated. Keep this selection and review the connection before retrying.",
+  "animusSendLocalUnavailable": "The local send record needs recovery or review. Keep the saved workout and retry after local recovery.",
+  "animusSendReadBackFailed": "Animus acknowledged the send, but its copy could not be verified. Verify the sent copy again; this does not create another workout.",
+  "animusSendCancelled": "Sending stopped after the connection changed or was cancelled. Any uncertain request is kept for the same selection.",
+  "animusSendTooLarge": "This selection exceeds the supported workout or exercise size. It stays local.",
+  "animusSendBusy": "Another foreground action is still running. Wait for it to finish before sending.",
+  "animusSendConnectionBusy": "A selected workout is sending from History. Disconnecting stops further requests; an uncertain result is kept for retry.",
+  "@animusSendConfirmBody": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      },
+      "space": {
+        "type": "String"
+      },
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "@animusSendScope": {
+    "placeholders": {
+      "exercises": {
+        "type": "int"
+      },
+      "sets": {
+        "type": "int"
+      }
+    }
+  },
+  "animusSendVerifyConfirmBody": "Verify the already-sent copy for this account and data space?\n\nAccount:\n{account}\n\nData space:\n{space}\n\nOriginal selection:\n{scope}\n\nThis checks the existing remote copy without creating another workout. Your local workout is kept.",
+  "@animusSendVerifyConfirmBody": {
+    "placeholders": {
+      "account": {
+        "type": "String"
+      },
+      "space": {
+        "type": "String"
+      },
+      "scope": {
+        "type": "String"
+      }
+    }
+  }
 }

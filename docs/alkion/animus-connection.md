@@ -4,7 +4,9 @@ The connection is an explicit foreground feature. First use offers optional
 Animus sign-in and a complete offline path; existing profiles open directly.
 Before an explicit connection action, startup creates no authentication manager,
 opens no browser, reads no session secrets and contacts no server. Connection
-does not enable a sender, replica download, background refresh or summary API.
+alone sends no workouts. The separate [selected History workout action](animus-workout-upload.md#selected-workout-controls)
+requires another explicit confirmation before sending. Replica download,
+background refresh and summary APIs remain unavailable.
 
 ## First-use and offline behavior
 

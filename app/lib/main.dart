@@ -10,6 +10,7 @@ import 'animus/connection.dart';
 import 'animus/config.dart';
 import 'animus/entry.dart';
 import 'animus/runtime.dart';
+import 'animus/workout_send.dart';
 import 'data/active_session_draft.dart';
 import 'data/finished_session_store.dart';
 import 'data/session_writer.dart';
@@ -57,7 +58,13 @@ class AlkionRuntime with WidgetsBindingObserver {
     this.identity,
     this.sessions,
     this.animus,
-  );
+  ) {
+    workoutSender = AnimusWorkoutSender(
+      database: store,
+      installationId: store.profile.installationId,
+      connection: animus,
+    );
+  }
   final Directory supportRoot;
   final LocalStore store;
   final SettingsService settings;
@@ -65,6 +72,7 @@ class AlkionRuntime with WidgetsBindingObserver {
   final IdentityService identity;
   final SessionManager sessions;
   final AnimusConnectionController animus;
+  late final AnimusWorkoutSender workoutSender;
   static Future<AlkionRuntime> open(
     Directory supportRoot, {
     WorkoutNotification? notifications,
@@ -181,6 +189,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     _closing = true;
     // Fence remote callbacks synchronously, before any local barrier yields.
     // Its bounded best-effort teardown never holds up local store closure.
+    final senderClose = workoutSender.close();
     unawaited(animus.close());
     try {
       await flushPersistence();
@@ -189,6 +198,7 @@ class AlkionRuntime with WidgetsBindingObserver {
       rethrow;
     }
     WidgetsBinding.instance.removeObserver(this);
+    await senderClose;
     await sessions.closeNotifications();
     sessions.dispose();
     await store.close();
@@ -196,6 +206,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     units.dispose();
     identity.dispose();
     persistenceFailure.dispose();
+    workoutSender.dispose();
     animus.dispose();
   }
 }
@@ -405,6 +416,9 @@ class AlkionApp extends StatelessWidget {
     providers: [
       Provider<LocalDatabase>.value(value: runtime.store),
       Provider<RecoveryHost?>.value(value: recovery),
+      ListenableProvider<AnimusWorkoutSendPort?>.value(
+        value: runtime.workoutSender,
+      ),
       ChangeNotifierProvider<AnimusConnectionController?>.value(
         value: runtime.animus,
       ),

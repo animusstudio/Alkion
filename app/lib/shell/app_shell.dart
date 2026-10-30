@@ -137,7 +137,7 @@ class _AppShellState extends State<AppShell> {
                         key: ValueKey(_progressTarget),
                         initialTarget: _progressTarget,
                       ),
-                      const HistoryScreen(),
+                      HistoryScreen(onOpenProfile: _openProfile),
                       PlanScreen(key: _planKey),
                       if (_profileOpened)
                         ProfileScreen(

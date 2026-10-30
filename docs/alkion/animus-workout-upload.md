@@ -91,3 +91,22 @@ python3 -m unittest discover -s tests -p test_animus_workout_upload_fixtures.py
 That check verifies unchanged body bytes, mapping, replay identity, statuses and
 captured budget measurements. It does not recreate the provider/API or qualify
 the future production sender, SQLite durability or an Android device.
+
+## Selected-workout controls
+
+Expand one workout in History and choose **Send to Animus**. Profile retains
+sign-in, account/space confirmation, access verification and disconnect controls;
+a disconnected History card offers **Open Profile**. No startup, timer or
+background action sends workouts. Before the first request, a separate dialog
+shows the trusted account issuer/subject, configured data space, frozen workout
+label/day, included exercise definitions and set counts. Cancel leaves the
+workout local and sends nothing.
+
+**Saved locally** stays visible independently of **Sending**, **Sent**,
+**Send result uncertain** and **Send needs review**. Unsupported workouts keep a
+concrete reason beside the action. Retry uses the original selection, including
+its frozen exercise definitions, rather than selecting edited History again.
+A sent workout whose ordinary read-back failed remains **Sent** and offers
+**Verify sent copy**; this does not allocate another workout. Disconnect stops
+further scoped requests while retaining uncertain evidence for explicit retry.
+These controls are localized in English, German, Spanish and Italian.
