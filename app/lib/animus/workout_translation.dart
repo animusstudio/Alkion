@@ -294,6 +294,18 @@ Map<String, dynamic> _command(Map<String, dynamic> m) {
   };
 }
 
+/// Native metadata is a patch: omission is distinct from explicit null. The
+/// public workout contract accepts string/empty values, but not null clears.
+Map<String, dynamic> nativeWorkoutMetadata(Map<String, dynamic> session) => {
+  for (final field in ['split_label', 'notes'])
+    if (session.containsKey(field))
+      field: uploadValue(_nativeWorkoutText(session[field])),
+};
+Object _nativeWorkoutText(Object? value) {
+  if (value is! String) throw const FormatException('Unsupported workout text');
+  return value;
+}
+
 /// Only factual supported fields are translated; local metadata and ancestry
 /// remain local. A missing or invalid value is never changed into a zero.
 Map<String, dynamic> nativeDefinitionPatch(

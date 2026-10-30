@@ -9,6 +9,7 @@ import 'package:alkion/animus/ports.dart';
 import 'package:alkion/animus/probe.dart';
 import 'package:alkion/animus/workout_send.dart';
 import 'package:alkion/animus/workout_translation.dart';
+import 'package:alkion/animus/workout_upload_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/session_writer.dart';
 import 'package:alkion/domain/evidence.dart';
@@ -38,7 +39,7 @@ final _blocks = (_draft['blocks'] as List).map(uploadMap).toList();
 /// The fake replays actual captures. Its only DTO remapping is a consistent
 /// UUID substitution from captured operation/target/block/set IDs to those
 /// allocated by the production selection. Other fields are never synthesized.
-final class _CapturedApi implements AnimusUploadHttpPort {
+class _CapturedApi implements AnimusUploadHttpPort {
   final replacements = <String, String>{};
   final posts = <List<int>>[];
   final gets = <String>[];
@@ -168,6 +169,152 @@ final class _CapturedApi implements AnimusUploadHttpPort {
   Future<void> cancel() async {}
   @override
   Future<void> close() async {}
+}
+
+final _uiFixtures = Directory('test/fixtures/animus_workout_send_ui');
+List<int> _uiBytes(String name) =>
+    File('${_uiFixtures.path}/$name.json').readAsBytesSync();
+Map<String, dynamic> _uiJson(String name) =>
+    uploadMap(jsonDecode(utf8.decode(_uiBytes(name))));
+List<int> _uiRemap(String name, FrozenWorkoutSelection selected) {
+  final original = _uiJson('finish-null-notes.request');
+  final block = uploadMap(
+    (uploadMap(uploadMap(original['workout'])['draft'])['blocks'] as List)
+        .single,
+  );
+  final set = uploadMap(uploadMap((block['sets'] as List).single)['set']);
+  final exercise = selected.definitions.single;
+  final replacements = {
+    uploadMap(original['target'])['id'] as String:
+        selected.data['target_id'] as String,
+    uploadMap(block['exercise'])['id'] as String:
+        exercise['target_id'] as String,
+    block['id'] as String:
+        uploadMap(selected.data['block_ids'])[exercise['local_id']] as String,
+    uploadMap(set['id'])['value'] as String:
+        uploadMap(selected.data['set_ids'])[uploadMap(set['id'])['value']]
+            as String,
+  };
+  var text = utf8.decode(_uiBytes(name));
+  for (final entry in replacements.entries) {
+    text = text.replaceAll(entry.key, entry.value);
+  }
+  return utf8.encode(text);
+}
+
+/// Only actual UI captures are replayed: create200 and finish400. This fake
+/// deliberately supplies no invented corrected-success receipt.
+final class _UiCapturedApi extends _CapturedApi {
+  late FrozenWorkoutSelection selected;
+  bool rejectDefinition = false;
+  @override
+  Future<AnimusHttpResponse> post({
+    required Uri uri,
+    required Map<String, String> headers,
+    required List<int> body,
+    required int maxResponseBytes,
+    required Duration timeout,
+  }) async {
+    posts.add(List<int>.from(body));
+    final command = uploadMap(jsonDecode(utf8.decode(body)));
+    if (command['definition'] != null) {
+      if (rejectDefinition) {
+        return _response(
+          _fixtureBytes('20-definition-canonical-budget.response'),
+          status: 400,
+        );
+      }
+      return _response(_uiRemap('definition-create.response', selected));
+    }
+    return _response(_uiBytes('finish-null-notes.response'), status: 400);
+  }
+}
+
+Future<String> _seedUi(
+  LocalStore store, {
+  Map<String, Object?> metadata = const {},
+}) async {
+  final create = _uiJson('definition-create.request');
+  final fields = uploadMap(uploadMap(create['definition'])['definition']);
+  final exerciseId = uploadMap(create['target'])['id'] as String;
+  await ExerciseRepository.local(store).commitPrepared(
+    prepareDomain(
+      store,
+      RecordKind.exercise,
+      LocalActionKind.definitionCreate,
+      exerciseId,
+      0,
+      {
+        'fields': {
+          for (final e in fields.entries) e.key: uploadMap(e.value)['value'],
+        },
+      },
+      operationId: create['operation_id'] as String,
+    ),
+  );
+  final captured = _uiJson('finish-null-notes.request');
+  final workout = uploadMap(captured['workout']);
+  final draft = uploadMap(workout['draft']);
+  final block = uploadMap((draft['blocks'] as List).single);
+  final set = uploadMap(uploadMap((block['sets'] as List).single)['set']);
+  final id = _uuid.v4(), draftId = _uuid.v4();
+  await store.writeTransaction(
+    (tx) => tx.putLocalState(
+      LocalStateKind.draft,
+      'active',
+      localBytes({'draftId': draftId}),
+      expectedRevision: 0,
+    ),
+  );
+  final repository = WorkoutRepository.local(store);
+  final prepared = repository.prepareFinish(
+    write: SessionWrite(
+      id: id,
+      dateIso: (workout['finished_at'] as String).substring(0, 10),
+      splitLabel:
+          uploadMap(uploadMap(workout['workout'])['split_label'])['value']
+              as String,
+      durationMin: 4,
+      sets: [
+        SetWrite(
+          id: uploadMap(set['id'])['value'] as String,
+          exerciseId: exerciseId,
+          setNumber: 1,
+          weightKg: uploadMap(set['weight_kg'])['value'],
+          reps: uploadMap(set['reps'])['value'] as int,
+          rir: uploadMap(set['rir'])['value'] as int?,
+          isWarmup: uploadMap(set['is_warmup'])['value'] as bool,
+        ),
+      ],
+    ),
+    baseRevision: 0,
+    setBases: {},
+    recovery: {'synthetic': true},
+    draftRevision: 1,
+    draftId: draftId,
+    operationId: captured['operation_id'] as String,
+    finishTimeEvidence: {
+      'format': 'alkion-native-finish-time/1',
+      'finished_at': workout['finished_at'],
+      'offset_minutes': 60,
+      'timezone': 'synthetic-offset',
+      'elapsed_seconds': draft['elapsed_seconds'],
+    },
+  );
+  final input = Map<String, Object?>.from(prepared.input);
+  input['session'] = {...uploadMap(input['session']), ...metadata};
+  await repository.commitPrepared(
+    prepareDomain(
+      store,
+      RecordKind.workout,
+      LocalActionKind.workoutFinish,
+      id,
+      0,
+      input,
+      operationId: prepared.action.operationId,
+    ),
+  );
+  return id;
 }
 
 final class _Auth implements AnimusAuthPort {
@@ -436,6 +583,27 @@ void main() {
     );
   }
 
+  Future<FrozenWorkoutSelection> uiSelection({
+    Map<String, Object?> metadata = const {},
+  }) async {
+    await sender.close();
+    await connection.close();
+    await store.close();
+    await root.delete(recursive: true);
+    root = await Directory.systemTemp.createTemp('alkion-upload-ui-notes-');
+    await open();
+    session = await _seedUi(store, metadata: metadata);
+    api = _UiCapturedApi();
+    await connect();
+    await sender.select(session);
+    final frozen = (await WorkoutUploadRepository(
+      store,
+      store.profile.installationId,
+    ).load(session))!;
+    (api as _UiCapturedApi).selected = frozen;
+    return frozen;
+  }
+
   setUp(() async {
     root = await Directory.systemTemp.createTemp('alkion-upload-t2-');
     await open();
@@ -451,6 +619,161 @@ void main() {
     await store.close();
     await root.delete(recursive: true);
   });
+
+  test(
+    'actual UI absent notes are omitted by the production sender; workout400 is a value rejection',
+    () async {
+      final frozen = await uiSelection();
+      final selected = (await sender.selectionFor(session))!;
+      await sender.send(selected);
+      expect(api.posts.length, 2);
+      final actual = uploadMap(jsonDecode(utf8.decode(api.posts.last)));
+      final expected = uploadMap(
+        jsonDecode(utf8.decode(_uiRemap('finish-null-notes.request', frozen))),
+      );
+      (uploadMap(expected['workout'])['workout'] as Map).remove('notes');
+      expect(deepUploadEqual(actual, expected), isTrue);
+      expect(
+        uploadMap(uploadMap(actual['workout'])['workout']).containsKey('notes'),
+        isFalse,
+      );
+      final result = (await sender.selectionFor(session))!;
+      expect(result.status, AnimusWorkoutSendStatus.needsReview);
+      expect(result.issue, AnimusWorkoutSendIssue.invalidValues);
+      expect(result.canRetry, isFalse);
+    },
+  );
+
+  test(
+    'explicit null and nonstring metadata stay local before dependency writes',
+    () async {
+      for (final metadata in <Map<String, Object?>>[
+        {'notes': null},
+        {'notes': 3},
+        {'split_label': null},
+        {'split_label': false},
+      ]) {
+        await sender.close();
+        await connection.close();
+        await store.close();
+        await root.delete(recursive: true);
+        root = await Directory.systemTemp.createTemp(
+          'alkion-upload-ui-invalid-',
+        );
+        await open();
+        session = await _seedUi(store, metadata: metadata);
+        api = _UiCapturedApi();
+        await connect();
+        final selected = await sender.select(session);
+        expect(selected.issue, AnimusWorkoutSendIssue.invalidValues);
+        await sender.send(selected);
+        expect(api.gets, isEmpty);
+        expect(api.posts, isEmpty);
+        expect(await store.getAll('SELECT * FROM operation_attempts'), isEmpty);
+      }
+    },
+  );
+
+  test(
+    'a definition400 keeps the dependency rejection classification',
+    () async {
+      await uiSelection();
+      (api as _UiCapturedApi).rejectDefinition = true;
+      await sender.send((await sender.selectionFor(session))!);
+      expect(api.posts.length, 1);
+      expect(
+        (await sender.selectionFor(session))?.issue,
+        AnimusWorkoutSendIssue.dependencyFailed,
+      );
+    },
+  );
+
+  for (final knownRejection in [true, false]) {
+    test(
+      'captured old null-notes request ${knownRejection ? 'rejection stays review-only' : 'uncertainty retains identical replay'} without rewriting evidence',
+      () async {
+        final frozen = await uiSelection();
+        final repository = WorkoutUploadRepository(
+          store,
+          store.profile.installationId,
+        );
+        final binding = workoutBinding(
+          store.profile.installationId,
+          store.token,
+          connection.config!,
+          connection.identity!,
+        );
+        final create = uploadMap(
+          jsonDecode(
+            utf8.decode(_uiRemap('definition-create.request', frozen)),
+          ),
+        );
+        final dependency = await repository.freezeAttempt(
+          frozen,
+          binding,
+          create,
+          () {},
+        );
+        final createReceipt = uploadMap(
+          jsonDecode(
+            utf8.decode(_uiRemap('definition-create.response', frozen)),
+          ),
+        );
+        await repository.outcome(frozen, binding, dependency, {
+          'kind': 'acknowledged',
+          'record': createReceipt['record'],
+        }, () {});
+        final old = uploadMap(
+          jsonDecode(
+            utf8.decode(_uiRemap('finish-null-notes.request', frozen)),
+          ),
+        );
+        final attempt = await repository.freezeAttempt(
+          frozen,
+          binding,
+          old,
+          () {},
+        );
+        if (knownRejection) {
+          await repository.outcome(frozen, binding, attempt, {
+            'kind': 'rejected',
+            'issue': 'dependencyFailed',
+            'http_status': 400,
+          }, () {});
+        }
+        final before = await store.inventory();
+        final original = List<int>.from(attempt.bytes);
+        final selected = (await sender.selectionFor(session))!;
+        if (knownRejection) {
+          expect(selected.issue, AnimusWorkoutSendIssue.invalidValues);
+          expect(selected.canRetry, isFalse);
+        } else {
+          expect(selected.status, AnimusWorkoutSendStatus.uncertain);
+          expect(selected.canRetry, isTrue);
+        }
+        await sender.send(selected);
+        final retained = (await repository.attempt(frozen.operationId))!;
+        expect(retained.id, attempt.id);
+        expect(retained.bytes, original);
+        if (knownRejection) {
+          expect(api.posts, isEmpty);
+          expect(api.gets, isEmpty);
+          expect(await store.inventory(), before);
+        } else {
+          expect(api.posts, [original]);
+          expect(
+            (await sender.selectionFor(session))?.issue,
+            AnimusWorkoutSendIssue.invalidValues,
+          );
+          expect((await sender.selectionFor(session))?.canRetry, isFalse);
+          expect(
+            (await store.getAll('SELECT * FROM operation_attempts')).length,
+            2,
+          );
+        }
+      },
+    );
+  }
 
   test(
     'selection is durable, credential-free, freezes current History closure and only selected actions send',

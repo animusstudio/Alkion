@@ -51,6 +51,7 @@ final class AnimusWorkoutSelection {
   final bool readBackVerified;
   bool get canRetry =>
       selectionId.isNotEmpty &&
+      issue != AnimusWorkoutSendIssue.invalidValues &&
       (status == AnimusWorkoutSendStatus.ready ||
           status == AnimusWorkoutSendStatus.uncertain ||
           status == AnimusWorkoutSendStatus.needsReview ||

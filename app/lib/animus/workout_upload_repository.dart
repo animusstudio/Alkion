@@ -213,6 +213,7 @@ final class WorkoutUploadRepository {
     final finish = _nativeAction(finishRow, tx.profileId);
     final input = uploadMap(finish['input']);
     final session = uploadMap(input['session']);
+    _checkWorkoutMetadata(session);
     final time = input['finish_time_evidence'];
     if (time is! Map || !_validTime(uploadMap(time), session['date'])) {
       _block(AnimusWorkoutSendIssue.missingTimeEvidence);
@@ -551,7 +552,12 @@ final class WorkoutUploadRepository {
       );
     }
     final last = decoded.isEmpty ? null : decoded.last;
-    final issue = last == null
+    final issue =
+        last?['kind'] == 'rejected' &&
+            last?['http_status'] == 400 &&
+            a.command['workout'] != null
+        ? AnimusWorkoutSendIssue.invalidValues
+        : last == null
         ? null
         : AnimusWorkoutSendIssue.values
               .where((v) => v.name == last['issue'])
@@ -562,6 +568,14 @@ final class WorkoutUploadRepository {
           : AnimusWorkoutSendStatus.uncertain,
       issue: issue,
     );
+  }
+}
+
+void _checkWorkoutMetadata(Map<String, dynamic> session) {
+  try {
+    nativeWorkoutMetadata(session);
+  } on FormatException {
+    _block(AnimusWorkoutSendIssue.invalidValues);
   }
 }
 

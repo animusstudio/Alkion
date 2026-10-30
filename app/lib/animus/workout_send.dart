@@ -146,6 +146,30 @@ final class AnimusWorkoutSender extends ChangeNotifier
           );
         }
         final selection = frozen;
+        // New requests must have representable metadata before any dependency
+        // write. An already-frozen uncertain request retains identical replay.
+        if (await _repository.attempt(selection.operationId) == null) {
+          try {
+            nativeWorkoutMetadata(
+              uploadMap(
+                uploadMap(
+                  uploadMap(selection.data['finish'])['input'],
+                )['session'],
+              ),
+            );
+          } on FormatException {
+            throw const WorkoutUploadBlocked(
+              AnimusWorkoutSendIssue.invalidValues,
+            );
+          }
+        }
+        final saved = await _repository.summary(selection);
+        if (saved.status == AnimusWorkoutSendStatus.needsReview &&
+            saved.issue == AnimusWorkoutSendIssue.invalidValues) {
+          throw const WorkoutUploadBlocked(
+            AnimusWorkoutSendIssue.invalidValues,
+          );
+        }
         await _repository.check(binding, selection);
         scopeCheck();
         final requests = _ForegroundRequests(
@@ -340,6 +364,8 @@ final class AnimusWorkoutSender extends ChangeNotifier
         }
         final issue = response.statusCode == 401 || response.statusCode == 403
             ? AnimusWorkoutSendIssue.accessDenied
+            : response.statusCode == 400 && attempt.command['workout'] != null
+            ? AnimusWorkoutSendIssue.invalidValues
             : AnimusWorkoutSendIssue.dependencyFailed;
         // HTTP rejection is retained separately from transport uncertainty.
         await _repository.outcome(selection, binding, attempt, {
@@ -379,7 +405,8 @@ final class AnimusWorkoutSender extends ChangeNotifier
       // that same attempt uncertain; no replacement identity can be allocated.
       if (e is! WorkoutUploadBlocked ||
           (e.issue != AnimusWorkoutSendIssue.accessDenied &&
-              e.issue != AnimusWorkoutSendIssue.dependencyFailed)) {
+              e.issue != AnimusWorkoutSendIssue.dependencyFailed &&
+              e.issue != AnimusWorkoutSendIssue.invalidValues)) {
         try {
           await _repository.outcome(selection, binding, attempt, {
             'kind': 'uncertain',
@@ -593,10 +620,7 @@ Map<String, dynamic> _workoutCommand(
     'workout': {
       'action': 'finish',
       'finished_at': time['finished_at'],
-      'workout': {
-        'split_label': uploadValue(session['split_label']),
-        'notes': uploadValue(session['notes']),
-      },
+      'workout': nativeWorkoutMetadata(session),
       'draft': {
         'session_id': target,
         'elapsed_seconds': time['elapsed_seconds'],

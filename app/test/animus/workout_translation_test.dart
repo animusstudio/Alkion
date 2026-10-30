@@ -64,4 +64,48 @@ void main() {
       expect(dartTime.wireHash, isNot(original.wireHash));
     },
   );
+  test(
+    'actual UI metadata preserves absent, empty and text without inventing a null clear',
+    () {
+      final capture = uploadMap(
+        jsonDecode(
+          File(
+            'test/fixtures/animus_workout_send_ui/finish-null-notes.request.json',
+          ).readAsStringSync(),
+        ),
+      );
+      // Measured by production Go PrepareCommand from the exact UI capture.
+      // Only notes omission changes; this is not a corrected HTTP200 fixture.
+      final original = AnimusCommandBytes(capture);
+      expect(original.canonical.length, 7419);
+      expect(
+        original.canonicalHash,
+        '91fb381e8185f8484387689529eb0dbe7b4ec350a267caf74e5d2822be2381f2',
+      );
+      final corrected = uploadMap(jsonDecode(jsonEncode(capture)));
+      (uploadMap(corrected['workout'])['workout'] as Map).remove('notes');
+      final omitted = AnimusCommandBytes(corrected);
+      expect(omitted.canonical.length, 7415);
+      expect(
+        omitted.canonicalHash,
+        '880f76fd6b3053ee558e4610c66bffdddb032744d00802e1c3a3e22947b8a550',
+      );
+      final metadata = uploadMap(uploadMap(capture['workout'])['workout']);
+      expect(metadata['notes'], uploadValue(null));
+      final absent = <String, dynamic>{
+        'split_label': uploadMap(metadata['split_label'])['value'],
+      };
+      expect(nativeWorkoutMetadata(absent).containsKey('notes'), isFalse);
+      for (final value in ['', 'Saved note']) {
+        final mapped = nativeWorkoutMetadata({...absent, 'notes': value});
+        expect(mapped['notes'], uploadValue(value));
+      }
+      for (final value in [null, 3, false]) {
+        expect(
+          () => nativeWorkoutMetadata({...absent, 'notes': value}),
+          throwsFormatException,
+        );
+      }
+    },
+  );
 }
