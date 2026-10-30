@@ -116,7 +116,14 @@ class CatalogFilter {
     this.equipmentKinds = const [],
     this.facets = const {},
     this.excludedFacets = const {},
+    this.groupKey,
+    this.includeSecondary = false,
   });
+
+  /// Null is All. Unclassified means explicitly unresolved browse membership.
+  static const unclassified = 'unclassified';
+  final String? groupKey;
+  final bool includeSecondary;
   final List<String> familyIds;
   final List<String> equipmentKinds;
   final Map<String, List<String>> facets;
@@ -139,16 +146,66 @@ class CatalogFilter {
       excludedFacets: group('excluded_facets'),
     );
   }
-  bool matches(CatalogVariant v) =>
+  CatalogFilter copyWith({
+    List<String>? familyIds,
+    List<String>? equipmentKinds,
+    Map<String, List<String>>? facets,
+    Map<String, List<String>>? excludedFacets,
+    String? groupKey,
+    bool clearGroup = false,
+    bool? includeSecondary,
+  }) => CatalogFilter(
+    familyIds: familyIds ?? this.familyIds,
+    equipmentKinds: equipmentKinds ?? this.equipmentKinds,
+    facets: facets ?? this.facets,
+    excludedFacets: excludedFacets ?? this.excludedFacets,
+    groupKey: clearGroup ? null : groupKey ?? this.groupKey,
+    includeSecondary: includeSecondary ?? this.includeSecondary,
+  );
+
+  /// Runtime group scopes require the reviewed browse input. A caller that
+  /// omits it fails closed; catalog-authored legacy selectors stay unscoped.
+  bool matches(
+    CatalogVariant v, {
+    CatalogBrowse? browse,
+    bool secondaryOnly = false,
+  }) =>
       (familyIds.isEmpty || familyIds.contains(v.familyId)) &&
       (equipmentKinds.isEmpty || equipmentKinds.contains(v.equipmentKind)) &&
       facets.entries.every((e) => e.value.contains(v.facets[e.key])) &&
-      excludedFacets.entries.every((e) => !e.value.contains(v.facets[e.key]));
+      excludedFacets.entries.every((e) => !e.value.contains(v.facets[e.key])) &&
+      _matchesGroup(v, browse, secondaryOnly);
+
+  bool _matchesGroup(
+    CatalogVariant v,
+    CatalogBrowse? browse,
+    bool secondaryOnly,
+  ) {
+    if (groupKey == null) return !secondaryOnly;
+    final membership = browse?.variants[v.id];
+    if (membership == null) return false;
+    if (groupKey == unclassified) {
+      return !secondaryOnly && membership.status == 'unresolved';
+    }
+    final group = browse?.groups[groupKey];
+    if (group == null || membership.status != 'reviewed') return false;
+    if (group.kind == 'activity') {
+      return !secondaryOnly && membership.activityGroups.contains(groupKey);
+    }
+    final target = membership.targetGroups.contains(groupKey);
+    final secondary = membership.secondaryGroups.contains(groupKey);
+    return secondaryOnly
+        ? includeSecondary && secondary && !target
+        : target || (includeSecondary && secondary);
+  }
+
   Map<String, dynamic> toJson() => {
     'family_ids': familyIds,
     'equipment_kinds': equipmentKinds,
     'facets': facets,
     'excluded_facets': excludedFacets,
+    'group_key': groupKey,
+    'include_secondary': includeSecondary,
   };
 }
 

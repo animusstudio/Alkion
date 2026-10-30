@@ -98,6 +98,15 @@ class CatalogHit {
   String? get variantId => kind == 'variant' ? id : null;
 }
 
+class CatalogGroupAction {
+  const CatalogGroupAction({
+    required this.groupKey,
+    required this.label,
+    required this.kind,
+  });
+  final String groupKey, label, kind;
+}
+
 class CatalogSearchResult {
   CatalogSearchResult({
     required this.status,
@@ -106,12 +115,38 @@ class CatalogSearchResult {
     required List<String> corrections,
     required List<String> unresolvedTokens,
     required this.identity,
-  }) : strict = List.unmodifiable(strict),
+    List<CatalogHit> secondaryStrict = const [],
+    List<CatalogHit> secondarySuggested = const [],
+    List<CatalogGroupAction> groupActions = const [],
+    this.scopeUnavailableReason,
+  }) : secondaryStrict = List.unmodifiable(secondaryStrict),
+       secondarySuggested = List.unmodifiable(secondarySuggested),
+       groupActions = List.unmodifiable(groupActions),
+       strict = List.unmodifiable(strict),
        suggested = List.unmodifiable(suggested),
        corrections = List.unmodifiable(corrections),
        unresolvedTokens = List.unmodifiable(unresolvedTokens);
   final String status, identity;
-  final List<CatalogHit> strict, suggested;
+  final List<CatalogHit> strict, suggested, secondaryStrict, secondarySuggested;
+  final List<CatalogGroupAction> groupActions;
+  final String? scopeUnavailableReason;
+
+  List<CatalogHit> get secondaryRows {
+    final navigation = secondaryStrict.where((h) => h.isNavigation).toList();
+    return List.unmodifiable(navigation.isEmpty ? secondaryStrict : navigation);
+  }
+
+  Set<String> _ids(Iterable<CatalogHit> hits) => Set.unmodifiable({
+    for (final hit in hits)
+      if (hit.variantId != null) hit.variantId! else ...?hit.admittedVariantIds,
+  });
+  Set<String> get variantIds => _ids(strict);
+  Set<String> get secondaryVariantIds => _ids(secondaryStrict);
+  bool admitsVariant(String id, {bool includeSuggestions = false}) =>
+      variantIds.contains(id) ||
+      secondaryVariantIds.contains(id) ||
+      (includeSuggestions &&
+          _ids([...suggested, ...secondarySuggested]).contains(id));
   final List<String> corrections, unresolvedTokens;
 
   /// Primary rows collapse broad family/collection navigation, while strict
@@ -171,6 +206,9 @@ class CatalogIndex {
       catalogCanonicalJson([
         bundle.digest,
         bundle.searchRevision,
+        bundle.browse?.digest,
+        bundle.browse?.classificationRevision,
+        bundle.browseUnavailableReason,
         catalogNormalizationPolicy,
         'labels-stable-identity-v2',
         locale,
@@ -302,7 +340,9 @@ class CatalogIndex {
         : admitted.map((id) => bundle.variants[id]).whereType<CatalogVariant>();
     final variants = candidates
         .where(
-          (v) => bundle.targetMatches(hit.kind, hit.id, v) && filter.matches(v),
+          (v) =>
+              bundle.targetMatches(hit.kind, hit.id, v) &&
+              filter.matches(v, browse: bundle.browse),
         )
         .toList();
     if (admitted == null) {
@@ -509,9 +549,142 @@ class CatalogIndex {
     return allowed;
   }
 
+  List<CatalogBrowseGroup> get browseGroups {
+    final groups =
+        bundle.browse?.groups.values.toList() ?? <CatalogBrowseGroup>[];
+    groups.sort((a, b) {
+      final order = catalogNormalize(
+        groupLabel(a),
+      ).compareTo(catalogNormalize(groupLabel(b)));
+      return order != 0 ? order : a.key.compareTo(b.key);
+    });
+    return List.unmodifiable(groups);
+  }
+
+  String groupLabel(CatalogBrowseGroup group) =>
+      group.names[locale] ?? group.names['en']!;
+
+  String? scopeUnavailableReason(CatalogFilter filter) {
+    if (filter.groupKey == null) return null;
+    if (bundle.browse == null) {
+      return bundle.browseUnavailableReason ?? 'missing';
+    }
+    if (filter.groupKey != CatalogFilter.unclassified &&
+        !bundle.browse!.groups.containsKey(filter.groupKey)) {
+      return 'unsupported_group';
+    }
+    return null;
+  }
+
+  List<CatalogGroupAction> groupActions(String query) {
+    final key = catalogNormalize(query);
+    if (key.isEmpty) return const [];
+    return List.unmodifiable([
+      for (final group in browseGroups)
+        if ([
+          group.names[locale],
+          ...?group.synonyms[locale],
+        ].whereType<String>().any((name) => catalogNormalize(name) == key))
+          CatalogGroupAction(
+            groupKey: group.key,
+            label: groupLabel(group),
+            kind: group.kind,
+          ),
+    ]);
+  }
+
+  /// Useful for favorites/recents without a second, less restrictive matcher.
+  bool matchesVariant(
+    String id, {
+    String query = '',
+    CatalogFilter filter = const CatalogFilter(),
+    bool includeSuggestions = false,
+  }) => search(
+    query,
+    filter: filter,
+  ).admitsVariant(id, includeSuggestions: includeSuggestions);
+
+  /// Remove only the equipment constraint: selected scope, query and family stay.
+  List<String> availableEquipment(
+    String query, {
+    CatalogFilter filter = const CatalogFilter(),
+  }) {
+    final result = search(
+      query,
+      filter: filter.copyWith(equipmentKinds: const []),
+    );
+    final kinds = <String>{
+      for (final id in {...result.variantIds, ...result.secondaryVariantIds})
+        bundle.variants[id]!.equipmentKind,
+    }.toList();
+    kinds.sort((a, b) {
+      final order = catalogNormalize(
+        CatalogLabels(locale).equipment(a),
+      ).compareTo(catalogNormalize(CatalogLabels(locale).equipment(b)));
+      return order != 0 ? order : a.compareTo(b);
+    });
+    return List.unmodifiable(kinds);
+  }
+
+  /// Custom groups are explicit personal choices, never inferred anatomy facts.
+  bool matchesCustomName(
+    String name, {
+    String query = '',
+    CatalogFilter filter = const CatalogFilter(),
+    Set<String> personalGroups = const {},
+  }) {
+    if (filter.familyIds.isNotEmpty ||
+        filter.equipmentKinds.isNotEmpty ||
+        filter.facets.isNotEmpty ||
+        filter.excludedFacets.isNotEmpty ||
+        scopeUnavailableReason(filter) != null) {
+      return false;
+    }
+    final group = filter.groupKey;
+    if (group == CatalogFilter.unclassified && personalGroups.isNotEmpty) {
+      return false;
+    }
+    if (group != null &&
+        group != CatalogFilter.unclassified &&
+        !personalGroups.contains(group)) {
+      return false;
+    }
+    return catalogNormalize(name).contains(catalogNormalize(query));
+  }
+
   CatalogSearchResult search(
     String query, {
     CatalogFilter filter = const CatalogFilter(),
+  }) {
+    final primary = _search(
+      query,
+      filter: filter.copyWith(includeSecondary: false),
+    );
+    final secondary = filter.includeSecondary && filter.groupKey != null
+        ? _search(query, filter: filter, secondaryOnly: true)
+        : null;
+    final unavailable = scopeUnavailableReason(filter);
+    return CatalogSearchResult(
+      status: unavailable == null ? primary.status : 'browse_unavailable',
+      strict: primary.strict,
+      suggested: primary.suggested,
+      secondaryStrict: secondary?.strict ?? const [],
+      secondarySuggested: secondary?.suggested ?? const [],
+      groupActions: groupActions(query),
+      scopeUnavailableReason: unavailable,
+      corrections: {...primary.corrections, ...?secondary?.corrections}.toList()
+        ..sort(),
+      unresolvedTokens: primary.unresolvedTokens,
+      identity: catalogHash(
+        catalogCanonicalJson([identity, query, filter.toJson()]),
+      ),
+    );
+  }
+
+  CatalogSearchResult _search(
+    String query, {
+    CatalogFilter filter = const CatalogFilter(),
+    bool secondaryOnly = false,
   }) {
     final key = catalogNormalize(query),
         words = catalogNormalize(
@@ -540,7 +713,13 @@ class CatalogIndex {
       return result('input_limit', [], [], []);
     }
     final filtered = bundle.variants.values
-        .where(filter.matches)
+        .where(
+          (v) => filter.matches(
+            v,
+            browse: bundle.browse,
+            secondaryOnly: secondaryOnly,
+          ),
+        )
         .map((v) => v.id)
         .toSet();
     final allowed = _qualified(words, filtered),
@@ -604,8 +783,15 @@ class CatalogIndex {
             catalogLiteralKey(t.text) != catalogLiteralKey(query)) {
           continue;
         }
-        if (t.kind == 'equipment_model' ||
-            label.ids.intersection(allowed).isNotEmpty) {
+        final unscopedModel =
+            t.kind == 'equipment_model' &&
+            filter.groupKey == null &&
+            !secondaryOnly &&
+            filter.familyIds.isEmpty &&
+            filter.equipmentKinds.isEmpty &&
+            filter.facets.isEmpty &&
+            filter.excludedFacets.isEmpty;
+        if (unscopedModel || label.ids.intersection(allowed).isNotEmpty) {
           // A scoped term's target is an editorial vocabulary carrier, not
           // permission to navigate to every execution in that family.
           if (t.kind == 'variant' ||
