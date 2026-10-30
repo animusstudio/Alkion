@@ -1,6 +1,6 @@
 # Alkion development and qualified driver handoff
 
-2026-10-29 · [Muscle-guided exercise discovery](../plans/2026-10-29-muscle-guided-exercise-discovery.md) · Proposed.
+2026-10-30 · [Exercise discovery and selection usability](../plans/2026-10-29-muscle-guided-exercise-discovery.md) · Proposed.
 
 2026-10-29 · [Native exercise catalog integration](../plans/2026-10-29-exercise-catalog-integration.md) · Approved.
 2026-10-29 · [Exercise integration specification](../specs/2026-10-29-exercise-catalog-integration.md) · Approved.
