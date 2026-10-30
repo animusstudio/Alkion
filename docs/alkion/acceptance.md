@@ -990,3 +990,39 @@ Host CPU-only ellipse sampling median improves compact1.315→0.533ms and enlarg
 The [approved plan](../plans/2026-10-28-android-runtime-resume.md) is complete at `0e1a739c708a89cf950c006e2da6d4556b3af7fc`: one process-owned Flutter runtime preserves the store owner across Activity recreation; body views reattach and interrupted document requests finish once. Store locks and schemas remain unchanged. Independent review PASS, no findings.
 The baseline reproduced `profile_in_use` after actual Activity recreation in the same PID. Corrected source passed three recorded destroy/create cycles retaining an active synthetic draft, ordinary resume, root Back/reopen, cold restart with unchanged draft identity/state, and two DocumentsUI interruption/retry checks. All 35 focused tests, analyzer (zero issues), existing native bridge/runtime/material checks and both APK builds PASS.
 Optimized ARM64 Dev APK SHA256 `690f9063a34bc52b7be22796ce33ac062f06371cfc836cf539540969bb1975ba` was installed in place on Nothing A024; launch and ordinary background/reopen retained its process. No uninstall, data clear, owner-store/UI inspection or phone-setting change. The scratch emulator is stopped. Software-emulator artwork was unavailable; physical rendering/performance was not requalified. Private receipts retain exact commands/results; no public push.
+
+
+## Catalog in the normal Dev app — 2026-10-30
+
+The [owner-directed integration](../plans/2026-10-30-catalog-in-alkion-dev.md)
+activates durable catalog discovery in the normal private Dev build, preserving
+its package/profile identity and owned/custom exercises. Product source through
+`21b3dd6` adds schema-5 bindings and contexts, exact typed measurements, versioned
+drafts, supported exact-context load progression and version-aware recovery.
+Catalog absence keeps saved typed workouts readable and resumable. Independent
+design, task and final integration reviews PASS after bounded preservation fixes.
+
+Storage tests **87 PASS**, runtime/UI focused tests **186 PASS**, final retained-RIR
+recheck **9 PASS**, packaging tests **38 PASS**, analyzer and owned formatting PASS.
+The first full-suite run recorded **2059 passed, 18 failed, 2 optional skips**;
+all failures came from outdated current-schema/export expectations and a
+qualification helper using current tables against an older fixture. Bounded
+fixture/tool fixes retain historical fixtures and evidence assertions: **68
+related tests PASS**, **35 real store-recovery cases PASS**, and **4 transfer crash
+boundaries plus split negative control PASS**. Final full CI remains the merge gate.
+
+A fresh synthetic Android profile exercises actual private muscle/name discovery,
+a 65.25-second duration entry surviving process death, a 20.5-kg/eight-repetition
+set, mixed-profile Finish and typed History. Normal UI widget journeys also cover
+History correction, uncertain-COMMIT retry, routine counts and 320dp/2× text;
+a native 320dp/2× History spot check retains scrollable measurements. Legacy
+aggregate volume reports its compatibility coverage instead of mixing quantities.
+
+The x86_64 debug and optimized ARM64 private Dev APKs pass exact catalog-byte and
+current-code/native-library checks, with approved artwork staged. The actual
+default APK passes private-catalog exclusion. Guards detected stale local JNI
+merge outputs; bounded generated-output cleanup and repackaging passed with guards
+intact. TalkBack is unavailable on the scratch image; physical artwork/gesture
+performance is not requalified. Owner-profile inspection remains excluded. Source
+merge and the already-authorized in-place phone update are pending green CI;
+final delivery evidence belongs to the PR and private receipts.

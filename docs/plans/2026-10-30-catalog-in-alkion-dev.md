@@ -1,7 +1,7 @@
 # Catalog in the normal Alkion Dev app
 
 Date: 2026-10-30. Lane: **Full — durable identity, measurements and preservation.**
-Status: **Owner-directed activation of approved integration T4–T6; design review PASS, implementing.**
+Status: **Source and synthetic qualification PASS; PR delivery and authorized phone update pending.**
 Owner direction: “I want the new catalog on Alkion dev.” This supersedes the earlier
 trial-only rollout restriction; it does not publish the private catalog dataset.
 Parent: [development](../alkion/development.md). Related: [concrete design](../specs/2026-10-30-catalog-in-alkion-dev.md),
@@ -110,4 +110,20 @@ from host tests. Public outgoing review excludes all private inputs and receipts
 
 Baseline main `4c3b84c`, clean branch `feat/catalog-dev-integration-20261030`.
 P1 independent full design review PASS after setup-preservation and draft-envelope fixes.
-P2–P4 implementing with disjoint ownership; P5 pending. Next: task reviews and integrated checks.
+P2 `ecb7f45`, P3 `21b3dd6` and P4 `50bf499` have independent task review PASS;
+final integrated product review PASS at `21b3dd6`. Storage tests 87 PASS,
+runtime/UI focused tests 186 PASS, final preservation recheck 9 PASS and packaging
+unit tests 38 PASS; analyzer is clean. First full-suite run: 2059 passed, 18 stale
+current-schema/export fixture failures and 2 optional skips. Bounded fixes
+`fc366cf` and `c7e97a0` preserve old-schema fixtures; all 68 affected tests and the
+actual store/transfer recovery campaigns pass, with independent fix review PASS.
+
+P5 synthetic Android qualification passes normal catalog muscle/name discovery,
+duration and load/repetition logging, exact draft cold resume, Finish and typed
+History. A 320dp/2× History spot check retains readable scrollable typed records;
+host normal-app journeys cover 412dp and 320dp/2× through History correction.
+Both private APK routes pass freshness/catalog checks; the actual default APK
+passes private-catalog exclusion. Stale local JNI merge outputs were detected and
+repackaged without bypassing checks. TalkBack and physical renderer/performance
+are not requalified. Final CI, merge and phone install receipts belong to the PR
+and private delivery record; no owner profile was inspected.

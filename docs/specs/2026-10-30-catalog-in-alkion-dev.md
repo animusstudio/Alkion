@@ -122,10 +122,14 @@ The storage worker owns these data models; the runtime worker owns controller
 models and consumes the same pure evidence types.
 
 `CatalogPersonalStateStore` uses the existing `LocalStateKind.catalogSelection`
-under separate `exercise-discovery:<bundleDigest>:<locale>` keys; it never
+under the separate `exercise-discovery:<bundleDigest>:shared` key; it never
 overlaps the catalog installer's namespace keys. Its
-`alkion-personal-catalog`, version 1 payload contains bundle digest, locale,
-ordered exact-choice recents, favorites and eligible remembered-label references.
+`alkion-personal-catalog`, version 1 payload contains bundle digest, explicit
+`scope: shared`, ordered exact-choice recents and favorites. These identities
+survive a locale change; locale remains a presentation/index partition and any
+future remembered-label entries must carry their own eligible locale. `shared`
+is a metadata scope, not a UI locale. No durable version of this feature has
+been deployed, so this key choice requires no user-data migration.
 Custom groups live on their owned execution definitions. Read/write uses the
 actual profile/token/generation and observed local-state revision; frozen-byte
 retry reconciles the same revision as draft preferences do. These local
