@@ -887,5 +887,7 @@
   "catalogProgressUnsupported": "Für dieses Messprofil oder Gerät ist keine Lastprogression verfügbar.",
   "catalogSelectSetup": "Gerät auswählen",
   "catalogUseLast": "Letzte Werte verwenden",
-  "catalogMarkPending": "Als nicht protokolliert markieren"
+  "catalogMarkPending": "Als nicht protokolliert markieren",
+  "catalogCustomExercise": "Eigene Übung",
+  "catalogLegacyExercise": "Bisherige Übung"
 }

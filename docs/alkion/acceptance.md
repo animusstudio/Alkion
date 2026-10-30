@@ -1024,5 +1024,50 @@ default APK passes private-catalog exclusion. Guards detected stale local JNI
 merge outputs; bounded generated-output cleanup and repackaging passed with guards
 intact. TalkBack is unavailable on the scratch image; physical artwork/gesture
 performance is not requalified. Owner-profile inspection remains excluded. Source
-merge and the already-authorized in-place phone update are pending green CI;
-final delivery evidence belongs to the PR and private receipts.
+merged through [PR #41](https://github.com/animusstudio/Alkion/pull/41) at `6489526`
+on green CI; the verified Dev APK updated the authorized phone in place. Receipts
+record the installed executable hash and launch, without owner-profile inspection.
+
+## Direct catalog browsing and responsiveness — 2026-10-30
+
+The [approved plan](../plans/2026-10-30-catalog-direct-browse-performance.md)
+makes Plan → Exercises the catalog browser. Families lead to concrete variations
+and details; ordinary browsing does not materialize owned exercises. Explicit
+custom creation retains typed measurement profiles, while day/workout selection
+continues using the existing durable action. Personal entries remain searchable
+and editable, and absence of the private bundle retains the owned/custom library.
+
+Source `b4e71fa` caches normalized sort keys, bounded query/filter snapshots and
+equipment results; recents/favorites no longer rebuild immutable vocabulary.
+Source `a102b11` shares a lazy browser between embedded inspection and modal
+selection, retains navigation/scroll, and derives search results after input paint.
+Independent reviews PASS, including fixes for parent-list scroll restoration,
+unsupported legacy favorites and single-owner Android Back handling.
+
+Focused index/runtime checks **45 PASS**; private original/current comparisons
+**8,656 PASS** across four locales. Final affected catalog, UI, day, Plan and
+session suite **178 PASS**, analyzer clean, formatting **438 files/0 changes**.
+Actual-app tests cover browsing without domain writes, nested keyboard/family/group
+Back, typed-custom save/edit, retained sub-tab state, durable favorite reload,
+lazy semantics and embedded 320/412dp at 2× text in all four locales/both themes.
+
+Same-input host JIT diagnostics reduce median blank-catalog computation from
+142.7 to 2.77 ms and cold index plus computation from 275.3 to 67.3 ms. These
+exclude native input delivery, layout/raster and storage; they are not phone
+responsiveness qualification. Native inspection of the full private input found
+that expanded equipment choices hid every exercise at normal text size. Reviewed
+fix `98559d8` uses compact explicit equipment selection and a clearable active chip.
+The 25 browser cases and existing modal equipment check pass across focused runs.
+
+One bounded native confirmation on the disposable Android emulator shows four
+complete family rows immediately at approximately 411dp/1×. Selecting and clearing
+equipment changes the same family from six matching variations to two and back
+to six. At 320dp/2×, actual keyboard rendering, visible search/clear controls,
+Android Back and scrolling to readable matching rows pass; light/dark and retained
+family/detail/sub-tab navigation were checked. Software-emulator artwork and
+actual TalkBack traversal remain unqualified. Full Dev x64 and optimized ARM64
+artifacts pass exact private assets, signer and current native-code checks.
+
+Optimized physical A6 timing, final CI and this change's authorized Dev update
+remain pending. A separate synthetic benchmark identity isolates measurement
+from owner-profile contents; emulator layout evidence is not phone performance.

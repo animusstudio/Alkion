@@ -185,6 +185,41 @@ void main() {
   );
 
   test(
+    'recents and favorites retain vocabulary indexes across locale and restart',
+    () async {
+      runtime = await AlkionRuntime.open(root, catalogBundle: _bundle());
+      final state = runtime!.catalog!;
+      final english = state.index('en'), italian = state.index('it');
+      final result = english.search('curl');
+      final choice = CatalogChoice.variant(
+        state.bundle.variants.values.first.id,
+      );
+      state.remember(choice, locale: 'en');
+      state.toggleFavorite(choice);
+      expect(state.index('en'), same(english));
+      expect(state.index('en').search('curl'), same(result));
+      expect(state.index('it'), same(italian));
+      expect(state.recents.single.key, choice.key);
+      expect(state.favorites, contains(choice.key));
+      await runtime!.flushPersistence();
+      await runtime!.close();
+      runtime = null;
+      expect(() => state.index('en'), throwsA(isA<Exception>()));
+      runtime = await AlkionRuntime.open(root, catalogBundle: _bundle());
+      final fresh = runtime!.catalog!;
+      expect(fresh.index('en'), isNot(same(english)));
+      expect(fresh.index('en').identity, english.identity);
+      expect(fresh.recents.single.key, choice.key);
+      expect(fresh.favorites, contains(choice.key));
+      final freshIndex = fresh.index('en');
+      fresh.toggleFavorite(choice);
+      expect(fresh.index('en'), same(freshIndex));
+      expect(fresh.favorites, isNot(contains(choice.key)));
+      await runtime!.flushPersistence();
+    },
+  );
+
+  test(
     'setup append preserves all old pending values, timer and block identity',
     () async {
       runtime = await AlkionRuntime.open(root, catalogBundle: _bundle());

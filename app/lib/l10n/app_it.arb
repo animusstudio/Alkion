@@ -887,5 +887,7 @@
   "catalogProgressUnsupported": "La progressione del carico non è disponibile per queste misure o questo attrezzo.",
   "catalogSelectSetup": "Scegli attrezzatura",
   "catalogUseLast": "Usa gli ultimi valori",
-  "catalogMarkPending": "Segna come non registrata"
+  "catalogMarkPending": "Segna come non registrata",
+  "catalogCustomExercise": "Esercizio personale",
+  "catalogLegacyExercise": "Esercizio precedente"
 }

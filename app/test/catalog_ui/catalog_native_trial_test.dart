@@ -49,6 +49,23 @@ Widget app(
   home: Scaffold(body: child),
 );
 
+Future<void> revealPicker(WidgetTester tester, Finder finder) async {
+  // Input paint precedes the committed result frame; then build the lazy row.
+  await tester.pump();
+  await tester.pump();
+  await tester.scrollUntilVisible(
+    finder,
+    100,
+    scrollable: find
+        .descendant(
+          of: find.byType(CatalogPicker),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+  await tester.pump();
+}
+
 void main() {
   setUpAll(preloadAppFonts);
   testWidgets(
@@ -159,6 +176,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('catalog-search')), 'curl');
       await tester.pump();
+      await tester.pump();
+      await revealPicker(tester, find.text('Curl'));
       expect(find.text('Curl'), findsOneWidget);
       expect(find.text('Neutral dumbbell curl'), findsNothing);
       await tester.tap(find.text('Curl'));
@@ -167,6 +186,7 @@ void main() {
           .firstWhere((v) => v.key == 'neutral_curl')
           .id;
       final neutralRow = find.byKey(ValueKey('variant:$neutralId@default'));
+      await revealPicker(tester, neutralRow);
       expect(neutralRow, findsOneWidget);
       expect(find.text('Add selected · 0'), findsOneWidget);
       await tester.ensureVisible(neutralRow);
@@ -192,6 +212,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Add selected · 2'), findsOneWidget);
       if (find.byTooltip('Leave exercise family').evaluate().isNotEmpty) {
+        await tester.ensureVisible(
+          find.byTooltip('Leave exercise family').first,
+        );
+        await tester.pump();
         await tester.tap(find.byTooltip('Leave exercise family').first);
         await tester.pump();
       }
@@ -200,11 +224,20 @@ void main() {
         'Standing barbell shoulder press',
       );
       await tester.pump();
+      await tester.pump();
+      final pressId = state.bundle.variants.values
+          .firstWhere((v) => v.key == 'standing_press')
+          .id;
+      final exactRow = find.byKey(ValueKey('variant:$pressId@default'));
+      await revealPicker(tester, exactRow);
+      expect(exactRow.hitTestable(), findsOneWidget);
       expect(
-        find
-            .text('Standing barbell shoulder press', skipOffstage: true)
-            .hitTestable(),
-        findsWidgets,
+        find.byKey(
+          ValueKey(
+            'catalog-navigation-family-${state.bundle.variants[pressId]!.familyId}',
+          ),
+        ),
+        findsNothing,
       );
       expect(find.text('Add selected · 2'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
@@ -222,6 +255,7 @@ void main() {
       find.byKey(const Key('catalog-search')),
       'My travel movement',
     );
+    await tester.pump();
     await tester.pump();
     await tester.ensureVisible(find.text('Create custom exercise'));
     await tester.tap(find.text('Create custom exercise'));
@@ -325,6 +359,7 @@ void main() {
       await tester.ensureVisible(find.byKey(const Key('catalog-search')));
       await tester.enterText(find.byKey(const Key('catalog-search')), 'curl');
       await tester.pump();
+      await tester.pump();
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       state.dispose();
@@ -360,7 +395,12 @@ void main() {
         'Machine curl',
       );
       await tester.pump();
-      final row = find.byType(CatalogPickerRow).first;
+      await tester.pump();
+      final machineId = state.bundle.variants.values
+          .firstWhere((v) => v.key == 'unknown_machine_curl')
+          .id;
+      final row = find.byKey(ValueKey('variant:$machineId@default'));
+      await revealPicker(tester, row);
       await tester.tap(row);
       await tester.pump();
       await tester.tap(find.byTooltip('Details').first);
@@ -551,6 +591,7 @@ void main() {
         'Movimento personale',
       );
       await tester.pump();
+      await tester.pump();
       final create = find.text('Crea esercizio personale');
       await tester.scrollUntilVisible(
         create,
@@ -605,9 +646,12 @@ void main() {
       );
       await tester.tap(find.text('Open picker'));
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(ListView), const Offset(0, -2000));
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -2000));
       await tester.pumpAndSettle();
       final create = find.widgetWithText(TextButton, 'Create custom exercise');
+      await tester.ensureVisible(create);
+      await tester.pumpAndSettle();
+      expect(create.hitTestable(), findsOneWidget);
       expect(tester.getBottomRight(create).dy, lessThanOrEqualTo(752));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -623,6 +667,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('catalog-search')), 'curl');
       await tester.pump();
+      await tester.pump();
+      await revealPicker(tester, find.text('Curl'));
       await tester.tap(find.text('Curl'));
       await tester.pump();
       final machine = find.widgetWithText(FilterChip, 'Machine');
@@ -675,6 +721,8 @@ void main() {
         'Standing barbell shoulder press',
       );
       await tester.pump();
+      await tester.pump();
+      await revealPicker(tester, find.byKey(ValueKey(standing.key)));
       expect(find.byKey(ValueKey(standing.key)), findsOneWidget);
       expect(find.byKey(ValueKey(curl.key)), findsNothing);
       expect(find.byKey(ValueKey(known.key)), findsNothing);
@@ -683,6 +731,8 @@ void main() {
         'MY CAFE HOLD',
       );
       await tester.pump();
+      await tester.pump();
+      await revealPicker(tester, find.byKey(ValueKey(customA.key)));
       expect(customA.key, isNot(customB.key));
       expect(find.byKey(ValueKey(customA.key)), findsOneWidget);
       expect(find.byKey(ValueKey(customB.key)), findsOneWidget);
@@ -700,6 +750,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilterChip, 'Favorites'));
       await tester.pump();
+      await revealPicker(tester, find.byKey(ValueKey(curl.key)));
       expect(find.byKey(ValueKey(curl.key)), findsOneWidget);
       expect(find.byKey(ValueKey(known.key)), findsOneWidget);
       expect(find.byKey(ValueKey(standing.key)), findsNothing);
@@ -709,6 +760,7 @@ void main() {
         find.byKey(const Key('catalog-search')),
         'Standing barbell shoulder press',
       );
+      await tester.pump();
       await tester.pump();
       expect(find.byType(CatalogPickerRow), findsNothing);
       await tester.pumpWidget(const SizedBox());
@@ -776,11 +828,23 @@ void main() {
           );
         }
 
+        Future<void> openLibraryFamily() async {
+          if (route != 'library') return;
+          final family = find.byKey(
+            ValueKey('catalog-navigation-family-${variant.familyId}'),
+          );
+          await revealPicker(tester, family);
+          await tester.tap(family);
+          await real.settleReal(tester, ticks: 4);
+        }
+
         await tester.pumpWidget(screen(const Locale('en')));
         await real.settleReal(tester, ticks: 8);
+        await openLibraryFamily();
         expect(find.text('RDL'), findsWidgets, reason: route);
         await tester.pumpWidget(screen(const Locale('it')));
         await real.settleReal(tester, ticks: 5);
+        await openLibraryFamily();
         expect(find.text('Lento avanti'), findsWidgets, reason: route);
         expect(find.text('RDL'), findsNothing, reason: route);
         expect(tester.takeException(), isNull);
@@ -1009,6 +1073,7 @@ void main() {
         '30',
       );
       await tester.pump();
+      await tester.pump();
       expect(
         tester.widget<SessionHeader>(find.byType(SessionHeader)).nextLabel,
         contains('Duration (seconds): 30'),
@@ -1017,6 +1082,7 @@ void main() {
         find.byKey(const ValueKey('metric-duration')),
         '42.50',
       );
+      await tester.pump();
       await tester.pump();
       final pendingHeader = tester.widget<SessionHeader>(
         find.byType(SessionHeader),
