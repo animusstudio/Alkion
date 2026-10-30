@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import '../catalog/catalog.dart';
 import '../data/catalog_execution_repository.dart';
 import '../data/exercise_repository.dart';
@@ -45,6 +44,7 @@ class CatalogRuntimeState extends CatalogTrialState {
   String get indexProfileId => _token.profileId;
   @override
   CatalogIndex index(String locale) {
+    _requireActive();
     _activateLocale(locale);
     return _indexes.putIfAbsent(
       locale,
@@ -53,9 +53,6 @@ class CatalogRuntimeState extends CatalogTrialState {
         locale: locale,
         profileId: indexProfileId,
         generation: _token.generation,
-        overlayIdentity: catalogHash(
-          jsonEncode(_memoryJson(_memories[locale]!)),
-        ),
       ),
     );
   }
@@ -192,7 +189,7 @@ class CatalogRuntimeState extends CatalogTrialState {
     memory.favorites
       ..clear()
       ..addAll(favorites);
-    _indexes.clear();
+    // Recents and favorites do not change retrieval vocabulary or labels.
     _dirty.add('shared');
     unawaited(flushPersistence().catchError((Object _) {}));
   }

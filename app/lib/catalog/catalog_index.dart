@@ -130,31 +130,35 @@ class CatalogSearchResult {
   final List<CatalogHit> strict, suggested, secondaryStrict, secondarySuggested;
   final List<CatalogGroupAction> groupActions;
   final String? scopeUnavailableReason;
+  // Filled once by the owning index, using the same admitted membership.
+  List<String>? _availableEquipment;
 
-  List<CatalogHit> get secondaryRows {
-    final navigation = secondaryStrict.where((h) => h.isNavigation).toList();
-    return List.unmodifiable(navigation.isEmpty ? secondaryStrict : navigation);
+  late final List<CatalogHit> secondaryRows = _rows(secondaryStrict);
+
+  List<CatalogHit> _rows(List<CatalogHit> hits) {
+    final navigation = hits.where((h) => h.isNavigation).toList();
+    return List.unmodifiable(navigation.isEmpty ? hits : navigation);
   }
 
   Set<String> _ids(Iterable<CatalogHit> hits) => Set.unmodifiable({
     for (final hit in hits)
       if (hit.variantId != null) hit.variantId! else ...?hit.admittedVariantIds,
   });
-  Set<String> get variantIds => _ids(strict);
-  Set<String> get secondaryVariantIds => _ids(secondaryStrict);
+  late final Set<String> variantIds = _ids(strict);
+  late final Set<String> secondaryVariantIds = _ids(secondaryStrict);
+  late final Set<String> _suggestedVariantIds = _ids([
+    ...suggested,
+    ...secondarySuggested,
+  ]);
   bool admitsVariant(String id, {bool includeSuggestions = false}) =>
       variantIds.contains(id) ||
       secondaryVariantIds.contains(id) ||
-      (includeSuggestions &&
-          _ids([...suggested, ...secondarySuggested]).contains(id));
+      (includeSuggestions && _suggestedVariantIds.contains(id));
   final List<String> corrections, unresolvedTokens;
 
   /// Primary rows collapse broad family/collection navigation, while strict
   /// retains every execution for drill-down and independent parity checks.
-  List<CatalogHit> get rows {
-    final navigation = strict.where((h) => h.isNavigation).toList();
-    return List.unmodifiable(navigation.isEmpty ? strict : navigation);
-  }
+  late final List<CatalogHit> rows = _rows(strict);
 }
 
 class _Label {
@@ -270,7 +274,23 @@ class CatalogIndex {
         term.targetId,
       ).where((id) => term.selector.matches(bundle.variants[id]!)).toSet();
       final label = _Label(term, ids);
-      _labels.add(label);
+      if (!term.qualifier &&
+          term.source != 'canonical' &&
+          term.source != 'personal' &&
+          term.source != 'scoped_terms' &&
+          _eligibleDisplay(term)) {
+        for (final id in ids) {
+          final direct = term.kind == 'variant' && term.targetId == id;
+          // Broad aliases stay retrieval-only except the familiar RDL name.
+          final familiarAcronym =
+              term.kind == 'family' &&
+              term.targetId == bundle.variants[id]!.familyId &&
+              term.text == 'RDL';
+          if (direct || familiarAcronym) {
+            (_displayCandidates[id] ??= <_Label>[]).add(label);
+          }
+        }
+      }
       (_exact[label.key] ??= <_Label>[]).add(label);
       if ((term.source == 'aliases' || term.source == 'personal') &&
           (term.hasSelector || term.kind == 'variant')) {
@@ -317,7 +337,12 @@ class CatalogIndex {
   final String? profileId;
   late final String identity;
   final _familyMembers = <String, Set<String>>{};
-  final _labels = <_Label>[];
+  final _displayCandidates = <String, List<_Label>>{};
+  final _targetMembers = <(String, String), Set<String>>{};
+  final _normalizedNames = <String, String>{};
+  // Bound retained query snapshots to this immutable vocabulary/profile index.
+  static const _searchCacheLimit = 32;
+  final _searchResults = <String, CatalogSearchResult>{};
   final _personalNames = <String, String>{};
   final _displayNames = <String, String>{};
   final _identifyingNames = <String, String>{};
@@ -329,10 +354,18 @@ class CatalogIndex {
   final _aliasScopes = <String, _Scope>{};
   final _exact = <String, List<_Label>>{};
 
-  Set<String> _targetIds(String kind, String id) => bundle.variants.values
-      .where((v) => bundle.targetMatches(kind, id, v))
-      .map((v) => v.id)
-      .toSet();
+  Set<String> _targetIds(String kind, String id) => _targetMembers.putIfAbsent(
+    (kind, id),
+    () => Set.unmodifiable(switch (kind) {
+      'variant' => bundle.variants.containsKey(id) ? {id} : <String>{},
+      'family' => _familyMembers[id] ?? <String>{},
+      _ =>
+        bundle.variants.values
+            .where((v) => bundle.targetMatches(kind, id, v))
+            .map((v) => v.id)
+            .toSet(),
+    }),
+  );
 
   List<CatalogVariant> variantsFor(
     CatalogHit hit, {
@@ -357,13 +390,17 @@ class CatalogIndex {
 
   int compareVariants(String a, String b) {
     final left = variantLabel(a), right = variantLabel(b);
-    final normalized = catalogNormalize(
-      left,
-    ).compareTo(catalogNormalize(right));
+    final normalized = _normalizedLabel(
+      'variant',
+      a,
+    ).compareTo(_normalizedLabel('variant', b));
     if (normalized != 0) return normalized;
     final displayed = left.compareTo(right);
     return displayed != 0 ? displayed : a.compareTo(b);
   }
+
+  String _normalizedLabel(String kind, String id) => _normalizedNames
+      .putIfAbsent('$kind:$id', () => catalogNormalize(labelFor(kind, id)));
 
   String variantLabel(String id, {String query = ''}) =>
       labelFor('variant', id, query: query);
@@ -382,26 +419,7 @@ class CatalogIndex {
     final personal = _personalNames['$kind:$id'];
     if (personal != null) return personal;
     if (kind != 'variant') return canonical;
-    final variant = bundle.variants[id]!;
-    final candidates = _labels.where((label) {
-      final t = label.term;
-      if (t.qualifier ||
-          t.source == 'canonical' ||
-          t.source == 'personal' ||
-          t.source == 'scoped_terms' ||
-          !_eligibleDisplay(t) ||
-          !label.ids.contains(id)) {
-        return false;
-      }
-      final direct = t.kind == 'variant' && t.targetId == id;
-      // RDL is an established familiar term across the supported locales.
-      // Other broad acronyms/aliases remain retrieval-only vocabulary.
-      final familiarAcronym =
-          t.kind == 'family' &&
-          t.targetId == variant.familyId &&
-          t.text == 'RDL';
-      return direct || familiarAcronym;
-    }).toList();
+    final candidates = List<_Label>.of(_displayCandidates[id] ?? const []);
     candidates.sort((a, b) {
       final localA = a.term.locale == locale, localB = b.term.locale == locale;
       if (localA != localB) return localA ? -1 : 1;
@@ -617,6 +635,10 @@ class CatalogIndex {
       query,
       filter: filter.copyWith(equipmentKinds: const []),
     );
+    return result._availableEquipment ??= _equipmentFor(result);
+  }
+
+  List<String> _equipmentFor(CatalogSearchResult result) {
     final kinds = <String>{
       for (final id in {...result.variantIds, ...result.secondaryVariantIds})
         bundle.variants[id]!.equipmentKind,
@@ -660,6 +682,23 @@ class CatalogIndex {
     String query, {
     CatalogFilter filter = const CatalogFilter(),
   }) {
+    // Input-limit responses must not retain arbitrarily large query strings.
+    if (query.length > 200) return _searchResult(query, filter);
+    final key = catalogCanonicalJson([query, filter.toJson()]);
+    final cached = _searchResults.remove(key);
+    if (cached != null) {
+      _searchResults[key] = cached;
+      return cached;
+    }
+    final result = _searchResult(query, filter);
+    _searchResults[key] = result;
+    if (_searchResults.length > _searchCacheLimit) {
+      _searchResults.remove(_searchResults.keys.first);
+    }
+    return result;
+  }
+
+  CatalogSearchResult _searchResult(String query, CatalogFilter filter) {
     final primary = _search(
       query,
       filter: filter.copyWith(includeSecondary: false),
@@ -760,7 +799,7 @@ class CatalogIndex {
           direct ? 0 : 1,
           canonical ? 0 : 1,
           if (words.isEmpty || key.length == 1) ...[
-            catalogNormalize(labelFor(kind, id)),
+            _normalizedLabel(kind, id),
             labelFor(kind, id),
           ] else
             e is CatalogVariant ? e.facets.length : 0,
