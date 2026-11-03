@@ -15,15 +15,21 @@ tests contain independently authored synthetic records only.
 
 The staging tool requires an explicit file and its reviewed SHA-256. The source
 digest admitted for this trial is
-`010091a208b4f1df9bf3749782b63b700a8798b84e04bc812f4ce68e87ab80f6`.
+`1b39508c85f7dbb946acb3423718c4691dc71be39dc6176f509ea006b5e98ef7`.
 Its allowlisted projection digest is
-`8cc806c7adc3790895d8086dcf63ecd174475bb4f74e2e717cce6d1b6ca67f96`:
-143 families, 734 variants, four collections, eight measurement profiles,
-434 aliases, 934 scoped terms, 98 abbreviations, 31 anatomy nodes and no
+`b73ba40ff2dd280cc94889a8cd1ad823d9331b4b99db52cf854a73fed2ab6ec7`:
+147 families, 760 variants, four collections, eight measurement profiles,
+435 aliases, 942 scoped terms, 98 abbreviations, 31 anatomy nodes and no
 equipment models. Catalog/search revisions are
-`2026-10-28-final-curation.2` / `2026-10-28-final-search.2`.
+`2026-11-03-expansion.1` / `2026-11-03-expansion-search.1`.
 
-The candidate's identity and contents remain unchanged. Projection removes
+The 2026-11-03 refresh adds 26 variants and four families while preserving all
+734 existing variant identities and revisions. The browse sidecar preserves
+existing classifications and records the 26 additions as unresolved, with no
+inferred muscle memberships. This updates the private staging input only; it
+does not rebuild an app or include the corpus in public Git.
+
+Projection preserves the candidate's identity and contents and removes
 unadmitted fields; it does not regenerate IDs, infer equipment, translate names,
 add muscle claims or rewrite search selectors.
 
