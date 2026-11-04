@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
 import '../theme/tokens.dart';
@@ -23,11 +23,11 @@ class WTabBar extends StatelessWidget {
     final t = context.tokens;
     final l = AppLocalizations.of(context);
     final destinations = [
-      (index: 1, glyph: WDestinationGlyph.progress, label: l.navProgress),
-      (index: 2, glyph: WDestinationGlyph.history, label: l.navHistory),
-      (index: 0, glyph: WDestinationGlyph.today, label: l.navToday),
-      (index: 3, glyph: WDestinationGlyph.plan, label: l.navPlan),
-      (index: 4, glyph: WDestinationGlyph.profile, label: l.profileTitle),
+      (index: 1, glyph: AlkionGlyph.progress, label: l.navProgress),
+      (index: 2, glyph: AlkionGlyph.history, label: l.navHistory),
+      (index: 0, glyph: AlkionGlyph.home, label: l.navToday),
+      (index: 3, glyph: AlkionGlyph.plan, label: l.navPlan),
+      (index: 4, glyph: AlkionGlyph.profile, label: l.profileTitle),
     ];
     var labelHeight = 0.0;
     for (final destination in destinations) {
@@ -90,7 +90,7 @@ class WTabBar extends StatelessWidget {
                                   : Colors.transparent,
                             ),
                             alignment: Alignment.center,
-                            child: WDestinationIcon(
+                            child: AlkionIcon(
                               destination.glyph,
                               color: currentIndex == destination.index
                                   ? t.text

@@ -4,7 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import 'fit_label.dart';
 
 // ── Metric model + const list ─────────────────────────────────────────────────
@@ -164,7 +164,7 @@ class ProgressSelectorRow extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
   });
-  final IconData icon;
+  final AlkionGlyph icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -186,7 +186,7 @@ class ProgressSelectorRow extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Icon(icon, color: tokens.text, size: 24),
+              AlkionIcon(icon, color: tokens.text, size: 24),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -220,7 +220,7 @@ class ProgressSelectorRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(WIcons.chevron, color: tokens.dim, size: 20),
+              AlkionIcon(AlkionGlyph.chevronRight, color: tokens.dim, size: 20),
             ],
           ),
         ),

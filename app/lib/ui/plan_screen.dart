@@ -7,7 +7,7 @@ import '../data/day_template_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -344,7 +344,10 @@ class _BackButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.control),
         ),
       ),
-      icon: Icon(WIcons.back, size: 20, semanticLabel: l.commonBack),
+      icon: Semantics(
+        label: l.commonBack,
+        child: const AlkionIcon(AlkionGlyph.back, size: 20),
+      ),
     );
   }
 }

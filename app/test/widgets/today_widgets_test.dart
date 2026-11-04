@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/widgets/stat_tile.dart';
 import 'package:alkion/widgets/week_strip.dart';
 import 'package:alkion/widgets/volume_bars.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 /// Pump [widget] inside the localized workout-theme harness so that
 /// `context.tokens` and `AppLocalizations.of(context)` both resolve.
@@ -33,14 +34,11 @@ void main() {
       expect(find.text('NEXT'), findsOneWidget);
     });
 
-    testWidgets('renders WIcons.check for a done chip', (tester) async {
+    testWidgets('renders AlkionGlyph.check for a done chip', (tester) async {
       await pumpWithTheme(tester, const WeekStrip(days: days));
 
-      // Lower A is done → expect a check Icon in the tree.
-      expect(
-        find.byWidgetPredicate((w) => w is Icon && w.icon == WIcons.check),
-        findsOneWidget,
-      );
+      // Lower A is done → expect a check AlkionIcon in the tree.
+      expect(findGlyph(AlkionGlyph.check), findsOneWidget);
     });
 
     testWidgets('does not render NEXT or check for idle chips', (tester) async {
@@ -48,10 +46,7 @@ void main() {
 
       // Only one NEXT, only one check.
       expect(find.text('NEXT'), findsOneWidget);
-      expect(
-        find.byWidgetPredicate((w) => w is Icon && w.icon == WIcons.check),
-        findsOneWidget,
-      );
+      expect(findGlyph(AlkionGlyph.check), findsOneWidget);
     });
 
     testWidgets('keeps spaces in day names', (tester) async {
@@ -131,50 +126,67 @@ void main() {
         await pumpWithTheme(tester, const WeekStrip(days: mixed));
 
         expect(find.text('NEXT'), findsOneWidget);
-        expect(
-          find.byWidgetPredicate((w) => w is Icon && w.icon == WIcons.check),
-          findsOneWidget,
-        );
+        expect(findGlyph(AlkionGlyph.check), findsOneWidget);
       },
     );
 
-    for (final lang in ['it', 'de']) {
-      testWidgets(
-        'six days fit a narrow phone at large text ($lang), with a done day that is next',
-        (tester) async {
-          tester.view.physicalSize = const Size(320, 800);
-          tester.view.devicePixelRatio = 1;
-          addTearDown(tester.view.reset);
-          const six = [
-            (name: 'Upper A', weekday: 0, isNext: true, done: true),
-            (name: 'Lower A', weekday: 1, isNext: false, done: true),
-            (name: 'Upper B', weekday: 2, isNext: false, done: false),
-            (name: 'Lower B', weekday: 3, isNext: false, done: false),
-            (name: 'Arms', weekday: 4, isNext: false, done: false),
-            (name: 'Conditioning', weekday: 5, isNext: false, done: false),
-          ];
-          await tester.pumpWidget(
-            MediaQuery(
-              data: const MediaQueryData(
-                size: Size(320, 800),
-                textScaler: TextScaler.linear(1.3),
-              ),
-              child: wrapL10n(
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: WeekStrip(
-                    days: six,
-                    selectedIndex: 0,
-                    onSelect: (_) {},
+    for (final lang in ['en', 'it', 'de']) {
+      for (final scale in [1.0, 2.0]) {
+        testWidgets(
+          'six days keep 16dp checks at 320dp and ${scale}x ($lang)',
+          (tester) async {
+            tester.view.physicalSize = const Size(320, 800);
+            tester.view.devicePixelRatio = 1;
+            addTearDown(tester.view.reset);
+            const six = [
+              (name: 'Upper A', weekday: 0, isNext: true, done: true),
+              (name: 'Lower A', weekday: 1, isNext: false, done: true),
+              (name: 'Upper B', weekday: 2, isNext: false, done: false),
+              (name: 'Lower B', weekday: 3, isNext: false, done: false),
+              (name: 'Arms', weekday: 4, isNext: false, done: false),
+              (name: 'Conditioning', weekday: 5, isNext: false, done: false),
+            ];
+            await tester.pumpWidget(
+              wrapL10n(
+                MediaQuery(
+                  data: MediaQueryData(
+                    size: const Size(320, 800),
+                    textScaler: TextScaler.linear(scale),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: WeekStrip(
+                      days: six,
+                      selectedIndex: 0,
+                      onSelect: (_) {},
+                    ),
                   ),
                 ),
                 locale: Locale(lang),
               ),
-            ),
-          );
-          expect(tester.takeException(), isNull);
-        },
-      );
+            );
+            expect(tester.takeException(), isNull);
+            final checks = findGlyph(AlkionGlyph.check);
+            expect(checks, findsNWidgets(2));
+            for (var i = 0; i < 2; i++) {
+              expect(tester.getRect(checks.at(i)).size, const Size(16, 16));
+            }
+            final combined = find.byKey(const ValueKey('week-chip-0'));
+            final check = find.descendant(of: combined, matching: checks);
+            final next = find
+                .descendant(of: combined, matching: find.byType(Text))
+                .last;
+            expect(
+              tester.getRect(check).top,
+              greaterThanOrEqualTo(tester.getRect(next).bottom),
+            );
+            expect(
+              tester.getSize(combined).height,
+              tester.getSize(find.byKey(const ValueKey('week-chip-1'))).height,
+            );
+          },
+        );
+      }
     }
   });
 

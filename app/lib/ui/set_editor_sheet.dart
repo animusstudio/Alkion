@@ -13,7 +13,7 @@ import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../session/set_values_editor.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -649,7 +649,11 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
                               mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(WIcons.plus, size: 14, color: tokens.text),
+                                AlkionIcon(
+                                  AlkionGlyph.add,
+                                  size: 16,
+                                  color: tokens.text,
+                                ),
                                 const SizedBox(width: 6),
                                 Text(
                                   l.sessionAddSet,
@@ -877,7 +881,11 @@ class _SetLineRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Icon(WIcons.chevron, size: 22, color: tokens.faint),
+              AlkionIcon(
+                AlkionGlyph.chevronRight,
+                size: 22,
+                color: tokens.faint,
+              ),
             ],
           ),
         ),
@@ -984,7 +992,11 @@ class _SetEditingCard extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(WIcons.trash, size: 16, color: tokens.danger),
+                    AlkionIcon(
+                      AlkionGlyph.delete,
+                      size: 16,
+                      color: tokens.danger,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       l.historyDeleteSet,

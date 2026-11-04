@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 
@@ -27,7 +27,7 @@ class WDeleteButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(WIcons.trash, size: 15, color: tokens.danger),
+            AlkionIcon(AlkionGlyph.delete, size: 16, color: tokens.danger),
             const SizedBox(width: 6),
             Text(
               label,

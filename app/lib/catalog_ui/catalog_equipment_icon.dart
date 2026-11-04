@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/alkion_icon.dart';
 import '../theme/app_theme.dart';
 
 /// Equipment is a scanning aid. The localized name remains in row semantics
@@ -17,16 +18,16 @@ class CatalogEquipmentIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
-    child: Icon(
+    child: AlkionIcon(
       switch (kind) {
-        'bodyweight' || 'none' => Icons.accessibility_new_outlined,
-        'bicycle' => Icons.pedal_bike_outlined,
-        'cardio_machine' => Icons.directions_run_outlined,
-        'cable' => Icons.cable_outlined,
-        'machine' || 'smith_machine' => Icons.precision_manufacturing_outlined,
-        'band' || 'jump_rope' || 'battle_rope' => Icons.gesture_outlined,
-        null => Icons.edit_outlined,
-        _ => Icons.fitness_center_outlined,
+        'bodyweight' || 'none' => AlkionGlyph.accessibility,
+        'bicycle' => AlkionGlyph.bicycle,
+        'cardio_machine' => AlkionGlyph.run,
+        'cable' => AlkionGlyph.cable,
+        'machine' || 'smith_machine' => AlkionGlyph.machine,
+        'band' || 'jump_rope' || 'battle_rope' => AlkionGlyph.rope,
+        null => AlkionGlyph.edit,
+        _ => AlkionGlyph.workout,
       },
       size: size,
       color: color ?? context.tokens.dim,

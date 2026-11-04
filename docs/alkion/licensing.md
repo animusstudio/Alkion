@@ -70,6 +70,7 @@ evidence.
 | Material | Terms and boundary |
 | --- | --- |
 | `app/assets/workout_guide/` | Existing CC BY-SA 4.0 artwork with Everkinetic/Bryl Lim attribution; upstream software/documentation MIT terms remain separate. Retain all [upstream notices](../../app/assets/workout_guide/ATTRIBUTION.md) and recorded changes. This is not owner exercise artwork. |
+| Bundled Iconoir regular icons in `app/assets/icons/` | Their separate [MIT notice](../../app/assets/icons/NOTICE) and [source/provenance record](../../app/tool/iconoir/README.md) remain in force. The owner software grant does not relicense them. |
 | Fonts in `app/assets/google_fonts/`, `docs/assets/brand/fonts/` and study folders | Their accompanying OFL notices remain in force, including for font material used in brand assets. |
 | Dependencies and third-party study material | Their own licenses/notices remain in force, including the [retained MakeHuman notice](../design/body-3d-study/assets/MakeHuman-LICENSE.md). The root grant does not relicense them. |
 | Brand/launcher artwork, names, logos and trademarks | Outside the new AGPL/software and owner-exercise CC grants. Existing permissions are unchanged; no trademark or endorsement permission is added. |

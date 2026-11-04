@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/ui/profile_screen.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/screen_harness.dart';
 
@@ -24,7 +25,7 @@ void main() {
         <Rect>[
             for (final f in [
               find.descendant(of: row, matching: find.byType(Text)),
-              find.descendant(of: row, matching: find.byType(Icon)),
+              find.descendant(of: row, matching: find.byType(AlkionIcon)),
             ])
               for (final e in f.evaluate())
                 tester.getRect(find.byWidget(e.widget).first),

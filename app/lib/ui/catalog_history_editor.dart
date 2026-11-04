@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'package:provider/provider.dart';
+import '../theme/alkion_icon.dart';
 import '../session/catalog_set_values_editor.dart';
 import '../units/unit_service.dart';
 import '../data/exercise_repository.dart';
@@ -227,7 +228,7 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
                       tooltip: MaterialLocalizations.of(
                         context,
                       ).closeButtonTooltip,
-                      icon: const Icon(Icons.close),
+                      icon: const AlkionIcon(AlkionGlyph.close),
                     ),
                   ],
                 ),
@@ -268,10 +269,10 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
                                     tooltip: row.deleted
                                         ? l.commonUndo
                                         : l.commonRemove,
-                                    icon: Icon(
+                                    icon: AlkionIcon(
                                       row.deleted
-                                          ? Icons.undo
-                                          : Icons.delete_outline,
+                                          ? AlkionGlyph.undo
+                                          : AlkionGlyph.delete,
                                     ),
                                   ),
                                 ],
@@ -322,7 +323,7 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
                                   ),
                                 ),
                               ),
-                        icon: const Icon(Icons.add),
+                        icon: const AlkionIcon(AlkionGlyph.add),
                         label: Text(l.sessionAddSet),
                         style: TextButton.styleFrom(
                           minimumSize: const Size(48, 48),

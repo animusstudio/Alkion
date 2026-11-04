@@ -4,7 +4,7 @@ import '../data/models.dart';
 import '../data/muscles.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
@@ -278,7 +278,7 @@ class _SheetHeader extends StatelessWidget {
             child: Row(
               children: [
                 const SizedBox(width: 12),
-                Icon(WIcons.search, size: 18, color: tokens.faint),
+                AlkionIcon(AlkionGlyph.search, size: 18, color: tokens.faint),
                 const SizedBox(width: 9),
                 Expanded(
                   child: TextField(
@@ -304,7 +304,11 @@ class _SheetHeader extends StatelessWidget {
                     tooltip: MaterialLocalizations.of(
                       context,
                     ).clearButtonTooltip,
-                    icon: Icon(Icons.close, size: 20, color: tokens.dim),
+                    icon: AlkionIcon(
+                      AlkionGlyph.close,
+                      size: 20,
+                      color: tokens.dim,
+                    ),
                   )
                 else
                   const SizedBox(width: 12),
@@ -374,7 +378,7 @@ class _BodyweightRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(WIcons.scale, size: 20, color: tokens.text),
+            AlkionIcon(AlkionGlyph.scale, size: 20, color: tokens.text),
             const SizedBox(width: 11),
             Expanded(
               child: Column(
@@ -400,7 +404,7 @@ class _BodyweightRow extends StatelessWidget {
             ),
             if (selected) ...[
               const SizedBox(width: 8),
-              Icon(WIcons.check, size: 16, color: tokens.text),
+              AlkionIcon(AlkionGlyph.check, size: 16, color: tokens.text),
             ],
           ],
         ),
@@ -482,7 +486,7 @@ class _ExerciseRow extends StatelessWidget {
             // Check icon when this is the current exercise
             if (selected) ...[
               const SizedBox(width: 8),
-              Icon(WIcons.check, size: 16, color: tokens.text),
+              AlkionIcon(AlkionGlyph.check, size: 16, color: tokens.text),
             ],
           ],
         ),

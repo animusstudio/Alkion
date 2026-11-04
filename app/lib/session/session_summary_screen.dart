@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/alkion_icon.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../data/body_workload.dart';
@@ -589,7 +590,7 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 48, color: tokens.danger),
+            AlkionIcon(AlkionGlyph.error, size: 48, color: tokens.danger),
             const SizedBox(height: 16),
             Text(
               error,

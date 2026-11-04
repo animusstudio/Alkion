@@ -5,6 +5,7 @@ import 'package:alkion/catalog_ui/catalog_loading.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/widgets/state_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -14,6 +15,7 @@ import 'package:alkion/catalog_ui/catalog_equipment_icon.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/app_fonts.dart';
+import '../support/icon_finders.dart';
 import 'catalog_discovery_picker_test.dart';
 import 'catalog_visual_discovery_test.dart' show captureCatalog, phone;
 
@@ -84,14 +86,82 @@ void main() {
         expect(
           find.descendant(
             of: choice(fixtureId(10)),
-            matching: find.byIcon(Icons.star),
+            matching: findGlyph(AlkionGlyph.favorite),
           ),
           findsOneWidget,
         );
+        final favorite = find.descendant(
+          of: choice(fixtureId(10)),
+          matching: findGlyph(AlkionGlyph.favorite),
+        );
+        expect(tester.getRect(favorite).size, const Size(18, 18));
         await captureCatalog(tester, 'catalog-neutral-${brightness.name}');
         await tester.pumpWidget(const SizedBox());
       },
     );
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final locale in ['en', 'it', 'de']) {
+      testWidgets(
+        'catalog status glyphs fit 320dp/2x $locale ${brightness.name}',
+        (tester) async {
+          phone(tester, 320, 2);
+          var favorite = false;
+          await tester.pumpWidget(
+            RepaintBoundary(
+              key: const Key('catalog-capture'),
+              child: discoveryApp(
+                StatefulBuilder(
+                  builder: (context, update) => SingleChildScrollView(
+                    child: CatalogPickerRow(
+                      label: 'Synthetic exercise with a long setup name',
+                      subtitle: 'Synthetic equipment and movement',
+                      equipment: 'cable',
+                      equipmentLabel: 'Cable',
+                      favorite: favorite,
+                      current: true,
+                      inDay: true,
+                      onTap: () {},
+                      onMenu: () => update(() => favorite = !favorite),
+                      menuLabel: 'Details',
+                      onRepeat: () {},
+                    ),
+                  ),
+                ),
+                brightness: brightness,
+                locale: locale,
+              ),
+            ),
+          );
+          await tester.tap(findGlyph(AlkionGlyph.more));
+          await tester.pump();
+          for (final elapsed in [
+            Duration.zero,
+            const Duration(milliseconds: 60),
+            const Duration(milliseconds: 60),
+          ]) {
+            await tester.pump(elapsed);
+            final bounds = tester.getRect(findGlyph(AlkionGlyph.favorite));
+            expect(bounds.width, greaterThanOrEqualTo(16));
+            expect(bounds.height, greaterThanOrEqualTo(16));
+          }
+          expect(
+            tester.getRect(findGlyph(AlkionGlyph.favorite)).size,
+            const Size(18, 18),
+          );
+          for (final glyph in [AlkionGlyph.current, AlkionGlyph.inDay]) {
+            expect(tester.getRect(findGlyph(glyph)).size, const Size(16, 16));
+          }
+          expect(tester.takeException(), isNull);
+          await captureCatalog(
+            tester,
+            'iconoir-status-${brightness.name}-$locale',
+          );
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
   }
 
   testWidgets('paused body controls and list keep region selection immediate', (
@@ -159,8 +229,27 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 60));
+      final resolvingMark = find.descendant(
+        of: find.byType(SuccessMark),
+        matching: findGlyph(AlkionGlyph.check),
+      );
+      expect(tester.getRect(resolvingMark).size, const Size(72, 72));
+      final clip = find
+          .descendant(
+            of: find.byType(SuccessMark),
+            matching: find.byType(ClipRect),
+          )
+          .first;
+      expect(tester.getSize(clip).width, inExclusiveRange(0, 72));
+      expect(tester.getSize(clip).height, 72);
       await captureCatalog(tester, 'confirmed-mark-60ms');
       await tester.pump(const Duration(milliseconds: 156));
+      final mark = find.descendant(
+        of: find.byType(SuccessMark),
+        matching: findGlyph(AlkionGlyph.check),
+      );
+      expect(mark, findsOneWidget);
+      expect(tester.getRect(mark).size, const Size(72, 72));
       await captureCatalog(tester, 'confirmed-mark-final');
       await tester.pumpWidget(const SizedBox());
     },

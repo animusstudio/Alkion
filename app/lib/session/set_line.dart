@@ -4,7 +4,7 @@ import '../catalog_ui/catalog_evidence_widgets.dart';
 
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -311,7 +311,7 @@ class _StatusGlyph extends StatelessWidget {
       ),
       alignment: Alignment.center,
       child: done
-          ? Icon(WIcons.check, size: 14, color: tokens.accentInk)
+          ? AlkionIcon(AlkionGlyph.check, size: 16, color: tokens.accentInk)
           : null,
     );
   }

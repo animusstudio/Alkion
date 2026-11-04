@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+
 import 'package:provider/provider.dart';
 
+import '../theme/alkion_icon.dart';
 import '../data/body_workload.dart';
 import '../data/muscles.dart';
 import '../l10n/app_localizations.dart';
@@ -162,7 +164,7 @@ class _WorkloadSheet extends StatelessWidget {
                   IconButton(
                     tooltip: l.commonDone,
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
+                    icon: const AlkionIcon(AlkionGlyph.close),
                     constraints: const BoxConstraints(
                       minWidth: 48,
                       minHeight: 48,

@@ -43,6 +43,8 @@ dependencies:
   # Optional foreground Animus connection; no default persistent OIDC store.
   oidc: 5.0.2
   flutter_secure_storage: 10.3.4
+  # Bundled Iconoir SVGs through the semantic AlkionIcon adapter.
+  flutter_svg: 2.3.2
   http: 1.6.0
   # Direct adapter imports, pinned to the already resolved dependency set.
   dbus: 0.7.12
@@ -68,6 +70,9 @@ flutter:
   # Locally bundled static TTFs and OFL notices. WorkoutType requests only
   # Space Grotesk Regular/Medium and Space Mono Regular; no network is needed.
   assets:
+    - assets/icons/NOTICE
+    - assets/icons/stroke-1.25/
+    - assets/icons/stroke-1.0/
     - assets/google_fonts/
     - assets/character_body/
     # Reviewed owner recognition stills; separate from Workout Guide licensing.

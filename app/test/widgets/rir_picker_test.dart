@@ -6,8 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/widgets/rir_picker.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 Finder _chip(int n) => find.byKey(Key('rir-$n'));
 
@@ -74,7 +76,7 @@ void main() {
             tester.widget<DecoratedBox>(_face(n)).decoration as BoxDecoration;
         expect(decoration.border, isNull);
         expect(
-          find.descendant(of: _chip(n), matching: find.byIcon(Icons.check)),
+          find.descendant(of: _chip(n), matching: findGlyph(AlkionGlyph.check)),
           n == 2 ? findsOneWidget : findsNothing,
         );
       }

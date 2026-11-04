@@ -9,7 +9,7 @@ import '../l10n/app_localizations.dart';
 import '../session/session_manager.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/typography.dart';
 import '../theme/tokens.dart';
 import '../units/unit_format.dart';
@@ -497,7 +497,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
           child,
           TrainingAction(
             l.trainingRemove(label),
-            icon: WIcons.minus,
+            icon: AlkionGlyph.minus,
             onTap: _controlsLocked ? null : () => setState(clear),
           ),
         ] else
@@ -714,8 +714,8 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                           ),
                         ),
                         alignment: Alignment.center,
-                        child: Icon(
-                          WIcons.bolt,
+                        child: AlkionIcon(
+                          AlkionGlyph.energy,
                           size: 18,
                           color: tokens.accentText,
                         ),

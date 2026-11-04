@@ -6,6 +6,45 @@ observed: 2026-11-04
 
 # Alkion integrated acceptance
 
+## Published baseline integration — 2026-11-04
+
+The Iconoir change is integrated with published snapshot
+`116cd01342a6e79936bcb150bb0cbbe8159a5db2`, retaining its catalog, artwork, muscle
+exploration, recovery and licensing behavior. Source `ade9f7d` has 51 semantic
+roles backed by 50 attributed originals and 100 stroke derivatives. Independent
+integration review passes. Fresh checks pass: analysis, formatting, 5 asset checks,
+8 adapter tests, 18 motion/fit tests, 203 interaction tests plus the corrected
+Back-label regression, and 20 visual checks. Linux and debug APK builds pass.
+Whole-suite CI gates delivery.
+The `a60b610` qualification below remains dated baseline evidence; its device
+observations do not qualify the combined tree.
+
+## Iconoir glyph system — 2026-11-04
+
+The approved [Iconoir plan](../plans/2026-11-04-iconoir-glyph-system.md) is
+implemented at source `a60b610`; independent T1–T4 reviews pass. The app bundles
+40 attributed regular-outline glyphs with two normalized SVG stroke variants,
+resolved through one semantic theme-aware adapter. App-authored Material glyphs
+and the custom destination painter are removed; generated catalog ExpansionTile
+and dropdown icons remain framework-owned exceptions. Navigation and product data
+behavior are unchanged. Mapping and provenance are documented in the
+[public Iconoir source guide](../../app/tool/iconoir/README.md).
+
+Host qualification passes: 2,273 Flutter tests, two expected optional live-
+connection skips; five asset checks; 20 visual checks across two themes, five
+sizes, actual screen controls and RTL. Ten entrance-fix tests passed before the
+clean full-suite run. Dependency resolution, analysis and check-only formatting
+(451 files, zero changes) pass. Linux/debug APK builds pass. Scoped native
+icon/workout smoke passes on Android emulator (API 36) at source `a60b610`
+(1080×2400, density 420; APK SHA-256
+`4e583f38f66e31bd930c49445e145ff1a4b0021db43ec54917777df172a6702a`): offline
+start through workout finish, History retained after light-theme switch/relaunch,
+and both-theme captures confirmed glyph size/state. No Flutter/AndroidRuntime
+errors. Keyboard activation bypassed the existing Create Exercise footer overlap
+with navigation center taps (layout unchanged since `09cc85c`); this is separate
+from Iconoir. Backup/restore, notification denial/actions, physical device,
+release and Animus flows remain unrun. Publication awaits exact-range owner review.
+
 ## Licensing scope — 2026-11-04
 
 The [approved licensing policy](../plans/2026-11-04-copyleft-licensing-and-publication.md)

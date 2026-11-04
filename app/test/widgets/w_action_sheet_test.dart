@@ -5,15 +5,16 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/theme/app_theme.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/widgets/fit_label.dart';
 import 'package:alkion/widgets/w_action_sheet.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
 import '../support/layout_expect.dart';
 import '../support/screen_harness.dart' show setPhone;
+import '../support/icon_finders.dart';
 
 void main() {
   late String? result;
@@ -29,17 +30,21 @@ void main() {
             context,
             title: 'Options',
             actions: const [
-              WSheetAction(label: 'Add set', value: 'add', icon: Icons.add),
+              WSheetAction(
+                label: 'Add set',
+                value: 'add',
+                icon: AlkionGlyph.add,
+              ),
               WSheetAction(
                 label: 'Move up',
                 value: 'up',
-                icon: Icons.north,
+                icon: AlkionGlyph.arrowUp,
                 enabled: false,
               ),
               WSheetAction(
                 label: 'Remove',
                 value: 'rm',
-                icon: Icons.delete_outline,
+                icon: AlkionGlyph.delete,
                 destructive: true,
               ),
             ],
@@ -130,31 +135,35 @@ void main() {
         locale: const Locale('de'),
         title: 'Bankdrücken',
         (l) => [
-          WSheetAction(label: l.sessionAddSet, value: 'set', icon: WIcons.plus),
+          WSheetAction(
+            label: l.sessionAddSet,
+            value: 'set',
+            icon: AlkionGlyph.add,
+          ),
           WSheetAction(
             label: l.sessionAddWarmupSet,
             value: 'warmup',
-            icon: WIcons.flame,
+            icon: AlkionGlyph.flame,
           ),
           WSheetAction(
             label: l.sessionMoveUp,
             value: 'up',
-            icon: Icons.keyboard_arrow_up,
+            icon: AlkionGlyph.chevronUp,
           ),
           WSheetAction(
             label: l.sessionMoveDown,
             value: 'down',
-            icon: Icons.keyboard_arrow_down,
+            icon: AlkionGlyph.chevronDown,
           ),
           WSheetAction(
             label: l.sessionReorderExercises,
             value: 'reorder',
-            icon: Icons.drag_handle,
+            icon: AlkionGlyph.reorder,
           ),
           WSheetAction(
             label: l.sessionRemoveExercise,
             value: 'remove',
-            icon: WIcons.trash,
+            icon: AlkionGlyph.delete,
             destructive: true,
           ),
         ],
@@ -272,7 +281,7 @@ void main() {
       final check = tester.getRect(
         find.descendant(
           of: find.byKey(const ValueKey('sheet-action-4')),
-          matching: find.byIcon(WIcons.check),
+          matching: findGlyph(AlkionGlyph.check),
         ),
       );
       expect(
@@ -301,9 +310,13 @@ void main() {
             WSheetAction(
               label: 'Predeterminado del sistema',
               value: 'system',
-              icon: WIcons.globe,
+              icon: AlkionGlyph.language,
             ),
-            WSheetAction(label: 'Español', value: 'es', icon: WIcons.globe),
+            WSheetAction(
+              label: 'Español',
+              value: 'es',
+              icon: AlkionGlyph.language,
+            ),
           ],
         ),
       );
@@ -355,23 +368,23 @@ void main() {
         sheetHost(
           theme: buildTheme(Brightness.light, accents[3]),
           (_) => const [
-            WSheetAction(label: 'Cut', value: 'cut', icon: WIcons.target),
+            WSheetAction(label: 'Cut', value: 'cut', icon: AlkionGlyph.target),
             WSheetAction(
               label: 'Bulk',
               value: 'bulk',
-              icon: WIcons.target,
+              icon: AlkionGlyph.target,
               selected: true,
             ),
             WSheetAction(
               label: 'Maintain',
               value: 'maintain',
-              icon: WIcons.target,
+              icon: AlkionGlyph.target,
             ),
           ],
         ),
       );
       await open(tester);
-      final check = find.byIcon(WIcons.check);
+      final check = findGlyph(AlkionGlyph.check);
       expect(check, findsOneWidget);
       expect(
         find.descendant(
@@ -380,7 +393,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      final icon = tester.widget<Icon>(check);
+      final icon = tester.widget<AlkionIcon>(check);
       expect(icon.color, tokens.accentText);
       expect(icon.size, 20);
       expect(
@@ -389,7 +402,7 @@ void main() {
         reason: 'the check should trail the label',
       );
       expect(
-        find.byIcon(WIcons.target),
+        findGlyph(AlkionGlyph.target),
         findsNWidgets(3),
         reason: 'the selected row keeps its own icon',
       );
@@ -447,7 +460,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('sheet-action-1')),
-          matching: find.byType(Icon),
+          matching: find.byType(AlkionIcon),
         ),
         findsNothing,
         reason: 'a row without an icon draws none',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/alkion_icon.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -167,7 +168,11 @@ class _Row extends StatelessWidget {
                   key: ValueKey('reorder-handle-${block.exercise.id}'),
                   width: 48,
                   height: 48,
-                  child: Icon(Icons.drag_handle, size: 22, color: tokens.dim),
+                  child: AlkionIcon(
+                    AlkionGlyph.reorder,
+                    size: 22,
+                    color: tokens.dim,
+                  ),
                 ),
               ),
             ),

@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
@@ -224,7 +224,11 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                           minWidth: 48,
                           minHeight: 48,
                         ),
-                        icon: Icon(Icons.close, size: 20, color: tokens.dim),
+                        icon: AlkionIcon(
+                          AlkionGlyph.close,
+                          size: 20,
+                          color: tokens.dim,
+                        ),
                       ),
                     ],
                   ),
@@ -244,7 +248,11 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                     child: Row(
                       children: [
                         const SizedBox(width: 12),
-                        Icon(WIcons.search, size: 16, color: tokens.faint),
+                        AlkionIcon(
+                          AlkionGlyph.search,
+                          size: 16,
+                          color: tokens.faint,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: TextField(
@@ -293,8 +301,8 @@ class _ExercisePickerSheetState extends State<_ExercisePickerSheet> {
                               _searchController.clear();
                               setState(() => _query = '');
                             },
-                            icon: Icon(
-                              Icons.close,
+                            icon: AlkionIcon(
+                              AlkionGlyph.close,
                               size: 20,
                               color: tokens.dim,
                             ),
@@ -460,7 +468,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(WIcons.dumbbell, size: 32, color: tokens.faint),
+            AlkionIcon(AlkionGlyph.workout, size: 32, color: tokens.faint),
             const SizedBox(height: 12),
             Text(
               AppLocalizations.of(context).sessionNoExercisesFound,

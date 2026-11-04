@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/alkion_icon.dart';
 import '../data/models.dart';
 import '../data/exercise_repository.dart';
 import '../domain/evidence.dart';
@@ -387,7 +388,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
                     children: [
                       // Minus button
                       StepperButton(
-                        icon: Icons.remove,
+                        icon: AlkionGlyph.minus,
                         semanticLabel: l.a11yDecrease(l.bodyweightTitle),
                         onTap: () => _bump(-1),
                       ),
@@ -492,7 +493,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
                       const SizedBox(width: 12),
                       // Plus button
                       StepperButton(
-                        icon: Icons.add,
+                        icon: AlkionGlyph.add,
                         semanticLabel: l.a11yIncrease(l.bodyweightTitle),
                         onTap: () => _bump(1),
                       ),

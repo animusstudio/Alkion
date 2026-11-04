@@ -13,7 +13,7 @@ import '../data/muscles.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
@@ -144,7 +144,7 @@ class _LibraryTabState extends State<LibraryTab> {
                     controller: _fallbackSearch,
                     decoration: InputDecoration(
                       hintText: l.exerciseSheetSearchHint,
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const AlkionIcon(AlkionGlyph.search),
                     ),
                     onChanged: (_) => setState(() {}),
                   ),
@@ -307,7 +307,7 @@ class _ExerciseRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Icon(WIcons.edit, size: 20, color: tokens.dim),
+                  AlkionIcon(AlkionGlyph.edit, size: 20, color: tokens.dim),
                 ],
               ),
               const SizedBox(height: 8),

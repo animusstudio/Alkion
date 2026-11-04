@@ -715,6 +715,8 @@ void main() {
             '--no-print-directory',
             '-C',
             Directory.current.path,
+            if (Platform.environment['ALKION_TEST_DART'] case final dart?)
+              'DART=$dart',
             r'--eval=c-t1-crash:;$(DART) run test/support/remote_recovery_crash.dart "$$C_T1_ROOT" "$$C_T1_CUT"',
             'c-t1-crash',
           ],

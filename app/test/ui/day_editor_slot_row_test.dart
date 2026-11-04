@@ -4,8 +4,10 @@ import 'package:alkion/data/models.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/ui/day_editor.dart';
 import 'package:alkion/widgets/plan_form.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 Exercise _exercise(String id, String name) => Exercise(
   id: id,
@@ -90,13 +92,36 @@ class _HarnessState extends State<_Harness> {
 }
 
 void main() {
+  for (final direction in TextDirection.values) {
+    testWidgets('day disclosure opens down in $direction', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        wrapL10n(
+          Directionality(textDirection: direction, child: const _Harness()),
+        ),
+      );
+      final disclosure = find.byType(AnimatedRotation).first;
+      expect(tester.widget<AnimatedRotation>(disclosure).turns, 0);
+      await tester.tap(find.text('Incline bench press'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<AnimatedRotation>(disclosure).turns,
+        direction == TextDirection.rtl ? -0.25 : 0.25,
+      );
+      await tester.tap(find.text('Incline bench press'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<AnimatedRotation>(disclosure).turns, 0);
+    });
+  }
+
   testWidgets('the handle is 48x48 and labelled for screen readers', (
     tester,
   ) async {
     final handle = tester.ensureSemantics();
     await tester.pumpWidget(wrapL10n(const _Harness()));
 
-    final handleFinder = find.byIcon(Icons.drag_handle).first;
+    final handleFinder = findGlyph(AlkionGlyph.reorder).first;
     final handleBox = find.ancestor(
       of: handleFinder,
       matching: find.byType(SizedBox),
@@ -123,7 +148,7 @@ void main() {
     );
 
     final trashBox = find.ancestor(
-      of: find.byIcon(Icons.delete_outline).first,
+      of: findGlyph(AlkionGlyph.delete).first,
       matching: find.byType(SizedBox),
     );
     expect(tester.getSize(trashBox.first), const Size(48, 48));
@@ -149,7 +174,7 @@ void main() {
     await tester.pumpWidget(wrapL10n(const _Harness()));
     final state = tester.state<_HarnessState>(find.byType(_Harness));
 
-    final handle = find.byIcon(Icons.drag_handle).first;
+    final handle = findGlyph(AlkionGlyph.reorder).first;
     await tester.tap(handle);
     await tester.pumpAndSettle();
 
@@ -163,7 +188,7 @@ void main() {
     await tester.pumpWidget(wrapL10n(const _Harness(expandedIndex: 0)));
 
     // Row 0 is expanded — no drag handle for it, but row 1's is present.
-    expect(find.byIcon(Icons.drag_handle), findsOneWidget);
+    expect(findGlyph(AlkionGlyph.reorder), findsOneWidget);
   });
 
   testWidgets('dragging row 2 up by its handle reorders the list', (
@@ -172,7 +197,7 @@ void main() {
     await tester.pumpWidget(wrapL10n(const _Harness()));
     final state = tester.state<_HarnessState>(find.byType(_Harness));
 
-    final handles = find.byIcon(Icons.drag_handle);
+    final handles = findGlyph(AlkionGlyph.reorder);
     expect(handles, findsNWidgets(2));
 
     final g = await tester.startGesture(tester.getCenter(handles.at(1)));

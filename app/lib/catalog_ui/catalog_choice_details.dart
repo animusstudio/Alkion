@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/alkion_icon.dart';
 import '../catalog/catalog.dart';
 import '../catalog/catalog_artwork.dart';
 import '../catalog/catalog_media.dart';
@@ -65,7 +66,7 @@ Future<String?> showCatalogChoiceDetails(
                   IconButton(
                     tooltip: l.commonDone,
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
+                    icon: const AlkionIcon(AlkionGlyph.close),
                   ),
                 ],
               ),
@@ -120,15 +121,15 @@ Future<String?> showCatalogChoiceDetails(
                           ),
                           child: Row(
                             children: [
-                              Icon(
+                              AlkionIcon(
                                 action.selected
-                                    ? Icons.check
+                                    ? AlkionGlyph.check
                                     : switch (action.value) {
-                                        'favorite' => Icons.star_border,
-                                        'again' => Icons.add,
-                                        'remove' => Icons.remove,
-                                        'edit' => Icons.edit_outlined,
-                                        _ => Icons.info_outline,
+                                        'favorite' => AlkionGlyph.favorite,
+                                        'again' => AlkionGlyph.add,
+                                        'remove' => AlkionGlyph.minus,
+                                        'edit' => AlkionGlyph.edit,
+                                        _ => AlkionGlyph.info,
                                       },
                                 size: 20,
                               ),

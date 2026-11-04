@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/widgets/stepper.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 void main() {
   testWidgets('the increment button hit box is 48x48', (tester) async {
@@ -79,7 +81,10 @@ void main() {
       await tester.pump();
 
       expect(tester.takeException(), isNull);
-      expect(find.byType(FittedBox), findsOneWidget);
+      expect(
+        find.ancestor(of: find.text('180s'), matching: find.byType(FittedBox)),
+        findsOneWidget,
+      );
     },
   );
 
@@ -106,7 +111,10 @@ void main() {
       await tester.pump();
 
       expect(tester.takeException(), isNull);
-      expect(find.byType(FittedBox), findsOneWidget);
+      expect(
+        find.ancestor(of: find.text('180s'), matching: find.byType(FittedBox)),
+        findsOneWidget,
+      );
     },
   );
 
@@ -120,7 +128,7 @@ void main() {
         Center(
           child: StepperButton(
             key: const Key('btn'),
-            icon: Icons.add,
+            icon: AlkionGlyph.add,
             semanticLabel: 'Increase Bodyweight',
             onTap: () => taps++,
           ),
@@ -135,5 +143,34 @@ void main() {
     await tester.tap(find.byKey(const Key('btn')));
     expect(taps, 1);
     handle.dispose();
+  });
+  testWidgets('disabled stepper keeps its glyph, label and 48dp target', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      wrapL10n(
+        const Center(
+          child: StepperButton(
+            key: Key('disabled-stepper'),
+            icon: AlkionGlyph.minus,
+            semanticLabel: 'Decrease Bodyweight',
+            onTap: null,
+          ),
+        ),
+      ),
+    );
+    expect(findGlyph(AlkionGlyph.minus), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('disabled-stepper'))),
+      const Size(48, 48),
+    );
+    expect(find.bySemanticsLabel('Decrease Bodyweight'), findsOneWidget);
+    expect(
+      tester.widget<IconButton>(find.byType(IconButton)).onPressed,
+      isNull,
+    );
+    expect(tester.widget<AlkionIcon>(findGlyph(AlkionGlyph.minus)).size, 20);
+    semantics.dispose();
   });
 }

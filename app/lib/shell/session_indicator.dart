@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/typography.dart';
 import '../util/clock_format.dart';
@@ -74,7 +74,11 @@ class _SessionIndicatorState extends State<SessionIndicator> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(WIcons.dumbbell, size: 18, color: tokens.accentText),
+                  AlkionIcon(
+                    AlkionGlyph.workout,
+                    size: 18,
+                    color: tokens.accentText,
+                  ),
                   const SizedBox(width: 7),
                   Text(
                     resting

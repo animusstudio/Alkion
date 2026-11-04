@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/settings/app_languages.dart';
-import 'package:alkion/theme/icons.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 void main() {
   test('the language table covers exactly the supported locales', () {
@@ -45,7 +46,7 @@ void main() {
 
   Finder row(int i) => find.byKey(ValueKey('sheet-action-$i'));
   Finder checkIn(Finder f) =>
-      find.descendant(of: f, matching: find.byIcon(WIcons.check));
+      find.descendant(of: f, matching: findGlyph(AlkionGlyph.check));
 
   const systemLabels = {
     'en': 'System default',
@@ -73,7 +74,7 @@ void main() {
         expect(find.text(translated), findsNothing);
       }
       final current = 1 + appLanguages.indexWhere((lang) => lang.code == code);
-      expect(find.byIcon(WIcons.check), findsOneWidget);
+      expect(findGlyph(AlkionGlyph.check), findsOneWidget);
       expect(
         checkIn(row(current)),
         findsOneWidget,
@@ -85,7 +86,7 @@ void main() {
   testWidgets('with no override the system row is checked', (tester) async {
     await tester.pumpWidget(host(current: null));
     await open(tester);
-    expect(find.byIcon(WIcons.check), findsOneWidget);
+    expect(findGlyph(AlkionGlyph.check), findsOneWidget);
     expect(checkIn(row(0)), findsOneWidget);
   });
 
@@ -93,7 +94,7 @@ void main() {
     await tester.pumpWidget(host(current: 'fr'));
     await open(tester);
     expect(row(4), findsOneWidget);
-    expect(find.byIcon(WIcons.check), findsNothing);
+    expect(findGlyph(AlkionGlyph.check), findsNothing);
   });
 
   testWidgets('each language row tells a screen reader its language', (

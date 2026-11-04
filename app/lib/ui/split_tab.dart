@@ -7,7 +7,7 @@ import '../data/models.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../util/dates.dart';
@@ -140,7 +140,11 @@ class _SplitTabState extends State<SplitTab> {
       context,
       title: day.name,
       actions: [
-        WSheetAction(label: l.planEditDay, value: 'edit', icon: WIcons.edit),
+        WSheetAction(
+          label: l.planEditDay,
+          value: 'edit',
+          icon: AlkionGlyph.edit,
+        ),
         WSheetAction(
           label: _statusActions.hasPending(day.id)
               ? l.trainingRetry
@@ -150,7 +154,7 @@ class _SplitTabState extends State<SplitTab> {
               ? l.trainingDisable
               : l.trainingEnable,
           value: 'active',
-          icon: WIcons.refresh,
+          icon: AlkionGlyph.refresh,
           enabled: day.active != null && !_statusActions.isBusy(day.id),
         ),
       ],
@@ -212,7 +216,7 @@ class _SplitTabState extends State<SplitTab> {
                               onTap: _statusActions.isBusy(day.id)
                                   ? null
                                   : () => _setActive(day),
-                              icon: WIcons.refresh,
+                              icon: AlkionGlyph.refresh,
                             ),
                           ],
                         ),
@@ -388,12 +392,16 @@ class SplitDayCard extends StatelessWidget {
             if (onActions != null)
               IconButton(
                 onPressed: onActions,
-                icon: const Icon(WIcons.more),
+                icon: const AlkionIcon(AlkionGlyph.more),
                 tooltip: l.trainingDayActions(name),
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
               )
             else
-              Icon(WIcons.chevron, size: 16, color: tokens.faint),
+              AlkionIcon(
+                AlkionGlyph.chevronRight,
+                size: 16,
+                color: tokens.faint,
+              ),
           ],
         ),
       ),

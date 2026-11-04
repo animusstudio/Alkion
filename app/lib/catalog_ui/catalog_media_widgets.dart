@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/alkion_icon.dart';
 import '../catalog/catalog_artwork.dart';
 import '../catalog/catalog_media.dart';
 import '../l10n/app_localizations.dart';
@@ -93,8 +94,8 @@ class _ArtworkFrame extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: WorkoutType.body(size: 14, color: Colors.white70),
                   )
-                : const Icon(
-                    Icons.image_not_supported_outlined,
+                : const AlkionIcon(
+                    AlkionGlyph.imageUnavailable,
                     color: Colors.white70,
                     size: 20,
                   ),
@@ -137,7 +138,9 @@ class _CatalogOptionalMovementFramesState
             Expanded(
               child: Text(AppLocalizations.of(context).catalogMovementFrames),
             ),
-            Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+            AlkionIcon(
+              _expanded ? AlkionGlyph.chevronUp : AlkionGlyph.chevronDown,
+            ),
           ],
         ),
       ),
@@ -285,8 +288,8 @@ class _MediaFrame extends StatelessWidget {
                       color: context.tokens.text,
                     ),
                   )
-                : Icon(
-                    Icons.image_not_supported_outlined,
+                : AlkionIcon(
+                    AlkionGlyph.imageUnavailable,
                     color: context.tokens.dim,
                     size: 20,
                   ),
