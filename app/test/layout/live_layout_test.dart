@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/active_session_screen.dart';
+import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/widgets/rir_picker.dart';
 
 import '../support/rir_expect.dart';
@@ -21,6 +22,11 @@ void main() {
       await harness.open(tester);
       setPhone(tester, width: c.width, textScale: c.textScale);
       final controller = ActiveSessionController()..seedForTest(longDraft());
+      final rirBefore = [
+        for (final block in controller.draft.blocks)
+          for (final set in block.allSets) set.rir,
+      ];
+      expect(harness.settings.rirControls, RirControls.off);
       await tester.pumpWidget(
         harness.wrap(
           const ActiveSessionScreen(),
@@ -33,10 +39,19 @@ void main() {
         ),
       );
       await settleReal(tester, ticks: 10);
+      expect(find.byType(RirPicker), findsNothing);
       await expectLayoutHoldsWhileScrolling(
         tester,
         find.byType(ActiveSessionScreen),
         'Live $name',
+      );
+      expect(
+        [
+          for (final block in controller.draft.blocks)
+            for (final set in block.allSets) set.rir,
+        ],
+        rirBefore,
+        reason: 'hiding RIR changes presentation only',
       );
       await harness.unmount(tester);
     });
@@ -76,8 +91,8 @@ void main() {
       await harness.unmount(tester);
     });
 
-    // The two places a RIR picker shows on the live screen: the strip under
-    // a just-logged set, and the live card of a logged set being corrected.
+    // RIR is enabled explicitly. A just-logged strip can coexist with the
+    // next pending live card; correcting a logged live set has one picker.
     // Both fit one row of six only on the wide phone at 1.0x.
     final rows = c.width == 412 && c.textScale == 1.0 ? 1 : 2;
     for (final (state, prepare)
@@ -92,6 +107,9 @@ void main() {
         tester,
       ) async {
         await harness.open(tester);
+        await tester.runAsync(
+          () => harness.settings.setRirControls(RirControls.show),
+        );
         setPhone(tester, width: c.width, textScale: c.textScale);
         final controller = ActiveSessionController()..seedForTest(longDraft());
         prepare(controller);
@@ -111,11 +129,18 @@ void main() {
           find.byType(RirPicker),
           where: 'Live, $state, $name',
         );
-        expect(find.byType(RirPicker), findsOneWidget);
-        expect(
-          expectRirChipsAtLeast48(tester, where: 'Live, $state, $name'),
-          rows,
-        );
+        final count = state == 'the RIR strip open' ? 2 : 1;
+        expect(find.byType(RirPicker), findsNWidgets(count));
+        for (var i = 0; i < count; i++) {
+          expect(
+            expectRirChipsAtLeast48(
+              tester,
+              within: find.byType(RirPicker).at(i),
+              where: 'Live, $state, picker $i, $name',
+            ),
+            rows,
+          );
+        }
         await expectLayoutHoldsWhileScrolling(
           tester,
           find.byType(ActiveSessionScreen),

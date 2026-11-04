@@ -176,6 +176,7 @@ class SessionHeader extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: FitLabel.rich(
+                        key: const Key('session-title'),
                         TextSpan(
                           style: WorkoutType.display(
                             size: 22,
@@ -207,33 +208,37 @@ class SessionHeader extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FitLabel(
-                        setsText,
-                        maxLines: 2,
-                        style: WorkoutType.body(size: 12, color: tokens.dim),
+                Padding(
+                  padding: const EdgeInsets.only(left: 60),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: FitLabel(
+                          key: const Key('session-progress'),
+                          setsText,
+                          maxLines: 2,
+                          style: WorkoutType.body(size: 12, color: tokens.dim),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      '$mm:${ss.toString().padLeft(2, '0')}',
-                      style: WorkoutType.mono(
-                        size: 18,
-                        weight: FontWeight.w500,
-                        color: tokens.dim,
+                      const SizedBox(width: 12),
+                      Text(
+                        '$mm:${ss.toString().padLeft(2, '0')}',
+                        style: WorkoutType.mono(
+                          size: 18,
+                          weight: FontWeight.w500,
+                          color: tokens.dim,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: FitLabel(
-                        l.sessionElapsed,
-                        maxLines: 2,
-                        style: WorkoutType.body(size: 12, color: tokens.dim),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: FitLabel(
+                          l.sessionElapsed,
+                          maxLines: 2,
+                          style: WorkoutType.body(size: 12, color: tokens.dim),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),

@@ -1,5 +1,29 @@
 # Alkion development and qualified driver handoff
 
+2026-11-04 · [Copyleft licensing and publication snapshot](../plans/2026-11-04-copyleft-licensing-and-publication.md) · Approved.
+2026-11-04 · [Licensing and preservation specification](../specs/2026-11-04-copyleft-licensing-and-publication.md) · Approved.
+
+2026-11-04 · [Select muscles on the 3D body](../plans/2026-11-04-explore-muscles-3d.md) · Approved.
+
+2026-11-04 · [Owner exercise artwork throughout the catalog](../plans/2026-11-04-exercise-artwork.md) · Done.
+
+2026-11-03 · [Consolidated development baseline](../plans/2026-11-03-consolidated-development.md) · Approved.
+2026-11-03 · [Consolidation specification](../specs/2026-11-03-consolidated-development.md) · Approved.
+
+2026-11-01 · [Catalog clarity and expressive UI consistency](../plans/2026-11-01-catalog-visual-consistency.md) · Done — reviewed implementation and bounded qualification.
+2026-11-01 · [Offline Workout Guide exercise media](../plans/2026-11-01-workout-guide-media.md) · Done.
+2026-11-01 · [Exercise media and attribution](exercise-media.md) · Done.
+
+2026-11-01 · [Usability alignment and history test](../plans/2026-11-01-usability-and-history-test.md) · Approved.
+
+2026-11-01 · [Usability and history preservation design](../specs/2026-11-01-usability-and-history-test.md) · Approved.
+
+Usage: [Import Reps data](reps-import.md),
+[workout interaction brief](workout-usability-brief.md), and
+[catalog gap review](catalog-gap-review.md).
+
+2026-11-01 · [Animus generation recovery](../plans/2026-10-30-animus-recovery.md) · Approved.
+
 2026-10-30 · [Catalog workout controls](../plans/2026-10-30-catalog-workout-controls.md) · Done.
 
 2026-10-30 · [Direct catalog browsing and performance](../plans/2026-10-30-catalog-direct-browse-performance.md) · Approved.

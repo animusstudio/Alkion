@@ -29,7 +29,9 @@ and the relevant approved plan before changing behavior; app rules are in
 - No live migration, READY/cutover, service shutdown, deployment, signing, tag,
   release or publication without explicit owner direction. Keep private
   coordination paths, owner data and credentials out of this public tree.
-- Preserve LICENSE, bundled font notices, source manifests and dated evidence.
+- Follow [licensing scopes](docs/alkion/licensing.md): new owner software is
+  AGPL-3.0-only; owner exercise WebPs are CC BY-SA 4.0. Preserve root/asset notices,
+  legacy MIT grants, third-party/font terms, source manifests and dated evidence.
   Historical plans describe their recorded trees, not current setup commands.
 
 ## Layout

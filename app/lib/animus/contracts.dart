@@ -83,7 +83,7 @@ final class AnimusAuthSession {
   String toString() => 'AnimusAuthSession(redacted)';
 }
 
-/// Public TrainingRecord GET subset. No body is retained after validation.
+/// Public TrainingRecord GET subset; recovery retains bounded API evidence.
 abstract final class AnimusDefinitionReadContract {
   static const requiredCapability = 'workouts:read';
   static const admissionHeader = 'X-Hub-Read-Admission';

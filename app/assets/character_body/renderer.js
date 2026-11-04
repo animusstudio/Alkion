@@ -1,6 +1,7 @@
 import {glyphAlphabet,tonalGlyphs,samplingPitch,columnPhase,glyphCoverage,sampleSurfaceCell,materialGlyph,materialAlpha,regionColor,colors} from './material.js';
 import {bodyFit,fullerMesh} from './geometry.js';
 import {posedMesh} from './pose-geometry.js';
+import {regions} from './protocol.js';
 
 export async function loadMesh(style,signal){
  if(style!=='male'&&style!=='female')throw new Error('Invalid body style');
@@ -22,6 +23,14 @@ export async function loadMesh(style,signal){
 
 const glyphIndices=Object.fromEntries([...glyphAlphabet].map((glyph,index)=>[glyph,index]));
 const diagnosticColors=[[118,124,138],[255,105,70],[100,165,255],[240,190,70],[140,210,100],[200,140,240],[70,205,200],[245,130,190],[170,180,250]];
+
+/** Sample only the frontmost retained raster pixel; no radius or neighbour search. */
+export function pickSurfaceRegion(pixels,width,height,manifestRegions,x,y){
+ if(!pixels||!Number.isInteger(width)||!Number.isInteger(height)||width<=0||height<=0||pixels.length!==width*height*4||!Number.isFinite(x)||!Number.isFinite(y)||x<0||y<0||x>=1||y>=1)return null;
+ const at=((height-1-Math.floor(y*height))*width+Math.floor(x*width))*4;
+ const region=manifestRegions[pixels[at+1]];
+ return pixels[at+3]&&regions.includes(region)?region:null;
+}
 
 /** A real indexed depth-buffered surface sampled into character cells. */
 export class VolumeRenderer{
@@ -78,8 +87,8 @@ export class VolumeRenderer{
   this.surface.width=this.cols*3;this.surface.height=this.rows*3;this.gl.viewport(0,0,this.surface.width,this.surface.height);
   this.pixels=new Uint8Array(this.surface.width*this.surface.height*4);this.atlasKey='';return true;
  }
- buildAtlas(muscles,theme){
-  const key=JSON.stringify([muscles,theme,colors[theme],this.cols,this.rows,this.canvas.width]);if(key===this.atlasKey)return;this.atlasKey=key;
+ buildAtlas(muscles,theme,selected=null){
+  const key=JSON.stringify([muscles,theme,selected,colors[theme],this.cols,this.rows,this.canvas.width]);if(key===this.atlasKey)return;this.atlasKey=key;
   this.cellW=this.canvas.width/this.cols;this.cellH=this.canvas.height/this.rows;this.tileW=Math.ceil(this.cellW+3);this.tileH=Math.ceil(this.cellH+3);
   this.atlas.width=this.tileW*glyphAlphabet.length;this.atlas.height=this.tileH*this.mesh.manifest.regions.length;
   // Measure visible ink rather than the em/advance box. Space Mono capitals
@@ -103,7 +112,7 @@ export class VolumeRenderer{
   raster.width=this.atlas.width*scale;raster.height=this.atlas.height*scale;
   const ink=raster.getContext('2d');ink.scale(scale,scale);ink.textAlign='left';ink.textBaseline='alphabetic';
   this.mesh.manifest.regions.forEach((region,i)=>{
-   ink.fillStyle=regionColor(region,muscles,theme);
+   ink.fillStyle=region===selected?`rgb(${colors[theme].accent.join(',')})`:regionColor(region,muscles,theme);
    for(let g=0;g<glyphAlphabet.length;g++){
     const m=metrics[g],size=Math.min(fontSize,this.cellW*inkFit/(m.left+m.right),this.cellH*inkFit/(m.ascent+m.descent));
     ink.font=`400 ${size}px "Space Mono"`;
@@ -116,11 +125,12 @@ export class VolumeRenderer{
   for(let at=3;at<coverage.data.length;at+=4)coverage.data[at]=Math.round(255*glyphCoverage(coverage.data[at]/255,theme,this.compact));
   ctx.putImageData(coverage,0,0);
  }
- draw(yaw,muscles,theme,mode='characters'){
+ draw(yaw,muscles,theme,mode='characters',selected=null){
   if(this.lost)throw new Error('Graphics context lost');if(!this.resize())return;
-  this.buildAtlas(muscles,theme);const gl=this.gl;gl.useProgram(this.program);gl.uniform1f(this.yawLocation,yaw);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,bodyFit(this.mesh,aspect));
+  this.buildAtlas(muscles,theme,selected);const gl=this.gl;gl.useProgram(this.program);gl.uniform1f(this.yawLocation,yaw);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,bodyFit(this.mesh,aspect));
   gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.drawElements(gl.TRIANGLES,this.mesh.indices.length,gl.UNSIGNED_INT,0);
   gl.readPixels(0,0,this.surface.width,this.surface.height,gl.RGBA,gl.UNSIGNED_BYTE,this.pixels);
+  this.pickWidth=this.canvas.clientWidth;this.pickHeight=this.canvas.clientHeight;
   if(mode!=='characters'){this.drawDiagnostic(mode,theme);return;}
   const ctx=this.ctx,pixels=this.pixels,stride=this.surface.width;ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
   let count=0,signature=2166136261;const histogram={};
@@ -135,6 +145,12 @@ export class VolumeRenderer{
    signature=Math.imul(signature^cell.at^cell.shade^glyph.charCodeAt(0)^phase,16777619)>>>0;
   }
   ctx.globalAlpha=1;this.drawCount++;this.glyphCount=count;this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);
+ }
+ // Normalized native coordinates address the retained, depth-tested surface,
+ // not a nearby glyph/anchor. WebGL readback rows run bottom to top.
+ pick(x,y){
+  if(this.lost||this.pickWidth!==this.canvas.clientWidth||this.pickHeight!==this.canvas.clientHeight)return null;
+  return pickSurfaceRegion(this.pixels,this.surface.width,this.surface.height,this.mesh.manifest.regions,x,y);
  }
  drawDiagnostic(mode,theme){
   const width=this.surface.width,height=this.surface.height,pixels=new Uint8ClampedArray(width*height*4);

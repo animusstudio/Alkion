@@ -212,7 +212,7 @@ void main() {
         await tester.runAsync(() async {
           expect(
             (await runtime!.store.get('PRAGMA user_version')).values.single,
-            5,
+            currentSchemaVersion,
           );
           expect(
             await runtime!.store.getAll('SELECT * FROM operations'),
@@ -565,7 +565,7 @@ void main() {
               final store = await LocalStore.open(
                 profile: profile,
                 expectedProfileId: profile.profileId,
-                schema: catalogExecutionSchemaRegistry(),
+                schema: remoteRecoverySchemaRegistry(),
               );
               expect(await store.inventory(), expected);
               await checkpoint(store, root, 'reopen-$i');
@@ -807,6 +807,20 @@ void main() {
           await tester.tap(find.byIcon(WIcons.chevron).first);
           await settleReal(tester, ticks: 3);
           debugPrint('F5PHASE next-expand-exit');
+          final nextDelete = find.byKey(
+            const ValueKey('history-delete-session'),
+          );
+          if (nextDelete.evaluate().isEmpty) {
+            // The second card starts its real SQLite read only on expansion.
+            // Distinguish that loading state from a collapsed or disabled row.
+            expect(find.byType(CircularProgressIndicator), findsOneWidget);
+          }
+          await settleUntilFound(
+            tester,
+            nextDelete.hitTestable(),
+            where:
+                'F5 next History delete is loaded and reachable after recovery',
+          );
           debugPrint('F5PHASE next-show-delete-enter');
           await showDelete();
           debugPrint('F5PHASE next-show-delete-exit');
@@ -863,7 +877,7 @@ void main() {
               final store = await LocalStore.open(
                 profile: profile,
                 expectedProfileId: profile.profileId,
-                schema: catalogExecutionSchemaRegistry(),
+                schema: remoteRecoverySchemaRegistry(),
               );
               debugPrint('F5PHASE reopen-$i-inventory-enter');
               expect(await store.inventory(), inventory);
@@ -998,7 +1012,7 @@ void main() {
             final store = await LocalStore.open(
               profile: profile,
               expectedProfileId: profile.profileId,
-              schema: catalogExecutionSchemaRegistry(),
+              schema: remoteRecoverySchemaRegistry(),
             );
             expect(await store.inventory(), inventory);
             await checkpoint(store, root, 'reopen-$i');

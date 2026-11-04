@@ -4,10 +4,17 @@ import 'package:alkion/data/models.dart';
 
 /// Expects every RIR chip on screen (`rir-<rirMin>`…`rir-<rirMax>`) to be a
 /// slot of at least 48×48dp, and returns how many rows the chips sit in.
-int expectRirChipsAtLeast48(WidgetTester tester, {String where = ''}) {
+int expectRirChipsAtLeast48(
+  WidgetTester tester, {
+  String where = '',
+  Finder? within,
+}) {
   final tops = <double>{};
   for (var n = rirMin; n <= rirMax; n++) {
-    final slot = tester.getRect(find.byKey(Key('rir-$n')));
+    final chip = find.byKey(Key('rir-$n'));
+    final slot = tester.getRect(
+      within == null ? chip : find.descendant(of: within, matching: chip),
+    );
     expect(slot.width, greaterThanOrEqualTo(48), reason: '$where rir-$n width');
     expect(
       slot.height,

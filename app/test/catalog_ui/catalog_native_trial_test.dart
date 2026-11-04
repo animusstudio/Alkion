@@ -1,3 +1,4 @@
+import 'catalog_discovery_picker_test.dart' show finishFilters;
 import 'dart:convert';
 
 import 'package:alkion/catalog/catalog.dart';
@@ -257,8 +258,8 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    await tester.ensureVisible(find.text('Create custom exercise'));
-    await tester.tap(find.text('Create custom exercise'));
+    await tester.ensureVisible(find.byKey(const Key('catalog-create')));
+    await tester.tap(find.byKey(const Key('catalog-create')));
     await tester.pumpAndSettle();
     expect(
       tester
@@ -592,7 +593,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      final create = find.text('Crea esercizio personale');
+      final create = find.byKey(const Key('catalog-create'));
       await tester.scrollUntilVisible(
         create,
         150,
@@ -648,7 +649,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -2000));
       await tester.pumpAndSettle();
-      final create = find.widgetWithText(TextButton, 'Create custom exercise');
+      final create = find.byKey(const Key('catalog-create'));
       await tester.ensureVisible(create);
       await tester.pumpAndSettle();
       expect(create.hitTestable(), findsOneWidget);
@@ -671,18 +672,25 @@ void main() {
       await revealPicker(tester, find.text('Curl'));
       await tester.tap(find.text('Curl'));
       await tester.pump();
-      final machine = find.widgetWithText(FilterChip, 'Machine');
-      await tester.tap(machine);
-      await tester.pump();
-      expect(tester.widget<FilterChip>(machine).selected, isTrue);
-      expect(find.widgetWithText(FilterChip, 'Dumbbells'), findsOneWidget);
+      await revealPicker(tester, find.byKey(const Key('catalog-filters')));
+      await tester.tap(find.byKey(const Key('catalog-filters')));
+      await tester.pumpAndSettle();
+      expect(find.text('Dumbbells'), findsWidgets);
+      await tester.tap(find.text('Machine').last);
+      await tester.pumpAndSettle();
+      await finishFilters(tester);
+      expect(find.widgetWithText(InputChip, 'Machine'), findsOneWidget);
       final other = state.bundle.variants.values.firstWhere(
         (v) => v.key == 'neutral_curl',
       );
       expect(find.byKey(ValueKey('variant:${other.id}@default')), findsNothing);
-      await tester.tap(machine);
-      await tester.pump();
-      expect(tester.widget<FilterChip>(machine).selected, isFalse);
+      await tester.tap(find.byTooltip('Clear equipment'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('catalog-equipment-scope')), findsNothing);
+      await revealPicker(
+        tester,
+        find.byKey(ValueKey('variant:${other.id}@default')),
+      );
       expect(
         find.byKey(ValueKey('variant:${other.id}@default')),
         findsOneWidget,
@@ -714,7 +722,7 @@ void main() {
       state.toggleFavorite(customB);
       await tester.pumpWidget(app(CatalogPicker(state: state, multiple: true)));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilterChip, 'Favorites'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Favorites'));
       await tester.pump();
       await tester.enterText(
         find.byKey(const Key('catalog-search')),
@@ -748,7 +756,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilterChip, 'Favorites'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Favorites'));
       await tester.pump();
       await revealPicker(tester, find.byKey(ValueKey(curl.key)));
       expect(find.byKey(ValueKey(curl.key)), findsOneWidget);

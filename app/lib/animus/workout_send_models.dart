@@ -52,6 +52,7 @@ final class AnimusWorkoutSelection {
   bool get canRetry =>
       selectionId.isNotEmpty &&
       issue != AnimusWorkoutSendIssue.invalidValues &&
+      issue != AnimusWorkoutSendIssue.recoveryBlocked &&
       (status == AnimusWorkoutSendStatus.ready ||
           status == AnimusWorkoutSendStatus.uncertain ||
           status == AnimusWorkoutSendStatus.needsReview ||

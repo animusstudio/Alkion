@@ -330,29 +330,21 @@ class _BackButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Semantics(
-      button: true,
-      label: l.commonBack,
-      excludeSemantics: true,
-      onTap: onBack,
-      child: GestureDetector(
-        onTap: onBack,
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppRadius.control),
-                color: tokens.surface2,
-              ),
-              child: Icon(WIcons.back, size: 20, color: tokens.text),
-            ),
-          ),
+    return IconButton(
+      key: const Key('plan-editor-back'),
+      tooltip: l.commonBack,
+      onPressed: onBack,
+      style: IconButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        fixedSize: const Size(48, 48),
+        backgroundColor: tokens.surface2,
+        foregroundColor: tokens.text,
+        focusColor: tokens.focus.withValues(alpha: .25),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.control),
         ),
       ),
+      icon: Icon(WIcons.back, size: 20, semanticLabel: l.commonBack),
     );
   }
 }

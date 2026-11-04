@@ -135,9 +135,12 @@ void main() {
         }
       }
       for (final metric in host.evidence.selection.profile.metrics) {
-        final target = _type(metric).evaluate().isNotEmpty
-            ? _type(metric)
-            : _ruler(metric);
+        expect(
+          _ruler(metric),
+          findsOneWidget,
+          reason: 'fresh entry starts on rulers',
+        );
+        final target = _ruler(metric);
         expect(target, findsOneWidget);
         await tester.ensureVisible(target);
         expect(tester.getSize(target).height, greaterThanOrEqualTo(48));

@@ -9,6 +9,9 @@ import 'adapters/auth.dart';
 import 'connection.dart';
 import 'contracts.dart';
 import 'ports.dart';
+import 'recovery_protocol.dart';
+import 'remote_recovery_repository.dart';
+import 'strict_json.dart';
 import 'workout_send_models.dart';
 import 'workout_translation.dart';
 import 'workout_upload_repository.dart';
@@ -28,13 +31,51 @@ final class AnimusWorkoutSender extends ChangeNotifier
     required String installationId,
     required this.connection,
     AnimusUploadHttpPort? http,
+    AnimusRecoveryPort? recovery,
   }) : _repository = WorkoutUploadRepository(database, installationId),
+       _injectedRecovery = recovery,
        _http = http ?? IoAnimusHttpPort();
   final AnimusConnectionController connection;
   final WorkoutUploadRepository _repository;
   final AnimusUploadHttpPort _http;
+  final AnimusRecoveryPort? _injectedRecovery;
+  AnimusRecoveryPort? _durableRecovery;
+  String? _recoveryScope;
+  AnimusRecoveryPort _recovery(Map<String, dynamic> binding) {
+    if (_injectedRecovery != null) return _injectedRecovery;
+    final key = jsonEncode(binding);
+    if (_recoveryScope != key) {
+      _recoveryScope = key;
+      _durableRecovery = DurableAnimusRecovery(
+        _repository.db,
+        RemoteRecoveryBinding.fromWorkoutBinding(binding),
+        allowLegacyDevelopment:
+            kDebugMode &&
+            (connection.config!.allowLoopbackHttp ||
+                connection.config!.allowPrivateHttp),
+      );
+    }
+    return _durableRecovery!;
+  }
+
   final _transient = <String, AnimusWorkoutSelection>{};
   Future<void>? _running;
+  Future<void>? _closing;
+  final _covered = <Future<void>>{};
+
+  Future<AnimusHttpResponse> _cover(Future<AnimusHttpResponse> pending) {
+    late final Future<void> settled;
+    settled = pending.then<void>(
+      (_) => _covered.remove(settled),
+      onError: (Object error, StackTrace stack) {
+        // The foreground caller receives this error; close only drains evidence.
+        _covered.remove(settled);
+      },
+    );
+    _covered.add(settled);
+    return pending;
+  }
+
   bool _closed = false, _disposed = false;
   @override
   bool get busy => _running != null;
@@ -74,27 +115,55 @@ final class AnimusWorkoutSender extends ChangeNotifier
     exerciseCount: 0,
     setCount: 0,
     exerciseNames: const [],
-    status: AnimusWorkoutSendStatus.unsupported,
+    status: issue == AnimusWorkoutSendIssue.recoveryBlocked
+        ? AnimusWorkoutSendStatus.needsReview
+        : AnimusWorkoutSendStatus.unsupported,
     issue: issue,
   );
 
   @override
   Future<AnimusWorkoutSelection> select(String sessionId) async {
+    if (_closed) {
+      return _unsupported(sessionId, AnimusWorkoutSendIssue.cancelled);
+    }
     if (busy) return _unsupported(sessionId, AnimusWorkoutSendIssue.busy);
+    final done = Completer<void>();
+    _running = done.future;
     try {
       final binding = _binding(),
           epoch = connection.foregroundEpoch,
           identity = connection.identity!;
+      final recovery = _recovery(binding);
+      if (recovery.preflightSelection) {
+        final response = await _ForegroundRequests(
+          this,
+          null,
+          binding,
+          epoch,
+          identity,
+        ).get(['v1', 'system', 'info']);
+        _requireCapability(response);
+      }
       final frozen = await _repository.select(
         sessionId,
         binding,
         () => _current(epoch, identity),
+        prepareOrigins: (tx, selection) => recovery.prepareSelectionTx(tx, [
+          selection.operationId,
+          for (final definition in selection.definitions)
+            for (final step in (definition['chain'] as List).map(uploadMap))
+              uploadMap(step['action'])['operation_id'] as String,
+        ]),
       );
       _current(epoch, identity);
       _transient.remove(sessionId);
       return await _repository.summary(frozen);
     } on Object catch (e) {
       return _unsupported(sessionId, _issue(e));
+    } finally {
+      _running = null;
+      done.complete();
+      _notify();
     }
   }
 
@@ -109,6 +178,7 @@ final class AnimusWorkoutSender extends ChangeNotifier
       final summary = await _repository.summary(frozen);
       final binding = _binding();
       await _repository.check(binding, frozen);
+      await _recovery(binding).checkReady();
       return cached ?? summary;
     } on Object catch (e) {
       return frozen?.summary(
@@ -182,20 +252,7 @@ final class AnimusWorkoutSender extends ChangeNotifier
         // This authorized read happens before the very first dependency write,
         // including when retrying an existing selection after reconnecting.
         final info = await requests.get(['v1', 'system', 'info']);
-        if (info.statusCode != 200) _httpStatus(info.statusCode);
-        final capability = _json(info, 64 * 1024);
-        final training = capability['training'];
-        if (training is! Map ||
-            training['implemented'] is! List ||
-            !(training['implemented'] as List).contains(
-              animusWorkoutCapability,
-            ) ||
-            training['max_command_bytes'] != animusWireLimit ||
-            !_datasetsCompatible(training['datasets'])) {
-          throw const WorkoutUploadBlocked(
-            AnimusWorkoutSendIssue.capabilityMissing,
-          );
-        }
+        _requireCapability(info);
         final acknowledged = <String, Map<String, dynamic>>{};
         for (final definition in selection.definitions) {
           Map<String, dynamic>? previous;
@@ -292,7 +349,7 @@ final class AnimusWorkoutSender extends ChangeNotifier
             'training',
             'workouts',
             selection.data['target_id'] as String,
-          ]);
+          ], expected: attempt.command);
           if (response.statusCode != 200) _httpStatus(response.statusCode);
           final read = _json(response, _responseLimit);
           _validateRecord(read, attempt.command);
@@ -300,7 +357,13 @@ final class AnimusWorkoutSender extends ChangeNotifier
             'kind': 'read_back',
             'record': read,
           }, scopeCheck);
-        } on Object {
+        } on AnimusRecoveryFailure {
+          rethrow;
+        } on Object catch (error) {
+          if (_issue(error) == AnimusWorkoutSendIssue.recoveryBlocked ||
+              _issue(error) == AnimusWorkoutSendIssue.differentScope) {
+            rethrow;
+          }
           scopeCheck();
           _transient[selected.sessionId] = selection.summary(
             status: AnimusWorkoutSendStatus.sent,
@@ -321,7 +384,9 @@ final class AnimusWorkoutSender extends ChangeNotifier
           }
         }
         _transient[selected.sessionId] = summary.withState(
-          summary.status == AnimusWorkoutSendStatus.sent
+          issue == AnimusWorkoutSendIssue.recoveryBlocked
+              ? AnimusWorkoutSendStatus.needsReview
+              : summary.status == AnimusWorkoutSendStatus.sent
               ? AnimusWorkoutSendStatus.sent
               : issue == AnimusWorkoutSendIssue.network ||
                     issue == AnimusWorkoutSendIssue.invalidResponse ||
@@ -349,7 +414,7 @@ final class AnimusWorkoutSender extends ChangeNotifier
   ) async {
     AnimusHttpResponse? received;
     try {
-      final response = received = await requests.post(attempt.bytes);
+      final response = received = await requests.post(attempt);
       if (response.statusCode != 200) {
         if (![
           400,
@@ -401,6 +466,7 @@ final class AnimusWorkoutSender extends ChangeNotifier
       current();
       return evidence;
     } on Object catch (e) {
+      if (e is AnimusRecoveryFailure) rethrow;
       // The attempt was durable before I/O. Failure to commit this outcome leaves
       // that same attempt uncertain; no replacement identity can be allocated.
       if (e is! WorkoutUploadBlocked ||
@@ -424,11 +490,13 @@ final class AnimusWorkoutSender extends ChangeNotifier
   }
 
   @override
-  Future<void> close() async {
-    if (_closed) return;
+  Future<void> close() {
+    if (_closing != null) return _closing!;
     _closed = true;
-    await _http.close();
-    await _running;
+    return _closing = () async {
+      await _http.close();
+      await Future.wait(_covered.toList());
+    }();
   }
 
   @override
@@ -447,61 +515,113 @@ final class _ForegroundRequests {
     this.binding,
     this.epoch,
     this.identity,
-  );
+  ) : recovery = owner._recovery(binding);
   final AnimusWorkoutSender owner;
-  final FrozenWorkoutSelection selection;
+  final FrozenWorkoutSelection? selection;
   final Map<String, dynamic> binding;
   final int epoch;
   final AnimusIdentity identity;
+  final AnimusRecoveryPort recovery;
   bool _refreshed = false;
-  Future<AnimusHttpResponse> get(List<String> path) => _request(path, null);
-  Future<AnimusHttpResponse> post(List<int> body) => _request([
-    'v1',
-    'data-spaces',
-    owner.connection.config!.dataSpaceId,
-    'training',
-    'actions',
-  ], body);
+  bool current() =>
+      !owner._closed && owner.connection.foregroundCurrent(epoch, identity);
+  Future<AnimusHttpResponse> get(
+    List<String> path, {
+    Map<String, dynamic>? expected,
+  }) => _request(path, null, expected: expected);
+  Future<AnimusHttpResponse> post(WorkoutUploadAttempt attempt) => _request(
+    [
+      'v1',
+      'data-spaces',
+      owner.connection.config!.dataSpaceId,
+      'training',
+      'actions',
+    ],
+    attempt.bytes,
+    attempt: attempt,
+    expected: attempt.command,
+  );
   Future<AnimusHttpResponse> _request(
     List<String> path,
-    List<int>? body,
-  ) async {
-    void current() => owner._current(epoch, identity);
+    List<int>? body, {
+    WorkoutUploadAttempt? attempt,
+    Map<String, dynamic>? expected,
+  }) async {
+    void check() => owner._current(epoch, identity);
     Future<AnimusHttpResponse> run(AnimusAuthSession session) async {
-      await owner._repository.check(binding, selection);
-      current();
+      if (selection != null) await owner._repository.check(binding, selection!);
+      check();
       final config = owner.connection.config!;
       final uri = config.apiOrigin.replace(pathSegments: path);
-      final headers = {
-        'Authorization': 'Bearer ${session.accessToken}',
-        'Accept': 'application/json',
-        AnimusDefinitionReadContract.admissionHeader: config.readAdmission,
-      };
-      final result = body == null
-          ? await owner._http.get(
-              uri: uri,
-              headers: headers,
-              maxResponseBytes: path.length == 3 ? 64 * 1024 : _responseLimit,
-              timeout: _timeout,
-            )
-          : await owner._http.post(
-              uri: uri,
-              headers: headers,
-              body: body,
-              maxResponseBytes: _responseLimit,
-              timeout: _timeout,
-            );
-      current();
-      await owner._repository.check(binding, selection);
-      current();
-      return result;
+      Future<AnimusHttpResponse> send(Map<String, String> extra) {
+        final headers = {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'Accept': 'application/json',
+          AnimusDefinitionReadContract.admissionHeader: config.readAdmission,
+          ...extra,
+        };
+        return body == null
+            ? owner._http.get(
+                uri: uri,
+                headers: headers,
+                maxResponseBytes: path.length == 3 ? 64 * 1024 : _responseLimit,
+                timeout: _timeout,
+              )
+            : owner._http.post(
+                uri: uri,
+                headers: headers,
+                body: body,
+                maxResponseBytes: _responseLimit,
+                timeout: _timeout,
+              );
+      }
+
+      final discovery = path.length == 3;
+      final response = await owner._cover(
+        discovery
+            ? recovery.discover(send, current)
+            : recovery.exchange(
+                attempt == null
+                    ? RemoteApiRequest.read('workouts', path.last)
+                    : RemoteApiRequest.action(
+                        attempt.operationId,
+                        attempt.id,
+                        attempt.row['request_hash'] as String,
+                      ),
+                send,
+                current,
+                (response) {
+                  if (response.statusCode != 200) return;
+                  final value = _json(response, _responseLimit);
+                  if (attempt != null) {
+                    if (value['record'] is! Map ||
+                        value['related'] is! List ||
+                        (value['related'] as List).isNotEmpty ||
+                        value['replayed'] is! bool ||
+                        value['position'] is! int ||
+                        (value['position'] as int) < 1) {
+                      throw const WorkoutUploadBlocked(
+                        AnimusWorkoutSendIssue.invalidResponse,
+                      );
+                    }
+                    _validateRecord(uploadMap(value['record']), expected!);
+                  } else if (expected != null) {
+                    _validateRecord(value, expected);
+                  }
+                },
+              ),
+      );
+      check();
+      if (selection != null) await owner._repository.check(binding, selection!);
+      check();
+      return response;
     }
 
-    current();
+    check();
     final refreshes = owner.connection.foregroundRefreshes;
     var session = await owner.connection.sessionForForeground(epoch);
     if (owner.connection.foregroundRefreshes != refreshes) _refreshed = true;
-    current();
+    check();
     var result = await run(session);
     if (result.statusCode == 401 && !_refreshed) {
       _refreshed = true;
@@ -509,10 +629,49 @@ final class _ForegroundRequests {
         epoch,
         refresh: true,
       );
-      current();
+      check();
       result = await run(session);
     }
     return result;
+  }
+}
+
+void _requireCapability(AnimusHttpResponse info) {
+  if (info.statusCode != 200) _httpStatus(info.statusCode);
+  final discovery = _json(info, 64 * 1024);
+  final training = discovery['training'];
+  if (training is! Map ||
+      training['implemented'] is! List ||
+      !(training['implemented'] as List).contains(animusWorkoutCapability) ||
+      training['max_command_bytes'] != animusWireLimit ||
+      !_datasetsCompatible(training['datasets'])) {
+    throw const WorkoutUploadBlocked(AnimusWorkoutSendIssue.capabilityMissing);
+  }
+  if (discovery['recovery'] is Map &&
+      (discovery['recovery'] as Map)['required'] == true) {
+    final datasets = training['datasets'] as List;
+    if (datasets.length != 2 ||
+        !datasets.every(
+          (d) =>
+              d is Map &&
+              const ['definitions', 'workouts'].contains(d['name']) &&
+              d['actions'] is List &&
+              (d['actions'] as List).toSet().length ==
+                  (d['name'] == 'definitions' ? 2 : 1) &&
+              (d['actions'] as List).length ==
+                  (d['name'] == 'definitions' ? 2 : 1) &&
+              (d['actions'] as List).every(
+                (a) =>
+                    (d['name'] == 'definitions'
+                            ? const ['create', 'edit']
+                            : const ['finish'])
+                        .contains(a),
+              ),
+        )) {
+      throw const WorkoutUploadBlocked(
+        AnimusWorkoutSendIssue.capabilityMissing,
+      );
+    }
   }
 }
 
@@ -544,26 +703,7 @@ Map<String, dynamic> _json(AnimusHttpResponse response, int limit) {
   }
   try {
     final text = utf8.decode(response.body);
-    // Bound nesting before the decoder traverses an untrusted response.
-    var depth = 0, quoted = false, escaped = false;
-    for (final rune in text.runes) {
-      if (quoted) {
-        if (escaped) {
-          escaped = false;
-        } else if (rune == 92) {
-          escaped = true;
-        } else if (rune == 34) {
-          quoted = false;
-        }
-      } else if (rune == 34) {
-        quoted = true;
-      } else if (rune == 123 || rune == 91) {
-        if (++depth > 48) throw const FormatException();
-      } else if (rune == 125 || rune == 93) {
-        depth--;
-      }
-    }
-    return uploadMap(jsonDecode(text));
+    return uploadMap(decodeStrictAnimusJson(text, maxDepth: 48));
   } on Object {
     throw const WorkoutUploadBlocked(AnimusWorkoutSendIssue.invalidResponse);
   }
@@ -751,6 +891,10 @@ bool deepUploadEqual(Object? a, Object? b) {
 }
 
 AnimusWorkoutSendIssue _issue(Object e) {
+  if (e is AnimusRecoveryFailure ||
+      e is StoreException && e.category.startsWith('remote_')) {
+    return AnimusWorkoutSendIssue.recoveryBlocked;
+  }
   if (e is WorkoutUploadBlocked) return e.issue;
   if (e is AnimusAuthFailure) {
     return switch (e.kind) {
@@ -781,3 +925,12 @@ AnimusWorkoutSendIssue _issue(Object e) {
   }
   return AnimusWorkoutSendIssue.localCommitUncertain;
 }
+
+/// Shared validation for an explicit reviewed retry of the frozen wire command.
+void validateReviewedWorkoutRecord(
+  Map<String, dynamic> record,
+  Map<String, dynamic> command,
+) => _validateRecord(record, command);
+
+void requireNativeWorkoutCapability(AnimusHttpResponse response) =>
+    _requireCapability(response);

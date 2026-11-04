@@ -1,6 +1,22 @@
 # Alkion development source manifest
 
-Pre-1.0 development source on `main` of this public repository, on top of the full Reps history; final application ID, signing and release remain open. Original tracked source is commit `6207987b7b480cc38be7c5f5ff947778405bbc5a`, app tree `3a41573cf36ff939e97e1faeb5a11e20dbacc95d`. Existing MIT and bundled font OFL notices remain unchanged. At T1, reuse of the unpublished source was not permission to publish its full delta; publication on `main` was decided later (2026-10-16). Legacy server, PowerSync service, infra, API and publishing workflows were retired by the [2026-10-20 source cleanup](legacy-retirement.md); historical source and exact evidence remain reviewable. No ignored/untracked source configuration or personal data was imported.
+Pre-1.0 development source; final application ID, signing and release remain
+open. The [current licensing contract](licensing.md) covers new owner-controlled
+software under AGPL-3.0-only and the 760 owner exercise WebPs under CC BY-SA 4.0,
+with retained legacy MIT and third-party/font permissions. A publication snapshot
+is being prepared after public base `9366452b51e8d9f43a96ed361241ba90337dbc33`;
+original unpublished history must be preserved privately before local-main
+replacement. Dated source/qualification SHAs below remain historical evidence,
+not a promise of public ancestry.
+
+Original tracked source is commit `6207987b7b480cc38be7c5f5ff947778405bbc5a`, app
+tree `3a41573cf36ff939e97e1faeb5a11e20dbacc95d`. At the original T1, reuse of the
+unpublished source was not permission to publish its full delta; publication on
+`main` was decided later (2026-10-16), under the MIT terms then recorded. Legacy
+server, PowerSync service, infra, API and publishing workflows were retired by
+the [2026-10-20 source cleanup](legacy-retirement.md); historical source and exact
+evidence remain reviewable. No ignored/untracked source configuration or
+personal data was imported. The mechanical manifests below are unchanged.
 
 ## Reviewed mechanical package prefix manifest
 

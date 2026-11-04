@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
+import '../history_test/history_mapping_label.dart';
 
 import '../catalog/catalog.dart';
+import '../catalog/catalog_artwork.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
+import '../theme/motion.dart';
 import '../theme/typography.dart';
 import '../theme/tokens.dart';
 import '../widgets/fit_label.dart';
+import '../widgets/state_motion.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import '../data/models.dart';
 import 'catalog_trial_scope.dart';
+import 'catalog_muscle_explorer.dart';
+import 'catalog_equipment_icon.dart';
+import 'catalog_choice_details.dart';
+import 'catalog_media_widgets.dart';
 
 /// The explicit Close/Back paths protect pending occurrences. Modal drag and
 /// barrier dismissal are disabled so neither can bypass the same decision.
@@ -17,6 +25,7 @@ Future<List<CatalogChoice>?> showCatalogPicker(
   BuildContext context, {
   required CatalogTrialState state,
   bool multiple = false,
+  bool immediateSelection = false,
   String? familyId,
   CatalogChoice? currentChoice,
   bool setupIntent = false,
@@ -29,20 +38,24 @@ Future<List<CatalogChoice>?> showCatalogPicker(
   enableDrag: false,
   backgroundColor: context.tokens.surface,
   barrierColor: context.tokens.overlay,
-  sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
-      ? AnimationStyle.noAnimation
-      : null,
+  sheetAnimationStyle: Motion.sheet(context),
   builder: (_) => CatalogPicker(
     state: state,
     multiple: multiple,
+    immediateSelection: immediateSelection,
     familyId: familyId,
     currentChoice: currentChoice,
     setupIntent: setupIntent,
     inDayChoiceKeys: inDayChoiceKeys,
+    ownedExercises: HistoryMappingScope.selectable(
+      context,
+      state.ownedExercises,
+      catalog: state.bundle,
+    ),
   ),
 );
 
-enum _CatalogView { home, all, recent, favorites, personal }
+enum _CatalogView { all, recent, favorites, personal }
 
 /// A presentation snapshot only; each mounted browser owns its scroll controller.
 /// The runtime identity includes the admitted profile/generation and bundle.
@@ -56,6 +69,7 @@ class CatalogBrowserController {
   bool _secondary = false;
   double _offset = 0;
   double? _navigationParentOffset, _groupParentOffset;
+  _CatalogView? _navigationParentView, _groupParentView;
   Object? _owner;
   bool Function()? _handleBack;
 
@@ -72,6 +86,7 @@ class CatalogBrowserController {
     _secondary = false;
     _offset = 0;
     _navigationParentOffset = _groupParentOffset = null;
+    _navigationParentView = _groupParentView = null;
   }
 }
 
@@ -109,6 +124,7 @@ class CatalogPicker extends StatefulWidget {
     super.key,
     required this.state,
     this.multiple = false,
+    this.immediateSelection = false,
     this.familyId,
     this.currentChoice,
     this.setupIntent = false,
@@ -125,6 +141,10 @@ class CatalogPicker extends StatefulWidget {
   final void Function(String id)? onEditOwned;
   final Future<void> Function(CatalogChoice choice)? onCreateChoice;
   final CatalogBrowserController? controller;
+
+  /// Workout entry opens results immediately and returns a concrete selection
+  /// on its first tap. Plan editors retain the multi-occurrence basket.
+  final bool immediateSelection;
   final bool multiple, setupIntent;
   final String? familyId;
   final CatalogChoice? currentChoice;
@@ -140,7 +160,6 @@ typedef _CatalogResults = ({
   CatalogSearchResult result,
   List<CatalogChoice> recent,
   List<CatalogChoice> custom,
-  bool home,
   List<String> equipment,
   CatalogBrowseGroup? group,
   bool direct,
@@ -166,6 +185,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
   String? _loadedLocale;
   bool _refreshQueued = false;
   double? _navigationParentOffset, _groupParentOffset;
+  _CatalogView? _navigationParentView, _groupParentView;
   int _scrollRestoreSerial = 0;
   late _CatalogResults _results;
   _CatalogResults? _cachedResults;
@@ -181,9 +201,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
   @override
   void initState() {
     super.initState();
-    _view = widget.embedded || widget.familyId != null
-        ? _CatalogView.all
-        : _CatalogView.home;
+    _view = _CatalogView.all;
     _scroll = ScrollController();
     widget.state.addListener(_personalChanged);
   }
@@ -206,12 +224,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
       _navigation = saved?._navigation;
       _navigationParentOffset = saved?._navigationParentOffset;
       _groupParentOffset = saved?._groupParentOffset;
+      _navigationParentView = saved?._navigationParentView;
+      _groupParentView = saved?._groupParentView;
       _secondary = saved?._secondary ?? false;
-      _view =
-          saved?._view ??
-          (widget.embedded || widget.familyId != null
-              ? _CatalogView.all
-              : _CatalogView.home);
+      _view = saved?._view ?? _CatalogView.all;
       _scroll.dispose();
       _scroll = ScrollController(initialScrollOffset: saved?._offset ?? 0)
         ..addListener(_savePresentation);
@@ -227,7 +243,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
       widget.state.addListener(_personalChanged);
       _loadedLocale = null;
       didChangeDependencies();
-    } else if (!identical(oldWidget.ownedExercises, widget.ownedExercises)) {
+    } else if (!identical(oldWidget.ownedExercises, widget.ownedExercises) ||
+        oldWidget.familyId != widget.familyId ||
+        oldWidget.immediateSelection != widget.immediateSelection) {
+      if (widget.immediateSelection) _view = _CatalogView.all;
       _results = _derive();
     }
   }
@@ -241,6 +260,8 @@ class _CatalogPickerState extends State<CatalogPicker> {
     saved._navigation = _navigation;
     saved._navigationParentOffset = _navigationParentOffset;
     saved._groupParentOffset = _groupParentOffset;
+    saved._navigationParentView = _navigationParentView;
+    saved._groupParentView = _groupParentView;
     saved._view = _view;
     saved._secondary = _secondary;
     saved._offset = _scroll.hasClients ? _scroll.offset : saved._offset;
@@ -356,6 +377,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
   void _openNavigation(CatalogHit hit) {
     _navigationParentOffset = _scroll.hasClients ? _scroll.offset : 0;
     _update(() {
+      _navigationParentView = _view;
       _navigation = hit;
       _view = _CatalogView.all;
     });
@@ -368,6 +390,8 @@ class _CatalogPickerState extends State<CatalogPicker> {
     _update(() {
       _navigation = null;
       _navigationParentOffset = null;
+      _view = _navigationParentView ?? _view;
+      _navigationParentView = null;
     });
     _restoreScroll(offset);
   }
@@ -377,7 +401,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
     _update(() {
       _group = null;
       _groupParentOffset = null;
-      _view = widget.embedded ? _CatalogView.all : _CatalogView.home;
+      _groupParentView = null;
     });
     _restoreScroll(offset);
   }
@@ -387,7 +411,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
       _details(choice);
       return;
     }
-    if (!widget.multiple) {
+    if (!widget.multiple || widget.immediateSelection) {
       widget.state.remember(choice);
       _pop([choice]);
       return;
@@ -405,48 +429,25 @@ class _CatalogPickerState extends State<CatalogPicker> {
 
   Future<void> _details(CatalogChoice choice) async {
     final l = AppLocalizations.of(context);
-    final result = await showWActionSheet<String>(
+    final result = await showCatalogChoiceDetails(
       context,
       title: widget.state.identifyingLabel(choice, _locale),
+      index: widget.state.index(_locale),
+      variant: widget.state.bundle.variants[choice.variantId],
+      metrics: [
+        for (final metric in widget.state.measurement(choice).requiredMetrics)
+          catalogMetricLabel(l, metric),
+      ],
       actions: [
-        if (widget.embedded) ...[
-          if (choice.variantId != null)
-            WSheetAction(
-              label: CatalogLabels(_locale).equipment(
-                widget.state.bundle.variants[choice.variantId]!.equipmentKind,
-              ),
-              value: 'equipment',
-              enabled: false,
-            ),
-          for (final metric in widget.state.measurement(choice).requiredMetrics)
-            WSheetAction(
-              label: catalogMetricLabel(l, metric),
-              value: metric,
-              enabled: false,
-            ),
-          WSheetAction(
-            label:
-                widget
-                        .state
-                        .bundle
-                        .variants[choice.variantId]
-                        ?.muscleCoverage ==
-                    'partial'
-                ? CatalogLabels(_locale).partialMuscles
-                : CatalogLabels(_locale).unknownMuscles,
-            value: 'coverage',
-            enabled: false,
-          ),
-          if (_ownedId(choice) != null)
-            WSheetAction(label: l.planEditExercise, value: 'edit'),
-        ],
+        if (widget.embedded && _ownedId(choice) != null)
+          WSheetAction(label: l.planEditExercise, value: 'edit'),
         if (!choice.isOwned)
           WSheetAction(
             label: l.catalogFavorite,
             value: 'favorite',
             selected: widget.state.favorites.contains(choice.key),
           ),
-        if (widget.multiple) ...[
+        if (widget.multiple && !widget.immediateSelection) ...[
           WSheetAction(label: l.catalogAddAgain, value: 'again'),
           if (_selected.any((c) => c.key == choice.key))
             WSheetAction(label: l.commonRemove, value: 'remove'),
@@ -501,6 +502,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
     final choice = await showModalBottomSheet<CatalogChoice>(
       context: context,
       isScrollControlled: true,
+      sheetAnimationStyle: Motion.sheet(context),
       useSafeArea: true,
       backgroundColor: context.tokens.surface,
       builder: (_) => _CustomExerciseForm(
@@ -520,61 +522,224 @@ class _CatalogPickerState extends State<CatalogPicker> {
   void _openGroup(String group, {bool replaceQuery = false}) {
     if (_group == null) {
       _groupParentOffset = _scroll.hasClients ? _scroll.offset : 0;
+      _groupParentView = _view;
     }
     _update(() {
       _group = group;
       _navigation = null;
-      _view = _CatalogView.all;
       if (replaceQuery) _search.clear();
     });
     _restoreScroll(0);
     _searchFocus.unfocus();
   }
 
-  Future<void> _pickGroup() async {
+  Future<void> _pickGroup({String kind = 'muscle'}) async {
     final index = widget.state.index(_locale);
+    if (kind == 'muscle') {
+      final selected = await showCatalogMuscleExplorer(
+        context,
+        index: index,
+        selected: _group,
+      );
+      if (mounted && selected != null) _openGroup(selected);
+      return;
+    }
     final selected = await showWActionSheet<String>(
       context,
-      title: AppLocalizations.of(context).catalogBrowseMuscles,
+      title: kind == 'activity'
+          ? AppLocalizations.of(context).catalogActivities
+          : AppLocalizations.of(context).catalogBrowseMuscles,
       actions: [
-        for (final group in index.browseGroups)
+        for (final group in index.browseGroups.where((g) => g.kind == kind))
           WSheetAction(
             label: index.groupLabel(group),
             value: group.key,
             selected: _group == group.key,
           ),
-        WSheetAction(
-          label: AppLocalizations.of(context).catalogUnclassified,
-          value: CatalogFilter.unclassified,
-          selected: _group == CatalogFilter.unclassified,
-        ),
+        if (kind == 'muscle')
+          WSheetAction(
+            label: AppLocalizations.of(context).catalogUnclassified,
+            value: CatalogFilter.unclassified,
+            selected: _group == CatalogFilter.unclassified,
+          ),
       ],
     );
     if (mounted && selected != null) _openGroup(selected);
   }
 
-  Future<void> _pickEquipment() async {
-    final l = AppLocalizations.of(context);
-    final selected = await showWActionSheet<String>(
-      context,
-      title: l.catalogEquipment,
-      actions: [
-        for (final kind in _results.equipment)
-          WSheetAction(
-            label: _results.labels.equipment(kind),
-            value: kind,
-            selected: _equipment == kind,
-          ),
-        if (_equipment != null)
-          WSheetAction(label: l.catalogClearEquipment, value: ''),
-      ],
+  Future<void> _filters() async {
+    _searchFocus.unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      sheetAnimationStyle: Motion.sheet(context),
+      useSafeArea: true,
+      backgroundColor: context.tokens.surface,
+      barrierColor: context.tokens.overlay,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, refresh) {
+          final l = AppLocalizations.of(context);
+          final labels = _results.labels;
+          void change(VoidCallback action) {
+            _update(action);
+            refresh(() {});
+          }
+
+          return SafeArea(
+            top: false,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * .85,
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            labels.filters,
+                            style: WorkoutType.display(
+                              size: 22,
+                              color: context.tokens.text,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: l.commonDone,
+                          onPressed: () => Navigator.pop(sheetContext),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
+                      key: const Key('catalog-personal'),
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(l.catalogPersonalExercises),
+                      value: _view == _CatalogView.personal,
+                      onChanged: (v) => change(
+                        () => _view = v
+                            ? _CatalogView.personal
+                            : _CatalogView.all,
+                      ),
+                    ),
+                    if (_results.group?.kind == 'muscle')
+                      SwitchListTile.adaptive(
+                        key: const Key('catalog-secondary'),
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(l.catalogIncludeSecondary),
+                        subtitle: Text(labels.secondaryExplanation),
+                        value: _secondary,
+                        onChanged: (v) => change(() => _secondary = v),
+                      ),
+                    const Divider(height: 32),
+                    Text(
+                      l.catalogEquipment,
+                      style: WorkoutType.body(
+                        size: 16,
+                        color: context.tokens.text,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final kind in _results.equipment)
+                          FilterChip(
+                            chipAnimationStyle: Motion.chip(context),
+                            key: ValueKey('catalog-equipment-$kind'),
+                            avatar: CatalogEquipmentIcon(
+                              kind: kind,
+                              size: 18,
+                              color: _equipment == kind
+                                  ? context.tokens.bg
+                                  : null,
+                            ),
+                            label: Text(labels.equipment(kind)),
+                            selected: _equipment == kind,
+                            onSelected: (v) =>
+                                change(() => _equipment = v ? kind : null),
+                          ),
+                      ],
+                    ),
+                    const Divider(height: 32),
+                    Text(
+                      l.catalogActivities,
+                      style: WorkoutType.body(
+                        size: 16,
+                        color: context.tokens.text,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final g in _results.index.browseGroups.where(
+                          (g) => g.kind == 'activity',
+                        ))
+                          FilterChip(
+                            chipAnimationStyle: Motion.chip(context),
+                            key: ValueKey('catalog-group-${g.key}'),
+                            label: Text(_results.index.groupLabel(g)),
+                            selected: _group == g.key,
+                            onSelected: (v) {
+                              if (v) {
+                                _openGroup(g.key);
+                              } else {
+                                _leaveGroup();
+                              }
+                              refresh(() {});
+                            },
+                          ),
+                        FilterChip(
+                          chipAnimationStyle: Motion.chip(context),
+                          key: const Key('catalog-group-unclassified'),
+                          label: Text(l.catalogUnclassified),
+                          selected: _group == CatalogFilter.unclassified,
+                          onSelected: (v) {
+                            if (v) {
+                              _openGroup(CatalogFilter.unclassified);
+                            } else {
+                              _leaveGroup();
+                            }
+                            refresh(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      child: Text(l.commonDone),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
-    if (!mounted || !widget.state.active || selected == null) return;
-    _update(() => _equipment = selected.isEmpty ? null : selected);
+  }
+
+  void _clearFilters() {
+    _update(() {
+      _group = _equipment = null;
+      _secondary = false;
+      _navigation = null;
+      _navigationParentOffset = _groupParentOffset = null;
+      _navigationParentView = _groupParentView = null;
+    });
+    _restoreScroll(0);
   }
 
   Widget _heading(String label) => Padding(
-    padding: const EdgeInsets.fromLTRB(0, 20, 0, 8),
+    padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
     child: Text(
       label,
       style: WorkoutType.body(size: 14, color: context.tokens.dim),
@@ -607,6 +772,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
       _navigation?.id,
       _view,
       widget.familyId,
+      widget.immediateSelection,
       widget.ownedExercises,
       _personalRevision,
     );
@@ -661,13 +827,6 @@ class _CatalogPickerState extends State<CatalogPicker> {
           a.customName!,
         ).compareTo(catalogNormalize(b.customName!)),
       );
-    final home =
-        _view == _CatalogView.home &&
-        _search.text.isEmpty &&
-        _group == null &&
-        _equipment == null &&
-        _navigation == null &&
-        widget.familyId == null;
     final equipment = <String>{
       ...index.availableEquipment(_search.text, filter: filter),
       if (_equipment != null) _equipment!,
@@ -688,7 +847,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
       );
     }
     final group = state.bundle.browse?.groups[_group];
-    final direct = _navigation != null || widget.familyId != null;
+    final direct =
+        widget.immediateSelection ||
+        _navigation != null ||
+        widget.familyId != null;
     List<CatalogVariant> variants(Set<String> ids) {
       final values = ids
           .where(withinNavigation)
@@ -741,12 +903,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
     final secondaryViewChoices = viewChoices
         .where((c) => result.secondaryVariantIds.contains(c.variantId))
         .toList();
-    final displayedSiblings = home
-        ? recent
-              .map((c) => state.bundle.variants[c.variantId])
-              .whereType<CatalogVariant>()
-              .toList()
-        : activeView
+    final displayedSiblings = activeView
         ? viewChoices
               .map((c) => state.bundle.variants[c.variantId])
               .whereType<CatalogVariant>()
@@ -770,7 +927,6 @@ class _CatalogPickerState extends State<CatalogPicker> {
       result: result,
       recent: recent,
       custom: custom,
-      home: home,
       equipment: equipment,
       group: group,
       direct: direct,
@@ -796,15 +952,12 @@ class _CatalogPickerState extends State<CatalogPicker> {
     final result = _results.result;
     final recent = _results.recent;
     final custom = _results.custom;
-    final home = _results.home;
-    final equipment = _results.equipment;
     final group = _results.group;
     final direct = _results.direct;
     final primaryVariants = _results.primaryVariants;
     final secondaryVariants = _results.secondaryVariants;
     final primarySuggestions = _results.primarySuggestions;
     final secondarySuggestions = _results.secondarySuggestions;
-    final visibleSiblings = _results.visibleSiblings;
     final browseUnavailable = _results.browseUnavailable;
     final activeView = _results.activeView;
     final viewChoices = _results.viewChoices;
@@ -813,6 +966,26 @@ class _CatalogPickerState extends State<CatalogPicker> {
     final secondaryViewChoices = _results.secondaryViewChoices;
     final displayedSiblings = _results.displayedSiblings;
     final selectedCount = _selected.length;
+    final recentContexts =
+        widget.immediateSelection && !activeView && _results.query.isEmpty
+        ? recent
+              .where((c) => c.variantId != null && c.setupId != 'default')
+              .toList()
+        : const <CatalogChoice>[];
+    final siblingsByFamily = <String, List<CatalogVariant>>{};
+    for (final variant in displayedSiblings) {
+      (siblingsByFamily[variant.familyId] ??= []).add(variant);
+    }
+    final resultCount = activeView
+        ? viewChoices.length
+        : <String>{
+                ...primaryVariants.map((v) => v.id),
+                ...secondaryVariants.map((v) => v.id),
+                ...primarySuggestions.map((v) => v.id),
+                ...secondarySuggestions.map((v) => v.id),
+              }.length +
+              custom.length +
+              recentContexts.length;
     final groupLabel = _group == CatalogFilter.unclassified
         ? l.catalogUnclassified
         : group == null
@@ -825,26 +998,31 @@ class _CatalogPickerState extends State<CatalogPicker> {
       final distinction = choice.setupId == 'default' && variant != null
           ? labels.distinction(
               variant,
-              (siblings ?? displayedSiblings).where(
-                (v) => v.familyId == variant.familyId,
-              ),
+              siblings == null
+                  ? siblingsByFamily[variant.familyId] ?? const []
+                  : siblings.where((v) => v.familyId == variant.familyId),
             )
           : state.distinction(choice, _locale);
       final subtitle = <String>[
         if (choice.variantId == null)
           choice.isOwned ? l.catalogLegacyExercise : l.catalogCustomExercise,
         if (distinction.isNotEmpty) distinction,
-        if (widget.currentChoice?.key == choice.key) l.catalogCurrent,
-        if (widget.inDayChoiceKeys.contains(choice.key)) l.catalogInDay,
       ].join(' · ');
       return CatalogPickerRow(
         key: ValueKey(choice.key),
-        label: widget.embedded
-            ? state.identifyingLabel(choice, _locale)
-            : state.label(choice, _locale),
+        label: state.label(choice, _locale),
+        equipment: variant?.equipmentKind,
+        equipmentLabel: variant == null
+            ? null
+            : labels.equipment(variant.equipmentKind),
+        current: widget.currentChoice?.key == choice.key,
+        inDay: widget.inDayChoiceKeys.contains(choice.key),
+        inspection: widget.embedded,
         subtitle: subtitle,
+        artwork: catalogArtworkForVariant(variant),
         selected: count > 0,
         count: count,
+        favorite: state.favorites.contains(choice.key),
         onTap: () {
           final id = _ownedId(choice);
           if (widget.embedded && choice.isOwned && id != null) {
@@ -854,6 +1032,13 @@ class _CatalogPickerState extends State<CatalogPicker> {
           }
         },
         menuLabel: l.catalogDetails,
+        onRepeat:
+            !widget.embedded &&
+                widget.multiple &&
+                !widget.immediateSelection &&
+                count > 0
+            ? () => _choose(choice, again: true)
+            : null,
         onMenu: () {
           final id = _ownedId(choice);
           if (widget.embedded && choice.isOwned && id != null) {
@@ -878,7 +1063,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
 
     Widget empty(String text) => Padding(
       key: const Key('catalog-empty'),
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -944,81 +1129,9 @@ class _CatalogPickerState extends State<CatalogPicker> {
       }
     }
 
-    void variants(Iterable<CatalogVariant> values) => choices(
-      values.map((v) => CatalogChoice.variant(v.id)),
-      siblings: visibleSiblings,
-    );
-    if (home) {
-      rows.add(
-        () => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (equipment.isNotEmpty)
-              ExpansionTile(
-                key: const Key('catalog-global-equipment'),
-                tilePadding: EdgeInsets.zero,
-                title: Text(l.catalogEquipment),
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      for (final kind in equipment)
-                        FilterChip(
-                          label: Text(labels.equipment(kind)),
-                          selected: _equipment == kind,
-                          onSelected: (v) =>
-                              _update(() => _equipment = v ? kind : null),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            if (recent.isNotEmpty) ...[
-              _heading(l.catalogRecent),
-              ...recent.map((c) => choiceRow(c)),
-            ],
-            _heading(l.catalogBrowseMuscles),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final g in index.browseGroups.where(
-                  (g) => g.kind == 'muscle',
-                ))
-                  ActionChip(
-                    key: ValueKey('catalog-group-${g.key}'),
-                    label: Text(index.groupLabel(g)),
-                    onPressed: () => _openGroup(g.key),
-                  ),
-              ],
-            ),
-            if (!browseUnavailable) ...[
-              _heading(l.catalogActivities),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  for (final g in index.browseGroups.where(
-                    (g) => g.kind == 'activity',
-                  ))
-                    ActionChip(
-                      key: ValueKey('catalog-group-${g.key}'),
-                      label: Text(index.groupLabel(g)),
-                      onPressed: () => _openGroup(g.key),
-                    ),
-                  ActionChip(
-                    key: const Key('catalog-group-unclassified'),
-                    label: Text(l.catalogUnclassified),
-                    onPressed: () => _openGroup(CatalogFilter.unclassified),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      );
-    } else if (activeView) {
+    void variants(Iterable<CatalogVariant> values) =>
+        choices(values.map((v) => CatalogChoice.variant(v.id)));
+    if (activeView) {
       heading(
         _view == _CatalogView.personal
             ? l.catalogPersonalExercises
@@ -1053,6 +1166,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
         }
       }
     } else {
+      if (recentContexts.isNotEmpty) {
+        heading(l.catalogRecent);
+        choices(recentContexts);
+      }
       if (group?.kind == 'muscle') heading(l.catalogTargetMatches);
       if (direct) {
         variants(primaryVariants);
@@ -1106,50 +1223,57 @@ class _CatalogPickerState extends State<CatalogPicker> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (!widget.embedded || _navigation != null || _group != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                child: Row(
-                  children: [
-                    if (_navigation != null || _group != null)
-                      IconButton(
-                        key: const Key('catalog-back'),
-                        tooltip: MaterialLocalizations.of(
-                          context,
-                        ).backButtonTooltip,
-                        onPressed: _back,
-                        icon: const Icon(Icons.arrow_back),
-                      ),
-                    Expanded(
-                      child: FitLabel(
-                        widget.setupIntent
-                            ? l.catalogChangeSetup
-                            : _navigation?.label ??
-                                  (widget.familyId == null
-                                      ? l.exerciseSheetTitle
-                                      : index.labelFor(
-                                          'family',
-                                          widget.familyId!,
-                                        )),
-                        maxLines: 2,
-                        style: WorkoutType.display(
-                          size: 22,
-                          color: context.tokens.text,
-                        ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+              child: Row(
+                children: [
+                  if (_navigation != null || _group != null)
+                    IconButton(
+                      key: const Key('catalog-back'),
+                      tooltip: MaterialLocalizations.of(
+                        context,
+                      ).backButtonTooltip,
+                      onPressed: _back,
+                      icon: const Icon(Icons.arrow_back),
+                    ),
+                  Expanded(
+                    child: FitLabel(
+                      widget.setupIntent
+                          ? l.catalogChangeSetup
+                          : _navigation?.label ??
+                                (widget.familyId == null
+                                    ? widget.embedded
+                                          ? labels.catalog
+                                          : l.exerciseSheetTitle
+                                    : index.labelFor(
+                                        'family',
+                                        widget.familyId!,
+                                      )),
+                      maxLines: 2,
+                      style: WorkoutType.display(
+                        size: 22,
+                        color: context.tokens.text,
                       ),
                     ),
-                    if (!widget.embedded)
-                      IconButton(
-                        key: const Key('catalog-close'),
-                        tooltip: MaterialLocalizations.of(
-                          context,
-                        ).closeButtonTooltip,
-                        onPressed: _dismiss,
-                        icon: const Icon(Icons.close),
-                      ),
-                  ],
-                ),
+                  ),
+                  IconButton(
+                    key: const Key('catalog-create'),
+                    tooltip: l.catalogCreate,
+                    onPressed: _create,
+                    icon: const Icon(Icons.add),
+                  ),
+                  if (!widget.embedded)
+                    IconButton(
+                      key: const Key('catalog-close'),
+                      tooltip: MaterialLocalizations.of(
+                        context,
+                      ).closeButtonTooltip,
+                      onPressed: _dismiss,
+                      icon: const Icon(Icons.close),
+                    ),
+                ],
               ),
+            ),
             Expanded(
               child: CustomScrollView(
                 controller: _scroll,
@@ -1210,129 +1334,164 @@ class _CatalogPickerState extends State<CatalogPicker> {
                             ),
                             onChanged: _queryChanged,
                           ),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton.icon(
-                              key: const Key('catalog-create'),
-                              onPressed: _create,
-                              icon: const Icon(Icons.add),
-                              label: Text(l.catalogCreate),
-                              style: TextButton.styleFrom(
+                          const SizedBox(height: 12),
+                          if (!browseUnavailable)
+                            OutlinedButton.icon(
+                              key: const Key('catalog-browse-muscles'),
+                              onPressed: _pickGroup,
+                              icon: const Icon(
+                                Icons.accessibility_new_outlined,
+                              ),
+                              label: Text(labels.exploreMuscles),
+                              style: OutlinedButton.styleFrom(
+                                alignment: Alignment.centerLeft,
                                 minimumSize: const Size(48, 48),
                               ),
                             ),
-                          ),
+                          const SizedBox(height: 12),
                           Wrap(
                             spacing: 8,
                             runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              FilterChip(
-                                key: const Key('catalog-personal'),
-                                label: Text(l.catalogPersonalExercises),
-                                selected: _view == _CatalogView.personal,
-                                onSelected: (v) => _update(() {
-                                  _view = v
-                                      ? _CatalogView.personal
-                                      : _CatalogView.all;
-                                }),
-                              ),
-                              FilterChip(
-                                label: Text(l.catalogRecent),
-                                selected: _view == _CatalogView.recent,
-                                onSelected: (v) => _update(() {
-                                  _view = v
-                                      ? _CatalogView.recent
-                                      : _CatalogView.all;
-                                }),
-                              ),
-                              FilterChip(
-                                label: Text(l.catalogFavorites),
-                                selected: _view == _CatalogView.favorites,
-                                onSelected: (v) => _update(() {
-                                  _view = v
-                                      ? _CatalogView.favorites
-                                      : _CatalogView.all;
-                                }),
-                              ),
-                              ActionChip(
+                              ChoiceChip(
+                                chipAnimationStyle: Motion.chip(context),
                                 key: const Key('catalog-all'),
                                 label: Text(l.catalogAllAZ),
-                                onPressed: () => _update(() {
-                                  _view = _CatalogView.all;
-                                }),
+                                selected: _view == _CatalogView.all,
+                                onSelected: (_) =>
+                                    _update(() => _view = _CatalogView.all),
                               ),
-                              if (!home && !browseUnavailable)
-                                ActionChip(
-                                  key: const Key('catalog-browse-muscles'),
-                                  label: Text(l.catalogBrowseMuscles),
-                                  onPressed: _pickGroup,
+                              ChoiceChip(
+                                chipAnimationStyle: Motion.chip(context),
+                                label: Text(labels.recent),
+                                selected: _view == _CatalogView.recent,
+                                onSelected: (v) => _update(
+                                  () => _view = v
+                                      ? _CatalogView.recent
+                                      : _CatalogView.all,
                                 ),
-                              if (widget.embedded) ...[
-                                ActionChip(
-                                  key: const Key('catalog-browse-equipment'),
-                                  label: Text(l.catalogEquipment),
-                                  onPressed: equipment.isEmpty
-                                      ? null
-                                      : _pickEquipment,
+                              ),
+                              ChoiceChip(
+                                chipAnimationStyle: Motion.chip(context),
+                                label: Text(l.catalogFavorites),
+                                selected: _view == _CatalogView.favorites,
+                                onSelected: (v) => _update(
+                                  () => _view = v
+                                      ? _CatalogView.favorites
+                                      : _CatalogView.all,
                                 ),
-                                if (_equipment != null)
-                                  InputChip(
-                                    key: const Key('catalog-equipment-scope'),
-                                    label: Text(labels.equipment(_equipment!)),
-                                    onDeleted: () =>
-                                        _update(() => _equipment = null),
-                                    deleteButtonTooltipMessage:
-                                        l.catalogClearEquipment,
+                              ),
+                              IconButton(
+                                key: const Key('catalog-filters'),
+                                onPressed: _filters,
+                                tooltip: labels.filterCount(
+                                  [
+                                    _equipment != null,
+                                    _group != null,
+                                    _secondary,
+                                    _view == _CatalogView.personal,
+                                  ].where((active) => active).length,
+                                ),
+                                icon: Badge(
+                                  isLabelVisible:
+                                      _equipment != null ||
+                                      _group != null ||
+                                      _secondary ||
+                                      _view == _CatalogView.personal,
+                                  label: Text(
+                                    '${[_equipment != null, _group != null, _secondary, _view == _CatalogView.personal].where((active) => active).length}',
                                   ),
-                              ],
-                              if (groupLabel != null)
-                                InputChip(
-                                  key: const Key('catalog-group-scope'),
-                                  label: Text(groupLabel),
-                                  onDeleted: _leaveGroup,
-                                  deleteButtonTooltipMessage:
-                                      l.catalogClearGroup,
+                                  backgroundColor: context.tokens.text,
+                                  textColor: context.tokens.bg,
+                                  child: const Icon(Icons.tune, size: 20),
                                 ),
-                              if (_navigation != null &&
-                                  widget.familyId == null)
-                                InputChip(
-                                  key: const Key('catalog-family-scope'),
-                                  label: Text(_navigation!.label),
-                                  onDeleted: _leaveNavigation,
-                                  deleteButtonTooltipMessage:
-                                      l.catalogClearFamily,
-                                ),
+                              ),
                             ],
                           ),
-                          if (!home || _equipment != null) ...[
-                            if (!widget.embedded &&
-                                (equipment.length > 1 ||
-                                    _equipment != null)) ...[
-                              _heading(l.catalogEquipment),
-                              Wrap(
+                          if (_equipment != null ||
+                              groupLabel != null ||
+                              _navigation != null ||
+                              _secondary ||
+                              _view == _CatalogView.personal)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Wrap(
                                 spacing: 8,
                                 runSpacing: 4,
                                 children: [
-                                  for (final kind in equipment)
-                                    FilterChip(
-                                      label: Text(labels.equipment(kind)),
-                                      selected: _equipment == kind,
-                                      onSelected: (v) => _update(
-                                        () => _equipment = v ? kind : null,
+                                  if (_equipment != null)
+                                    InputChip(
+                                      chipAnimationStyle: Motion.chip(context),
+                                      key: const Key('catalog-equipment-scope'),
+                                      label: Text(
+                                        labels.equipment(_equipment!),
                                       ),
+                                      onDeleted: () =>
+                                          _update(() => _equipment = null),
+                                      deleteButtonTooltipMessage:
+                                          l.catalogClearEquipment,
+                                    ),
+                                  if (groupLabel != null)
+                                    InputChip(
+                                      chipAnimationStyle: Motion.chip(context),
+                                      key: const Key('catalog-group-scope'),
+                                      label: Text(groupLabel),
+                                      onDeleted: _leaveGroup,
+                                      deleteButtonTooltipMessage:
+                                          l.catalogClearGroup,
+                                    ),
+                                  if (_secondary)
+                                    InputChip(
+                                      chipAnimationStyle: Motion.chip(context),
+                                      label: Text(l.catalogIncludeSecondary),
+                                      onDeleted: () =>
+                                          _update(() => _secondary = false),
+                                    ),
+                                  if (_view == _CatalogView.personal)
+                                    InputChip(
+                                      chipAnimationStyle: Motion.chip(context),
+                                      label: Text(l.catalogPersonalExercises),
+                                      onDeleted: () => _update(
+                                        () => _view = _CatalogView.all,
+                                      ),
+                                    ),
+                                  if (_navigation != null &&
+                                      widget.familyId == null)
+                                    InputChip(
+                                      chipAnimationStyle: Motion.chip(context),
+                                      key: const Key('catalog-family-scope'),
+                                      label: Text(_navigation!.label),
+                                      onDeleted: _leaveNavigation,
+                                      deleteButtonTooltipMessage:
+                                          l.catalogClearFamily,
                                     ),
                                 ],
                               ),
-                            ],
-                            if (group?.kind == 'muscle')
-                              SwitchListTile.adaptive(
-                                key: const Key('catalog-secondary'),
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(l.catalogIncludeSecondary),
-                                value: _secondary,
-                                onChanged: (v) => _update(() => _secondary = v),
+                            ),
+                          Wrap(
+                            spacing: 16,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                labels.resultCount(resultCount),
+                                key: const Key('catalog-result-count'),
+                                style: WorkoutType.body(
+                                  size: 13,
+                                  color: context.tokens.dim,
+                                ),
                               ),
-                          ],
+                              if (_group != null ||
+                                  _equipment != null ||
+                                  _navigation != null ||
+                                  _secondary)
+                                TextButton(
+                                  key: const Key('catalog-clear-filters'),
+                                  onPressed: _clearFilters,
+                                  child: Text(labels.clearFilters),
+                                ),
+                            ],
+                          ),
                           if (browseUnavailable)
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1372,9 +1531,9 @@ class _CatalogPickerState extends State<CatalogPicker> {
                   ),
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(
-                      16,
                       0,
-                      16,
+                      0,
+                      0,
                       widget.embedded ? bottomNavInset(context) : 16,
                     ),
                     sliver: SliverList.builder(
@@ -1385,7 +1544,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                 ],
               ),
             ),
-            if (widget.multiple)
+            if (widget.multiple && !widget.immediateSelection)
               SafeArea(
                 top: false,
                 child: Padding(
@@ -1531,97 +1690,249 @@ class CatalogPickerRow extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.onMenu,
+    this.onRepeat,
     this.menuLabel,
+    this.equipment,
+    this.equipmentLabel,
     this.selected = false,
+    this.favorite = false,
+    this.current = false,
+    this.inDay = false,
+    this.inspection = false,
     this.count = 0,
+    this.artwork,
   });
+  final CatalogExerciseArtwork? artwork;
   final String label, subtitle;
   final VoidCallback onTap;
-  final VoidCallback? onMenu;
-  final String? menuLabel;
-  final bool selected;
+  final VoidCallback? onMenu, onRepeat;
+  final String? menuLabel, equipment, equipmentLabel;
+  final bool selected, favorite, current, inDay, inspection;
   final int count;
+
   @override
-  Widget build(BuildContext context) => Material(
-    color: context.tokens.surface,
-    child: Row(
-      children: [
-        Expanded(
-          child: Semantics(
-            button: true,
-            selected: selected,
-            label: [label, if (subtitle.isNotEmpty) subtitle].join(', '),
-            value: selected
-                ? AppLocalizations.of(context).catalogSelectedCount(count)
-                : null,
-            onTap: onTap,
-            excludeSemantics: true,
-            child: InkWell(
-              onTap: onTap,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 64),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            FitLabel(
-                              label,
-                              maxLines: 3,
-                              style: WorkoutType.body(
-                                size: 16,
-                                color: context.tokens.text,
-                              ),
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final l = AppLocalizations.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // At narrow widths with enlarged text, keep the identity column wide.
+        // Repeat/details remain separate 48dp targets below the selection area.
+        final stackActions =
+            constraints.maxWidth < 400 &&
+            MediaQuery.textScalerOf(context).scale(16) > 24;
+        final actions = <Widget>[
+          if (onRepeat != null)
+            IconButton(
+              onPressed: onRepeat,
+              tooltip: l.catalogAddAgain,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: Icon(Icons.add, size: 20, color: t.text),
+            ),
+          if (onMenu != null)
+            IconButton(
+              onPressed: onMenu,
+              tooltip: menuLabel,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              icon: Icon(Icons.more_horiz, size: 20, color: t.dim),
+            ),
+        ];
+        return Material(
+          color: Colors.transparent,
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Semantics(
+                      button: true,
+                      selected: selected,
+                      label: [
+                        label,
+                        if (subtitle.isNotEmpty) subtitle,
+                        if (equipmentLabel != null) equipmentLabel!,
+                        if (current) l.catalogCurrent,
+                        if (inDay) l.catalogInDay,
+                        if (favorite) l.catalogFavorites,
+                      ].join(', '),
+                      value: selected ? l.catalogSelectedCount(count) : null,
+                      onTap: onTap,
+                      excludeSemantics: true,
+                      child: InkWell(
+                        onTap: onTap,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 76),
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              16,
+                              16,
+                              stackActions ? 16 : 4,
+                              16,
                             ),
-                            if (subtitle.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: FitLabel(
-                                  subtitle,
-                                  maxLines: 3,
-                                  style: WorkoutType.body(
-                                    size: 13,
-                                    color: context.tokens.dim,
+                            child: Row(
+                              children: [
+                                if (onMenu != null || artwork != null) ...[
+                                  StateMark(
+                                    value: favorite,
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        if (artwork != null) ...[
+                                          CatalogArtworkThumbnail(
+                                            artwork: artwork!,
+                                          ),
+                                          Positioned(
+                                            right: 0,
+                                            bottom: 0,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: t.bg,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(
+                                                  2,
+                                                ),
+                                                child: CatalogEquipmentIcon(
+                                                  kind: equipment,
+                                                  size: 18,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ] else
+                                          CatalogEquipmentIcon(kind: equipment),
+                                        if (favorite)
+                                          Positioned(
+                                            right: -3,
+                                            bottom: -5,
+                                            child: Icon(
+                                              Icons.star,
+                                              size: 10,
+                                              color: t.text,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                ],
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      FitLabel(
+                                        label,
+                                        maxLines: 6,
+                                        style: WorkoutType.body(
+                                          size: 16,
+                                          color: t.text,
+                                        ),
+                                      ),
+                                      if (subtitle.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        FitLabel(
+                                          subtitle,
+                                          maxLines: 4,
+                                          style: WorkoutType.body(
+                                            size: 13,
+                                            color: t.dim,
+                                          ),
+                                        ),
+                                      ],
+                                      if (current || inDay) ...[
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 12,
+                                          runSpacing: 4,
+                                          children: [
+                                            if (current)
+                                              _status(
+                                                Icons.radio_button_checked,
+                                                l.catalogCurrent,
+                                                t.dim,
+                                              ),
+                                            if (inDay)
+                                              _status(
+                                                Icons.playlist_add_check,
+                                                l.catalogInDay,
+                                                t.dim,
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
-                              ),
-                          ],
+                                const SizedBox(width: 8),
+                                StateMark(
+                                  value: (selected, count),
+                                  child: SizedBox(
+                                    width: 24,
+                                    child: Center(
+                                      child: selected && count > 1
+                                          ? Text(
+                                              '$count',
+                                              style: WorkoutType.mono(
+                                                size: 16,
+                                                color: t.accentText,
+                                              ),
+                                            )
+                                          : Icon(
+                                              selected
+                                                  ? Icons.check
+                                                  : inspection || onMenu == null
+                                                  ? Icons.chevron_right
+                                                  : Icons.add,
+                                              size: 20,
+                                              color: selected
+                                                  ? t.accentText
+                                                  : t.dim,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                      if (selected)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: count > 1
-                              ? Text(
-                                  '$count',
-                                  style: WorkoutType.mono(
-                                    size: 16,
-                                    color: context.tokens.accentText,
-                                  ),
-                                )
-                              : Icon(
-                                  Icons.check,
-                                  color: context.tokens.accentText,
-                                ),
-                        ),
-                    ],
+                    ),
+                  ),
+                  if (!stackActions) ...actions,
+                  if (onMenu == null) const SizedBox(width: 12),
+                ],
+              ),
+              if (stackActions && actions.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: actions,
                   ),
                 ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Divider(height: 1, color: t.line),
               ),
-            ),
+            ],
           ),
-        ),
-        if (onMenu != null)
-          IconButton(
-            onPressed: onMenu,
-            tooltip: menuLabel,
-            icon: const Icon(Icons.more_horiz),
-          ),
-      ],
-    ),
+        );
+      },
+    );
+  }
+
+  Widget _status(IconData icon, String text, Color color) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 14, color: color),
+      const SizedBox(width: 4),
+      Flexible(
+        child: Text(text, style: WorkoutType.body(size: 12, color: color)),
+      ),
+    ],
   );
 }
 
@@ -1736,6 +2047,7 @@ class _CustomExerciseFormState extends State<_CustomExerciseForm> {
                       (g) => g.kind == 'muscle',
                     ))
                       FilterChip(
+                        chipAnimationStyle: Motion.chip(context),
                         key: ValueKey('catalog-custom-group-${g.key}'),
                         label: Text(index.groupLabel(g)),
                         selected: _groups.contains(g.key),
@@ -1788,6 +2100,7 @@ Future<String?> showCatalogSetupNickname(BuildContext context) =>
     showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
+      sheetAnimationStyle: Motion.sheet(context),
       useSafeArea: true,
       builder: (_) => const _SetupNicknameForm(),
     );

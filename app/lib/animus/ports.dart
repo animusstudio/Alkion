@@ -1,5 +1,8 @@
 import 'dart:typed_data';
 
+import '../store/local_store.dart';
+import 'remote_recovery_repository.dart';
+
 import 'contracts.dart';
 
 /// Bound to one immutable local/config scope. Construction must perform no I/O.
@@ -95,4 +98,25 @@ abstract interface class AnimusUploadHttpPort implements AnimusHttpPort {
     required int maxResponseBytes,
     required Duration timeout,
   });
+}
+
+/// Foreground API protocol boundary. Production always supplies durable storage;
+/// tests may inject an explicit historical transport without changing defaults.
+abstract interface class AnimusRecoveryPort {
+  bool get preflightSelection;
+  Future<void> checkReady();
+  Future<AnimusHttpResponse> discover(
+    Future<AnimusHttpResponse> Function(Map<String, String> headers) send,
+    bool Function() current,
+  );
+  Future<AnimusHttpResponse> exchange(
+    RemoteApiRequest request,
+    Future<AnimusHttpResponse> Function(Map<String, String> headers) send,
+    bool Function() current,
+    void Function(AnimusHttpResponse) validate,
+  );
+  Future<void> prepareSelectionTx(
+    LocalTransaction tx,
+    Iterable<String> operations,
+  );
 }

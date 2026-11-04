@@ -67,10 +67,21 @@ v0.18.1 is the final legacy Reps release. Its Go backend, PowerSync service,
 deployment stack, old API and release workflows have been removed from current
 source. [Exact retirement provenance](docs/alkion/legacy-retirement.md) preserves
 required non-runtime schema/protocol fixtures and immutable source references.
-The full Git history and dated capture qualification evidence remain available.
+Previously published Reps history and dated capture qualification evidence
+remain available. The [licensing guide](docs/alkion/licensing.md) records the
+planned publication snapshot and private preservation of unpublished history.
 This source cleanup does not shut down a running service or authorize live data
 migration, READY, deployment or a release.
 
 ## License
 
-[MIT](LICENSE). Bundled fonts retain their OFL notices.
+New owner-controlled software is licensed under [AGPL-3.0-only](LICENSE), with
+prior public MIT permissions preserved in [the legacy notice](LICENSES/MIT-legacy.txt).
+The 760 owner exercise illustrations are separately licensed
+[CC BY-SA 4.0](app/assets/exercise_artwork/NOTICE.md). Workout Guide assets,
+bundled fonts and other third-party material retain their own terms and notices.
+
+Both licenses permit compliant commercial reuse without payment or mandatory
+project affiliation. Separate terms may be discussed only for rights the owner
+controls. See [scope and notices](NOTICE.md), [licensing and commercial options](docs/alkion/licensing.md)
+and [exercise media attribution](docs/alkion/exercise-media.md).

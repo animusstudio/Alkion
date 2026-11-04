@@ -45,7 +45,7 @@ Future<LocalStore> syntheticStore(
         ? prescriptionSchemaRegistry()
         : domainCases.contains(caseName)
         ? prescriptionSchemaRegistry()
-        : null,
+        : SchemaRegistry(),
   );
 }
 
@@ -2240,12 +2240,13 @@ Future<Map<String, Object?>> qualifyStore(
     () => LocalStore.open(
       profile: upgradeProfile,
       expectedProfileId: upgradeProfile.profileId,
+      schema: SchemaRegistry(),
     ),
     category: 'newer_schema_preserved',
   );
   require(
     jsonEncode(upgradeBytes) == jsonEncode(artifactBytes(upgradePath)),
-    'Default registry modified newer schema',
+    'Explicit foundation fixture registry modified its newer schema',
   );
   cases['registered_upgrade_two_reopens'] = {
     'status': 'PASS',

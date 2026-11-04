@@ -173,6 +173,10 @@ void main() {
                 ),
               );
               expect(tester.takeException(), isNull);
+              expect(
+                tester.getTopLeft(find.byKey(const Key('session-progress'))).dx,
+                tester.getTopLeft(find.byKey(const Key('session-title'))).dx,
+              );
               return tester.getSize(find.byType(SessionHeader)).height;
             }
 

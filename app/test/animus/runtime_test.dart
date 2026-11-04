@@ -8,6 +8,7 @@ import 'package:alkion/animus/ports.dart';
 import 'package:alkion/animus/probe.dart';
 import 'package:alkion/animus/runtime.dart';
 import 'package:alkion/main.dart';
+import 'package:alkion/store/schema.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../alkion/acceptance/acceptance_support.dart';
@@ -64,10 +65,10 @@ void main() {
           Directory('${temp.path}/dev.animusstudio.alkion.dev'),
         );
         expect(runtime.animus.state, AnimusConnectionState.disabled);
-        expect(runtime.store.schema.latestVersion, 5);
+        expect(runtime.store.schema.latestVersion, currentSchemaVersion);
         expect(
           (await runtime.store.get('PRAGMA user_version')).values.single,
-          5,
+          currentSchemaVersion,
         );
         await runtime.flushPersistence();
         await runtime.close();

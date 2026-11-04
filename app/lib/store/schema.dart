@@ -2,14 +2,16 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 /// Forward IDs are reserved: 1 foundation, 2 domain adapters, 3 workout,
-/// 4 flexible prescriptions, 5 catalog execution. IDs 1–4 remain frozen.
-const currentSchemaVersion = 5;
+/// 4 flexible prescriptions, 5 catalog execution, 6 remote recovery.
+/// Migration statements and resulting shapes for IDs 1–5 remain frozen.
+const currentSchemaVersion = 6;
 const alkionApplicationId = 0x414C4B31;
 const reservedMigrationIds = {
   2: 'domains',
   3: 'workout',
   4: 'flexible-prescriptions',
   5: 'catalog-execution',
+  6: 'animus-recovery',
 };
 
 const foundationDomainTables = [
@@ -66,13 +68,26 @@ const foundationPreservedTables = [
   'restore_journal',
   ...foundationDomainTables,
 ];
-const preservedTables = [
+const catalogPreservedTables = [
   ...foundationPreservedTables,
   'exercise_catalog_bindings',
   'exercise_tracking_contexts',
 ];
-List<String> preservedTablesAt(int version) =>
-    version < 5 ? foundationPreservedTables : preservedTables;
+const remoteRecoveryTables = [
+  'animus_remote_attachments',
+  'animus_operation_origins',
+  'animus_exchange_intents',
+  'animus_recovery_archives',
+  'animus_response_evidence',
+  'animus_recovery_stages',
+  'animus_recovery_stage_rows',
+];
+const preservedTables = [...catalogPreservedTables, ...remoteRecoveryTables];
+List<String> preservedTablesAt(int version) => version < 5
+    ? foundationPreservedTables
+    : version == 5
+    ? catalogPreservedTables
+    : preservedTables;
 
 final schemaStatements = <String>[
   '''CREATE TABLE profile_state (
@@ -347,12 +362,12 @@ final class SchemaRegistry {
       ]) {
     for (var i = 0; i < migrations.length; i++) {
       if (migrations[i].version != i + 1 ||
-          migrations[i].version > 5 ||
+          migrations[i].version > currentSchemaVersion ||
           !RegExp(
             r'^[0-9a-f]{64}$',
           ).hasMatch(migrations[i].expectedSchemaDigest)) {
         throw const FormatException(
-          'Contiguous qualified migration IDs 1–5 required',
+          'Contiguous qualified migration IDs 1–6 required',
         );
       }
     }
@@ -512,6 +527,109 @@ SchemaRegistry catalogExecutionSchemaRegistry() => SchemaRegistry(
       version: 5,
       statements: catalogExecutionMigrationStatements,
       expectedSchemaDigest: schemaSqlDigest(_catalogExecutionSchemaStatements),
+    ),
+  ],
+);
+
+final remoteRecoveryMigrationStatements = <String>[
+  '''CREATE TABLE animus_remote_attachments (
+    profile_id TEXT NOT NULL REFERENCES profile_state(profile_id), attachment_id TEXT NOT NULL,
+    binding_bytes BLOB NOT NULL, binding_hash TEXT NOT NULL,
+    recovery_generation TEXT, state TEXT NOT NULL CHECK(state IN ('ready','capture_pending','recovery_required')),
+    revision INTEGER NOT NULL CHECK(revision>=1), archive_id TEXT, created_at TEXT NOT NULL,
+    PRIMARY KEY(profile_id,attachment_id), UNIQUE(profile_id,binding_hash),
+    FOREIGN KEY(profile_id,archive_id) REFERENCES animus_recovery_archives(profile_id,archive_id) DEFERRABLE INITIALLY DEFERRED)''',
+  '''CREATE TABLE animus_operation_origins (
+    profile_id TEXT NOT NULL, family TEXT NOT NULL, operation_id TEXT NOT NULL,
+    attachment_id TEXT, operation_generation TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(profile_id,family,operation_id),
+    FOREIGN KEY(profile_id,family,operation_id) REFERENCES operations(profile_id,family,operation_id),
+    FOREIGN KEY(profile_id,attachment_id) REFERENCES animus_remote_attachments(profile_id,attachment_id))''',
+  '''CREATE TABLE animus_exchange_intents (
+    profile_id TEXT NOT NULL, exchange_id TEXT NOT NULL, attachment_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL, path_kind TEXT NOT NULL CHECK(path_kind IN ('discovery','directRead','action','operationStatus')),
+    method TEXT NOT NULL CHECK(method IN ('GET','POST')), request_generation TEXT,
+    operation_generation TEXT, family TEXT, operation_id TEXT, attempt_id TEXT,
+    dataset TEXT, target_id TEXT, request_hash TEXT, attachment_revision INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('pending','settled','archived')), archive_id TEXT,
+    created_at TEXT NOT NULL, PRIMARY KEY(profile_id,exchange_id),
+    FOREIGN KEY(profile_id,attachment_id) REFERENCES animus_remote_attachments(profile_id,attachment_id),
+    FOREIGN KEY(profile_id,archive_id) REFERENCES animus_recovery_archives(profile_id,archive_id) DEFERRABLE INITIALLY DEFERRED)''',
+  "CREATE UNIQUE INDEX animus_one_pending_exchange ON animus_exchange_intents(profile_id,attachment_id) WHERE state='pending'",
+  '''CREATE TABLE animus_recovery_archives (
+    profile_id TEXT NOT NULL, archive_id TEXT NOT NULL, attachment_id TEXT NOT NULL,
+    recovery_generation TEXT, covered_bytes BLOB NOT NULL, manifest_bytes BLOB NOT NULL,
+    covered_hash TEXT NOT NULL, manifest_hash TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(profile_id,archive_id),
+    FOREIGN KEY(profile_id,attachment_id) REFERENCES animus_remote_attachments(profile_id,attachment_id))''',
+  '''CREATE TABLE animus_response_evidence (
+    profile_id TEXT NOT NULL, evidence_id TEXT NOT NULL, exchange_id TEXT NOT NULL,
+    response_generation TEXT, http_status INTEGER NOT NULL CHECK(http_status BETWEEN 100 AND 599),
+    body_bytes BLOB NOT NULL, received_at TEXT NOT NULL, PRIMARY KEY(profile_id,evidence_id),
+    FOREIGN KEY(profile_id,exchange_id) REFERENCES animus_exchange_intents(profile_id,exchange_id))''',
+  '''CREATE TABLE animus_recovery_stages (
+    profile_id TEXT NOT NULL, stage_id TEXT NOT NULL, attachment_id TEXT NOT NULL,
+    recovery_generation TEXT NOT NULL, inventory_bytes BLOB NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('staging','verified','invalid')), created_at TEXT NOT NULL,
+    PRIMARY KEY(profile_id,stage_id),
+    FOREIGN KEY(profile_id,attachment_id) REFERENCES animus_remote_attachments(profile_id,attachment_id))''',
+  '''CREATE TABLE animus_recovery_stage_rows (
+    profile_id TEXT NOT NULL, stage_id TEXT NOT NULL, dataset TEXT NOT NULL, target_id TEXT NOT NULL,
+    availability TEXT NOT NULL CHECK(availability IN ('available','missing','denied')),
+    record_bytes BLOB, PRIMARY KEY(profile_id,stage_id,dataset,target_id),
+    FOREIGN KEY(profile_id,stage_id) REFERENCES animus_recovery_stages(profile_id,stage_id))''',
+  for (final table in remoteRecoveryTables)
+    "CREATE TRIGGER ${table}_retain BEFORE DELETE ON $table BEGIN SELECT RAISE(ABORT,'remote_recovery_evidence_retained'); END",
+  for (final table in [
+    'animus_operation_origins',
+    'animus_recovery_archives',
+    'animus_response_evidence',
+  ])
+    "CREATE TRIGGER ${table}_immutable BEFORE UPDATE ON $table BEGIN SELECT RAISE(ABORT,'immutable_remote_recovery_evidence'); END",
+  '''CREATE TRIGGER animus_attachment_binding_immutable BEFORE UPDATE ON animus_remote_attachments
+    WHEN NEW.profile_id IS NOT OLD.profile_id OR NEW.attachment_id IS NOT OLD.attachment_id
+      OR NEW.binding_bytes IS NOT OLD.binding_bytes OR NEW.binding_hash IS NOT OLD.binding_hash
+      OR NEW.created_at IS NOT OLD.created_at OR NEW.revision<=OLD.revision
+    BEGIN SELECT RAISE(ABORT,'immutable_remote_attachment'); END''',
+  '''CREATE TRIGGER animus_exchange_immutable BEFORE UPDATE ON animus_exchange_intents
+    WHEN OLD.state<>'pending' OR NEW.state NOT IN ('settled','archived')
+      OR NEW.profile_id IS NOT OLD.profile_id OR NEW.exchange_id IS NOT OLD.exchange_id
+      OR NEW.attachment_id IS NOT OLD.attachment_id OR NEW.owner_id IS NOT OLD.owner_id
+      OR NEW.path_kind IS NOT OLD.path_kind OR NEW.method IS NOT OLD.method
+      OR NEW.request_generation IS NOT OLD.request_generation OR NEW.operation_generation IS NOT OLD.operation_generation
+      OR NEW.family IS NOT OLD.family OR NEW.operation_id IS NOT OLD.operation_id OR NEW.attempt_id IS NOT OLD.attempt_id
+      OR NEW.dataset IS NOT OLD.dataset OR NEW.target_id IS NOT OLD.target_id OR NEW.request_hash IS NOT OLD.request_hash
+      OR NEW.attachment_revision IS NOT OLD.attachment_revision OR NEW.created_at IS NOT OLD.created_at
+      OR (NEW.state='archived')<>(NEW.archive_id IS NOT NULL)
+    BEGIN SELECT RAISE(ABORT,'immutable_remote_exchange'); END''',
+  "INSERT INTO animus_operation_origins SELECT DISTINCT profile_id,family,operation_id,NULL,'00000000-0000-0000-0000-000000000000',attempted_at FROM operation_attempts WHERE 1 ON CONFLICT DO NOTHING",
+  '''WITH selections AS (
+    SELECT profile_id,CASE WHEN json_valid(CAST(payload_bytes AS TEXT)) THEN CAST(payload_bytes AS TEXT) ELSE '{}' END AS payload,updated_at
+    FROM local_state WHERE state_kind='semanticSetting' AND state_key LIKE 'animus.native-workout.selection/1/%'
+  ), prepared AS (
+    SELECT profile_id,json_extract(payload,'\$.finish.operation_id') AS operation_id,updated_at FROM selections
+    UNION ALL
+    SELECT s.profile_id,json_extract(CASE WHEN json_valid(c.value) THEN c.value ELSE '{}' END,'\$.action.operation_id'),s.updated_at
+    FROM selections s,json_each(s.payload,'\$.definitions') d,
+      json_each(CASE WHEN json_valid(d.value) THEN d.value ELSE '{}' END,'\$.chain') c
+  ) INSERT INTO animus_operation_origins
+    SELECT o.profile_id,o.family,o.operation_id,NULL,'00000000-0000-0000-0000-000000000000',p.updated_at
+    FROM prepared p JOIN operations o ON o.profile_id=p.profile_id AND o.family='workouts' AND o.operation_id=p.operation_id
+    WHERE 1 ON CONFLICT DO NOTHING''',
+];
+
+SchemaRegistry remoteRecoverySchemaRegistry() => SchemaRegistry(
+  forward: [
+    ...catalogExecutionSchemaRegistry().migrations.skip(1),
+    ForwardMigration(
+      version: 6,
+      statements: remoteRecoveryMigrationStatements,
+      expectedSchemaDigest: schemaSqlDigest([
+        ..._catalogExecutionSchemaStatements,
+        ...remoteRecoveryMigrationStatements.where(
+          (s) => s.startsWith('CREATE '),
+        ),
+      ]),
     ),
   ],
 );

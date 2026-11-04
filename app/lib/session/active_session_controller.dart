@@ -15,7 +15,6 @@ import '../data/session_repository.dart';
 import '../data/session_writer.dart';
 import '../util/calendar_keys.dart';
 import '../util/prescription_format.dart';
-import '../settings/settings_service.dart';
 import '../store/local_store.dart';
 import '../domain/catalog_execution.dart';
 import '../domain/local_action.dart';
@@ -135,6 +134,7 @@ double roundTo(double v, double step) => (v / step).round() * step;
 /// Working sets use [suggested] weight and [repLow] reps; actual RIR is absent.
 BlockState buildBlock({
   required ResolvedSlot resolved,
+  RepPair? repRange,
   double? lastTopKg,
   String? originSlotId,
   int? originSlotRevision,
@@ -184,11 +184,34 @@ BlockState buildBlock({
   return BlockState(
     originSlotId: originSlotId,
     originSlotRevision: originSlotRevision,
+    targetRepRange: repRange,
     exercise: exercise,
     resolved: resolved,
     warmupSets: warmups,
     workingSets: working,
     expanded: true,
+  );
+}
+
+/// Only authored target bounds count for presentation. Resolver defaults and
+/// actual set seeds are not prescription evidence.
+RepPair? authoredRepRangeFor(Slot slot, Exercise exercise) {
+  if (slot.repLow != null ||
+      slot.repHigh != null ||
+      slot.rawFields['target_rep_low'] != null ||
+      slot.rawFields['target_rep_high'] != null) {
+    return qualifiedRepPair(
+      slot.repLow,
+      slot.repHigh,
+      rawFields: slot.rawFields,
+    );
+  }
+  return qualifiedRepPair(
+    exercise.defaultRepLow,
+    exercise.defaultRepHigh,
+    rawFields: exercise.rawFields,
+    lowKey: 'default_rep_low',
+    highKey: 'default_rep_high',
   );
 }
 
@@ -198,6 +221,7 @@ BlockState buildCatalogBlock({
   required ResolvedSlot resolved,
   required CatalogSelectionEvidence selection,
   Map<String, CatalogMetricEvidence> targets = const {},
+  RepPair? repRange,
   String? originSlotId,
   int? originSlotRevision,
 }) {
@@ -222,6 +246,7 @@ BlockState buildCatalogBlock({
     originSlotId: originSlotId,
     originSlotRevision: originSlotRevision,
     catalogSelection: selection,
+    targetRepRange: repRange,
     warmupSets: List.generate(resolved.warmupSets, (_) => fresh(true)),
     workingSets: List.generate(resolved.workSets, (_) => fresh(false)),
     expanded: true,
@@ -423,6 +448,7 @@ class BlockState {
   final String? originSlotId;
   final int? originSlotRevision;
   CatalogSelectionEvidence? catalogSelection;
+  final RepPair? targetRepRange;
   final Map<String, CatalogMetricEvidence> catalogBaselines;
   final List<OperationDependency> catalogDependencies;
   final Map<String, Map<String, CatalogMetricEvidence>> catalogLastMetrics;
@@ -446,6 +472,7 @@ class BlockState {
     this.originSlotId,
     this.originSlotRevision,
     this.catalogSelection,
+    this.targetRepRange,
     Map<String, CatalogMetricEvidence> catalogBaselines = const {},
     List<OperationDependency> catalogDependencies = const [],
     Map<String, Map<String, CatalogMetricEvidence>> catalogLastMetrics =
@@ -472,6 +499,9 @@ class BlockState {
     'originSlotRevision': originSlotRevision,
     if (catalogSelection != null)
       'catalogSelection': catalogSelection!.toJson(),
+    'targetRepRange': targetRepRange == null
+        ? null
+        : {'low': targetRepRange!.low, 'high': targetRepRange!.high},
     'catalogBaselines': {
       for (final entry in catalogBaselines.entries)
         entry.key: entry.value.toJson(),
@@ -530,6 +560,8 @@ class BlockState {
       'originSlotId',
       'originSlotRevision',
       'catalogSelection',
+      'catalogRepRange',
+      'targetRepRange',
       'catalogBaselines',
       'catalogDependencies',
       'catalogLastMetrics',
@@ -645,8 +677,39 @@ class BlockState {
         ? (weight: ltWeight, reps: ltReps, date: ltDate)
         : null;
 
+    if (json.containsKey('targetRepRange') &&
+        json.containsKey('catalogRepRange')) {
+      throw const FormatException('Ambiguous draft rep range');
+    }
+    // Old drafts without display metadata cannot prove slot targets from the
+    // resolved seed pair. Only their snapshotted exercise defaults qualify.
+    RepPair? targetRepRange =
+        json.containsKey('targetRepRange') ||
+            json.containsKey('catalogRepRange')
+        ? null
+        : authoredRepRangeFor(
+            Slot(exerciseId: exercise.id, position: 0),
+            exercise,
+          );
+    if ((json['targetRepRange'] ?? json['catalogRepRange'])
+        case final Object rawRange) {
+      if (rawRange is! Map ||
+          rawRange.keys.toSet().difference({'low', 'high'}).isNotEmpty ||
+          rawRange['low'] is! int ||
+          rawRange['high'] is! int) {
+        throw const FormatException('Invalid draft rep range');
+      }
+      targetRepRange = qualifiedRepPair(
+        rawRange['low'] as int,
+        rawRange['high'] as int,
+      );
+      if (targetRepRange == null) {
+        throw const FormatException('Invalid draft rep range');
+      }
+    }
     final block = BlockState(
       blockId: json['blockId'] as String?,
+      targetRepRange: targetRepRange,
       originSlotId: json['originSlotId'] as String?,
       originSlotRevision: json['originSlotRevision'] as int?,
       catalogSelection: json['catalogSelection'] == null
@@ -1279,6 +1342,7 @@ class ActiveSessionController extends ChangeNotifier {
     final originSlotRevisions = <int?>[];
     final selections = <CatalogSelectionEvidence?>[];
     final catalogTargets = <Map<String, CatalogMetricEvidence>>[];
+    final authoredRepRanges = <RepPair?>[];
     var remaining = freshGeneratedSetLimit;
     for (final slot in template.slots) {
       final exercise = await exerciseRepo.byId(slot.exerciseId);
@@ -1311,6 +1375,7 @@ class ActiveSessionController extends ChangeNotifier {
       originSlotRevisions.add(slot.localRevision);
       selections.add(slot.catalog);
       catalogTargets.add(slot.catalogTargets);
+      authoredRepRanges.add(authoredRepRangeFor(slot, exercise));
     }
 
     // No generated block, per-set UUID or draft mutation precedes preflight.
@@ -1329,6 +1394,7 @@ class ActiveSessionController extends ChangeNotifier {
           resolved: resolved,
           selection: selection,
           targets: catalogTargets[i],
+          repRange: authoredRepRanges[i],
           originSlotId: originSlotIds[i],
           originSlotRevision: originSlotRevisions[i],
         );
@@ -1353,6 +1419,7 @@ class ActiveSessionController extends ChangeNotifier {
 
       final block = buildBlock(
         resolved: resolved,
+        repRange: authoredRepRanges[i],
         lastTopKg: lastTop?.weight,
         originSlotId: originSlotIds[i],
         originSlotRevision: originSlotRevisions[i],
@@ -1579,7 +1646,9 @@ class ActiveSessionController extends ChangeNotifier {
   /// collapses (only if every set in it is done) and the next one expands.
   /// A valid target may offer the optional RIR strip; no-target logging closes it.
   /// Returns null when there is no live set.
-  ({BlockState block, SetState set, bool newlyDone})? logLiveSet() {
+  ({BlockState block, SetState set, bool newlyDone})? logLiveSet({
+    bool? showRir,
+  }) {
     final live = liveSet;
     if (live == null) {
       return null;
@@ -1590,7 +1659,9 @@ class ActiveSessionController extends ChangeNotifier {
     final newlyDone = !live.set.done;
     live.set.done = true;
     _focusedSetId = null;
-    if (newlyDone && !live.set.isWarmup && live.block.resolved.hasRirTarget) {
+    if (newlyDone &&
+        !live.set.isWarmup &&
+        (showRir ?? live.block.resolved.hasRirTarget)) {
       _rirPromptSetId = live.set.id;
     } else {
       _closeRirPrompt();
@@ -1926,8 +1997,6 @@ class ActiveSessionController extends ChangeNotifier {
   Future<void> addBlock(
     Exercise exercise, {
     required SessionRepository sessionRepo,
-    RepEntry repEntry = RepEntry.fixed,
-    RirControls rirControls = RirControls.off,
     bool allowRepeat = false,
     CatalogSelectionEvidence? catalogSelection,
   }) async {
@@ -1950,14 +2019,14 @@ class ActiveSessionController extends ChangeNotifier {
       exerciseId: exercise.id,
       position: draft.blocks.length,
       repLow: hasRepEvidence ? null : 8,
-      repHigh: hasRepEvidence
-          ? null
-          : repEntry == RepEntry.range
-          ? 12
-          : 8,
-      rirPolicy: rirControls == RirControls.off
-          ? RirPolicy.off
-          : RirPolicy.inherit,
+      repHigh: hasRepEvidence ? null : 8,
+      rirPolicy:
+          exercise.defaultRirLow != null ||
+              exercise.defaultRirHigh != null ||
+              exercise.rawFields['default_rir_low'] != null ||
+              exercise.rawFields['default_rir_high'] != null
+          ? RirPolicy.inherit
+          : RirPolicy.off,
     );
     final resolved = resolveFreshPrescription(slot, exercise);
     _validateFreshCounts(resolved);
@@ -1979,7 +2048,14 @@ class ActiveSessionController extends ChangeNotifier {
     if (!allowRepeat && hasExercise(exercise.id)) {
       return;
     }
-    final block = buildBlock(resolved: resolved, lastTopKg: lastTop?.weight);
+    final block = buildBlock(
+      resolved: resolved,
+      lastTopKg: lastTop?.weight,
+      repRange: authoredRepRangeFor(
+        Slot(exerciseId: exercise.id, position: draft.blocks.length),
+        exercise,
+      ),
+    );
     block.bestKg = bestKg;
     block.lastTop = lastTop;
     block.lastTopUnavailable = reference.unavailable;
@@ -2015,7 +2091,14 @@ class ActiveSessionController extends ChangeNotifier {
       Slot(exerciseId: exercise.id, position: current.blocks.length),
       exercise,
     );
-    final block = buildCatalogBlock(resolved: resolved, selection: selection);
+    final block = buildCatalogBlock(
+      resolved: resolved,
+      selection: selection,
+      repRange: authoredRepRangeFor(
+        Slot(exerciseId: exercise.id, position: current.blocks.length),
+        exercise,
+      ),
+    );
     block.bestKg = reference.bestKg;
     block.catalogDependencies.addAll(dependencies);
     if (reference.lastMetrics case final metrics?) {

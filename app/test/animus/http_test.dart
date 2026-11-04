@@ -7,9 +7,12 @@ import 'package:alkion/animus/config.dart';
 import 'package:alkion/animus/contracts.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:alkion/animus/probe.dart';
+import 'package:alkion/store/local_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
+import 'historical_recovery_fixture.dart';
+import '../../tool/alkion_store_recovery.dart' show syntheticProfile;
 
 void main() {
   late IoAnimusHttpPort http;
@@ -110,6 +113,134 @@ void main() {
     );
     expect(requests, 2);
   });
+
+  test(
+    'real journaled HTTP retains recovery errors and rejects duplicate response or outbound generation headers',
+    () async {
+      const generation = '10000000-0000-4000-8000-000000000001';
+      var duplicate = false, requests = 0;
+      final uri = await serve((request) async {
+        requests++;
+        request.response.headers.contentType = ContentType.json;
+        request.response.headers.set('X-Hub-Recovery-Generation', generation);
+        if (request.uri.path == '/v1/system/info') {
+          request.response.write(
+            jsonEncode({
+              'recovery': {
+                'protocol_version': 1,
+                'required': true,
+                'profile': 'native-workout-v1',
+                'state': 'open',
+                'generation': generation,
+              },
+            }),
+          );
+        } else {
+          expect(
+            request.headers.value('X-Hub-Recovery-Generation'),
+            generation,
+          );
+          expect(request.headers.value('X-Hub-Read-Admission'), isNotEmpty);
+          if (duplicate) {
+            request.response.headers.add(
+              'X-Hub-Recovery-Generation',
+              generation,
+            );
+          }
+          request.response.add(fixture);
+        }
+        await request.response.close();
+      });
+      final values = syntheticAnimusValues()
+        ..['ALKION_ANIMUS_API_ORIGIN'] = uri.origin
+        ..['ALKION_ANIMUS_ALLOW_LOOPBACK_HTTP'] = 'true';
+      final config = AnimusConfig.fromEnvironment(
+        values,
+        platform: AnimusPlatform.linux,
+      )!;
+      final root = await Directory.systemTemp.createTemp(
+        'alkion-http-recovery-',
+      );
+      final profile = await syntheticProfile(root);
+      final store = await LocalStore.open(
+        profile: profile,
+        expectedProfileId: profile.profileId,
+      );
+      final probe = AnimusProbe(
+        config: config,
+        http: http,
+        database: () => store,
+        installationId: profile.installationId,
+      );
+      final session = AnimusAuthSession(
+        identity: AnimusIdentity(
+          issuer: config.issuer,
+          subject: 'synthetic-owner',
+        ),
+        accessToken: 'synthetic-bearer',
+        expiresAt: DateTime.utc(2030),
+      );
+      try {
+        expect(requests, 0);
+        expect(await probe.verify(session), AnimusProbeResult.verified);
+        expect(requests, 2);
+        duplicate = true;
+        expect(
+          await probe.verify(session),
+          AnimusProbeResult.serviceUnavailable,
+        );
+        expect(requests, 4);
+        expect(
+          await store.getAll('SELECT * FROM animus_recovery_archives'),
+          isNotEmpty,
+        );
+        expect(
+          await probe.verify(session),
+          AnimusProbeResult.serviceUnavailable,
+        );
+        expect(requests, 4);
+        await expectLater(
+          get(
+            uri,
+            headers: {
+              'X-Hub-Recovery-Generation': generation,
+              'x-hub-recovery-generation': generation,
+            },
+          ),
+          _failure(AnimusHttpFailureKind.invalidResponse),
+        );
+        expect(requests, 4);
+      } finally {
+        await probe.close();
+        await store.close();
+        await root.delete(recursive: true);
+      }
+      final errorUri = await serve((request) async {
+        request.response
+          ..statusCode = 409
+          ..headers.contentType = ContentType.json;
+        request.response.headers.set('X-Hub-Recovery-Generation', generation);
+        request.response.write('{"error":"operation_recovery_required"}');
+        await request.response.close();
+      });
+      final errorHttp = IoAnimusHttpPort();
+      try {
+        final result = await errorHttp.get(
+          uri: errorUri,
+          headers: const {},
+          maxResponseBytes: 1024,
+          timeout: const Duration(seconds: 2),
+        );
+        expect(jsonDecode(utf8.decode(result.body)), {
+          'error': 'operation_recovery_required',
+        });
+        expect(result.headers['x-hub-recovery-generation'], generation);
+        expect(result.headers, isNot(contains('set-cookie')));
+      } finally {
+        await errorHttp.close();
+      }
+    },
+  );
 
   test('known oversized body is rejected before consumption', () async {
     final uri = await serve((request) async {
@@ -349,7 +480,11 @@ void main() {
         values,
         platform: AnimusPlatform.linux,
       )!;
-      final probe = AnimusProbe(config: config, http: http);
+      final probe = AnimusProbe(
+        config: config,
+        http: http,
+        recovery: const HistoricalRecoveryFixture(probeOnly: true),
+      );
       final session = AnimusAuthSession(
         identity: AnimusIdentity(
           issuer: config.issuer,

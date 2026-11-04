@@ -45,6 +45,20 @@ import 'set_line.dart';
   );
 }
 
+/// Logged work has the same confirmation whether removed by swipe or menu.
+Future<bool> confirmRemoveSessionSet(BuildContext context, SetState set) async {
+  if (!set.done) return true;
+  final l = AppLocalizations.of(context);
+  return await showWConfirm(
+        context,
+        title: l.sessionRemoveSetTitle,
+        message: l.sessionRemoveSetMessage,
+        confirmLabel: l.commonRemove,
+        destructive: true,
+      ) ==
+      true;
+}
+
 /// A collapsible accordion card for one exercise in the active session.
 ///
 /// Renders the workout's live set as a [LiveSetCard] and every other set as
@@ -73,8 +87,11 @@ class ExerciseBlock extends StatefulWidget {
     this.referenceBuilder,
     this.selectionLabel,
     this.onSetMenu,
+    this.showRir = true,
+    this.showRepRange = false,
   });
 
+  final bool showRir, showRepRange;
   final BlockState block;
   final UnitService unit;
 
@@ -117,21 +134,6 @@ class _ExerciseBlockState extends State<ExerciseBlock>
   @override
   bool get wantKeepAlive => true;
 
-  /// A ticked set holds logged work, so removing it is confirmed (the same
-  /// rule as removing an exercise); an unticked set goes without asking.
-  Future<bool> _confirmRemoveSet(SetState s) async {
-    if (!s.done) return true;
-    final l = AppLocalizations.of(context);
-    final confirmed = await showWConfirm(
-      context,
-      title: l.sessionRemoveSetTitle,
-      message: l.sessionRemoveSetMessage,
-      confirmLabel: l.commonRemove,
-      destructive: true,
-    );
-    return confirmed == true;
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -155,8 +157,10 @@ class _ExerciseBlockState extends State<ExerciseBlock>
     final prescription = formatPrescription(
       workSets: resolved.workSets,
       reps: qualifiedRepPair(resolved.repLow, resolved.repHigh),
-      rirLow: resolved.hasRirTarget ? resolved.rirLow : null,
-      rirHigh: resolved.hasRirTarget ? resolved.rirHigh : null,
+      rirLow: widget.showRir && resolved.hasRirTarget ? resolved.rirLow : null,
+      rirHigh: widget.showRir && resolved.hasRirTarget
+          ? resolved.rirHigh
+          : null,
       unavailable: l.trainingUnavailable,
     );
     final subLabel =
@@ -291,9 +295,11 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                     ),
                   ),
                   Semantics(
+                    container: true,
                     button: true,
                     label: l.sessionExerciseOptions,
                     excludeSemantics: true,
+                    onTap: () => widget.onMenu(block),
                     child: IconButton(
                       key: ValueKey('block-menu-${ex.id}'),
                       onPressed: () => widget.onMenu(block),
@@ -344,6 +350,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
     String? topSetId,
     WorkoutTokens tokens,
   ) {
+    final targetRange = block.targetRepRange;
     final workIdx = s.isWarmup ? -1 : block.workingSets.indexOf(s) + 1;
     final Widget child;
     if (s.id == widget.liveSetId) {
@@ -355,6 +362,16 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         lastTop: block.lastTop,
         lastTopUnavailable: block.lastTopUnavailable,
         unit: widget.unit,
+        showRir: widget.showRir,
+        targetLabel:
+            widget.showRepRange &&
+                !s.isWarmup &&
+                (s.catalog == null ||
+                    s.catalog!.selection.profile.metrics.contains(
+                      'repetitions',
+                    ))
+            ? '${AppLocalizations.of(context).trainingRepRange}: ${targetRange == null ? '—' : '${targetRange.low}–${targetRange.high}'}'
+            : null,
         onChanged: () => widget.onSetChanged(block, s),
         onMarkNotDone: () => widget.onMarkNotDone(block, s),
         valuesEditor: s.catalog == null
@@ -364,9 +381,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         selectionLabel: s.catalog == null
             ? null
             : widget.selectionLabel?.call(s),
-        onMenu: s.catalog == null || widget.onSetMenu == null
-            ? null
-            : () => widget.onSetMenu!(s),
+        onMenu: widget.onSetMenu == null ? null : () => widget.onSetMenu!(s),
       );
       child = widget.liveCardKey == null
           ? card
@@ -382,7 +397,8 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         unit: widget.unit,
         isLiveTop: isLiveTop,
         isLivePr: s.catalog == null ? isLiveTop && top.isPr : catalogTop.isPr,
-        showRirPrompt: s.id == widget.rirPromptSetId,
+        showRir: widget.showRir,
+        showRirPrompt: widget.showRir && s.id == widget.rirPromptSetId,
         onTap: () => widget.onFocusSet(block, s),
         onRir: (v) => widget.onRir(block, s, v),
         onClearRir: widget.onClearRir == null
@@ -399,7 +415,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
               key: ValueKey('dismiss-${s.id}'),
               direction: DismissDirection.endToStart,
               background: _RemoveSetBackground(tokens: tokens),
-              confirmDismiss: (_) => _confirmRemoveSet(s),
+              confirmDismiss: (_) => confirmRemoveSessionSet(context, s),
               onDismissed: (_) => onRemoveSet(block, s),
               child: child,
             ),

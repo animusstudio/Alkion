@@ -139,7 +139,7 @@ final class LocalStore implements LocalDatabase {
     required String expectedProfileId,
     SchemaRegistry? schema,
   }) async {
-    final registry = schema ?? SchemaRegistry();
+    final registry = schema ?? remoteRecoverySchemaRegistry();
     final path = await profile.databasePath(
       expectedProfileId: expectedProfileId,
     );

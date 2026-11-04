@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'animus/connection.dart';
 import 'catalog/catalog.dart';
 import 'catalog_ui/catalog_trial_scope.dart';
+import 'catalog_ui/catalog_loading.dart';
 import 'catalog_trial_storage.dart';
 import 'identity/alkion_identity.dart';
 import 'l10n/app_localizations.dart';
@@ -87,7 +88,8 @@ Future<CatalogBundle> _loadCatalog() async {
 }
 
 class CatalogTrialBootstrap extends StatefulWidget {
-  const CatalogTrialBootstrap({super.key});
+  const CatalogTrialBootstrap({super.key, @visibleForTesting this.loader});
+  final Future<CatalogBundle> Function()? loader;
 
   @override
   State<CatalogTrialBootstrap> createState() => _CatalogTrialBootstrapState();
@@ -109,7 +111,7 @@ class _CatalogTrialBootstrapState extends State<CatalogTrialBootstrap> {
 
   Future<void> _load() async {
     try {
-      final bundle = await _loadCatalog();
+      final bundle = await (widget.loader ?? _loadCatalog)();
       if (mounted) setState(() => _bundle = bundle);
     } catch (_) {
       if (mounted) setState(() => _failed = true);
@@ -172,7 +174,7 @@ class _CatalogTrialBootstrapState extends State<CatalogTrialBootstrap> {
     if (runtime != null) {
       return CatalogTrialScope(
         state: _trial!,
-        child: AlkionApp(runtime: runtime),
+        child: AlkionApp(runtime: runtime, revealCatalog: true),
       );
     }
     return MaterialApp(
@@ -218,19 +220,22 @@ class _CatalogTrialBootstrapState extends State<CatalogTrialBootstrap> {
                         ),
                         const SizedBox(height: 24),
                         if (!_failed && (_bundle == null || _starting))
-                          const LinearProgressIndicator(),
+                          const CatalogGlyphSkeleton(),
                         if (!_failed && _bundle != null && !_starting)
-                          FilledButton(
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size(48, 48),
-                            ),
-                            onPressed: _start,
-                            child: FitLabel(
-                              l.catalogTrialStart,
-                              maxLines: 2,
-                              style: WorkoutType.body(
-                                size: 16,
-                                color: context.tokens.onAction,
+                          CatalogReadyReveal(
+                            enabled: true,
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(48, 48),
+                              ),
+                              onPressed: _start,
+                              child: FitLabel(
+                                l.catalogTrialStart,
+                                maxLines: 2,
+                                style: WorkoutType.body(
+                                  size: 16,
+                                  color: context.tokens.onAction,
+                                ),
                               ),
                             ),
                           ),

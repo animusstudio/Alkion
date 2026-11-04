@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
+import 'package:alkion/catalog/catalog_development.dart';
+import 'package:alkion/catalog_ui/catalog_loading.dart';
 import 'package:alkion/files/document_access.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/identity/alkion_profile.dart';
@@ -94,6 +96,92 @@ Future<void> firstActionReady(WidgetTester tester) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(preloadAppFonts);
+  for (final reducedMotion in [false, true]) {
+    testWidgets(
+      'first-start loading takeover owns delayed failure (reduced motion: $reducedMotion)',
+      (tester) async {
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            FakeAccessibilityFeatures(disableAnimations: reducedMotion);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+        late Directory temp, root;
+        final presented = <Widget>[];
+        final pending = Completer<CatalogDevelopmentInput>();
+        await tester.runAsync(() async {
+          temp = await Directory.systemTemp.createTemp(
+            'alkion-start-load-failure-',
+          );
+          root = Directory('${temp.path}/${AlkionIdentity.applicationId}');
+          await launchAlkion(
+            root,
+            present: presented.add,
+            catalogLoader: () => pending.future,
+          );
+        });
+        try {
+          expect(presented.single, isA<AlkionFirstStartApp>());
+          await tester.pumpWidget(presented.single);
+          await openOfflineChoices(tester);
+          final action = tester
+              .widget<FilledButton>(find.byKey(const Key('first-start-local')))
+              .onPressed!;
+          // Invoke the real UI action in the I/O zone, as with other startup
+          // tests. launchAlkion has already returned to its original caller.
+          await tester.runAsync(() async {
+            action();
+            for (var i = 0; i < 100 && presented.length < 2; i++) {
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+            }
+          });
+          expect(presented.last, isA<CatalogLoadingApp>());
+          await tester.pumpWidget(presented.last);
+          await tester.pump();
+          expect(find.byType(FirstStartScreen), findsNothing);
+          expect(find.byType(CatalogGlyphSkeleton), findsOneWidget);
+
+          // Fail only after first-start is disposed: its mounted-guarded
+          // catch cannot rescue a launcher that leaves the loading root up.
+          await tester.runAsync(() async {
+            pending.completeError(
+              const FormatException('synthetic catalog failure'),
+            );
+            for (var i = 0; i < 100 && presented.length < 3; i++) {
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+            }
+          });
+          expect(presented.last, isA<AlkionPreflightApp>());
+          await tester.pumpWidget(presented.last);
+          await tester.pump();
+          expect(find.byType(CatalogGlyphSkeleton), findsNothing);
+          expect(
+            find.textContaining('Your existing files are preserved'),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('synthetic catalog failure'),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+          // The failure also releases its store; the same admitted profile can
+          // be reopened without a destructive recovery or profile replacement.
+          await tester.runAsync(() async {
+            final profile = await AlkionProfile.existing(supportRoot: root);
+            expect(profile, isNotNull);
+            final reopened = await AlkionRuntime.open(root);
+            try {
+              expect(reopened.store.profile.profileId, profile!.profileId);
+            } finally {
+              await reopened.close();
+            }
+          });
+        } finally {
+          await tester.pumpWidget(const SizedBox());
+          await tester.runAsync(() => temp.delete(recursive: true));
+        }
+      },
+    );
+  }
   testWidgets(
     'local choice opens the empty shell directly and manual exercise creation persists',
     (tester) async {
@@ -124,7 +212,7 @@ void main() {
         });
         expect(presented.last, isA<AlkionApp>());
         runtime = (presented.last as AlkionApp).runtime;
-        expect(runtime.store.schema.latestVersion, 5);
+        expect(runtime.store.schema.latestVersion, currentSchemaVersion);
         expect(runtime.settings.repEntry, RepEntry.fixed);
         expect(runtime.settings.rirControls, RirControls.off);
         expect(runtime.identity.onboardingComplete, isFalse);

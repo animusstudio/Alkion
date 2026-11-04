@@ -11,10 +11,98 @@ root, reads `workout-tracker.db`, credentials, PowerSync state or a server.
 
 Code: `app/lib/transfer/` (`json_span_reader.dart`, `full_v1.dart`,
 `transfer_service.dart`, `historical_measurements.dart`, `correspondence.dart`,
-`incoming_quarantine.dart`, `imported_settings.dart`) and the screen
-`app/lib/ui/alkion_transfer/transfer_screen.dart`, reached from Profile → Data →
-Import & transfer. See also [exports](exports.md) and
+`incoming_quarantine.dart`, `imported_settings.dart`) plus the ordinary
+`reps_import.dart` facade and `app/lib/ui/reps_import_screen.dart`, reached from
+**Profile → Data → Import Reps data**. The [import guide](reps-import.md) covers
+full/history preview, optional exported preferences and reviewed mappings in the
+current profile. See also [exports](exports.md) and
 [correspondence](correspondence.md).
+
+## Separate history-v1 adapter
+
+The approved [history-test plan](../plans/2026-11-01-usability-and-history-test.md)
+adds `history_v1.dart` and `history_transfer_service.dart`. This adapter reads
+`reps-export` version 1, `kind: history`; the frozen full reader below still
+refuses that kind. It uses the same strict byte-span JSON lexer with separate
+`reps-history-reader/1`, `alkion-history-v1-projection/1`,
+`alkion-history-import-manifest/1` and `history-id/artifact-occurrence/1`
+policies. No schema migration or remote access is required.
+
+The accepted envelope has `unit: kg`, an ordered inclusive calendar
+`date_range: {from,to}`, and `sessions` containing `date`, `label`,
+`duration_min`, and `exercises`. Each exercise has `name`, `muscle_group`
+and `sets`; each set has `weight_kg`, `reps`, `rir`, `warmup`, `top_set`
+and `pr`. All these fields are required, and arrays may be empty. Dates must
+be qualified calendar days within the declared range. Labels/names/muscle
+groups are strings. Duration, reps and RIR may be null or canonical int64
+JSON integers; historical negative or out-of-range integers are not clamped.
+Loads may be null or exact JSON numbers: exponent expansion uses digit
+arithmetic, never binary floating point. Flags require JSON booleans and
+project to compatibility integers 0/1. Unsupported scalar projections retain
+the staged artifact and report explicit incompatibilities; they never become
+zero/default observations. Duplicate keys, malformed/unsupported envelope,
+invalid days, missing fields and resource excess reject selection. The
+250,000-row ceiling counts sessions, exercise blocks and sets together.
+
+Raw bytes, exact row spans, field lexemes, unknown members, source order,
+calendar dates, duration, nulls and captured flags are retained. Source
+projections record byte offsets, source paths and resolved local references.
+Unavailable stable legacy IDs, notes, plans, bodyweight, equipment,
+prescriptions and timezone instants are explicit; no source instant or
+training default is reconstructed. Each exercise block gets its own local
+legacy exercise, including repeated same-name blocks. Its `is_template=0`
+is local classification, not a claim about an unavailable source catalog.
+
+Identity includes the complete artifact SHA-256 plus zero-based
+session/block/set occurrence, scoped to profile and source namespace through
+the existing UUIDv5 origin mapping. Equal sessions on one date and repeated
+identical blocks remain distinct. Exact artifacts use `hist-art-<digest>` and
+one deterministic history import generation per namespace/digest/policy.
+An identical retry writes nothing once selected. A different artifact
+(including changed whitespace) in an occupied namespace is staged but refused
+as `history_namespace_artifact_conflict`. Full imports cannot supersede a
+history namespace, and history cannot replace a full namespace. This first
+slice provides no cross-file overlap reconciliation.
+
+`HistoryTransferService` requires an explicitly selected profile ID matching
+its database. The ordinary import facade supplies the currently open profile;
+the legacy `testProfileId` constructor alias remains qualification compatibility.
+`previewArtifact`/`previewFile` commit exact staging and the `received` journal before decoding; valid preview selects
+nothing. Preview exposes counts, raw dates, occurrences and incompatibilities.
+`importPreview` checks profile/namespace and reloads the staged bytes, so
+confirmation never rereads a changed external file or trusts mutable preview
+objects. Promotion commits origins, source revisions/projections, domain
+`sourceSelection` revisions, generation selection and journal atomically.
+Interruption retries use the same artifact/occurrence identities. There are no
+native finish actions, outbox operations or send selections; the native sender
+rejects these source-backed workouts.
+
+Catalog mappings belong to a separate reviewed overlay. The adapter never
+renames source exercises, reinterprets recorded kg or writes catalog execution
+evidence. Mapping workflow, exceptions and History attribution are separate
+from this reader and durable import boundary.
+
+Focused synthetic verification:
+
+```sh
+make -C app test TEST="--concurrency=2 test/alkion/transfer/history_import_test.dart"
+make -C app alkion-history-recovery ALKION_OUTPUT=/tmp/transfer-proof-history-fresh
+```
+
+The history recovery tool uses current schema 5 and the existing owned-child
+termination/output helpers. It SIGKILLs at all four staging/promotion boundaries,
+independently reopens twice, retries in two fresh children, verifies exact
+selection and preserved local work against an uninterrupted reference, and
+detects a split-selection negative control. This is Linux synthetic process
+recovery evidence; Android and physical power loss remain unqualified.
+
+An explicitly supplied file can be imported to a fresh external test root with
+`make -C app alkion-import-history HISTORY_INPUT=<explicit-file>
+HISTORY_NAMESPACE=<explicit-namespace> ALKION_OUTPUT=<fresh-transfer-proof-path>`.
+It writes a counts-only receipt and a verified native backup into that output.
+It never discovers profiles or prints source records. The source stays
+unchanged; populated stores, receipts, backups and any personal mapping report
+must remain outside the repository and APK assets.
 
 ## Frozen versions and policies
 

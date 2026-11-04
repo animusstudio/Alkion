@@ -99,6 +99,7 @@ final class AnimusEntryLifecycle {
     _reservation = reservation;
     _completed = false;
     if (epoch != _epoch) throw const StoreException('entry_cancelled');
+    LocalDatabase? connectionDatabase;
     final factory =
         connectionFactory ??
         (reservation, beforeRetain) => createAnimusConnection(
@@ -106,6 +107,7 @@ final class AnimusEntryLifecycle {
           profileId: reservation.profileId,
           generation: reservation.generation,
           beforeRetain: beforeRetain,
+          database: () => connectionDatabase ??= _preparedStore!,
         );
     return _connection = factory(reservation, () {
       if (epoch != _epoch) throw const StoreException('entry_cancelled');
@@ -137,7 +139,7 @@ final class AnimusEntryLifecycle {
     final store = await LocalStore.open(
       profile: profile,
       expectedProfileId: reservation.profileId,
-      schema: catalogExecutionSchemaRegistry(),
+      schema: remoteRecoverySchemaRegistry(),
     );
     try {
       if (store.token.generation != reservation.generation ||

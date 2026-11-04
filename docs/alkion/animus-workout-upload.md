@@ -18,7 +18,7 @@ not a runnable account or connection configuration.
 
 ## Current catalog boundary
 
-Schema 5 retains this native weighted-workout translation alongside catalog and
+Schema 6 preserves the schema-5 native weighted-workout translation alongside catalog and
 flexible-prescription workflows. Ordinary native exercise creation and its scalar
 weight/reps observations remain supported when the original finish has explicit
 time evidence. Catalog action families, typed measurements, tracking contexts,
@@ -59,6 +59,9 @@ routine links and legacy PR/top flags are outside the public finish mapping.
 
 Explicit send preflight requires `workout_finish_definition_bases_v1` in
 `GET /v1/system/info` → `training.implemented` before any dependency write.
+It also requires the exact open recovery profile `native-workout-v1`, compatible
+datasets/actions and a valid server G matching the discovery response header.
+There is no fallback that labels an old operation with a new generation.
 The T1 capture proves the capability is present. The later production-sender
 check removed only that flag from the actual discovery response: the UI kept
 the workout local and made zero definition/workout POSTs. This was a controlled
@@ -76,9 +79,10 @@ bases return 400. An empty array against the nonempty closure returns
 `409 incomplete_aggregate`. Each rejected request has no workout or operation.
 
 Current native grants and source gates still apply. Wrong space, revoked write
-grant and reserved-source native create return 403. On this native non-enforcing
-scope an omitted read-admission header returns 200; an unknown supplied reader
-returns 403. This client uses its registered ordinary reader for verification.
+grant and reserved-source native create return 403. In the historical T1 native
+non-enforcing capture, an omitted read-admission header returned 200 and an unknown
+supplied reader returned 403. That capture does not qualify the current enforced
+profile: this client requires its registered current-G reader for verification.
 An authority-epoch header without its required client context is rejected by
 the parser with 400; this is not an authority activation proof.
 
@@ -111,19 +115,43 @@ qualify the production sender, SQLite durability or an Android device.
 Expand one workout in History and choose **Send to Animus**. Profile retains
 sign-in, account/space confirmation, access verification and disconnect controls;
 a disconnected History card offers **Open Profile**. No startup, timer or
-background action sends workouts. Before the first request, a separate dialog
+background action sends workouts. Before sending definitions or the workout, a separate dialog
 shows the trusted account issuer/subject, configured data space, frozen workout
 label/day, included exercise definitions and set counts. Cancel leaves the
-workout local and sends nothing.
+workout local and sends no mutation; selection may already have checked discovery.
 
 **Saved locally** stays visible independently of **Sending**, **Sent**,
 **Send result uncertain** and **Send needs review**. Unsupported workouts keep a
 concrete reason beside the action. Retry uses the original selection, including
 its frozen exercise definitions, rather than selecting edited History again.
-A sent workout whose ordinary read-back failed remains **Sent** and offers
+A sent workout whose ordinary same-G read-back failed remains **Sent** and offers
 **Verify sent copy**; this does not allocate another workout. Disconnect stops
 further scoped requests while retaining uncertain evidence for explicit retry.
 These controls are localized in English, German, Spanish and Italian.
+
+## Server recovery and reviewed retry
+
+The sender commits a bounded nonsecret SQLite intent before discovery, direct
+reads, actions and status. It retains validated responses as recovery evidence;
+tokens and OIDC traffic are excluded. Personal requests carry current G, mutations
+carry immutable O, and status uses the original O in `operation_generation`.
+Exact request bodies and hashes remain unchanged. These intents, responses and
+verified archives are included in manual backups.
+
+Recovery errors or changed/unexpected G stop sending before ordinary conflict,
+not-found or read-back handling. Keep **Saved locally** separate from remote
+acknowledgement and uncertainty. Use explicit recovery review to compare finite
+known targets and adopt the verified current-G stage. Coverage remains incomplete;
+missing acknowledged work and missing old/unknown receipts stay unresolved.
+Adoption neither rewrites O nor allocates replacement targets for old work.
+
+One explicit reviewed retry submits the original ID/bytes/hash/O once under
+current access and the server's scoped decision. Reusing that confirmation sends
+nothing further; local dismissal grants no server permission. A late response
+remains original-exchange evidence without changing the active view. An attachment
+restored into another local generation remains blocked and unsupported; no rebind
+is enabled. See [server recovery](recovery.md#animus-server-recovery) and
+[qualification](acceptance.md) for the tested scope and remaining boundaries.
 
 
 ## Fresh notes and preserved rejections

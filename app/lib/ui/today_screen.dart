@@ -924,14 +924,20 @@ class _PrRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = exercise?.name ?? pr.exerciseId;
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
+    return TextButton(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        padding: EdgeInsets.zero,
+        alignment: Alignment.centerLeft,
+        overlayColor: tokens.focus.withValues(alpha: .16),
+        backgroundColor: tokens.bg,
+      ),
+      onPressed: onTap,
+
       child: Container(
         constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: tokens.bg,
           border: Border(bottom: BorderSide(color: tokens.line)),
         ),
         child: Column(

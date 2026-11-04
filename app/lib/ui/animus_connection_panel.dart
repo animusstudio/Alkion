@@ -9,6 +9,7 @@ import '../theme/typography.dart';
 import '../theme/tokens.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/w_dialog.dart';
+import 'animus_recovery_review.dart';
 
 /// Optional, foreground-only connection controls. Absent providers keep legacy
 /// local screen harnesses and the account-free Profile unchanged.
@@ -91,6 +92,7 @@ class AnimusConnectionPanel extends StatelessWidget {
                     style: WorkoutType.body(size: 12, color: tokens.text),
                   ),
                 ],
+                const AnimusRecoveryReviewPanel(),
                 if (state != AnimusConnectionState.misconfigured) ...[
                   const SizedBox(height: 8),
                   if (confirming) ...[

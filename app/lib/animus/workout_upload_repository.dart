@@ -102,6 +102,7 @@ final class WorkoutUploadRepository {
     LocalRead tx,
     Map<String, dynamic> binding, {
     FrozenWorkoutSelection? selection,
+    Iterable<String> localRecords = const [],
   }) async {
     final p = await tx.get('SELECT * FROM profile_state WHERE singleton=1');
     if (p['installation_id'] != installationId ||
@@ -123,6 +124,31 @@ final class WorkoutUploadRepository {
         _hash(_decode(attachment['payload_bytes'])['binding']) !=
             _hash(binding)) {
       _block(AnimusWorkoutSendIssue.differentScope);
+    }
+    final recoveryRow = await tx.localState(
+      LocalStateKind.semanticSetting,
+      'animus.recovery.active-stage/1/${_hash(binding)}',
+    );
+    if (recoveryRow != null) {
+      final recovery = _decode(recoveryRow['payload_bytes']);
+      final blockedRecords = recovery['blocked_local_records'] as List? ?? [];
+      final blockedOperations = recovery['blocked_operations'] as List? ?? [];
+      if (localRecords.any(blockedRecords.contains) ||
+          selection != null &&
+              (blockedRecords.contains('workout/${selection.sessionId}') ||
+                  selection.definitions.any(
+                    (d) => blockedRecords.contains('exercise/${d['local_id']}'),
+                  ) ||
+                  blockedOperations.contains(selection.operationId) ||
+                  selection.definitions.any(
+                    (d) => (d['chain'] as List).any(
+                      (step) => blockedOperations.contains(
+                        uploadMap(uploadMap(step)['action'])['operation_id'],
+                      ),
+                    ),
+                  ))) {
+        _block(AnimusWorkoutSendIssue.recoveryBlocked);
+      }
     }
     if (selection != null) {
       if (_hash(selection.binding) != _hash(binding)) {
@@ -168,10 +194,12 @@ final class WorkoutUploadRepository {
   Future<FrozenWorkoutSelection> select(
     String sessionId,
     Map<String, dynamic> binding,
-    void Function() current,
-  ) => db.writeTransaction((tx) async {
+    void Function() current, {
+    Future<void> Function(LocalTransaction, FrozenWorkoutSelection)?
+    prepareOrigins,
+  }) => db.writeTransaction((tx) async {
     current();
-    await gate(tx, binding);
+    await gate(tx, binding, localRecords: ['workout/$sessionId']);
     current();
     final old = await tx.localState(
       LocalStateKind.semanticSetting,
@@ -299,6 +327,7 @@ final class WorkoutUploadRepository {
     final allocations = uploadMap(attachment['exercises']);
     final definitions = <Map<String, dynamic>>[];
     for (final id in exerciseIds) {
+      await gate(tx, binding, localRecords: ['exercise/$id']);
       final row = await tx.record(
         LocalRef(tx.profileId, RecordKind.exercise, id),
       );
@@ -375,6 +404,8 @@ final class WorkoutUploadRepository {
       'block_ids': {for (final id in exerciseIds) id: _uuid.v4()},
       'set_ids': {for (final set in sets) set['id'] as String: _uuid.v4()},
     });
+    if (prepareOrigins != null) await prepareOrigins(tx, selected);
+    current();
     attachment['exercises'] = allocations;
     await tx.putLocalState(
       LocalStateKind.semanticSetting,

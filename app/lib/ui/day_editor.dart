@@ -1161,10 +1161,10 @@ class _DaySlotRowState extends State<DaySlotRow> {
     final tokens = widget.tokens;
     final d = widget.slot.draft;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        border: Border.all(
+    return Material(
+      color: tokens.surface,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(
           color: widget.expanded ? tokens.lineStrong : tokens.line,
         ),
         borderRadius: BorderRadius.circular(AppRadius.panel),
@@ -1175,19 +1175,24 @@ class _DaySlotRowState extends State<DaySlotRow> {
         children: [
           // ── Collapsed row ─────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
                 // Only the index + name/summary toggle the expanded panel —
                 // the drag handle and trash button below sit outside this
-                // GestureDetector so tapping them never also expands the row.
+                // expansion control so tapping them never also expands the row.
                 Expanded(
-                  child: Semantics(
-                    button: true,
-                    expanded: widget.expanded,
-                    child: GestureDetector(
-                      onTap: widget.onToggle,
-                      behavior: HitTestBehavior.opaque,
+                  child: TextButton(
+                    key: ValueKey('day-slot-expand-${widget.slot.instanceKey}'),
+                    onPressed: widget.onToggle,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      padding: EdgeInsets.zero,
+                      alignment: Alignment.centerLeft,
+                      overlayColor: tokens.focus.withValues(alpha: .16),
+                    ),
+                    child: Semantics(
+                      expanded: widget.expanded,
                       child: Row(
                         children: [
                           // Index
@@ -1259,6 +1264,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                 // needs similar-height rows).
                 if (!widget.expanded)
                   Semantics(
+                    container: true,
                     label: l.a11yReorderExercise(
                       (widget.displayName ?? widget.exercise.name),
                     ),
@@ -1277,16 +1283,20 @@ class _DaySlotRowState extends State<DaySlotRow> {
                   ),
 
                 // Trash button
-                Semantics(
-                  button: true,
-                  label: l.dayEditorRemoveExercise(
-                    (widget.displayName ?? widget.exercise.name),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    padding: EdgeInsets.zero,
+                    alignment: Alignment.centerLeft,
+                    overlayColor: tokens.focus.withValues(alpha: .16),
                   ),
-                  excludeSemantics: true,
-                  onTap: widget.onRemove,
-                  child: GestureDetector(
-                    onTap: widget.onRemove,
-                    behavior: HitTestBehavior.opaque,
+                  onPressed: widget.onRemove,
+
+                  child: Semantics(
+                    label: l.dayEditorRemoveExercise(
+                      (widget.displayName ?? widget.exercise.name),
+                    ),
+                    excludeSemantics: true,
                     child: SizedBox(
                       width: 48,
                       height: 48,
@@ -1297,7 +1307,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                           decoration: BoxDecoration(
                             color: tokens.surface3,
                             borderRadius: BorderRadius.circular(
-                              AppRadius.radius * 0.4,
+                              AppRadius.control,
                             ),
                           ),
                           alignment: Alignment.center,
@@ -1318,7 +1328,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
           // ── Expanded panel ────────────────────────────────────────────
           if (widget.expanded)
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 2, 12, 13),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Column(
                 children: [
                   Field(

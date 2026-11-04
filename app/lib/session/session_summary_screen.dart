@@ -10,12 +10,12 @@ import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../widgets/fit_label.dart';
+import '../widgets/state_motion.dart';
 import '../widgets/pr_badge.dart';
 import '../widgets/tag.dart';
 import '../widgets/plan_form.dart';
@@ -217,7 +217,10 @@ class _SummaryBody extends StatelessWidget {
                         borderRadius: BorderRadius.circular(AppRadius.panel),
                       ),
                       alignment: Alignment.center,
-                      child: Icon(WIcons.check, size: 36, color: tokens.text),
+                      child: SuccessMark(
+                        key: ValueKey('completed-${session.id}'),
+                        event: session.id,
+                      ),
                     ),
                     const SizedBox(height: 20),
 
@@ -462,7 +465,7 @@ class _TopSetRow extends StatelessWidget {
   Widget build(BuildContext context) {
     if (block.sets.first.catalog case final evidence?) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -491,7 +494,7 @@ class _TopSetRow extends StatelessWidget {
     }
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: tokens.surface,
         border: Border(bottom: BorderSide(color: tokens.line)),

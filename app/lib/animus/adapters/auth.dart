@@ -483,6 +483,14 @@ final class _GuardedManager extends OidcUserManager {
     if (endpoint == null || !_safeEndpoint(endpoint, config)) {
       throw const AnimusAuthFailure(AnimusAuthFailureKind.invalidResponse);
     }
+    if (config.allowPrivateHttp &&
+        (endpoint.toString() !=
+                '${config.issuer.origin}/application/o/authorize/' ||
+            metadata.tokenEndpoint.toString() !=
+                '${config.issuer.origin}/application/o/token/' ||
+            metadata.jwksUri.toString() != '${config.issuer}jwks/')) {
+      throw const AnimusAuthFailure(AnimusAuthFailureKind.invalidResponse);
+    }
     final transaction = request.generateUri(endpoint);
     Uri browserUri = transaction;
     if (intent == AnimusAuthIntent.createAccount) {
@@ -573,13 +581,26 @@ final class _AuthHttpClient extends http.BaseClient {
   }
 }
 
-bool _safeEndpoint(Uri uri, AnimusConfig config) =>
-    uri.hasAuthority &&
-    uri.host.isNotEmpty &&
-    uri.userInfo.isEmpty &&
-    !uri.hasFragment &&
-    (uri.scheme == 'https' ||
-        (config.allowLoopbackHttp &&
-            uri.scheme == 'http' &&
-            uri.origin == config.issuer.origin &&
-            (uri.host == '127.0.0.1' || uri.host == '::1')));
+bool _safeEndpoint(Uri uri, AnimusConfig config) {
+  if (!uri.hasAuthority ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasFragment) {
+    return false;
+  }
+  if (config.allowPrivateHttp) {
+    return uri.origin == config.issuer.origin &&
+        !uri.hasQuery &&
+        {
+          '${config.issuer}.well-known/openid-configuration',
+          '${config.issuer}jwks/',
+          '${config.issuer.origin}/application/o/authorize/',
+          '${config.issuer.origin}/application/o/token/',
+        }.contains(uri.toString());
+  }
+  return uri.scheme == 'https' ||
+      (config.allowLoopbackHttp &&
+          uri.scheme == 'http' &&
+          uri.origin == config.issuer.origin &&
+          (uri.host == '127.0.0.1' || uri.host == '::1'));
+}

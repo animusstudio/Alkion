@@ -33,6 +33,8 @@ class AuthFixture {
   String? audienceOverride;
   String subject = 'synthetic-user-one';
   String authorizationEndpoint = 'https://identity.example.test/authorize';
+  String tokenEndpoint = 'https://identity.example.test/token';
+  String jwksEndpoint = 'https://identity.example.test/jwks';
   Completer<void>? tokenGate;
   Future<void> initialize() async {
     _keys = await Directory.systemTemp.createTemp('alkion-auth-synthetic-');
@@ -80,8 +82,8 @@ class AuthFixture {
         jsonEncode({
           'issuer': issuerOverride ?? config.issuer.toString(),
           'authorization_endpoint': authorizationEndpoint,
-          'token_endpoint': 'https://identity.example.test/token',
-          'jwks_uri': 'https://identity.example.test/jwks',
+          'token_endpoint': tokenEndpoint,
+          'jwks_uri': jwksEndpoint,
           'response_types_supported': ['code'],
           'scopes_supported': ['openid', 'profile', 'offline_access'],
           'subject_types_supported': ['public'],
@@ -93,7 +95,7 @@ class AuthFixture {
         200,
       );
     }
-    if (request.url.path == '/jwks') {
+    if (request.url.toString() == jwksEndpoint) {
       return http.Response(
         jsonEncode({
           'keys': [_jwk],
@@ -101,7 +103,7 @@ class AuthFixture {
         200,
       );
     }
-    if (request.url.path == '/token') {
+    if (request.url.toString() == tokenEndpoint) {
       final params = request.bodyFields;
       final refresh = params['grant_type'] == 'refresh_token';
       if (refresh) {

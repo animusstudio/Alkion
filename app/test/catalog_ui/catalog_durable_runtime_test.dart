@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:alkion/catalog/catalog.dart';
@@ -17,6 +18,7 @@ import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/resume.dart';
 import 'package:alkion/shell/session_launcher.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 
 import '../catalog/catalog_fixture.dart';
 
@@ -45,6 +47,60 @@ void main() {
     await runtime?.close();
     await temporary.delete(recursive: true);
   });
+
+  test(
+    'real startup reports only actual uncached catalog awaits using stored preferences',
+    () async {
+      runtime = await AlkionRuntime.open(root, catalogBundle: _bundle());
+      await runtime!.settings.setLocaleOverride('it');
+      await runtime!.settings.setMode('light');
+      await runtime!.flushPersistence();
+      await runtime!.close();
+      runtime = null;
+      final entered = Completer<void>();
+      final pending = Completer<CatalogDevelopmentInput>();
+      var calls = 0;
+      final opening = AlkionRuntime.open(
+        root,
+        catalogLoader: () => pending.future,
+        onCatalogLoading: (settings) {
+          calls++;
+          expect(settings.brightness, Brightness.light);
+          expect(settings.locale, const Locale('it'));
+          entered.complete();
+        },
+      );
+      await entered.future;
+      expect(calls, 1);
+      pending.complete(CatalogDevelopmentInput(bundle: _bundle()));
+      runtime = await opening;
+      await runtime!.close();
+      runtime = await AlkionRuntime.open(
+        root,
+        catalogBundle: _bundle(),
+        onCatalogLoading: (_) => calls++,
+      );
+      expect(
+        calls,
+        1,
+      ); // Supplied/cached bundles do not invent a loading phase.
+      await runtime!.close();
+      runtime = null;
+      await expectLater(
+        AlkionRuntime.open(
+          root,
+          catalogLoader: () async =>
+              throw const FormatException('synthetic load failure'),
+        ),
+        throwsFormatException,
+      );
+      runtime = await AlkionRuntime.open(root, catalogBundle: _bundle());
+      expect(
+        runtime!.catalog,
+        isNotNull,
+      ); // Failed loading retained recovery/admission.
+    },
+  );
 
   test(
     'normal runtime cold resume and finish retain all eight exact metric profiles without a bundle',

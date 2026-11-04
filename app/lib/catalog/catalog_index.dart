@@ -439,13 +439,22 @@ class CatalogIndex {
   String identifyingVariantLabel(String id) =>
       _identifyingNames.putIfAbsent(id, () => _identifyingLabel(id));
 
+  // Immutable snapshot vocabulary: group displayed names once, rather than
+  // scanning the entire catalog for each newly rendered row. Locale, personal
+  // aliases, bundle and profile are already fenced by this index's identity.
+  late final Map<String, List<CatalogVariant>> _labelSiblings = () {
+    final groups = <String, List<CatalogVariant>>{};
+    for (final variant in bundle.variants.values) {
+      (groups[variantLabel(variant.id)] ??= []).add(variant);
+    }
+    return groups;
+  }();
+
   String _identifyingLabel(String id) {
     final label = variantLabel(id);
     if (_personalNames.containsKey('variant:$id')) return label;
     final variant = bundle.variants[id]!;
-    final siblings = bundle.variants.values
-        .where((v) => variantLabel(v.id) == label)
-        .toList();
+    final siblings = _labelSiblings[label]!;
     if (siblings.length == 1) return label;
     final distinction = CatalogLabels(locale).distinction(variant, siblings);
     if (distinction.isEmpty) {

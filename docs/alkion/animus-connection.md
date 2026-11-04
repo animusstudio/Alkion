@@ -214,10 +214,12 @@ and rehearsed solution. Email magic links and TOTP do not satisfy that contract.
 
 ## Definition verification contract
 
-The single request is
+Explicit verification first reads `GET /v1/system/info` and requires compatible
+open recovery discovery with `profile: native-workout-v1`. It then reads
 `GET /v1/data-spaces/{data_space_id}/training/definitions/{probe_record_id}`,
 with no query or body, bearer authorization and the configured
-`X-Hub-Read-Admission` UUID. Current `workouts:read` and a reviewed direct reader
+`X-Hub-Read-Admission` UUID and `X-Hub-Recovery-Generation: G`. Discovery and
+checked responses must carry the matching server G. Current `workouts:read` and a reviewed direct reader
 registration are independent of OIDC scopes. A registration locator does not
 grant permission. Setup must seed this exact synthetic definition ID using
 existing administrative interfaces; no account, registration or discovery
@@ -230,14 +232,22 @@ configured `definition.ref.id`, and validate shared revision/attribution
 metadata. `definition.id` is a typed captured value and is not the canonical
 record identity. The synthetic
 [fixture](../../app/test/animus/fixtures/definition_read.json) deliberately
-demonstrates that distinction. Discard the record after validation.
+demonstrates that distinction. The validated response remains byte-exact recovery
+evidence in SQLite; it is not installed as a local exercise or replica.
 
 One `401` may coordinate one refresh and one identical retry. `403` is denied;
-`404` means signed in with verification unavailable. Offline, timeout and
-`503` remain unavailable states. No result installs data, creates snapshots,
-sends pending operations or proves whole-history coverage. The reusable ports
-keep authentication, scoped OS storage and bounded no-redirect HTTP independent
-of local workout storage.
+an ordinary current-G `404` means signed in with verification unavailable.
+Recovery errors, a changed G or an unexpected response G fence remote work
+before ordinary error classification. Offline, timeout and `503` remain
+unavailable states. Verification sends no pending operations and proves no
+whole-history coverage.
+
+The probe commits a bounded nonsecret exchange intent in the selected SQLite
+generation before each discovery or direct read. Validated replies settle that
+intent with response evidence; interruption leaves remote work gated for
+[recovery](recovery.md#animus-server-recovery). Intent, response and archive
+state are backup-covered. Provider login/refresh and scoped OS secrets retain
+their separate lifecycle; tokens and OIDC payloads never enter this journal.
 
 ## Real provider/API integration
 
@@ -347,3 +357,26 @@ Linux and Android checkpoint results: [acceptance](acceptance.md#optional-animus
 2026-10-28, **PASS**. These native checks cover OS storage, generation isolation,
 verified deletion and browser/callback transport; the separate live integration
 covers real OIDC authentication. Neither checkpoint opens a local workout store.
+
+## Explicit private HTTP development
+
+For a private development installation only, a separate setup file may select
+`ALKION_ANIMUS_ALLOW_PRIVATE_HTTP: "true"` with exact HTTP API origin and qualified
+identity issuer. This mode requires debug execution, rejects simultaneous loopback
+mode and enrollment, and uses the existing production adapters. No address range
+is trusted automatically. Example setup origins are `http://api.example.test:8080`
+and `http://identity.example.test:9090/application/o/alkion/`.
+
+Use `make -C app build-animus ANIMUS_CONFIG=<setup-file>` for a Linux debug build,
+or `make -C app build-apk-animus ANIMUS_PRIVATE_HTTP=1 ANIMUS_CONFIG=<setup-file>`
+with an explicit existing disposable Android signer directory. Android only admits
+Dev/debug, with callback `dev.animusstudio.alkion.dev:/oauth2redirect`; native and
+Dart opt-ins must match. Its generated ignored XML admits exactly the configured
+API/identity hosts without subdomains; Dart additionally pins ports and endpoints.
+Default/supported/profile/release paths stay closed. No install or launch occurs.
+
+HTTP exposes credentials/tokens/data along its network path. It cannot qualify
+browser passkeys; use HTTPS for that later milestone. Changing origins changes the
+secret namespace and existing durable attachment scope: preserve and reconcile
+pending evidence explicitly; never silently rebind or allocate replacement IDs.
+See the [scoped development plan](../plans/2026-10-30-private-http-development.md).

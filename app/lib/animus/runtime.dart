@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import '../store/local_store.dart';
+
 import 'adapters/auth.dart';
 import 'adapters/http.dart';
 import 'adapters/secure_storage.dart';
@@ -35,6 +37,7 @@ AnimusConnectionController createAnimusConnection({
   AnimusAuthPort Function(AnimusScope)? authFactory,
   AnimusProbePort Function(AnimusConfig)? probeFactory,
   Future<void> Function()? beforeRetain,
+  LocalDatabase Function()? database,
 }) {
   final supported =
       platform ??
@@ -67,8 +70,12 @@ AnimusConnectionController createAnimusConnection({
           ))(scope),
       probe:
           (probeFactory ??
-          (config) =>
-              AnimusProbe(config: config, http: IoAnimusHttpPort()))(config),
+          (config) => AnimusProbe(
+            config: config,
+            http: IoAnimusHttpPort(),
+            database: database,
+            installationId: installationId,
+          ))(config),
     );
   } on Object {
     // Invalid optional setup cannot prevent opening a local workout.

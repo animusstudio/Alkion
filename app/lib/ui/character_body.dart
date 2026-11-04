@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 
@@ -23,6 +24,27 @@ class CharacterBodyController extends ChangeNotifier {
   int _command = 0;
   int _revision = 0;
   int _retry = 0;
+  Future<WorkloadMuscle?> Function(Offset, Size)? _pick;
+
+  /// Pick the visible region at a local position in the artwork bounds.
+  /// Returns null for neutral/background pixels, unavailable or stale frames.
+  /// The caller owns tap/drag arbitration and selection state.
+  Future<WorkloadMuscle?> pick(Offset position, Size surfaceSize) async {
+    if (!position.dx.isFinite ||
+        !position.dy.isFinite ||
+        !surfaceSize.width.isFinite ||
+        !surfaceSize.height.isFinite ||
+        surfaceSize.width <= 0 ||
+        surfaceSize.height <= 0 ||
+        position.dx < 0 ||
+        position.dy < 0 ||
+        position.dx >= surfaceSize.width ||
+        position.dy >= surfaceSize.height) {
+      return null;
+    }
+    return _pick?.call(position, surfaceSize);
+  }
+
   double get yaw => _yaw;
   bool get paused => _paused;
 
@@ -89,6 +111,9 @@ class CharacterBodyController extends ChangeNotifier {
 /// [visible] MUST include pager, route, sheet and viewport visibility. App
 /// lifecycle is additionally observed here and in the Android host.
 class CharacterBody extends StatefulWidget {
+  @visibleForTesting
+  static bool debugForceAndroid = false;
+
   const CharacterBody({
     super.key,
     required this.style,
@@ -101,6 +126,8 @@ class CharacterBody extends StatefulWidget {
     required this.reducedMotion,
     required this.compact,
     required this.controller,
+    this.pickingEnabled = false,
+    this.selectedRegion,
     this.onStatus,
     this.fallback,
   });
@@ -115,11 +142,31 @@ class CharacterBody extends StatefulWidget {
   final bool reducedMotion;
   final bool compact;
   final CharacterBodyController controller;
+  final bool pickingEnabled;
+  final WorkloadMuscle? selectedRegion;
   final ValueChanged<CharacterBodyStatus>? onStatus;
   final Widget? fallback;
 
   @override
   State<CharacterBody> createState() => _CharacterBodyState();
+}
+
+class _CharacterPick {
+  _CharacterPick(
+    this.position,
+    this.size,
+    this.serial,
+    this.generation,
+    this.rendered,
+    this.channel,
+  );
+  final Offset position;
+  final Size size;
+  final int serial;
+  final int generation;
+  final Map<String, int> rendered;
+  final MethodChannel channel;
+  final result = Completer<WorkloadMuscle?>();
 }
 
 class _CharacterBodyState extends State<CharacterBody>
@@ -130,8 +177,110 @@ class _CharacterBodyState extends State<CharacterBody>
   bool _sending = false;
   bool _pending = false;
   int _retryGeneration = 0;
+  int _generation = 0;
+  int _requestId = 0;
+  int _pickSerial = 0;
+  Map<String, int>? _rendered;
+  Size? _size;
+  bool _picking = false;
+  _CharacterPick? _queuedPick;
 
-  bool get _supported => !kIsWeb && Platform.isAndroid;
+  void _invalidatePick() {
+    _generation++;
+    _pickSerial++;
+    _rendered = null;
+    _queuedPick?.result.complete(null);
+    _queuedPick = null;
+  }
+
+  Future<WorkloadMuscle?> _pick(Offset position, Size size) async {
+    final channel = _channel;
+    final rendered = _rendered;
+    if (!mounted ||
+        !widget.pickingEnabled ||
+        !widget.visible ||
+        !_resumed ||
+        !widget.controller.paused ||
+        _status != CharacterBodyStatus.ready ||
+        channel == null ||
+        rendered == null ||
+        _size != size) {
+      return null;
+    }
+    final operation = _CharacterPick(
+      position,
+      size,
+      ++_pickSerial,
+      _generation,
+      rendered,
+      channel,
+    );
+    _queuedPick?.result.complete(null);
+    _queuedPick = operation;
+    unawaited(_drainPicks());
+    return operation.result.future;
+  }
+
+  Future<void> _drainPicks() async {
+    if (_picking) return;
+    _picking = true;
+    try {
+      while (_queuedPick != null && mounted) {
+        final operation = _queuedPick!;
+        _queuedPick = null;
+        operation.result.complete(await _performPick(operation));
+      }
+    } finally {
+      _picking = false;
+    }
+  }
+
+  Future<WorkloadMuscle?> _performPick(_CharacterPick operation) async {
+    final channel = operation.channel;
+    final rendered = operation.rendered;
+    final serial = operation.serial;
+    final generation = operation.generation;
+    if (generation != _generation ||
+        serial != _pickSerial ||
+        rendered.entries.any((e) => _rendered?[e.key] != e.value)) {
+      return null;
+    }
+    final request = <String, Object>{
+      'version': 2,
+      'id': ++_requestId,
+      ...rendered,
+      'x': operation.position.dx / operation.size.width,
+      'y': operation.position.dy / operation.size.height,
+    };
+    try {
+      final result = await channel
+          .invokeMethod<Object?>('pick', request)
+          .timeout(const Duration(seconds: 2));
+      if (!mounted ||
+          serial != _pickSerial ||
+          generation != _generation ||
+          channel != _channel ||
+          result is! Map ||
+          result['id'] != request['id'] ||
+          rendered.entries.any((e) => result[e.key] != e.value) ||
+          _rendered?.entries.any((e) => rendered[e.key] != e.value) != false) {
+        return null;
+      }
+      for (final region in WorkloadMuscle.values) {
+        if (region.name == result['region']) return region;
+      }
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    } on TimeoutException {
+      return null;
+    }
+    return null;
+  }
+
+  bool get _supported =>
+      !kIsWeb && (Platform.isAndroid || CharacterBody.debugForceAndroid);
 
   @override
   void initState() {
@@ -142,6 +291,7 @@ class _CharacterBodyState extends State<CharacterBody>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     _retryGeneration = widget.controller._retry;
     widget.controller.addListener(_controllerChanged);
+    widget.controller._pick = _pick;
     if (!_supported) {
       _status = CharacterBodyStatus.unavailable;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -155,18 +305,23 @@ class _CharacterBodyState extends State<CharacterBody>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_controllerChanged);
+      oldWidget.controller._pick = null;
       widget.controller.addListener(_controllerChanged);
+      widget.controller._pick = _pick;
     }
+    _invalidatePick();
     _send();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _invalidatePick();
     _resumed = state == AppLifecycleState.resumed;
     _send();
   }
 
   void _controllerChanged() {
+    _invalidatePick();
     if (_supported && widget.controller._retry != _retryGeneration) {
       // Recreate the native view too: retry recovers a lost WebView process,
       // not just a lost WebGL context. Counts and caller state stay native.
@@ -207,6 +362,12 @@ class _CharacterBodyState extends State<CharacterBody>
     'command': widget.controller._command,
     'revision': widget.controller._revision,
     'retry': widget.controller._retry,
+    if (widget.pickingEnabled)
+      'interaction': {
+        'enabled': true,
+        'selected': widget.selectedRegion?.name,
+        'generation': _generation,
+      },
   };
 
   double _score(double? value) =>
@@ -233,17 +394,30 @@ class _CharacterBodyState extends State<CharacterBody>
 
   void _setStatus(CharacterBodyStatus status) {
     if (!mounted || status == _status) return;
+    if (status != CharacterBodyStatus.ready) {
+      _rendered = null;
+      _pickSerial++;
+    }
     setState(() => _status = status);
     widget.onStatus?.call(status);
   }
 
   void _created(int id) {
     if (!mounted) return;
+    _invalidatePick();
     _channel = MethodChannel('dev.animusstudio.alkion/character-body/$id');
     _channel!.setMethodCallHandler((call) async {
       if (!mounted || call.method != 'status' || call.arguments is! Map) return;
       final event = call.arguments as Map;
       if (event['version'] != 2) return;
+      if (widget.pickingEnabled && event['generation'] == _generation) {
+        const keys = ['generation', 'frame', 'load', 'layout'];
+        if (keys.every(
+          (key) => event[key] is int && (event[key] as int) >= 0,
+        )) {
+          _rendered = {for (final key in keys) key: event[key] as int};
+        }
+      }
       final yaw = event['yaw'];
       if (yaw is num) {
         // Acknowledgments belong to the exact absolute anchor and cumulative
@@ -263,27 +437,41 @@ class _CharacterBodyState extends State<CharacterBody>
   }
 
   @override
-  Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      if (_supported)
-        ExcludeSemantics(
-          child: IgnorePointer(
-            child: AndroidView(
-              key: ValueKey(_retryGeneration),
-              viewType: 'dev.animusstudio.alkion/character-body',
-              onPlatformViewCreated: _created,
-              layoutDirection: TextDirection.ltr,
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final size = constraints.biggest;
+      if (_size != size) {
+        _size = size;
+        _invalidatePick();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _send();
+        });
+      }
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          if (_supported)
+            ExcludeSemantics(
+              child: IgnorePointer(
+                child: AndroidView(
+                  key: ValueKey(_retryGeneration),
+                  viewType: 'dev.animusstudio.alkion/character-body',
+                  onPlatformViewCreated: _created,
+                  layoutDirection: TextDirection.ltr,
+                ),
+              ),
             ),
-          ),
-        ),
-      if (_status != CharacterBodyStatus.ready && widget.fallback != null)
-        widget.fallback!,
-    ],
+          if (_status != CharacterBodyStatus.ready && widget.fallback != null)
+            widget.fallback!,
+        ],
+      );
+    },
   );
 
   @override
   void dispose() {
+    _invalidatePick();
+    widget.controller._pick = null;
     widget.controller.removeListener(_controllerChanged);
     WidgetsBinding.instance.removeObserver(this);
     _channel?.setMethodCallHandler(null);

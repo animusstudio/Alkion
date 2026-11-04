@@ -336,6 +336,12 @@ Future<SessionDraft> restoreFinishedDraft(
         originSlotRevision:
             g.rows.first.originSlotRevision ?? sourceBlock?.originSlotRevision,
         catalogSelection: typedSelection,
+        targetRepRange: sourceBlock != null
+            ? sourceBlock.targetRepRange
+            : authoredRepRangeFor(
+                Slot(exerciseId: exercise.id, position: blocks.length),
+                exercise,
+              ),
         catalogBaselines: {
           if (typedSelection != null &&
               catalogReference?.bestMetrics?['reported_load'] != null)

@@ -13,6 +13,7 @@ import '../widgets/fit_label.dart';
 import '../widgets/number_entry_sheet.dart';
 import '../widgets/pending_input.dart';
 import '../widgets/ruler_picker.dart';
+import 'set_values_editor.dart';
 
 /// Rulers are display projections only. Only a deliberate ruler movement or a
 /// changed modal submission authors a quantity; mounting, unit changes and
@@ -71,7 +72,13 @@ class CatalogSetValuesEditor extends StatelessWidget {
         display.isFinite &&
         display <= 1e9 &&
         !(display == 0 && quantity?.exact?.coefficient != BigInt.zero);
-    final anchor = representable ? display : 0.0;
+    final anchor = representable
+        ? display
+        : metric == 'repetitions'
+        ? 1.0
+        : load
+        ? 0.0
+        : .25;
     String number(double value) => value == value.roundToDouble()
         ? value.toInt().toString()
         : value.toString();
@@ -126,13 +133,16 @@ class CatalogSetValuesEditor extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: FitLabel(
-              '$label${optional ? ' · ${l.catalogOptional}' : ''}',
-              maxLines: 2,
-              style: WorkoutType.body(size: 12, color: context.tokens.dim),
+            child: SetFieldGuide(
+              label: '$label${optional ? ' · ${l.catalogOptional}' : ''}',
+              hint: metric == evidence.selection.profile.metrics.first
+                  ? l.sessionTapValueToType
+                  : null,
+              color: context.tokens.accentText,
+              guide: context.tokens.lineStrong,
             ),
           ),
-          if (!valid || !representable)
+          if (valid && !representable)
             TextButton(
               key: ValueKey('catalog-type-$metric'),
               onPressed: enabled ? type : null,

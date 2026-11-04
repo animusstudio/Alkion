@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:alkion/data/body_workload.dart';
 import 'package:alkion/ui/character_body.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -76,6 +79,216 @@ void main() {
       controller.dispose();
     },
   );
+
+  test('unbound picks and invalid surface coordinates are ignored', () async {
+    final controller = CharacterBodyController();
+    expect(
+      await controller.pick(const Offset(1, 1), const Size(100, 100)),
+      isNull,
+    );
+    for (final offset in [
+      const Offset(-1, 0),
+      const Offset(100, 0),
+      const Offset(0, 100),
+      const Offset(double.nan, 0),
+    ]) {
+      expect(await controller.pick(offset, const Size(100, 100)), isNull);
+    }
+    controller.dispose();
+  });
+
+  testWidgets('picks require exact current native frame and opt-in lifecycle', (
+    tester,
+  ) async {
+    CharacterBody.debugForceAndroid = true;
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() {
+      CharacterBody.debugForceAndroid = false;
+      debugDefaultTargetPlatformOverride = null;
+    });
+    final messenger = tester.binding.defaultBinaryMessenger;
+    int? view;
+    final views = <int>[];
+    Map<Object?, Object?>? display;
+    Map<Object?, Object?>? request;
+    Completer<Map<String, Object?>>? reply;
+    String channelName() => 'dev.animusstudio.alkion/character-body/$view';
+    messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
+      call,
+    ) async {
+      if (call.method == 'create') {
+        view = (call.arguments as Map)['id'] as int;
+        views.add(view!);
+        messenger.setMockMethodCallHandler(MethodChannel(channelName()), (
+          call,
+        ) async {
+          if (call.method == 'display') {
+            display = Map.of(call.arguments as Map);
+            return null;
+          }
+          if (call.method == 'pick') {
+            request = Map.of(call.arguments as Map);
+            reply = Completer<Map<String, Object?>>();
+            return reply!.future;
+          }
+          return null;
+        });
+      }
+      if (call.method == 'resize') {
+        return {
+          'width': (call.arguments as Map)['width'],
+          'height': (call.arguments as Map)['height'],
+        };
+      }
+      return call.method == 'create' ? 1 : null;
+    });
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(SystemChannels.platform_views, null);
+      for (final id in views) {
+        messenger.setMockMethodCallHandler(
+          MethodChannel('dev.animusstudio.alkion/character-body/$id'),
+          null,
+        );
+      }
+    });
+    final controller = CharacterBodyController();
+    var visible = true;
+    var enabled = true;
+    var style = CharacterBodyStyle.male;
+    var surfaceWidth = 128.0;
+    Widget body() => MaterialApp(
+      home: Center(
+        child: SizedBox(
+          width: surfaceWidth,
+          height: 212,
+          child: CharacterBody(
+            style: style,
+            scores: const {},
+            neutral: Colors.white,
+            accent: Colors.orange,
+            background: Colors.black,
+            brightness: Brightness.dark,
+            visible: visible,
+            reducedMotion: true,
+            compact: true,
+            controller: controller,
+            pickingEnabled: enabled,
+          ),
+        ),
+      ),
+    );
+    Future<void> report({int frame = 1}) async {
+      final generation = (display!['interaction'] as Map)['generation'];
+      final completer = Completer<void>();
+      tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        channelName(),
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall('status', {
+            'version': 2,
+            'status': 'ready',
+            'generation': generation,
+            'frame': frame,
+            'load': 1,
+            'layout': 1,
+          }),
+        ),
+        (_) => completer.complete(),
+      );
+      await completer.future;
+      await tester.pump();
+    }
+
+    Future<WorkloadMuscle?> startPick() {
+      return controller.pick(const Offset(64, 106), const Size(128, 212));
+    }
+
+    void complete({String? region = 'chest', int? frame}) {
+      reply!.complete({
+        for (final key in ['id', 'generation', 'frame', 'load', 'layout'])
+          key: request![key],
+        'region': region,
+        if (frame != null) 'frame': frame,
+      });
+    }
+
+    await tester.pumpWidget(body());
+    await tester.pump();
+    expect(await startPick(), isNull);
+    await report();
+    var result = startPick();
+    await tester.pump();
+    expect(request!['x'], .5);
+    expect(request!['y'], .5);
+    complete();
+    expect(await result, WorkloadMuscle.chest);
+    result = startPick();
+    await tester.pump();
+    complete(region: 'core');
+    expect(await result, isNull);
+    result = startPick();
+    await tester.pump();
+    complete(region: null);
+    expect(await result, isNull);
+    result = startPick();
+    await tester.pump();
+    complete(frame: 0);
+    expect(await result, isNull);
+    result = startPick();
+    await tester.pump();
+    await report(frame: 2);
+    complete();
+    expect(await result, isNull);
+    // One in-flight request plus one replaceable latest tap; intermediate
+    // futures resolve null without crossing the native bridge.
+    result = startPick();
+    await tester.pump();
+    final firstId = request!['id'];
+    final skipped = startPick();
+    final latest = startPick();
+    expect(await skipped, isNull);
+    expect(request!['id'], firstId);
+    complete();
+    expect(await result, isNull);
+    await tester.pump();
+    expect(request!['id'], (firstId as int) + 1);
+    complete(region: 'back');
+    expect(await latest, WorkloadMuscle.back);
+    for (final transition in <VoidCallback>[
+      () => controller.rotateBy(.1),
+      () => controller.back(),
+      () => controller.retry(),
+      () => surfaceWidth = 150,
+      () => visible = false,
+      () => style = CharacterBodyStyle.female,
+      () => enabled = false,
+    ]) {
+      visible = true;
+      enabled = true;
+      surfaceWidth = 128;
+      await tester.pumpWidget(body());
+      await tester.pump();
+      await report();
+      result = startPick();
+      await tester.pump();
+      transition();
+      await tester.pumpWidget(body());
+      await tester.pump();
+      complete();
+      expect(await result, isNull);
+    }
+    visible = true;
+    enabled = true;
+    await tester.pumpWidget(body());
+    await tester.pump();
+    await report();
+    result = startPick();
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+    complete();
+    expect(await result, isNull);
+    controller.dispose();
+    debugDefaultTargetPlatformOverride = null;
+  });
 
   testWidgets(
     'non-Android host preserves fallback regardless of theme target',

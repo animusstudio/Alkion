@@ -38,6 +38,38 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
       surface: tokens.surface,
       onSurface: tokens.text,
     ),
+    chipTheme: ChipThemeData(
+      color: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) return tokens.surface;
+        if (states.contains(WidgetState.selected)) return tokens.text;
+        return tokens.surface;
+      }),
+      labelStyle: WorkoutType.body(
+        size: 13,
+        color: WidgetStateColor.resolveWith(
+          (states) => states.contains(WidgetState.disabled)
+              ? tokens.dim
+              : states.contains(WidgetState.selected)
+              ? tokens.bg
+              : tokens.dim,
+        ),
+      ),
+      checkmarkColor: tokens.bg,
+      side: WidgetStateBorderSide.resolveWith(
+        (states) => BorderSide(
+          color: states.contains(WidgetState.focused)
+              ? tokens.focus
+              : states.contains(WidgetState.selected)
+              ? tokens.text
+              : tokens.line,
+          width: states.contains(WidgetState.focused) ? 2 : 1,
+        ),
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size(48, 48),

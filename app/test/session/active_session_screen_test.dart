@@ -15,6 +15,8 @@ import 'package:alkion/session/session_summary_screen.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/active_session_screen.dart';
+import 'package:alkion/session/confirmed_set_feedback.dart';
+import 'package:alkion/widgets/state_motion.dart';
 import 'package:alkion/session/session_manager.dart';
 import 'package:alkion/session/set_line.dart';
 import 'package:alkion/session/exercise_picker_sheet.dart';
@@ -87,6 +89,7 @@ BlockState _block({
   Exercise ex = _compound,
 }) => BlockState(
   exercise: ex,
+  targetRepRange: (low: 8, high: 10),
   resolved: ResolvedSlot(
     exercise: ex,
     workSets: work.length,
@@ -173,8 +176,245 @@ SetState _typedSet(
   catalog: evidence,
 );
 
+class _RefusingPreferences extends real.RealZoneDatabase {
+  _RefusingPreferences(super.database, super.zone);
+  bool refuse = true;
+  @override
+  Future<T> writeTransaction<T>(
+    Future<T> Function(LocalTransaction) callback, {
+    StoreToken? expected,
+  }) => refuse
+      ? Future.error(const StoreException('synthetic_write_failure'))
+      : super.writeTransaction(callback, expected: expected);
+}
+
 void main() {
   setUpAll(preloadAppFonts);
+  for (final range in [null, (low: 5, high: 9)]) {
+    testWidgets(
+      'legacy target $range survives draft separately from default actual seeds',
+      (tester) async {
+        final harness = real.ScreenHarness();
+        addTearDown(harness.close);
+        await harness.open(tester);
+        await tester.runAsync(
+          () => harness.settings.setRepEntry(RepEntry.range),
+        );
+        final original = buildBlock(
+          resolved: const ResolvedSlot(
+            exercise: _compound,
+            workSets: 1,
+            warmupSets: 0,
+            repLow: 8,
+            repHigh: 8,
+            rirLow: null,
+            rirHigh: null,
+          ),
+          repRange: range,
+        );
+        final observations = original.workingSets.single.toJson();
+        final restored = BlockState.fromJson(original.toJson());
+        expect(restored.targetRepRange, range);
+        expect(restored.workingSets.single.toJson(), observations);
+        final oldDraft = original.toJson()..remove('targetRepRange');
+        expect(
+          BlockState.fromJson(oldDraft).targetRepRange,
+          isNull,
+          reason: 'old resolved values cannot prove an authored target',
+        );
+        final controller = ActiveSessionController();
+        addTearDown(controller.dispose);
+        controller.seedForTest(_draftWith([restored]));
+        await tester.pumpWidget(
+          _harness(controller, settings: harness.settings),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(
+          find.text('Rep range: ${range == null ? '—' : '5–9'}'),
+          findsOneWidget,
+        );
+        expect(restored.workingSets.single.toJson(), observations);
+        expect(restored.workingSets.single.reps, 8);
+        await _teardown(tester);
+      },
+    );
+  }
+  testWidgets(
+    'failed preference persistence and retry preserve active evidence',
+    (tester) async {
+      final harness = real.ScreenHarness();
+      addTearDown(harness.close);
+      await harness.open(tester);
+      final database = _RefusingPreferences(harness.database, Zone.current);
+      final settings = SettingsService.local(database);
+      addTearDown(settings.dispose);
+      await tester.runAsync(settings.load);
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final set = _typedSet('unchanged', _typedEvidence())..rir = 99;
+      final block = _block(warm: [], work: [set]);
+      controller.seedForTest(_draftWith([block]));
+      final before = set.toJson();
+      final prescription = block.resolved;
+      await tester.pumpWidget(_harness(controller, settings: settings));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.runAsync(
+        () => expectLater(
+          settings.setRirControls(RirControls.show),
+          throwsA(isA<StoreException>()),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('rir-2')), findsOneWidget);
+      expect(set.toJson(), before);
+      expect(block.resolved, same(prescription));
+      database.refuse = false;
+      await tester.runAsync(settings.flushPersistence);
+      expect(set.toJson(), before);
+      expect(block.resolved, same(prescription));
+      await _teardown(tester);
+    },
+  );
+  for (final profile in ['load_reps', 'duration_distance_optional']) {
+    for (final range in [null, (low: 5, high: 9)]) {
+      testWidgets(
+        'catalog target $range for $profile survives resume separately from observations',
+        (tester) async {
+          final harness = real.ScreenHarness();
+          addTearDown(harness.close);
+          await harness.open(tester);
+          await tester.runAsync(
+            () => harness.settings.setRepEntry(RepEntry.range),
+          );
+          final original = buildCatalogBlock(
+            resolved: _block(
+              warm: [],
+              work: [_typedSet('seed', _typedEvidence())],
+            ).resolved,
+            selection: _typedEvidence(profile: profile).selection,
+            targets: _typedEvidence(profile: profile).metrics,
+            repRange: range,
+          );
+          final restored = BlockState.fromJson(original.toJson());
+          expect(restored.targetRepRange, range);
+          final controller = ActiveSessionController();
+          addTearDown(controller.dispose);
+          controller.seedForTest(_draftWith([restored]));
+          await tester.pumpWidget(
+            _harness(controller, settings: harness.settings),
+          );
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(
+            find.text('Rep range: ${range == null ? '—' : '5–9'}'),
+            profile == 'load_reps' ? findsOneWidget : findsNothing,
+          );
+          expect(
+            restored.workingSets.single.catalog!.toJson(),
+            original.workingSets.single.catalog!.toJson(),
+          );
+          await _teardown(tester);
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'set and exercise menus have separate scopes; logged removal can be cancelled',
+    (tester) async {
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final logged = _typedSet('logged', _typedEvidence(), done: true);
+      final block = _block(warm: [], work: [logged])
+        ..catalogSelection = logged.catalog!.selection;
+      controller.seedForTest(_draftWith([block]));
+      controller.focusSet(logged);
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump(const Duration(milliseconds: 400));
+      final before = logged.toJson();
+      await tester.tap(find.byKey(const Key('block-menu-squat')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Add set'), findsOneWidget);
+      expect(find.text('Mark as not done'), findsNothing);
+      expect(find.text('Add warm-up'), findsNothing);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byTooltip('SET 1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Add set'), findsNothing);
+      expect(find.text('Mark as not done'), findsOneWidget);
+      expect(find.text('Add warm-up'), findsOneWidget);
+      await tester.tap(find.text('Remove'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Remove set?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(block.workingSets, [logged]);
+      expect(logged.toJson(), before);
+      await _teardown(tester);
+    },
+  );
+
+  testWidgets(
+    'live preferences change presentation without rewriting observations or targets',
+    (tester) async {
+      real.setPhone(tester, width: 412);
+      final controller = ActiveSessionController();
+      final harness = real.ScreenHarness();
+      addTearDown(harness.close);
+      await harness.open(tester);
+      final settings = harness.settings;
+      addTearDown(controller.dispose);
+      final a = SetState(
+        id: 'a',
+        weightKg: 60.25,
+        reps: 7,
+        rir: 4,
+        isWarmup: false,
+        done: false,
+      );
+      final block = _block(warm: [], work: [a]);
+      controller.seedForTest(_draftWith([block]));
+      final before = a.toJson();
+      final prescription = block.resolved;
+      controller.startRest(90);
+      final restStart = controller.restStart;
+      await tester.pumpWidget(_harness(controller, settings: settings));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const Key('rir-2')), findsNothing);
+      expect(find.text('Rep range: 8–10'), findsNothing);
+      await tester.runAsync(() => settings.setRirControls(RirControls.show));
+      await tester.runAsync(() => settings.setRepEntry(RepEntry.range));
+      await tester.pump();
+      expect(find.byKey(const Key('rir-2')), findsOneWidget);
+      expect(find.text('Rep range: 8–10'), findsOneWidget);
+      expect(a.toJson(), before);
+      expect(block.resolved, same(prescription));
+      await tester.runAsync(() => settings.setRestCompoundSeconds(45));
+      await tester.pump();
+      expect(controller.restStart, restStart);
+      expect(controller.restTotal, 90);
+      await tester.runAsync(() => settings.setRirControls(RirControls.off));
+      await tester.runAsync(() => settings.setRepEntry(RepEntry.fixed));
+      await tester.pump();
+      expect(find.byKey(const Key('rir-2')), findsNothing);
+      expect(find.text('Rep range: 8–10'), findsNothing);
+      expect(a.toJson(), before);
+      await tester.tap(find.byKey(const Key('log-set-bar')));
+      await tester.pump();
+      expect(
+        controller.restTotal,
+        45,
+        reason: 'new rest defaults apply to the next timer',
+      );
+      await _teardown(tester);
+    },
+  );
+
   for (final refuseCommit in [false, true]) {
     testWidgets(
       'held Finish hides recovery notice and ${refuseCommit ? 'failed retry' : 'success'} stays truthful',
@@ -288,6 +528,7 @@ void main() {
             reason: 'in-flight Finish has not failed',
           );
           expect(find.byType(SessionSummaryScreen), findsNothing);
+          expect(find.byType(SuccessMark), findsNothing);
           expect(
             await tester.runAsync(
               () => harness.database.getAll('SELECT * FROM sessions'),
@@ -310,6 +551,7 @@ void main() {
             expect(controller!.hasSession, isTrue);
             expect(manager!.lastFinished, isNull);
             expect(find.byType(SessionSummaryScreen), findsNothing);
+            expect(find.byType(SuccessMark), findsNothing);
             expect(
               await tester.runAsync(
                 () => harness.database.getAll('SELECT * FROM sessions'),
@@ -346,6 +588,7 @@ void main() {
             );
             expect(controller!.captureFrozen.value, isTrue);
             expect(find.byType(SessionSummaryScreen), findsNothing);
+            expect(find.byType(SuccessMark), findsNothing);
             expect(first.actions.single.hash, database.actions.single.hash);
             await tester.runAsync(() async => releases.last.complete());
           }
@@ -353,6 +596,11 @@ void main() {
             tester,
             find.byType(SessionSummaryScreen),
             where: 'durable Finish',
+          );
+          await real.settleUntilFound(
+            tester,
+            find.byType(SuccessMark),
+            where: 'confirmed summary mark',
           );
           final sessions = await tester.runAsync(
             () => harness.database.getAll('SELECT * FROM sessions'),
@@ -556,8 +804,9 @@ void main() {
       expect(block.workingSets, [s0, s1]);
 
       // Swipe s0 (index 0) away.
-      await tester.drag(
-        find.byKey(const Key('dismiss-s0')),
+      await tester.dragFrom(
+        tester.getTopLeft(find.byKey(const Key('dismiss-s0'))) +
+            const Offset(100, 20),
         const Offset(-500, 0),
       );
       await tester.pump();
@@ -795,7 +1044,12 @@ void main() {
             ..catalogSelection = _typedEvidence(context: 'Machine C').selection
             ..expanded = false;
       controller.seedForTest(_draftWith([block, repeat]));
-      await tester.pumpWidget(_harness(controller));
+      final harness = real.ScreenHarness();
+      addTearDown(harness.close);
+      await harness.open(tester);
+      final settings = harness.settings;
+      await tester.runAsync(() => settings.setRirControls(RirControls.show));
+      await tester.pumpWidget(_harness(controller, settings: settings));
       await tester.pump(const Duration(milliseconds: 400));
       final before = a.catalog!.toJson();
       await tester.tap(find.byKey(const Key('catalog-ruler-reported_load')));
@@ -827,6 +1081,11 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       }
       expect(a.done, isTrue);
+      final feedback = tester.widget<ConfirmedSetFeedback>(
+        find.byType(ConfirmedSetFeedback),
+      );
+      expect(feedback.event, greaterThan(0));
+      expect(feedback.loggedSet, same(a));
       expect(controller.rirPromptSetId, a.id);
       expect(a.rir, 99, reason: 'logging never normalizes an untouched RIR');
       final prompt = find.descendant(
@@ -853,10 +1112,19 @@ void main() {
       await tester.ensureVisible(find.byKey(const Key('live-clear-rir')));
       await tester.tap(find.byKey(const Key('live-clear-rir')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       expect(a.rir, isNull);
-      await tester.ensureVisible(find.byKey(const Key('live-mark-not-done')));
-      await tester.tap(find.byKey(const Key('live-mark-not-done')));
+      await Scrollable.ensureVisible(
+        tester.element(find.byTooltip('SET 1')),
+        alignment: .5,
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byTooltip('SET 1'));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Mark as not done'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       expect(a.done, isFalse);
       expect(controller.liveSet!.set, same(a));
       expect(block.blockId, isNot(repeat.blockId));

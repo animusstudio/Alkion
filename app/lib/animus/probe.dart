@@ -1,10 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kDebugMode;
+
+import '../store/local_store.dart';
 
 import 'config.dart';
 import 'contracts.dart';
 import 'ports.dart';
+import 'strict_json.dart';
+import 'recovery_protocol.dart';
+import 'remote_recovery_repository.dart';
+import 'workout_upload_repository.dart';
 
-/// These are connection outcomes only; no remote record is retained.
+/// Connection outcomes; checked responses are retained as recovery evidence.
 enum AnimusProbeResult {
   verified,
   unauthenticated,
@@ -24,19 +32,40 @@ abstract interface class AnimusProbePort {
   Future<void> close();
 }
 
-/// Explicit, transient proof of current workouts:read admission. Session refresh
+/// Explicit foreground proof of current workouts:read admission. Session refresh
 /// belongs to the connection controller, which may coordinate one 401 retry.
 final class AnimusProbe implements AnimusProbePort {
-  AnimusProbe({required this.config, required AnimusHttpPort http})
-    : _http = http;
+  AnimusProbe({
+    required this.config,
+    required AnimusHttpPort http,
+    LocalDatabase Function()? database,
+    String? installationId,
+    AnimusRecoveryPort? recovery,
+  }) : _http = http,
+       _database = database,
+       _installationId = installationId,
+       _recovery = recovery;
 
   final AnimusConfig config;
   final AnimusHttpPort _http;
+  final LocalDatabase Function()? _database;
+  final String? _installationId;
+  AnimusRecoveryPort? _recovery;
+  String? _recoveryIdentity;
   int _generation = 0;
   bool _closed = false;
+  final _running = <Future<AnimusProbeResult>>{};
+  Future<void>? _closing;
 
   @override
-  Future<AnimusProbeResult> verify(AnimusAuthSession session) async {
+  Future<AnimusProbeResult> verify(AnimusAuthSession session) {
+    if (_closed) return Future.value(AnimusProbeResult.closed);
+    final pending = _verify(session);
+    _running.add(pending);
+    return pending.whenComplete(() => _running.remove(pending));
+  }
+
+  Future<AnimusProbeResult> _verify(AnimusAuthSession session) async {
     if (_closed) return AnimusProbeResult.closed;
     if (session.identity.issuer.toString() != config.issuer.toString() ||
         !RegExp(r'^[A-Za-z0-9._~+/-]+=*$').hasMatch(session.accessToken)) {
@@ -49,15 +78,63 @@ final class AnimusProbe implements AnimusProbePort {
         ? AnimusProbeResult.cancelled
         : result;
     try {
-      final response = await _http.get(
-        uri: config.definitionUri,
-        headers: {
-          'Authorization': 'Bearer ${session.accessToken}',
-          AnimusDefinitionReadContract.admissionHeader: config.readAdmission,
-          'Accept': 'application/json',
+      if (_database != null && _recoveryIdentity != session.identity.subject) {
+        final database = _database();
+        _recovery = DurableAnimusRecovery(
+          database,
+          RemoteRecoveryBinding.fromWorkoutBinding(
+            workoutBinding(
+              _installationId!,
+              database.token,
+              config,
+              session.identity,
+            ),
+          ),
+          allowLegacyDevelopment:
+              kDebugMode &&
+              (config.allowLoopbackHttp || config.allowPrivateHttp),
+        );
+        _recoveryIdentity = session.identity.subject;
+      }
+      final recovery = _recovery;
+      if (recovery == null) return AnimusProbeResult.serviceUnavailable;
+      final info = await recovery.discover(
+        (extra) => _http.get(
+          uri: config.apiOrigin.replace(path: '/v1/system/info'),
+          headers: {
+            'Authorization': 'Bearer ${session.accessToken}',
+            'Accept': 'application/json',
+            ...extra,
+          },
+          maxResponseBytes: 64 * 1024,
+          timeout: AnimusDefinitionReadContract.timeout,
+        ),
+        () => !_closed && generation == _generation,
+      );
+      if (info.statusCode == 401) {
+        return fence(AnimusProbeResult.unauthenticated);
+      }
+      if (info.statusCode == 403) return fence(AnimusProbeResult.accessDenied);
+      final response = await recovery.exchange(
+        RemoteApiRequest.read('definitions', config.probeRecordId),
+        (extra) => _http.get(
+          uri: config.definitionUri,
+          headers: {
+            'Authorization': 'Bearer ${session.accessToken}',
+            AnimusDefinitionReadContract.admissionHeader: config.readAdmission,
+            'Accept': 'application/json',
+            ...extra,
+          },
+          maxResponseBytes: AnimusDefinitionReadContract.maxResponseBytes,
+          timeout: AnimusDefinitionReadContract.timeout,
+        ),
+        () => !_closed && generation == _generation,
+        (response) {
+          if (response.statusCode == 200 &&
+              !_validDefinition(response, config.probeRecordId)) {
+            throw const FormatException('Invalid definition');
+          }
         },
-        maxResponseBytes: AnimusDefinitionReadContract.maxResponseBytes,
-        timeout: AnimusDefinitionReadContract.timeout,
       );
       if (_closed || generation != _generation) {
         return fence(AnimusProbeResult.cancelled);
@@ -73,6 +150,10 @@ final class AnimusProbe implements AnimusProbePort {
         503 => AnimusProbeResult.serviceUnavailable,
         _ => AnimusProbeResult.invalidResponse,
       });
+    } on AnimusRecoveryFailure {
+      return fence(AnimusProbeResult.serviceUnavailable);
+    } on StoreException {
+      return fence(AnimusProbeResult.serviceUnavailable);
     } on AnimusHttpFailure catch (error) {
       return fence(switch (error.kind) {
         AnimusHttpFailureKind.offline => AnimusProbeResult.offline,
@@ -95,10 +176,14 @@ final class AnimusProbe implements AnimusProbePort {
   }
 
   @override
-  Future<void> close() async {
+  Future<void> close() {
+    if (_closing != null) return _closing!;
     _closed = true;
     _generation++;
-    await _http.close();
+    return _closing = () async {
+      await _http.close();
+      await Future.wait(_running.toList());
+    }();
   }
 
   @override
@@ -134,7 +219,7 @@ bool _validDefinition(AnimusHttpResponse response, String expectedId) {
   if (encoding != null && encoding.toLowerCase() != 'identity') return false;
   try {
     final text = utf8.decode(response.body, allowMalformed: false);
-    final record = _StrictJson(text).read();
+    final record = decodeStrictAnimusJson(text);
     if (record is! Map<String, Object?> ||
         record['kind'] != AnimusDefinitionReadContract.kind ||
         !record.containsKey(AnimusDefinitionReadContract.member) ||
@@ -254,106 +339,8 @@ bool _validTimestamp(Object value) {
       (match.group(7) == null || (part(7) <= 23 && part(8) <= 59));
 }
 
-/// JSON's built-in decoder silently keeps the last duplicate object member.
-/// Read the bounded document with a depth limit and reject that ambiguity at
-/// every level, including escaped spellings of the same metadata key.
-final class _StrictJson {
-  _StrictJson(this.text);
-
-  final String text;
-  int offset = 0;
-  static final _number = RegExp(
-    r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?',
-  );
-
-  Object? read() {
-    final result = _value(0);
-    _whitespace();
-    if (offset != text.length) _invalid();
-    return result;
-  }
-
-  Object? _value(int depth) {
-    _whitespace();
-    if (offset >= text.length) _invalid();
-    switch (text.codeUnitAt(offset)) {
-      case 123: // {
-        _checkDepth(depth);
-        offset++;
-        final object = <String, Object?>{};
-        _whitespace();
-        if (_take(125)) return object;
-        while (true) {
-          _whitespace();
-          final key = _string();
-          if (object.containsKey(key)) _invalid();
-          _whitespace();
-          if (!_take(58)) _invalid();
-          object[key] = _value(depth + 1);
-          _whitespace();
-          if (_take(125)) return object;
-          if (!_take(44)) _invalid();
-        }
-      case 91: // [
-        _checkDepth(depth);
-        offset++;
-        final array = <Object?>[];
-        _whitespace();
-        if (_take(93)) return array;
-        while (true) {
-          array.add(_value(depth + 1));
-          _whitespace();
-          if (_take(93)) return array;
-          if (!_take(44)) _invalid();
-        }
-      case 34:
-        return _string();
-      default:
-        for (final literal in const ['true', 'false', 'null']) {
-          if (text.startsWith(literal, offset)) {
-            offset += literal.length;
-            return jsonDecode(literal);
-          }
-        }
-        final match = _number.matchAsPrefix(text, offset);
-        if (match == null) _invalid();
-        offset = match.end;
-        final value = jsonDecode(match.group(0)!);
-        if (value is double && !value.isFinite) _invalid();
-        return value;
-    }
-  }
-
-  void _checkDepth(int depth) {
-    if (depth >= AnimusDefinitionReadContract.maxJsonDepth) _invalid();
-  }
-
-  String _string() {
-    final start = offset;
-    if (!_take(34)) _invalid();
-    while (offset < text.length) {
-      final char = text.codeUnitAt(offset++);
-      if (char == 92) {
-        offset++;
-      } else if (char == 34) {
-        return jsonDecode(text.substring(start, offset)) as String;
-      }
-    }
-    _invalid();
-  }
-
-  bool _take(int char) {
-    if (offset >= text.length || text.codeUnitAt(offset) != char) return false;
-    offset++;
-    return true;
-  }
-
-  void _whitespace() {
-    while (offset < text.length &&
-        const [32, 9, 10, 13].contains(text.codeUnitAt(offset))) {
-      offset++;
-    }
-  }
-
-  Never _invalid() => throw const FormatException('Invalid Animus JSON');
-}
+/// Shared direct-record metadata checks for the bounded recovery comparison.
+bool validRecoveryDefinition(AnimusHttpResponse response, String id) =>
+    _validDefinition(response, id);
+bool validRecoverySharedMetadata(Map<String, Object?> value) =>
+    _validSharedMetadata(value);

@@ -9,6 +9,7 @@ import 'package:alkion/animus/probe.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
+import 'historical_recovery_fixture.dart';
 
 void main() {
   final fixture = File(
@@ -22,7 +23,11 @@ void main() {
   setUp(() {
     config = syntheticAnimusConfig();
     http = _Http()..response = _response(fixture);
-    probe = AnimusProbe(config: config, http: http);
+    probe = AnimusProbe(
+      config: config,
+      http: http,
+      recovery: const HistoricalRecoveryFixture(probeOnly: true),
+    );
     session = AnimusAuthSession(
       identity: AnimusIdentity(
         issuer: config.issuer,
@@ -482,9 +487,15 @@ void main() {
       final pending = Completer<AnimusHttpResponse>();
       http.pending = pending;
       final result = probe.verify(session);
-      await probe.close();
+      var drained = false;
+      final closing = probe.close().then((_) => drained = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(drained, false);
+      expect(await probe.verify(session), AnimusProbeResult.closed);
       pending.complete(_response(fixture));
       expect(await result, AnimusProbeResult.closed);
+      await closing;
+      expect(drained, true);
       expect(await probe.verify(session), AnimusProbeResult.closed);
       expect(http.calls, 1);
       expect(http.closes, 1);

@@ -9,12 +9,32 @@ void main() {
   final harness = ScreenHarness();
   tearDown(harness.close);
 
-  Future<void> openProfile(WidgetTester tester) async {
+  Future<void> openProfile(
+    WidgetTester tester, {
+    VoidCallback? onImportReps,
+  }) async {
     await harness.open(tester);
     setPhone(tester, width: 320, textScale: 2);
-    await tester.pumpWidget(harness.wrap(ProfileScreen(onClose: () {})));
+    await tester.pumpWidget(
+      harness.wrap(ProfileScreen(onClose: () {}, onImportReps: onImportReps)),
+    );
     await settleReal(tester);
   }
+
+  testWidgets('Data opens ordinary Reps import without workspace actions', (
+    tester,
+  ) async {
+    var imports = 0;
+    await openProfile(tester, onImportReps: () => imports++);
+    final action = find.text('Import Reps data');
+    await scrollIntoView(tester, find.byType(ProfileScreen), action);
+    expect(find.textContaining('test profile'), findsNothing);
+    expect(find.textContaining('workspace'), findsNothing);
+    await tester.tap(action);
+    expect(imports, 1);
+    expect(tester.takeException(), isNull);
+    await harness.unmount(tester);
+  });
 
   testWidgets('Backup & restore opens backup actions', (tester) async {
     await openProfile(tester);

@@ -103,10 +103,15 @@ SqlSelect rawSelect(sqlite.Database db) =>
     ];
 
 /// Reads the covered state through one caller-provided snapshot context.
-Future<CoveredState> readCoveredState(SqlSelect select) async {
+Future<CoveredState> readCoveredState(
+  SqlSelect select, {
+  Set<String> excluding = const {},
+}) async {
   final version =
       (await select('PRAGMA user_version')).single.values.single as int;
-  final coveredTables = preservedTablesAt(version);
+  final coveredTables = preservedTablesAt(
+    version,
+  ).where((t) => !excluding.contains(t));
   final tables = <String, List<Map<String, Object?>>>{};
   final keys = <String, List<String>>{};
   for (final table in coveredTables) {
@@ -276,7 +281,7 @@ Future<VerifiedBackup> verifyBackupBytes(
   SchemaRegistry? schema,
   Directory? workDirectory,
 }) async {
-  final registry = schema ?? catalogExecutionSchemaRegistry();
+  final registry = schema ?? remoteRecoverySchemaRegistry();
   final headerEnd = bytes.indexOf(10);
   final header = headerEnd < 0
       ? ''

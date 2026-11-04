@@ -43,6 +43,7 @@ Future<Exercise?> showExercisePicker(
     final picked = await showCatalogPicker(
       context,
       state: trial,
+      immediateSelection: true,
       inDayChoiceKeys: inDayChoiceKeys,
     );
     if (picked == null || picked.isEmpty) return null;

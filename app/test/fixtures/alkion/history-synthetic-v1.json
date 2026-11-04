@@ -1,0 +1,35 @@
+{
+  "format": "reps-export",
+  "version": 1e0,
+  "kind": "history",
+  "unit": "kg",
+  "date_range": {"from": "2024-02-29", "to": "2024-03-01"},
+  "source_extra": {"untrusted": "retained"},
+  "sessions": [
+    {
+      "date": "2024-02-29",
+      "label": "Synthetic répétition",
+      "duration_min": 53,
+      "exercises": [
+        {"name": "Synthetic Row", "muscle_group": "back", "sets": [
+          {"weight_kg": 9007199254740993.12500, "reps": 8, "rir": null, "warmup": false, "top_set": true, "pr": true, "future": "kept"},
+          {"weight_kg": 4.050e1, "reps": 6, "rir": 9, "warmup": true, "top_set": false, "pr": false}
+        ]},
+        {"name": "Synthetic Row", "muscle_group": "back", "sets": [
+          {"weight_kg": -0.00, "reps": null, "rir": 0, "warmup": false, "top_set": false, "pr": false}
+        ]}
+      ]
+    },
+    {
+      "date": "2024-02-29",
+      "label": "Synthetic répétition",
+      "duration_min": null,
+      "exercises": [
+        {"name": "Synthetic Row", "muscle_group": "back", "sets": [
+          {"weight_kg": null, "reps": 0, "rir": null, "warmup": false, "top_set": true, "pr": false}
+        ]}
+      ]
+    },
+    {"date": "2024-03-01", "label": "Synthetic empty", "duration_min": 0, "exercises": []}
+  ]
+}

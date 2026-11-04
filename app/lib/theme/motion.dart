@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 /// Single source of motion truth: zero bounce, with a quiet ambient cycle.
 class Motion {
@@ -13,6 +13,21 @@ class Motion {
   /// Owner-requested canvas material: eight seconds per smooth half-cycle.
   static const ambientCycle = Duration(seconds: 16);
   static const ambientCurve = Curves.easeInOutSine;
+
+  static AnimationStyle sheet(BuildContext context) => AnimationStyle(
+    duration: of(context, base),
+    reverseDuration: of(context, base),
+  );
+
+  static ChipAnimationStyle chip(BuildContext context) {
+    final transition = sheet(context);
+    return ChipAnimationStyle(
+      selectAnimation: transition,
+      enableAnimation: transition,
+      avatarDrawerAnimation: transition,
+      deleteDrawerAnimation: transition,
+    );
+  }
 
   /// Honors the platform reduced-motion setting.
   static Duration of(BuildContext context, Duration d) =>

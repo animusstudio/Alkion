@@ -1,3 +1,5 @@
+import 'dart:ui' show SemanticsAction;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
@@ -184,16 +186,26 @@ void main() {
   testWidgets('the header ⋯ is a labelled 48dp button that opens the menu', (
     tester,
   ) async {
-    await tester.pumpWidget(host(_block()));
-    await tester.pumpAndSettle();
-    final more = find.bySemanticsLabel('Exercise options');
-    expect(more, findsOneWidget);
-    expect(
-      tester.getSize(find.byKey(const ValueKey('block-menu-e1'))).height,
-      greaterThanOrEqualTo(48),
-    );
-    await tester.tap(more);
-    expect(menus, 1);
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(host(_block()));
+      await tester.pumpAndSettle();
+      final more = find.bySemanticsLabel('Exercise options');
+      expect(more, findsOneWidget);
+      final node = tester.getSemantics(more);
+      expect(node.getSemanticsData().label, 'Exercise options');
+      expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+      node.owner!.performAction(node.id, SemanticsAction.tap);
+      expect(menus, 1, reason: 'accessibility tap opens the exercise menu');
+      expect(
+        tester.getSize(find.byKey(const ValueKey('block-menu-e1'))).height,
+        greaterThanOrEqualTo(48),
+      );
+      await tester.tap(more);
+      expect(menus, 2, reason: 'the pointer gesture still opens the same menu');
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('the old footer is gone', (tester) async {

@@ -1335,7 +1335,9 @@
   "alkionEntryTitle": "Make every workout count.",
   "alkionEntryJoin": "Don’t have an account? Join now",
   "trainingPreferences": "Training preferences",
-  "trainingPreferencesHint": "Defaults for new items. Saved plans and open editors stay as they are.",
+  "importRepsData": "Import Reps data",
+  "importRepsDataSub": "Preview a Reps export and import it into this profile.",
+  "trainingPreferencesHint": "Rep style and RIR update the active workout. Rest defaults apply to the next timer; saved targets stay unchanged.",
   "trainingRepEntry": "Rep entry",
   "trainingFixedReps": "Fixed reps",
   "trainingRepRange": "Rep range",
@@ -1591,9 +1593,9 @@
   "animusSendUnsupportedDefinition": "An included exercise has definition history or execution evidence that this send format does not support.",
   "animusSendInvalidValues": "Some recorded values cannot be represented exactly by Animus. They remain unchanged locally.",
   "animusSendCapabilityMissing": "This Animus API does not support sending with pinned exercise revisions. No exercise or workout is sent.",
-  "animusSendRecoveryBlocked": "Local recovery or restored-data review must finish before this selection can be sent.",
+  "animusSendRecoveryBlocked": "Server history or restored send records need review. Kept selections stay blocked until their exact requests are reviewed.",
   "animusSendAccessDenied": "Animus denied access. Check the account, data space and workout permissions in Profile before retrying.",
-  "animusSendDependencyFailed": "An exercise definition was not acknowledged. The workout has not been sent. Review access, then retry this selection.",
+  "animusSendDependencyFailed": "An exercise definition has no confirmed acknowledgement. The send remains unresolved. Review access and this selection.",
   "animusSendNetwork": "The connection ended without a confirmed result. Retry this same selection to check or complete the send.",
   "animusSendInvalidResponse": "Animus returned a response that could not be validated. Keep this selection and review the connection before retrying.",
   "animusSendLocalUnavailable": "The local send record needs recovery or review. Keep the saved workout and retry after local recovery.",
@@ -1636,6 +1638,70 @@
       },
       "scope": {
         "type": "String"
+      }
+    }
+  },
+  "catalogArtworkDescription": "Exercise illustration",
+  "catalogMovementFrames": "Movement frames (Workout Guide)",
+  "catalogMediaPosition": "Position {number}",
+  "catalogMediaCredit": "Artwork: {attribution} · CC BY-SA 4.0",
+  "catalogMediaLicense": "Artwork license",
+  "catalogMediaLicenseSummary": "CC BY-SA 4.0: you may share and adapt this artwork with attribution and under the same license. The artwork license is separate from the app license. Illustration colors follow the app theme; original assets are unchanged.",
+  "catalogMediaUnavailable": "Image unavailable",
+  "@catalogMediaPosition": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "@catalogMediaCredit": {
+    "placeholders": {
+      "attribution": {
+        "type": "String"
+      }
+    }
+  },
+  "animusRecoveryTitle": "Server history needs review",
+  "animusRecoveryOpen": "Review connection",
+  "animusRecoveryHide": "Hide review",
+  "animusRecoveryCompare": "Compare known copies",
+  "animusRecoveryAdopt": "Use reviewed view",
+  "animusRecoveryKept": "Your local workouts and earlier send evidence are kept. Missing copies have an unresolved outcome.",
+  "animusRecoveryCoverage": "Only known workout and exercise copies are compared. Coverage is incomplete; this is not a copy of the whole server.",
+  "animusRecoveryInventory": "Known copies: {count}",
+  "animusRecoveryCounts": "Unchanged: {unchanged} · Changed: {changed}\nPreviously acknowledged, now missing: {missing}\nMissing with uncertain history: {uncertain}",
+  "animusRecoveryCompared": "Comparison complete for these known copies. Older selections remain blocked.",
+  "animusRecoveryIncomplete": "This comparison is incomplete or outdated. Compare again before using it.",
+  "animusRecoveryAdoptBody": "Use this reviewed server view for new sends? Your saved workouts and earlier evidence are kept. Older selections and restored records with unknown send history remain blocked. This does not authorize a retry.",
+  "animusRecoveryAdopted": "Reviewed view in use",
+  "animusRecoveryWorking": "Reviewing known copies…",
+  "animusRecoveryDenied": "Access was denied. Confirm the original account, data space and permissions, then compare again. Denied access is not a missing copy.",
+  "animusRecoveryFailed": "The comparison could not be completed or used safely. Keep the saved workouts, check the connection or local recovery, then compare again.",
+  "animusRecoveryUnknownHistory": "Some restored workouts or exercises have no recoverable send history. They stay blocked until explicit reconciliation. New unrelated workouts can be sent after this review.",
+  "animusRecoveryRetry": "Retry reviewed request",
+  "animusRecoveryRetryBody": "Send one exact retained request for this selection? Server review is required. Animus decides whether it may run. This keeps the original request and identifiers; it does not resend other requests or authorize missing work.",
+  "animusRecoveryReviewedReply": "Animus acknowledged this exact reviewed request. Earlier evidence is kept. Other retained requests remain blocked.",
+  "@animusRecoveryInventory": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@animusRecoveryCounts": {
+    "placeholders": {
+      "unchanged": {
+        "type": "int"
+      },
+      "changed": {
+        "type": "int"
+      },
+      "missing": {
+        "type": "int"
+      },
+      "uncertain": {
+        "type": "int"
       }
     }
   }

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../animus/connection.dart';
+import '../animus/recovery_review.dart';
 import '../animus/workout_send.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/typography.dart';
 import '../widgets/w_dialog.dart';
+import 'animus_recovery_review.dart';
 
 /// One expanded History workout. Reading its status is local-only; sending
 /// always passes through a foreground scope confirmation.
@@ -155,6 +157,7 @@ class _AnimusWorkoutSendPanelState extends State<AnimusWorkoutSendPanel> {
   Widget build(BuildContext context) {
     final sender = _sender;
     final connection = _connection;
+    final review = context.watch<AnimusRecoveryReviewPort?>();
     if (sender == null ||
         connection == null ||
         connection.state == AnimusConnectionState.disabled) {
@@ -164,7 +167,8 @@ class _AnimusWorkoutSendPanelState extends State<AnimusWorkoutSendPanel> {
     final tokens = context.tokens;
     final selection = _selection;
     final connected = connection.confirmed && connection.identity != null;
-    final busy = _working || sender.busy || connection.busy;
+    final busy =
+        _working || sender.busy || connection.busy || review?.busy == true;
     final retry =
         selection != null &&
         selection.selectionId.isNotEmpty &&
@@ -174,8 +178,8 @@ class _AnimusWorkoutSendPanelState extends State<AnimusWorkoutSendPanel> {
         connected &&
         !busy &&
         (selection == null ||
-            selection.selectionId.isEmpty ||
-            selection.canRetry);
+            selection.issue != AnimusWorkoutSendIssue.recoveryBlocked &&
+                (selection.selectionId.isEmpty || selection.canRetry));
     return Column(
       key: const Key('animus-workout-send'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -243,6 +247,7 @@ class _AnimusWorkoutSendPanelState extends State<AnimusWorkoutSendPanel> {
             ),
           ),
         ),
+        AnimusRecoveryReviewPanel(sessionId: widget.sessionId),
         if (!connected && widget.onOpenProfile != null)
           Align(
             alignment: Alignment.centerLeft,

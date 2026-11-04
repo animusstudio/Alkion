@@ -34,8 +34,10 @@ class SetLine extends StatelessWidget {
     required this.onTap,
     required this.onRir,
     this.onClearRir,
+    this.showRir = true,
   });
 
+  final bool showRir;
   final SetState set;
 
   /// 1-based working-set index; -1 for warm-ups.
@@ -53,10 +55,10 @@ class SetLine extends StatelessWidget {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
     final done = set.done;
-    final strip = showRirPrompt && done && !set.isWarmup;
+    final strip = showRir && showRirPrompt && done && !set.isWarmup;
     // A logged working set with no RIR (resumed, or added in History) shows
     // none, as History's line does.
-    final rir = done && !set.isWarmup ? set.rir : null;
+    final rir = showRir && done && !set.isWarmup ? set.rir : null;
     final typedSummary = set.catalog == null
         ? null
         : catalogEvidenceSummary(set.catalog!, l);

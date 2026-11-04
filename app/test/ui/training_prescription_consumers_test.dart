@@ -22,6 +22,7 @@ import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/today_screen.dart';
 import 'package:alkion/widgets/split_card.dart';
 import 'package:alkion/widgets/week_strip.dart';
+import 'package:alkion/widgets/rir_picker.dart';
 import '../alkion/domains/local_screen_harness.dart';
 import '../support/layout_expect.dart';
 import '../session/training_prescriptions_test.dart' show createDay;
@@ -181,7 +182,7 @@ void main() {
   );
 
   testWidgets(
-    'open ad-hoc picker captures defaults and later additions leave old blocks unchanged',
+    'open ad-hoc picker keeps preferences presentational and authored defaults unchanged',
     (tester) async {
       final h = ScreenHarness();
       addTearDown(h.close);
@@ -205,6 +206,8 @@ void main() {
               plateStepKg: 2.5,
               defaultRirLow: 0,
               defaultRirHigh: 0,
+              defaultRepLow: 6,
+              defaultRepHigh: 10,
             ),
           );
         },
@@ -243,6 +246,9 @@ void main() {
         ),
         (8, 8, RirPolicy.off),
       );
+      expect(first.targetRepRange, isNull);
+      expect(find.text('Rep range: —'), findsOneWidget);
+      final firstObservations = first.allSets.map((s) => s.toJson()).toList();
       await scrollIntoView(
         tester,
         find.byType(ActiveSessionScreen),
@@ -259,8 +265,10 @@ void main() {
           second.resolved.repHigh,
           second.resolved.rirPolicy,
         ),
-        (8, 12, RirPolicy.inherit),
+        (6, 10, RirPolicy.inherit),
       );
+      expect(second.targetRepRange, (low: 6, high: 10));
+      expect(second.workingSets.map((s) => s.reps), everyElement(6));
       expect((second.resolved.rirLow, second.resolved.rirHigh), (0, 0));
       expect(second.workingSets.map((s) => s.rir), everyElement(isNull));
       expect(
@@ -270,6 +278,23 @@ void main() {
           first.resolved.rirPolicy,
         ),
         (8, 8, RirPolicy.off),
+      );
+      expect(first.allSets.map((s) => s.toJson()).toList(), firstObservations);
+      final secondObservations = second.allSets.map((s) => s.toJson()).toList();
+      await tester.runAsync(() async {
+        await h.settings.setRepEntry(RepEntry.fixed);
+        await h.settings.setRirControls(RirControls.off);
+      });
+      await settleReal(tester);
+      expect(find.byType(RirPicker), findsNothing);
+      expect(first.targetRepRange, isNull);
+      expect(second.targetRepRange, (low: 6, high: 10));
+      expect((second.resolved.repLow, second.resolved.repHigh), (6, 10));
+      expect((second.resolved.rirLow, second.resolved.rirHigh), (0, 0));
+      expect(first.allSets.map((s) => s.toJson()).toList(), firstObservations);
+      expect(
+        second.allSets.map((s) => s.toJson()).toList(),
+        secondObservations,
       );
       expect(find.textContaining('3×8–8'), findsNothing);
       expect(find.textContaining('RIR null'), findsNothing);
@@ -341,76 +366,125 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a valid target prompt offers actual RIR clear while no-target logging stays quiet',
-    (tester) async {
-      final h = ScreenHarness();
-      addTearDown(h.close);
-      await h.open(tester);
-      setPhone(tester, width: 412);
-      final ex = (await tester.runAsync(
-        () => ExerciseRepository.local(h.database).byId('ex3'),
-      ))!;
-      final b = buildBlock(
-        resolved: resolveFreshPrescription(
-          Slot(
-            exerciseId: ex.id,
-            position: 1,
-            workSets: 2,
-            warmupSets: 0,
-            repLow: 8,
-            repHigh: 8,
-            rirPolicy: RirPolicy.inherit,
-          ),
-          ex,
-        ),
+  for (final hasTarget in [false, true]) {
+    for (final controls in RirControls.values) {
+      testWidgets(
+        '${controls.name} RIR logging preserves ${hasTarget ? 'authored' : 'absent'} target and optional actual RIR',
+        (tester) async {
+          final h = ScreenHarness();
+          addTearDown(h.close);
+          await h.open(tester);
+          await tester.runAsync(() => h.settings.setRirControls(controls));
+          setPhone(tester, width: 412);
+          final ex = (await tester.runAsync(
+            () => ExerciseRepository.local(h.database).byId('ex3'),
+          ))!;
+          final b = buildBlock(
+            resolved: resolveFreshPrescription(
+              Slot(
+                exerciseId: ex.id,
+                position: 1,
+                workSets: 2,
+                warmupSets: 0,
+                repLow: 8,
+                repHigh: 8,
+                rirPolicy: hasTarget ? RirPolicy.inherit : RirPolicy.off,
+              ),
+              ex,
+            ),
+            repRange: (low: 8, high: 8),
+          );
+          final c = ActiveSessionController()
+            ..seedForTest(
+              SessionDraft(
+                templateId: null,
+                name: 'Target',
+                focus: '',
+                startedAt: DateTime.now(),
+                blocks: [b],
+              ),
+            );
+          addTearDown(c.dispose);
+          await tester.pumpWidget(
+            h.wrap(
+              ChangeNotifierProvider<ActiveSessionController>.value(
+                value: c,
+                child: const ActiveSessionScreen(),
+              ),
+            ),
+          );
+          await settleReal(tester);
+          final prescription = b.resolved;
+          final values = b.workingSets
+              .map((s) => (s.weightKg, s.reps))
+              .toList();
+          expect(b.resolved.hasRirTarget, hasTarget);
+          expect((
+            b.resolved.rirLow,
+            b.resolved.rirHigh,
+          ), hasTarget ? (1, 2) : (null, null));
+          await tester.tap(find.byKey(const Key('log-set-bar')));
+          await settleReal(tester, ticks: 4);
+          final first = b.workingSets.first;
+          expect(first.rir, isNull);
+          expect(first.done, isTrue);
+          expect(b.resolved, same(prescription));
+          expect(
+            b.workingSets.map((s) => (s.weightKg, s.reps)).toList(),
+            values,
+          );
+          if (controls == RirControls.off) {
+            expect(c.rirPromptSetId, isNull);
+            expect(find.byType(RirPicker), findsNothing);
+            expect(b.workingSets.map((s) => s.rir), everyElement(isNull));
+            await h.unmount(tester);
+            return;
+          }
+          expect(c.rirPromptSetId, first.id);
+          final prompt = find.descendant(
+            of: find.byType(SetLine),
+            matching: find.byKey(const Key('rir-0')),
+          );
+          await scrollIntoView(
+            tester,
+            find.byType(ActiveSessionScreen),
+            prompt,
+          );
+          await tester.tap(prompt);
+          await tester.pump();
+          expect(first.rir, 0);
+          await scrollIntoView(
+            tester,
+            find.byType(ActiveSessionScreen),
+            find.text('Clear RIR'),
+          );
+          await tester.tap(find.text('Clear RIR'));
+          await tester.pump();
+          expect(first.rir, isNull);
+          final beforeHide = b.allSets.map((s) => s.toJson()).toList();
+          await tester.runAsync(
+            () => h.settings.setRirControls(RirControls.off),
+          );
+          await settleReal(tester);
+          expect(find.byType(RirPicker), findsNothing);
+          expect(b.allSets.map((s) => s.toJson()).toList(), beforeHide);
+          expect(b.resolved, same(prescription));
+          expect(b.targetRepRange, (low: 8, high: 8));
+          expect((
+            b.resolved.rirLow,
+            b.resolved.rirHigh,
+          ), hasTarget ? (1, 2) : (null, null));
+          expect(find.textContaining('2×8–8'), findsNothing);
+          expect(
+            find.textContaining('2×8 · RIR 1–2'),
+            findsNothing,
+            reason: 'RIR target presentation is hidden without rewriting it',
+          );
+          await h.unmount(tester);
+        },
       );
-      final c = ActiveSessionController()
-        ..seedForTest(
-          SessionDraft(
-            templateId: null,
-            name: 'Target',
-            focus: '',
-            startedAt: DateTime.now(),
-            blocks: [b],
-          ),
-        );
-      addTearDown(c.dispose);
-      await tester.pumpWidget(
-        h.wrap(
-          ChangeNotifierProvider<ActiveSessionController>.value(
-            value: c,
-            child: const ActiveSessionScreen(),
-          ),
-        ),
-      );
-      await settleReal(tester);
-      c.logLiveSet();
-      await settleReal(tester, ticks: 4);
-      final first = b.workingSets.first;
-      expect(c.rirPromptSetId, first.id);
-      expect(first.rir, isNull);
-      final prompt = find.descendant(
-        of: find.byType(SetLine),
-        matching: find.byKey(const Key('rir-0')),
-      );
-      await scrollIntoView(tester, find.byType(ActiveSessionScreen), prompt);
-      await tester.tap(prompt);
-      await tester.pump();
-      expect(first.rir, 0);
-      await scrollIntoView(
-        tester,
-        find.byType(ActiveSessionScreen),
-        find.text('Clear RIR'),
-      );
-      await tester.tap(find.text('Clear RIR'));
-      await tester.pump();
-      expect(first.rir, isNull);
-      expect(find.textContaining('2×8–8'), findsNothing);
-      expect(find.textContaining('2×8 · RIR 1–2'), findsOneWidget);
-      await h.unmount(tester);
-    },
-  );
+    }
+  }
   testWidgets(
     'retained weekday9 never rolls into a real weekday in Today previews',
     (tester) async {

@@ -8,5 +8,5 @@ app = Path(__file__).resolve().parents[1]
 queue = app / "android/app/src/main/java/dev/animusstudio/alkion/LatestBodyEvaluation.java"
 check = app / "tool/CharacterBodyBridgeCheck.java"
 with tempfile.TemporaryDirectory(prefix="alkion-body-bridge-") as output:
-    subprocess.run(["javac", "--release", "17", "-d", output, str(queue), str(check)], check=True)
+    subprocess.run(["javac", "--release", "17", "-d", output, str(queue), str(queue.with_name("BodyPickGuard.java")), str(check)], check=True)
     subprocess.run(["java", "-cp", output, "dev.animusstudio.alkion.CharacterBodyBridgeCheck"], check=True)

@@ -1,4 +1,5 @@
 import '../catalog_ui/catalog_picker.dart';
+import '../history_test/history_mapping_label.dart';
 import '../catalog/catalog.dart';
 import '../catalog/catalog_development.dart';
 import '../catalog_ui/catalog_trial_scope.dart';
@@ -75,10 +76,14 @@ class _LibraryTabState extends State<LibraryTab> {
     return StreamBuilder<List<Exercise>>(
       stream: _catalogStream,
       builder: (context, snap) {
-        final exercises = snap.data ?? const <Exercise>[];
+        final trial = CatalogTrialScope.maybeOf(context);
+        final exercises = HistoryMappingScope.selectable(
+          context,
+          snap.data ?? const <Exercise>[],
+          catalog: trial?.bundle,
+        );
         final prMap = _prMap ?? {};
 
-        final trial = CatalogTrialScope.maybeOf(context);
         if (trial != null) {
           return CatalogBrowser(
             state: trial,
@@ -259,13 +264,19 @@ class _ExerciseRow extends StatelessWidget {
 
     return Semantics(
       button: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
+      child: TextButton(
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: EdgeInsets.zero,
+          alignment: Alignment.centerLeft,
+          overlayColor: tokens.focus.withValues(alpha: .16),
+          backgroundColor: tokens.bg,
+        ),
+
+        onPressed: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: BoxDecoration(
-            color: tokens.bg,
             border: Border(bottom: BorderSide(color: tokens.line)),
           ),
           child: Column(

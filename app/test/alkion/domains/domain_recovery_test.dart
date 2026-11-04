@@ -18,6 +18,8 @@ void main() {
       var store = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
+        schema:
+            SchemaRegistry(), // Explicit dated foundation migration fixture.
       );
       try {
         await seedExercise(
@@ -67,6 +69,8 @@ void main() {
       var store = await LocalStore.open(
         profile: profile,
         expectedProfileId: profile.profileId,
+        schema:
+            SchemaRegistry(), // Explicit dated foundation migration fixture.
       );
       try {
         await seedExercise(store, 'retained', 'Bench', base: '2.5000');
@@ -97,6 +101,7 @@ void main() {
         store = await LocalStore.open(
           profile: profile,
           expectedProfileId: profile.profileId,
+          schema: SchemaRegistry(), // Reopen the preserved foundation fixture.
         );
         expect(await store.inventory(), before);
         expect((await store.get('PRAGMA user_version')).values.single, 1);

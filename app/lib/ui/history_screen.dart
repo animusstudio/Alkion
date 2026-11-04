@@ -457,7 +457,7 @@ class _SummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.radius),
         border: Border.all(color: tokens.line),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -687,208 +687,222 @@ class _SessionCardState extends State<SessionCard> {
           child: Column(
             children: [
               // ── Tappable header ──────────────────────────────────────────────
-              GestureDetector(
-                onTap: () => setState(() => _expanded = !_expanded),
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 13,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          // Date block
-                          SizedBox(
-                            width: 44,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Scale down rather than wrap "28" at large text.
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    date?.day.toString() ?? '—',
-                                    maxLines: 1,
-                                    softWrap: false,
-                                    style: WorkoutType.mono(
-                                      size: 20,
-                                      weight: FontWeight.w400,
-                                      color: tokens.text,
-                                      letterSpacing: 0,
+              TextButton(
+                key: ValueKey('history-expand-${session.id}'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                  padding: EdgeInsets.zero,
+                  alignment: Alignment.centerLeft,
+                  overlayColor: tokens.focus.withValues(alpha: .16),
+                ),
+                onPressed: () => setState(() => _expanded = !_expanded),
+
+                child: Semantics(
+                  expanded: _expanded,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 13,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // Date block
+                            SizedBox(
+                              width: 44,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Scale down rather than wrap "28" at large text.
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      date?.day.toString() ?? '—',
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      style: WorkoutType.mono(
+                                        size: 20,
+                                        weight: FontWeight.w400,
+                                        color: tokens.text,
+                                        letterSpacing: 0,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    monthLabel.toUpperCase(),
-                                    maxLines: 1,
-                                    softWrap: false,
-                                    style: WorkoutType.mono(
-                                      size: 12,
-                                      color: tokens.faint,
-                                      letterSpacing: 0.04 * 9.5,
+                                  const SizedBox(height: 2),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      monthLabel.toUpperCase(),
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      style: WorkoutType.mono(
+                                        size: 12,
+                                        color: tokens.faint,
+                                        letterSpacing: 0.04 * 9.5,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
 
-                          // Vertical divider
-                          Container(
-                            width: 1,
-                            height: 44,
-                            color: tokens.line,
-                            margin: const EdgeInsets.symmetric(horizontal: 13),
-                          ),
+                            // Vertical divider
+                            Container(
+                              width: 1,
+                              height: 44,
+                              color: tokens.line,
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 13,
+                              ),
+                            ),
 
-                          // Middle: split label + meta row
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Split label
-                                if (label.isEmpty)
-                                  Text(
-                                    '—',
-                                    style: WorkoutType.body(
-                                      size: 14.5,
-                                      weight: FontWeight.w500,
-                                      color: tokens.text,
-                                    ),
-                                  )
-                                else
-                                  FitLabel.rich(
-                                    TextSpan(
-                                      children: [
-                                        TextSpan(
-                                          text: labelName,
-                                          style: WorkoutType.body(
-                                            size: 14.5,
-                                            weight: FontWeight.w500,
-                                            color: tokens.text,
-                                          ),
-                                        ),
-                                        if (labelFocus != null)
+                            // Middle: split label + meta row
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Split label
+                                  if (label.isEmpty)
+                                    Text(
+                                      '—',
+                                      style: WorkoutType.body(
+                                        size: 14.5,
+                                        weight: FontWeight.w500,
+                                        color: tokens.text,
+                                      ),
+                                    )
+                                  else
+                                    FitLabel.rich(
+                                      TextSpan(
+                                        children: [
                                           TextSpan(
-                                            text: ' · $labelFocus',
+                                            text: labelName,
                                             style: WorkoutType.body(
                                               size: 14.5,
                                               weight: FontWeight.w500,
-                                              color: tokens.faint,
+                                              color: tokens.text,
                                             ),
                                           ),
-                                      ],
-                                    ),
-                                    maxLines: 2,
-                                  ),
-                                const SizedBox(height: 4),
-                                if (!session.dateAvailable)
-                                  Text(
-                                    l.alkionDateUnavailable(
-                                      session.date.isEmpty ? '—' : session.date,
-                                    ),
-                                    style: WorkoutType.body(
-                                      size: 12,
-                                      color: tokens.faint,
-                                    ),
-                                  ),
-                                if (session.orderUncertain)
-                                  Text(
-                                    l.alkionOrderUncertain,
-                                    style: WorkoutType.body(
-                                      size: 12,
-                                      color: tokens.faint,
-                                    ),
-                                  ),
-                                // Meta — wraps to a second line instead of running
-                                // under the PR badge at large text.
-                                Wrap(
-                                  spacing: 12,
-                                  runSpacing: 2,
-                                  children: [
-                                    Text(
-                                      AppLocalizations.of(
-                                        context,
-                                      ).historyExerciseCountShort(
-                                        session.exerciseCount,
+                                          if (labelFocus != null)
+                                            TextSpan(
+                                              text: ' · $labelFocus',
+                                              style: WorkoutType.body(
+                                                size: 14.5,
+                                                weight: FontWeight.w500,
+                                                color: tokens.faint,
+                                              ),
+                                            ),
+                                        ],
                                       ),
-                                      style: WorkoutType.mono(
+                                      maxLines: 2,
+                                    ),
+                                  const SizedBox(height: 4),
+                                  if (!session.dateAvailable)
+                                    Text(
+                                      l.alkionDateUnavailable(
+                                        session.date.isEmpty
+                                            ? '—'
+                                            : session.date,
+                                      ),
+                                      style: WorkoutType.body(
                                         size: 12,
                                         color: tokens.faint,
                                       ),
                                     ),
-                                    if (session.durationMin != null)
+                                  if (session.orderUncertain)
+                                    Text(
+                                      l.alkionOrderUncertain,
+                                      style: WorkoutType.body(
+                                        size: 12,
+                                        color: tokens.faint,
+                                      ),
+                                    ),
+                                  // Meta — wraps to a second line instead of running
+                                  // under the PR badge at large text.
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 2,
+                                    children: [
                                       Text(
-                                        '${session.durationMin}m',
+                                        AppLocalizations.of(
+                                          context,
+                                        ).historyExerciseCountShort(
+                                          session.exerciseCount,
+                                        ),
                                         style: WorkoutType.mono(
                                           size: 12,
                                           color: tokens.faint,
                                         ),
                                       ),
-                                    Text(
-                                      localizedDaysAgo(l, session.date),
-                                      style: WorkoutType.mono(
-                                        size: 12,
-                                        color: tokens.faint,
+                                      if (session.durationMin != null)
+                                        Text(
+                                          '${session.durationMin}m',
+                                          style: WorkoutType.mono(
+                                            size: 12,
+                                            color: tokens.faint,
+                                          ),
+                                        ),
+                                      Text(
+                                        localizedDaysAgo(l, session.date),
+                                        style: WorkoutType.mono(
+                                          size: 12,
+                                          color: tokens.faint,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
 
-                          // PR badge (if any)
-                          if (session.prCount > 0) ...[
+                            // PR badge (if any)
+                            if (session.prCount > 0) ...[
+                              const SizedBox(width: 8),
+                              const PRBadge(small: true),
+                            ],
+
+                            // Chevron
                             const SizedBox(width: 8),
-                            const PRBadge(small: true),
-                          ],
-
-                          // Chevron
-                          const SizedBox(width: 8),
-                          AnimatedRotation(
-                            turns: _expanded ? 0.25 : 0,
-                            duration: Motion.of(
-                              context,
-                              const Duration(milliseconds: 150),
+                            AnimatedRotation(
+                              turns: _expanded ? 0.25 : 0,
+                              duration: Motion.of(
+                                context,
+                                const Duration(milliseconds: 150),
+                              ),
+                              child: Icon(
+                                WIcons.chevron,
+                                size: 16,
+                                color: tokens.faint,
+                              ),
                             ),
-                            child: Icon(
-                              WIcons.chevron,
-                              size: 16,
+                          ],
+                        ),
+                        // Its own full-width row: the header's middle column
+                        // is too narrow at large text to show the count whole.
+                        if (coverageLine != null) ...[
+                          const SizedBox(height: 8),
+                          FitLabel(
+                            coverageLine,
+                            maxLines: 2,
+                            style: WorkoutType.body(
+                              size: 12,
                               color: tokens.faint,
                             ),
                           ),
                         ],
-                      ),
-                      // Its own full-width row: the header's middle column
-                      // is too narrow at large text to show the count whole.
-                      if (coverageLine != null) ...[
-                        const SizedBox(height: 8),
-                        FitLabel(
-                          coverageLine,
-                          maxLines: 2,
-                          style: WorkoutType.body(
-                            size: 12,
-                            color: tokens.faint,
-                          ),
-                        ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
 
               if (_expanded)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: AnimusWorkoutSendPanel(
                     key: ValueKey('animus-send-${session.id}'),
                     sessionId: session.id,
@@ -1235,7 +1249,7 @@ class SessionCardBody extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final edit = onEditExercise;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Column(
         children: [
           Divider(color: tokens.line, height: 1, thickness: 1),
@@ -1298,7 +1312,7 @@ class SessionCardBody extends StatelessWidget {
   }
 }
 
-/// A centred inline text action (icon + mono label) in the card footer.
+/// A centred inline text action (icon + interface label) in the card footer.
 class _InlineAction extends StatelessWidget {
   const _InlineAction({
     super.key,
@@ -1317,9 +1331,14 @@ class _InlineAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
+    return TextButton(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        padding: EdgeInsets.zero,
+        alignment: Alignment.centerLeft,
+        overlayColor: context.tokens.focus.withValues(alpha: .16),
+      ),
+      onPressed: onTap,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
         child: Center(
@@ -1369,8 +1388,7 @@ class _BlockRow extends StatelessWidget {
     if (block.sets.first.catalog case final evidence?) {
       return Semantics(
         button: onTap != null,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: _HistoryRowAction(
           onTap: onTap,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 48),
@@ -1417,8 +1435,7 @@ class _BlockRow extends StatelessWidget {
 
     return Semantics(
       button: onTap != null,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: _HistoryRowAction(
         onTap: onTap,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 48),
@@ -1508,6 +1525,29 @@ class _BlockRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Read-only set evidence remains content, not an unavailable editing action.
+class _HistoryRowAction extends StatelessWidget {
+  const _HistoryRowAction({required this.onTap, required this.child});
+
+  final VoidCallback? onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (onTap == null) return child;
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        padding: EdgeInsets.zero,
+        alignment: Alignment.centerLeft,
+        overlayColor: context.tokens.focus.withValues(alpha: .16),
+      ),
+      child: child,
     );
   }
 }

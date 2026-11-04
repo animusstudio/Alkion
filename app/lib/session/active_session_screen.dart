@@ -33,6 +33,7 @@ import '../widgets/pending_input.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import 'active_session_controller.dart';
+import 'confirmed_set_feedback.dart';
 import 'exercise_block.dart';
 import 'catalog_set_values_editor.dart';
 import 'exercise_picker_sheet.dart';
@@ -70,6 +71,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   // controller without a BuildContext.
   SessionManager? _manager;
   ActiveSessionController? _controller;
+  int _logFeedbackEvent = 0;
+  SetState? _confirmedLogCandidate;
 
   // Haptic guards: fire once per countdown. Re-armed (cleared) when +30s pushes
   // remaining back above the respective threshold.
@@ -317,20 +320,35 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           profile.requiredMetrics.contains('reported_load')) {
         live.set.weightKg = double.parse(values['reported_load']!);
         live.set.reps = int.parse(values['repetitions']!);
-        c.logLiveSet();
+        c.logLiveSet(
+          showRir:
+              context.read<SettingsService>().rirControls == RirControls.show,
+        );
       } else {
         // Reuse the actual controller's set/focus lifecycle only. Typed
         // measurements remain in the disposable adapter and never enter reps.
-        c.logLiveSet();
+        c.logLiveSet(
+          showRir:
+              context.read<SettingsService>().rirControls == RirControls.show,
+        );
       }
       c.startRest(_restSecondsFor(live.block));
-      setState(() {});
+      setState(() {
+        _confirmedLogCandidate = live.set;
+        _logFeedbackEvent++;
+      });
       return;
     }
-    final r = c.logLiveSet();
+    final r = c.logLiveSet(
+      showRir: context.read<SettingsService>().rirControls == RirControls.show,
+    );
     if (r == null) {
       return;
     }
+    setState(() {
+      _confirmedLogCandidate = r.set;
+      _logFeedbackEvent++;
+    });
     if (r.newlyDone) {
       final top = liveTopOf(r.block);
       final isPr = r.set.catalog != null
@@ -419,11 +437,48 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
   }
 
+  Future<void> _openSetMenu(
+    ActiveSessionController c,
+    BlockState block,
+    SetState set,
+  ) async {
+    commitPendingInput();
+    final l = AppLocalizations.of(context);
+    final picked = await showWActionSheet<String>(
+      context,
+      title: set.isWarmup
+          ? l.sessionLiveWarmup
+          : l.sessionLiveSet(block.workingSets.indexOf(set) + 1),
+      actions: [
+        if (set.done)
+          WSheetAction(label: l.sessionMarkNotDone, value: 'undone'),
+        WSheetAction(
+          label: l.sessionAddWarmupSet,
+          value: 'warmup',
+          icon: WIcons.flame,
+        ),
+        WSheetAction(label: l.commonRemove, value: 'remove', destructive: true),
+      ],
+    );
+    if (!mounted || picked == null) return;
+    switch (picked) {
+      case 'undone':
+        c.markNotDone(set);
+      case 'warmup':
+        c.addWarmupSet(block);
+      case 'remove':
+        if (await confirmRemoveSessionSet(context, set) && mounted) {
+          _removeSet(c, block, set);
+        }
+    }
+  }
+
   Future<void> _openBlockMenu(
     ActiveSessionController c,
     BlockState b, {
     SetState? contextSet,
   }) async {
+    commitPendingInput();
     final l = AppLocalizations.of(context);
     final blocks = c.draft.blocks;
     final trial = CatalogTrialScope.maybeOf(context);
@@ -452,21 +507,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           WSheetAction(label: l.catalogAddAgain, value: 'again'),
           WSheetAction(label: l.catalogRoutineUse, value: 'routine'),
         ],
-        if (contextSet?.catalog != null) ...[
-          if (contextSet!.done)
-            WSheetAction(label: l.catalogMarkPending, value: 'undone'),
-          WSheetAction(
-            label: l.commonRemove,
-            value: 'remove-set',
-            destructive: true,
-          ),
-        ],
         WSheetAction(label: l.sessionAddSet, value: 'set', icon: WIcons.plus),
-        WSheetAction(
-          label: l.sessionAddWarmupSet,
-          value: 'warmup',
-          icon: WIcons.flame,
-        ),
         WSheetAction(
           label: l.sessionMoveUp,
           value: 'up',
@@ -851,6 +892,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final trial = CatalogTrialScope.maybeOf(context);
     final tokens = context.tokens;
     final unit = context.watch<UnitService>();
+    final preferences = context.watch<SettingsService>();
     final l = AppLocalizations.of(context);
 
     if (!controller.hasSession) {
@@ -891,7 +933,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         : trial == null
                         ? restNextLabel(l, unit, controller.nextPendingSet)
                         : _trialNextLabel(trial, controller, l, unit),
-                    onMinimize: () => Navigator.of(context).pop(),
+                    onMinimize: () {
+                      commitPendingInput();
+                      Navigator.of(context).pop();
+                    },
                     onMenu: () {
                       if (!controller.finishPending) {
                         _openWorkoutMenu(controller);
@@ -954,6 +999,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                               )
                             : ExerciseBlock(
                                 block: block,
+                                showRir:
+                                    preferences.rirControls == RirControls.show,
+                                showRepRange:
+                                    preferences.repEntry == RepEntry.range,
                                 unit: unit,
                                 liveSetId: live?.set.id,
                                 rirPromptSetId: controller.rirPromptSetId,
@@ -1041,11 +1090,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                                 },
                                 onSetMenu: (set) {
                                   commitPendingInput();
-                                  _openBlockMenu(
-                                    controller,
-                                    block,
-                                    contextSet: set,
-                                  );
+                                  _openSetMenu(controller, block, set);
                                 },
                                 onSetChanged: (_, __) =>
                                     controller.markChanged(),
@@ -1059,13 +1104,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                                 },
                                 onRemoveSet: (b, s) =>
                                     _removeSet(controller, b, s),
-                                onMenu: (b) => _openBlockMenu(
-                                  controller,
-                                  b,
-                                  contextSet: identical(live?.block, b)
-                                      ? live?.set
-                                      : null,
-                                ),
+                                onMenu: (b) => _openBlockMenu(controller, b),
                               ),
                       ),
                     const SizedBox(height: 10),
@@ -1075,9 +1114,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                       label: l.sessionAddExercise,
                       tokens: tokens,
                       onTap: () async {
-                        final settings = context.read<SettingsService>();
-                        final repEntry = settings.repEntry;
-                        final rirControls = settings.rirControls;
                         final repo = ExerciseRepository.local(
                           context.read<LocalDatabase>(),
                         );
@@ -1109,8 +1145,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                             await controller.addBlock(
                               picked,
                               sessionRepo: sessionRepo,
-                              repEntry: repEntry,
-                              rirControls: rirControls,
                               allowRepeat:
                                   trial != null &&
                                   catalogChoice != null &&
@@ -1155,26 +1189,31 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         ),
       ),
       // In bottomNavigationBar (not the body) so the undo snackbar floats above it.
-      bottomNavigationBar:
-          live != null && trial != null && _usesTrialForm(trial, live.block)
-          ? SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: FilledButton(
-                  key: const Key('catalog-log-set'),
-                  onPressed: () => _logLive(controller),
-                  child: Text(l.catalogLogSet),
+      bottomNavigationBar: ConfirmedSetFeedback(
+        controller: controller,
+        event: _logFeedbackEvent,
+        loggedSet: _confirmedLogCandidate,
+        child:
+            live != null && trial != null && _usesTrialForm(trial, live.block)
+            ? SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: FilledButton(
+                    key: const Key('catalog-log-set'),
+                    onPressed: () => _logLive(controller),
+                    child: Text(l.catalogLogSet),
+                  ),
                 ),
+              )
+            : LogSetBar(
+                live: controller.finishPending ? null : live,
+                canFinish: controller.canFinish || controller.finishPending,
+                unit: unit,
+                onLog: () => _logLive(controller),
+                onFinish: () => _handleFinish(context, controller),
               ),
-            )
-          : LogSetBar(
-              live: controller.finishPending ? null : live,
-              canFinish: controller.canFinish || controller.finishPending,
-              unit: unit,
-              onLog: () => _logLive(controller),
-              onFinish: () => _handleFinish(context, controller),
-            ),
+      ),
     );
   }
 }

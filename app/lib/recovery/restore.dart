@@ -111,7 +111,7 @@ final class RestoreService {
     SchemaRegistry? schema,
     this.checkpoint,
     this.workDirectory,
-  }) : schema = schema ?? catalogExecutionSchemaRegistry();
+  }) : schema = schema ?? remoteRecoverySchemaRegistry();
   final Directory supportRoot;
   final SchemaRegistry schema;
   final RecoveryCheckpoint? checkpoint;

@@ -1,6 +1,6 @@
 # Android character-body runtime
 
-`app/lib/ui/character_body.dart` is a display-only surface. It does not read
+`app/lib/ui/character_body.dart` is an artwork surface with opt-in region picking. It does not read
 storage, calculate workload, infer body condition, or provide controls. The
 approved indexed geometry is rasterized by the existing WebGL/Canvas character
 pipeline in one Android system WebView. No new package is required.
@@ -16,6 +16,15 @@ pipeline in one Android system WebView. No new package is required.
   `compact`, `controller`. Scores are accepted calculator aggregates only;
   unavailable reads retain separate native coverage/count UI. Missing scores
   produce neutral artwork. Values crossing the bridge are finite and bounded.
+- Optional `pickingEnabled` defaults to false. When true, paused ready artwork
+  supports `await controller.pick(localPosition, surfaceSize)`, returning an
+  eight-region `WorkloadMuscle` or null. Coordinates and size refer to the exact
+  `CharacterBody` layout bounds. Null covers background, neutral pixels,
+  unavailable artwork, invalid coordinates and stale frames; it leaves caller
+  selection unchanged. The caller owns tap/drag arbitration and selected state.
+- Optional `selectedRegion` applies a categorical accent to that region's glyphs
+  only when picking is enabled. It never changes workload scores, membership,
+  geometry, masks, shade, glyph choice or alpha. Pass null for list-only groups.
 - Optional `onStatus` receives `loading`, `ready`, `unavailable`, `error`;
   `fallback` is native Flutter UI shown whenever artwork is not ready. Localize
   that content in the caller. Unsupported platforms return `unavailable`.
@@ -56,6 +65,34 @@ drawing and clears the autoplay time anchor; resuming never catches up elapsed
 background time. Character sampling reuses renderer-owned temporary storage;
 its shade, anchor, coverage, edge direction, glyph and alpha outputs match the
 accepted sampler's frozen synthetic references.
+
+## Visible-surface picking
+
+The renderer samples its retained depth-tested RGBA pixels. Native top-left
+normalized coordinates map directly to one raster pixel, reversing WebGL's row
+order. Transparent pixels, neutral mask ID and any unrecognized region return
+null; no nearest-anchor, neighbouring-cell or hidden-surface search is used.
+The allowlist is chest, back, shoulders, biceps, triceps, quads, hamstrings and
+calves. Picking adds no scene, model or GPU readback.
+
+The optional version-2 `interaction` display member contains `enabled`, nullable
+`selected` and an integer `generation`. Opted-in frames report that generation
+plus monotonic `frame`, `load` and `layout` identities. A pick request carries
+those exact four identities, a bounded integer request ID and normalized x/y
+in [0,1). Dart, the native host and JavaScript validate their respective boundary;
+only a response matching the latest request and current rendered identities can
+produce a region. Picking requires paused, ready, visible artwork. Rotation,
+layout/style/selection changes, retry, hiding, app lifecycle and disposal
+invalidate earlier picks. The renderer also rejects pixels after its canvas
+layout changes until a fresh draw. Existing display-only callers omit the
+interaction member and retain their original periodic telemetry and behavior.
+
+Dart retains one pick in flight and one replaceable latest tap, resolving
+replaced taps to null. The native host retains one result and one cancellable
+1.5-second timeout; JS evaluation shares the existing one-in-flight/latest
+snapshot queue with display and lifecycle state. Dart additionally times out
+an unanswered request after two seconds. No unbounded request/timer queue is
+introduced. Native controls and labeled muscle lists remain caller-owned.
 
 ## Private inputs and local builds
 
@@ -118,7 +155,9 @@ Focused checks from the repository root:
 `python3 app/tool/check_character_body_bridge.py` (JDK 17+),
 `python3 app/tool/test_stage_character_body.py`,
 `make -C app test TEST=test/ui/character_body_test.dart`.
-They establish host-side protocol/loader/motion/material/native-queue/stager/controller behavior, not
+They establish host-side protocol/loader/motion/material/native-queue/stager/controller behavior,
+including exact synthetic surface-pixel mapping and delayed MethodChannel
+responses across frame, layout, style, rotation, retry and disposal changes, not
 Android rendering performance. The first disposable emulator checkpoint must
 still prove packaged module/font/mesh/mask loading, fixed-angle fidelity, drag,
 background/resume/disposal, offline manifest and bounded load/frame/memory costs.

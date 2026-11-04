@@ -62,6 +62,24 @@ final class ImportOutcome {
   };
 }
 
+/// A durable full-export capture, validated without selecting source rows.
+final class FullPreview {
+  const FullPreview({
+    this.outcome,
+    this.document,
+    this.importId,
+    this.artifactId,
+    this.profileId,
+    this.digest,
+  });
+  final ImportOutcome? outcome;
+  final FullV1Document? document;
+  final String? importId, artifactId, profileId, digest;
+  bool get canImport =>
+      document != null &&
+      (outcome == null || outcome!.status == ImportStatus.alreadySelected);
+}
+
 enum AbsenceDecision { keep, successorDelete }
 
 /// Deterministic scoped local identity. The mapping table remains the
@@ -162,11 +180,45 @@ final class TransferService {
     Uint8List input, {
     required String namespace,
   }) async {
+    final preview = await previewArtifact(input, namespace: namespace);
+    if (preview.outcome != null) return preview.outcome!;
+    return _importValidatedPreview(preview, namespace);
+  }
+
+  /// Confirmation reads the staged artifact, never the mutable input path or
+  /// a caller-supplied projection.
+  Future<ImportOutcome> importPreview(
+    FullPreview preview, {
+    required String namespace,
+  }) async {
+    checkNamespace(namespace);
+    if (preview.artifactId == null) {
+      return preview.outcome ??
+          (throw const StoreException('full_preview_missing'));
+    }
+    if (preview.profileId != db.profileId) {
+      throw const StoreException('full_preview_scope_mismatch');
+    }
+    final bytes = await originalBytes(preview.artifactId!);
+    final digest = sha256.convert(bytes).toString();
+    if (preview.importId != importIdFor(namespace, digest) ||
+        preview.artifactId != 'art-$digest') {
+      throw const StoreException('full_preview_scope_mismatch');
+    }
+    return importArtifact(bytes, namespace: namespace);
+  }
+
+  Future<FullPreview> previewArtifact(
+    Uint8List input, {
+    required String namespace,
+  }) async {
     checkNamespace(namespace);
     if (input.length > maxRawBytes) {
-      return const ImportOutcome(
-        ImportStatus.refusedUnstaged,
-        category: 'resource_limit_raw_staging',
+      return const FullPreview(
+        outcome: ImportOutcome(
+          ImportStatus.refusedUnstaged,
+          category: 'resource_limit_raw_staging',
+        ),
       );
     }
     final bytes = Uint8List.fromList(input);
@@ -182,32 +234,66 @@ final class TransferService {
     );
     await checkpoint?.call('staged');
     final recorded = await _recorded(generation, namespace, importId);
-    if (recorded != null) return recorded;
+    FullPreview result({FullV1Document? document, ImportOutcome? outcome}) =>
+        FullPreview(
+          document: document,
+          outcome: outcome,
+          importId: importId,
+          artifactId: artifactId,
+          profileId: db.profileId,
+          digest: digest,
+        );
+    if (recorded != null && recorded.status != ImportStatus.alreadySelected) {
+      return result(outcome: recorded);
+    }
     FullV1Document document;
     try {
       document = validateFullV1(bytes, limits: limits);
     } on TransferRejection catch (rejection) {
-      return _refuse(
-        namespace,
-        importId,
-        artifactId,
-        digest,
-        'rejected',
-        rejection.toJson(),
+      if (recorded != null) return result(outcome: recorded);
+      return result(
+        outcome: await _refuse(
+          namespace,
+          importId,
+          artifactId,
+          digest,
+          'rejected',
+          rejection.toJson(),
+        ),
       );
     }
     if (document.incompatibilities.isNotEmpty) {
-      return _refuse(namespace, importId, artifactId, digest, 'incompatible', {
-        'category': 'projection_incompatible',
-        'fields': [for (final i in document.incompatibilities) i.toJson()],
-      });
+      if (recorded != null) {
+        return result(outcome: recorded, document: document);
+      }
+      return result(
+        document: document,
+        outcome: await _refuse(
+          namespace,
+          importId,
+          artifactId,
+          digest,
+          'incompatible',
+          {
+            'category': 'projection_incompatible',
+            'fields': [for (final i in document.incompatibilities) i.toJson()],
+          },
+        ),
+      );
     }
+    return result(document: document, outcome: recorded);
+  }
+
+  Future<ImportOutcome> _importValidatedPreview(
+    FullPreview preview,
+    String namespace,
+  ) async {
     final outcome = await _promote(
       namespace,
-      importId,
-      artifactId,
-      digest,
-      document,
+      preview.importId!,
+      preview.artifactId!,
+      preview.digest!,
+      preview.document!,
     );
     await checkpoint?.call('promoted');
     return outcome;
@@ -374,6 +460,36 @@ final class TransferService {
     if (generation['status'] != 'staged' &&
         generation['status'] != 'superseded') {
       throw const StoreException('generation_not_promotable');
+    }
+    // History occurrence IDs deliberately cannot reconcile with full-export
+    // source IDs. Preserve that namespace rather than superseding its history
+    // generation and manufacturing absence reviews.
+    final selected = await tx.getOptional(
+      'SELECT manifest_bytes FROM import_generations WHERE profile_id=? AND namespace=? AND selected=1',
+      [tx.profileId, namespace],
+    );
+    if (selected != null &&
+        decodeBytesJson(selected['manifest_bytes'])['format'] ==
+            'alkion-history-import-manifest/1') {
+      const detail = <String, Object?>{
+        'category': 'history_namespace_artifact_conflict',
+        'reason':
+            'History occurrence imports cannot reconcile a different '
+            'artifact in the same namespace. Use a separate test profile.',
+      };
+      await _journal(tx, namespace, importId, 'incompatible', detail);
+      await tx.execute(
+        "UPDATE import_generations SET status='incompatible' WHERE profile_id=? AND namespace=? AND import_id=? AND selected=0",
+        [tx.profileId, namespace, importId],
+      );
+      return ImportOutcome(
+        ImportStatus.incompatible,
+        importId: importId,
+        artifactId: artifactId,
+        digest: digest,
+        category: 'history_namespace_artifact_conflict',
+        detail: detail,
+      );
     }
     final counts = <String, int>{
       'mapped': 0,

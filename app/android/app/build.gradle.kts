@@ -1,4 +1,5 @@
 import java.io.File
+import java.net.URI
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.Base64
@@ -23,6 +24,60 @@ if (animusLoopbackHttp) {
     require(animusEnabled && gradle.startParameter.taskNames.all {
         it == "assembleDevDebug" || it == ":app:assembleDevDebug"
     }) { "Animus loopback HTTP is available only in explicit dev/debug connection builds" }
+}
+
+// Both compiler setup and native build must explicitly select this debug policy.
+// Decode only setup locators; never print Dart-define values in errors.
+val animusPrivateHttp = providers.environmentVariable("ALKION_ANIMUS_PRIVATE_HTTP").orNull == "1"
+val connectionDefines = try {
+    val pairs = providers.gradleProperty("dart-defines").orNull.orEmpty()
+        .split(',').filter { it.isNotEmpty() }.map {
+            String(Base64.getDecoder().decode(it), Charsets.UTF_8).split('=', limit = 2)
+        }.filter { it.size == 2 && it[0].startsWith("ALKION_ANIMUS_") }
+    require(pairs.map { it[0] }.toSet().size == pairs.size)
+    pairs.associate { it[0] to it[1] }
+} catch (_: Exception) {
+    throw GradleException("Invalid connection build setup")
+}
+val privateHttpDart = connectionDefines["ALKION_ANIMUS_ALLOW_PRIVATE_HTTP"] == "true"
+val privateHttpResources = file("../../build/private-animus-http/res")
+if (animusPrivateHttp || privateHttpDart) {
+    val tasks = gradle.startParameter.taskNames
+    require(animusPrivateHttp && privateHttpDart && animusEnabled && !animusLoopbackHttp &&
+        !localReleaseTest && tasks.size == 1 && tasks.single() in
+        setOf("assembleDevDebug", ":app:assembleDevDebug")) {
+        "Private HTTP requires matching setup and only the explicit Dev/debug APK task"
+    }
+    require(connectionDefines["ALKION_ANIMUS_ENABLED"] == "true" &&
+        connectionDefines["ALKION_ANIMUS_ALLOW_LOOPBACK_HTTP"] != "true" &&
+        connectionDefines["ALKION_ANIMUS_ENROLLMENT_FLOW"].isNullOrEmpty() &&
+        connectionDefines["ALKION_ANIMUS_REDIRECT_URI"] == "dev.animusstudio.alkion.dev:/oauth2redirect") {
+        "Private HTTP connection setup is incomplete or incompatible"
+    }
+    fun privateHost(key: String, issuer: Boolean): String {
+        val text = connectionDefines[key] ?: throw GradleException("Missing connection origin")
+        val uri = try { URI(text) } catch (_: Exception) { throw GradleException("Invalid connection origin") }
+        val host = uri.host.orEmpty()
+        val hostPattern = Regex("^[a-z0-9]+(?:[.-][a-z0-9-]+)*$")
+        require(uri.scheme == "http" && hostPattern.matches(host) && uri.rawUserInfo == null &&
+            uri.rawQuery == null && uri.rawFragment == null && uri.port in -1..65535 && uri.port != 0 &&
+            uri.rawAuthority == host + (if (uri.port == -1) "" else ":${uri.port}") &&
+            (if (issuer) Regex("^/application/o/[A-Za-z0-9_-]+/$").matches(uri.rawPath.orEmpty())
+             else uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")) {
+            "Invalid private HTTP connection origin"
+        }
+        return host
+    }
+    val hosts = setOf(privateHost("ALKION_ANIMUS_API_ORIGIN", false),
+        privateHost("ALKION_ANIMUS_ISSUER", true))
+    val xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
+        "<network-security-config><base-config cleartextTrafficPermitted=\"false\"/>" +
+        "<domain-config cleartextTrafficPermitted=\"true\">" +
+        hosts.joinToString("") { "<domain includeSubdomains=\"false\">$it</domain>" } +
+        "</domain-config></network-security-config>\n"
+    val output = File(privateHttpResources, "xml/animus_private_http_network_security_config.xml")
+    output.parentFile.mkdirs()
+    output.writeText(xml)
 }
 
 // A one-off synthetic device artifact, never a product flavor or release identity.
@@ -180,8 +235,11 @@ android {
         manifestPlaceholders["oidcRedirectScheme"] = "dev.animusstudio.alkion"
         manifestPlaceholders["alkionAnimusEnabled"] = animusEnabled.toString()
         buildConfigField("boolean", "PRIVATE_CATALOG_DEV", privateCatalogDev.toString())
-        manifestPlaceholders["alkionNetworkSecurityConfig"] = if (animusLoopbackHttp)
-            "@xml/animus_loopback_network_security_config" else "@xml/network_security_config"
+        manifestPlaceholders["alkionNetworkSecurityConfig"] = when {
+            animusPrivateHttp -> "@xml/animus_private_http_network_security_config"
+            animusLoopbackHttp -> "@xml/animus_loopback_network_security_config"
+            else -> "@xml/network_security_config"
+        }
         if (localReleaseTest) {
             ndk.abiFilters.clear()
             ndk.abiFilters.add("arm64-v8a")
@@ -248,6 +306,9 @@ android {
             dimension = "installation"
             manifestPlaceholders["alkionLabel"] = "Alkion"
         }
+    }
+    if (animusPrivateHttp) {
+        sourceSets.getByName("dev").res.srcDir(privateHttpResources)
     }
     if (animusEnabled) {
         sourceSets.getByName("dev").manifest.srcFile("src/animusConnection/AndroidManifest.xml")

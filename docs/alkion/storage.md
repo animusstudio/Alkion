@@ -121,7 +121,7 @@ Migration 1 is the frozen foundation in `lib/store/schema.dart`. Its SHA-256 is
 `schemaSqlDigest`. `schema_migrations` retains each immutable SQL digest.
 
 `SchemaRegistry(forward: [...])` takes `ForwardMigration(version, statements,
-expectedSchemaDigest)`. IDs must be contiguous, at most 5:
+expectedSchemaDigest)`. IDs must be contiguous, at most 6:
 
 | ID | Owner | Concrete scope |
 | --- | --- | --- |
@@ -130,6 +130,7 @@ expectedSchemaDigest)`. IDs must be contiguous, at most 5:
 | 3 | T4 | Draft/workout/timer/history additions actually required |
 | 4 | Flexible prescriptions | `day_template_items.rir_policy TEXT`; `day_templates.is_active INTEGER DEFAULT 1` |
 | 5 | Catalog integration | Catalog bindings, tracking contexts and typed execution evidence |
+| 6 | Animus recovery | Server attachment G, immutable operation O, durable API intents, archives, finite stages and response evidence |
 
 Pass the same registry to `LocalStore.open(..., schema: registry)` on every open.
 Each appended migration supplies a independently verified resulting sqlite_master
@@ -138,10 +139,12 @@ version's SQL shape before configuration writes. All pending migrations, history
 rows and version advancement run in one real SQLite transaction. Wrong shape,
 statement error or deferred COMMIT failure preserves the previous supported
 generation. No down migration or new empty replacement is permitted. Later tasks
-append IDs; they do not edit migration 1 or rewrite its identity.
+append IDs; they do not edit earlier migrations or rewrite their identities.
 
 Current runtime, native backup verification and restore use
-`catalogExecutionSchemaRegistry()` (version 5). `domainSchemaRegistry()` (2) and
+`remoteRecoverySchemaRegistry()` (version 6). Schema 6 appends recovery state to
+the supported schema-5 catalog store and preserves migrations 1–5 and their
+digests. `catalogExecutionSchemaRegistry()` (5), `domainSchemaRegistry()` (2) and
 `workflowSchemaRegistry()` (3) retain their exact history for older snapshots.
 Migration 5 appends `catalogBinding` and `trackingContext` to current domain
 projections and adds nullable typed-execution columns; it does not rewrite
@@ -181,13 +184,23 @@ inheritance. Native backup includes the snapshot with all other local state.
 | Local state | Revision/generation-checked keys for draft, finished recovery, timer, semantic setting, goal initialization, order resolution, catalog selection and onboarding. Each kind has its own replacement key; no fake public action. |
 | Catalog | Immutable pins and separate selected-local-state keys. Refresh cannot evict attempts, drafts or prior pins. |
 | Transfer | Artifact-backed nonselected/selected import generations, one selected generation per namespace, immutable import journal and scoped correspondence. Parser/promotion/reconciliation are T5. |
-| Downloaded replicas | Only `replica_rows` and their dataset checkpoint/coverage are replaced together. This never clears authored work, pins, drafts, reviews or attempts. No transport is implemented. |
+| Downloaded replicas | Only `replica_rows` and their dataset checkpoint/coverage are replaced together. This never clears authored work, pins, drafts, reviews or attempts. No replica transport is implemented. |
+| Animus remote recovery | Backup-covered attachment/origin records, pre-I/O exchange intents, immutable full-state archives, finite comparison stages and append-only response evidence. Adoption changes only server G and the active stage pointer; it never replaces local authored, catalog or replica rows. |
 | Restore | Immutable generation journal plus persisted profile fence. T6 adds coherent backup publication, newer-work reconciliation and generation selection without a migration ([backup](backup.md), [recovery](recovery.md)). |
 
 Exact value types preserve decimal TEXT spelling, field missing/null/empty/invalid/
 unavailable, calendar days and source time uncertainty. Own operation/ingestion
 instants require offsets. Models retain raw evidence beside compatibility doubles;
 untouched writes must use that evidence. Nullable/out-of-range RIR stays untouched.
+
+Server G is separate from the local integer store generation. A nonsecret intent
+commits before discovery, direct-read, action or status I/O; personal request bytes
+remain in the immutable attempt, and tokens are excluded. An unsettled intent
+independently blocks ordinary remote work. A small durable `capture_pending`
+fence precedes the separate fallible full-state archive transaction. Failed
+fence/archive writes cannot reopen remote work, while offline authored editing
+keeps its existing transaction rules. Manual backup/restore covers these records
+and all prior archive references. See [server recovery](recovery.md#animus-server-recovery).
 
 ## Verification and sequential harness extension
 

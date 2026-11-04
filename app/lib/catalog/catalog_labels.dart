@@ -14,6 +14,73 @@ class CatalogLabels {
   };
   String _label(List<String>? values, String fallback) =>
       values?[_language] ?? fallback;
+  String get loading => [
+    'Loading catalog',
+    'Caricamento catalogo',
+    'Katalog wird geladen',
+    'Cargando catálogo',
+  ][_language];
+  String get catalog =>
+      ['Catalog', 'Catalogo', 'Katalog', 'Catálogo'][_language];
+  String get recent => ['Recent', 'Recenti', 'Zuletzt', 'Recientes'][_language];
+  String get filters => ['Filters', 'Filtri', 'Filter', 'Filtros'][_language];
+  String filterCount(int count) => count == 0 ? filters : '$filters · $count';
+  String get exploreMuscles => [
+    'Explore muscles',
+    'Esplora i muscoli',
+    'Muskeln erkunden',
+    'Explorar músculos',
+  ][_language];
+  String get chooseMuscle => [
+    'Choose a muscle on the body or in the list.',
+    'Scegli un muscolo sul corpo o nell’elenco.',
+    'Wähle einen Muskel am Körper oder in der Liste.',
+    'Elige un músculo en el cuerpo o en la lista.',
+  ][_language];
+  String get showExercises => [
+    'Show exercises',
+    'Mostra esercizi',
+    'Übungen anzeigen',
+    'Mostrar ejercicios',
+  ][_language];
+  String get muscleList => [
+    'Muscle list',
+    'Elenco muscoli',
+    'Muskelliste',
+    'Lista de músculos',
+  ][_language];
+  String get modelMuscleHint => [
+    'Tap one of 8 regions on the body. For forearms, core, glutes, adductors and abductors, use the full list below. Drag sideways to turn.',
+    'Tocca una delle 8 regioni del corpo. Per avambracci, core, glutei, adduttori e abduttori, usa l’elenco completo sotto. Trascina di lato per ruotare.',
+    'Tippe auf eine von 8 Körperregionen. Unterarme, Rumpf, Gesäß, Adduktoren und Abduktoren findest du in der vollständigen Liste unten. Zum Drehen seitlich ziehen.',
+    'Toca una de las 8 regiones del cuerpo. Para antebrazos, core, glúteos, aductores y abductores, usa la lista completa de abajo. Arrastra de lado para girar.',
+  ][_language];
+  String get targetExplanation => [
+    'Target muscles are the reviewed catalog’s main exercise groups. Secondary muscles support the movement; include them in Filters.',
+    'I muscoli target sono i gruppi principali nella classificazione verificata del catalogo. I muscoli secondari supportano il movimento; includili nei Filtri.',
+    'Zielmuskeln sind die Hauptgruppen in der geprüften Katalogzuordnung. Sekundäre Muskeln unterstützen die Bewegung; aktiviere sie unter Filter.',
+    'Los músculos objetivo son los grupos principales de la clasificación revisada del catálogo. Los secundarios apoyan el movimiento; inclúyelos en Filtros.',
+  ][_language];
+  String get secondaryExplanation => [
+    'Also show exercises where the selected muscle supports the movement.',
+    'Mostra anche gli esercizi in cui il muscolo scelto supporta il movimento.',
+    'Auch Übungen zeigen, bei denen der gewählte Muskel die Bewegung unterstützt.',
+    'Mostrar también ejercicios en los que el músculo elegido apoya el movimiento.',
+  ][_language];
+  String get setup =>
+      ['Setup', 'Configurazione', 'Aufbau', 'Configuración'][_language];
+  String get clearFilters => [
+    'Clear filters',
+    'Rimuovi filtri',
+    'Filter löschen',
+    'Borrar filtros',
+  ][_language];
+  String resultCount(int count) => [
+    count == 1 ? '1 result' : '$count results',
+    count == 1 ? '1 risultato' : '$count risultati',
+    count == 1 ? '1 Ergebnis' : '$count Ergebnisse',
+    count == 1 ? '1 resultado' : '$count resultados',
+  ][_language];
   String get unknownSetup => [
     'Unspecified setup',
     'Configurazione non specificata',

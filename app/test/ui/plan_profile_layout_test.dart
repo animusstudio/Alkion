@@ -42,7 +42,7 @@ void main() {
       ),
     );
     await settleReal(tester);
-    final title = find.text('Compound rest');
+    final title = find.text('Weight unit');
     await scrollIntoView(tester, find.byType(ProfileScreen), title);
     expectNoSplitWords(tester, within: title);
     await harness.unmount(tester);

@@ -102,6 +102,38 @@ class GateDraftStore extends DraftStore {
 
 void main() {
   setUpAll(preloadAppFonts);
+  test(
+    'rep target ranges require authored complete pairs and keep slot precedence',
+    () {
+      expect(
+        authoredRepRangeFor(slot(low: null, high: null), exercise),
+        isNull,
+      );
+      expect(authoredRepRangeFor(slot(low: 5, high: 9), exercise), (
+        low: 5,
+        high: 9,
+      ));
+      for (final pair in [(5, null), (9, 5), (0, 8), (8, 100)]) {
+        expect(
+          authoredRepRangeFor(slot(low: pair.$1, high: pair.$2), exercise),
+          isNull,
+        );
+      }
+      expect(
+        authoredRepRangeFor(
+          const Slot(
+            exerciseId: 'plain',
+            position: 0,
+            repLow: 5,
+            repHigh: 9,
+            rawFields: {'target_rep_high': '9'},
+          ),
+          exercise,
+        ),
+        isNull,
+      );
+    },
+  );
   for (final policy in [RirPolicy.off, RirPolicy.inherit, RirPolicy.target]) {
     test(
       'fresh $policy keeps targets separate from actual observations and added sets',
@@ -259,6 +291,11 @@ void main() {
         try {
           await c.addBlock(plain, sessionRepo: sessions);
           expect(
+            c.draft.blocks.first.targetRepRange,
+            isNull,
+            reason: 'default actual seeds are not authored targets',
+          );
+          expect(
             (
               c.draft.blocks.first.resolved.repLow,
               c.draft.blocks.first.resolved.repHigh,
@@ -268,13 +305,9 @@ void main() {
           );
           await h.settings.setRepEntry(RepEntry.range);
           await h.settings.setRirControls(RirControls.show);
-          await c.addBlock(
-            (await repo.byId('ex3'))!,
-            sessionRepo: sessions,
-            repEntry: RepEntry.range,
-            rirControls: RirControls.show,
-          );
+          await c.addBlock((await repo.byId('ex3'))!, sessionRepo: sessions);
           final second = c.draft.blocks.last;
+          expect(second.targetRepRange, (low: 6, high: 10));
           expect(
             (second.resolved.repLow, second.resolved.repHigh),
             (6, 10),
@@ -290,6 +323,11 @@ void main() {
           final saved = (await store.load())!;
           final restored = ActiveSessionController.fromDraft(saved);
           try {
+            expect(restored.draft.blocks.first.targetRepRange, isNull);
+            expect(restored.draft.blocks.last.targetRepRange, (
+              low: 6,
+              high: 10,
+            ));
             expect(
               restored.draft.blocks.first.resolved.rirPolicy,
               RirPolicy.off,

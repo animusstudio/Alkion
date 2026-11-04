@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../catalog/catalog_fixture.dart';
 import '../support/app_fonts.dart';
+import '../support/layout_expect.dart';
 
 String fixtureId(int n) =>
     '10000000-0000-4000-8000-${n.toString().padLeft(12, '0')}';
@@ -71,6 +72,13 @@ CatalogTrialState discoveryState({
     'triceps': ['Triceps', 'Tricipiti', 'Trizeps', 'Tríceps'],
     'shoulders': ['Shoulders', 'Spalle', 'Schultern', 'Hombros'],
     'quads': ['Quadriceps', 'Quadricipiti', 'Quadrizeps', 'Cuádriceps'],
+    'hamstrings': ['Hamstrings', 'Femorali', 'Beinbeuger', 'Isquiotibiales'],
+    'calves': ['Calves', 'Polpacci', 'Waden', 'Gemelos'],
+    'forearms': ['Forearms', 'Avambracci', 'Unterarme', 'Antebrazos'],
+    'core': ['Core', 'Core', 'Rumpf', 'Core'],
+    'glutes': ['Glutes', 'Glutei', 'Gesäß', 'Glúteos'],
+    'adductors': ['Adductors', 'Adduttori', 'Adduktoren', 'Aductores'],
+    'abductors': ['Abductors', 'Abduttori', 'Abduktoren', 'Abductores'],
     'conditioning': [
       'Conditioning',
       'Condizionamento',
@@ -150,6 +158,7 @@ Widget discoveryApp(
   String locale = 'en',
   Brightness brightness = Brightness.dark,
 }) => MaterialApp(
+  debugShowCheckedModeBanner: false,
   theme: buildTheme(brightness, accents[0]),
   locale: Locale(locale),
   supportedLocales: AppLocalizations.supportedLocales,
@@ -187,6 +196,29 @@ Future<void> groupQuery(WidgetTester tester, String query, String key) async {
   await tester.enterText(find.byKey(const Key('catalog-search')), query);
   await tester.pump();
   await tapVisible(tester, find.byKey(ValueKey('catalog-group-action-$key')));
+}
+
+Future<void> finishFilters(WidgetTester tester) async {
+  final button = find.widgetWithText(FilledButton, 'Done');
+  await tester.ensureVisible(button);
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
+Future<void> selectMuscle(WidgetTester tester, String key) async {
+  final chip = find.byKey(ValueKey('catalog-muscle-$key'));
+  await tester.scrollUntilVisible(
+    chip,
+    160,
+    scrollable: find.descendant(
+      of: find.byKey(const Key('catalog-muscle-explorer-scroll')),
+      matching: find.byType(Scrollable),
+    ),
+  );
+  await tester.tap(chip);
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.tap(find.byKey(const Key('catalog-muscle-show-exercises')));
+  await tester.pump(const Duration(milliseconds: 400));
 }
 
 Future<void> openChoice(
@@ -355,10 +387,12 @@ void main() {
       expect(find.text('Discard selected exercises?'), findsNothing);
       await tester.tap(find.byKey(const Key('catalog-back')));
       await tester.pumpAndSettle();
-      await tapVisible(
-        tester,
+      await tapVisible(tester, find.byKey(const Key('catalog-filters')));
+      await tester.ensureVisible(
         find.byKey(const Key('catalog-group-conditioning')),
       );
+      await tester.tap(find.byKey(const Key('catalog-group-conditioning')));
+      await finishFilters(tester);
       expect(find.byKey(const Key('catalog-group-scope')), findsOneWidget);
       expect(find.text('Add selected · 2'), findsOneWidget);
       await tester.tap(find.byKey(const Key('catalog-close')));
@@ -392,8 +426,10 @@ void main() {
       await tester.pumpAndSettle();
       await groupQuery(tester, 'Triceps', 'triceps');
       expect(find.text('Secondary muscles only'), findsNothing);
-      await tapVisible(tester, find.byKey(const Key('catalog-secondary')));
-      await tapVisible(tester, find.widgetWithText(FilterChip, 'Favorites'));
+      await tapVisible(tester, find.byKey(const Key('catalog-filters')));
+      await tester.tap(find.byKey(const Key('catalog-secondary')));
+      await finishFilters(tester);
+      await tapVisible(tester, find.widgetWithText(ChoiceChip, 'Favorites'));
       await revealTop(tester);
       await tester.enterText(find.byKey(const Key('catalog-search')), 'press');
       await tester.pumpAndSettle();
@@ -411,10 +447,7 @@ void main() {
         tester.getTopLeft(find.byKey(ValueKey(personal.key))).dy,
         lessThan(tester.getTopLeft(find.text('Secondary muscles only')).dy),
       );
-      await tapVisible(
-        tester,
-        find.widgetWithText(FilterChip, 'Recent choices'),
-      );
+      await tapVisible(tester, find.widgetWithText(ChoiceChip, 'Recent'));
       await tester.scrollUntilVisible(
         find.text('Secondary muscles only'),
         120,
@@ -432,15 +465,13 @@ void main() {
             .text,
         'press',
       );
-      await tapVisible(tester, find.widgetWithText(FilterChip, 'Cable'));
-      await tapVisible(tester, find.widgetWithText(FilterChip, 'Favorites'));
+      await tapVisible(tester, find.byKey(const Key('catalog-filters')));
+      await tester.tap(find.text('Cable').last);
+      await tester.pumpAndSettle();
+      await finishFilters(tester);
+      await tapVisible(tester, find.widgetWithText(ChoiceChip, 'Favorites'));
       await tapVisible(tester, find.byKey(const Key('catalog-all')));
-      expect(
-        tester
-            .widget<FilterChip>(find.widgetWithText(FilterChip, 'Cable'))
-            .selected,
-        isTrue,
-      );
+      expect(find.widgetWithText(InputChip, 'Cable'), findsOneWidget);
       expect(find.byKey(const Key('catalog-group-scope')), findsOneWidget);
       expect(find.text('Add selected · 1'), findsOneWidget);
       expect(
@@ -551,7 +582,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tapVisible(tester, choice(fixtureId(10)));
+    await openChoice(tester, state, fixtureId(10));
     final semanticWidget = find
         .descendant(of: choice(fixtureId(10)), matching: find.byType(Semantics))
         .first;
@@ -574,7 +605,7 @@ void main() {
         discoveryApp(CatalogPicker(state: state, multiple: true)),
       );
       await tester.pumpAndSettle();
-      await tapVisible(tester, choice(fixtureId(10)));
+      await openChoice(tester, state, fixtureId(10));
       await revealTop(tester);
       await tester.enterText(
         find.byKey(const Key('catalog-search')),
@@ -674,7 +705,8 @@ void main() {
                 ),
               );
               await tester.pumpAndSettle();
-              await tapVisible(tester, choice(fixtureId(10)));
+              await openChoice(tester, state, fixtureId(10));
+              expectNoSplitWords(tester, within: choice(fixtureId(10)));
               await tester.tap(find.byKey(const Key('catalog-basket-toggle')));
               await tester.pumpAndSettle();
               // Reproduce the constrained IME state without a native device claim.

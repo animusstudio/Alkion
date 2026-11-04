@@ -22,7 +22,8 @@ import 'w_tab_bar.dart';
 /// The five destination shell. Today remains the home index so Android Back
 /// and the Plan editor guard retain their existing priority.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, this.onLogout, this.auth});
+  const AppShell({super.key, this.onLogout, this.auth, this.onImportReps});
+  final VoidCallback? onImportReps;
 
   /// Called (awaited) when the user logs out via the Profile screen.
   final Future<void> Function()? onLogout;
@@ -151,6 +152,7 @@ class _AppShellState extends State<AppShell> {
                           onClose: () => _selectTab(0),
                           onLogout: widget.onLogout,
                           auth: widget.auth,
+                          onImportReps: widget.onImportReps,
                         )
                       else
                         const SizedBox.shrink(),

@@ -289,12 +289,18 @@ class SplitDayCard extends StatelessWidget {
         .replaceFirst(RegExp(r'^\s*·\s*'), '');
     final metaStyle = WorkoutType.body(size: 12, color: tokens.faint);
 
-    return GestureDetector(
-      onTap: onTap,
+    return TextButton(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        padding: EdgeInsets.zero,
+        alignment: Alignment.centerLeft,
+        overlayColor: tokens.focus.withValues(alpha: .16),
+        backgroundColor: tokens.bg,
+      ),
+      onPressed: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: tokens.bg,
           border: Border(bottom: BorderSide(color: tokens.line)),
         ),
         child: Row(

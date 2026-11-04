@@ -33,10 +33,50 @@ with `GenerationSelectionException`:
 
 No restore-specific schema migration is needed: the T2 `restore_journal`,
 `reviews`, `review_decisions` and `profile_state` fence carry restore selection
-and lineage. Current normal-app storage is schema 5 for catalog execution;
-migrations 1–4 remain frozen and schema-specific backup inventories preserve
-older snapshots. See the [durable catalog integration contract](../specs/2026-10-30-catalog-in-alkion-dev.md)
+and lineage. Current normal-app storage is schema 6, adding Animus recovery to
+the schema-5 catalog store. Migrations 1–5 remain frozen; schema-specific backup
+inventories preserve older snapshots. See [storage](storage.md#schema-and-forward-registration)
+and the [durable catalog integration contract](../specs/2026-10-30-catalog-in-alkion-dev.md)
 (2026-10-30, Approved).
+
+## Animus server recovery
+
+The optional connection's server generation G is independent of the local store
+generation. Each prepared operation retains immutable origin O, original IDs,
+request bytes and hashes. Unproven pre-upgrade prepared origins stay all-zero
+unknown O. Discovery, direct reads, actions and status commit a
+bounded nonsecret intent before API I/O. An unsettled intent gates ordinary
+remote work even after restart at unchanged G. Provider credentials and OIDC
+traffic remain outside this evidence journal; startup performs no API I/O.
+
+Changed G, recovery errors or an unexpected response G stop the foreground
+sequence. A small durable `capture_pending` fence precedes the separate fallible
+capture of all covered state. Only a verified immutable archive completes that
+capture; failures preserve the fence/intents and original rows. Archives, origins,
+intents, comparison stages and response evidence are backup-covered alongside
+catalog, original and local authored evidence. Offline authored editing remains
+available under its existing atomic action/outbox rules.
+
+An explicit comparison reads only finite known targets, the probe and required
+definition closure at candidate G under current access. It records the exact
+inventory and `incomplete-known-targets` coverage. Missing or changed acknowledged
+rows remain unresolved; absence proves neither deletion nor non-execution.
+Explicit adoption atomically changes G and the active verified stage, without
+replacing authored, catalog or replica tables or resetting their checkpoints.
+
+Adoption preserves blocked old operations and their O/allocations. A reviewed
+retry sends one original request with the same operation ID, bytes/hash and O;
+one confirmation cannot send twice. Current server review and rights still
+decide whether it may execute. Dismissing a local review grants no permission.
+Late replies remain evidence for their original exchange and cannot revive sent
+status or alter the current stage.
+
+Restoring an attachment already bound to another local store generation remains
+unsupported and blocked; no automatic rebind is implemented. If a backup predates
+attachment, unknown old send history remains individually blocked even at the
+same server G. Explicit comparison/adoption can permit new unrelated work without
+guessing old remote IDs. See the [recovery contract](../specs/2026-10-30-animus-recovery.md)
+and [current qualification](acceptance.md).
 
 ## Restore procedure
 
@@ -92,8 +132,8 @@ until the owner decides it. Nothing is merged, replayed or re-applied:
 the selected generation equals the backup plus restore lineage and reviews, and
 the previous generation stays intact and fenced. `RestoreReviews` lists the
 reviews, records an explicit `kept_as_evidence` decision and reports a
-`transportGate`: any future sender must stay closed while newer work is
-undecided (no sender exists in this phase). Repeating a restore carries lineage
+`transportGate`: the T6 contract keeps future transport closed while newer work
+is undecided (that milestone predates the optional manual sender). Repeating a restore carries lineage
 and creates no duplicate operations or records.
 
 ### Fencing
@@ -162,9 +202,9 @@ integrated acceptance flow commits a local write after selection while the gate
 stays blocked.
 
 Process-kill proof is not physical power-loss proof. Android storage, share and
-background behavior are UNRUN. Restore onto separate storage is reachable through
-the service and proof target; the app always creates a profile at first start,
-so an in-app "restore before first profile" entry is not provided. An Alkion
+background behavior are UNRUN in this T6 proof. It exercises separate-storage
+restore through the service and proof target; current first-use Restore backup
+is described in [connection](animus-connection.md#first-use-and-offline-behavior). An Alkion
 backup is not a complete legacy (Reps) backup. `IncomingQuarantine` remains a T5
 seam without an app loader, by T7 decision
 ([owner gates](owner-gates.md#incoming-quarantine-wiring-t5t6-carry)); its

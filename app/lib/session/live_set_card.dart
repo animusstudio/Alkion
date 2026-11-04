@@ -34,8 +34,12 @@ class LiveSetCard extends StatelessWidget {
     this.reference,
     this.selectionLabel,
     this.onMenu,
+    this.showRir = true,
+    this.targetLabel,
   });
 
+  final bool showRir;
+  final String? targetLabel;
   final SetState set;
   final Exercise exercise;
 
@@ -97,7 +101,9 @@ class LiveSetCard extends StatelessWidget {
                 ),
                 if (onMenu != null)
                   IconButton(
-                    tooltip: l.sessionExerciseOptions,
+                    tooltip: set.isWarmup
+                        ? l.sessionLiveWarmup
+                        : l.sessionLiveSet(workIndex),
                     onPressed: onMenu,
                     icon: const Icon(Icons.more_horiz),
                   ),
@@ -113,6 +119,8 @@ class LiveSetCard extends StatelessWidget {
           valuesEditor ??
               SetValuesEditor(
                 weightKg: set.weightKg,
+                weightAvailable: set.weightAvailable,
+                repsAvailable: set.repsAvailable,
                 reps: set.reps,
                 unit: unit,
                 onWeight: (v) {
@@ -124,7 +132,7 @@ class LiveSetCard extends StatelessWidget {
                   onChanged();
                 },
               ),
-          if (set.done && !set.isWarmup) ...[
+          if (showRir && !set.isWarmup) ...[
             const SizedBox(height: 12),
             if (set.rir != null && (set.rir! < rirMin || set.rir! > rirMax))
               inset(
@@ -173,6 +181,10 @@ class LiveSetCard extends StatelessWidget {
                 ),
               ),
           ],
+          if (targetLabel != null) ...[
+            const SizedBox(height: 12),
+            inset(FitLabel(targetLabel!, maxLines: 3, style: caption())),
+          ],
           const SizedBox(height: 10),
           reference ??
               inset(
@@ -190,7 +202,7 @@ class LiveSetCard extends StatelessWidget {
                   style: WorkoutType.body(size: 12, color: tokens.dim),
                 ),
               ),
-          if (set.done)
+          if (set.done && onMenu == null)
             TextButton(
               key: const Key('live-mark-not-done'),
               onPressed: onMarkNotDone,

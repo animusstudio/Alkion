@@ -22,6 +22,7 @@ import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
 import '../widgets/rir_picker.dart';
 import '../widgets/w_dialog.dart';
+import '../history_test/history_mapping_label.dart';
 
 /// The per-exercise set editor sheet opened from History: each logged set is
 /// a read-only 48dp line (the same look as the live workout's `SetLine`, but
@@ -602,6 +603,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
                   color: tokens.text,
                 ),
               ),
+              HistoryMappingLabel(exerciseId: widget.exercise.id),
               const SizedBox(height: 2),
               Text(
                 l.historyEditSets,

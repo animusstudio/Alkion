@@ -5,6 +5,7 @@ import 'package:alkion/catalog_trial_storage.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/identity/alkion_profile.dart';
 import 'package:alkion/main.dart';
+import 'package:alkion/store/schema.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as paths;
@@ -97,7 +98,10 @@ void main() {
     try {
       expect(runtime.supportRoot.path, root.path);
       expect(runtime.animus.state, AnimusConnectionState.disabled);
-      expect((await runtime.store.get('PRAGMA user_version')).values.single, 5);
+      expect(
+        (await runtime.store.get('PRAGMA user_version')).values.single,
+        currentSchemaVersion,
+      );
       final next = await CatalogTrialStorage.createTemporaryDirectory(
         temporaryDirectory: selectedCache,
       );

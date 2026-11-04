@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/ui/profile_screen.dart';
+import 'package:alkion/ui/training_preferences_sheet.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 
 import '../support/layout_expect.dart';
@@ -76,15 +77,24 @@ void main() {
       await harness.open(tester);
       setPhone(tester, width: 320, textScale: 2);
       await pumpProfile(tester, 'en');
+      expect(find.text('180s'), findsNothing);
+      final preferences = find.text('Training preferences');
+      await scrollIntoView(tester, find.byType(ProfileScreen), preferences);
+      await tester.tap(preferences);
+      await settleReal(tester);
       final value = find.text('180s');
-      await scrollIntoView(tester, find.byType(ProfileScreen), value);
+      await scrollIntoView(
+        tester,
+        find.byType(TrainingPreferencesSheet),
+        value,
+      );
       final target = find
           .ancestor(of: value, matching: find.byType(GestureDetector))
           .first;
       expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
       expect(
         tester.getRect(target).top,
-        greaterThan(tester.getRect(find.text('Compound rest')).bottom),
+        greaterThan(tester.getRect(find.text('COMPOUND REST')).bottom),
       );
       await tester.tap(value);
       await tester.pumpAndSettle();

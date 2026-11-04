@@ -112,16 +112,14 @@ void main() {
           await tester.tap(family);
           await settleReal(tester, ticks: 4);
         }
-        expect(
-          find.text('Lento avanti · Bilanciere'),
-          findsWidgets,
-          reason: route,
-        );
-        expect(
-          find.text('Lento avanti · Manubri'),
-          findsWidgets,
-          reason: route,
-        );
+        if (route == 'library') {
+          expect(find.text('Lento avanti'), findsNWidgets(2));
+          expect(find.text('Bilanciere'), findsOneWidget);
+          expect(find.text('Manubri'), findsOneWidget);
+        } else {
+          expect(find.text('Lento avanti · Bilanciere'), findsWidgets);
+          expect(find.text('Lento avanti · Manubri'), findsWidgets);
+        }
         expect(tester.takeException(), isNull);
         await h.unmount(tester);
       }

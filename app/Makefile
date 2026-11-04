@@ -7,6 +7,11 @@ ALKION_FLAVOR ?= dev
 export GIT_OPTIONAL_LOCKS := 0
 override export ALKION_BACKUP := $(value ALKION_BACKUP)
 override export ALKION_OUTPUT := $(value ALKION_OUTPUT)
+override export HISTORY_INPUT := $(value HISTORY_INPUT)
+override export HISTORY_NAMESPACE := $(value HISTORY_NAMESPACE)
+override export HISTORY_MAPPING := $(value HISTORY_MAPPING)
+override export HISTORY_CATALOG := $(value HISTORY_CATALOG)
+override export HISTORY_CATALOG_SHA256 := $(value HISTORY_CATALOG_SHA256)
 
 .PHONY: help get get-online analyze test fmt format build build-apk build-apk-dev build-apk-supported alkion-driver-qualification alkion-store-recovery alkion-transfer-recovery alkion-backup-recovery run run-android build-apk-release build-capture-apk-release capture-integration capture-recovery capture-go-compat install doctor devices scaffold-linux scaffold-android clean
 .PHONY: alkion-verify-backup build-apk-local-test-release
@@ -39,6 +44,13 @@ alkion-store-recovery:
 alkion-transfer-recovery:
 	@test -n "$(ALKION_OUTPUT)" || (echo 'Set ALKION_OUTPUT to a fresh disposable transfer-proof* directory.' >&2; exit 2)
 	$(DART) run tool/alkion_transfer_recovery.dart --output "$(ALKION_OUTPUT)"
+.PHONY: alkion-history-recovery alkion-import-history
+alkion-history-recovery:
+	@test -n "$(ALKION_OUTPUT)" || (echo 'Set ALKION_OUTPUT to a fresh disposable transfer-proof* directory.' >&2; exit 2)
+	$(DART) run tool/alkion_history_recovery.dart --output "$(ALKION_OUTPUT)"
+alkion-import-history:
+	@test -n "$${ALKION_OUTPUT}" -a -n "$${HISTORY_INPUT}" -a -n "$${HISTORY_NAMESPACE}" || (echo 'Set explicit HISTORY_INPUT, HISTORY_NAMESPACE and fresh ALKION_OUTPUT.' >&2; exit 2)
+	$(DART) run tool/alkion_history_recovery.dart --input "$${HISTORY_INPUT}" --output "$${ALKION_OUTPUT}" --namespace "$${HISTORY_NAMESPACE}" $${HISTORY_MAPPING:+--mapping "$${HISTORY_MAPPING}"} $${HISTORY_CATALOG:+--catalog "$${HISTORY_CATALOG}" --catalog-sha256 "$${HISTORY_CATALOG_SHA256}"}
 alkion-backup-recovery:
 	@test -n "$(ALKION_OUTPUT)" || (echo 'Set ALKION_OUTPUT to a fresh disposable backup-proof* directory.' >&2; exit 2)
 	$(DART) run tool/alkion_backup_recovery.dart --output "$(ALKION_OUTPUT)"
@@ -110,13 +122,14 @@ build-animus-native-checkpoint-android:
 ANIMUS_TARGET_PLATFORM ?= android-arm64
 build-animus:
 	@test -n "$(ANIMUS_CONFIG)" && test -f "$(ANIMUS_CONFIG)" || (echo 'Set ANIMUS_CONFIG to an explicit setup JSON file.' >&2; exit 2)
-	$(FLUTTER) build linux --no-pub --dart-define-from-file="$(ANIMUS_CONFIG)"
+	$(FLUTTER) build linux --debug --no-pub --dart-define-from-file="$(ANIMUS_CONFIG)"
 build-apk-animus:
 	@test -n "$(ANIMUS_CONFIG)" && test -f "$(ANIMUS_CONFIG)" || (echo 'Set ANIMUS_CONFIG to an explicit setup JSON file.' >&2; exit 2)
 	@test -n "$${ANDROID_USER_HOME}" && test -f "$${ANDROID_USER_HOME}/debug.keystore" || (echo 'Set the existing disposable Android debug signer directory.' >&2; exit 2)
+	@case "$(ANIMUS_PRIVATE_HTTP)" in ''|0|1) ;; *) echo 'ANIMUS_PRIVATE_HTTP must be 0 or 1.' >&2; exit 2 ;; esac
 	@case "$(ANIMUS_LOOPBACK_HTTP)" in ''|0|1) ;; *) echo 'ANIMUS_LOOPBACK_HTTP must be 0 or 1.' >&2; exit 2 ;; esac
 	@case "$(ANIMUS_TARGET_PLATFORM)" in android-arm64|android-x64) ;; *) echo 'ANIMUS_TARGET_PLATFORM must be android-arm64 or android-x64.' >&2; exit 2 ;; esac
-	ALKION_ANIMUS_NATIVE=1 ALKION_ANIMUS_LOOPBACK_HTTP="$(ANIMUS_LOOPBACK_HTTP)" $(FLUTTER) build apk --debug --no-pub --flavor dev --target-platform "$(ANIMUS_TARGET_PLATFORM)" --dart-define-from-file="$(ANIMUS_CONFIG)"
+	ALKION_ANIMUS_NATIVE=1 ALKION_ANIMUS_PRIVATE_HTTP="$(ANIMUS_PRIVATE_HTTP)" ALKION_ANIMUS_LOOPBACK_HTTP="$(ANIMUS_LOOPBACK_HTTP)" $(FLUTTER) build apk --debug --no-pub --flavor dev --target-platform "$(ANIMUS_TARGET_PLATFORM)" --dart-define-from-file="$(ANIMUS_CONFIG)"
 
 # Isolated synthetic artwork checkpoint; does not open an Alkion store.
 .PHONY: build-character-body-preview stage-character-body verify-character-body

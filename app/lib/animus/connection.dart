@@ -68,6 +68,7 @@ final class AnimusConnectionController extends ChangeNotifier {
   int _epoch = 0;
   int _foregroundRefreshes = 0;
   Future<void>? _running;
+  Future<void>? _apiDrain;
 
   AnimusConnectionState get state => _state;
   AnimusConnectionIssue? get issue => _issue;
@@ -321,6 +322,11 @@ final class AnimusConnectionController extends ChangeNotifier {
     }
   }
 
+  /// Drain covered API intents/evidence before the local owner closes. Provider
+  /// cleanup remains separately bounded and cannot hold a local generation open.
+  Future<void> drainApi() =>
+      _apiDrain ??= _probe?.close() ?? Future<void>.value();
+
   /// Normal owner disposal keeps previously confirmed secrets; a replacement
   /// generation gets a different scope and must receive fresh confirmation.
   Future<void> close() async {
@@ -333,7 +339,7 @@ final class AnimusConnectionController extends ChangeNotifier {
     try {
       await Future.wait([
         if (_auth != null) _auth.close(),
-        if (_probe != null) _probe.close(),
+        drainApi(),
       ]).timeout(const Duration(seconds: 6));
     } on Object {
       /* Local workflows must not await a remote teardown. */

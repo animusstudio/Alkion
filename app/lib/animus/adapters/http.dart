@@ -46,7 +46,12 @@ final class IoAnimusHttpPort implements AnimusUploadHttpPort {
         maxResponseBytes > 8 * 1024 * 1024 ||
         timeout <= Duration.zero ||
         (body != null && body.length > 1024 * 1024) ||
-        headers.keys.any((key) => key.toLowerCase() == 'cookie')) {
+        headers.keys.any((key) => key.toLowerCase() == 'cookie') ||
+        headers.keys.map((key) => key.toLowerCase()).toSet().length !=
+            headers.length ||
+        headers.values.any(
+          (value) => value.contains('\r') || value.contains('\n'),
+        )) {
       return Future.error(
         const AnimusHttpFailure(AnimusHttpFailureKind.invalidResponse),
       );
@@ -95,17 +100,18 @@ final class IoAnimusHttpPort implements AnimusUploadHttpPort {
       }
       final response = await request.close();
       if (pending.done) return;
-      // Only representation metadata is needed. In particular, Set-Cookie and
-      // error payloads never become retained transport state.
+      // Only representation/recovery metadata is retained; never Set-Cookie.
+      // Bounded API error bodies carry typed recovery errors, never redirects.
       final metadata = <String, String>{};
       for (final name in [
         HttpHeaders.contentTypeHeader,
         HttpHeaders.contentEncodingHeader,
+        'x-hub-recovery-generation',
       ]) {
         final values = response.headers[name];
         if (values != null) metadata[name] = values.join(',');
       }
-      if (response.statusCode != HttpStatus.ok && method == 'GET') {
+      if (response.statusCode >= 300 && response.statusCode < 400) {
         pending.succeed(
           AnimusHttpResponse(
             statusCode: response.statusCode,

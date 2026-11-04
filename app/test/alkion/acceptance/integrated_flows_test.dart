@@ -624,7 +624,7 @@ void main() {
             final store = await LocalStore.open(
               profile: profile,
               expectedProfileId: profile.profileId,
-              schema: catalogExecutionSchemaRegistry(),
+              schema: remoteRecoverySchemaRegistry(),
             );
             final inventory = await store.inventory();
             expect(_domain(inventory), _domain(restoredInventory));
@@ -647,7 +647,7 @@ void main() {
             final store = await LocalStore.open(
               profile: profile,
               expectedProfileId: profile.profileId,
-              schema: catalogExecutionSchemaRegistry(),
+              schema: remoteRecoverySchemaRegistry(),
             );
             expect(await store.inventory(), expected);
             await store.close();

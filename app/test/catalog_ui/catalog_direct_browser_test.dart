@@ -1,3 +1,4 @@
+import 'catalog_discovery_picker_test.dart' show selectMuscle, finishFilters;
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
@@ -261,23 +262,23 @@ void main() {
       expect(tester.state<ScrollableState>(browserScroll()).position.pixels, 0);
       expect(first.hitTestable(), findsOneWidget);
       expect(
-        find.byKey(const Key('catalog-browse-equipment')).hitTestable(),
+        find.byKey(const Key('catalog-filters')).hitTestable(),
         findsOneWidget,
       );
       expect(find.widgetWithText(FilterChip, 'Barbell'), findsNothing);
-      await tester.tap(find.byKey(const Key('catalog-browse-equipment')));
+      await tester.tap(find.byKey(const Key('catalog-filters')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Cable').last);
       await tester.tap(find.text('Cable').last);
       await tester.pumpAndSettle();
+      await finishFilters(tester);
       final active = find.byKey(const Key('catalog-equipment-scope'));
       expect(find.widgetWithText(InputChip, 'Cable'), findsOneWidget);
       expect(active.hitTestable(), findsOneWidget);
       expect(find.widgetWithText(FilterChip, 'Barbell'), findsNothing);
       await tester.tap(find.byKey(const Key('catalog-browse-muscles')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Biceps').last);
-      await tester.pumpAndSettle();
+      await selectMuscle(tester, 'biceps');
       await tester.enterText(find.byKey(const Key('catalog-search')), 'curl');
       await tester.pumpAndSettle();
       await showRow(tester, first);
@@ -354,7 +355,7 @@ void main() {
       await tester.tap(find.byKey(const Key('catalog-back')));
       await tester.pumpAndSettle();
       await browserTop(tester);
-      await tester.tap(find.widgetWithText(FilterChip, 'Favorites'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Favorites'));
       await tester.pumpAndSettle();
       await showRow(tester, row);
       expect(row, findsOneWidget);
@@ -379,11 +380,12 @@ void main() {
       await tester.tap(family);
       await tester.pumpAndSettle();
       await browserTop(tester);
-      await tester.tap(find.byKey(const Key('catalog-browse-equipment')));
+      await tester.tap(find.byKey(const Key('catalog-filters')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Dumbbells').last);
       await tester.tap(find.text('Dumbbells').last);
       await tester.pumpAndSettle();
+      await finishFilters(tester);
       await tester.drag(browserScroll(), const Offset(0, -150));
       await tester.pumpAndSettle();
       final offset = tester
@@ -615,8 +617,7 @@ void main() {
         () => tester.tap(find.byKey(const Key('catalog-browse-muscles'))),
       );
       await settleReal(tester, ticks: 4);
-      await tester.ensureVisible(find.text('Biceps'));
-      await tester.runAsync(() => tester.tap(find.text('Biceps')));
+      await selectMuscle(tester, 'biceps');
       await settleReal(tester, ticks: 4);
       final family = find.byKey(
         ValueKey('catalog-navigation-family-${fixtureId(1)}'),

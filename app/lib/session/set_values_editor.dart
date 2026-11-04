@@ -26,8 +26,11 @@ class SetValuesEditor extends StatelessWidget {
     required this.unit,
     required this.onWeight,
     required this.onReps,
+    this.weightAvailable = true,
+    this.repsAvailable = true,
   });
 
+  final bool weightAvailable, repsAvailable;
   final double weightKg;
   final int reps;
   final UnitService unit;
@@ -50,7 +53,7 @@ class SetValuesEditor extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         inset(
-          _FieldGuide(
+          SetFieldGuide(
             label: l.sessionWeight,
             hint: l.sessionTapValueToType,
             color: tokens.accentText,
@@ -64,7 +67,10 @@ class SetValuesEditor extends StatelessWidget {
           step: unit.unit == Unit.lb ? 5 : 1,
           fineStep: unit.unit == Unit.lb ? 1 : 0.25,
           max: UnitService.fromKg(500, unit.unit),
-          format: (v) => UnitService.fmtDisplay(v, unit.unit),
+          format: (v) =>
+              !weightAvailable && v == UnitService.fromKg(weightKg, unit.unit)
+              ? '—'
+              : UnitService.fmtDisplay(v, unit.unit),
           semanticLabel: '${l.sessionWeight}, ${unit.uLabel}',
           onChanged: (v) =>
               onWeight(clampRound2(UnitService.toKg(v, unit.unit))),
@@ -72,7 +78,7 @@ class SetValuesEditor extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         inset(
-          _FieldGuide(
+          SetFieldGuide(
             label: l.sessionReps,
             color: tokens.accentText,
             guide: tokens.lineStrong,
@@ -86,7 +92,8 @@ class SetValuesEditor extends StatelessWidget {
           step: 1,
           max: 50,
           itemExtent: 56,
-          format: (v) => v.toInt().toString(),
+          format: (v) =>
+              !repsAvailable && v == reps ? '—' : v.toInt().toString(),
           semanticLabel: l.sessionReps,
           onChanged: (v) => onReps(v.toInt()),
           onTapValue: () => _typeReps(context, l),
@@ -99,7 +106,7 @@ class SetValuesEditor extends StatelessWidget {
     final v = await showNumberEntrySheet(
       context,
       title: '${l.sessionColWeight} · ${unit.uLabel.toUpperCase()}',
-      initialText: unit.fmtWt(weightKg),
+      initialText: weightAvailable ? unit.fmtWt(weightKg) : '',
       allowDecimal: true,
       parse: (text) => parseNumberInput(
         text,
@@ -107,7 +114,7 @@ class SetValuesEditor extends StatelessWidget {
         parseDisplay: (d) => UnitService.toKg(d, unit.unit),
       ),
     );
-    if (v == null || v == weightKg) return;
+    if (v == null || weightAvailable && v == weightKg) return;
     onWeight(v);
   }
 
@@ -115,18 +122,19 @@ class SetValuesEditor extends StatelessWidget {
     final v = await showNumberEntrySheet(
       context,
       title: l.sessionColReps,
-      initialText: '$reps',
+      initialText: repsAvailable ? '$reps' : '',
       allowDecimal: false,
       parse: (text) => parseNumberInput(text, min: 0),
     );
-    if (v == null || v.toInt() == reps) return;
+    if (v == null || repsAvailable && v.toInt() == reps) return;
     onReps(v.toInt());
   }
 }
 
 /// The marker is decoration; the field name remains ordinary localized text.
-class _FieldGuide extends StatelessWidget {
-  const _FieldGuide({
+class SetFieldGuide extends StatelessWidget {
+  const SetFieldGuide({
+    super.key,
     required this.label,
     this.hint,
     required this.color,

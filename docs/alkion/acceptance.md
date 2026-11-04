@@ -1,10 +1,192 @@
 ---
 app: alkion
 stage: development
-observed: 2026-10-30
+observed: 2026-11-04
 ---
 
 # Alkion integrated acceptance
+
+## Licensing scope — 2026-11-04
+
+The [approved licensing policy](../plans/2026-11-04-copyleft-licensing-and-publication.md)
+uses AGPL-3.0-only for new owner-controlled software after public base
+`9366452b51e8d9f43a96ed361241ba90337dbc33` and CC BY-SA 4.0 for the 760 shipped
+owner exercise illustrations. The exact legacy MIT grant and third-party/font
+notices remain available. Both licenses allow compliant commercial reuse;
+separate owner-controlled exceptions remain optional. See the
+[current licensing contract](licensing.md) for scope and contributor limits.
+
+Official AGPL/CC text byte-identity and exact public-base MIT checks PASS.
+All 760 image hashes (137,208,116 bytes), 15 third-party/font/attribution notices
+and 2,692 tracked runtime/build/asset paths retain their bytes, modes and symlink
+targets against reviewed runtime `88b0d2e`. Both media preparation validators,
+their 14 Python tests, local notice links and notice/document whitespace checks
+PASS. The official CC text retains its publisher's extra blank line at EOF;
+byte identity takes precedence over that single upstream whitespace warning. The
+unchanged runtime's existing full-suite, analysis and format evidence retains
+its scope; no runtime or asset regeneration was needed.
+
+Private-history preservation and pre-replacement snapshot proof PASS: the full
+bundle reopens in an empty repository, the candidate has one public-base parent,
+all 74 old unpublished commits are excluded from its ancestry, and its tree
+matches the qualified source. Fifteen policy/doc paths change; 2,932 other paths
+retain their bytes and modes. Independent preliminary T2 review PASSes. The
+publication guard's 16 fixture cases PASS, including real publisher fetch/dry-run
+operation under Git's actual ref lock. Final identities are rechecked before
+the guarded local-main transition and publication handoff.
+
+These approved terms supersede the artwork licensing hold recorded below.
+Publication remains on hold pending the reviewed snapshot and final owner
+direction. Dated runtime receipts retain their original SHAs and scope; this
+policy change does not add device, release or anatomical qualification.
+
+## 3D muscle exploration — 2026-11-04
+
+The [approved plan](../plans/2026-11-04-explore-muscles-3d.md) is implemented at
+`7f508a2`. Explore muscles reuses the chosen character body: tap a visible mapped
+region to select/highlight its browse group, drag horizontally to turn, or use
+Front/Back. Show exercises applies the selection through the existing filter.
+All thirteen groups retain labeled native list controls; the five unmapped
+groups remain list-only. Selection uses separate categorical color, not workload.
+Unavailable artwork retains the list, confirmation and retry; model asset staging
+and redistribution boundaries remain unchanged.
+
+Independent T1/T2 review PASSes with no findings. The affected Flutter suite
+PASSes 247 tests, zero skips; analysis reports zero issues and formatting is clean.
+Runtime/material/native bridge checks PASS. Actual approved-model host Chromium
+WebGL proof PASSes 12 cases and 122,460 coordinate/rejection assertions across
+both body styles, themes and front/oblique/back views. Batched host captures
+verify fallback, loading/error and German 320dp/2x list layout.
+The opted-in local debug Android build PASSes with a disposable signer.
+These qualify source, host rendering and compilation; Android touch/lifecycle
+acceptance remains unrun. No device installation or public publication occurred.
+
+## Owner exercise artwork — 2026-11-04
+
+The [approved artwork plan](../plans/2026-11-04-exercise-artwork.md) is implemented
+at `7c7348c`. All **760 current catalog variants** resolve to one technically
+reviewed, locally bundled owner illustration, guarded by exact revision,
+equipment and facets. Original silver/coral colors and black backgrounds remain
+intact. Optional Workout Guide positions retain their separate credits/license.
+Custom or incompatible identities keep the existing fallback.
+
+All 760 lossless WebPs decode at 640×640, totaling **137,208,116 bytes**.
+Manifest SHA-256 is
+`243e34ccf80b5fd1b9ea03135851d3cea3b717b7e15207d223b2b3949024cd4f`.
+Seven inspected source crops and four corrected illustrations resolve the
+flagged cases. Duplicate comparison selects the straight-arm illustration for
+high plank. These are technical identity/extraction reviews, not muscle evidence
+or an assertion of owner artwork approval.
+
+At `7c7348c`, catalog/artwork/picker/shared-sheet tests PASS **271, zero skips**;
+the two preparation suites PASS **14**; full analysis PASSes with zero issues and
+check-only formatting PASSes across 498 files with zero changes.
+Manifest, generated registrations, exact catalog coverage, image hashes and
+actual Flutter image decoding agree. Final host captures cover both themes,
+normal and narrow/large text, and EN/IT/DE/ES. Independent T1, fix-diff and T2
+reviews PASS with no remaining findings.
+
+The normal Dev Android debug build PASSes. Its APK SHA-256 is
+`7b209af72973313589bb2870605431553844014a4dc0dadb7153165c98405872`
+(330,801,769 bytes); the packaged manifest and all 760 image hashes match source.
+This build used a fresh disposable debug signer. Android visual/device checks,
+installation and public publication were not performed. Artwork redistribution
+terms remain pending owner direction; [the media contract](exercise-media.md)
+and asset notice keep them separate from the existing software and guide terms.
+
+## Consolidated development baseline — 2026-11-03
+
+The [approved consolidation](../plans/2026-11-03-consolidated-development.md)
+preserves both reviewed feature heads, `eaaef350` (UI/history/catalog/media) and
+`d087c80` (foreground recovery), plus current public base `9366452`, through
+merge commits. Runtime shutdown keeps retryable/idempotent closure and drains
+sender, recovery review and API evidence before SQLite closes. All four locales
+retain both media attribution and recovery review copy. Schema 6 preserves the
+forward-only migration and uncertain-intent barriers; historical schema-5
+migration fixtures remain unchanged.
+
+At `11fd1bf`, the pinned full host suite PASSes **2,515 tests, 0 failures, 3
+skips**. The skips require an explicit disposable paired recovery fixture, a
+private live connection fixture, and its entry-only variant. They are not live
+qualification. Analyzer PASSes with zero issues; check-only formatting PASSes
+with zero changes across 495 files. Affected tests PASS 107 cases, including a
+pending real HTTP probe followed by failed store closure and idempotent retry;
+the final reserved-host fixture correction PASSes 30 cases. These focused counts
+overlap the full suite.
+
+Media integrity and all eight Python preparation tests PASS on unchanged asset
+bytes: 196 exact mappings, 579 frames, source/runtime hashes and notices agree.
+The catalog staging refresh preserves the original 734 variant identities while
+adding 26; the media coverage below remains its dated initial subset.
+
+This qualifies the combined source in Linux/synthetic host scope. The historical
+paired recovery proof below applies to its exact API/client pair and does not
+establish compatibility with another API. No new live provider/API campaign,
+APK/device check, production recovery, release or publication was performed for
+this consolidated head. Independent final integration and exact outgoing-range
+review PASS at `05060c9`, no findings; the range from `9366452` has zero leak
+findings and no new tags. Public publication requires exact-range owner approval.
+
+## Offline exercise media — 2026-11-01
+
+The [media integration](exercise-media.md) admits 196 exact variants and 579
+checked poses from pinned Workout Guide source. Thumbnails preserve immediate
+selection; optional details retain manual positions, existing actions and offline
+creator/license/source credit. Original SVG masters remain available for later
+adaptation; unknown variants and custom/legacy exercises inherit no media.
+
+At `cacb0c5`, integrated catalog/media/shared-sheet tests PASS **221**, no skips.
+Final `5c7f8b2` adds behavior-preserving analyzer cleanups and strict verifier
+format normalization: eight Python tests, asset integrity, analyzer (zero issues)
+and full formatting (468 files, no changes) PASS. Independent M1/M2 and fix
+reviews PASS, no findings. Actual Flutter host renders cover dark/light at
+412dp/1× and EN/IT/DE/ES at 320dp/2×; Android visual/device checks remain UNRUN.
+
+Owner-authorized phone installation subsequently PASSed on Nothing A024. The
+optimized ARM64 Dev APK from `4ebf071` has SHA-256
+`f6be7ff597f5f1363362f2159bb3f8e0ae04f47a84a98d3cbd5828e88bcc7fcf`.
+The installed certificate matches; all 579 frames and 27 existing catalog/body/font
+assets were verified. In-place update retained app ID/first-install identity;
+device APK hash, launch and running process PASS. No data clear or personal UI/store
+inspection occurred. This establishes installation/launch, not Android visual review.
+
+## Unpublished recovery checkpoint — 2026-11-01
+
+[Recovery plan](../plans/2026-10-30-animus-recovery.md) C-T1/C-T2 independently PASS;
+C-T3 passes review through the two minor corrections at `36a8d89`. Expanded host
+checks: 313 PASS / 2 opt-in skips; affected checks: 39 PASS; crash assertions: 3 PASS;
+analyzer: 0 issues. These counts overlap. Bounded synthetic large-text visual check PASS.
+
+C-T4 paired host qualification PASS at API
+`7d83a1b39ee7bcd5a37de0e63ab99cfdc2cd13a1` and client
+`3c6086d375598b696c973248a81329802c7892b6`. The
+[paired recovery tests](../../app/test/animus/paired_recovery_integration_test.dart)
+pass **2 tests, 0 skips**, including **27 acceptance checks**. The campaign uses
+actual loopback HTTP, PostgreSQL dump/restore and disposable SQLite with
+`native-workout-v1` and `workout_finish_definition_bases_v1`. Its two owned
+container/network resources were removed; independent exact-ID and namespace
+checks confirmed no resources remained.
+
+Actual checks cover surviving and missing old receipts, revoked/reissued grants
+and current-generation readers, finite comparison and explicit adoption, an injected
+SQLite adoption COMMIT failure and real reopen, and one scoped reviewed retry preserving
+the original operation ID, request bytes/hash and O. A genuine old HTTP response
+delivered to the sender after recovery staging becomes new evidence for its original exchange
+without changing outcomes or the active view. Verified backup/restore preserves
+request and response evidence. A backup taken before attachment keeps unknown
+old send history blocked even at unchanged server G; new unrelated work can
+prepare after adoption.
+
+C-T4 newly seeds native exercise/workout records and a draft BLOB. Full-archive
+catalog, prescription and original-evidence preservation inherits the unchanged
+C-T1/C-T3 real-SQLite evidence above; those rows were not newly seeded in this
+paired campaign. An attachment already bound to another local store generation
+remains unsupported and blocked after restore; no rebind is qualified.
+
+The proof policy is a synthetic test fixture. Production authentication-policy activation,
+provider account/credential lifecycle, APK/phone recovery, production recovery
+and publication remain unqualified. Final integrated C1–C7 review PASS on November 1,
+including the four-guide documentation fix re-check; delivery remains pending.
 
 ## Current-main and selected-send integration — 2026-10-30
 
@@ -1179,3 +1361,146 @@ Host Flutter visual inspection covers editor/modal states at 320/412dp and a
 disposable capture harness and was stopped; that capture remains UNRUN. No
 Android screenshots, physical gesture/TalkBack qualification, APK, installation,
 owner-profile access or public publication is claimed by this local task.
+
+## Workout usability and separate history test — 2026-11-01
+
+The [approved plan](../plans/2026-11-01-usability-and-history-test.md) aligns
+catalog and ordinary workout cards: unset rulers, exact modal entry, scoped
+menus, live RIR/range presentation and retained authored targets. Rest defaults
+are under Training preferences and units under Appearance. Catalog views and
+filters are separate; workout selection begins with results. Immutable grouped
+labels replace repeated whole-catalog scans. Catalog coverage remains the
+admitted finite bundle, without a universal completeness claim.
+
+The [history test guide](reps-import.md) describes exact nested-history
+capture, occurrence identity, reviewed mapping overlays and a separate marked
+profile. Originals, numeric/calendar evidence and ordering remain source-backed;
+approximate targets are labeled test-only. No import manufactures a native
+finish or send candidate. Unresolved history remains readable. The frozen full
+reader is unchanged; its namespace admission also preserves selected history.
+
+Independent design, U2/U3/H1/H2 and integrated source reviews PASS after the
+authored-target and incompatible-load-context findings were corrected.
+Four real Linux SIGKILL boundaries, a split-transaction negative control, 80
+transfer regression cases and 39 mapping/workspace cases PASS. This is not
+physical power-loss or live legacy migration qualification.
+
+The complete integration run recorded 2,316 PASS, two retired preference-fixture
+failures and two opt-in skips. The affected consumer file was corrected and its
+13 cases plus 39 related cases PASS; unchanged full-run evidence is retained.
+The final affected session/menu/workspace run is 117 PASS. Analyzer and
+check-only formatting PASS. The native exercise-menu accessibility defect was
+corrected in `4db3d55`: the semantic action and pointer action share the callback.
+
+One Android 16 x64 emulator batch and one post-fix confirmation cover synthetic
+history preview/import, approximate attribution, direct catalog selection,
+rulers/exact typing, logging/rest, preferences, minimize/resume and durable
+finish. English at 320dp/1.3× in dark/light remained usable through scrolling.
+The menu is a dedicated clickable 48dp native accessibility node. Actual
+TalkBack traversal, other native locales, 2× native text and software-emulator
+artwork remain unqualified; existing host layout matrices retain their scope.
+
+Normal Dev x64/debug and private Dev ARM64 optimized APKs pass admitted-asset,
+ABI, upstream/generated/merged/stripped code-chain and certificate checks. Only
+explicit disposable development signing is used. Personal inputs, populated
+profiles, mappings and receipts stay outside this public repository and APKs.
+
+Numerical A5 cold/warm opening, key-to-result and Flutter UI/raster p95 phone
+targets remain OPEN. Host diagnostic improvement and native functional checks
+do not establish those budgets. No public push, deployment or release follows.
+
+The optimized Dev build was installed on an explicitly selected Android 17
+phone with its matching disposable development certificate. The explicitly
+supplied history and reviewed overlay were selected in the separate marked
+workspace, and History/approximate attribution were checked. Normal-profile
+storage remained separate; temporary device settings were restored. Private
+counts, input identities and device receipts are retained outside this tree.
+
+## Current-profile import correction — 2026-11-01
+
+The owner rejected the additional testing layer: Alkion Dev itself is the app
+used for testing. The workspace/banner/profile-switching behavior above is
+superseded. Current startup uses the existing normal profile. Ordinary
+Profile → Data → Import Reps data accepts full/history files, confirms staged
+bytes and optionally applies exported preferences. Approximation rationale stays
+in import preview/set details rather than recurring History test chrome.
+
+The correction is independently reviewed through `dbcc1f4`. Focused transfer
+36, UI/runtime 48, consumer 61 and cleanup 41 cases PASS; analyzer clean. Cleanup
+first preserves a verified backup and refuses unknown files, restore selection
+or retained generations outside its exact backup coverage. It runs only after
+a successful normal-profile full import; the app is never cleared or replaced
+with another profile.
+
+An existing Android 16 emulator normal profile imported the synthetic full
+fixture, showed its History and Plan, and retained both after ordinary restart.
+There was no test banner, workspace entry, profile switch or cleanup warning.
+The reviewed optimized Dev update was installed on the selected Android 17
+phone. The owner elected to perform the full phone import later, so that import
+and consequent retired-profile cleanup remain unclaimed. Temporary phone screen
+settings were restored. Earlier A5 numerical-performance limits remain open.
+
+## Catalog and whole-app visual consistency — 2026-11-01
+
+The [approved plan](../plans/2026-11-01-catalog-visual-consistency.md) and
+[whole-app inventory](ui-consistency-2026-11-01.md) cover catalog clarity, shared
+motion and presentation consistency. T1 is independently reviewed at `789eb04`;
+T2 and its startup failure correction are independently reviewed through
+`2220140`. T3 adds native keyboard/focus handling to ordinary actions, a true
+48dp day-expand target, 16dp row insets and 8dp control corners. Existing exact
+values, callbacks, editing guards and save/retry boundaries are retained.
+
+T3 and its two corrections are independently reviewed through `c6ffcdf`.
+Dark/English and light/Spanish keyboard cases pass (6); affected editor, History,
+Profile and summary tests pass (81), with a History/focus recheck passing 25.
+The full app run at `55232c5` finished with **2385 passed, 3 failed, 2 skipped**.
+The Back-label failure is resolved by `cf8c55d` and 28 affected tests passing.
+Both F5 failures were asynchronous SQLite/AnimatedSize readiness in the test:
+`c6ffcdf` waits boundedly for the actual delete action to be loaded and hit-testable,
+retaining refused/forwarded COMMIT assertions (2/2 pass). Final semantic/layout
+checks pass 31/31; analysis reports zero issues and named formatting is clean.
+These are focused resolutions, not a second full-suite run. The two skips require
+an absent `ANIMUS_LIVE_FIXTURE` (including its entry-only variant).
+
+The [native evidence inventory](ui-consistency-2026-11-01.md#bounded-android-evidence)
+records the completed representative API 36 debug-emulator batch: dark 412dp/1×
+main flows and light 320dp/2× catalog, controls and live-workout confirmation,
+plus light 412dp Profile. Synthetic selection/repetition, guards, logging/rest,
+Finish/summary, History/Progress and background restoration worked. Recordings
+were inspected; the existing Today artwork fallback and all unrun native cases
+are explicit. Sparse software-emulator window timings do not qualify hardware
+smoothness. The task emulator and dedicated ADB server are stopped. Implementation
+and bounded qualification are complete; no publication, physical-device or full
+native-matrix qualification is implied.
+
+
+## Phone UI and media integration — 2026-11-02
+
+This installation integration combines reviewed UI source `a0e240c` with media
+source `dacf3fa` (the latter only records installation after runtime source
+`4ebf071`). Their common baseline is `0c30218`. It preserves the existing
+196 exact media mappings, 579 bundled frames, original artwork and notices,
+and the reviewed catalog discovery, responsive selection and motion behavior.
+No catalog identity, data model, storage, synchronization or package dependency
+changes are introduced.
+
+The current details sheet includes the existing manual media positions and
+credits alongside reviewed catalog facts and actions. Matched result rows keep
+the media still, equipment cue, exact label and independent selection/repeat/menu
+controls; narrow large-text rows retain the reviewed separate action row.
+Shared sheets retain the bounded/reduced-motion transition contract.
+
+Qualification: 263 focused catalog/media/selection/shared-sheet tests PASS,
+including selected media rows at 320dp/2×; eight media-integrity tests PASS; the
+actual-bundle verifier confirms all 196 mappings and 579 frames. Whole-app
+analysis reports zero issues and named formatting is clean. A bounded two-test
+host render batch passes and shows decoded artwork, complete selected-row words,
+equipment and independent actions, plus scrollable positions/credits at 320dp/2×.
+These captures are host evidence, not native qualification. Media assets, resolver,
+media widgets, localizations and asset declarations remain byte-identical to the
+reviewed media tip.
+
+Exact installation artifact evidence is recorded separately; this source
+integration alone does not claim a new device installation or public release.
+Independent review and optimized-APK preservation checks precede the requested
+in-place phone update.

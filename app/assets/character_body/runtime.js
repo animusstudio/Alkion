@@ -1,27 +1,29 @@
 import {VolumeRenderer,loadMesh} from './renderer.js';
 import {colors} from './material.js';
 import {MotionLoop} from './motion.js';
-import {validateDisplay} from './protocol.js';
+import {validateDisplay,validatePick} from './protocol.js';
 
 const canvas=document.getElementById('body');
 const state={ready:false,failed:false,paused:true,reduced:false,hidden:false,visible:false,yaw:0};
 let renderer=null,mesh=null,input=null,muscles=null,loadedStyle=null,loadGeneration=0,abort=null,command=-1,turn=0,retry=-1,hostHidden=false;
+let rendered=null,frameId=0,layout=0;
 let frames=0,totalMs=0,maxMs=0,lastReport=0,loadMs=0,started=performance.now();
 function report(status){
- window.AlkionNative?.postMessage(JSON.stringify({version:2,status,yaw:state.yaw,command,turn,revision:input?.revision??0,frames,totalMs,maxMs,loadMs}));
+ window.AlkionNative?.postMessage(JSON.stringify({version:2,status,yaw:state.yaw,command,turn,revision:input?.revision??0,frames,totalMs,maxMs,loadMs,...(input?.interaction?.enabled&&rendered?rendered:{})}));
 }
-function fail(status){state.ready=false;state.failed=true;loop.stop();renderer?.dispose();renderer=null;mesh=null;canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);report(status);}
+function fail(status){rendered=null;state.ready=false;state.failed=true;loop.stop();renderer?.dispose();renderer=null;mesh=null;canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);report(status);}
 function draw(){
  if(!renderer||!state.ready||state.hidden||!state.visible)return;
  try{
-  const begin=performance.now();renderer.draw(state.yaw,muscles,input.theme);
+  const begin=performance.now();renderer.draw(state.yaw,muscles,input.theme,'characters',input.interaction?.enabled?input.interaction.selected:null);
+  rendered={generation:input.interaction?.generation??0,frame:++frameId,load:loadGeneration,layout};
   const ms=performance.now()-begin;frames++;totalMs+=ms;maxMs=Math.max(maxMs,ms);
-  if(frames===1||performance.now()-lastReport>1000){lastReport=performance.now();report('ready');}
+  if(input.interaction?.enabled||frames===1||performance.now()-lastReport>1000){lastReport=performance.now();report('ready');}
  }catch{fail('error');}
 }
 const loop=new MotionLoop(state,draw);
 async function load(){
- const generation=++loadGeneration;abort?.abort();abort=new AbortController();const signal=abort.signal,style=input.style;
+ rendered=null;const generation=++loadGeneration;abort?.abort();abort=new AbortController();const signal=abort.signal,style=input.style;
  state.ready=false;state.failed=false;loop.stop();renderer?.dispose();renderer=null;mesh=null;loadedStyle=input.style;
  canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);started=performance.now();frames=0;totalMs=0;maxMs=0;report('loading');
  try{
@@ -34,9 +36,10 @@ window.AlkionBody={
  update(value){
   try{
    const next=validateDisplay(value),previous=input;input=next;
+   if(JSON.stringify(previous)!==JSON.stringify(next))rendered=null;
    const scoresChanged=!previous||Object.keys(next.scores).some(key=>next.scores[key]!==previous.scores[key]);
    if(scoresChanged)muscles=Object.fromEntries(Object.entries(next.scores).map(([key,score])=>[key,{score}]));
-   let changed=scoresChanged||!previous||next.theme!==previous.theme||next.compact!==previous.compact||
+   let changed=scoresChanged||JSON.stringify(next.interaction)!==JSON.stringify(previous?.interaction)||!previous||next.theme!==previous.theme||next.compact!==previous.compact||
     next.neutral.some((value,i)=>value!==previous.neutral[i])||next.accent.some((value,i)=>value!==previous.accent[i]);
    colors[next.theme]={neutral:next.neutral,accent:next.accent};
    state.visible=next.visible;state.reduced=next.reduced;state.paused=next.paused;
@@ -49,11 +52,18 @@ window.AlkionBody={
    if(changed)loop.invalidate();else loop.reconcile();
   }catch{fail('error');}
  },
- hostPaused(value){hostHidden=!!value;const hidden=hostHidden||document.hidden,changed=state.hidden!==hidden;state.hidden=hidden;if(changed&&!state.hidden)loop.invalidate();else loop.reconcile();},
- dispose(){loadGeneration++;abort?.abort();state.ready=false;loop.stop();renderer?.dispose();renderer=null;mesh=null;},
+ pick(value){
+  let request;try{request=validatePick(value);}catch{return;}
+  const valid=input?.interaction?.enabled&&state.ready&&!state.hidden&&state.visible&&state.paused&&rendered&&
+   ['generation','frame','load','layout'].every(key=>request[key]===rendered[key]);
+  const region=valid?renderer.pick(request.x,request.y):null;
+  window.AlkionNative?.postMessage(JSON.stringify({...request,type:'pick',region}));
+ },
+ hostPaused(value){hostHidden=!!value;const hidden=hostHidden||document.hidden,changed=state.hidden!==hidden;state.hidden=hidden;if(changed)rendered=null;if(changed&&!state.hidden)loop.invalidate();else loop.reconcile();},
+ dispose(){rendered=null;loadGeneration++;abort?.abort();state.ready=false;loop.stop();renderer?.dispose();renderer=null;mesh=null;},
 };
 canvas.addEventListener('renderfailure',()=>fail('error'));
-new ResizeObserver(()=>loop.invalidate()).observe(canvas);
+new ResizeObserver(()=>{rendered=null;layout++;loop.invalidate();}).observe(canvas);
 document.addEventListener('visibilitychange',()=>window.AlkionBody.hostPaused(hostHidden));
 window.addEventListener('pagehide',()=>window.AlkionBody.dispose());
 

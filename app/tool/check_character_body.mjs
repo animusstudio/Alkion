@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {webcrypto} from 'node:crypto';
 import {runInNewContext} from 'node:vm';
-import {validateDisplay,regions} from '../assets/character_body/protocol.js';
-import {loadMesh} from '../assets/character_body/renderer.js';
+import {validateDisplay,validatePick,regions} from '../assets/character_body/protocol.js';
+import {loadMesh,pickSurfaceRegion} from '../assets/character_body/renderer.js';
 import {fullerMesh} from '../assets/character_body/geometry.js';
 import {posedMesh} from '../assets/character_body/pose-geometry.js';
 import {MotionLoop} from '../assets/character_body/motion.js';
@@ -45,8 +45,8 @@ runInNewContext(runtime,{
  window,document,performance:{now:()=>now},AbortController,
  ResizeObserver:class{constructor(callback){resized=callback;}observe(){}},
  MotionLoop:class extends MotionLoop{constructor(state,draw){super(state,draw,{request:cb=>{const id=++counter;raf.set(id,cb);return id;},cancel:id=>raf.delete(id)});}},
- VolumeRenderer:class{draw(yaw){draws++;lastYaw=yaw;}dispose(){disposals++;}},
- loadMesh:async()=>{loadCount++;if(failLoad)throw new Error('art_unavailable');return {};},colors:{},validateDisplay,
+ VolumeRenderer:class{pick(){return 'chest';}draw(yaw){draws++;lastYaw=yaw;}dispose(){disposals++;}},
+ loadMesh:async()=>{loadCount++;if(failLoad)throw new Error('art_unavailable');return {};},colors:{},validateDisplay,validatePick,
 });
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
 const frame=(time=now+16)=>{now=time;const callbacks=[...raf];raf.clear();for(const [,callback] of callbacks)callback(now);};
@@ -82,5 +82,31 @@ document.hidden=false;documentListeners.visibilitychange();assert.equal(raf.size
 listeners.renderfailure();assert.equal(raf.size,0);assert.equal(events.at(-1).status,'error');
 failLoad=true;update({retry:1});await flush();assert.equal(events.at(-1).status,'unavailable');
 failLoad=false;update({retry:2,style:'female'});await flush();frame();assert.equal(events.at(-1).status,'ready');assert.equal(loadCount,3);
+update({paused:true,interaction:{enabled:true,selected:null,generation:7}});frame();
+const token=()=>Object.fromEntries(['generation','frame','load','layout'].map(key=>[key,events.findLast(event=>event.status==='ready')[key]]));
+const pick=(patch={})=>window.AlkionBody.pick({version:2,id:42,x:.5,y:.5,...token(),...patch});
+pick();assert.equal(events.at(-1).region,'chest');
+pick({frame:0});assert.equal(events.at(-1).region,null);
+const oldToken=token();update({turn:.9,interaction:{enabled:true,selected:null,generation:8}});
+pick(oldToken);assert.equal(events.at(-1).region,null,'A pending rotation cannot pick old pixels');frame();
+pick();assert.equal(events.at(-1).region,'chest');
+resized();pick();assert.equal(events.at(-1).region,null,'Layout invalidation rejects retained pixels');frame();
+window.AlkionBody.hostPaused(true);pick();assert.equal(events.at(-1).region,null);window.AlkionBody.hostPaused(false);frame();
+update({interaction:{enabled:false,selected:null,generation:9}});frame();pick();assert.equal(events.at(-1).region,null);
 update({paused:true});resized();assert.equal(raf.size,1);window.AlkionBody.dispose();assert.equal(raf.size,0);baseline=draws;frame();assert.equal(draws,baseline);assert.ok(disposals>=2);
 console.log('PASS: protocol v2, exact style dispatch, one latest draw/frame, no identical paused redraws, cumulative drag continuity, lifecycle/reduced motion/retry/disposal');
+
+// Exact retained-pixel addressing (WebGL bottom-up), including neutral and
+// background; no neighbour/hidden-region approximation is permitted.
+const pixels=new Uint8Array(3*2*4),names=['neutral','chest','back','alien'];
+const put=(x,y,id,alpha=255)=>{const at=((1-y)*3+x)*4;pixels[at+1]=id;pixels[at+3]=alpha;};
+put(0,0,1);put(1,0,2);put(2,0,0);put(0,1,1,0);put(1,1,3);put(2,1,2);
+assert.equal(pickSurfaceRegion(pixels,3,2,names,0,0),'chest');
+assert.equal(pickSurfaceRegion(pixels,3,2,names,.5,.1),'back');
+assert.equal(pickSurfaceRegion(pixels,3,2,names,.99,.99),'back');
+for(const [x,y] of [[.99,0],[0,.8],[.5,.8],[1,0],[0,1],[-.01,0],[NaN,0],[0,Infinity]])assert.equal(pickSurfaceRegion(pixels,3,2,names,x,y),null);
+const request={version:2,id:1,generation:0,frame:1,load:1,layout:0,x:.5,y:.5};
+assert.equal(validatePick(request),request);
+for(const patch of [{id:-1},{generation:.5},{frame:NaN},{load:Infinity},{layout:1e20},{x:1},{y:-.1},{x:NaN},{region:'chest'}])assert.throws(()=>validatePick({...request,...patch}));
+for(const patch of [{enabled:1},{selected:'core'},{generation:-1},{selected:'chest',enabled:false}])assert.throws(()=>validateDisplay({...display,interaction:{enabled:true,selected:null,generation:0,...patch}}));
+console.log('PASS: exact top-left normalized surface picking, background/neutral/unknown rejection and bounded interaction protocol');

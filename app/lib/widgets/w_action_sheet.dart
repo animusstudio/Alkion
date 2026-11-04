@@ -41,24 +41,27 @@ class WSheetAction<T> {
 /// rows scroll when they outgrow the sheet (a six-row menu on a short phone
 /// at large text). Opt into [scrollableTitle] when contextual text itself may
 /// exceed the sheet height; its full text then scrolls with the actions.
+/// Optional [content] precedes the actions in that same scroll area, with safe
+/// insets and the full available sheet height for richer exercise details.
 Future<T?> showWActionSheet<T>(
   BuildContext context, {
   required String title,
   required List<WSheetAction<T>> actions,
   bool scrollableTitle = false,
+  Widget? content,
 }) {
   return showModalBottomSheet<T>(
     context: context,
     backgroundColor: Colors.transparent,
+    isScrollControlled: content != null,
+    useSafeArea: content != null,
     barrierColor: context.tokens.overlay,
-    sheetAnimationStyle: AnimationStyle(
-      duration: Motion.of(context, Motion.base),
-      reverseDuration: Motion.of(context, Motion.fast),
-    ),
+    sheetAnimationStyle: Motion.sheet(context),
     builder: (_) => _WActionSheetBody<T>(
       title: title,
       actions: actions,
       scrollableTitle: scrollableTitle,
+      content: content,
     ),
   );
 }
@@ -68,11 +71,13 @@ class _WActionSheetBody<T> extends StatefulWidget {
     required this.title,
     required this.actions,
     required this.scrollableTitle,
+    required this.content,
   });
 
   final String title;
   final List<WSheetAction<T>> actions;
   final bool scrollableTitle;
+  final Widget? content;
 
   @override
   State<_WActionSheetBody<T>> createState() => _WActionSheetBodyState<T>();
@@ -87,7 +92,11 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
   @override
   void initState() {
     super.initState();
-    if (!widget.actions.any((a) => a.selected)) return;
+    // Rich details open at their heading/artwork even when an action (for
+    // example Favorite) is already selected further down the sheet.
+    if (widget.content != null || !widget.actions.any((a) => a.selected)) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final row = _selectedKey.currentContext;
       if (!mounted || row == null) return;
@@ -137,6 +146,7 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (widget.scrollableTitle) heading,
+                    if (widget.content != null) widget.content!,
                     for (var i = 0; i < actions.length; i++)
                       _row(
                         context,

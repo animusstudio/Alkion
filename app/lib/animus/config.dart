@@ -4,6 +4,10 @@ import 'package:crypto/crypto.dart';
 
 enum AnimusPlatform { android, linux }
 
+const _debugBuild =
+    !bool.fromEnvironment('dart.vm.product') &&
+    !bool.fromEnvironment('dart.vm.profile');
+
 /// Contains a field name only: configuration values never enter diagnostics.
 final class AnimusConfigException implements Exception {
   const AnimusConfigException(this.field);
@@ -29,6 +33,7 @@ final class AnimusConfig {
     required this.readAdmission,
     required this.probeRecordId,
     required this.allowLoopbackHttp,
+    required this.allowPrivateHttp,
     required this.enrollmentFlow,
   });
 
@@ -41,6 +46,7 @@ final class AnimusConfig {
   final String readAdmission;
   final String probeRecordId;
   final bool allowLoopbackHttp;
+  final bool allowPrivateHttp;
 
   /// Reviewed Authentik enrollment flow slug, never an arbitrary redirect URL.
   final String? enrollmentFlow;
@@ -50,6 +56,7 @@ final class AnimusConfig {
   static AnimusConfig? fromEnvironment(
     Map<String, String> values, {
     required AnimusPlatform platform,
+    bool isDebugBuild = _debugBuild,
   }) {
     const prefix = 'ALKION_ANIMUS_';
     final enabled = values['${prefix}ENABLED'] ?? '';
@@ -72,6 +79,14 @@ final class AnimusConfig {
       throw const AnimusConfigException('ALLOW_LOOPBACK_HTTP');
     }
     final loopback = loopbackFlag == 'true';
+    final privateFlag = values['${prefix}ALLOW_PRIVATE_HTTP'] ?? 'false';
+    if (privateFlag != 'true' && privateFlag != 'false') {
+      throw const AnimusConfigException('ALLOW_PRIVATE_HTTP');
+    }
+    final privateHttp = privateFlag == 'true';
+    if (privateHttp && (!isDebugBuild || loopback)) {
+      throw const AnimusConfigException('ALLOW_PRIVATE_HTTP');
+    }
     Uri endpoint(String name, {required bool originOnly}) {
       final text = requiredValue(name);
       final uri = Uri.tryParse(text);
@@ -86,7 +101,8 @@ final class AnimusConfig {
           uri.port > 65535 ||
           text.contains('\\') ||
           (uri.scheme != 'https' &&
-              !(loopback && uri.scheme == 'http' && _isLoopback(uri))) ||
+              !(loopback && uri.scheme == 'http' && _isLoopback(uri)) &&
+              !(privateHttp && uri.scheme == 'http')) ||
           (originOnly && uri.path.isNotEmpty && uri.path != '/') ||
           uri.pathSegments.any((p) => p == '.' || p == '..')) {
         throw AnimusConfigException(name);
@@ -102,9 +118,23 @@ final class AnimusConfig {
 
     final api = endpoint('API_ORIGIN', originOnly: true);
     final issuer = endpoint('ISSUER', originOnly: false);
+    if (privateHttp &&
+        (api.scheme != 'http' ||
+            issuer.scheme != 'http' ||
+            !RegExp(r'^[a-z0-9]+(?:[.-][a-z0-9-]+)*$').hasMatch(api.host) ||
+            !RegExp(r'^[a-z0-9]+(?:[.-][a-z0-9-]+)*$').hasMatch(issuer.host) ||
+            !RegExp(
+              r'^/application/o/[A-Za-z0-9_-]+/$',
+            ).hasMatch(issuer.path) ||
+            issuer.path.contains('%'))) {
+      throw const AnimusConfigException('ALLOW_PRIVATE_HTTP');
+    }
     final enrollment = values['${prefix}ENROLLMENT_FLOW'] ?? '';
     if (enrollment.isNotEmpty &&
         !RegExp(r'^[a-z0-9][a-z0-9-]{0,62}$').hasMatch(enrollment)) {
+      throw const AnimusConfigException('ENROLLMENT_FLOW');
+    }
+    if (privateHttp && enrollment.isNotEmpty) {
       throw const AnimusConfigException('ENROLLMENT_FLOW');
     }
     final client = requiredValue('CLIENT_ID');
@@ -127,7 +157,8 @@ final class AnimusConfig {
             }.contains(redirect.scheme) ||
             redirect.hasAuthority ||
             redirect.hasPort ||
-            redirect.path != '/oauth2redirect') {
+            redirect.path != '/oauth2redirect' ||
+            (privateHttp && redirect.scheme != 'dev.animusstudio.alkion.dev')) {
           throw const AnimusConfigException('REDIRECT_URI');
         }
       case AnimusPlatform.linux:
@@ -151,6 +182,7 @@ final class AnimusConfig {
       readAdmission: uuid('READ_ADMISSION'),
       probeRecordId: uuid('PROBE_RECORD_ID'),
       allowLoopbackHttp: loopback,
+      allowPrivateHttp: privateHttp,
       enrollmentFlow: enrollment.isEmpty ? null : enrollment,
     );
   }
@@ -183,6 +215,10 @@ final class AnimusConfig {
           'ALKION_ANIMUS_ALLOW_LOOPBACK_HTTP',
           defaultValue: 'false',
         ),
+        'ALKION_ANIMUS_ALLOW_PRIVATE_HTTP': String.fromEnvironment(
+          'ALKION_ANIMUS_ALLOW_PRIVATE_HTTP',
+          defaultValue: 'false',
+        ),
         'ALKION_ANIMUS_ENROLLMENT_FLOW': String.fromEnvironment(
           'ALKION_ANIMUS_ENROLLMENT_FLOW',
         ),
@@ -213,6 +249,7 @@ final class AnimusConfig {
             readAdmission,
             probeRecordId,
             allowLoopbackHttp,
+            if (allowPrivateHttp) 'private-lan-http-v1',
             if (enrollmentFlow != null) enrollmentFlow,
           ]),
         ),

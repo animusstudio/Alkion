@@ -28,7 +28,6 @@ import '../util/dates.dart';
 import '../widgets/alkion_brand.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
-import '../widgets/stepper.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import 'alkion_recovery/recovery_screen.dart';
@@ -94,6 +93,7 @@ class _Group extends StatelessWidget {
 
 class _Row extends StatelessWidget {
   const _Row({
+    super.key,
     required this.icon,
     required this.title,
     this.sub,
@@ -422,12 +422,14 @@ class ProfileScreen extends StatefulWidget {
     this.embedded = false,
     this.onLogout,
     this.auth,
+    this.onImportReps,
   });
 
   final VoidCallback onClose;
   final bool embedded;
   final Future<void> Function()? onLogout;
   final Object? auth;
+  final VoidCallback? onImportReps;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -733,13 +735,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Row(
                     children: [
                       if (!widget.embedded)
-                        Semantics(
-                          button: true,
-                          label: l.commonBack,
-                          excludeSemantics: true,
-                          onTap: widget.onClose,
-                          child: GestureDetector(
-                            onTap: widget.onClose,
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                            padding: EdgeInsets.zero,
+                            alignment: Alignment.centerLeft,
+                            overlayColor: tokens.focus.withValues(alpha: .16),
+                          ),
+                          onPressed: widget.onClose,
+                          child: Semantics(
+                            label: l.commonBack,
+                            excludeSemantics: true,
                             child: SizedBox(
                               width: 48,
                               height: 48,
@@ -804,25 +810,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   const SizedBox(height: 24),
 
-                  // ── Units ───────────────────────────────────────────────────
-                  _Group(
-                    label: l.profileGroupUnits,
-                    children: [
-                      _Row(
-                        icon: WIcons.scale,
-                        title: l.profileWeightUnit,
-                        sub: l.profileWeightUnitSub,
-                        control: true,
-                        right: ChipSelect<Unit>(
-                          items: Unit.values,
-                          selected: unitService.unit,
-                          labelOf: (u) => u == Unit.kg ? 'kg' : 'lb',
-                          onSelect: unitService.setUnit,
-                        ),
-                      ),
-                    ],
-                  ),
-
                   // ── Bodyweight ──────────────────────────────────────────────
                   _Group(
                     label: l.profileGroupBodyweight,
@@ -845,6 +832,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _Group(
                     label: l.profileGroupAppearance,
                     children: [
+                      _Row(
+                        icon: WIcons.scale,
+                        title: l.profileWeightUnit,
+                        sub: l.profileWeightUnitSub,
+                        control: true,
+                        right: ChipSelect<Unit>(
+                          items: Unit.values,
+                          selected: unitService.unit,
+                          labelOf: (u) => u == Unit.kg ? 'kg' : 'lb',
+                          onSelect: unitService.setUnit,
+                        ),
+                      ),
+
                       _Row(
                         icon: settings.mode == 'dark'
                             ? WIcons.flame
@@ -921,59 +921,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
 
-                  // ── Rest ────────────────────────────────────────────────────
-                  _Group(
-                    label: l.profileGroupRest,
-                    children: [
-                      _Row(
-                        icon: WIcons.timer,
-                        title: l.profileCompoundRest,
-                        sub: l.profileCompoundRestSub,
-                        control: true,
-                        right: SizedBox(
-                          width: 192,
-                          child: WStepper(
-                            value: settings.restCompoundSeconds.toDouble(),
-                            step: 15,
-                            format: (v) => '${v.round()}s',
-                            onChanged: (v) => showWriteFailures(
-                              context,
-                              settings.setRestCompoundSeconds(v.round()),
-                            ),
-                            editable: true,
-                            allowDecimal: false,
-                            min: 0,
-                            formatForEdit: (v) => v.round().toString(),
-                            semanticLabel: l.profileCompoundRest,
-                          ),
-                        ),
-                      ),
-                      _Row(
-                        icon: WIcons.timer,
-                        title: l.profileIsolationRest,
-                        sub: l.profileIsolationRestSub,
-                        control: true,
-                        right: SizedBox(
-                          width: 192,
-                          child: WStepper(
-                            value: settings.restIsolationSeconds.toDouble(),
-                            step: 15,
-                            format: (v) => '${v.round()}s',
-                            onChanged: (v) => showWriteFailures(
-                              context,
-                              settings.setRestIsolationSeconds(v.round()),
-                            ),
-                            editable: true,
-                            allowDecimal: false,
-                            min: 0,
-                            formatForEdit: (v) => v.round().toString(),
-                            semanticLabel: l.profileIsolationRest,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
                   const AnimusConnectionPanel(),
 
                   // ── Data ────────────────────────────────────────────────────
@@ -981,6 +928,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     key: const Key('profile-data-actions'),
                     label: l.profileGroupData,
                     children: [
+                      if (widget.onImportReps != null)
+                        _Row(
+                          key: const Key('profile-history-test'),
+                          icon: WIcons.history,
+                          title: l.importRepsData,
+                          sub: l.importRepsDataSub,
+                          onTap: widget.onImportReps,
+                        ),
                       _Row(
                         icon: WIcons.refresh,
                         title: l.alkionBackupRestore,
@@ -1079,13 +1034,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onChanged: (_) => setState(() {}),
                 )
               else
-                Semantics(
-                  button: true,
-                  label: l.profileEditName,
-                  excludeSemantics: true,
-                  onTap: () => setState(() => _editingName = true),
-                  child: GestureDetector(
-                    onTap: () => setState(() => _editingName = true),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    padding: EdgeInsets.zero,
+                    alignment: Alignment.centerLeft,
+                    overlayColor: tokens.focus.withValues(alpha: .16),
+                  ),
+                  onPressed: () => setState(() => _editingName = true),
+                  child: Semantics(
+                    label: l.profileEditName,
+                    excludeSemantics: true,
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(minHeight: 48),
                       child: Row(

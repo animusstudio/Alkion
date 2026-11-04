@@ -11,6 +11,7 @@ import 'animus/config.dart';
 import 'animus/entry.dart';
 import 'animus/runtime.dart';
 import 'animus/workout_send.dart';
+import 'animus/recovery_review.dart';
 import 'data/active_session_draft.dart';
 import 'data/finished_session_store.dart';
 import 'data/session_writer.dart';
@@ -40,12 +41,19 @@ import 'widgets/pending_input.dart';
 import 'catalog/catalog.dart';
 import 'catalog/catalog_development.dart';
 import 'catalog_ui/catalog_runtime_state.dart';
+import 'catalog_ui/catalog_loading.dart';
 import 'catalog_ui/catalog_trial_scope.dart';
+import 'history_test/history_mapping.dart';
+import 'history_test/history_mapping_label.dart';
+import 'ui/reps_import_screen.dart';
+import 'transfer/reps_import.dart';
+import 'transfer/transfer_service.dart' show ImportStatus;
+import 'history_test/retired_history_workspace.dart';
 
 Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
   profile: profile,
   expectedProfileId: profile.profileId,
-  schema: catalogExecutionSchemaRegistry(),
+  schema: remoteRecoverySchemaRegistry(),
 );
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -70,6 +78,12 @@ class AlkionRuntime with WidgetsBindingObserver {
       installationId: store.profile.installationId,
       connection: animus,
     );
+    recoveryReview = AnimusRecoveryReview(
+      database: store,
+      installationId: store.profile.installationId,
+      connection: animus,
+      sender: workoutSender,
+    );
   }
   final Directory supportRoot;
   final LocalStore store;
@@ -79,6 +93,7 @@ class AlkionRuntime with WidgetsBindingObserver {
   final SessionManager sessions;
   final AnimusConnectionController animus;
   late final AnimusWorkoutSender workoutSender;
+  late final AnimusRecoveryReview recoveryReview;
   final CatalogRuntimeState? catalog;
   final bool catalogUnavailable;
   static Future<AlkionRuntime> open(
@@ -88,6 +103,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     LocalStore? preparedStore,
     CatalogBundle? catalogBundle,
     Future<CatalogDevelopmentInput> Function()? catalogLoader,
+    void Function(SettingsService settings)? onCatalogLoading,
   }) async {
     GoogleFonts.config.allowRuntimeFetching = false;
     late final AlkionProfile profile;
@@ -116,6 +132,11 @@ class AlkionRuntime with WidgetsBindingObserver {
       await settings.load();
       await units.load();
       await identity.load();
+      if (catalogBundle == null &&
+          (catalogLoader != null ||
+              const bool.fromEnvironment('ALKION_CATALOG_DEV'))) {
+        onCatalogLoading?.call(settings);
+      }
       final catalogInput = catalogBundle == null
           ? await (catalogLoader ?? loadDevelopmentCatalog)()
           : CatalogDevelopmentInput(bundle: catalogBundle);
@@ -150,10 +171,14 @@ class AlkionRuntime with WidgetsBindingObserver {
               installationId: profile.installationId,
               profileId: profile.profileId,
               generation: generation,
+              database: () => store,
             ))(profile, store.token.generation),
         catalog,
         catalogUnavailable,
       );
+      runtime.historyMappings.value = await HistoryMappingStore(
+        store,
+      ).byExerciseId();
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
       await sessions.initializeNotifications(notifier);
@@ -166,8 +191,48 @@ class AlkionRuntime with WidgetsBindingObserver {
   }
 
   final persistenceFailure = ValueNotifier<Object?>(null);
+  final historyMappings = ValueNotifier<Map<String, HistoryMapping>>(const {});
+  final contentRevision = ValueNotifier<int>(0);
+
+  /// Import into the open profile. Fence workout launches before flushing owed
+  /// edits, then refresh caches and one-shot screen reads without changing roots.
+  Future<void> importReps(
+    RepsImportPreview preview,
+    HistoryMappingReview review, {
+    bool applySettings = false,
+  }) async {
+    if (sessions.active != null || !sessions.tryBeginLaunch()) {
+      throw StateError('reps_import_active_workout');
+    }
+    try {
+      await flushPersistence();
+      final service = RepsImportService(store, profileId: store.profileId);
+      final result = await service.importPreview(preview);
+      if (result.status != ImportStatus.selected &&
+          result.status != ImportStatus.alreadySelected) {
+        throw StateError(result.category ?? result.status.name);
+      }
+      await service.selectMappings(preview, review);
+      if (applySettings && preview.hasImportedSettings) {
+        await service.applySettings(preview);
+      }
+      await settings.load();
+      await units.load();
+      await identity.load();
+      await catalog?.initialize();
+      historyMappings.value = await HistoryMappingStore(store).byExerciseId();
+      contentRevision.value++;
+      if (preview.kind == 'full') {
+        await RetiredHistoryWorkspace.backupAndRemove(store.profile);
+      }
+    } finally {
+      sessions.endLaunch();
+    }
+  }
+
   Future<void> _flushTail = Future.value();
   bool _closing = false;
+  bool _ownersDisposed = false, _closed = false;
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_closing) {
@@ -212,30 +277,44 @@ class AlkionRuntime with WidgetsBindingObserver {
     }
   }
 
-  Future<void> close() async {
+  Future<void> close({
+    @visibleForTesting Future<void> Function()? closeStore,
+  }) async {
+    if (_closed) return;
     _closing = true;
     // Fence remote callbacks synchronously, before any local barrier yields.
-    // Its bounded best-effort teardown never holds up local store closure.
+    // Drain covered API evidence before SQLite; provider cleanup is separate.
     final senderClose = workoutSender.close();
+    final reviewClose = recoveryReview.close();
     unawaited(animus.close());
+    final apiDrain = animus.drainApi();
     try {
-      await flushPersistence();
+      if (!_ownersDisposed) await flushPersistence();
     } catch (_) {
       _closing = false;
       rethrow;
     }
     WidgetsBinding.instance.removeObserver(this);
     await senderClose;
-    await sessions.closeNotifications();
-    sessions.dispose();
-    catalog?.dispose();
-    await store.close();
+    await reviewClose;
+    await apiDrain;
+    if (!_ownersDisposed) {
+      await sessions.closeNotifications();
+      sessions.dispose();
+      catalog?.dispose();
+      _ownersDisposed = true;
+    }
+    await (closeStore ?? store.close)();
     settings.dispose();
     units.dispose();
     identity.dispose();
     persistenceFailure.dispose();
+    historyMappings.dispose();
+    contentRevision.dispose();
     workoutSender.dispose();
+    recoveryReview.dispose();
     animus.dispose();
+    _closed = true;
   }
 }
 
@@ -268,9 +347,11 @@ Future<Directory> checkedAlkionSupportRoot({
 Future<void> launchAlkion(
   Directory root, {
   void Function(Widget app) present = runApp,
+  Future<CatalogDevelopmentInput> Function()? catalogLoader,
 }) async {
   GoogleFonts.config.allowRuntimeFetching = false;
-  Future<void> relaunch() => launchAlkion(root, present: present);
+  Future<void> relaunch() =>
+      launchAlkion(root, present: present, catalogLoader: catalogLoader);
   try {
     final service = RestoreService(root);
     final entry = AnimusEntryLifecycle(root);
@@ -299,6 +380,7 @@ Future<void> launchAlkion(
               root,
               present: present,
               relaunch: relaunch,
+              catalogLoader: catalogLoader,
               preparedStore: entry.takePreparedStore(),
             );
           },
@@ -309,6 +391,7 @@ Future<void> launchAlkion(
                 root,
                 present: present,
                 relaunch: relaunch,
+                catalogLoader: catalogLoader,
                 connection: connection,
                 preparedStore: entry.takePreparedStore(),
               );
@@ -324,6 +407,7 @@ Future<void> launchAlkion(
               root,
               present: present,
               relaunch: relaunch,
+              catalogLoader: catalogLoader,
             );
           },
           relaunch: relaunch,
@@ -331,12 +415,30 @@ Future<void> launchAlkion(
       );
       return;
     }
-    await _launchAlkionRuntime(root, present: present, relaunch: relaunch);
-  } on GenerationSelectionException catch (error) {
-    if (error.category != 'restore_interrupted') {
-      present(AlkionPreflightApp(error: error));
-      return;
-    }
+    await _launchAlkionRuntime(
+      root,
+      present: present,
+      relaunch: relaunch,
+      catalogLoader: catalogLoader,
+    );
+  } catch (error) {
+    await _presentLaunchFailure(
+      root,
+      error,
+      present: present,
+      relaunch: relaunch,
+    );
+  }
+}
+
+Future<void> _presentLaunchFailure(
+  Directory root,
+  Object error, {
+  required void Function(Widget) present,
+  required Future<void> Function() relaunch,
+}) async {
+  if (error is GenerationSelectionException &&
+      error.category == 'restore_interrupted') {
     final service = RestoreService(root);
     present(
       AlkionRecoveryApp.interrupted(
@@ -345,7 +447,7 @@ Future<void> launchAlkion(
         pending: await service.pending(),
       ),
     );
-  } catch (error) {
+  } else {
     present(AlkionPreflightApp(error: error));
   }
 }
@@ -356,15 +458,54 @@ Future<void> _launchAlkionRuntime(
   required Future<void> Function() relaunch,
   AnimusConnectionController? connection,
   LocalStore? preparedStore,
+  Future<CatalogDevelopmentInput> Function()? catalogLoader,
 }) async {
-  final runtime = await AlkionRuntime.open(
-    root,
-    connectionFactory: connection == null ? null : (_, _) => connection,
-    preparedStore: preparedStore,
-  );
+  var displayedCatalogLoad = false;
+  late final AlkionRuntime runtime;
+  try {
+    runtime = await AlkionRuntime.open(
+      root,
+      onCatalogLoading: (settings) {
+        displayedCatalogLoad = true;
+        present(
+          CatalogLoadingApp(
+            brightness: settings.brightness,
+            accent: settings.accent,
+            locale: settings.locale,
+          ),
+        );
+      },
+      connectionFactory: connection == null ? null : (_, _) => connection,
+      preparedStore: preparedStore,
+      catalogLoader: catalogLoader,
+    );
+  } catch (error) {
+    // Once loading replaces first-start, its action handler is disposed and
+    // cannot present a failure. Before takeover, keep its inline error handling.
+    if (!displayedCatalogLoad) rethrow;
+    await _presentLaunchFailure(
+      root,
+      error,
+      present: present,
+      relaunch: relaunch,
+    );
+    return;
+  }
   present(
     AlkionApp(
       runtime: runtime,
+      revealCatalog: displayedCatalogLoad && runtime.catalog != null,
+      onImportReps: () {
+        appNavigatorKey.currentState?.push<void>(
+          MaterialPageRoute(
+            builder: (_) => RepsImportScreen(
+              database: runtime.store,
+              catalog: runtime.catalog?.bundle,
+              onImport: runtime.importReps,
+            ),
+          ),
+        );
+      },
       recovery: RuntimeRecoveryHost(
         runtime,
         relaunch: relaunch,
@@ -439,11 +580,15 @@ class AlkionApp extends StatelessWidget {
   const AlkionApp({
     super.key,
     required this.runtime,
+    this.revealCatalog = false,
     this.recovery,
+    this.onImportReps,
     @visibleForTesting this.databaseOverride,
   });
   final AlkionRuntime runtime;
+  final bool revealCatalog;
   final RecoveryHost? recovery;
+  final VoidCallback? onImportReps;
   final LocalDatabase? databaseOverride;
   @override
   Widget build(BuildContext context) {
@@ -453,6 +598,9 @@ class AlkionApp extends StatelessWidget {
         Provider<RecoveryHost?>.value(value: recovery),
         ListenableProvider<AnimusWorkoutSendPort?>.value(
           value: runtime.workoutSender,
+        ),
+        ListenableProvider<AnimusRecoveryReviewPort?>.value(
+          value: runtime.recoveryReview,
         ),
         Provider<CatalogDevelopmentInput>.value(
           value: CatalogDevelopmentInput(
@@ -482,49 +630,63 @@ class AlkionApp extends StatelessWidget {
               valueListenable: runtime.persistenceFailure,
               builder: (context, error, _) => _RuntimeNotificationNavigation(
                 runtime: runtime,
-                child: Stack(
-                  children: [
-                    if (child != null) child,
-                    if (error != null)
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: SafeArea(
-                          child: Material(
-                            color: Theme.of(context).colorScheme.errorContainer,
-                            elevation: 4,
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    AppLocalizations.of(
-                                      context,
-                                    ).alkionStoreRecoveryTitle,
+                child: ValueListenableBuilder<Map<String, HistoryMapping>>(
+                  valueListenable: runtime.historyMappings,
+                  builder: (context, mappings, _) => HistoryMappingScope(
+                    mappings: mappings,
+                    child: Stack(
+                      children: [
+                        if (child != null)
+                          CatalogReadyReveal(
+                            enabled: revealCatalog,
+                            child: child,
+                          ),
+                        if (error != null)
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: SafeArea(
+                              child: Material(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.errorContainer,
+                                elevation: 4,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        AppLocalizations.of(
+                                          context,
+                                        ).alkionStoreRecoveryTitle,
+                                      ),
+                                      Text(
+                                        AppLocalizations.of(
+                                          context,
+                                        ).alkionStoreRecoveryBody,
+                                      ),
+                                      TextButton(
+                                        style: TextButton.styleFrom(
+                                          minimumSize: const Size(48, 48),
+                                        ),
+                                        onPressed: runtime.retryPersistence,
+                                        child: Text(
+                                          AppLocalizations.of(
+                                            context,
+                                          ).alkionRetry,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  Text(
-                                    AppLocalizations.of(
-                                      context,
-                                    ).alkionStoreRecoveryBody,
-                                  ),
-                                  TextButton(
-                                    style: TextButton.styleFrom(
-                                      minimumSize: const Size(48, 48),
-                                    ),
-                                    onPressed: runtime.retryPersistence,
-                                    child: Text(
-                                      AppLocalizations.of(context).alkionRetry,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -537,7 +699,11 @@ class AlkionApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: AppLocalizations.supportedLocales,
-            home: const AppShell(),
+            home: ValueListenableBuilder<int>(
+              valueListenable: runtime.contentRevision,
+              builder: (context, revision, _) =>
+                  AppShell(key: ValueKey(revision), onImportReps: onImportReps),
+            ),
           );
         },
       ),

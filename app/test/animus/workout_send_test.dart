@@ -29,6 +29,8 @@ import 'package:alkion/recovery/restore.dart';
 
 import '../../tool/alkion_store_recovery.dart' show syntheticProfile;
 import 'support.dart';
+import 'historical_recovery_fixture.dart';
+import 'remote_recovery_repository_test.dart' show FaultDatabase;
 
 const _uuid = Uuid();
 final _fixtures = Directory('test/fixtures/animus_workout_upload');
@@ -174,6 +176,107 @@ class _CapturedApi implements AnimusUploadHttpPort {
   Future<void> cancel() async {}
   @override
   Future<void> close() async {}
+}
+
+/// Current recovery metadata around the unchanged captured domain DTOs. This
+/// is a synthetic protocol peer, not a live server qualification receipt.
+class _RecoveryApi extends _CapturedApi {
+  String generation = '10000000-0000-4000-8000-000000000001';
+  String profile = 'native-workout-v1';
+  String? readGeneration;
+  bool duplicateProfile = false;
+  int? recoveryErrorAt;
+  final requestHeaders = <Map<String, String>>[];
+  @override
+  AnimusHttpResponse _response(List<int> body, {int status = 200}) =>
+      AnimusHttpResponse(
+        statusCode: status,
+        headers: {
+          'content-type': 'application/json',
+          if (status != 401 && status != 403)
+            'x-hub-recovery-generation': generation,
+        },
+        body: body,
+      );
+  @override
+  Future<AnimusHttpResponse> get({
+    required Uri uri,
+    required Map<String, String> headers,
+    required int maxResponseBytes,
+    required Duration timeout,
+  }) async {
+    requestHeaders.add(Map.of(headers));
+    final response = await super.get(
+      uri: uri,
+      headers: headers,
+      maxResponseBytes: maxResponseBytes,
+      timeout: timeout,
+    );
+    if (uri.path == '/v1/system/info' && response.statusCode == 200) {
+      final info = uploadMap(jsonDecode(utf8.decode(response.body)));
+      info['recovery'] = {
+        'protocol_version': 1,
+        'required': true,
+        'profile': profile,
+        'state': 'open',
+        'generation': generation,
+      };
+      final training = uploadMap(info['training']);
+      training['datasets'] = [
+        for (final d in (training['datasets'] as List).map(uploadMap))
+          if (const ['definitions', 'workouts'].contains(d['name']))
+            {
+              ...d,
+              'actions': d['name'] == 'definitions'
+                  ? ['create', 'edit']
+                  : ['finish'],
+            },
+      ];
+      info['training'] = training;
+      var body = jsonEncode(info);
+      if (duplicateProfile) {
+        body = body.replaceFirst(
+          '"profile":"native-workout-v1"',
+          '"profile":"native-workout-v1","profile":"unknown"',
+        );
+      }
+      return _response(utf8.encode(body));
+    }
+    return readGeneration == null
+        ? response
+        : AnimusHttpResponse(
+            statusCode: response.statusCode,
+            headers: {
+              ...response.headers,
+              'x-hub-recovery-generation': readGeneration!,
+            },
+            body: response.body,
+          );
+  }
+
+  @override
+  Future<AnimusHttpResponse> post({
+    required Uri uri,
+    required Map<String, String> headers,
+    required List<int> body,
+    required int maxResponseBytes,
+    required Duration timeout,
+  }) async {
+    requestHeaders.add(Map.of(headers));
+    final response = await super.post(
+      uri: uri,
+      headers: headers,
+      body: body,
+      maxResponseBytes: maxResponseBytes,
+      timeout: timeout,
+    );
+    return recoveryErrorAt == posts.length
+        ? _response(
+            utf8.encode('{"error":"operation_recovery_required"}'),
+            status: 409,
+          )
+        : response;
+  }
 }
 
 final _uiFixtures = Directory('test/fixtures/animus_workout_send_ui');
@@ -773,6 +876,7 @@ void main() {
       installationId: store.profile.installationId,
       connection: connection,
       http: api,
+      recovery: const HistoricalRecoveryFixture(),
     );
   }
 
@@ -851,6 +955,7 @@ void main() {
         installationId: store.profile.installationId,
         connection: connection,
         http: captured,
+        recovery: const HistoricalRecoveryFixture(),
       );
       await sender.send(selected);
       final result = (await sender.selectionFor(id))!;
@@ -1367,6 +1472,9 @@ void main() {
       await store.close();
       final restored = await RestoreService(
         support,
+        // Keep this dated schema-5 sender/backup qualification at its original
+        // schema. Current-schema recovery is exercised by the recovery suite.
+        schema: catalogExecutionSchemaRegistry(),
         workDirectory: root,
       ).restore(File(receipt.path));
       await open();
@@ -1475,6 +1583,7 @@ void main() {
           installationId: store.profile.installationId,
           connection: connection,
           http: api,
+          recovery: const HistoricalRecoveryFixture(),
         );
         if (boundary == 'selection') fault.failAt = boundary;
         var selected = await sender.select(session);
@@ -1500,4 +1609,230 @@ void main() {
       },
     );
   }
+
+  group('current durable recovery foreground', () {
+    late _RecoveryApi peer;
+    setUp(() async {
+      await sender.close();
+      await store.close();
+      final profile = await syntheticProfile(root);
+      store = await LocalStore.open(
+        profile: profile,
+        expectedProfileId: profile.profileId,
+      );
+      peer = _RecoveryApi();
+      api = peer;
+      sender = AnimusWorkoutSender(
+        database: store,
+        installationId: profile.installationId,
+        connection: connection,
+        http: peer,
+      );
+    });
+    test(
+      'selection discovers first; exact G/O and frozen request hashes survive normal dependency sequence',
+      () async {
+        expect(peer.gets, isEmpty);
+        final selected = await sender.select(session);
+        expect(selected.selectionId, isNotEmpty);
+        expect(peer.posts, isEmpty);
+        expect(peer.gets, ['/v1/system/info']);
+        final origins = await store.getAll(
+          'SELECT * FROM animus_operation_origins',
+        );
+        expect(origins, isNotEmpty);
+        expect(
+          origins.every((o) => o['operation_generation'] == peer.generation),
+          true,
+        );
+        await sender.send(selected);
+        expect(
+          (await sender.selectionFor(session))?.status,
+          AnimusWorkoutSendStatus.sent,
+        );
+        final actions = peer.requestHeaders
+            .where((h) => h.containsKey('X-Hub-Operation-Generation'))
+            .toList();
+        expect(actions.length, 5);
+        expect(
+          actions.every(
+            (h) =>
+                h['X-Hub-Recovery-Generation'] == peer.generation &&
+                h['X-Hub-Operation-Generation'] == peer.generation,
+          ),
+          true,
+        );
+        final attempts = await store.getAll('SELECT * FROM operation_attempts');
+        for (final attempt in attempts) {
+          expect(
+            (attempt['request_bytes'] as List).cast<int>(),
+            peer.committed[attempt['operation_id']],
+          );
+        }
+        expect(
+          (await store.get(
+            'SELECT count(*) AS n FROM animus_exchange_intents WHERE state=\'pending\'',
+          ))['n'],
+          0,
+        );
+      },
+    );
+    for (final invalid in ['profile', 'duplicate', 'capability']) {
+      test(
+        '$invalid discovery fails before remote selection allocations or any dependency POST',
+        () async {
+          if (invalid == 'profile') peer.profile = 'unknown';
+          if (invalid == 'duplicate') peer.duplicateProfile = true;
+          if (invalid == 'capability') peer.capability = false;
+          final before = await store.getAll('SELECT * FROM operations');
+          final selected = await sender.select(session);
+          expect(selected.selectionId, isEmpty);
+          expect(peer.posts, isEmpty);
+          expect(
+            await store.getAll(
+              "SELECT * FROM local_state WHERE state_key LIKE 'animus.native-workout.selection/1/%'",
+            ),
+            isEmpty,
+          );
+          expect(
+            await store.getAll('SELECT * FROM animus_operation_origins'),
+            isEmpty,
+          );
+          expect(await store.getAll('SELECT * FROM operations'), before);
+        },
+      );
+    }
+    test(
+      'changed G in first dependency response stops every later action and retains its safe raw reply',
+      () async {
+        final selected = await sender.select(session);
+        peer.beforeReply = (_) async {
+          peer.generation = '10000000-0000-4000-8000-000000000002';
+        };
+        await sender.send(selected);
+        expect(peer.posts.length, 1);
+        expect(
+          (await sender.selectionFor(session))?.status,
+          AnimusWorkoutSendStatus.needsReview,
+        );
+        expect(
+          await store.getAll('SELECT * FROM animus_recovery_archives'),
+          isNotEmpty,
+        );
+        expect(
+          (await store.getAll('SELECT * FROM animus_response_evidence')).any(
+            (r) => utf8
+                .decode((r['body_bytes'] as List).cast<int>())
+                .contains('"record"'),
+          ),
+          true,
+        );
+        final requests = peer.gets.length;
+        await sender.send(selected);
+        expect(peer.posts.length, 1);
+        expect(peer.gets.length, requests);
+      },
+    );
+    test(
+      'read-back recovery cannot hide behind an earlier sent acknowledgement',
+      () async {
+        final selected = await sender.select(session);
+        peer.readGeneration = '10000000-0000-4000-8000-000000000002';
+        await sender.send(selected);
+        expect(peer.posts.length, 5);
+        expect(
+          (await sender.selectionFor(session))?.issue,
+          AnimusWorkoutSendIssue.recoveryBlocked,
+        );
+        expect(
+          (await sender.selectionFor(session))?.status,
+          AnimusWorkoutSendStatus.needsReview,
+        );
+        expect(
+          await store.getAll(
+            "SELECT * FROM attempt_outcomes WHERE CAST(outcome_bytes AS TEXT) LIKE '%acknowledged%'",
+          ),
+          isNotEmpty,
+        );
+      },
+    );
+    test(
+      'sign-out during reply keeps late acknowledgement only as evidence, with no further POST',
+      () async {
+        final selected = await sender.select(session);
+        peer.beforeReply = (_) async {
+          await connection.disconnect();
+        };
+        await sender.send(selected);
+        expect(peer.posts.length, 1);
+        expect(
+          (await sender.selectionFor(session))?.status,
+          isNot(AnimusWorkoutSendStatus.sent),
+        );
+        expect(
+          (await store.getAll('SELECT * FROM animus_response_evidence')).any(
+            (r) => utf8
+                .decode((r['body_bytes'] as List).cast<int>())
+                .contains('"record"'),
+          ),
+          true,
+        );
+      },
+    );
+    test(
+      'same-G recovery error plus real capture failure stays fenced after fresh sender/handle',
+      () async {
+        await sender.close();
+        sender = AnimusWorkoutSender(
+          database: FaultDatabase(store, 'full'),
+          installationId: store.profile.installationId,
+          connection: connection,
+          http: peer,
+        );
+        final selected = await sender.select(session);
+        peer.recoveryErrorAt = 1;
+        await sender.send(selected);
+        expect(peer.posts.length, 1);
+        await sender.close();
+        await store.close();
+        final profile = await syntheticProfile(root);
+        store = await LocalStore.open(
+          profile: profile,
+          expectedProfileId: profile.profileId,
+        );
+        sender = AnimusWorkoutSender(
+          database: store,
+          installationId: profile.installationId,
+          connection: connection,
+          http: peer,
+        );
+        final gets = peer.gets.length;
+        await sender.send(selected);
+        expect(peer.posts.length, 1);
+        expect(peer.gets.length, gets);
+        expect(
+          (await sender.selectionFor(session))?.issue,
+          AnimusWorkoutSendIssue.recoveryBlocked,
+        );
+      },
+    );
+    test(
+      'revoked write grant stops after one denied action without disclosing a response generation',
+      () async {
+        final selected = await sender.select(session);
+        peer.deny = true;
+        await sender.send(selected);
+        expect(peer.posts.length, 1);
+        expect(peer.committed, isEmpty);
+        expect(
+          (await sender.selectionFor(session))?.issue,
+          AnimusWorkoutSendIssue.accessDenied,
+        );
+        final denied = await store.getAll(
+          'SELECT * FROM animus_response_evidence WHERE http_status=403',
+        );
+        expect(denied.single['response_generation'], isNull);
+      },
+    );
+  });
 }

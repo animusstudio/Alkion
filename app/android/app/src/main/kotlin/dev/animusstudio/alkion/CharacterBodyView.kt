@@ -40,7 +40,7 @@ internal class CharacterBodyFactory(context: Context, private val messenger: Bin
     fun hostPaused(value: Boolean) { paused = value; views.toList().forEach { it.hostPaused(value) } }
 }
 
-/** One display-only, offline surface. No URI from Dart/JS reaches AssetManager. */
+/** One offline artwork surface. No URI from Dart/JS reaches AssetManager. */
 internal class CharacterBodyView(
     private val context: MutableContextWrapper,
     id: Int,
@@ -62,6 +62,18 @@ internal class CharacterBodyView(
     private var hostIsPaused = true
     private var paused = true
     private var display: JSONObject? = null
+    private var rendered: Map<String, Any?>? = null
+    private var pickRequest: Map<*, *>? = null
+    private var pickResult: MethodChannel.Result? = null
+    private var pickTimeout: Runnable? = null
+    private fun cancelPick() {
+        pickTimeout?.let { main.removeCallbacks(it) }; pickTimeout = null
+        pickRequest = null
+        val result = pickResult
+        pickResult = null
+        result?.success(null)
+    }
+    private fun invalidatePick() { rendered = null; cancelPick() }
     private val origin = "https://appassets.androidplatform.net/body/"
     private val files: Map<String, Pair<String, String>> = buildMap {
         val loader = FlutterInjector.instance().flutterLoader()
@@ -82,6 +94,9 @@ internal class CharacterBodyView(
         }
     }
     init {
+        web.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
+            if (r - l != or - ol || b - t != ob - ot) invalidatePick()
+        }
         container.addView(web, FrameLayout.LayoutParams(-1, -1))
         web.setBackgroundColor(Color.TRANSPARENT)
         web.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -127,6 +142,7 @@ internal class CharacterBodyView(
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 if (!disposed) {
+                    invalidatePick()
                     processGone = true
                     evaluations.close()
                     loaded = false
@@ -146,6 +162,32 @@ internal class CharacterBodyView(
             @JavascriptInterface fun postMessage(text: String) {
                 if (disposed || text.length > 1024) return
                 val event = try { JSONObject(text) } catch (_: Exception) { return }
+                if (event.optInt("version") != 2) return
+                if (event.optString("type") == "pick") {
+                    if (event.keys().asSequence().toSet() != setOf("version", "id", "generation", "frame", "load", "layout", "x", "y", "type", "region")) return
+                    for (key in listOf("x", "y")) {
+                        val coordinate = event.optDouble(key, -1.0)
+                        if (!coordinate.isFinite() || coordinate < 0 || coordinate >= 1) return
+                    }
+                    val safe = mutableMapOf<String, Any?>()
+                    for (key in BodyPickGuard.TOKEN + setOf("id")) {
+                        val number = event.optDouble(key, -1.0)
+                        if (!number.isFinite() || number < 0 || number > 9007199254740991.0 || number != Math.floor(number)) return
+                        safe[key] = number.toLong()
+                    }
+                    safe["region"] = if (event.isNull("region")) null else event.optString("region")
+                    main.post {
+                        val request = pickRequest
+                        if (!disposed && !processGone && !paused && request != null &&
+                            BodyPickGuard.matches(request, safe, rendered)) {
+                            val result = pickResult
+                            pickResult = null
+                            cancelPick()
+                            result?.success(safe)
+                        }
+                    }
+                    return
+                }
                 val status = event.optString("status")
                 if (event.optInt("version") != 2 || status !in listOf("loading", "ready", "unavailable", "error")) return
                 val yaw = event.optDouble("yaw", 0.0)
@@ -161,12 +203,24 @@ internal class CharacterBodyView(
                     safe["turn"] = turn
                     safe["revision"] = revision.toLong()
                 }
+                val token = mutableMapOf<String, Any?>()
+                for (key in BodyPickGuard.TOKEN) {
+                    val number = event.optDouble(key, -1.0)
+                    if (number.isFinite() && number >= 0 && number <= 9007199254740991.0 && number == Math.floor(number)) {
+                        token[key] = number.toLong()
+                        safe[key] = number.toLong()
+                    }
+                }
                 // Only aggregate renderer timings; no workout or source payload in logs.
                 val metrics = listOf("frames", "totalMs", "maxMs", "loadMs").associateWith {
                     event.optDouble(it, 0.0).takeIf { value -> value.isFinite() && value >= 0 } ?: 0.0
                 }
                 main.post {
                     if (!disposed && !processGone) {
+                        if (status == "ready" && token.size == BodyPickGuard.TOKEN.size &&
+                            token["generation"] == display?.optJSONObject("interaction")?.optLong("generation")) {
+                            rendered = token
+                        } else if (status != "ready") invalidatePick()
                         channel.invokeMethod("status", safe)
                         if (BuildConfig.DEBUG) Log.i("AlkionBody", "$status $metrics")
                     }
@@ -175,9 +229,27 @@ internal class CharacterBodyView(
         }, "AlkionNative")
         channel.setMethodCallHandler { call, result ->
             if (disposed || processGone) { result.error("disposed", "Body surface disposed", null); return@setMethodCallHandler }
+            if (call.method == "pick") {
+                val request = call.arguments as? Map<*, *>
+                if (request == null || !BodyPickGuard.request(request)) {
+                    result.error("invalid_pick", "Invalid body pick", null); return@setMethodCallHandler
+                }
+                cancelPick()
+                if (paused || !loaded || display?.optBoolean("visible") != true ||
+                    display?.optBoolean("paused") != true || display?.optJSONObject("interaction")?.optBoolean("enabled") != true ||
+                    rendered == null || BodyPickGuard.TOKEN.any { (request[it] as Number).toLong() != (rendered?.get(it) as? Number)?.toLong() }) {
+                    result.success(null); return@setMethodCallHandler
+                }
+                pickRequest = request; pickResult = result
+                sendDisplay()
+                pickTimeout = Runnable { if (pickRequest === request) cancelPick() }
+                main.postDelayed(pickTimeout!!, 1500)
+                return@setMethodCallHandler
+            }
             if (call.method != "display") { result.notImplemented(); return@setMethodCallHandler }
             val value = validateDisplay(call.arguments)
             if (value == null) { result.error("invalid_display", "Invalid body display state", null); return@setMethodCallHandler }
+            if (display?.toString() != value.toString()) invalidatePick()
             display = value
             val background = value.getJSONArray("background")
             web.setBackgroundColor(Color.rgb(background.getInt(0), background.getInt(1), background.getInt(2)))
@@ -191,14 +263,17 @@ internal class CharacterBodyView(
         val update = display?.let { ",window.AlkionBody.update($it)" } ?: ""
         // Include lifecycle in every replaceable snapshot. A late display
         // completion can never drain an older unpaused state after a pause.
-        evaluations.offer("window.AlkionBody && (window.AlkionBody.hostPaused($paused)$update)")
+        val pick = pickRequest?.let { ",window.AlkionBody.pick(${JSONObject(it)})" } ?: ""
+        evaluations.offer("window.AlkionBody && (window.AlkionBody.hostPaused($paused)$update$pick)")
     }
     fun hostPaused(value: Boolean) {
         hostIsPaused = value
         updatePaused()
     }
     private fun updatePaused() {
-        paused = hostIsPaused || !attached
+        val next = hostIsPaused || !attached
+        if (next != paused) invalidatePick()
+        paused = next
         if (disposed || processGone) return
         sendDisplay()
         if (paused) web.onPause() else web.onResume()
@@ -217,6 +292,7 @@ internal class CharacterBodyView(
     override fun getView(): View = container
     override fun dispose() {
         if (disposed) return
+        invalidatePick()
         disposed = true
         attached = false
         context.baseContext = application
@@ -238,7 +314,8 @@ internal class CharacterBodyView(
 internal fun validateDisplay(raw: Any?): JSONObject? {
     val map = raw as? Map<*, *> ?: return null
     val keys = setOf("version", "style", "scores", "neutral", "accent", "background", "theme", "visible", "reduced", "compact", "paused", "yaw", "turn", "command", "revision", "retry")
-    if (map.keys != keys || map["version"] != 2 || map["style"] !in listOf("male", "female") || map["theme"] !in listOf("light", "dark")) return null
+    if (map.keys != keys && map.keys != keys + "interaction") return null
+    if (map["version"] != 2 || map["style"] !in listOf("male", "female") || map["theme"] !in listOf("light", "dark")) return null
     if (listOf("visible", "reduced", "compact", "paused").any { map[it] !is Boolean }) return null
     for (key in listOf("neutral", "accent", "background")) {
         val rgb = map[key] as? List<*> ?: return null
@@ -254,6 +331,13 @@ internal fun validateDisplay(raw: Any?): JSONObject? {
     for (key in listOf("command", "revision", "retry")) {
         val number = map[key]
         if ((number !is Int && number !is Long) || (number as Number).toLong() !in 0..9007199254740991L) return null
+    }
+    if (map.containsKey("interaction")) {
+        val interaction = map["interaction"] as? Map<*, *> ?: return null
+        if (interaction.keys != setOf("enabled", "selected", "generation") || interaction["enabled"] !is Boolean ||
+            !BodyPickGuard.integer(interaction["generation"]) ||
+            (interaction["selected"] != null && interaction["selected"] !in muscles) ||
+            (interaction["enabled"] == false && interaction["selected"] != null)) return null
     }
     return JSONObject(map)
 }

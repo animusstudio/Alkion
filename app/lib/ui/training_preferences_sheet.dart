@@ -7,6 +7,8 @@ import '../theme/tokens.dart';
 import '../widgets/fit_label.dart';
 import '../theme/typography.dart';
 import '../widgets/plan_form.dart';
+import '../widgets/stepper.dart';
+import '../widgets/pending_input.dart';
 import '../widgets/prescription_controls.dart';
 
 Future<void> showTrainingPreferencesSheet(
@@ -24,7 +26,10 @@ Future<void> showTrainingPreferencesSheet(
     duration: Motion.of(context, Motion.base),
     reverseDuration: Motion.of(context, Motion.fast),
   ),
-  builder: (_) => TrainingPreferencesSheet(settings: settings),
+  builder: (_) => ListenableBuilder(
+    listenable: settings,
+    builder: (_, _) => TrainingPreferencesSheet(settings: settings),
+  ),
 );
 
 class TrainingPreferencesSheet extends StatefulWidget {
@@ -91,6 +96,7 @@ class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
                       : l.trainingRepRange,
                   onSelect: (v) {
                     if (!_saving && _error == null) {
+                      commitPendingInput();
                       _write(() => widget.settings.setRepEntry(v));
                     }
                   },
@@ -105,9 +111,42 @@ class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
                       v == RirControls.off ? l.trainingRirOff : l.trainingShow,
                   onSelect: (v) {
                     if (!_saving && _error == null) {
+                      commitPendingInput();
                       _write(() => widget.settings.setRirControls(v));
                     }
                   },
+                ),
+              ),
+              Field(
+                label: l.profileCompoundRest,
+                child: WStepper(
+                  value: widget.settings.restCompoundSeconds.toDouble(),
+                  step: 15,
+                  format: (v) => '${v.round()}s',
+                  formatForEdit: (v) => v.round().toString(),
+                  min: 0,
+                  allowDecimal: false,
+                  editable: !_saving,
+                  semanticLabel: l.profileCompoundRest,
+                  onChanged: (v) => _write(
+                    () => widget.settings.setRestCompoundSeconds(v.round()),
+                  ),
+                ),
+              ),
+              Field(
+                label: l.profileIsolationRest,
+                child: WStepper(
+                  value: widget.settings.restIsolationSeconds.toDouble(),
+                  step: 15,
+                  format: (v) => '${v.round()}s',
+                  formatForEdit: (v) => v.round().toString(),
+                  min: 0,
+                  allowDecimal: false,
+                  editable: !_saving,
+                  semanticLabel: l.profileIsolationRest,
+                  onChanged: (v) => _write(
+                    () => widget.settings.setRestIsolationSeconds(v.round()),
+                  ),
                 ),
               ),
               if (_saving) const LinearProgressIndicator(),

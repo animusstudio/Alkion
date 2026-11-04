@@ -34,6 +34,52 @@ void main() {
     SingleChildScrollView(child: SizedBox(width: 260, child: child)),
   );
 
+  testWidgets(
+    'unavailable values keep rulers and empty typing seeds without authoring zero',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          SetValuesEditor(
+            weightKg: 0,
+            reps: 0,
+            unit: UnitService(),
+            weightAvailable: false,
+            repsAvailable: false,
+            onWeight: (v) {
+              weightCalls++;
+              lastWeight = v;
+            },
+            onReps: (_) {},
+          ),
+        ),
+      );
+      for (final key in ['live-weight', 'live-reps']) {
+        final ruler = tester.widget<RulerPicker>(find.byKey(Key(key)));
+        expect(ruler.format(ruler.value), '—');
+      }
+      expect(weightCalls, 0);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('live-weight')),
+          matching: find.byKey(const Key('ruler-centre')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('number-entry-field')))
+            .controller!
+            .text,
+        isEmpty,
+      );
+      await tester.enterText(find.byKey(const Key('number-entry-field')), '0');
+      await tester.tap(find.byKey(const Key('number-entry-done')));
+      await tester.pumpAndSettle();
+      expect(weightCalls, 1, reason: 'explicit zero is a deliberate selection');
+      expect(lastWeight, 0);
+    },
+  );
+
   for (final code in ['en', 'de', 'es', 'it']) {
     testWidgets(
       'typed live weight retains exact comma input above keyboard at 320dp 2x $code',

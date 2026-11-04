@@ -295,11 +295,11 @@ void main() {
     expectCaptionOnFirstRirRow(tester, find.text('RIR'));
   });
 
-  testWidgets('no RIR picker for a pending set or a logged warm-up', (
+  testWidgets('RIR is available for pending work and absent for warm-ups', (
     tester,
   ) async {
     await tester.pumpWidget(host(card(_s())));
-    expect(find.byKey(const Key('rir-0')), findsNothing);
+    expect(find.byKey(const Key('rir-0')), findsOneWidget);
     await tester.pumpWidget(host(card(_s(done: true, warmup: true))));
     expect(find.byKey(const Key('rir-0')), findsNothing);
   });

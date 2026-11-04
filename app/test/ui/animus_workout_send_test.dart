@@ -6,6 +6,8 @@ import 'package:alkion/animus/connection.dart';
 import 'package:alkion/animus/contracts.dart';
 import 'package:alkion/animus/ports.dart';
 import 'package:alkion/animus/probe.dart';
+import 'package:alkion/animus/recovery_review.dart';
+import 'package:flutter/services.dart';
 import 'package:alkion/animus/workout_send.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/ui/animus_connection_panel.dart';
@@ -84,6 +86,116 @@ class _Sender extends ChangeNotifier implements AnimusWorkoutSendPort {
   Future<void> close() async {}
 }
 
+RecoveryStage _reviewStage({
+  String id = 'synthetic-stage',
+  bool verified = false,
+}) => RecoveryStage(
+  id,
+  'synthetic-attachment',
+  '10000000-0000-4000-8000-000000000002',
+  verified ? 'verified' : 'staging',
+  {
+    'targets': [
+      for (var i = 0; i < 4; i++)
+        {
+          'dataset': 'definitions',
+          'id': 'synthetic-target-$i',
+          'expected': <Object?>[],
+        },
+    ],
+    'coverage': 'incomplete-known-targets',
+  },
+  {
+    'definitions/a': RecoveryComparison.unchanged,
+    'definitions/b': RecoveryComparison.changed,
+    'workouts/a': RecoveryComparison.acknowledgedMissing,
+    'workouts/b': RecoveryComparison.uncertainMissing,
+  },
+);
+
+class _Review extends ChangeNotifier implements AnimusRecoveryReviewPort {
+  @override
+  bool busy = false;
+  @override
+  RecoveryReviewIssue? issue;
+  @override
+  bool reviewedReply = false;
+  @override
+  RecoveryReviewSnapshot? snapshot = const RecoveryReviewSnapshot(
+    required: true,
+    adopted: false,
+    manualDisposition: false,
+  );
+  int localLoads = 0, comparisons = 0;
+  final adoptions = <String>[], retries = <String>[];
+  void publish(RecoveryReviewSnapshot value) {
+    snapshot = value;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> load() async {
+    localLoads++;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> compare() async {
+    comparisons++;
+    publish(
+      RecoveryReviewSnapshot(
+        required: true,
+        adopted: false,
+        manualDisposition: false,
+        canAdopt: true,
+        stage: _reviewStage(verified: true),
+      ),
+    );
+  }
+
+  @override
+  Future<void> adopt(String stageId) async {
+    adoptions.add(stageId);
+    publish(
+      RecoveryReviewSnapshot(
+        required: false,
+        adopted: true,
+        manualDisposition: false,
+        stage: snapshot!.stage,
+      ),
+    );
+  }
+
+  @override
+  Future<bool> canRetry(String sessionId) async => snapshot?.adopted == true;
+  @override
+  Future<ReviewedRetryScope?> prepareRetry(String sessionId) async =>
+      snapshot?.adopted != true
+      ? null
+      : ReviewedRetryScope(
+          journalId: 'synthetic-once',
+          bindingId: 'synthetic-binding',
+          sessionId: sessionId,
+          selectionId: 'original-frozen-selection',
+          stageId: snapshot!.stage!.id,
+          operationId: 'synthetic-op',
+          attemptId: 'synthetic-attempt',
+          requestHash: 'synthetic-hash',
+          origin: 'old-origin',
+          generation: 'current-generation',
+          epoch: 0,
+        );
+  @override
+  Future<void> retryReviewed(ReviewedRetryScope scope) async {
+    retries.add('${scope.sessionId}/${scope.stageId}');
+    reviewedReply = true;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> close() async {}
+}
+
 class _Auth implements AnimusAuthPort {
   int calls = 0;
   final session = AnimusAuthSession(
@@ -144,9 +256,11 @@ Widget _wrap(
   Locale locale = const Locale('en'),
   bool profile = false,
   Brightness brightness = Brightness.dark,
+  AnimusRecoveryReviewPort? review,
 }) => MultiProvider(
   providers: [
     ListenableProvider<AnimusWorkoutSendPort?>.value(value: sender),
+    ListenableProvider<AnimusRecoveryReviewPort?>.value(value: review),
     ChangeNotifierProvider<AnimusConnectionController?>.value(
       value: connection,
     ),
@@ -411,6 +525,240 @@ void main() {
     await _capture(tester, 'profile-german-large-text');
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('ordinary ready connection does not claim a reviewed view', (
+    tester,
+  ) async {
+    await connect();
+    final review = _Review();
+    addTearDown(review.dispose);
+    review.publish(
+      const RecoveryReviewSnapshot(
+        required: false,
+        adopted: false,
+        manualDisposition: false,
+      ),
+    );
+    sender.current = _selection();
+    await tester.pumpWidget(_wrap(sender, connection, review: review));
+    await _pump(tester);
+    final l = lookupAppLocalizations(const Locale('en'));
+    expect(find.byKey(const Key('animus-recovery-review')), findsNothing);
+    expect(find.text(l.animusRecoveryAdopted), findsNothing);
+    expect(find.text(l.animusSavedLocally), findsOneWidget);
+    expect(
+      tester.widget<TextButton>(find.byKey(_sendKey)).onPressed,
+      isNotNull,
+    );
+    expect(review.comparisons, 0);
+    expect(review.adoptions, isEmpty);
+    expect(review.retries, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'review opening and hiding never grant permission or send; incomplete stage cannot adopt',
+    (tester) async {
+      await connect();
+      final review = _Review();
+      addTearDown(review.dispose);
+      sender.current = _selection(
+        status: AnimusWorkoutSendStatus.needsReview,
+        issue: AnimusWorkoutSendIssue.recoveryBlocked,
+      );
+      await tester.pumpWidget(_wrap(sender, connection, review: review));
+      await _pump(tester);
+      final l = lookupAppLocalizations(const Locale('en'));
+      expect(review.comparisons, 0);
+      expect(review.adoptions, isEmpty);
+      expect(sender.sent, isEmpty);
+      expect(tester.widget<TextButton>(find.byKey(_sendKey)).onPressed, isNull);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await _pump(tester);
+      expect(find.text(l.animusRecoveryCoverage), findsOneWidget);
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const Key('animus-recovery-adopt')))
+            .onPressed,
+        isNull,
+      );
+      final semantics = tester.ensureSemantics();
+      expect(
+        tester
+            .getSemantics(find.byKey(const Key('animus-recovery-compare')))
+            .label,
+        l.animusRecoveryCompare,
+      );
+      semantics.dispose();
+      await tester.tap(find.byKey(const Key('animus-recovery-open')));
+      await _pump(tester);
+      expect(review.comparisons, 0);
+      expect(review.adoptions, isEmpty);
+      expect(review.retries, isEmpty);
+      expect(sender.sent, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
+    'explicit comparison/adoption keeps ordinary send blocked; reviewed retry requires its own confirmation',
+    (tester) async {
+      await connect();
+      final review = _Review();
+      addTearDown(review.dispose);
+      sender.current = _selection(
+        status: AnimusWorkoutSendStatus.needsReview,
+        issue: AnimusWorkoutSendIssue.recoveryBlocked,
+      );
+      await tester.pumpWidget(_wrap(sender, connection, review: review));
+      await _pump(tester);
+      final l = lookupAppLocalizations(const Locale('en'));
+      await tester.tap(find.byKey(const Key('animus-recovery-open')));
+      await _pump(tester);
+      await tester.tap(find.byKey(const Key('animus-recovery-compare')));
+      await _pump(tester);
+      expect(review.comparisons, 1);
+      await tester.tap(find.byKey(const Key('animus-recovery-adopt')));
+      await _pump(tester);
+      expect(review.adoptions, isEmpty);
+      await tester.tap(
+        find.widgetWithText(TextButton, l.animusRecoveryAdopt).last,
+      );
+      await _pump(tester);
+      expect(review.adoptions, ['synthetic-stage']);
+      expect(tester.widget<TextButton>(find.byKey(_sendKey)).onPressed, isNull);
+      expect(sender.sent, isEmpty);
+      await tester.tap(find.byKey(const Key('animus-recovery-retry')));
+      await _pump(tester);
+      expect(review.retries, isEmpty);
+      await tester.tap(find.text(l.commonCancel));
+      await _pump(tester);
+      expect(review.retries, isEmpty);
+      await tester.tap(find.byKey(const Key('animus-recovery-retry')));
+      await _pump(tester);
+      await tester.tap(
+        find.widgetWithText(TextButton, l.animusRecoveryRetry).last,
+      );
+      await _pump(tester);
+      expect(review.retries, ['$_session/synthetic-stage']);
+      expect(sender.sent, isEmpty);
+      expect(find.text(l.animusRecoveryReviewedReply), findsOneWidget);
+      expect(find.text(l.animusSavedLocally), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
+    'confirmation cannot adopt a replaced stage or retry after account changes',
+    (tester) async {
+      await connect();
+      final review = _Review();
+      addTearDown(review.dispose);
+      await review.compare();
+      await tester.pumpWidget(_wrap(sender, connection, review: review));
+      await _pump(tester);
+      final l = lookupAppLocalizations(const Locale('en'));
+      await tester.tap(find.byKey(const Key('animus-recovery-open')));
+      await _pump(tester);
+      await tester.tap(find.byKey(const Key('animus-recovery-adopt')));
+      await _pump(tester);
+      review.publish(
+        RecoveryReviewSnapshot(
+          required: true,
+          adopted: false,
+          manualDisposition: false,
+          canAdopt: true,
+          stage: _reviewStage(id: 'newer-stage', verified: true),
+        ),
+      );
+      await _pump(tester);
+      await tester.tap(
+        find.widgetWithText(TextButton, l.animusRecoveryAdopt).last,
+      );
+      await _pump(tester);
+      expect(review.adoptions, isEmpty);
+      await review.adopt('newer-stage');
+      await _pump(tester);
+      await tester.tap(find.byKey(const Key('animus-recovery-retry')));
+      await _pump(tester);
+      await connection.disconnect();
+      await tester.tap(
+        find.widgetWithText(TextButton, l.animusRecoveryRetry).last,
+      );
+      await _pump(tester);
+      expect(review.retries, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
+    'recovery comparison uses incumbent themes and four locales at narrow large text',
+    (tester) async {
+      await connect();
+      setPhone(tester, width: 320, height: 900, textScale: 2);
+      final review = _Review();
+      addTearDown(review.dispose);
+      review.publish(
+        RecoveryReviewSnapshot(
+          required: true,
+          adopted: false,
+          manualDisposition: true,
+          canAdopt: true,
+          stage: _reviewStage(verified: true),
+        ),
+      );
+      sender.current = _selection(
+        status: AnimusWorkoutSendStatus.needsReview,
+        issue: AnimusWorkoutSendIssue.recoveryBlocked,
+      );
+      for (final brightness in Brightness.values) {
+        for (final code in ['en', 'de', 'es', 'it']) {
+          await tester.pumpWidget(
+            _wrap(
+              sender,
+              connection,
+              review: review,
+              locale: Locale(code),
+              brightness: brightness,
+            ),
+          );
+          await _pump(tester);
+          await tester.ensureVisible(
+            find.byKey(const Key('animus-recovery-open')),
+          );
+          await tester.tap(find.byKey(const Key('animus-recovery-open')));
+          await _pump(tester);
+          expect(
+            find.byKey(const Key('animus-recovery-unknown-history')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull, reason: '$code/$brightness');
+          for (final key in [
+            'animus-recovery-open',
+            'animus-recovery-compare',
+            'animus-recovery-adopt',
+          ]) {
+            expect(
+              tester.getSize(find.byKey(Key(key))).height,
+              greaterThanOrEqualTo(48),
+            );
+          }
+          if (code == 'en' && brightness == Brightness.dark ||
+              code == 'de' && brightness == Brightness.light) {
+            await tester.ensureVisible(
+              find.byKey(const Key('animus-saved-locally')),
+            );
+            await _pump(tester);
+            await _capture(tester, 'recovery-${brightness.name}-$code-top');
+            await tester.ensureVisible(
+              find.byKey(const Key('animus-recovery-adopt')),
+            );
+            await _pump(tester);
+            await _capture(tester, 'recovery-${brightness.name}-$code-actions');
+          }
+          await tester.pumpWidget(const SizedBox());
+        }
+      }
+    },
+  );
 
   testWidgets(
     'selected action composes with real SQLite History without hiding editors',
