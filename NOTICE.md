@@ -26,6 +26,9 @@ rights in every file in this repository:
   [CC BY-SA 4.0 artwork notice](app/assets/exercise_artwork/NOTICE.md).
 - Workout Guide frames, masters and notices in `app/assets/workout_guide/` retain
   their own licenses and attribution, including Everkinetic/Bryl Lim credits.
+- Bundled Iconoir regular icons retain their separate [MIT notice](app/assets/icons/NOTICE)
+  and [source/provenance record](app/tool/iconoir/README.md). The root software
+  grant does not replace those permissions.
 - Bundled fonts retain their accompanying OFL notices. Other third-party
   software, study material and assets retain their own terms and notices.
 - Brand/launcher artwork, names and trademarks, distinct non-software artwork,

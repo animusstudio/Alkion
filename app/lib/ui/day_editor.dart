@@ -17,7 +17,7 @@ import '../data/models.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -687,7 +687,7 @@ class _DayEditorState extends State<DayEditor> {
                       if (_weekday != null)
                         TrainingAction(
                           l.trainingRemoveWeekday,
-                          icon: WIcons.minus,
+                          icon: AlkionGlyph.minus,
                           onTap: _controlsLocked
                               ? null
                               : () => setState(() => _weekday = null),
@@ -759,7 +759,7 @@ class _DayEditorState extends State<DayEditor> {
                                   child: const SizedBox(
                                     width: 48,
                                     height: 48,
-                                    child: Icon(Icons.drag_handle),
+                                    child: AlkionIcon(AlkionGlyph.reorder),
                                   ),
                                 ),
                                 Expanded(
@@ -784,7 +784,7 @@ class _DayEditorState extends State<DayEditor> {
                                   onPressed: _controlsLocked
                                       ? null
                                       : () => _removeSlot(i),
-                                  icon: const Icon(Icons.close),
+                                  icon: const AlkionIcon(AlkionGlyph.close),
                                 ),
                               ],
                             ),
@@ -1244,10 +1244,15 @@ class _DaySlotRowState extends State<DaySlotRow> {
                           // Chevron (non-interactive; header toggles expanded)
                           ExcludeSemantics(
                             child: AnimatedRotation(
-                              turns: widget.expanded ? 0.25 : 0,
+                              turns: widget.expanded
+                                  ? (Directionality.of(context) ==
+                                            TextDirection.rtl
+                                        ? -0.25
+                                        : 0.25)
+                                  : 0,
                               duration: Motion.of(context, Motion.fast),
-                              child: Icon(
-                                WIcons.chevron,
+                              child: AlkionIcon(
+                                AlkionGlyph.chevronRight,
                                 size: 16,
                                 color: tokens.faint,
                               ),
@@ -1273,8 +1278,8 @@ class _DaySlotRowState extends State<DaySlotRow> {
                       child: SizedBox(
                         width: 48,
                         height: 48,
-                        child: Icon(
-                          Icons.drag_handle,
+                        child: AlkionIcon(
+                          AlkionGlyph.reorder,
                           size: 20,
                           color: tokens.dim,
                         ),
@@ -1311,9 +1316,9 @@ class _DaySlotRowState extends State<DaySlotRow> {
                             ),
                           ),
                           alignment: Alignment.center,
-                          child: Icon(
-                            WIcons.trash,
-                            size: 15,
+                          child: AlkionIcon(
+                            AlkionGlyph.delete,
+                            size: 16,
                             color: tokens.danger,
                           ),
                         ),
@@ -1377,7 +1382,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                     _rirField(l.dayEditorRirHigh, false),
                     TrainingAction(
                       l.trainingRemoveRir,
-                      icon: WIcons.minus,
+                      icon: AlkionGlyph.minus,
                       onTap: widget.readOnly
                           ? null
                           : () => _rirPolicy(RirPolicy.off),
@@ -1432,7 +1437,7 @@ class _DaySlotRowState extends State<DaySlotRow> {
                       ),
                     TrainingAction(
                       l.trainingUseExerciseDefault,
-                      icon: WIcons.refresh,
+                      icon: AlkionGlyph.refresh,
                       onTap: widget.readOnly
                           ? null
                           : () => _rirPolicy(RirPolicy.inherit),

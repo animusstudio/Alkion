@@ -7,11 +7,12 @@ import 'package:alkion/data/models.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/data/session_repository.dart';
 import 'package:alkion/session/resume.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/ui/history_screen.dart';
 import 'package:alkion/units/unit_service.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 /// Only `setsForSession` and `deleteSession` are real, and both complete at
 /// once: the card's body has no database to deadlock `pumpWidget` on.
@@ -138,25 +139,53 @@ Widget card(
   VoidCallback? onResume,
   HistoryDeleted? onDeleted,
   Unit unit = Unit.kg,
+  TextDirection direction = TextDirection.ltr,
 }) => wrapL10n(
-  SessionCard(
-    session: session ?? sessionRow(),
-    catalogMap: catalog,
-    sessionRepo: repo,
-    units: UnitService()..setUnit(unit),
-    resumeState: state,
-    onResume: onResume,
-    onDeleted: onDeleted,
+  Directionality(
+    textDirection: direction,
+    child: SessionCard(
+      session: session ?? sessionRow(),
+      catalogMap: catalog,
+      sessionRepo: repo,
+      units: UnitService()..setUnit(unit),
+      resumeState: state,
+      onResume: onResume,
+      onDeleted: onDeleted,
+    ),
   ),
 );
 
 Future<void> expand(WidgetTester tester) async {
-  await tester.tap(find.byIcon(WIcons.chevron).first); // the header chevron
+  await tester.tap(
+    findGlyph(AlkionGlyph.chevronRight).first,
+  ); // the header chevron
   await tester.pumpAndSettle();
 }
 
 void main() {
   setUpAll(() => initializeDateFormatting());
+
+  for (final direction in TextDirection.values) {
+    testWidgets('history disclosure opens down in $direction', (tester) async {
+      await tester.pumpWidget(
+        card(FakeSessionRepository([logged(100)]), direction: direction),
+      );
+      expect(
+        tester.widget<AnimatedRotation>(find.byType(AnimatedRotation)).turns,
+        0,
+      );
+      await expand(tester);
+      expect(
+        tester.widget<AnimatedRotation>(find.byType(AnimatedRotation)).turns,
+        direction == TextDirection.rtl ? -0.25 : 0.25,
+      );
+      await expand(tester);
+      expect(
+        tester.widget<AnimatedRotation>(find.byType(AnimatedRotation)).turns,
+        0,
+      );
+    });
+  }
 
   testWidgets(
     'an available session offers Resume first, then Add exercise and Delete',
@@ -203,7 +232,7 @@ void main() {
       expect(deleteAction, findsNothing);
       expect(find.text('Bench'), findsOneWidget);
       // Only the header chevron: tappable exercise rows carry their own.
-      expect(find.byIcon(WIcons.chevron), findsOneWidget);
+      expect(findGlyph(AlkionGlyph.chevronRight), findsOneWidget);
 
       await tester.tap(resumeAction);
       expect(resumed, 1);
@@ -219,7 +248,7 @@ void main() {
     expect(resumeAction, findsNothing);
     expect(addAction, findsOneWidget);
     expect(deleteAction, findsOneWidget);
-    expect(find.byIcon(WIcons.chevron), findsNWidgets(2));
+    expect(findGlyph(AlkionGlyph.chevronRight), findsNWidgets(2));
   });
 
   testWidgets('a confirmed Delete removes the session and reports it', (
@@ -387,7 +416,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(SessionCardBody),
-          matching: find.byIcon(WIcons.bolt),
+          matching: findGlyph(AlkionGlyph.energy),
         ),
         findsNothing,
       );
@@ -427,7 +456,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(SessionCardBody),
-          matching: find.byIcon(WIcons.bolt),
+          matching: findGlyph(AlkionGlyph.energy),
         ),
         bolt ? findsOneWidget : findsNothing,
       );

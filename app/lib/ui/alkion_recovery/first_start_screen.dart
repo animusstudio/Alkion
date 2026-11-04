@@ -12,6 +12,7 @@ import '../../identity/alkion_identity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../recovery/backup.dart';
 import '../../recovery/restore.dart';
+import '../../theme/alkion_icon.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/workout_canvas.dart';
 import '../../theme/tokens.dart';
@@ -331,7 +332,7 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                           : () => setState(
                                               () => _offline = false,
                                             ),
-                                      icon: const Icon(Icons.arrow_back),
+                                      icon: const AlkionIcon(AlkionGlyph.back),
                                       label: Text(l.commonBack),
                                     ),
                                   ),

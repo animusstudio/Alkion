@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/ui/character_body.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/widgets/split_card.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -249,7 +250,7 @@ void main() {
         SplitCard(days: _twodays, nextIndex: 0, onStart: (_) {}),
       );
       await tester.pumpAndSettle();
-      expect(find.byIcon(WIcons.chevron), findsNothing);
+      expect(findGlyph(AlkionGlyph.chevronRight), findsNothing);
     });
 
     testWidgets(

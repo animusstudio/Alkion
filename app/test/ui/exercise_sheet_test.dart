@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/theme/app_theme.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/ui/exercise_sheet.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
 import '../support/app_fonts.dart';
 import '../support/layout_expect.dart';
+import '../support/icon_finders.dart';
 
 const _bench = Exercise(
   id: 'bench',
@@ -63,7 +64,7 @@ void main() {
           of: find.text('Bench Press'),
           matching: find.byType(GestureDetector),
         ),
-        matching: find.byIcon(WIcons.check),
+        matching: findGlyph(AlkionGlyph.check),
       ),
       findsOneWidget,
     );
@@ -82,7 +83,7 @@ void main() {
           of: find.text('Curl'),
           matching: find.byType(GestureDetector),
         ),
-        matching: find.byIcon(WIcons.check),
+        matching: findGlyph(AlkionGlyph.check),
       ),
       findsNothing,
     );
@@ -120,7 +121,7 @@ void main() {
             of: find.text('Bodyweight'),
             matching: find.byType(GestureDetector),
           ),
-          matching: find.byIcon(WIcons.check),
+          matching: findGlyph(AlkionGlyph.check),
         ),
         findsOneWidget,
       );
@@ -141,7 +142,7 @@ void main() {
               of: find.text(name),
               matching: find.byType(GestureDetector),
             ),
-            matching: find.byIcon(WIcons.check),
+            matching: findGlyph(AlkionGlyph.check),
           ),
           findsNothing,
         );
@@ -225,7 +226,7 @@ void main() {
       final focusedBeforeClear = tester
           .widget<EditableText>(find.byType(EditableText))
           .focusNode;
-      await tester.tap(find.byIcon(Icons.close));
+      await tester.tap(findGlyph(AlkionGlyph.close));
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(field).controller!.text, isEmpty);
       expect(

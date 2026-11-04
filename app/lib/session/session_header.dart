@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
@@ -164,13 +164,10 @@ class SessionHeader extends StatelessWidget {
                       key: const Key('session-minimize'),
                       label: l.sessionMinimize,
                       onTap: onMinimize,
-                      icon: Transform.rotate(
-                        angle: 1.5708,
-                        child: Icon(
-                          WIcons.chevron,
-                          size: 18,
-                          color: tokens.dim,
-                        ),
+                      icon: AlkionIcon(
+                        AlkionGlyph.chevronDown,
+                        size: 18,
+                        color: tokens.dim,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -203,7 +200,11 @@ class SessionHeader extends StatelessWidget {
                       key: const Key('session-menu'),
                       label: l.sessionWorkoutOptions,
                       onTap: onMenu,
-                      icon: Icon(WIcons.more, size: 18, color: tokens.dim),
+                      icon: AlkionIcon(
+                        AlkionGlyph.more,
+                        size: 18,
+                        color: tokens.dim,
+                      ),
                     ),
                   ],
                 ),

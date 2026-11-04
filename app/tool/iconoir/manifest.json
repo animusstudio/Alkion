@@ -1,0 +1,373 @@
+{
+  "repository": "https://github.com/iconoir-icons/iconoir",
+  "revision": "39834e3f193bc0cca2c36bebb6a650471977433d",
+  "variant": "regular",
+  "license": {
+    "spdx": "MIT",
+    "source": "sources/LICENSE",
+    "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/LICENSE",
+    "sha256": "869b60da1ada5b896d1f285c3c24ca193d612e308d1710a77a58f2f572eb4fa2"
+  },
+  "roles": {
+    "home": "home-simple",
+    "workout": "gym",
+    "plan": "calendar",
+    "history": "clock-rotate-right",
+    "progress": "graph-up",
+    "library": "book-stack",
+    "settings": "settings",
+    "add": "plus",
+    "edit": "edit-pencil",
+    "delete": "trash",
+    "play": "play",
+    "pause": "pause",
+    "profile": "user",
+    "back": "arrow-left",
+    "forward": "arrow-right",
+    "check": "check",
+    "minus": "minus",
+    "timer": "timer",
+    "energy": "flash",
+    "scale": "weight",
+    "language": "language",
+    "chevronRight": "nav-arrow-right",
+    "search": "search",
+    "target": "position",
+    "logout": "log-out",
+    "cloud": "cloud",
+    "arrowUp": "arrow-up",
+    "flame": "fire-flame",
+    "share": "share-android",
+    "capture": "archive",
+    "update": "download",
+    "refresh": "refresh",
+    "more": "more-horiz",
+    "close": "xmark",
+    "chevronUp": "nav-arrow-up",
+    "chevronDown": "nav-arrow-down",
+    "reorder": "menu",
+    "accessibility": "accessibility",
+    "error": "warning-circle",
+    "undo": "undo",
+    "favorite": "star",
+    "info": "info-circle",
+    "list": "list",
+    "imageUnavailable": "media-image-xmark",
+    "bicycle": "bicycle",
+    "run": "running",
+    "cable": "usb",
+    "machine": "settings",
+    "rope": "infinite",
+    "current": "check-circle",
+    "inDay": "list-select"
+  },
+  "rtl_roles": [
+    "back",
+    "forward",
+    "chevronRight",
+    "logout",
+    "undo"
+  ],
+  "assets": [
+    {
+      "name": "accessibility",
+      "source": "sources/accessibility.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/accessibility.svg",
+      "sha256": "b2f82c344dfd234e0730d25d52f32ac26b04e6157e17c445dbb9f5f1b5ad390c"
+    },
+    {
+      "name": "archive",
+      "source": "sources/archive.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/archive.svg",
+      "sha256": "0952264c4179c765b76f0b902f1bbff4ff7d9a0134ee015b25de28fd1b22e3c5"
+    },
+    {
+      "name": "arrow-left",
+      "source": "sources/arrow-left.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/arrow-left.svg",
+      "sha256": "28262da7fc0844b07b88154766936b19de19c7fc44804602b41eddc2509ad1bd"
+    },
+    {
+      "name": "arrow-right",
+      "source": "sources/arrow-right.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/arrow-right.svg",
+      "sha256": "cf13159505df944c66c9d36838508dcd58106fe0d776702aeaf08dd91553eb3f"
+    },
+    {
+      "name": "arrow-up",
+      "source": "sources/arrow-up.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/arrow-up.svg",
+      "sha256": "d1cf10b2dcbcb032898ef87f1198b1d3d26a4c0a558ba3c08bff97be6e5117f7"
+    },
+    {
+      "name": "bicycle",
+      "source": "sources/bicycle.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/bicycle.svg",
+      "sha256": "901a8b8e9e5b6a561bb0f9a2763f53d46126e14eb2235b9a284faecca5a449ab"
+    },
+    {
+      "name": "book-stack",
+      "source": "sources/book-stack.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/book-stack.svg",
+      "sha256": "28be934727133bed4c7e634edbe7de774a712c4462993d6e2ad15c7a63bb3c35"
+    },
+    {
+      "name": "calendar",
+      "source": "sources/calendar.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/calendar.svg",
+      "sha256": "8ae89c6d771ae5371a978ee43b348c44313109780510ca9195a7fe989d24adbb"
+    },
+    {
+      "name": "check",
+      "source": "sources/check.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/check.svg",
+      "sha256": "54e0d558f52ec6b7c2d3874431495eeee442e5906889e997639f59f61941b215"
+    },
+    {
+      "name": "check-circle",
+      "source": "sources/check-circle.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/check-circle.svg",
+      "sha256": "a169d45f4b95d6b2b7842a17abf88744869a4bf720568572580ef8f87e9860ab"
+    },
+    {
+      "name": "clock-rotate-right",
+      "source": "sources/clock-rotate-right.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/clock-rotate-right.svg",
+      "sha256": "e95955572ac3d60e0ba8a5204a0d63eba9ce1ea92da62ce287141f492fe17b62"
+    },
+    {
+      "name": "cloud",
+      "source": "sources/cloud.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/cloud.svg",
+      "sha256": "e2e460ef476d3a97f657ddc3e138b68389bef360692d3c86db8180a6399f2ba4"
+    },
+    {
+      "name": "download",
+      "source": "sources/download.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/download.svg",
+      "sha256": "f189b865ef0fff2926d268f0d812a2d6635e26b5fbd1ce789859947340eb9db2"
+    },
+    {
+      "name": "edit-pencil",
+      "source": "sources/edit-pencil.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/edit-pencil.svg",
+      "sha256": "a01d659d78db9428e76f71abe111bb2d4b9fa5981149e8ea99efbc4d7ee3ba37"
+    },
+    {
+      "name": "fire-flame",
+      "source": "sources/fire-flame.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/fire-flame.svg",
+      "sha256": "d49f4297e1a8807f0f615334f98d4a5b0a16a9eeeed223aa3201c8b24de5415d"
+    },
+    {
+      "name": "flash",
+      "source": "sources/flash.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/flash.svg",
+      "sha256": "845dd621fd5dff9b02aefe0876a96c07d28910ecb6f3d3f7668cc26ff40634db"
+    },
+    {
+      "name": "graph-up",
+      "source": "sources/graph-up.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/graph-up.svg",
+      "sha256": "88124635d5fa4ed652af9255b909838eae90c7fcf823c3c3f4b23821160979b1"
+    },
+    {
+      "name": "gym",
+      "source": "sources/gym.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/gym.svg",
+      "sha256": "d0bd927f73957c9c3e5591eeeb12c94683f9493b015c1575670fc0fe2e7536d9"
+    },
+    {
+      "name": "home-simple",
+      "source": "sources/home-simple.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/home-simple.svg",
+      "sha256": "75c68dfa0cb25ba3ce8ed82a0d704a5c0545017e435fdafd7b1bb80940458416"
+    },
+    {
+      "name": "infinite",
+      "source": "sources/infinite.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/infinite.svg",
+      "sha256": "ec0004db34ead4010761a388dce18ff3b36d3b4b3d4b979c7f6f6bf4597c1f2a"
+    },
+    {
+      "name": "info-circle",
+      "source": "sources/info-circle.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/info-circle.svg",
+      "sha256": "cfd5cde5c9ae8c9fa662463d98ae623571591a529f97ea23a346ed6fca179950"
+    },
+    {
+      "name": "language",
+      "source": "sources/language.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/language.svg",
+      "sha256": "fddf599ba8373468d3fc25d6dd07c1e7866a7f4522fff1f608e054f152dcc09a"
+    },
+    {
+      "name": "list",
+      "source": "sources/list.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/list.svg",
+      "sha256": "503708f73587ae9feba442c9f041f2b76698be15dcd5a70dce3c92ab46740a8a"
+    },
+    {
+      "name": "list-select",
+      "source": "sources/list-select.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/list-select.svg",
+      "sha256": "9c5688a556a04ddd1eebf0fa9b23819d336ee2fdd053429efb022f267b7a1703"
+    },
+    {
+      "name": "log-out",
+      "source": "sources/log-out.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/log-out.svg",
+      "sha256": "a02e98288d4cd8cf9fe5982d270dc35eb18017021fd117c3516bb0de9774354a"
+    },
+    {
+      "name": "media-image-xmark",
+      "source": "sources/media-image-xmark.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/media-image-xmark.svg",
+      "sha256": "168a9c8b5cc535c0ca829ed25e0e18b6d819ccd99eaa6b80831ced1c8a887a7c"
+    },
+    {
+      "name": "menu",
+      "source": "sources/menu.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/menu.svg",
+      "sha256": "f32e91fcee89cc9c99eed6a6ea059a31d8c65468547cad885bd40bc40ec50c61"
+    },
+    {
+      "name": "minus",
+      "source": "sources/minus.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/minus.svg",
+      "sha256": "babb05bca016bffdd38cbd1dcaeef6ccdf42fc8654124dee169a412eeed6d425"
+    },
+    {
+      "name": "more-horiz",
+      "source": "sources/more-horiz.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/more-horiz.svg",
+      "sha256": "55d3b3c4387201946c2a8a8bf10b88244fa220ca5ec6abb209c0d4f87edab231"
+    },
+    {
+      "name": "nav-arrow-down",
+      "source": "sources/nav-arrow-down.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/nav-arrow-down.svg",
+      "sha256": "ff19307d50e9f8dff6e219fef05c6628772bdaad2fe0c9e1b5cd2f2a1e0c11d3"
+    },
+    {
+      "name": "nav-arrow-right",
+      "source": "sources/nav-arrow-right.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/nav-arrow-right.svg",
+      "sha256": "3f382c1de764702e5bc36dfd06c2ef5954c505788b02417dbb9dd501b0a84fe4"
+    },
+    {
+      "name": "nav-arrow-up",
+      "source": "sources/nav-arrow-up.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/nav-arrow-up.svg",
+      "sha256": "86adcb5903e7787af6eee1023330c8014d01f560015148a9aa55bbacb3d61c06"
+    },
+    {
+      "name": "pause",
+      "source": "sources/pause.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/pause.svg",
+      "sha256": "5070289c69caf1bbe2e5755150caec6d773fe12fc2d29c6a197e60472e0103ab"
+    },
+    {
+      "name": "play",
+      "source": "sources/play.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/play.svg",
+      "sha256": "96f8a58bf714e83a554a478fdc43ee2e21950aef9f0e2fb32e27f922362f6adf"
+    },
+    {
+      "name": "plus",
+      "source": "sources/plus.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/plus.svg",
+      "sha256": "dbd0c9ec345745994d219d9bf30252abe534304e8f006316e14c32c8dbf3fb79"
+    },
+    {
+      "name": "position",
+      "source": "sources/position.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/position.svg",
+      "sha256": "e779466f3310d5b185267dc0c87c2eeacc56c5fb440873f3577a693a443c73f3"
+    },
+    {
+      "name": "refresh",
+      "source": "sources/refresh.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/refresh.svg",
+      "sha256": "d7d5ded772fa339b0185d97958606f2214c2f3893f6232402a28633aed8ed282"
+    },
+    {
+      "name": "running",
+      "source": "sources/running.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/running.svg",
+      "sha256": "eab837d52d3ff221c28af845505606ebc4e40e9ad84ca6b7cb5f19958fe2c5e5"
+    },
+    {
+      "name": "search",
+      "source": "sources/search.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/search.svg",
+      "sha256": "86e877c0a40c0e4a0055c580bd7aef2424a269658b669af159fb8d340afae7f2"
+    },
+    {
+      "name": "settings",
+      "source": "sources/settings.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/settings.svg",
+      "sha256": "437c253a1c11ff214c490c766f2a3cdcf8547399fd0be48a7d222bf0703aefb5"
+    },
+    {
+      "name": "share-android",
+      "source": "sources/share-android.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/share-android.svg",
+      "sha256": "995d214087f79b47023c0498710f1cb0982c309ab623c97d8b0d443f7c7d4320"
+    },
+    {
+      "name": "star",
+      "source": "sources/star.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/star.svg",
+      "sha256": "fffdc43c1eee0a907426666f8914bae04aa6f60ac59335a92d301b0b3cd44262"
+    },
+    {
+      "name": "timer",
+      "source": "sources/timer.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/timer.svg",
+      "sha256": "e3243eb0f9d07d2f5b4e999bc45606a8b4abce4315ceb529fdf59208b9711d7a"
+    },
+    {
+      "name": "trash",
+      "source": "sources/trash.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/trash.svg",
+      "sha256": "bfb9b7ecd43a9668c15f0e7547cbdcb76644ce8e29e27eeb65469a45ad7759f3"
+    },
+    {
+      "name": "undo",
+      "source": "sources/undo.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/undo.svg",
+      "sha256": "b460b2f7faea4185b1e3f7497d5d71b992e276655a4a2076302c107067674f02"
+    },
+    {
+      "name": "usb",
+      "source": "sources/usb.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/usb.svg",
+      "sha256": "641a70a89d418b22519607a272d2fce03da36df48dfdcef54b399ce0631f7a80"
+    },
+    {
+      "name": "user",
+      "source": "sources/user.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/user.svg",
+      "sha256": "53e6505904aafd797da6ea432aa148b7858104454e4e9b65895a879e74451ea3"
+    },
+    {
+      "name": "warning-circle",
+      "source": "sources/warning-circle.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/warning-circle.svg",
+      "sha256": "95340b84f91951c5fca05d3e71486047b2cca32bd639a8948fd85d782dd820fe"
+    },
+    {
+      "name": "weight",
+      "source": "sources/weight.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/weight.svg",
+      "sha256": "c5bfa98217976b58db4640619ef2948fec40eddc6754d67feb7d0c4aebbc774a"
+    },
+    {
+      "name": "xmark",
+      "source": "sources/xmark.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/xmark.svg",
+      "sha256": "61aa0a4913a440aaafcc45064a87e24fe8eb22ba4abc4c5ef020530928ed8daf"
+    }
+  ]
+}

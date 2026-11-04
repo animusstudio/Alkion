@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/typography.dart';
 import 'fit_label.dart';
 import 'plan_form.dart';
@@ -64,8 +64,8 @@ class TrainingDisclosure extends StatelessWidget {
             SizedBox(
               width: 48,
               height: 48,
-              child: Icon(
-                expanded ? Icons.expand_less : Icons.expand_more,
+              child: AlkionIcon(
+                expanded ? AlkionGlyph.chevronUp : AlkionGlyph.chevronDown,
                 color: context.tokens.dim,
               ),
             ),
@@ -81,11 +81,11 @@ class TrainingAction extends StatelessWidget {
     this.label, {
     super.key,
     required this.onTap,
-    this.icon = WIcons.plus,
+    this.icon = AlkionGlyph.add,
   });
   final String label;
   final VoidCallback? onTap;
-  final IconData icon;
+  final AlkionGlyph icon;
   @override
   Widget build(BuildContext context) => TextButton.icon(
     style: TextButton.styleFrom(
@@ -99,7 +99,7 @@ class TrainingAction extends StatelessWidget {
             commitPendingInput();
             onTap!();
           },
-    icon: Icon(icon, size: 18),
+    icon: AlkionIcon(icon, size: 18),
     label: FitLabel(
       label,
       maxLines: 3,

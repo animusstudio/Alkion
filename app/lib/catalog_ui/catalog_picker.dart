@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../history_test/history_mapping_label.dart';
 
+import '../theme/alkion_icon.dart';
 import '../catalog/catalog.dart';
 import '../catalog/catalog_artwork.dart';
 import '../l10n/app_localizations.dart';
@@ -610,7 +611,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                         IconButton(
                           tooltip: l.commonDone,
                           onPressed: () => Navigator.pop(sheetContext),
-                          icon: const Icon(Icons.close),
+                          icon: const AlkionIcon(AlkionGlyph.close),
                         ),
                       ],
                     ),
@@ -1234,7 +1235,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                         context,
                       ).backButtonTooltip,
                       onPressed: _back,
-                      icon: const Icon(Icons.arrow_back),
+                      icon: const AlkionIcon(AlkionGlyph.back),
                     ),
                   Expanded(
                     child: FitLabel(
@@ -1260,7 +1261,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                     key: const Key('catalog-create'),
                     tooltip: l.catalogCreate,
                     onPressed: _create,
-                    icon: const Icon(Icons.add),
+                    icon: const AlkionIcon(AlkionGlyph.add),
                   ),
                   if (!widget.embedded)
                     IconButton(
@@ -1269,7 +1270,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                         context,
                       ).closeButtonTooltip,
                       onPressed: _dismiss,
-                      icon: const Icon(Icons.close),
+                      icon: const AlkionIcon(AlkionGlyph.close),
                     ),
                 ],
               ),
@@ -1323,13 +1324,13 @@ class _CatalogPickerState extends State<CatalogPicker> {
                             focusNode: _searchFocus,
                             decoration: InputDecoration(
                               hintText: l.exerciseSheetSearchHint,
-                              prefixIcon: const Icon(Icons.search),
+                              prefixIcon: const AlkionIcon(AlkionGlyph.search),
                               suffixIcon: _search.text.isEmpty
                                   ? null
                                   : IconButton(
                                       tooltip: l.catalogClearSearch,
                                       onPressed: () => _update(_search.clear),
-                                      icon: const Icon(Icons.close),
+                                      icon: const AlkionIcon(AlkionGlyph.close),
                                     ),
                             ),
                             onChanged: _queryChanged,
@@ -1339,9 +1340,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                             OutlinedButton.icon(
                               key: const Key('catalog-browse-muscles'),
                               onPressed: _pickGroup,
-                              icon: const Icon(
-                                Icons.accessibility_new_outlined,
-                              ),
+                              icon: const AlkionIcon(AlkionGlyph.accessibility),
                               label: Text(labels.exploreMuscles),
                               style: OutlinedButton.styleFrom(
                                 alignment: Alignment.centerLeft,
@@ -1404,7 +1403,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                   ),
                                   backgroundColor: context.tokens.text,
                                   textColor: context.tokens.bg,
-                                  child: const Icon(Icons.tune, size: 20),
+                                  child: const AlkionIcon(
+                                    AlkionGlyph.settings,
+                                    size: 20,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1518,7 +1520,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                     action.groupKey,
                                     replaceQuery: true,
                                   ),
-                                  icon: const Icon(Icons.arrow_forward),
+                                  icon: const AlkionIcon(AlkionGlyph.forward),
                                   label: Text(
                                     l.catalogBrowseGroup(action.label),
                                   ),
@@ -1563,10 +1565,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
                               Expanded(
                                 child: Text(l.catalogBasket(selectedCount)),
                               ),
-                              Icon(
+                              AlkionIcon(
                                 _basketExpanded
-                                    ? Icons.expand_less
-                                    : Icons.expand_more,
+                                    ? AlkionGlyph.chevronUp
+                                    : AlkionGlyph.chevronDown,
                               ),
                             ],
                           ),
@@ -1648,7 +1650,9 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                         onPressed: () => setState(
                                           () => _selected.removeAt(i),
                                         ),
-                                        icon: const Icon(Icons.close),
+                                        icon: const AlkionIcon(
+                                          AlkionGlyph.close,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -1727,14 +1731,14 @@ class CatalogPickerRow extends StatelessWidget {
               onPressed: onRepeat,
               tooltip: l.catalogAddAgain,
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              icon: Icon(Icons.add, size: 20, color: t.text),
+              icon: AlkionIcon(AlkionGlyph.add, size: 20, color: t.text),
             ),
           if (onMenu != null)
             IconButton(
               onPressed: onMenu,
               tooltip: menuLabel,
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              icon: Icon(Icons.more_horiz, size: 20, color: t.dim),
+              icon: AlkionIcon(AlkionGlyph.more, size: 20, color: t.dim),
             ),
         ];
         return Material(
@@ -1807,9 +1811,9 @@ class CatalogPickerRow extends StatelessWidget {
                                           Positioned(
                                             right: -3,
                                             bottom: -5,
-                                            child: Icon(
-                                              Icons.star,
-                                              size: 10,
+                                            child: AlkionIcon(
+                                              AlkionGlyph.favorite,
+                                              size: 18,
                                               color: t.text,
                                             ),
                                           ),
@@ -1850,13 +1854,13 @@ class CatalogPickerRow extends StatelessWidget {
                                           children: [
                                             if (current)
                                               _status(
-                                                Icons.radio_button_checked,
+                                                AlkionGlyph.current,
                                                 l.catalogCurrent,
                                                 t.dim,
                                               ),
                                             if (inDay)
                                               _status(
-                                                Icons.playlist_add_check,
+                                                AlkionGlyph.inDay,
                                                 l.catalogInDay,
                                                 t.dim,
                                               ),
@@ -1880,12 +1884,12 @@ class CatalogPickerRow extends StatelessWidget {
                                                 color: t.accentText,
                                               ),
                                             )
-                                          : Icon(
+                                          : AlkionIcon(
                                               selected
-                                                  ? Icons.check
+                                                  ? AlkionGlyph.check
                                                   : inspection || onMenu == null
-                                                  ? Icons.chevron_right
-                                                  : Icons.add,
+                                                  ? AlkionGlyph.chevronRight
+                                                  : AlkionGlyph.add,
                                               size: 20,
                                               color: selected
                                                   ? t.accentText
@@ -1924,10 +1928,10 @@ class CatalogPickerRow extends StatelessWidget {
     );
   }
 
-  Widget _status(IconData icon, String text, Color color) => Row(
+  Widget _status(AlkionGlyph icon, String text, Color color) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Icon(icon, size: 14, color: color),
+      AlkionIcon(icon, size: 16, color: color),
       const SizedBox(width: 4),
       Flexible(
         child: Text(text, style: WorkoutType.body(size: 12, color: color)),

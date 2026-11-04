@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/alkion_icon.dart';
 import '../data/models.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -105,7 +106,7 @@ class LiveSetCard extends StatelessWidget {
                         ? l.sessionLiveWarmup
                         : l.sessionLiveSet(workIndex),
                     onPressed: onMenu,
-                    icon: const Icon(Icons.more_horiz),
+                    icon: const AlkionIcon(AlkionGlyph.more),
                   ),
               ],
             ),

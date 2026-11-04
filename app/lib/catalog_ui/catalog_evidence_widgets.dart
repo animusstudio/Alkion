@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/alkion_icon.dart';
 import '../domain/catalog_execution.dart';
 import '../domain/evidence.dart';
 import '../l10n/app_localizations.dart';
@@ -84,7 +85,7 @@ class CatalogEvidenceCard extends StatelessWidget {
               IconButton(
                 onPressed: enabled ? onMenu : null,
                 tooltip: AppLocalizations.of(context).sessionWorkoutOptions,
-                icon: const Icon(Icons.more_horiz),
+                icon: const AlkionIcon(AlkionGlyph.more),
               ),
             ],
           ),

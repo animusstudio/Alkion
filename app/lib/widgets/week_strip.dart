@@ -4,7 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../util/dates.dart';
 import 'fit_label.dart';
 
@@ -75,6 +75,9 @@ class _WeekStripState extends State<WeekStrip> {
           64.0,
           MediaQuery.textScalerOf(context).scale(52),
         );
+        final statusHeight =
+            MediaQuery.textScalerOf(context).scale(18) +
+            (widget.days.any((d) => d.isNext && d.done) ? 16 : 0);
         final count = widget.days.length + (widget.onSelect == null ? 0 : 1);
         final total =
             widget.days.length * width +
@@ -108,6 +111,7 @@ class _WeekStripState extends State<WeekStrip> {
                 child: _DayChip(
                   key: ValueKey('week-chip-$i'),
                   day: widget.days[i],
+                  statusHeight: statusHeight,
                   filled: i == filled,
                   onTap: widget.onSelect == null
                       ? null
@@ -121,6 +125,7 @@ class _WeekStripState extends State<WeekStrip> {
                 child: _DayChip(
                   key: ValueKey('week-chip-$i'),
                   day: widget.days[i],
+                  statusHeight: statusHeight,
                   filled: i == filled,
                   onTap: widget.onSelect == null
                       ? null
@@ -163,6 +168,7 @@ class _DayChip extends StatelessWidget {
   const _DayChip({
     super.key,
     required this.day,
+    required this.statusHeight,
     required this.filled,
     required this.onTap,
     required this.tokens,
@@ -170,6 +176,7 @@ class _DayChip extends StatelessWidget {
   });
 
   final ({String name, int? weekday, bool isNext, bool done}) day;
+  final double statusHeight;
   final bool filled;
   final VoidCallback? onTap;
   final WorkoutTokens tokens;
@@ -232,10 +239,10 @@ class _DayChip extends StatelessWidget {
                     letterSpacing: 0,
                   ),
                 ),
-                // Status slot — 14 tall at 1.0×, growing with the text size so
-                // NEXT is never clipped.
+                // The shared status slot grows only when NEXT and done coexist,
+                // leaving the label its full width above a fixed-size check.
                 SizedBox(
-                  height: MediaQuery.textScalerOf(context).scale(18),
+                  height: statusHeight,
                   child: Center(
                     child: _StatusIndicator(
                       isNext: day.isNext,
@@ -282,18 +289,14 @@ class _StatusIndicator extends StatelessWidget {
       );
       // One line always: a narrow chip scales it down rather than wrapping.
       if (!isDone) return FittedBox(fit: BoxFit.scaleDown, child: next);
-      // Both next and already done this week: NEXT plus a small check,
-      // scaled down to fit a narrow chip (a long NEXT label, large text).
-      return FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            next,
-            const SizedBox(width: 3),
-            Icon(WIcons.check, size: 12, color: tokens.accentText),
-          ],
-        ),
+      // Stack the combined status: fitting one row would shrink the check
+      // below 16dp, or take width away from the existing NEXT label.
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(fit: BoxFit.scaleDown, child: next),
+          AlkionIcon(AlkionGlyph.check, size: 16, color: tokens.accentText),
+        ],
       );
     }
     if (isDone) {
@@ -304,7 +307,11 @@ class _StatusIndicator extends StatelessWidget {
           color: tokens.surface3,
           borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
-        child: Icon(WIcons.check, size: 12, color: tokens.accentText),
+        child: AlkionIcon(
+          AlkionGlyph.check,
+          size: 16,
+          color: tokens.accentText,
+        ),
       );
     }
     // Idle dot
@@ -354,7 +361,7 @@ class _CustomChip extends StatelessWidget {
               color: filled ? tokens.text : Colors.transparent,
             ),
           ),
-          child: Icon(WIcons.plus, size: 20, color: tokens.dim),
+          child: AlkionIcon(AlkionGlyph.add, size: 20, color: tokens.dim),
         ),
       ),
     );

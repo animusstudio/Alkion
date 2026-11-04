@@ -4,9 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/widgets/sparkline.dart';
 import 'package:alkion/widgets/week_strip.dart';
+import 'package:alkion/theme/alkion_icon.dart';
+import '../support/icon_finders.dart';
 
 Widget _host(ThemeData theme, Widget child) => MaterialApp(
   theme: theme,
@@ -92,9 +93,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.widget<Text>(find.text('NEXT')).style!.color, t.accentText);
-      final check = tester.widget<Icon>(
-        find.byWidgetPredicate((w) => w is Icon && w.icon == WIcons.check),
-      );
+      final check = tester.widget<AlkionIcon>(findGlyph(AlkionGlyph.check));
       expect(check.color, t.accentText);
       expect(t.accentText, isNot(t.accent));
     },

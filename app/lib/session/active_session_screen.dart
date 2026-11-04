@@ -23,7 +23,7 @@ import '../shell/session_launcher.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/workout_canvas.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -401,18 +401,18 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         WSheetAction(
           label: l.bodyWorkload,
           value: 'workload',
-          icon: Icons.accessibility_new,
+          icon: AlkionGlyph.accessibility,
         ),
         WSheetAction(
           label: l.sessionFinishWorkout,
           value: 'finish',
-          icon: WIcons.check,
+          icon: AlkionGlyph.check,
           enabled: c.canFinish,
         ),
         WSheetAction(
           label: l.sessionDiscardWorkout,
           value: 'discard',
-          icon: WIcons.trash,
+          icon: AlkionGlyph.delete,
           destructive: true,
         ),
       ],
@@ -455,7 +455,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         WSheetAction(
           label: l.sessionAddWarmupSet,
           value: 'warmup',
-          icon: WIcons.flame,
+          icon: AlkionGlyph.flame,
         ),
         WSheetAction(label: l.commonRemove, value: 'remove', destructive: true),
       ],
@@ -507,29 +507,33 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           WSheetAction(label: l.catalogAddAgain, value: 'again'),
           WSheetAction(label: l.catalogRoutineUse, value: 'routine'),
         ],
-        WSheetAction(label: l.sessionAddSet, value: 'set', icon: WIcons.plus),
+        WSheetAction(
+          label: l.sessionAddSet,
+          value: 'set',
+          icon: AlkionGlyph.add,
+        ),
         WSheetAction(
           label: l.sessionMoveUp,
           value: 'up',
-          icon: Icons.keyboard_arrow_up,
+          icon: AlkionGlyph.chevronUp,
           enabled: !identical(b, blocks.first),
         ),
         WSheetAction(
           label: l.sessionMoveDown,
           value: 'down',
-          icon: Icons.keyboard_arrow_down,
+          icon: AlkionGlyph.chevronDown,
           enabled: !identical(b, blocks.last),
         ),
         WSheetAction(
           label: l.sessionReorderExercises,
           value: 'reorder',
-          icon: Icons.drag_handle,
+          icon: AlkionGlyph.reorder,
           enabled: blocks.length > 1,
         ),
         WSheetAction(
           label: l.sessionRemoveExercise,
           value: 'remove',
-          icon: WIcons.trash,
+          icon: AlkionGlyph.delete,
           destructive: true,
         ),
       ],
@@ -1110,7 +1114,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     const SizedBox(height: 10),
                     _AddExerciseButton(
                       height: 48,
-                      icon: WIcons.plus,
+                      icon: AlkionGlyph.add,
                       label: l.sessionAddExercise,
                       tokens: tokens,
                       onTap: () async {
@@ -1239,7 +1243,7 @@ class _EmptySessionPlaceholder extends StatelessWidget {
             border: Border.all(color: tokens.line),
           ),
           alignment: Alignment.center,
-          child: Icon(WIcons.dumbbell, size: 26, color: tokens.faint),
+          child: AlkionIcon(AlkionGlyph.workout, size: 26, color: tokens.faint),
         ),
         const SizedBox(height: 16),
         Text(
@@ -1270,7 +1274,7 @@ class _AddExerciseButton extends StatelessWidget {
   });
 
   final double height;
-  final IconData icon;
+  final AlkionGlyph icon;
   final String label;
   final WorkoutTokens tokens;
   final VoidCallback onTap;
@@ -1291,7 +1295,7 @@ class _AddExerciseButton extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 20, color: tokens.dim),
+          AlkionIcon(icon, size: 20, color: tokens.dim),
           const SizedBox(width: 8),
           Flexible(
             child: FitLabel(

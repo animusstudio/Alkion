@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -23,7 +23,7 @@ class WSheetAction<T> {
   final T value;
 
   /// The leading icon; a row without one is text only.
-  final IconData? icon;
+  final AlkionGlyph? icon;
   final bool destructive;
   final bool enabled;
 
@@ -195,7 +195,7 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
             child: Row(
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: 20, color: color),
+                  AlkionIcon(icon, size: 20, color: color),
                   const SizedBox(width: 14),
                 ],
                 Expanded(
@@ -211,7 +211,11 @@ class _WActionSheetBodyState<T> extends State<_WActionSheetBody<T>> {
                 ),
                 if (a.selected) ...[
                   const SizedBox(width: 14),
-                  Icon(WIcons.check, size: 20, color: tokens.accentText),
+                  AlkionIcon(
+                    AlkionGlyph.check,
+                    size: 20,
+                    color: tokens.accentText,
+                  ),
                 ],
               ],
             ),

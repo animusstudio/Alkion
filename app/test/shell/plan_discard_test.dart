@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show debugPrintSynchronously;
@@ -11,13 +12,13 @@ import 'package:alkion/store/local_store.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/data/exercise_repository.dart' show DomainRecovery;
 import 'package:alkion/shell/app_shell.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/ui/day_editor.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/split_tab.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/plan_form.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/screen_harness.dart';
 
@@ -258,7 +259,7 @@ Future<void> _openPlan(
     ),
   );
   await settleReal(tester);
-  await openTab(tester, WIcons.plan);
+  await openTab(tester, AlkionGlyph.plan);
 }
 
 /// Opens seedLong's four-slot day.
@@ -485,7 +486,7 @@ void main() {
       await _expandBenchPress(tester);
       await _tapVisible(tester, _workingSetsInc);
 
-      for (final destination in [WIcons.history, WIcons.user]) {
+      for (final destination in [AlkionGlyph.history, AlkionGlyph.profile]) {
         await openTab(tester, destination);
         expect(
           find.text(_l.planDiscardTitle, skipOffstage: false),
@@ -494,7 +495,7 @@ void main() {
         expect(find.byType(DayEditor, skipOffstage: false), findsOneWidget);
       }
 
-      await openTab(tester, WIcons.plan);
+      await openTab(tester, AlkionGlyph.plan);
       expect(_discardTitle, findsNothing);
       expect(_workingSetsShows('4'), findsOneWidget);
       await harness.unmount(tester);
@@ -753,8 +754,12 @@ void main() {
       setPhone(tester, width: 412);
       await _openPlan(tester, harness);
       await _openExercise(tester);
-      // The Back muscle chip carries the same label further down the tree.
-      final chevron = find.bySemanticsLabel(_l.commonBack).first;
+      // The Back muscle chip has the same label; target the editor control.
+      final chevron = find.byKey(const Key('plan-editor-back'));
+      final backSemantics = tester.getSemantics(chevron).getSemanticsData();
+      expect(backSemantics.label, _l.commonBack);
+      expect(backSemantics.flagsCollection.isButton, isTrue);
+      expect(backSemantics.hasAction(SemanticsAction.tap), isTrue);
 
       await tester.tap(chevron);
       await settleReal(tester, ticks: 10);
@@ -773,7 +778,10 @@ void main() {
       expect(_discardTitle, findsNothing);
 
       // A screen reader's activation goes through the same check.
-      tester.semantics.tap(find.semantics.byLabel(_l.commonBack).first);
+      final backNode = tester.getSemantics(chevron);
+      tester.semantics.tap(
+        find.semantics.byPredicate((node) => node.id == backNode.id),
+      );
       await settleReal(tester, ticks: 10);
       expect(_discardTitle, findsOneWidget);
       await tester.tap(find.text(_l.commonDiscard));
@@ -808,10 +816,10 @@ void main() {
       await _openPlan(tester, harness);
       await _openExercise(tester);
 
-      await openTab(tester, WIcons.home);
+      await openTab(tester, AlkionGlyph.home);
       harness.units.setUnit(Unit.lb);
       await settleReal(tester, ticks: 5);
-      await openTab(tester, WIcons.plan);
+      await openTab(tester, AlkionGlyph.plan);
 
       await _back(tester);
       expect(_discardTitle, findsNothing);
@@ -1198,7 +1206,7 @@ void main() {
     await _openDay(tester);
     await _expandBenchPress(tester);
     await _tapVisible(tester, _workingSetsInc);
-    await openTab(tester, WIcons.home);
+    await openTab(tester, AlkionGlyph.home);
 
     await _back(tester);
     expect(_discardTitle, findsOneWidget);
@@ -1211,7 +1219,7 @@ void main() {
     expect(_workingSetsShows('4'), findsOneWidget);
     expect(pops, isEmpty);
 
-    await openTab(tester, WIcons.home);
+    await openTab(tester, AlkionGlyph.home);
     await _back(tester);
     await tester.tap(find.text(_l.commonDiscard));
     await settleReal(tester, ticks: 10);

@@ -6,11 +6,13 @@ import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/progress_screen.dart';
 import 'package:alkion/widgets/section_label.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
 import '../support/layout_expect.dart';
 import '../support/screen_harness.dart';
+import '../support/icon_finders.dart';
 
 void main() {
   setUpAll(preloadAppFonts);
@@ -126,7 +128,7 @@ void main() {
           Theme(
             data: theme,
             child: ProgressSelectorRow(
-              icon: Icons.fitness_center,
+              icon: AlkionGlyph.workout,
               title: 'Bench press',
               subtitle: 'Chest',
               onTap: () {},
@@ -134,7 +136,7 @@ void main() {
           ),
         ),
       );
-      final icon = tester.widget<Icon>(find.byIcon(Icons.fitness_center));
+      final icon = tester.widget<AlkionIcon>(findGlyph(AlkionGlyph.workout));
       expect(icon.color, tokens.text);
       final ink = tester.widget<InkWell>(find.byType(InkWell));
       expect(ink.focusColor, tokens.focus.withValues(alpha: .16));

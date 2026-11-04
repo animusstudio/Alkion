@@ -6,7 +6,6 @@ import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/shell/session_indicator.dart';
 import 'package:alkion/session/active_session_controller.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/ui/history_screen.dart';
 import 'package:alkion/ui/exercise_library_tab.dart';
 import 'package:alkion/ui/plan_screen.dart';
@@ -14,6 +13,7 @@ import 'package:alkion/ui/progress_screen.dart';
 import 'package:alkion/ui/profile_screen.dart';
 import 'package:alkion/ui/targets_tab.dart';
 import 'package:alkion/ui/today_screen.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/screen_harness.dart';
 
@@ -72,7 +72,7 @@ void main() {
       final l = lookupAppLocalizations(locale);
       await tester.pumpWidget(harness.wrap(const AppShell(), locale: locale));
       await settleReal(tester, ticks: 5);
-      await openTab(tester, WIcons.plan);
+      await openTab(tester, AlkionGlyph.plan);
       final indicator = find.byType(SessionIndicator);
       final title = find.descendant(
         of: find.byType(PlanScreen),
@@ -130,7 +130,7 @@ void main() {
         'Today $name',
       );
 
-      await openTab(tester, WIcons.chart);
+      await openTab(tester, AlkionGlyph.progress);
       await settleUntilFound(
         tester,
         textWithAnyOf(find.byType(ProgressScreen), [
@@ -147,7 +147,7 @@ void main() {
         'Progress $name',
       );
 
-      await openTab(tester, WIcons.history);
+      await openTab(tester, AlkionGlyph.history);
       await expectLayoutHoldsWhileScrolling(
         tester,
         find.byType(HistoryScreen),
@@ -168,7 +168,7 @@ void main() {
         'History expanded $name',
       );
 
-      await openTab(tester, WIcons.plan);
+      await openTab(tester, AlkionGlyph.plan);
       await settleUntilFound(
         tester,
         textWithAnyOf(find.byType(PlanScreen), [longDay]),

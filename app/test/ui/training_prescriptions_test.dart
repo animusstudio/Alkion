@@ -22,9 +22,11 @@ import 'package:alkion/ui/split_tab.dart';
 import 'package:alkion/ui/training_preferences_sheet.dart';
 import 'package:alkion/util/prescription_format.dart';
 import 'package:alkion/widgets/plan_form.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import '../alkion/domains/local_screen_harness.dart';
 import '../support/layout_expect.dart';
 import '../alkion/domains/prepared_intent_retry_test.dart' show FaultDatabase;
+import '../support/icon_finders.dart';
 
 Future<void> tap(WidgetTester tester, Finder host, String text) async {
   await scrollIntoView(tester, host, find.text(text));
@@ -450,7 +452,7 @@ void main() {
         h.wrap(Scaffold(body: SplitTab(onOpenEditor: (_) {}))),
       );
       await settleReal(tester);
-      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await tester.tap(findGlyph(AlkionGlyph.more).first);
       await settleReal(tester);
       await tester.tap(find.text('Disable'));
       await settleReal(tester, ticks: 12);
@@ -458,7 +460,7 @@ void main() {
       expect(find.text('Disabled $longDay'), findsNothing);
       await tester.tap(find.text('OK'));
       await settleReal(tester);
-      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await tester.tap(findGlyph(AlkionGlyph.more).first);
       await settleReal(tester);
       await tester.tap(find.text('Retry'));
       await settleReal(tester, ticks: 12);

@@ -6,8 +6,10 @@ import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/session_header.dart';
 import 'package:alkion/units/unit_service.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 const _ex = Exercise(
   id: 'lc',
@@ -37,25 +39,55 @@ void main() {
     DateTime? restEndedAt,
     bool showRestRow = false,
     Locale locale = const Locale('en'),
+    TextDirection direction = TextDirection.ltr,
   }) => wrapL10n(
-    SessionHeader(
-      draft: _draft,
-      elapsed: const Duration(minutes: 1, seconds: 2),
-      doneWork: 1,
-      totalWork: 14,
-      prCount: 0,
-      restStart: restStart,
-      restTotal: restTotal,
-      restEndedAt: restEndedAt,
-      showRestRow: showRestRow,
-      nextLabel: 'Next · Lying leg curl · set 1 · 40kg × 8',
-      onMinimize: () => mins++,
-      onMenu: () => menus++,
-      onAdd30s: () => adds++,
-      onSkip: () => skips++,
+    Directionality(
+      textDirection: direction,
+      child: SessionHeader(
+        draft: _draft,
+        elapsed: const Duration(minutes: 1, seconds: 2),
+        doneWork: 1,
+        totalWork: 14,
+        prCount: 0,
+        restStart: restStart,
+        restTotal: restTotal,
+        restEndedAt: restEndedAt,
+        showRestRow: showRestRow,
+        nextLabel: 'Next · Lying leg curl · set 1 · 40kg × 8',
+        onMinimize: () => mins++,
+        onMenu: () => menus++,
+        onAdd30s: () => adds++,
+        onSkip: () => skips++,
+      ),
     ),
     locale: locale,
   );
+
+  for (final direction in TextDirection.values) {
+    testWidgets('minimize points down and keeps its target in $direction', (
+      tester,
+    ) async {
+      await tester.pumpWidget(header(direction: direction));
+      final button = find.byKey(const Key('session-minimize'));
+      expect(
+        find.descendant(
+          of: button,
+          matching: findGlyph(AlkionGlyph.chevronDown),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: button,
+          matching: findGlyph(AlkionGlyph.chevronRight),
+        ),
+        findsNothing,
+      );
+      expect(tester.getSize(button), const Size(48, 48));
+      await tester.tap(button);
+      expect(mins, 1);
+    });
+  }
 
   testWidgets('before the first log: no rest row', (tester) async {
     await tester.pumpWidget(header());

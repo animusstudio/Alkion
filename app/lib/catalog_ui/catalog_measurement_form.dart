@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/alkion_icon.dart';
 import '../catalog/catalog.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -165,7 +166,7 @@ class CatalogTrialBlock extends StatelessWidget {
               IconButton(
                 onPressed: onMenu,
                 tooltip: AppLocalizations.of(context).catalogChangeSetup,
-                icon: const Icon(Icons.more_horiz),
+                icon: const AlkionIcon(AlkionGlyph.more),
               ),
             ],
           ),

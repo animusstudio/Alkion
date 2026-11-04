@@ -11,11 +11,12 @@ import 'package:alkion/ui/character_body.dart';
 import 'package:alkion/data/body_workload.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/theme/app_theme.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/profile_screen.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/screen_harness.dart';
+import '../support/icon_finders.dart';
 
 class _RefusingPreferences extends RealZoneDatabase {
   _RefusingPreferences(LocalDatabase database) : super(database, Zone.current);
@@ -253,8 +254,11 @@ void main() {
                 .isSelected,
             Tristate.isTrue,
           );
-          final check = tester.widget<Icon>(
-            find.descendant(of: swatch(i), matching: find.byIcon(WIcons.check)),
+          final check = tester.widget<AlkionIcon>(
+            find.descendant(
+              of: swatch(i),
+              matching: findGlyph(AlkionGlyph.check),
+            ),
           );
           final a = check.color!.computeLuminance();
           final b = accents[i].computeLuminance();
@@ -294,7 +298,7 @@ void main() {
     // Rows follow BodyweightGoal.values: cut, bulk, maintain.
     final check = find.descendant(
       of: find.byType(BottomSheet),
-      matching: find.byIcon(WIcons.check),
+      matching: findGlyph(AlkionGlyph.check),
     );
     expect(check, findsOneWidget);
     expect(find.descendant(of: sheetRow(1), matching: check), findsOneWidget);
@@ -311,7 +315,10 @@ void main() {
     );
     for (var i = 0; i < 3; i++) {
       expect(
-        find.descendant(of: sheetRow(i), matching: find.byIcon(WIcons.target)),
+        find.descendant(
+          of: sheetRow(i),
+          matching: findGlyph(AlkionGlyph.target),
+        ),
         findsOneWidget,
         reason: 'row $i',
       );
@@ -363,7 +370,7 @@ void main() {
     await settleReal(tester, ticks: 10);
     final check = find.descendant(
       of: find.byType(BottomSheet),
-      matching: find.byIcon(WIcons.check),
+      matching: findGlyph(AlkionGlyph.check),
     );
     expect(check, findsOneWidget);
     expect(

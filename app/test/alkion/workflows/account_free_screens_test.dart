@@ -15,7 +15,6 @@ import 'dart:convert';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/data/session_repository.dart';
 import 'package:alkion/ui/set_editor_sheet.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/identity/alkion_profile.dart';
 import 'package:alkion/store/schema.dart';
@@ -32,8 +31,10 @@ import 'package:alkion/store/local_store.dart';
 import 'package:alkion/ui/today_screen.dart';
 import 'package:alkion/ui/profile_screen.dart';
 import 'package:alkion/widgets/sparkline.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import '../../support/screen_harness.dart';
 import '../../support/app_fonts.dart';
+import '../../support/icon_finders.dart';
 
 void main() {
   for (final raw in [null, '', 'invalid', 'unavailable']) {
@@ -657,7 +658,7 @@ void main() {
             ),
           );
           await settleReal(tester);
-          await tester.tap(find.byIcon(WIcons.chevron).first);
+          await tester.tap(findGlyph(AlkionGlyph.chevronRight).first);
           await settleReal(tester);
           Future<void> showDelete() async {
             await tester.tap(
@@ -804,7 +805,7 @@ void main() {
           await settleReal(tester, ticks: 4);
           debugPrint('F5PHASE next-card-settle-exit');
           debugPrint('F5PHASE next-expand-enter');
-          await tester.tap(find.byIcon(WIcons.chevron).first);
+          await tester.tap(findGlyph(AlkionGlyph.chevronRight).first);
           await settleReal(tester, ticks: 3);
           debugPrint('F5PHASE next-expand-exit');
           final nextDelete = find.byKey(

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/ui/targets_tab.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
+import '../support/icon_finders.dart';
 
 void main() {
   testWidgets('renders all 8 canonical muscles', (tester) async {
@@ -41,8 +43,8 @@ void main() {
         ),
       ),
     );
-    // Chest is the first row (kMuscleLabels order); WStepper's "+" uses Icons.add.
-    await tester.tap(find.byIcon(Icons.add).first);
+    // Chest is the first row (kMuscleLabels order); WStepper's "+" uses AlkionGlyph.add.
+    await tester.tap(findGlyph(AlkionGlyph.add).first);
     await tester.pump();
     expect(muscle, 'chest');
     expect(sets, 13);

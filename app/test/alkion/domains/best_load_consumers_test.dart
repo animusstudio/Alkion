@@ -28,10 +28,10 @@ import 'package:alkion/data/session_writer.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/shell/session_launcher.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/ui/exercise_library_tab.dart';
 import 'package:alkion/ui/plan_screen.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import 'local_screen_harness.dart';
 
 class ConsumerHarness {
@@ -226,7 +226,7 @@ Future<void> visibility(
 Future<void> showLibrary(WidgetTester tester, ConsumerHarness h) async {
   await tester.pumpWidget(h.wrap(const AppShell()));
   await settleReal(tester);
-  await openTab(tester, WIcons.plan);
+  await openTab(tester, AlkionGlyph.plan);
   await tester.tap(find.text('Exercises'));
   await settleReal(tester);
 }
@@ -372,7 +372,7 @@ void main() {
           textWithAnyOf(find.byType(LibraryTab), ['80.125kg']),
           findsNothing,
         );
-        await openTab(tester, WIcons.home);
+        await openTab(tester, AlkionGlyph.home);
         await tester.runAsync(() async {
           controller = await nativeDraft(h);
           h.manager.register(controller!);
@@ -392,7 +392,7 @@ void main() {
         Navigator.of(shellContext).pop();
         await settleReal(tester);
         await route;
-        await openTab(tester, WIcons.plan);
+        await openTab(tester, AlkionGlyph.plan);
         expect(
           tester.state<PlanScreenState>(find.byType(PlanScreen)),
           same(plan),
@@ -436,11 +436,11 @@ void main() {
         await tester.enterText(name, 'Uncommitted editor name');
         final textController = tester.widget<TextField>(name).controller!;
         final selection = textController.selection;
-        await openTab(tester, WIcons.home);
+        await openTab(tester, AlkionGlyph.home);
         await tester.runAsync(
           () => editLoad(h.localDatabase, workout, 'work', '95.5000'),
         );
-        await openTab(tester, WIcons.plan);
+        await openTab(tester, AlkionGlyph.plan);
         expect(tester.state(find.byType(ExerciseEditor)), same(editor));
         expect(textController.text, 'Uncommitted editor name');
         expect(textController.selection, selection);

@@ -10,9 +10,11 @@ import '../alkion/domains/local_screen_harness.dart'
 import 'package:provider/provider.dart';
 import 'package:alkion/ui/add_weight_sheet.dart';
 import 'package:alkion/units/unit_service.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../support/l10n_harness.dart';
 import '../support/pump_until.dart';
+import '../support/icon_finders.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -203,7 +205,7 @@ void main() {
       await tester.enterText(find.byType(TextField), '81.4');
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.add));
+      await tester.tap(findGlyph(AlkionGlyph.add));
       await tester.pumpAndSettle();
 
       // kg mode steps by 0.1: one step above the TYPED 81.4, not the seeded 70.0.

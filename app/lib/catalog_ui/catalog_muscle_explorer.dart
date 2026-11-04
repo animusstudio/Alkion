@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/alkion_icon.dart';
 import '../catalog/catalog.dart';
 import '../data/body_workload.dart';
 import '../l10n/app_localizations.dart';
@@ -259,7 +260,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                       _pickEpoch++;
                       Navigator.pop(context);
                     },
-                    icon: const Icon(Icons.close),
+                    icon: const AlkionIcon(AlkionGlyph.close),
                   ),
                 ],
               ),
@@ -290,7 +291,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                             alignment: 0,
                           );
                         },
-                        icon: const Icon(Icons.list),
+                        icon: const AlkionIcon(AlkionGlyph.list),
                         label: FitLabel(
                           labels.muscleList,
                           style: WorkoutType.body(size: 14, color: t.text),

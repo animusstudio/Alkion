@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../theme/alkion_icon.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
@@ -295,7 +296,11 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
 
-    Widget btn({required Key key, required IconData icon, required int dir}) {
+    Widget btn({
+      required Key key,
+      required AlkionGlyph icon,
+      required int dir,
+    }) {
       return StepperButton(
         key: key,
         icon: icon,
@@ -313,7 +318,7 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
     return Row(
       mainAxisSize: MainAxisSize.max,
       children: [
-        btn(key: const Key('stepper-dec'), icon: Icons.remove, dir: -1),
+        btn(key: const Key('stepper-dec'), icon: AlkionGlyph.minus, dir: -1),
         Expanded(
           child: Center(
             child: _editing
@@ -408,7 +413,7 @@ class _WStepperState extends State<WStepper> with WidgetsBindingObserver {
                   ),
           ),
         ),
-        btn(key: const Key('stepper-inc'), icon: Icons.add, dir: 1),
+        btn(key: const Key('stepper-inc'), icon: AlkionGlyph.add, dir: 1),
       ],
     );
   }
@@ -427,7 +432,7 @@ class StepperButton extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final AlkionGlyph icon;
 
   /// Spoken by screen readers; the icon itself is excluded.
   final String semanticLabel;
@@ -456,7 +461,7 @@ class StepperButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.control),
           ),
         ),
-        icon: Icon(icon, size: 20),
+        icon: AlkionIcon(icon, size: 20),
       ),
     );
   }

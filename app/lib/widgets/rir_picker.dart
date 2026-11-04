@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../theme/alkion_icon.dart';
 import '../data/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -88,7 +89,11 @@ class RirPicker extends StatelessWidget {
                 if (selected) ...[
                   const SizedBox(width: 4),
                   ExcludeSemantics(
-                    child: Icon(Icons.check, size: 12, color: tokens.onAction),
+                    child: AlkionIcon(
+                      AlkionGlyph.check,
+                      size: 16,
+                      color: tokens.onAction,
+                    ),
                   ),
                 ],
               ],

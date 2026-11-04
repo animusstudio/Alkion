@@ -8,7 +8,7 @@ import '../settings/bodyweight_goal.dart';
 import '../settings/settings_service.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -104,7 +104,7 @@ class _BodyweightViewState extends State<BodyweightView> {
 
             // Selector row
             ProgressSelectorRow(
-              icon: WIcons.scale,
+              icon: AlkionGlyph.scale,
               title: l.bodyweightTitle,
               subtitle: l.bodyweightDailyLog(entries.length),
               onTap: widget.onOpenPicker,

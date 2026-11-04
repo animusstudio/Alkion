@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -10,7 +10,7 @@ import '../data/session_repository.dart';
 import '../data/session_writer.dart' show UnsavedEditors;
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -868,13 +868,18 @@ class _SessionCardState extends State<SessionCard> {
                             // Chevron
                             const SizedBox(width: 8),
                             AnimatedRotation(
-                              turns: _expanded ? 0.25 : 0,
+                              turns: _expanded
+                                  ? (Directionality.of(context) ==
+                                            TextDirection.rtl
+                                        ? -0.25
+                                        : 0.25)
+                                  : 0,
                               duration: Motion.of(
                                 context,
                                 const Duration(milliseconds: 150),
                               ),
-                              child: Icon(
-                                WIcons.chevron,
+                              child: AlkionIcon(
+                                AlkionGlyph.chevronRight,
                                 size: 16,
                                 color: tokens.faint,
                               ),
@@ -1281,7 +1286,7 @@ class SessionCardBody extends StatelessWidget {
           if (resumeState != SessionResumeState.none)
             _InlineAction(
               key: const ValueKey('history-resume'),
-              icon: WIcons.resume,
+              icon: AlkionGlyph.play,
               label: l.historyResumeWorkout,
               color: tokens.text,
               onTap: onResume,
@@ -1289,7 +1294,7 @@ class SessionCardBody extends StatelessWidget {
           if (resumeState != SessionResumeState.inProgress) ...[
             _InlineAction(
               key: const ValueKey('history-add-exercise'),
-              icon: WIcons.plus,
+              icon: AlkionGlyph.add,
               label: l.sessionAddExercise,
               color: tokens.text,
               onTap: onAddExercise,
@@ -1299,7 +1304,7 @@ class SessionCardBody extends StatelessWidget {
             const SizedBox(height: 8),
             _InlineAction(
               key: const ValueKey('history-delete-session'),
-              icon: WIcons.trash,
+              icon: AlkionGlyph.delete,
               label: l.historyDeleteSession,
               color: tokens.danger,
               onTap: onDeleteSession,
@@ -1323,7 +1328,7 @@ class _InlineAction extends StatelessWidget {
     this.verticalPadding = 6,
   });
 
-  final IconData icon;
+  final AlkionGlyph icon;
   final String label;
   final Color color;
   final VoidCallback? onTap;
@@ -1347,7 +1352,7 @@ class _InlineAction extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 14, color: color),
+                AlkionIcon(icon, size: 16, color: color),
                 const SizedBox(width: 6),
                 Flexible(
                   child: FitLabel(
@@ -1468,11 +1473,19 @@ class _BlockRow extends StatelessWidget {
                     ),
                     if (top.isPr) ...[
                       const SizedBox(width: 8),
-                      Icon(WIcons.bolt, size: 16, color: tokens.accentText),
+                      AlkionIcon(
+                        AlkionGlyph.energy,
+                        size: 16,
+                        color: tokens.accentText,
+                      ),
                     ],
                     if (onTap != null) ...[
                       const SizedBox(width: 8),
-                      Icon(WIcons.chevron, size: 16, color: tokens.dim),
+                      AlkionIcon(
+                        AlkionGlyph.chevronRight,
+                        size: 16,
+                        color: tokens.dim,
+                      ),
                     ],
                   ],
                 ),

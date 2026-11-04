@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 
@@ -24,7 +24,7 @@ class PRBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(WIcons.bolt, size: 12, color: tokens.accentText),
+          AlkionIcon(AlkionGlyph.energy, size: 16, color: tokens.accentText),
           const SizedBox(width: 4),
           Text(
             'PR',

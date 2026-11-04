@@ -26,11 +26,11 @@ import 'package:alkion/session/session_manager.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/settings/bodyweight_goal.dart';
 import 'package:alkion/shell/w_tab_bar.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/util/dates.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import 'app_fonts.dart';
 import 'layout_expect.dart';
 
@@ -424,13 +424,13 @@ Future<void> settleUntilFound(
 }
 
 /// Taps the bottom-nav tab showing [icon] (locale-independent).
-Future<void> openTab(WidgetTester tester, IconData icon) async {
+Future<void> openTab(WidgetTester tester, AlkionGlyph icon) async {
   final index = {
-    WIcons.home: 0,
-    WIcons.chart: 1,
-    WIcons.history: 2,
-    WIcons.plan: 3,
-    WIcons.user: 4,
+    AlkionGlyph.home: 0,
+    AlkionGlyph.progress: 1,
+    AlkionGlyph.history: 2,
+    AlkionGlyph.plan: 3,
+    AlkionGlyph.profile: 4,
   }[icon];
   if (index == null) throw ArgumentError.value(icon, 'icon');
   await tester.tap(

@@ -11,9 +11,11 @@ import 'package:alkion/ui/day_editor.dart';
 import 'package:alkion/ui/editor_guard.dart';
 import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/split_tab.dart' show SplitTab, DayStatusActions;
+import 'package:alkion/theme/alkion_icon.dart';
 import '../alkion/domains/local_screen_harness.dart';
 import '../alkion/domains/prepared_intent_retry_test.dart' show FaultDatabase;
 import 'training_prescriptions_test.dart' show tap, input;
+import '../support/icon_finders.dart';
 
 void main() {
   for (final remove in [false, true]) {
@@ -176,7 +178,7 @@ void main() {
         h.overrideDatabase = fault;
         await tester.pumpWidget(h.wrap(const Scaffold(body: PlanScreen())));
         await settleReal(tester);
-        await tester.tap(find.byIcon(Icons.more_horiz).first);
+        await tester.tap(findGlyph(AlkionGlyph.more).first);
         await settleReal(tester);
         await tester.tap(find.text('Disable'));
         await settleReal(tester, ticks: 12);
@@ -200,7 +202,7 @@ void main() {
           await tester.tap(find.text('Split'));
           await settleReal(tester);
         }
-        await tester.tap(find.byIcon(Icons.more_horiz).first);
+        await tester.tap(findGlyph(AlkionGlyph.more).first);
         await settleReal(tester);
         expect(find.text('Retry'), findsOneWidget);
         await tester.tap(find.text('Retry'));
@@ -243,7 +245,7 @@ void main() {
       final owner = tester
           .widget<SplitTab>(find.byType(SplitTab))
           .statusActions!;
-      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await tester.tap(findGlyph(AlkionGlyph.more).first);
       await settleReal(tester);
       await tester.tap(find.text('Disable'));
       await settleReal(tester, ticks: 12);
@@ -265,7 +267,7 @@ void main() {
       expect(edited.localRevision, greaterThan(original.localRevision!));
       expect(edited.active, true);
       expect(owner.hasPending('d1'), isTrue);
-      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await tester.tap(findGlyph(AlkionGlyph.more).first);
       await settleReal(tester);
       await tester.tap(find.text('Retry'));
       await settleReal(tester, ticks: 8);
@@ -294,7 +296,7 @@ void main() {
         attempts,
         reason: 'no automatic replacement',
       );
-      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await tester.tap(findGlyph(AlkionGlyph.more).first);
       await settleReal(tester);
       expect(find.text('Retry'), findsNothing);
       expect(find.text('Disable'), findsOneWidget);
@@ -446,7 +448,7 @@ void main() {
         h.overrideDatabase = fault;
         await tester.pumpWidget(h.wrap(const Scaffold(body: PlanScreen())));
         await settleReal(tester);
-        await tester.tap(find.byIcon(Icons.more_horiz).first);
+        await tester.tap(findGlyph(AlkionGlyph.more).first);
         await settleReal(tester);
         await tester.tap(find.text('Disable'));
         await settleReal(tester, ticks: 4);

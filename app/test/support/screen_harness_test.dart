@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/session/session_summary_screen.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/shell/app_shell.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/ui/history_screen.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import 'pump_until.dart';
 import 'screen_harness.dart';
@@ -79,7 +79,7 @@ void main() {
         harness.wrap(AppShell(onLogout: () async {}, auth: Object())),
       );
       await settleReal(tester);
-      await openTab(tester, WIcons.history);
+      await openTab(tester, AlkionGlyph.history);
       expect(
         find.descendant(
           of: find.byType(HistoryScreen),

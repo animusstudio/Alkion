@@ -14,7 +14,7 @@ import '../data/stats_repository.dart';
 import '../session/session_manager.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -332,7 +332,7 @@ class _CatalogProgressViewState extends State<_CatalogProgressView> {
                     onPressed: _contexts?.isNotEmpty == true
                         ? _pickContext
                         : null,
-                    icon: const Icon(Icons.fitness_center),
+                    icon: const AlkionIcon(AlkionGlyph.workout),
                     label: FitLabel(
                       selected == null
                           ? l.catalogSelectSetup
@@ -348,7 +348,7 @@ class _CatalogProgressViewState extends State<_CatalogProgressView> {
                 IconButton(
                   onPressed: widget.onOpenPicker,
                   tooltip: l.exerciseSheetTitle,
-                  icon: const Icon(Icons.search),
+                  icon: const AlkionIcon(AlkionGlyph.search),
                 ),
               ],
             ),
@@ -499,7 +499,7 @@ class _LiftView extends StatelessWidget {
 
         // (2) Exercise selector
         ProgressSelectorRow(
-          icon: WIcons.dumbbell,
+          icon: AlkionGlyph.workout,
           title: exercise.name,
           subtitle: subtitle,
           onTap: onPickerTap,

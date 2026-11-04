@@ -19,7 +19,7 @@ import '../store/local_store.dart';
 import '../session/session_manager.dart';
 import '../widgets/pending_input.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -102,7 +102,7 @@ class _Row extends StatelessWidget {
     this.onTap,
   });
 
-  final IconData icon;
+  final AlkionGlyph icon;
   final String title;
   final String? sub;
   final Widget? right;
@@ -131,7 +131,7 @@ class _Row extends StatelessWidget {
                   color: tokens.surface2,
                   borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
-                child: Icon(icon, size: 18, color: tokens.dim),
+                child: AlkionIcon(icon, size: 18, color: tokens.dim),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -578,7 +578,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           WSheetAction(
             label: _goalLabel(l, g),
             value: g,
-            icon: WIcons.target,
+            icon: AlkionGlyph.target,
             selected: g == settings.bodyweightGoal,
           ),
       ],
@@ -760,8 +760,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                     color: tokens.surface2,
                                   ),
-                                  child: Icon(
-                                    WIcons.back,
+                                  child: AlkionIcon(
+                                    AlkionGlyph.back,
                                     size: 18,
                                     color: tokens.dim,
                                   ),
@@ -815,11 +815,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     label: l.profileGroupBodyweight,
                     children: [
                       _Row(
-                        icon: WIcons.scale,
+                        icon: AlkionGlyph.scale,
                         title: l.profileGoal,
                         sub: _goalLabel(l, settings.bodyweightGoal),
-                        right: Icon(
-                          WIcons.chevron,
+                        right: AlkionIcon(
+                          AlkionGlyph.chevronRight,
                           size: 16,
                           color: tokens.faint,
                         ),
@@ -833,7 +833,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     label: l.profileGroupAppearance,
                     children: [
                       _Row(
-                        icon: WIcons.scale,
+                        icon: AlkionGlyph.scale,
                         title: l.profileWeightUnit,
                         sub: l.profileWeightUnitSub,
                         control: true,
@@ -847,8 +847,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       _Row(
                         icon: settings.mode == 'dark'
-                            ? WIcons.flame
-                            : WIcons.bolt,
+                            ? AlkionGlyph.flame
+                            : AlkionGlyph.energy,
                         title: l.profileTheme,
                         control: true,
                         right: ChipSelect<String>(
@@ -865,7 +865,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _Row(
-                            icon: WIcons.target,
+                            icon: AlkionGlyph.target,
                             title: l.profileAccent,
                             sub: l.profileAccentSub,
                             right: null,
@@ -877,24 +877,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                       _Row(
-                        icon: WIcons.user,
+                        icon: AlkionGlyph.profile,
                         title: l.bodyArtworkStyle,
                         sub: settings.bodyStyle == 'female'
                             ? l.bodyFemaleArtwork
                             : l.bodyMaleArtwork,
-                        right: Icon(
-                          WIcons.chevron,
+                        right: AlkionIcon(
+                          AlkionGlyph.chevronRight,
                           size: 16,
                           color: tokens.faint,
                         ),
                         onTap: () => _pickBodyStyle(settings),
                       ),
                       _Row(
-                        icon: WIcons.globe,
+                        icon: AlkionGlyph.language,
                         title: l.settingsLanguage,
                         sub: _languageLabel(context, settings.localeOverride),
-                        right: Icon(
-                          WIcons.chevron,
+                        right: AlkionIcon(
+                          AlkionGlyph.chevronRight,
                           size: 16,
                           color: tokens.faint,
                         ),
@@ -907,11 +907,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     label: l.trainingPreferences,
                     children: [
                       _Row(
-                        icon: WIcons.gear,
+                        icon: AlkionGlyph.settings,
                         title: l.trainingPreferences,
                         sub: l.trainingPreferencesHint,
-                        right: Icon(
-                          WIcons.chevron,
+                        right: AlkionIcon(
+                          AlkionGlyph.chevronRight,
                           size: 16,
                           color: tokens.faint,
                         ),
@@ -931,13 +931,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       if (widget.onImportReps != null)
                         _Row(
                           key: const Key('profile-history-test'),
-                          icon: WIcons.history,
+                          icon: AlkionGlyph.history,
                           title: l.importRepsData,
                           sub: l.importRepsDataSub,
                           onTap: widget.onImportReps,
                         ),
                       _Row(
-                        icon: WIcons.refresh,
+                        icon: AlkionGlyph.refresh,
                         title: l.alkionBackupRestore,
                         sub: l.alkionBackupRestoreSub,
                         onTap: () => Navigator.of(context).push(
@@ -948,7 +948,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       _Row(
-                        icon: WIcons.history,
+                        icon: AlkionGlyph.history,
                         title: l.exportHistory,
                         sub: l.exportHistorySub,
                         right: _exportingHistory ? const _RowSpinner() : null,
@@ -1061,7 +1061,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Icon(WIcons.edit, size: 15, color: tokens.faint),
+                          AlkionIcon(
+                            AlkionGlyph.edit,
+                            size: 16,
+                            color: tokens.faint,
+                          ),
                         ],
                       ),
                     ),
@@ -1137,8 +1141,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               height: 28,
               decoration: BoxDecoration(shape: BoxShape.circle, color: color),
               child: isSelected
-                  ? Icon(
-                      WIcons.check,
+                  ? AlkionIcon(
+                      AlkionGlyph.check,
                       size: 18,
                       color: color.computeLuminance() > 0.179
                           ? const Color(0xFF000000)

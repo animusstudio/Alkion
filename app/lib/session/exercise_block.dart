@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../domain/evidence.dart';
 import '../theme/app_theme.dart';
-import '../theme/icons.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -201,7 +201,11 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                     ),
                     alignment: Alignment.center,
                     child: allDone
-                        ? Icon(WIcons.check, size: 18, color: tokens.text)
+                        ? AlkionIcon(
+                            AlkionGlyph.check,
+                            size: 18,
+                            color: tokens.text,
+                          )
                         : Text(
                             '$doneWorking/${working.length}',
                             maxLines: 1,
@@ -307,7 +311,11 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                         minWidth: 48,
                         minHeight: 48,
                       ),
-                      icon: Icon(WIcons.more, size: 20, color: tokens.dim),
+                      icon: AlkionIcon(
+                        AlkionGlyph.more,
+                        size: 20,
+                        color: tokens.dim,
+                      ),
                     ),
                   ),
                 ],
@@ -441,7 +449,7 @@ class _RemoveSetBackground extends StatelessWidget {
         border: Border.all(color: tokens.danger),
         borderRadius: BorderRadius.circular(AppRadius.control),
       ),
-      child: Icon(WIcons.trash, size: 18, color: tokens.danger),
+      child: AlkionIcon(AlkionGlyph.delete, size: 18, color: tokens.danger),
     );
   }
 }

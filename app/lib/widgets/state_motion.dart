@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 
 /// Finite, interruptible presentation motion. Final content remains available
@@ -196,36 +197,22 @@ class SuccessMark extends StatelessWidget {
         builder: (context, t) => SizedBox(
           width: size,
           height: size,
-          child: CustomPaint(painter: _CheckPainter(t, context.tokens.text)),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ClipRect(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                widthFactor: t,
+                child: AlkionIcon(
+                  AlkionGlyph.check,
+                  size: size,
+                  color: context.tokens.text,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     ),
   );
-}
-
-class _CheckPainter extends CustomPainter {
-  const _CheckPainter(this.progress, this.color);
-  final double progress;
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(size.width * .18, size.height * .52)
-      ..lineTo(size.width * .42, size.height * .76)
-      ..lineTo(size.width * .84, size.height * .25);
-    final metric = path.computeMetrics().first;
-    canvas.drawPath(
-      metric.extractPath(0, metric.length * progress),
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.square
-        ..strokeJoin = StrokeJoin.miter,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_CheckPainter old) =>
-      old.progress != progress || old.color != color;
 }

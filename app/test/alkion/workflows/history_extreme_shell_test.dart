@@ -17,7 +17,6 @@ import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/theme/app_theme.dart';
-import 'package:alkion/theme/icons.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/transfer/transfer_service.dart';
 import 'package:alkion/ui/history_screen.dart';
@@ -26,12 +25,14 @@ import 'package:alkion/ui/set_editor_sheet.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/util/dates.dart';
 import 'package:alkion/widgets/fit_label.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 
 import '../../support/layout_expect.dart';
 import '../domains/best_load_consumers_test.dart'
     show ConsumerHarness, editLoad, importedBytes, visibility;
 import '../domains/local_screen_harness.dart';
 import 'compatibility_history_test.dart' show checkpoint;
+import '../../support/icon_finders.dart';
 
 /// The accepted overflow fixture's set rows on a clock-derived in-window day,
 /// plus one working set whose reps are unavailable, on its own exercise. Its
@@ -278,7 +279,7 @@ Future<void> mountShell(WidgetTester tester, ConsumerHarness h) async {
 
 Future<void> showHistory(WidgetTester tester, ConsumerHarness h) async {
   await mountShell(tester, h);
-  await openTab(tester, WIcons.history);
+  await openTab(tester, AlkionGlyph.history);
   await settleUntilFound(tester, find.byType(SessionCard), where: 'History');
 }
 
@@ -335,7 +336,7 @@ void expectExtremeRows(WidgetTester tester, AppLocalizations l, Unit unit) {
   expect(
     find.descendant(
       of: find.byType(SessionCardBody),
-      matching: find.byIcon(WIcons.bolt),
+      matching: findGlyph(AlkionGlyph.energy),
     ),
     findsNWidgets(9),
   );
@@ -643,7 +644,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byType(SessionCardBody),
-            matching: find.byIcon(WIcons.bolt),
+            matching: findGlyph(AlkionGlyph.energy),
           ),
           findsNWidgets(9),
         );
@@ -940,7 +941,7 @@ void main() {
         setPhone(tester, width: width, textScale: scale);
         await tester.pumpWidget(localized(h, locale, const AppShell()));
         await settleReal(tester, ticks: 12);
-        await openTab(tester, WIcons.history);
+        await openTab(tester, AlkionGlyph.history);
         await settleUntilFound(tester, find.byType(SessionCard), where: 'H');
         expect(inHistory(volumeDash(l)), findsOneWidget);
         for (final text in [
@@ -1024,7 +1025,7 @@ void main() {
         setPhone(tester, width: width, textScale: scale);
         await tester.pumpWidget(localized(h, locale, const AppShell()));
         await settleReal(tester, ticks: 12);
-        await openTab(tester, WIcons.history);
+        await openTab(tester, AlkionGlyph.history);
         await settleUntilFound(tester, find.byType(SessionCard), where: 'H');
         for (final (unit, load, shown) in [
           (Unit.kg, '-9007199254740991', '-9007199254740991kg'),
