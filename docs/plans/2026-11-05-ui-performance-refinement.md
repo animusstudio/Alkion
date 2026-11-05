@@ -1,6 +1,6 @@
 # Artwork, discovery and live-workout refinement
 
-Date: 2026-11-05. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-05. Lane: **Standard**. Status: **Approved** by owner on 2026-11-05.
 Parent: [development](../alkion/development.md).
 Baseline: `cb8ec7b`; branch `feat/ui-performance-refinement-20261105`.
 
@@ -135,5 +135,5 @@ phone installation, release or public push is included.
 
 ## Task state and next
 
-T1–T5: pending. Inspection only; no runtime changes or new performance claims.
-Next: owner approval of this plan, then implement T1 first.
+T1–T5: pending implementation and independent review.
+Next: implement body correctness/performance/zoom, followed by the remaining tasks.
