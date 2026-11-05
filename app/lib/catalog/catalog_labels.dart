@@ -154,6 +154,7 @@ class CatalogLabels {
 }
 
 const _equipment = <String, List<String>>{
+  'atlas_stone': ['Atlas stone', 'Pietra Atlas', 'Atlas-Stein', 'Piedra Atlas'],
   'barbell': ['Barbell', 'Bilanciere', 'Langhantel', 'Barra'],
   'dumbbell': ['Dumbbells', 'Manubri', 'Kurzhanteln', 'Mancuernas'],
   'cable': ['Cable', 'Cavo', 'Kabelzug', 'Polea'],

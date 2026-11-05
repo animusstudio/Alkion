@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// App-authored meanings backed by the pinned, bundled Iconoir regular subset.
+/// Semantic glyphs from pinned Iconoir originals and separate Alkion drawings.
 /// Source mapping and licenses: tool/iconoir/README.md and assets/icons/NOTICE.
 enum AlkionGlyph {
   home('home-simple'),
@@ -52,14 +52,55 @@ enum AlkionGlyph {
   imageUnavailable('media-image-xmark'),
   bicycle('bicycle'),
   run('running'),
-  cable('usb'),
-  machine('settings'),
-  rope('infinite'),
+  cable('alkion-cable'),
+  machine('alkion-machine'),
+  rope('alkion-band'),
   current('check-circle'),
-  inDay('list-select');
+  inDay('list-select'),
+  barbell('alkion-barbell'),
+  smithMachine('alkion-smith-machine'),
+  band('alkion-band'),
+  ezBar('alkion-ez-bar'),
+  neutralGripBar('alkion-neutral-grip-bar'),
+  abWheel('alkion-ab-wheel'),
+  cardioMachine('alkion-cardio-machine'),
+  jumpRope('alkion-jump-rope'),
+  kettlebell('alkion-kettlebell'),
+  landmine('alkion-landmine'),
+  noEquipment('alkion-no-equipment'),
+  plate('alkion-plate'),
+  safetyBar('alkion-safety-bar'),
+  sled('alkion-sled'),
+  trapBar('alkion-trap-bar'),
+  dowel('alkion-dowel'),
+  medicineBall('alkion-medicine-ball'),
+  wristRoller('alkion-wrist-roller'),
+  battleRope('alkion-battle-rope'),
+  handGripper('alkion-hand-gripper'),
+  tire('alkion-tire'),
+  yoke('alkion-yoke'),
+  sandbag('alkion-sandbag'),
+  axle('alkion-axle'),
+  atlasStone('alkion-atlas-stone'),
+  muscleChest('alkion-muscle-chest'),
+  muscleBack('alkion-muscle-back'),
+  muscleShoulders('alkion-muscle-shoulders'),
+  muscleBiceps('alkion-muscle-biceps'),
+  muscleTriceps('alkion-muscle-triceps'),
+  muscleForearms('alkion-muscle-forearms'),
+  muscleQuads('alkion-muscle-quads'),
+  muscleHamstrings('alkion-muscle-hamstrings'),
+  muscleGlutes('alkion-muscle-glutes'),
+  muscleCalves('alkion-muscle-calves'),
+  muscleCore('alkion-muscle-core'),
+  muscleAdductors('alkion-muscle-adductors'),
+  muscleAbductors('alkion-muscle-abductors'),
+  mobility('alkion-mobility'),
+  wholeBody('alkion-whole-body');
 
   const AlkionGlyph(this.upstreamName, {this.mirrorsInRtl = false});
 
+  /// Bundled asset stem; custom names carry the `alkion-` prefix.
   final String upstreamName;
   final bool mirrorsInRtl;
 

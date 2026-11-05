@@ -686,6 +686,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
                           FilterChip(
                             chipAnimationStyle: Motion.chip(context),
                             key: ValueKey('catalog-group-${g.key}'),
+                            avatar: CatalogGroupIcon(
+                              group: g.key,
+                              color: _group == g.key ? context.tokens.bg : null,
+                            ),
                             label: Text(_results.index.groupLabel(g)),
                             selected: _group == g.key,
                             onSelected: (v) {
@@ -700,6 +704,12 @@ class _CatalogPickerState extends State<CatalogPicker> {
                         FilterChip(
                           chipAnimationStyle: Motion.chip(context),
                           key: const Key('catalog-group-unclassified'),
+                          avatar: CatalogGroupIcon(
+                            group: null,
+                            color: _group == CatalogFilter.unclassified
+                                ? context.tokens.bg
+                                : null,
+                          ),
                           label: Text(l.catalogUnclassified),
                           selected: _group == CatalogFilter.unclassified,
                           onSelected: (v) {
@@ -1055,6 +1065,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
         ? CatalogPickerRow(
             key: ValueKey('catalog-navigation-${hit.kind}-${hit.id}'),
             label: hit.label,
+            artwork: catalogArtworkForNavigation(hit.kind, hit.key),
             subtitle: l.catalogMatchingExecutions(
               hit.admittedVariantIds?.length ?? 0,
             ),
@@ -1426,6 +1437,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                     InputChip(
                                       chipAnimationStyle: Motion.chip(context),
                                       key: const Key('catalog-equipment-scope'),
+                                      avatar: CatalogEquipmentIcon(
+                                        kind: _equipment,
+                                        size: 18,
+                                      ),
                                       label: Text(
                                         labels.equipment(_equipment!),
                                       ),
@@ -1438,6 +1453,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                     InputChip(
                                       chipAnimationStyle: Motion.chip(context),
                                       key: const Key('catalog-group-scope'),
+                                      avatar: CatalogGroupIcon(group: _group),
                                       label: Text(groupLabel),
                                       onDeleted: _leaveGroup,
                                       deleteButtonTooltipMessage:
@@ -1786,25 +1802,26 @@ class CatalogPickerRow extends StatelessWidget {
                                           CatalogArtworkThumbnail(
                                             artwork: artwork!,
                                           ),
-                                          Positioned(
-                                            right: 0,
-                                            bottom: 0,
-                                            child: DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                color: t.bg,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(
-                                                  2,
+                                          if (equipment != null)
+                                            Positioned(
+                                              right: 0,
+                                              bottom: 0,
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  color: t.bg,
+                                                  shape: BoxShape.circle,
                                                 ),
-                                                child: CatalogEquipmentIcon(
-                                                  kind: equipment,
-                                                  size: 18,
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                    2,
+                                                  ),
+                                                  child: CatalogEquipmentIcon(
+                                                    kind: equipment,
+                                                    size: 18,
+                                                  ),
                                                 ),
                                               ),
                                             ),
-                                          ),
                                         ] else
                                           CatalogEquipmentIcon(kind: equipment),
                                         if (favorite)
@@ -2053,6 +2070,12 @@ class _CustomExerciseFormState extends State<_CustomExerciseForm> {
                       FilterChip(
                         chipAnimationStyle: Motion.chip(context),
                         key: ValueKey('catalog-custom-group-${g.key}'),
+                        avatar: CatalogGroupIcon(
+                          group: g.key,
+                          color: _groups.contains(g.key)
+                              ? context.tokens.bg
+                              : null,
+                        ),
                         label: Text(index.groupLabel(g)),
                         selected: _groups.contains(g.key),
                         onSelected: (v) => setState(() {

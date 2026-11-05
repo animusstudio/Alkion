@@ -1,13 +1,15 @@
-# Iconoir source subset
+# Alkion glyph sources
 
 Alkion uses the **regular** Iconoir outline set, pinned to
 [`39834e3f193bc0cca2c36bebb6a650471977433d`](https://github.com/iconoir-icons/iconoir/tree/39834e3f193bc0cca2c36bebb6a650471977433d).
 MIT, copyright (c) 2021 Luca Burgio. `sources/LICENSE` retains the exact notice;
 `assets/icons/NOTICE` carries it in the app bundle.
 
-`manifest.json` records every semantic role, upstream name, immutable source URL,
-original SHA-256 and directional role. `sources/` holds unmodified upstream SVGs;
-it is **outside** the Flutter asset bundle. `derivatives.json` records hashes of
+`manifest.json` records every semantic role, asset name and directional role.
+Its `assets` table records immutable upstream URLs and original SHA-256s;
+`sources/` holds unmodified Iconoir SVGs. The separate `custom_assets` table
+records original Alkion authorship, license, provenance and digests for `custom/`.
+Both source directories stay **outside** the Flutter asset bundle. `derivatives.json` records hashes of
 the two generated SVG subsets and bundled notice. Only the runtime subsets and
 notice are listed in `pubspec.yaml`.
 
@@ -44,7 +46,7 @@ are included alongside all existing aliases. Semantically distinct meanings
 remain distinct enum values, even where a historical Material glyph was shared
 (e.g. Plan and settings).
 
-| AlkionGlyph | Pinned upstream SVG | RTL mirror |
+| AlkionGlyph | Bundled SVG stem | RTL mirror |
 | --- | --- | --- |
 | `home` | `home-simple` | No |
 | `workout` | `gym` | No |
@@ -92,9 +94,9 @@ remain distinct enum values, even where a historical Material glyph was shared
 | `imageUnavailable` | `media-image-xmark` | No |
 | `bicycle` | `bicycle` | No |
 | `run` | `running` | No |
-| `cable` | `usb` | No |
-| `machine` | `settings` | No |
-| `rope` | `infinite` | No |
+| `cable` | `alkion-cable` | No |
+| `machine` | `alkion-machine` | No |
+| `rope` | `alkion-band` | No |
 | `current` | `check-circle` | No |
 | `inDay` | `list-select` | No |
 
@@ -168,7 +170,7 @@ The five former destination painter roles map to home, plan, history, progress
 and profile, retaining caller order and selected treatment. Framework-generated
 platform glyphs are outside the authored inventory.
 
-## Catalog integration inventory
+## Historical catalog integration inventory (2026-11-04)
 
 The published catalog integration at `116cd01342a6e79936bcb150bb0cbbe8159a5db2`
 adds eleven semantic roles. The resulting subset has **51 roles, 50 upstream
@@ -197,3 +199,57 @@ categories rather than inventing an exact equipment drawing. None of these
 roles mirrors in RTL: status, media, sports/equipment and list symbols keep their
 conventional orientation. The current circle-check and in-day list-check remain
 different shapes. All adapter sizes retain the same 16px minimum.
+
+## Reviewed category extension (2026-11-05)
+
+The current bundle has **91 semantic roles, 48 Iconoir originals and 42 original
+Alkion drawings**, generating **180 runtime SVGs**. `usb` and `infinite` were
+retired as equipment substitutes. The older `rope` semantic alias now uses the
+original Alkion band drawing; category callers use the specific `band` role.
+
+`custom/alkion-*.svg` are original Animus Studio geometric recognition symbols,
+authored 2026-11-05 and licensed **AGPL-3.0-only** with the application software.
+They are not attributed to Iconoir and are not covered by Iconoir's MIT grant.
+The bundled NOTICE separates the grants; no upstream file was edited or used as
+a custom source. Geometry uses a 24-unit viewBox, round caps/joins and no fills;
+the same generator emits 1.25/1.0 stroke tiers without changing the geometry.
+
+The reviewed mapping lives in `lib/catalog_ui/catalog_equipment_icon.dart`.
+All 30 current equipment kinds, 13 muscle groups and 3 activity groups have an
+explicit role; unknown/future values retain a neutral fallback. Each equipment
+and group category has a distinct glyph within its category set. Muscle symbols
+are schematic region marks rather than anatomical or technique evidence. Labels
+remain visible and supply accessibility semantics. No direction mirrors in RTL.
+
+| Category | Glyph recognition cue |
+| --- | --- |
+| bodyweight / none | Pinned accessibility figure / crossed empty equipment frame |
+| dumbbell / bicycle | Pinned gym outline / bicycle |
+| conditioning | Pinned running figure |
+| barbell / axle | Thin straight shaft / thick straight shaft |
+| EZ / neutral-grip / safety / trap bar | Zigzag / parallel handles / padded neck and handles / hexagonal frame |
+| cable / machine / Smith machine | Pulley and hanging load / seated station / guided horizontal bar |
+| band / jump rope / battle rope | Elastic loop / handled U / two waves |
+| kettlebell / plate / medicine ball / Atlas stone | Handle and bell / center hole / curved ball seams / solid stone outline |
+| ab wheel / wrist roller / hand gripper | Vertical rolling wheel / shaft and suspended load / spring and two handles |
+| landmine / dowel / sled / yoke / tire / sandbag | Anchored angled bar / plain rod / runners and posts / carry frame / treaded ring / handled sack |
+| cardio machine | Treadmill base and console |
+| chest / back / shoulders | Paired pectorals / scapular outline and spine / shoulder caps |
+| biceps / triceps / forearms | Flexed arm / rear upper arm / tapering lower arm |
+| quads / hamstrings / glutes / calves | Front thigh lobes / rear thigh tendons / paired hip lobes / lower-leg taper |
+| core / adductors / abductors | Segmented abdomen / inward / outward thigh arrows |
+| mobility / whole body | Stretching figure / open full-body figure |
+
+`catalog_category_glyph_test.dart` checks mapping coverage, distinct roles,
+localized labels, decorative semantics and theme/stroke rendering. Its compact
+proof plate uses actual 20/24/40px sizes in both themes. To retain disposable host
+captures, set `ALKION_CATEGORY_CAPTURE_DIR=/tmp/<fresh-directory>` when running
+that test through `make -C app test`. Host plates establish glyph legibility;
+they do not qualify Android performance or gestures.
+
+Family/collection previews use the separate explicit
+`catalogRepresentativeVariantKeys` table in `catalog_artwork.dart` (147 families,
+4 collections). These decorative previews reuse admitted owner illustrations,
+independently of locale and row sorting. They do not register the family as an
+exact execution or change `catalogArtworkForVariant` identity checks. The family
+thumbnail carries no equipment badge because its children can use different kit.

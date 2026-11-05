@@ -55,11 +55,51 @@
     "imageUnavailable": "media-image-xmark",
     "bicycle": "bicycle",
     "run": "running",
-    "cable": "usb",
-    "machine": "settings",
-    "rope": "infinite",
+    "cable": "alkion-cable",
+    "machine": "alkion-machine",
+    "rope": "alkion-band",
     "current": "check-circle",
-    "inDay": "list-select"
+    "inDay": "list-select",
+    "barbell": "alkion-barbell",
+    "smithMachine": "alkion-smith-machine",
+    "band": "alkion-band",
+    "ezBar": "alkion-ez-bar",
+    "neutralGripBar": "alkion-neutral-grip-bar",
+    "abWheel": "alkion-ab-wheel",
+    "cardioMachine": "alkion-cardio-machine",
+    "jumpRope": "alkion-jump-rope",
+    "kettlebell": "alkion-kettlebell",
+    "landmine": "alkion-landmine",
+    "noEquipment": "alkion-no-equipment",
+    "plate": "alkion-plate",
+    "safetyBar": "alkion-safety-bar",
+    "sled": "alkion-sled",
+    "trapBar": "alkion-trap-bar",
+    "dowel": "alkion-dowel",
+    "medicineBall": "alkion-medicine-ball",
+    "wristRoller": "alkion-wrist-roller",
+    "battleRope": "alkion-battle-rope",
+    "handGripper": "alkion-hand-gripper",
+    "tire": "alkion-tire",
+    "yoke": "alkion-yoke",
+    "sandbag": "alkion-sandbag",
+    "axle": "alkion-axle",
+    "atlasStone": "alkion-atlas-stone",
+    "muscleChest": "alkion-muscle-chest",
+    "muscleBack": "alkion-muscle-back",
+    "muscleShoulders": "alkion-muscle-shoulders",
+    "muscleBiceps": "alkion-muscle-biceps",
+    "muscleTriceps": "alkion-muscle-triceps",
+    "muscleForearms": "alkion-muscle-forearms",
+    "muscleQuads": "alkion-muscle-quads",
+    "muscleHamstrings": "alkion-muscle-hamstrings",
+    "muscleGlutes": "alkion-muscle-glutes",
+    "muscleCalves": "alkion-muscle-calves",
+    "muscleCore": "alkion-muscle-core",
+    "muscleAdductors": "alkion-muscle-adductors",
+    "muscleAbductors": "alkion-muscle-abductors",
+    "mobility": "alkion-mobility",
+    "wholeBody": "alkion-whole-body"
   },
   "rtl_roles": [
     "back",
@@ -182,12 +222,6 @@
       "source": "sources/home-simple.svg",
       "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/home-simple.svg",
       "sha256": "75c68dfa0cb25ba3ce8ed82a0d704a5c0545017e435fdafd7b1bb80940458416"
-    },
-    {
-      "name": "infinite",
-      "source": "sources/infinite.svg",
-      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/infinite.svg",
-      "sha256": "ec0004db34ead4010761a388dce18ff3b36d3b4b3d4b979c7f6f6bf4597c1f2a"
     },
     {
       "name": "info-circle",
@@ -340,12 +374,6 @@
       "sha256": "b460b2f7faea4185b1e3f7497d5d71b992e276655a4a2076302c107067674f02"
     },
     {
-      "name": "usb",
-      "source": "sources/usb.svg",
-      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/usb.svg",
-      "sha256": "641a70a89d418b22519607a272d2fce03da36df48dfdcef54b399ce0631f7a80"
-    },
-    {
       "name": "user",
       "source": "sources/user.svg",
       "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/user.svg",
@@ -368,6 +396,344 @@
       "source": "sources/xmark.svg",
       "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/xmark.svg",
       "sha256": "61aa0a4913a440aaafcc45064a87e24fe8eb22ba4abc4c5ef020530928ed8daf"
+    }
+  ],
+  "custom_assets": [
+    {
+      "name": "alkion-barbell",
+      "source": "custom/alkion-barbell.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "710b43de4320b52974950c6dadc0b5a7047c47a6804cc9c242b73b1d63ea1e5d"
+    },
+    {
+      "name": "alkion-cable",
+      "source": "custom/alkion-cable.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "b9220b284698b3ea480c4bd0ec1c1582614b65dbe73c4ad09d191f95f5ec9906"
+    },
+    {
+      "name": "alkion-machine",
+      "source": "custom/alkion-machine.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "459780bb4ae5fec11478663a4c18a0681991fc07bc5721be5bc5990f9af2ac9a"
+    },
+    {
+      "name": "alkion-smith-machine",
+      "source": "custom/alkion-smith-machine.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "b09136875da4555e4606379b4c97f4c474dfaa1d69087b35932db9f6dc9eca50"
+    },
+    {
+      "name": "alkion-band",
+      "source": "custom/alkion-band.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "03daaee866bd8daeed2bb8602a0d0e7e636cd24545662d9776002e401093c669"
+    },
+    {
+      "name": "alkion-ez-bar",
+      "source": "custom/alkion-ez-bar.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "b4b440073f6abda69d9281808f223ec9a4a024de5dd55005d1bcf834c2ab2e57"
+    },
+    {
+      "name": "alkion-neutral-grip-bar",
+      "source": "custom/alkion-neutral-grip-bar.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "c353f83e0c69a27b98263e1f20708775cfc46e638bd35ce80a8b3b7500748671"
+    },
+    {
+      "name": "alkion-ab-wheel",
+      "source": "custom/alkion-ab-wheel.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "51ae012bbd2df5ef07d16364a2127160614994478c5e02fca15e2e801b2adb21"
+    },
+    {
+      "name": "alkion-cardio-machine",
+      "source": "custom/alkion-cardio-machine.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "c198218df083adc530117211e7ae4212c6427e73c7346cb242098ff5648ae50f"
+    },
+    {
+      "name": "alkion-jump-rope",
+      "source": "custom/alkion-jump-rope.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "1fea62cf00ba792a1e6c50e007c36fe2d3eb19c1cc9dbb9cd96bb8dd4725b971"
+    },
+    {
+      "name": "alkion-kettlebell",
+      "source": "custom/alkion-kettlebell.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "a0353c7fbd41ff6e1d3fea41a9fe09bd67c725b9dfa01e8bc98bd2e5efd80997"
+    },
+    {
+      "name": "alkion-landmine",
+      "source": "custom/alkion-landmine.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "bcbf079f60e0797b5263a1736142386727a71dbd065b6c1f778455dee6fc311f"
+    },
+    {
+      "name": "alkion-no-equipment",
+      "source": "custom/alkion-no-equipment.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "3c569394cb8b6efef23d94ab79d34990e54e7aeae78f2218ea401710a4c53651"
+    },
+    {
+      "name": "alkion-plate",
+      "source": "custom/alkion-plate.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "43e2fa4593f8ca662ba6aad2635f787d3373833a3405583e4c8f9642eb758820"
+    },
+    {
+      "name": "alkion-safety-bar",
+      "source": "custom/alkion-safety-bar.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "212f4d2ca2c0a9c2a069f1f3d0c5fc9f8ca7e33ef42489c0247df6cfb857485f"
+    },
+    {
+      "name": "alkion-sled",
+      "source": "custom/alkion-sled.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "11bb57038b168c0699a5df7090a01dd10601a574234409ddb20d21da7781762f"
+    },
+    {
+      "name": "alkion-trap-bar",
+      "source": "custom/alkion-trap-bar.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "28d5cd735f892836e72747314412762731a2b33d6bddbf6a1b3420203befdfbe"
+    },
+    {
+      "name": "alkion-dowel",
+      "source": "custom/alkion-dowel.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "bcb6336da241b4371ca89b2a065936cb9c66307f6c6eec99843b0433d1afd1a4"
+    },
+    {
+      "name": "alkion-medicine-ball",
+      "source": "custom/alkion-medicine-ball.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "9026ae67b5e97dc069d0a7b915c5032b3d1dc85eb685eac853196558ae862d39"
+    },
+    {
+      "name": "alkion-wrist-roller",
+      "source": "custom/alkion-wrist-roller.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "b066de13301ed93eb97a5f108c7c972ca10d08bdee8beff2a6ba5cdb202c9c00"
+    },
+    {
+      "name": "alkion-battle-rope",
+      "source": "custom/alkion-battle-rope.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "33aff17465376b17b896673df9283e97fe7f7c94791ea97e7887a35b14b25181"
+    },
+    {
+      "name": "alkion-hand-gripper",
+      "source": "custom/alkion-hand-gripper.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "3d268cd019984ca255e27e0e90126fbd4bad97045659976f7f13e6188d31a2d9"
+    },
+    {
+      "name": "alkion-tire",
+      "source": "custom/alkion-tire.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "4f07bef23b7f8870efc3c4f0df742d50b8d8d715494b8fe6f5b87b4472cd299a"
+    },
+    {
+      "name": "alkion-yoke",
+      "source": "custom/alkion-yoke.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "01070d4f2e4d0573f8a98ca1edadd5a0eefbd2fc769efc5aca4d51e36e40edcb"
+    },
+    {
+      "name": "alkion-sandbag",
+      "source": "custom/alkion-sandbag.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "1631828c3432aa670d63c27663634a8f44169b3d165e6f62bd55e59766d60d96"
+    },
+    {
+      "name": "alkion-axle",
+      "source": "custom/alkion-axle.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "e38383518721a620096128f4386f71a526fa46f0e783a665f68f34d4bf2aea02"
+    },
+    {
+      "name": "alkion-atlas-stone",
+      "source": "custom/alkion-atlas-stone.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "514807f621755b0a7130738312540a4e69c53b280fda5807dab99eae7c302097"
+    },
+    {
+      "name": "alkion-muscle-chest",
+      "source": "custom/alkion-muscle-chest.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "8cfe51f440e76c9fca836e96db799cb4e0e5ec47f09cbb7b91e8c6f8048674af"
+    },
+    {
+      "name": "alkion-muscle-back",
+      "source": "custom/alkion-muscle-back.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "f1bf312d2a6f3469908900b6a87dfc513f6e6bd27f4e66769578da875ac5928e"
+    },
+    {
+      "name": "alkion-muscle-shoulders",
+      "source": "custom/alkion-muscle-shoulders.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "d07a7b40639d61595efad88d4d611ec4b67726170b51b7e7dbaa4198aad820da"
+    },
+    {
+      "name": "alkion-muscle-biceps",
+      "source": "custom/alkion-muscle-biceps.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "47153f5eb5258ca39a1612dd15b26d5728e74ec51252eba333cb1d95e7c83065"
+    },
+    {
+      "name": "alkion-muscle-triceps",
+      "source": "custom/alkion-muscle-triceps.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "2bb1031a2f16b89bb05c32d6b27b83f4e0767d1d36923f7924ddbdda5241d1be"
+    },
+    {
+      "name": "alkion-muscle-forearms",
+      "source": "custom/alkion-muscle-forearms.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "c95c8b816a5e2c77d6dd12e63ee8490b01ae2aa3f731675b204e00ffe59b1586"
+    },
+    {
+      "name": "alkion-muscle-quads",
+      "source": "custom/alkion-muscle-quads.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "a8351590148b638264620bf1081977ad4a9776e639813145197acfce0a2fcfe1"
+    },
+    {
+      "name": "alkion-muscle-hamstrings",
+      "source": "custom/alkion-muscle-hamstrings.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "17eee3fb02c1c597100d4cc3322195f25ea8ecf17ca430bc061aca2a9eb42030"
+    },
+    {
+      "name": "alkion-muscle-glutes",
+      "source": "custom/alkion-muscle-glutes.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "311031cc125ccff6153efb7808ce07bb22a3cb52ff93d33f75cb89204e26d1c0"
+    },
+    {
+      "name": "alkion-muscle-calves",
+      "source": "custom/alkion-muscle-calves.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "b19c5ac8f1d81ce1a81a841f6da325ad1b6dc6ea87182cdd64bb522598d582d6"
+    },
+    {
+      "name": "alkion-muscle-core",
+      "source": "custom/alkion-muscle-core.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "37d8bf85f750527d88bf47104267087fa8e86e05ea50e02bf6e4f96a8b9b8d47"
+    },
+    {
+      "name": "alkion-muscle-adductors",
+      "source": "custom/alkion-muscle-adductors.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "b53cfdcbb7f76e2fe7a2a42e36298fb76fd5c8a803aa549d900f25715633254e"
+    },
+    {
+      "name": "alkion-muscle-abductors",
+      "source": "custom/alkion-muscle-abductors.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "2b2fe467f7ac8814031d53a8e43ec566d2c7c322649af10cff0966d7a43d5560"
+    },
+    {
+      "name": "alkion-mobility",
+      "source": "custom/alkion-mobility.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "5b9f9c49f224c132c65897fd4e416585ac62b7b85e49e72c485fc98d75db8618"
+    },
+    {
+      "name": "alkion-whole-body",
+      "source": "custom/alkion-whole-body.svg",
+      "author": "Animus Studio",
+      "spdx": "AGPL-3.0-only",
+      "provenance": "Original Alkion geometric outline, authored 2026-11-05; not an Iconoir derivative.",
+      "sha256": "cd953ef36b6e870389dea88efe6dbd0d36436f27c1e5110c4aff516c1542b03c"
     }
   ]
 }

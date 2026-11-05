@@ -163,6 +163,53 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(preloadAppFonts);
 
+  testWidgets('family rows preview stable art without registering a variant', (
+    tester,
+  ) async {
+    final source = syntheticCatalog();
+    final family = (source['families'] as List).first as Map;
+    family['key'] = 'biceps_curl';
+    family['names'] = {'en': 'Synthetic curl family'};
+    final state = CatalogTrialState(
+      CatalogBundle.fromJsonString(jsonEncode(source)),
+    );
+    addTearDown(state.dispose);
+    await tester.pumpWidget(_app(CatalogPicker(state: state, multiple: false)));
+    await tester.pumpAndSettle();
+    final row = find.byKey(
+      ValueKey('catalog-navigation-family-${fixtureId(1)}'),
+    );
+    await tester.scrollUntilVisible(
+      row,
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byType(CatalogPicker),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    final artwork = find.descendant(
+      of: row,
+      matching: find.byType(CatalogArtworkThumbnail),
+    );
+    expect(artwork, findsOneWidget);
+    expect(
+      tester.widget<CatalogArtworkThumbnail>(artwork).artwork.asset,
+      endsWith('/standing_dumbbell_curl.webp'),
+    );
+    // A family preview does not claim one equipment kind for all its children.
+    expect(
+      find.descendant(of: row, matching: find.byType(CatalogEquipmentIcon)),
+      findsNothing,
+    );
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.byType(CatalogArtworkThumbnail), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('actual artwork decoding stays bounded at high pixel density', (
     tester,
   ) async {

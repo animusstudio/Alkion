@@ -18,6 +18,42 @@ void main() {
           as Map<String, dynamic>;
   final entries = (manifest['entries'] as List).cast<Map<String, dynamic>>();
 
+  test(
+    'group previews are explicit, stable and separate from exact matches',
+    () {
+      final reviewed = {
+        for (final entry in entries)
+          if (entry['review_status'] == 'reviewed') entry['variant_key']: entry,
+      };
+      expect(catalogRepresentativeVariantKeys.length, 151);
+      for (final mapping in catalogRepresentativeVariantKeys.entries) {
+        final parts = mapping.key.split(':');
+        final artwork = catalogArtworkForNavigation(parts[0], parts[1]);
+        expect(
+          artwork?.asset,
+          reviewed[mapping.value]?['asset'],
+          reason: mapping.key,
+        );
+        expect(
+          artwork?.sha256,
+          reviewed[mapping.value]?['sha256'],
+          reason: mapping.key,
+        );
+      }
+      expect(
+        catalogArtworkForNavigation('family', 'biceps_curl')?.asset,
+        endsWith('/standing_dumbbell_curl.webp'),
+      );
+      expect(
+        catalogArtworkForNavigation('collection', 'hammer_curl')?.asset,
+        endsWith('/alternating_dumbbell_hammer_curl.webp'),
+      );
+      expect(catalogArtworkForNavigation('family', 'future_family'), isNull);
+      expect(catalogArtworkForNavigation('variant', 'biceps_curl'), isNull);
+      expect(catalogArtworkForVariant(variant(key: 'biceps_curl')), isNull);
+    },
+  );
+
   test('only reviewed exact semantic identities resolve', () {
     expect(entries, isNotEmpty);
     expect(catalogArtworkForVariant(null), isNull);
