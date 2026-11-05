@@ -51,7 +51,7 @@ console.log('PASS: actual null-neutral atlas remains neutral; each mapped select
 
 // Exercise the production runtime with fake graphics and a controlled RAF clock.
 // Counts cover all renderer draws, not just outstanding animation callbacks.
-const events=[],raf=new Map(),listeners={},documentListeners={};let counter=0,draws=0,disposals=0,loadCount=0,failLoad=false,now=100,lastYaw=0;
+const events=[],raf=new Map(),listeners={},documentListeners={};let counter=0,draws=0,disposals=0,loadCount=0,failLoad=false,now=100,lastYaw=0,bufferResets=0;
 const canvas={getContext:()=>({clearRect(){}}),addEventListener:(name,cb)=>listeners[name]=cb};
 const window={AlkionNative:{postMessage:json=>events.push(JSON.parse(json))},addEventListener(){}};
 const document={getElementById:()=>canvas,fonts:{load:async()=>[{}]},addEventListener:(name,cb)=>documentListeners[name]=cb,hidden:false};
@@ -61,7 +61,7 @@ runInNewContext(runtime,{
  window,document,performance:{now:()=>now},AbortController,
  ResizeObserver:class{constructor(callback){resized=callback;}observe(){}},
  MotionLoop:class extends MotionLoop{constructor(state,draw){super(state,draw,{request:cb=>{const id=++counter;raf.set(id,cb);return id;},cancel:id=>raf.delete(id)});}},
- VolumeRenderer:class{pick(){return 'chest';}draw(yaw){draws++;lastYaw=yaw;}dispose(){disposals++;}},
+ VolumeRenderer:class{constructor(_canvas,_mesh,compact){this.compact=compact;}set pixels(value){if(value===null)bufferResets++;}pick(){return 'chest';}draw(yaw){draws++;lastYaw=yaw;}dispose(){disposals++;}},
  loadMesh:async()=>{loadCount++;if(failLoad)throw new Error('art_unavailable');return {};},colors:{},validateDisplay,validatePick,
 });
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
@@ -114,8 +114,8 @@ update({interaction:{enabled:false,selected:null,generation:9}});frame();pick();
 const cacheBaseline=loadCount;
 update({style:'male'});await flush();frame();assert.equal(loadCount,cacheBaseline+1);
 update({style:'female'});await flush();frame();assert.equal(loadCount,cacheBaseline+1);
-window.AlkionBody.hostPaused(true);window.AlkionBody.reset(1);window.AlkionBody.hostPaused(false);
-update({retry:0,command:0,yaw:0,turn:0,view:{zoom:1,x:0,y:0}});await flush();frame();assert.equal(loadCount,cacheBaseline+1,'Warm lease reuses prepared style and renderer');near(lastYaw,0);
+const warmBufferResets=bufferResets;window.AlkionBody.hostPaused(true);window.AlkionBody.reset(1);window.AlkionBody.hostPaused(false);
+update({retry:0,command:0,yaw:0,turn:0,view:{zoom:1,x:0,y:0}});await flush();frame();assert.equal(loadCount,cacheBaseline+1,'Warm lease reuses prepared style and renderer');near(lastYaw,0);assert.equal(bufferResets,warmBufferResets,'Same-sized warm lease retains readback buffer and glyph atlas');
 assert.equal(events.at(-1).lease,1);assert.equal(events.at(-1).cacheHit,1);
 window.AlkionBody.hostPaused(true);const hiddenBaseline=loadCount;update({style:'male',retry:3});await flush();assert.equal(loadCount,hiddenBaseline,'No hidden model preparation');
 window.AlkionBody.hostPaused(false);await flush();frame();assert.equal(loadCount,hiddenBaseline+1);

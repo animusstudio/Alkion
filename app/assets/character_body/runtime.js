@@ -62,7 +62,7 @@ window.AlkionBody={
    if(next.retry!==retry){if(retry>=0||next.retry>0){meshes.delete(next.style);needsLoad=true;}retry=next.retry;}
    if(!state.visible||state.hidden){cancelLoad();loop.reconcile();return;}
    if(loadedStyle!==next.style||needsLoad||(!state.ready&&!loading&&!state.failed)){if(!loading||loadedStyle!==next.style){cancelLoad();load();}return;}
-   if(renderer&&previous?.compact!==next.compact){renderer.compact=next.compact;renderer.pixels=null;}
+   if(renderer&&renderer.compact!==next.compact){renderer.compact=next.compact;renderer.pixels=null;}
    if(changed)loop.invalidate();else loop.reconcile();
   }catch{fail('error');}
  },
