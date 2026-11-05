@@ -1,6 +1,6 @@
 # Artwork, discovery and live-workout refinement
 
-Date: 2026-11-05. Lane: **Standard**. Status: **Approved** by owner on 2026-11-05.
+Date: 2026-11-05. Lane: **Standard**. Status: **Implemented locally; qualification limits recorded**. Approved by owner on 2026-11-05.
 Parent: [development](../alkion/development.md).
 Baseline: `cb8ec7b`; branch `feat/ui-performance-refinement-20261105`.
 
@@ -135,5 +135,17 @@ phone installation, release or public push is included.
 
 ## Task state and next
 
-T1–T5: pending implementation and independent review.
-Next: implement body correctness/performance/zoom, followed by the remaining tasks.
+T1–T5 implemented through `e6d553f`. Independent task review passes for body,
+catalog/glyphs, targets, live interaction and ambient lifecycle; final density
+correction review is recorded in the acceptance receipt. The coordinator reviewed
+preference persistence, large-text corrections and test-fixture updates.
+
+The full Flutter suite passed (2,606 tests; three expected optional fixture skips);
+the final density correction has a separate 86-test pass and clean analyzer.
+Required parent `make check`/`make smoke` pass. Native confirmation uses only a
+disposable Android emulator and synthetic data. See the
+[dated acceptance receipt](../alkion/acceptance.md#artwork-discovery-and-live-workout-refinement--2026-11-05)
+for measured gains, visual/interaction evidence and remaining A2/A3/A8 limits.
+Physical-device performance, native two-finger gesture qualification and a
+comparative ambient-frame benchmark remain unqualified. No public push or
+physical-phone installation was performed.
