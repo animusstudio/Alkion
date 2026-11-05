@@ -79,6 +79,7 @@ void main() {
         tester.widget<CharacterBody>(find.byType(CharacterBody)).selectedRegion,
         WorkloadMuscle.chest,
       );
+      await openMuscleList(tester);
       expect(
         tester
             .widget<ChoiceChip>(find.byKey(const Key('catalog-muscle-chest')))
@@ -90,8 +91,9 @@ void main() {
       await tester.pump();
       // Turning the view never changes the chosen group.
       expect(find.text('Show exercises · Chest'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('catalog-muscle-list-link')));
-      await tester.pump();
+      await tester.ensureVisible(
+        find.byKey(const Key('catalog-muscle-triceps')),
+      );
       await tester.tap(find.byKey(const Key('catalog-muscle-triceps')));
       await tester.pump();
       await tester.tap(find.byKey(const Key('catalog-muscle-show-exercises')));
