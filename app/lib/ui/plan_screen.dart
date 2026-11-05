@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../data/day_template_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
+import '../settings/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
@@ -234,6 +235,7 @@ class PlanScreenState extends State<PlanScreen> {
           if (_editor == null)
             _SegmentedToggle(
               activeTab: _activeTab,
+              showTargets: context.read<SettingsService>().muscleTargetsEnabled,
               tokens: tokens,
               onSelect: (tab) => setState(() => _activeTab = tab),
             ),
@@ -307,6 +309,10 @@ class PlanScreenState extends State<PlanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final targetsEnabled = context
+        .watch<SettingsService>()
+        .muscleTargetsEnabled;
+    if (!targetsEnabled && _activeTab == 'targets') _activeTab = 'split';
     final tokens = context.tokens;
     return ColoredBox(
       color: tokens.bg,
@@ -355,11 +361,13 @@ class _BackButton extends StatelessWidget {
 class _SegmentedToggle extends StatelessWidget {
   const _SegmentedToggle({
     required this.activeTab,
+    required this.showTargets,
     required this.tokens,
     required this.onSelect,
   });
 
   final String activeTab;
+  final bool showTargets;
   final WorkoutTokens tokens;
   final ValueChanged<String> onSelect;
 
@@ -383,13 +391,15 @@ class _SegmentedToggle extends StatelessWidget {
             tokens: tokens,
             onTap: () => onSelect('exercises'),
           ),
-          const SizedBox(width: 8),
-          _SegBtn(
-            label: l.planTabTargets,
-            active: activeTab == 'targets',
-            tokens: tokens,
-            onTap: () => onSelect('targets'),
-          ),
+          if (showTargets) ...[
+            const SizedBox(width: 8),
+            _SegBtn(
+              label: l.planTabTargets,
+              active: activeTab == 'targets',
+              tokens: tokens,
+              onTap: () => onSelect('targets'),
+            ),
+          ],
         ],
       ),
     );
