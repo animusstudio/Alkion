@@ -866,12 +866,12 @@
   "catalogBasket": "Selezione · {count}",
   "catalogSelectedCount": "Occorrenze selezionate: {count}",
   "catalogRemoveOccurrence": "Rimuovi elemento {position}: {name}",
-  "catalogMatchingExecutions": "{count} esecuzioni corrispondenti · scegli",
+  "catalogMatchingExecutions": "{count, plural, one {1 esecuzione} other {{count} esecuzioni}}",
   "catalogInDay": "Già in questo giorno",
   "catalogCurrent": "Contesto attuale",
   "catalogCurrentSetup": "Attuale: {name}",
   "catalogNewSetNotice": "La scelta di un contesto aggiunge una nuova serie. Le serie esistenti restano invariate.",
-  "catalogChooseExecution": "Scegli esecuzione/attrezzatura — aggiungi una serie",
+  "catalogChooseExecution": "Esecuzione / attrezzatura",
   "catalogKeepSelection": "Mantieni selezione",
   "catalogDiscardSelection": "Scarta selezione",
   "catalogDiscardTitle": "Scartare gli esercizi selezionati?",
@@ -953,5 +953,12 @@
   "animusRecoveryUnknownHistory": "Alcuni allenamenti o esercizi ripristinati non hanno una cronologia degli invii recuperabile. Restano bloccati fino a una riconciliazione esplicita. Dopo questa verifica si possono inviare nuovi allenamenti indipendenti.",
   "animusRecoveryRetry": "Riprova richiesta verificata",
   "animusRecoveryRetryBody": "Inviare una sola richiesta conservata e identica di questa selezione? Serve una verifica sul server. Animus decide se può essere eseguita. Richiesta e identificativi restano gli stessi: non si reinviano altre richieste né si autorizzano dati mancanti.",
-  "animusRecoveryReviewedReply": "Animus ha confermato questa precisa richiesta verificata. Le prove precedenti sono conservate. Le altre richieste conservate restano bloccate."
+  "animusRecoveryReviewedReply": "Animus ha confermato questa precisa richiesta verificata. Le prove precedenti sono conservate. Le altre richieste conservate restano bloccate.",
+  "trainingMuscleTargets": "Obiettivi muscolari",
+  "bodyZoomIn": "Ingrandisci",
+  "bodyZoomOut": "Riduci",
+  "bodyResetView": "Reimposta vista",
+  "bodyExploreInfo": "Informazioni sulla selezione muscolare",
+  "sessionSetOptions": "Opzioni {set}",
+  "catalogMoreMeasurements": "Altre misure"
 }

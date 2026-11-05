@@ -304,18 +304,22 @@ void main() {
     expect(find.byKey(const Key('rir-0')), findsNothing);
   });
 
-  testWidgets('shows the last-session reference or no previous data', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      host(
-        card(_s(), last: (weight: 140, reps: 9, date: isoDate(DateTime.now()))),
-      ),
-    );
-    expect(find.text('last 140kg × 9 · today'), findsOneWidget);
-    await tester.pumpWidget(host(card(_s())));
-    expect(find.text('No previous data'), findsOneWidget);
-  });
+  testWidgets(
+    'shows existing history and omits repetitive empty-history guidance',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          card(
+            _s(),
+            last: (weight: 140, reps: 9, date: isoDate(DateTime.now())),
+          ),
+        ),
+      );
+      expect(find.text('last 140kg × 9 · today'), findsOneWidget);
+      await tester.pumpWidget(host(card(_s())));
+      expect(find.text('No previous data'), findsNothing);
+    },
+  );
 
   testWidgets('mark-as-not-done shows only for a logged set and is 48dp tall', (
     tester,

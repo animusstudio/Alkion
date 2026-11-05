@@ -18,6 +18,10 @@ internal class AlkionRuntime private constructor(context: Context) {
     private var documents: AndroidDocuments? = null
 
     init {
+        engine.addEngineLifecycleListener(object : FlutterEngine.EngineLifecycleListener {
+            override fun onPreEngineRestart() { bodies.clearIdle() }
+            override fun onEngineWillDestroy() { bodies.close() }
+        })
         check(engine.platformViewsController.registry.registerViewFactory(
             "dev.animusstudio.alkion/character-body", bodies,
         )) { "Character body factory is already registered" }
@@ -69,6 +73,7 @@ internal class AlkionRuntime private constructor(context: Context) {
         documents = null
         host = null
         bodies.hostPaused(true)
+        bodies.clearIdle()
     }
 
     fun documentsFor(activity: MainActivity): AndroidDocuments? {

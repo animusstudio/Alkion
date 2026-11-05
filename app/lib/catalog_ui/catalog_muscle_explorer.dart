@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 
 import '../theme/alkion_icon.dart';
@@ -13,6 +14,7 @@ import '../theme/motion.dart';
 import '../theme/typography.dart';
 import '../ui/character_body.dart';
 import '../widgets/fit_label.dart';
+import 'catalog_equipment_icon.dart';
 
 Future<String?> showCatalogMuscleExplorer(
   BuildContext context, {
@@ -57,12 +59,17 @@ class CatalogMuscleExplorer extends StatefulWidget {
 class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     with WidgetsBindingObserver {
   String? _selected;
+  bool _listExpanded = false;
+  bool _showInfo = false;
+  double _gestureZoom = 1;
+  Offset _gesturePan = Offset.zero;
   late CharacterBodyController _controller;
   final _listKey = GlobalKey();
   final _artKey = GlobalKey();
   final _scroll = ScrollController();
   CharacterBodyStatus _status = CharacterBodyStatus.loading;
   Animation<double>? _coverAnimation;
+  Animation<double>? _entryAnimation;
   bool _viewportCheckQueued = false;
   bool _inViewport = false;
   int _pickEpoch = 0;
@@ -123,7 +130,16 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final animation = ModalRoute.of(context)?.secondaryAnimation;
+    final route = ModalRoute.of(context);
+    final entry = route?.animation;
+    if (!identical(entry, _entryAnimation)) {
+      _entryAnimation?.removeListener(_queueViewportCheck);
+      _entryAnimation = entry;
+      // The first layout may still be below the screen during sheet entrance.
+      // Admission must not depend on a native status: hidden loads are deferred.
+      _entryAnimation?.addListener(_queueViewportCheck);
+    }
+    final animation = route?.secondaryAnimation;
     if (!identical(animation, _coverAnimation)) {
       _coverAnimation?.removeStatusListener(_routeTransitionChanged);
       _coverAnimation = animation;
@@ -153,7 +169,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _viewportCheckQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _viewportCheckQueued = false;
-      if (!mounted) return;
+      if (!mounted || !_scroll.hasClients) return;
       final box = _artKey.currentContext?.findRenderObject();
       final scrollBox = _scroll.position.context.storageContext
           .findRenderObject();
@@ -198,6 +214,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _pickEpoch++;
     WidgetsBinding.instance.removeObserver(this);
     _coverAnimation?.removeStatusListener(_routeTransitionChanged);
+    _entryAnimation?.removeListener(_queueViewportCheck);
     _scroll.dispose();
     _controller.removeListener(_controllerChanged);
     if (widget.controller == null) _controller.dispose();
@@ -250,6 +267,22 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                       style: WorkoutType.display(size: 22, color: t.text),
                     ),
                   ),
+                  Semantics(
+                    expanded: _showInfo,
+                    child: IconButton(
+                      key: const Key('catalog-muscle-info'),
+                      tooltip: l.bodyExploreInfo,
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
+                      ),
+                      onPressed: () {
+                        _pickEpoch++;
+                        setState(() => _showInfo = !_showInfo);
+                      },
+                      icon: const AlkionIcon(AlkionGlyph.info),
+                    ),
+                  ),
                   IconButton(
                     tooltip: l.commonDone,
                     constraints: const BoxConstraints(
@@ -273,31 +306,6 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      labels.chooseMuscle,
-                      style: WorkoutType.body(size: 14, color: t.dim),
-                    ),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        key: const Key('catalog-muscle-list-link'),
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(48, 48),
-                        ),
-                        onPressed: () {
-                          _pickEpoch++;
-                          Scrollable.ensureVisible(
-                            _listKey.currentContext!,
-                            alignment: 0,
-                          );
-                        },
-                        icon: const AlkionIcon(AlkionGlyph.list),
-                        label: FitLabel(
-                          labels.muscleList,
-                          style: WorkoutType.body(size: 14, color: t.text),
-                        ),
-                      ),
-                    ),
                     Wrap(
                       alignment: WrapAlignment.center,
                       spacing: 8,
@@ -314,6 +322,40 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                           l.bodyViewBack,
                           _controller.back,
                           (_controller.yaw - math.pi).abs() < .01,
+                        ),
+                        IconButton(
+                          key: const Key('catalog-body-zoom-out'),
+                          tooltip: l.bodyZoomOut,
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          onPressed: _controller.zoom > 1
+                              ? () => _controller.zoomBy(-.5)
+                              : null,
+                          icon: const AlkionIcon(AlkionGlyph.minus),
+                        ),
+                        IconButton(
+                          key: const Key('catalog-body-zoom-in'),
+                          tooltip: l.bodyZoomIn,
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          onPressed: _controller.zoom < 3
+                              ? () => _controller.zoomBy(.5)
+                              : null,
+                          icon: const AlkionIcon(AlkionGlyph.add),
+                        ),
+                        IconButton(
+                          key: const Key('catalog-body-reset'),
+                          tooltip: l.bodyResetView,
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          onPressed: _controller.resetView,
+                          icon: const AlkionIcon(AlkionGlyph.refresh),
                         ),
                         if (failed)
                           TextButton(
@@ -352,34 +394,64 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                             onHorizontalDragStart: (_) => _controller.pause(),
                             onHorizontalDragUpdate: (details) =>
                                 _controller.rotateBy(details.delta.dx * .009),
-                            child: CharacterBody(
-                              style: style,
-                              scores: const {},
-                              neutral: t.text,
-                              accent: t.accentText,
-                              background: t.surface,
-                              brightness: Theme.of(context).brightness,
-                              visible: visible,
-                              reducedMotion: MediaQuery.disableAnimationsOf(
-                                context,
-                              ),
-                              compact: false,
-                              controller: _controller,
-                              pickingEnabled: true,
-                              selectedRegion: WorkloadMuscle.fromKey(_selected),
-                              onStatus: _statusChanged,
-                              fallback: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Text(
-                                    _status == CharacterBodyStatus.loading
-                                        ? l.bodyLoadingArtwork
-                                        : l.bodyArtworkUnavailable,
-                                    key: const Key('catalog-body-fallback'),
-                                    textAlign: TextAlign.center,
-                                    style: WorkoutType.body(
-                                      size: 14,
-                                      color: t.dim,
+                            child: RawGestureDetector(
+                              gestures: {
+                                _BodyTransformGestureRecognizer:
+                                    GestureRecognizerFactoryWithHandlers<
+                                      _BodyTransformGestureRecognizer
+                                    >(_BodyTransformGestureRecognizer.new, (
+                                      recognizer,
+                                    ) {
+                                      recognizer.onStart = () {
+                                        _pickEpoch++;
+                                        _controller.pause();
+                                        _gestureZoom = _controller.zoom;
+                                        _gesturePan = _controller.pan;
+                                      };
+                                      recognizer.onUpdate = (scale, delta) {
+                                        _controller.setViewport(
+                                          _gestureZoom * scale,
+                                          _gesturePan +
+                                              Offset(
+                                                delta.dx / constraints.maxWidth,
+                                                delta.dy /
+                                                    constraints.maxHeight,
+                                              ),
+                                        );
+                                      };
+                                    }),
+                              },
+                              child: CharacterBody(
+                                style: style,
+                                scores: const {},
+                                neutral: t.text,
+                                accent: t.accentText,
+                                background: t.surface,
+                                brightness: Theme.of(context).brightness,
+                                visible: visible,
+                                reducedMotion: MediaQuery.disableAnimationsOf(
+                                  context,
+                                ),
+                                compact: false,
+                                controller: _controller,
+                                pickingEnabled: true,
+                                selectedRegion: WorkloadMuscle.fromKey(
+                                  _selected,
+                                ),
+                                onStatus: _statusChanged,
+                                fallback: Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Text(
+                                      _status == CharacterBodyStatus.loading
+                                          ? l.bodyLoadingArtwork
+                                          : l.bodyArtworkUnavailable,
+                                      key: const Key('catalog-body-fallback'),
+                                      textAlign: TextAlign.center,
+                                      style: WorkoutType.body(
+                                        size: 14,
+                                        color: t.dim,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -401,80 +473,106 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                         style: WorkoutType.body(size: 18, color: t.text),
                       ),
                     ),
+                    if (_showInfo) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        labels.modelMuscleHint,
+                        style: WorkoutType.body(size: 14, color: t.dim),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        labels.targetExplanation,
+                        style: WorkoutType.body(size: 14, color: t.dim),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        l.catalogBrowseOnlyNotice,
+                        style: WorkoutType.body(size: 13, color: t.dim),
+                      ),
+                    ],
                     const SizedBox(height: 12),
-                    Text(
-                      labels.modelMuscleHint,
-                      style: WorkoutType.body(size: 14, color: t.dim),
-                    ),
-                    const SizedBox(height: 24),
                     Semantics(
                       key: _listKey,
-                      header: true,
-                      child: Text(
-                        labels.muscleList,
-                        style: WorkoutType.display(size: 18, color: t.text),
+                      expanded: _listExpanded,
+                      child: TextButton.icon(
+                        key: const Key('catalog-muscle-list-link'),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                        ),
+                        onPressed: () {
+                          _pickEpoch++;
+                          setState(() => _listExpanded = !_listExpanded);
+                        },
+                        icon: AlkionIcon(
+                          _listExpanded
+                              ? AlkionGlyph.chevronUp
+                              : AlkionGlyph.chevronDown,
+                        ),
+                        label: FitLabel(
+                          labels.muscleList,
+                          style: WorkoutType.body(size: 14, color: t.text),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final group in _groups)
-                          ChoiceChip(
-                            chipAnimationStyle: Motion.chip(context),
-                            key: ValueKey('catalog-muscle-${group.key}'),
-                            materialTapTargetSize: MaterialTapTargetSize.padded,
-                            visualDensity: VisualDensity.standard,
-                            label: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: MediaQuery.sizeOf(context).width - 80,
-                                minHeight: 32,
+                    if (_listExpanded) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final group in _groups)
+                            ChoiceChip(
+                              chipAnimationStyle: Motion.chip(context),
+                              key: ValueKey('catalog-muscle-${group.key}'),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.padded,
+                              avatar: AlkionIcon(
+                                catalogGroupGlyph(group.key),
+                                color: _selected == group.key ? t.bg : t.text,
+                                size: 20,
                               ),
-                              child: Center(
-                                widthFactor: 1,
-                                child: FitLabel(
-                                  widget.index.groupLabel(group),
-                                  maxLines: 2,
-                                  style: WorkoutType.body(
-                                    size: 14,
-                                    color: _selected == group.key
-                                        ? t.bg
-                                        : t.text,
+                              visualDensity: VisualDensity.standard,
+                              label: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: math.max(
+                                    48,
+                                    MediaQuery.sizeOf(context).width - 128,
+                                  ),
+                                  minHeight: 32,
+                                ),
+                                child: Center(
+                                  widthFactor: 1,
+                                  child: FitLabel(
+                                    widget.index.groupLabel(group),
+                                    maxLines: 2,
+                                    style: WorkoutType.body(
+                                      size: 14,
+                                      color: _selected == group.key
+                                          ? t.bg
+                                          : t.text,
+                                    ),
                                   ),
                                 ),
                               ),
+                              selected: _selected == group.key,
+                              onSelected: (_) => _select(group.key),
                             ),
-                            selected: _selected == group.key,
-                            onSelected: (_) => _select(group.key),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      labels.targetExplanation,
-                      style: WorkoutType.body(size: 14, color: t.dim),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      l.catalogBrowseOnlyNotice,
-                      style: WorkoutType.body(size: 13, color: t.dim),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      key: const Key('catalog-muscle-unclassified'),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(48, 48),
+                        ],
                       ),
-                      onPressed: () {
-                        _pickEpoch++;
-                        Navigator.pop(context, CatalogFilter.unclassified);
-                      },
-                      child: FitLabel(
-                        l.catalogUnclassified,
-                        style: WorkoutType.body(size: 14, color: t.text),
+                      TextButton(
+                        key: const Key('catalog-muscle-unclassified'),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                        ),
+                        onPressed: () {
+                          _pickEpoch++;
+                          Navigator.pop(context, CatalogFilter.unclassified);
+                        },
+                        child: FitLabel(
+                          l.catalogUnclassified,
+                          style: WorkoutType.body(size: 14, color: t.text),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -531,4 +629,61 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       ),
     ),
   );
+}
+
+/// Joins the arena only when a second pointer arrives. A single vertical drag
+/// remains the sheet's scroll gesture, and a single horizontal drag rotates.
+class _BodyTransformGestureRecognizer extends OneSequenceGestureRecognizer {
+  final _points = <int, Offset>{};
+  bool _active = false;
+  double _initialSpan = 1;
+  Offset _initialFocal = Offset.zero;
+  VoidCallback? onStart;
+  void Function(double scale, Offset translation)? onUpdate;
+
+  Offset get _focal => (_points.values.first + _points.values.elementAt(1)) / 2;
+  double get _span =>
+      (_points.values.first - _points.values.elementAt(1)).distance;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    startTrackingPointer(event.pointer, event.transform);
+    _points[event.pointer] = event.localPosition;
+    if (_points.length == 2 && !_active) {
+      _active = true;
+      _initialFocal = _focal;
+      _initialSpan = math.max(1, _span);
+      resolve(GestureDisposition.accepted);
+      onStart?.call();
+    }
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerMoveEvent) {
+      _points[event.pointer] = event.localPosition;
+      if (_active && _points.length == 2) {
+        onUpdate?.call(_span / _initialSpan, _focal - _initialFocal);
+      }
+    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
+      if (!_active) resolve(GestureDisposition.rejected);
+      _points.remove(event.pointer);
+      stopTrackingPointer(event.pointer);
+    }
+  }
+
+  @override
+  void rejectGesture(int pointer) {
+    _points.remove(pointer);
+    stopTrackingPointer(pointer);
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {
+    _points.clear();
+    _active = false;
+  }
+
+  @override
+  String get debugDescription => 'body two-finger zoom and pan';
 }

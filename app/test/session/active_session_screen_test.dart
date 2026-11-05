@@ -25,6 +25,7 @@ import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
+import 'package:alkion/widgets/fit_label.dart';
 import '../support/l10n_harness.dart';
 import '../support/app_fonts.dart';
 import '../support/layout_expect.dart';
@@ -340,13 +341,13 @@ void main() {
       await tester.tapAt(const Offset(5, 5));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.byTooltip('SET 1'));
+      await tester.tap(find.byTooltip('SET 1 options'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Add set'), findsNothing);
       expect(find.text('Mark as not done'), findsOneWidget);
       expect(find.text('Add warm-up'), findsOneWidget);
-      await tester.tap(find.text('Remove'));
+      await tester.tap(find.text('Delete'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Remove set?'), findsOneWidget);
@@ -774,7 +775,7 @@ void main() {
   );
 
   testWidgets(
-    'swipe-remove a pending set, then Undo restores it at its index',
+    'explicitly delete a pending set, then Undo restores it at its index',
     (tester) async {
       final controller = ActiveSessionController();
       final s0 = SetState(
@@ -803,16 +804,12 @@ void main() {
 
       expect(block.workingSets, [s0, s1]);
 
-      // Swipe s0 (index 0) away.
-      await tester.dragFrom(
-        tester.getTopLeft(find.byKey(const Key('dismiss-s0'))) +
-            const Offset(100, 20),
-        const Offset(-500, 0),
-      );
+      await tester.tap(find.byKey(const Key('set-menu-s0')));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Delete'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(block.workingSets, [s1]);
 
@@ -1115,11 +1112,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(a.rir, isNull);
       await Scrollable.ensureVisible(
-        tester.element(find.byTooltip('SET 1')),
+        tester.element(find.byTooltip('SET 1 options')),
         alignment: .5,
       );
       await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.byTooltip('SET 1'));
+      await tester.tap(find.byTooltip('SET 1 options'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.text('Mark as not done'));
@@ -1192,4 +1189,84 @@ void main() {
       }
     }
   }
+
+  for (final brightness in Brightness.values) {
+    for (final language in ['en', 'de', 'it']) {
+      testWidgets('narrow-enlarged-header $language ${brightness.name}', (
+        tester,
+      ) async {
+        real.setPhone(tester, width: 320, textScale: 2);
+        final controller = ActiveSessionController()
+          ..seedForTest(real.longDraft());
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          _harness(
+            controller,
+            locale: Locale(language),
+            brightness: brightness,
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        final title = find.byKey(const ValueKey('block-title-ex1'));
+        expect(tester.renderObject<RenderFitLabel>(title).ellipsized, isFalse);
+        expect(tester.getSize(title).height, greaterThan(50));
+        final l = lookupAppLocalizations(Locale(language));
+        expect(find.textContaining(l.muscleChest), findsWidgets);
+        expect(
+          tester.getSize(find.byKey(const ValueKey('block-menu-ex1'))).height,
+          greaterThanOrEqualTo(48),
+        );
+        final reps = find.byKey(const Key('live-reps'));
+        await tester.ensureVisible(reps);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(reps).bottom,
+          lessThanOrEqualTo(
+            tester.getRect(find.byKey(const Key('log-set-bar'))).top,
+          ),
+        );
+        expect(tester.getRect(reps).top, greaterThanOrEqualTo(0));
+        expect(tester.takeException(), isNull);
+        await _teardown(tester);
+      });
+    }
+  }
+
+  testWidgets(
+    'catalog live label omits only duplicate header identity and retains a different set context',
+    (tester) async {
+      real.setPhone(tester, width: 412);
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final a = _typedSet('same-header', _typedEvidence());
+      final b = _typedSet(
+        'different-context',
+        _typedEvidence(context: 'Machine B'),
+      );
+      final block = _block(warm: [], work: [a, b])
+        ..catalogSelection = a.catalog!.selection;
+      controller.seedForTest(_draftWith([block]));
+      final before = [a.toJson(), b.toJson()];
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        find.descendant(
+          of: find.byType(LiveSetCard),
+          matching: find.textContaining('Synthetic execution'),
+        ),
+        findsNothing,
+      );
+      controller.focusSet(b);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(LiveSetCard),
+          matching: find.text('Synthetic execution · Machine B'),
+        ),
+        findsOneWidget,
+      );
+      expect([a.toJson(), b.toJson()], before);
+      await _teardown(tester);
+    },
+  );
 }

@@ -132,6 +132,7 @@ Map<String, Object?> settingsSnapshot(SettingsService settings) => {
   'locale': settings.localeOverride,
   'bodyweight_goal': settings.bodyweightGoal.name,
   'body_style': settings.bodyStyle,
+  'training_muscle_targets': settings.muscleTargetsEnabled,
   'training_rep_entry': settings.repEntry.name,
   'training_rir_controls': settings.rirControls.name,
 };
@@ -174,6 +175,7 @@ Future<void> seedPreferences(LocalStore store) async {
   await settings.setRestIsolationSeconds(75);
   await settings.setLocaleOverride('it');
   await settings.setBodyweightGoal(BodyweightGoal.cut);
+  await settings.setMuscleTargetsEnabled(true);
   final units = UnitService.local(store);
   await units.load();
   units.setUnit(Unit.kg);

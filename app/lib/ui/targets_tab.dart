@@ -52,18 +52,6 @@ class _TargetsTabState extends State<TargetsTab> {
 
         return Column(
           children: [
-            if (byMuscle.isEmpty)
-              TextButton(
-                onPressed: () async {
-                  try {
-                    final revision = await _repo.initializationRevision();
-                    await _repo.keepEmpty(observedStateRevision: revision);
-                  } catch (e) {
-                    if (context.mounted) await showWriteFailed(context, e);
-                  }
-                },
-                child: Text(AppLocalizations.of(context).targetsKeepEmpty),
-              ),
             Expanded(
               child: AbsorbPointer(
                 absorbing: _writing,

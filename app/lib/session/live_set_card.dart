@@ -66,6 +66,15 @@ class LiveSetCard extends StatelessWidget {
         : l.sessionLiveSet(workIndex);
     final label = set.done ? l.sessionLiveLogged(base) : base;
     final last = lastTop;
+    final referenceText = lastTopUnavailable
+        ? l.alkionBaselineUnavailable
+        : last == null
+        ? null
+        : l.sessionLastRef(
+            '${unit.fmtWt(last.weight)}${unit.uLabel}',
+            last.reps,
+            localizedDaysAgo(l, last.date),
+          );
 
     TextStyle caption() => WorkoutType.body(size: 12, color: tokens.dim);
     // Text keeps the card's inset; the rulers run the card's full width so
@@ -79,9 +88,8 @@ class LiveSetCard extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: tokens.surface2,
-        borderRadius: BorderRadius.circular(AppRadius.panel),
-        border: Border.all(color: tokens.lineStrong),
+        color: tokens.accent.withValues(alpha: .035),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -102,16 +110,23 @@ class LiveSetCard extends StatelessWidget {
                 ),
                 if (onMenu != null)
                   IconButton(
-                    tooltip: set.isWarmup
-                        ? l.sessionLiveWarmup
-                        : l.sessionLiveSet(workIndex),
+                    key: ValueKey('set-menu-${set.id}'),
+                    tooltip: l.sessionSetOptions(
+                      set.isWarmup
+                          ? l.sessionLiveWarmup
+                          : l.sessionLiveSet(workIndex),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
                     onPressed: onMenu,
                     icon: const AlkionIcon(AlkionGlyph.more),
                   ),
               ],
             ),
           ),
-          if (selectionLabel != null)
+          if (selectionLabel != null && selectionLabel!.isNotEmpty)
             inset(FitLabel(selectionLabel!, maxLines: 3, style: caption())),
           const SizedBox(height: 10),
           if (valuesEditor == null &&
@@ -186,23 +201,17 @@ class LiveSetCard extends StatelessWidget {
             const SizedBox(height: 12),
             inset(FitLabel(targetLabel!, maxLines: 3, style: caption())),
           ],
-          const SizedBox(height: 10),
-          reference ??
-              inset(
-                FitLabel(
-                  lastTopUnavailable
-                      ? l.alkionBaselineUnavailable
-                      : last == null
-                      ? l.sessionNoPreviousData
-                      : l.sessionLastRef(
-                          '${unit.fmtWt(last.weight)}${unit.uLabel}',
-                          last.reps,
-                          localizedDaysAgo(l, last.date),
-                        ),
-                  maxLines: 3,
-                  style: WorkoutType.body(size: 12, color: tokens.dim),
+          if (reference != null || referenceText != null) ...[
+            const SizedBox(height: 10),
+            reference ??
+                inset(
+                  FitLabel(
+                    referenceText!,
+                    maxLines: 3,
+                    style: WorkoutType.body(size: 12, color: tokens.dim),
+                  ),
                 ),
-              ),
+          ],
           if (set.done && onMenu == null)
             TextButton(
               key: const Key('live-mark-not-done'),

@@ -1,5 +1,7 @@
 # Alkion development and qualified driver handoff
 
+2026-11-05 · [Artwork, discovery and live-workout refinement](../plans/2026-11-05-ui-performance-refinement.md) · Implemented locally; see acceptance limits.
+
 2026-11-04 · [Iconoir glyph system](../plans/2026-11-04-iconoir-glyph-system.md) · Done.
 
 2026-11-04 · [Copyleft licensing and publication snapshot](../plans/2026-11-04-copyleft-licensing-and-publication.md) · Approved.

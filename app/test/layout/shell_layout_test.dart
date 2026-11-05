@@ -168,6 +168,9 @@ void main() {
         'History expanded $name',
       );
 
+      await tester.runAsync(
+        () => harness.settings.setMuscleTargetsEnabled(true),
+      );
       await openTab(tester, AlkionGlyph.plan);
       await settleUntilFound(
         tester,

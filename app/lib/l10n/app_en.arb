@@ -1530,7 +1530,7 @@
       }
     }
   },
-  "catalogMatchingExecutions": "{count} matching executions · choose one",
+  "catalogMatchingExecutions": "{count, plural, one {1 execution} other {{count} executions}}",
   "@catalogMatchingExecutions": {
     "placeholders": {
       "count": {
@@ -1549,7 +1549,7 @@
     }
   },
   "catalogNewSetNotice": "Choosing a setup adds one new set. Existing sets stay unchanged.",
-  "catalogChooseExecution": "Choose execution/equipment — add one set",
+  "catalogChooseExecution": "Execution / equipment",
   "catalogKeepSelection": "Keep selection",
   "catalogDiscardSelection": "Discard selection",
   "catalogDiscardTitle": "Discard selected exercises?",
@@ -1704,5 +1704,13 @@
         "type": "int"
       }
     }
-  }
+  },
+  "trainingMuscleTargets": "Muscle targets",
+  "bodyZoomIn": "Zoom in",
+  "bodyZoomOut": "Zoom out",
+  "bodyResetView": "Reset view",
+  "bodyExploreInfo": "About muscle selection",
+  "sessionSetOptions": "{set} options",
+  "@sessionSetOptions": {"placeholders": {"set": {"type": "String"}}},
+  "catalogMoreMeasurements": "More measurements"
 }

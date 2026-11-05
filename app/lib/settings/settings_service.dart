@@ -134,6 +134,8 @@ class SettingsService extends ChangeNotifier {
   String _bodyStyle = 'male';
   RepEntry _repEntry = RepEntry.fixed;
   RirControls _rirControls = RirControls.off;
+  bool _muscleTargetsEnabled = false;
+  bool get muscleTargetsEnabled => _muscleTargetsEnabled;
   Map<String, dynamic> _loaded = {};
   RepEntry get repEntry => _repEntry;
   RirControls get rirControls => _rirControls;
@@ -167,6 +169,7 @@ class SettingsService extends ChangeNotifier {
     _rirControls = data['training_rir_controls'] == 'show'
         ? RirControls.show
         : RirControls.off;
+    _muscleTargetsEnabled = data['training_muscle_targets'] == true;
     _bodyStyle = data['body_style'] == 'female' ? 'female' : 'male';
     _mode = data['mode'] as String? ?? 'dark';
     _profileName = data['profile_name'] as String? ?? 'Athlete';
@@ -187,6 +190,7 @@ class SettingsService extends ChangeNotifier {
 
   Map<String, Object?> _snapshot() => {
     ..._loaded,
+    'training_muscle_targets': _muscleTargetsEnabled,
     'training_rep_entry': _repEntry.name,
     'training_rir_controls': _rirControls.name,
     'mode': _mode,
@@ -216,6 +220,11 @@ class SettingsService extends ChangeNotifier {
   Future<void> flushPersistence() async {
     if (_unboundOwed) throw const StoreException('unbound_preferences');
     await _preferences?.flushPersistence();
+  }
+
+  Future<void> setMuscleTargetsEnabled(bool value) {
+    _muscleTargetsEnabled = value;
+    return _save();
   }
 
   Future<void> setRepEntry(RepEntry value) {

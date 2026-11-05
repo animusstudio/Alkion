@@ -13,9 +13,9 @@ class IconoirAssetsTest(unittest.TestCase):
         self.manifest = json.loads((generator.INPUT / 'manifest.json').read_text())
 
     def test_reproducible_subset_and_pinned_source_hashes(self):
-        self.assertEqual(len(self.manifest['roles']), 51)
-        self.assertEqual(len(self.manifest['assets']), 50)
-        self.assertEqual(generator.generate(check=True), 100)
+        self.assertEqual(len(self.manifest['assets']), 48)
+        self.assertEqual(len(self.manifest['custom_assets']), 42)
+        self.assertEqual(generator.generate(check=True), 180)
         self.assertEqual(generator.outputs(), generator.outputs())
         self.assertEqual(self.manifest['revision'], '39834e3f193bc0cca2c36bebb6a650471977433d')
         self.assertEqual(self.manifest['license']['spdx'], 'MIT')
@@ -25,6 +25,19 @@ class IconoirAssetsTest(unittest.TestCase):
         notice = (generator.OUTPUT / 'NOTICE').read_text()
         self.assertIn('Copyright (c) 2021 Luca Burgio', notice)
         self.assertIn('Permission is hereby granted', notice)
+
+    def test_custom_authorship_is_distinct_and_geometry_unique(self):
+        assets = self.manifest['custom_assets']
+        self.assertEqual(len({a['sha256'] for a in assets}), len(assets))
+        for asset in assets:
+            self.assertTrue(asset['source'].startswith('custom/alkion-'))
+            self.assertEqual(asset['author'], 'Animus Studio')
+            self.assertEqual(asset['spdx'], 'AGPL-3.0-only')
+            self.assertIn('not an Iconoir derivative', asset['provenance'])
+            self.assertNotIn('url', asset)
+        notice = (generator.OUTPUT / 'NOTICE').read_text()
+        self.assertIn('Original Alkion category outlines', notice)
+        self.assertIn('AGPL-3.0-only', notice)
 
     def test_complete_semantic_api(self):
         adapter = (generator.APP / 'lib/theme/alkion_icon.dart').read_text()
@@ -41,7 +54,7 @@ class IconoirAssetsTest(unittest.TestCase):
             self.assertIn(f'    - assets/icons/stroke-{tier}/', pubspec)
 
     def test_every_geometry_fill_cap_join_and_effective_stroke(self):
-        for asset in self.manifest['assets']:
+        for asset in [*self.manifest['assets'], *self.manifest['custom_assets']]:
             original = ET.fromstring((generator.INPUT / asset['source']).read_bytes())
             for tier in generator.TIERS:
                 with self.subTest(asset=asset['name'], tier=tier):

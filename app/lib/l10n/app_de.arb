@@ -866,12 +866,12 @@
   "catalogBasket": "Auswahl · {count}",
   "catalogSelectedCount": "Ausgewählte Einträge: {count}",
   "catalogRemoveOccurrence": "Eintrag {position} entfernen: {name}",
-  "catalogMatchingExecutions": "{count} passende Ausführungen · auswählen",
+  "catalogMatchingExecutions": "{count, plural, one {1 Ausführung} other {{count} Ausführungen}}",
   "catalogInDay": "In diesem Trainingstag",
   "catalogCurrent": "Aktuelle Variante",
   "catalogCurrentSetup": "Aktuell: {name}",
   "catalogNewSetNotice": "Die Auswahl fügt einen neuen Satz hinzu. Bestehende Sätze bleiben unverändert.",
-  "catalogChooseExecution": "Ausführung/Gerät wählen — einen Satz hinzufügen",
+  "catalogChooseExecution": "Ausführung / Gerät",
   "catalogKeepSelection": "Auswahl behalten",
   "catalogDiscardSelection": "Auswahl verwerfen",
   "catalogDiscardTitle": "Ausgewählte Übungen verwerfen?",
@@ -953,5 +953,12 @@
   "animusRecoveryUnknownHistory": "Für einige wiederhergestellte Workouts oder Übungen fehlen wiederherstellbare Sendenachweise. Sie bleiben bis zu einer ausdrücklichen Abklärung gesperrt. Neue unabhängige Workouts können nach dieser Prüfung gesendet werden.",
   "animusRecoveryRetry": "Geprüfte Anfrage erneut senden",
   "animusRecoveryRetryBody": "Eine unveränderte gespeicherte Anfrage dieser Auswahl senden? Eine serverseitige Prüfung ist erforderlich. Animus entscheidet, ob sie ausgeführt werden darf. Anfrage und Kennungen bleiben gleich; andere Anfragen werden nicht erneut gesendet und fehlende Vorgänge nicht freigegeben.",
-  "animusRecoveryReviewedReply": "Animus hat genau diese geprüfte Anfrage bestätigt. Bisherige Nachweise bleiben erhalten. Andere gespeicherte Anfragen bleiben gesperrt."
+  "animusRecoveryReviewedReply": "Animus hat genau diese geprüfte Anfrage bestätigt. Bisherige Nachweise bleiben erhalten. Andere gespeicherte Anfragen bleiben gesperrt.",
+  "trainingMuscleTargets": "Muskelziele",
+  "bodyZoomIn": "Vergrößern",
+  "bodyZoomOut": "Verkleinern",
+  "bodyResetView": "Ansicht zurücksetzen",
+  "bodyExploreInfo": "Über die Muskelauswahl",
+  "sessionSetOptions": "Optionen für {set}",
+  "catalogMoreMeasurements": "Weitere Messwerte"
 }

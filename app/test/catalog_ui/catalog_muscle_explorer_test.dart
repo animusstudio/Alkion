@@ -6,7 +6,10 @@ import 'package:alkion/catalog_ui/catalog_muscle_explorer.dart';
 import 'package:alkion/data/body_workload.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/ui/character_body.dart';
+import 'package:alkion/ui/body_figure.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -58,8 +61,126 @@ Future<void> revealArtwork(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> openList(WidgetTester tester) async {
+  if (muscle('chest').evaluate().isNotEmpty) return;
+  final link = find.byKey(const Key('catalog-muscle-list-link'));
+  await tester.ensureVisible(link);
+  await tester.tap(link);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUpAll(preloadAppFonts);
+
+  for (final workloadSheet in [false, true]) {
+    testWidgets(
+      'Android ${workloadSheet ? 'workload' : 'explorer'} sheet entrance admits loading without an earlier native status',
+      (tester) async {
+        explorerPhone(tester);
+        CharacterBody.debugForceAndroid = true;
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        final messenger = tester.binding.defaultBinaryMessenger;
+        final displays = <Map<Object?, Object?>>[];
+        final channels = <String>[];
+        addTearDown(() {
+          CharacterBody.debugForceAndroid = false;
+          debugDefaultTargetPlatformOverride = null;
+          messenger.setMockMethodCallHandler(
+            SystemChannels.platform_views,
+            null,
+          );
+          for (final name in channels) {
+            messenger.setMockMethodCallHandler(MethodChannel(name), null);
+          }
+        });
+        messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
+          call,
+        ) async {
+          if (call.method == 'create') {
+            final id = (call.arguments as Map)['id'] as int;
+            final name = 'dev.animusstudio.alkion/character-body/$id';
+            channels.add(name);
+            messenger.setMockMethodCallHandler(MethodChannel(name), (
+              call,
+            ) async {
+              if (call.method == 'display') {
+                displays.add(Map.of(call.arguments as Map));
+              }
+              return null;
+            });
+            return 1;
+          }
+          if (call.method == 'resize') {
+            return {
+              'width': (call.arguments as Map)['width'],
+              'height': (call.arguments as Map)['height'],
+            };
+          }
+          return null;
+        });
+        final state = discoveryState();
+        addTearDown(state.dispose);
+        await tester.pumpWidget(
+          discoveryApp(
+            Builder(
+              builder: (context) => TextButton(
+                onPressed: () => workloadSheet
+                    ? showBodyWorkloadSheet(
+                        context,
+                        workload: () => calculateWorkoutWorkload(
+                          mode: WorkoutWorkloadMode.planned,
+                          exercises: const [],
+                        ),
+                      )
+                    : showCatalogMuscleExplorer(
+                        context,
+                        index: state.index('en'),
+                      ),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Open'));
+        await tester.pumpAndSettle();
+        expect(displays, isNotEmpty);
+        expect(
+          displays.last['visible'],
+          isTrue,
+          reason:
+              'Loading waits for viewport admission; admission cannot wait for a load status',
+        );
+        expect(displays.last['paused'], !workloadSheet);
+        if (!workloadSheet) {
+          expect((displays.last['interaction'] as Map)['enabled'], isTrue);
+        }
+        final reply = Completer<void>();
+        messenger.handlePlatformMessage(
+          channels.last,
+          const StandardMethodCodec().encodeMethodCall(
+            MethodCall('status', {
+              'version': 2,
+              'status': 'ready',
+              'generation':
+                  (displays.last['interaction'] as Map?)?['generation'] ?? 0,
+              'frame': 1,
+              'load': 1,
+              'layout': 1,
+            }),
+          ),
+          (_) => reply.complete(),
+        );
+        await reply.future;
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('character-body-loading-silhouette')),
+          findsNothing,
+        );
+        await tester.pumpWidget(const SizedBox());
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
 
   testWidgets(
     'native result controls selection with exact surface-local coordinates',
@@ -95,9 +216,11 @@ void main() {
       controller.requests.single.result.complete(WorkloadMuscle.chest);
       await tester.pumpAndSettle();
       expect(body(tester).selectedRegion, WorkloadMuscle.chest);
+      await openList(tester);
       expect(tester.widget<ChoiceChip>(muscle('chest')).selected, isTrue);
       expect(find.text('Show exercises · Chest'), findsOneWidget);
-      await tester.tapAt(rect.center);
+      await revealArtwork(tester);
+      await tester.tap(diagram);
       controller.requests.last.result.complete(null);
       await tester.pump();
       expect(body(tester).selectedRegion, WorkloadMuscle.chest);
@@ -126,8 +249,7 @@ void main() {
       expect(body(tester).selectedRegion, WorkloadMuscle.hamstrings);
       expect(find.byKey(const Key('catalog-body-fallback')), findsOneWidget);
       expect(find.byKey(const Key('catalog-body-retry')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('catalog-muscle-list-link')));
-      await tester.pumpAndSettle();
+      await openList(tester);
       for (final group
           in state.index('en').browseGroups.where((g) => g.kind == 'muscle')) {
         final chip = muscle(group.key);
@@ -175,18 +297,31 @@ void main() {
       controller.requests.first.result.complete(WorkloadMuscle.triceps);
       await tester.pump();
       expect(body(tester).selectedRegion, WorkloadMuscle.biceps);
-      for (final action in ['list', 'turn', 'retry', 'hide']) {
+      for (final action in [
+        'list',
+        'turn',
+        'zoom',
+        'pan',
+        'reset',
+        'retry',
+        'hide',
+      ]) {
         await revealArtwork(tester);
         await tester.tap(diagram);
         final pending = controller.requests.last.result;
         switch (action) {
           case 'list':
-            await tester.tap(find.byKey(const Key('catalog-muscle-list-link')));
-            await tester.pumpAndSettle();
+            await openList(tester);
             await tester.ensureVisible(muscle('biceps'));
             await tester.tap(muscle('biceps'));
           case 'turn':
             await tester.tap(find.byKey(const Key('catalog-body-back')));
+          case 'zoom':
+            controller.zoomBy(.5);
+          case 'pan':
+            controller.setViewport(2, const Offset(.2, -.2));
+          case 'reset':
+            controller.resetView();
           case 'retry':
             await tester.tap(find.byKey(const Key('catalog-body-retry')));
           case 'hide':
@@ -289,12 +424,138 @@ void main() {
       expect(controller.paused, isTrue);
       expect(controller.requests, isEmpty);
       final yaw = controller.yaw;
-      await tester.drag(diagram, const Offset(0, -300));
+      await openList(tester);
+      await revealArtwork(tester);
+      await tester.drag(diagram, const Offset(0, -500));
       await tester.pumpAndSettle();
       expect(controller.yaw, yaw);
       expect(controller.requests, isEmpty);
       expect(body(tester).visible, isFalse);
       await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'two-finger viewport gestures and accessible controls preserve picks',
+    (tester) async {
+      explorerPhone(tester);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      final controller = PendingBodyController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        discoveryApp(
+          CatalogMuscleExplorer(
+            index: state.index('en'),
+            controller: controller,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final center = tester.getCenter(diagram);
+      final first = await tester.startGesture(
+        center - const Offset(20, 0),
+        pointer: 1,
+      );
+      final second = await tester.startGesture(
+        center + const Offset(20, 0),
+        pointer: 2,
+      );
+      await second.moveBy(const Offset(50, 0));
+      await tester.pump();
+      expect(controller.zoom, closeTo(2.25, .01));
+      await first.moveBy(const Offset(0, 20));
+      await second.moveBy(const Offset(0, 20));
+      await tester.pump();
+      expect(controller.pan.dy, greaterThan(0));
+      await first.up();
+      await second.up();
+      await tester.pumpAndSettle();
+      expect(
+        controller.requests,
+        isEmpty,
+        reason: 'Pinch release is never a pick',
+      );
+      await tester.tap(find.byKey(const Key('catalog-body-reset')));
+      await tester.pump();
+      expect(controller.zoom, 1);
+      expect(controller.pan, Offset.zero);
+      for (var i = 0; i < 4; i++) {
+        await tester.tap(find.byKey(const Key('catalog-body-zoom-in')));
+        await tester.pump();
+      }
+      expect(controller.zoom, 3);
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('catalog-body-zoom-in')))
+            .onPressed,
+        isNull,
+      );
+      for (final key in [
+        'catalog-body-zoom-in',
+        'catalog-body-zoom-out',
+        'catalog-body-reset',
+        'catalog-muscle-info',
+      ]) {
+        final size = tester.getSize(find.byKey(Key(key)));
+        expect(size.shortestSide, greaterThanOrEqualTo(48));
+      }
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'compact disclosures retain readable controls at narrow large text in all locales',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      for (final width in [320.0, 412.0]) {
+        tester.view.physicalSize = Size(width, 640);
+        for (final locale in ['en', 'it', 'de', 'es']) {
+          for (final brightness in Brightness.values) {
+            await tester.pumpWidget(
+              discoveryApp(
+                Builder(
+                  builder: (context) => MediaQuery(
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(textScaler: TextScaler.linear(2)),
+                    child: CatalogMuscleExplorer(
+                      key: ValueKey((width, locale, brightness)),
+                      index: state.index(locale),
+                      selected: 'core',
+                    ),
+                  ),
+                ),
+                locale: locale,
+                brightness: brightness,
+              ),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              muscle('core'),
+              findsNothing,
+              reason: 'Full list starts behind its disclosure',
+            );
+            await tester.tap(find.byKey(const Key('catalog-muscle-info')));
+            await tester.pumpAndSettle();
+            await openList(tester);
+            await tester.ensureVisible(muscle('core'));
+            await tester.tap(muscle('core'));
+            await tester.pumpAndSettle();
+            expect(body(tester).selectedRegion, isNull);
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: '$width $locale $brightness',
+            );
+            await tester.pumpWidget(const SizedBox());
+          }
+        }
+      }
     },
   );
 
@@ -340,6 +601,7 @@ void main() {
       expect(result, isNull);
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
+      await openList(tester);
       await tester.ensureVisible(
         find.byKey(const Key('catalog-muscle-unclassified')),
       );

@@ -91,4 +91,44 @@ void main() {
     expect(b.expanded, isFalse);
     expect(find.byType(SetLine), findsNothing);
   });
+
+  testWidgets('expansion can reverse mid-spring without resetting the set', (
+    tester,
+  ) async {
+    final block = makeBlock();
+    final before = block.workingSets.single.toJson();
+    await tester.pumpWidget(host(block, showBlock: true));
+    await tester.pumpAndSettle();
+    final expandedHeight = tester.getSize(find.byType(ExerciseBlock)).height;
+    await tester.tap(find.text('Bench Press'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    final intermediateHeight = tester
+        .getSize(find.byType(ExerciseBlock))
+        .height;
+    expect(intermediateHeight, lessThan(expandedHeight));
+    await tester.tap(find.text('Bench Press'));
+    await tester.pumpAndSettle();
+    expect(block.expanded, isTrue);
+    expect(tester.getSize(find.byType(ExerciseBlock)).height, expandedHeight);
+    expect(block.workingSets.single.toJson(), before);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reduced motion changes expansion immediately', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        FakeAccessibilityFeatures.allOn;
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final block = makeBlock();
+    await tester.pumpWidget(host(block, showBlock: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bench Press'));
+    await tester.pump();
+    expect(find.byType(SetLine), findsNothing);
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.tap(find.text('Bench Press'));
+    await tester.pump();
+    expect(find.byType(SetLine), findsOneWidget);
+    expect(tester.binding.transientCallbackCount, 0);
+  });
 }

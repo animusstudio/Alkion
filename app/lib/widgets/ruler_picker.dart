@@ -41,7 +41,7 @@ const double kZoomOutSpeed = 450;
 
 /// The least on-screen distance between fine values, wide enough that
 /// centred labels like "100.25" keep clear of each other.
-const double kFineExtent = 88;
+const double kFineExtent = 74.8;
 
 /// Time constant, in seconds, of the drag-speed smoothing.
 const double _speedSmoothing = 0.06;
@@ -120,7 +120,7 @@ class RulerPicker extends StatefulWidget {
     this.showMinorTicks = true,
   });
 
-  static const double defaultItemExtent = 72;
+  static const double defaultItemExtent = 61.2;
 
   static final Set<RulerPickerState> _mounted = {};
 
@@ -236,7 +236,7 @@ class RulerPickerState extends State<RulerPicker>
   @visibleForTesting
   List<Rect> get labelBounds => List.unmodifiable(_labelBounds);
 
-  static const double _height = 80;
+  static const double _height = 68;
 
   /// The value under the centre marker.
   @visibleForTesting
@@ -407,7 +407,15 @@ class RulerPickerState extends State<RulerPicker>
   /// the other zoom's grid can put under the centre, is not reported.
   void _reportCentre(int dir) {
     final grid = _reportGrid;
-    final to = grid.indexOf(_pos);
+    // Spring overshoot is visual only. It cannot cross a value beyond the
+    // release target or emit reverse values as the spring settles.
+    final targetPosition = _glideGrid == null
+        ? _pos
+        : _pos.clamp(
+            math.min(_glideFrom, _glideTarget),
+            math.max(_glideFrom, _glideTarget),
+          );
+    final to = grid.indexOf(targetPosition.toDouble());
     final target = grid.valueAt(to);
     if (_showsAs(target, _current)) return;
     final up = target > _current;
@@ -436,7 +444,22 @@ class RulerPickerState extends State<RulerPicker>
     _reportCentre(moved);
   }
 
-  void _onGlideTick() => _moveTo(_glide.value, dir: _glideDir);
+  double _glideFrom = 0, _glideTarget = 0;
+
+  void _onGlideTick() {
+    // Let the spring breathe inside the final mark, without visually crossing
+    // the midpoint to an uncommitted value after a long fling.
+    final overshoot = (_glideGrid ?? _modeGrid).step * .25;
+    _moveTo(
+      _glide.value
+          .clamp(
+            math.min(_glideFrom, _glideTarget) - overshoot,
+            math.max(_glideFrom, _glideTarget) + overshoot,
+          )
+          .toDouble(),
+      dir: _glideDir,
+    );
+  }
 
   void _onZoomTick() => setState(() {});
 
@@ -477,13 +500,15 @@ class RulerPickerState extends State<RulerPicker>
     _zoomTo(fine);
   }
 
-  /// Moves the tape to [target] on [grid], easing out from the release speed
+  /// Moves the tape to [target] on [grid], spring-settling from the release speed
   /// [pxPerSecond] (positive = up the tape) when it is a fling.
   void _glideTo(double target, RulerScale grid, {double pxPerSecond = 0}) {
     _stopGlide();
     final distancePx = (target - _pos) * _pxPerValue;
     var duration = Motion.of(context, Motion.base);
     if (duration == Duration.zero || distancePx.abs() < 0.01) {
+      _glideFrom = _pos;
+      _glideTarget = target;
       _glideGrid = grid;
       _moveTo(target);
       _onRest();
@@ -491,8 +516,8 @@ class RulerPickerState extends State<RulerPicker>
     }
     final sameWay = distancePx.sign == pxPerSecond.sign;
     if (sameWay && pxPerSecond.abs() > kFlingDeadZone) {
-      // An ease-out cubic starts at 3× its average speed: pick the duration
-      // that starts the glide at the release speed, so the hand-off is smooth.
+      // Keep the established travel/speed timing and glide cap; the spring
+      // receives the actual release velocity for a continuous hand-off.
       final ms = 3000 * distancePx.abs() / pxPerSecond.abs();
       duration = Duration(
         milliseconds: ms
@@ -504,9 +529,19 @@ class RulerPickerState extends State<RulerPicker>
       );
     }
     _glideGrid = grid;
+    _glideFrom = _pos;
+    _glideTarget = target;
     _glideDir = distancePx.sign.toInt();
     _glide.value = _pos;
-    _glide.animateTo(target, duration: duration, curve: Motion.curve);
+    _glide.animateWith(
+      SpringSimulation(
+        Motion.spring(duration),
+        _pos,
+        target,
+        sameWay ? pxPerSecond / _pxPerValue : 0,
+        snapToEnd: true,
+      ),
+    );
   }
 
   /// Snaps to the current mode's grid, flinging on at [pxPerSecond].

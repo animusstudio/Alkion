@@ -205,7 +205,23 @@ Future<void> finishFilters(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> openMuscleList(WidgetTester tester) async {
+  final disclosure = find.byKey(const Key('catalog-muscle-list-link'));
+  final anyChip = find.byWidgetPredicate(
+    (widget) =>
+        widget is ChoiceChip &&
+        widget.key is ValueKey<String> &&
+        (widget.key as ValueKey<String>).value.startsWith('catalog-muscle-'),
+  );
+  if (anyChip.evaluate().isEmpty) {
+    await tester.ensureVisible(disclosure);
+    await tester.tap(disclosure);
+    await tester.pump(const Duration(milliseconds: 400));
+  }
+}
+
 Future<void> selectMuscle(WidgetTester tester, String key) async {
+  await openMuscleList(tester);
   final chip = find.byKey(ValueKey('catalog-muscle-$key'));
   await tester.scrollUntilVisible(
     chip,

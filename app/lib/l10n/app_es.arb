@@ -866,12 +866,12 @@
   "catalogBasket": "Selección · {count}",
   "catalogSelectedCount": "Elementos seleccionados: {count}",
   "catalogRemoveOccurrence": "Eliminar elemento {position}: {name}",
-  "catalogMatchingExecutions": "{count} ejecuciones coincidentes · elige una",
+  "catalogMatchingExecutions": "{count, plural, one {1 ejecución} other {{count} ejecuciones}}",
   "catalogInDay": "En este día",
   "catalogCurrent": "Configuración actual",
   "catalogCurrentSetup": "Actual: {name}",
   "catalogNewSetNotice": "Elegir una configuración añade una serie nueva. Las series existentes se conservan.",
-  "catalogChooseExecution": "Elegir ejecución/equipamiento — añadir una serie",
+  "catalogChooseExecution": "Ejecución / equipamiento",
   "catalogKeepSelection": "Conservar selección",
   "catalogDiscardSelection": "Descartar selección",
   "catalogDiscardTitle": "¿Descartar los ejercicios seleccionados?",
@@ -953,5 +953,12 @@
   "animusRecoveryUnknownHistory": "Algunos entrenamientos o ejercicios restaurados no tienen historial de envío recuperable. Siguen bloqueados hasta una conciliación explícita. Tras esta revisión se pueden enviar entrenamientos nuevos e independientes.",
   "animusRecoveryRetry": "Reintentar solicitud revisada",
   "animusRecoveryRetryBody": "¿Enviar una sola solicitud conservada e idéntica de esta selección? Se requiere revisión en el servidor. Animus decide si puede ejecutarse. Se conservan la solicitud y sus identificadores; no se reenvían otras solicitudes ni se autoriza trabajo ausente.",
-  "animusRecoveryReviewedReply": "Animus confirmó esta solicitud revisada exacta. Se conservan las pruebas anteriores. Las demás solicitudes conservadas siguen bloqueadas."
+  "animusRecoveryReviewedReply": "Animus confirmó esta solicitud revisada exacta. Se conservan las pruebas anteriores. Las demás solicitudes conservadas siguen bloqueadas.",
+  "trainingMuscleTargets": "Objetivos musculares",
+  "bodyZoomIn": "Acercar",
+  "bodyZoomOut": "Alejar",
+  "bodyResetView": "Restablecer vista",
+  "bodyExploreInfo": "Acerca de la selección muscular",
+  "sessionSetOptions": "Opciones de {set}",
+  "catalogMoreMeasurements": "Más mediciones"
 }

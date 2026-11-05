@@ -279,6 +279,7 @@ class _BodyArtworkState extends State<_BodyArtwork> {
   final _scrollables = <ScrollableState>[];
   bool _viewportCheckQueued = false;
   Animation<double>? _coverAnimation;
+  Animation<double>? _entryAnimation;
   bool _inViewport = false;
   CharacterBodyStatus _status = CharacterBodyStatus.loading;
 
@@ -291,7 +292,14 @@ class _BodyArtworkState extends State<_BodyArtwork> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final animation = ModalRoute.of(context)?.secondaryAnimation;
+    final route = ModalRoute.of(context);
+    final entry = route?.animation;
+    if (!identical(entry, _entryAnimation)) {
+      _entryAnimation?.removeListener(_queueViewportCheck);
+      _entryAnimation = entry;
+      _entryAnimation?.addListener(_queueViewportCheck);
+    }
+    final animation = route?.secondaryAnimation;
     if (!identical(animation, _coverAnimation)) {
       _coverAnimation?.removeStatusListener(_routeTransitionChanged);
       _coverAnimation = animation;
@@ -350,6 +358,7 @@ class _BodyArtworkState extends State<_BodyArtwork> {
   @override
   void dispose() {
     _coverAnimation?.removeStatusListener(_routeTransitionChanged);
+    _entryAnimation?.removeListener(_queueViewportCheck);
     for (final scroll in _scrollables) {
       scroll.position.removeListener(_queueViewportCheck);
     }

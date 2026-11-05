@@ -34,6 +34,7 @@ class SetLine extends StatelessWidget {
     required this.onTap,
     required this.onRir,
     this.onClearRir,
+    this.onMenu,
     this.showRir = true,
   });
 
@@ -49,6 +50,7 @@ class SetLine extends StatelessWidget {
   final VoidCallback onTap;
   final ValueChanged<int> onRir;
   final VoidCallback? onClearRir;
+  final VoidCallback? onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -219,6 +221,25 @@ class SetLine extends StatelessWidget {
                     Tag(label: l.sessionTagTop, tone: TagTone.solid),
                   const SizedBox(width: 10),
                   _StatusGlyph(done: done, tokens: tokens),
+                  if (onMenu != null)
+                    IconButton(
+                      key: ValueKey('set-menu-${set.id}'),
+                      tooltip: l.sessionSetOptions(
+                        set.isWarmup
+                            ? l.sessionLiveWarmup
+                            : l.sessionLiveSet(workIndex),
+                      ),
+                      onPressed: onMenu,
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
+                      ),
+                      icon: AlkionIcon(
+                        AlkionGlyph.more,
+                        size: 20,
+                        color: tokens.dim,
+                      ),
+                    ),
                 ],
               ),
             ),

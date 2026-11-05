@@ -118,6 +118,26 @@ class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
                 ),
               ),
               Field(
+                label: l.trainingMuscleTargets,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: AbsorbPointer(
+                    absorbing: _saving || _error != null,
+                    child: Toggle(
+                      value: widget.settings.muscleTargetsEnabled,
+                      semanticLabel: l.trainingMuscleTargets,
+                      onChanged: (value) {
+                        if (_saving || _error != null) return;
+                        commitPendingInput();
+                        _write(
+                          () => widget.settings.setMuscleTargetsEnabled(value),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Field(
                 label: l.profileCompoundRest,
                 child: WStepper(
                   value: widget.settings.restCompoundSeconds.toDouble(),

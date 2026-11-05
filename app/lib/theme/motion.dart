@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
-/// Single source of motion truth: zero bounce, with a quiet ambient cycle.
+/// Shared motion; live gesture settling and expansion use a restrained spring.
 class Motion {
   static const fast = Duration(milliseconds: 120);
   static const base = Duration(milliseconds: 200);
@@ -8,6 +9,12 @@ class Motion {
 
   /// Rare first-use character material, followed by the normal base fade.
   static const entryIntro = Duration(milliseconds: 1200);
+
+  /// Owner-requested exception for live rulers and exercise expansion only.
+  static const springSettle = Duration(milliseconds: 500);
+  static SpringDescription spring([Duration duration = springSettle]) =>
+      SpringDescription.withDurationAndBounce(duration: duration, bounce: .2);
+
   static const curve = Cubic(0.23, 1, 0.32, 1);
 
   /// Owner-requested canvas material: eight seconds per smooth half-cycle.
@@ -247,4 +254,85 @@ class UnitSwap extends StatelessWidget {
       child: KeyedSubtree(key: ValueKey(unitKey), child: child),
     );
   }
+}
+
+/// Interruptible exercise disclosure. Retargets from the current height and
+/// velocity; hidden contents retain identity without painting or hit testing.
+class SpringExpansion extends StatefulWidget {
+  const SpringExpansion({
+    super.key,
+    required this.expanded,
+    required this.child,
+  });
+  final bool expanded;
+  final Widget child;
+  @override
+  State<SpringExpansion> createState() => _SpringExpansionState();
+}
+
+class _SpringExpansionState extends State<SpringExpansion>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  bool _reduce = false;
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController.unbounded(
+      vsync: this,
+      value: widget.expanded ? 1 : 0,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduce = MediaQuery.of(context).disableAnimations;
+    if (_reduce) {
+      _controller.stop();
+      _controller.value = widget.expanded ? 1 : 0;
+    }
+  }
+
+  @override
+  void didUpdateWidget(SpringExpansion oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.expanded == widget.expanded) return;
+    final target = widget.expanded ? 1.0 : 0.0;
+    if (_reduce) {
+      _controller.stop();
+      _controller.value = target;
+    } else {
+      _controller.animateWith(
+        SpringSimulation(
+          Motion.spring(),
+          _controller.value,
+          target,
+          _controller.velocity,
+          snapToEnd: true,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _controller,
+    child: widget.child,
+    builder: (context, child) => Offstage(
+      offstage: !widget.expanded && !_controller.isAnimating,
+      child: ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: _controller.value.clamp(0.0, 1.0),
+          child: child,
+        ),
+      ),
+    ),
+  );
 }

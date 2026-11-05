@@ -1,10 +1,85 @@
 ---
 app: alkion
 stage: development
-observed: 2026-11-04
+observed: 2026-11-05
 ---
 
 # Alkion integrated acceptance
+
+## Artwork, discovery and live-workout refinement — 2026-11-05
+
+The [approved plan](../plans/2026-11-05-ui-performance-refinement.md) is implemented
+locally through `e6d553f`, based on `cb8ec7b`. The neutral atlas/null-selection
+predicate is corrected; body startup loads independent resources concurrently,
+retains at most two validated styles per WebView and one idle native view, and
+uses a short ASCII reveal. Explore has bounded zoom/pan, accessible controls,
+info and list disclosures. Primary route-animation observation fixes the native
+sheet entrance/visibility deadlock discovered during this qualification.
+
+Catalog has 151 explicit representative mappings (147 families and four
+collections), with exact-variant registrations kept separate. Muscle, equipment and activity roles use distinct
+reviewed glyphs with upstream and custom provenance kept separate. Redundant
+copy is reduced in all four locales. Muscle targets is a persisted, default-off
+profile preference that changes tab availability without changing saved goals.
+Live sets use explicit overflow deletion, clear expansion controls, tonal
+surfaces and tighter damped rulers. Duplicate active-set names are suppressed;
+empty optional secondary measurements disclose on demand while required,
+repetition/load and any retained evidence stay visible. Today/Plan alone have
+cached, very faint ASCII ambient opacity motion, paused when obscured or inactive
+and static under reduced motion.
+
+Task reviews pass independently across implementers, including the final density
+range `fe351a4..e6d553f`; coordinator review covers preferences and final small
+corrections. Full branch Flutter validation passes
+2,606 tests with three expected optional connection/disposable-fixture skips
+(receipt `20261105-013526-run-check-ui-flutter-final.log`). The last density
+correction has its own 86-test pass and zero analyzer issues
+(`20261105-014555-run-check-alkion-catalog-live-density.log`,
+`20261105-014629-run-check-alkion-catalog-live-density-final-analyze.log`).
+Character runtime/material/bridge, glyph provenance/mapping and focused
+persistence, gesture, lifecycle and numeric-preservation checks pass. Parent
+`make check` and `make smoke` pass. Host captures cover dark/light, 320/412dp,
+1x/2x text and representative supported locales; the narrow 2x header correction
+was separately recaptured in EN/DE/IT. These are host visual evidence, not native
+gesture or frame-performance qualification.
+
+On the same disposable API 36 x86_64 emulator, debug preview measurements compare
+baseline `cb8ec7b` with loader candidate `b007402`: median cold load is 487.7ms
+versus 398.0ms over three runs (about 18% lower). The old recreate median is
+461.2ms plus 34.9ms draw; after the candidate's first cold recreate, four cached
+reopens use 0ms preparation and 72–79ms first-frame latency (median 76.3ms).
+Candidate rotation recorded 88 frames in 1,081.5ms aggregate renderer time;
+hidden/background windows emitted no rendering samples. A bounded reuse run
+retained two WebViews; total PSS varied from about 490MB to 619MB and reclaimed,
+with native heap around 98–99MB. The last 20 ready-frame reopens all passed.
+This demonstrates reuse and reclamation, not lower peak memory or phone speed.
+The emulator required a test-only WebView GPU-blocklist override; baseline and
+candidate shared it. No real profile, physical phone or production build was used.
+
+Integrated Android confirmation verified neutral male/dark and female/light
+artwork, ready sheet entrance, accessible zoom and selected-region picking on
+male front/back, list selection, catalog previews and plural counts, persisted
+target-tab opt-in, horizontal ruler swipes without deletion, explicit logged-set
+delete cancellation, and minimize/resume/finish preserving four repetitions and
+3kg. Final source `e6d553f` was rebuilt and installed on that same disposable target;
+its light-theme active card shows one exercise title, reps/load and More
+measurements, with empty Duration appearing after one deliberate tap. No values
+were authored by opening the disclosure. APK SHA-256:
+`395897a759e1b03f45a519cf05ed3cd43ad342ba37776abbb9809c68e9aa7c53`.
+Final formatting passes (508 files, zero changes); build receipt is
+`20261105-014713-run-check-ui-final-density-apk.log`. Synthetic captures and raw
+timing receipts are retained locally, outside the public source tree.
+
+Qualification limits remain explicit: injected two-finger input did not establish
+native pinch/pan, and the complete both-style/front/back/oblique/zoom-bound matrix
+was not observed natively (A3). Cold-load/render metrics and bounded memory
+measurements do not fully qualify device performance (A2). Ambient caching,
+route/lifecycle stopping and reduced motion pass host tests, but no comparative
+Android ambient/set-entry frame benchmark was obtained (A8). Occasional missing
+Flutter text during emulator graphics redraw recovered on interaction; captures
+are not a claim of flawless physical-device rendering. These limits prevent a
+blanket native-performance acceptance claim. No release or public publication
+has been performed.
 
 ## Published baseline integration — 2026-11-04
 

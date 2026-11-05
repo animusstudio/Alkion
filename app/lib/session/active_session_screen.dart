@@ -457,7 +457,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           value: 'warmup',
           icon: AlkionGlyph.flame,
         ),
-        WSheetAction(label: l.commonRemove, value: 'remove', destructive: true),
+        WSheetAction(
+          label: l.commonDelete,
+          value: 'remove',
+          icon: AlkionGlyph.delete,
+          destructive: true,
+        ),
       ],
     );
     if (!mounted || picked == null) return;
@@ -1041,15 +1046,40 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                                                 unit: quantityUnit,
                                               ),
                                     ),
-                                selectionLabel: (set) => [
-                                  _typedSetLabel(trial, set.catalog!.selection),
-                                  set.catalog!.selection.contextLabel,
-                                ].where((part) => part.isNotEmpty).join(' · '),
+                                selectionLabel: (set) {
+                                  final selection = set.catalog!.selection;
+                                  final header =
+                                      block.catalogSelection ??
+                                      block.allSets
+                                          .firstWhere(
+                                            (candidate) =>
+                                                candidate.catalog != null,
+                                          )
+                                          .catalog!
+                                          .selection;
+                                  final label = _typedSetLabel(
+                                    trial,
+                                    selection,
+                                  );
+                                  if (selection.compatibilityKey ==
+                                          header.compatibilityKey &&
+                                      label == header.displayLabel &&
+                                      selection.contextLabel ==
+                                          header.contextLabel) {
+                                    return '';
+                                  }
+                                  return [label, selection.contextLabel]
+                                      .where((part) => part.isNotEmpty)
+                                      .join(' · ');
+                                },
                                 referenceBuilder: (set) {
                                   final selection = set.catalog!.selection;
                                   final metrics =
                                       block.catalogLastMetrics[selection
                                           .compatibilityKey];
+                                  if (metrics == null) {
+                                    return const SizedBox.shrink();
+                                  }
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
@@ -1059,22 +1089,20 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                                           CrossAxisAlignment.stretch,
                                       children: [
                                         FitLabel(
-                                          metrics == null
-                                              ? l.sessionNoPreviousData
-                                              : catalogEvidenceSummary(
-                                                  CatalogSetEvidence(
-                                                    selection: selection,
-                                                    metrics: metrics,
-                                                  ),
-                                                  l,
-                                                ),
+                                          catalogEvidenceSummary(
+                                            CatalogSetEvidence(
+                                              selection: selection,
+                                              metrics: metrics,
+                                            ),
+                                            l,
+                                          ),
                                           maxLines: 3,
                                           style: WorkoutType.body(
                                             size: 12,
                                             color: tokens.dim,
                                           ),
                                         ),
-                                        if (metrics != null && !set.done)
+                                        if (!set.done)
                                           TextButton(
                                             onPressed: () {
                                               commitPendingInput();

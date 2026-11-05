@@ -30,6 +30,9 @@ void main() {
         tester,
       ) async {
         await harness.open(tester);
+        await tester.runAsync(
+          () => harness.settings.setMuscleTargetsEnabled(true),
+        );
         setPhone(tester, width: 320, textScale: 2.0);
         final locale = Locale(code);
         await tester.pumpWidget(

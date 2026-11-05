@@ -7,6 +7,7 @@ import '../domain/catalog_execution.dart';
 import '../domain/evidence.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
+import '../theme/alkion_icon.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../widgets/fit_label.dart';
@@ -18,7 +19,7 @@ import 'set_values_editor.dart';
 /// Rulers are display projections only. Only a deliberate ruler movement or a
 /// changed modal submission authors a quantity; mounting, unit changes and
 /// opening/closing the modal never normalize retained raw evidence.
-class CatalogSetValuesEditor extends StatelessWidget {
+class CatalogSetValuesEditor extends StatefulWidget {
   const CatalogSetValuesEditor({
     super.key,
     required this.evidence,
@@ -33,13 +34,84 @@ class CatalogSetValuesEditor extends StatelessWidget {
   final bool enabled;
 
   @override
+  State<CatalogSetValuesEditor> createState() => _CatalogSetValuesEditorState();
+}
+
+class _CatalogSetValuesEditorState extends State<CatalogSetValuesEditor> {
+  bool _expanded = false;
+  CatalogSetEvidence get evidence => widget.evidence;
+  UnitService get unit => widget.unit;
+  bool get enabled => widget.enabled;
+  void onMetricChanged(String metric, String text, String unit) =>
+      widget.onMetricChanged(metric, text, unit);
+
+  bool _hasStoredValue(String metric) {
+    final quantity = evidence.metrics[metric];
+    return quantity != null &&
+        ((quantity.raw != null && quantity.raw != '') ||
+            !{
+              ValueState.empty,
+              ValueState.missing,
+              ValueState.nullValue,
+            }.contains(quantity.state));
+  }
+
+  void _toggleMeasurements() {
+    if (!enabled) return;
+    commitPendingInput();
+    setState(() => _expanded = !_expanded);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final profile = evidence.selection.profile;
+    bool primary(String metric) =>
+        metric == 'repetitions' || metric == 'reported_load';
+    final immediate = [
+      ...profile.requiredMetrics,
+      ...profile.optionalMetrics.where(primary),
+      ...profile.optionalMetrics.where(
+        (metric) => !primary(metric) && _hasStoredValue(metric),
+      ),
+    ];
+    final more = profile.optionalMetrics
+        .where((metric) => !primary(metric) && !_hasStoredValue(metric))
+        .toList();
     final l = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final metric in evidence.selection.profile.metrics)
-          _metric(context, l, metric),
+        for (final metric in immediate) _metric(context, l, metric),
+        if (more.isNotEmpty) ...[
+          Semantics(
+            key: const Key('catalog-more-measurements'),
+            container: true,
+            button: true,
+            enabled: enabled,
+            expanded: _expanded,
+            label: l.catalogMoreMeasurements,
+            excludeSemantics: true,
+            onTap: enabled ? _toggleMeasurements : null,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                alignment: AlignmentDirectional.centerStart,
+              ),
+              onPressed: enabled ? _toggleMeasurements : null,
+              icon: AlkionIcon(
+                _expanded ? AlkionGlyph.chevronUp : AlkionGlyph.chevronDown,
+                size: 20,
+              ),
+              label: FitLabel(
+                l.catalogMoreMeasurements,
+                maxLines: 2,
+                style: WorkoutType.body(color: context.tokens.dim),
+              ),
+            ),
+          ),
+          if (_expanded)
+            for (final metric in more) _metric(context, l, metric),
+        ],
       ],
     );
   }
@@ -135,9 +207,6 @@ class CatalogSetValuesEditor extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SetFieldGuide(
               label: '$label${optional ? ' · ${l.catalogOptional}' : ''}',
-              hint: metric == evidence.selection.profile.metrics.first
-                  ? l.sessionTapValueToType
-                  : null,
               color: context.tokens.accentText,
               guide: context.tokens.lineStrong,
             ),
@@ -148,7 +217,7 @@ class CatalogSetValuesEditor extends StatelessWidget {
               onPressed: enabled ? type : null,
               style: TextButton.styleFrom(minimumSize: const Size(48, 80)),
               child: FitLabel(
-                '${valid ? raw : '—'} $inputUnit · ${l.sessionTapValueToType}',
+                '${valid ? raw : '—'} $inputUnit',
                 maxLines: 3,
                 style: WorkoutType.mono(size: 20, color: context.tokens.text),
               ),

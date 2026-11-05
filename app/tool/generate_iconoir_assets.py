@@ -26,7 +26,7 @@ def digest(data):
 def normalize(data, stroke):
     root = ET.fromstring(data)
     if root.attrib.get('viewBox') != '0 0 24 24':
-        raise ValueError('Expected the upstream 24-unit viewBox')
+        raise ValueError('Expected the 24-unit viewBox')
 
     def visit(node, inherited_stroke='none'):
         # These pinned inputs use presentation attributes. Fail closed if a
@@ -47,14 +47,22 @@ def normalize(data, stroke):
 
 def outputs():
     manifest = json.loads((INPUT / 'manifest.json').read_text())
-    expected_sources = {a['source'] for a in manifest['assets']} | {manifest['license']['source']}
-    actual_sources = {str(p.relative_to(INPUT)) for p in (INPUT / 'sources').iterdir()}
+    assets = [*manifest['assets'], *manifest.get('custom_assets', [])]
+    expected_sources = {a['source'] for a in assets} | {manifest['license']['source']}
+    actual_sources = {str(p.relative_to(INPUT)) for folder in ['sources', 'custom']
+                      for p in (INPUT / folder).glob('*') if p.is_file()}
+    for asset in manifest.get('custom_assets', []):
+        if (not asset['name'].startswith('alkion-') or
+                not asset['source'].startswith('custom/') or
+                asset.get('spdx') != 'AGPL-3.0-only' or
+                not asset.get('author') or not asset.get('provenance') or 'url' in asset):
+            raise ValueError('Custom authorship must remain separate from Iconoir')
     if actual_sources != expected_sources:
         raise ValueError('Source subset differs from manifest')
-    if set(manifest['roles'].values()) != {a['name'] for a in manifest['assets']}:
+    if set(manifest['roles'].values()) != {a['name'] for a in assets}:
         raise ValueError('Semantic roles and source subset differ')
     result = {}
-    for source in [manifest['license'], *manifest['assets']]:
+    for source in [manifest['license'], *assets]:
         data = (INPUT / source['source']).read_bytes()
         if digest(data) != source['sha256']:
             raise ValueError(f"Source hash mismatch: {source['source']}")
@@ -64,7 +72,13 @@ def outputs():
     notice = ('Iconoir regular SVG subset\n'
               f"Source: {manifest['repository']}\nRevision: {manifest['revision']}\n"
               'Derivative changes: stroke widths normalized to 1.25 / 1.0 viewBox units.\n\n')
-    result['NOTICE'] = notice.encode() + (INPUT / manifest['license']['source']).read_bytes()
+    custom_notice = ('\nOriginal Alkion category outlines (alkion-*.svg)\n'
+                     'Copyright (C) 2026 Animus Studio. SPDX-License-Identifier: AGPL-3.0-only.\n'
+                     'These are original Alkion drawings, not Iconoir originals or derivatives.\n'
+                     'See the application LICENSE for the complete license text.\n'
+                     'Only the upstream subset above is covered by the Iconoir MIT notice.\n')
+    result['NOTICE'] = (notice.encode() + (INPUT / manifest['license']['source']).read_bytes()
+                        + custom_notice.encode())
     hashes = {name: digest(data) for name, data in sorted(result.items())}
     result['manifest.json'] = (json.dumps(hashes, indent=2) + '\n').encode()
     return result
