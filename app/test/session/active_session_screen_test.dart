@@ -340,13 +340,13 @@ void main() {
       await tester.tapAt(const Offset(5, 5));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.byTooltip('SET 1'));
+      await tester.tap(find.byTooltip('SET 1 options'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Add set'), findsNothing);
       expect(find.text('Mark as not done'), findsOneWidget);
       expect(find.text('Add warm-up'), findsOneWidget);
-      await tester.tap(find.text('Remove'));
+      await tester.tap(find.text('Delete'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Remove set?'), findsOneWidget);
@@ -774,7 +774,7 @@ void main() {
   );
 
   testWidgets(
-    'swipe-remove a pending set, then Undo restores it at its index',
+    'explicitly delete a pending set, then Undo restores it at its index',
     (tester) async {
       final controller = ActiveSessionController();
       final s0 = SetState(
@@ -803,16 +803,12 @@ void main() {
 
       expect(block.workingSets, [s0, s1]);
 
-      // Swipe s0 (index 0) away.
-      await tester.dragFrom(
-        tester.getTopLeft(find.byKey(const Key('dismiss-s0'))) +
-            const Offset(100, 20),
-        const Offset(-500, 0),
-      );
+      await tester.tap(find.byKey(const Key('set-menu-s0')));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Delete'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(block.workingSets, [s1]);
 
@@ -1115,11 +1111,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(a.rir, isNull);
       await Scrollable.ensureVisible(
-        tester.element(find.byTooltip('SET 1')),
+        tester.element(find.byTooltip('SET 1 options')),
         alignment: .5,
       );
       await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.byTooltip('SET 1'));
+      await tester.tap(find.byTooltip('SET 1 options'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.text('Mark as not done'));

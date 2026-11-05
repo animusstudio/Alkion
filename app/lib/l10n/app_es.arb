@@ -958,5 +958,6 @@
   "bodyZoomIn": "Acercar",
   "bodyZoomOut": "Alejar",
   "bodyResetView": "Restablecer vista",
-  "bodyExploreInfo": "Acerca de la selección muscular"
+  "bodyExploreInfo": "Acerca de la selección muscular",
+  "sessionSetOptions": "Opciones de {set}"
 }

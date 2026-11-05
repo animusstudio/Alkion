@@ -958,5 +958,6 @@
   "bodyZoomIn": "Ingrandisci",
   "bodyZoomOut": "Riduci",
   "bodyResetView": "Reimposta vista",
-  "bodyExploreInfo": "Informazioni sulla selezione muscolare"
+  "bodyExploreInfo": "Informazioni sulla selezione muscolare",
+  "sessionSetOptions": "Opzioni {set}"
 }

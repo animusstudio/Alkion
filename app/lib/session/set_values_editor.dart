@@ -55,7 +55,6 @@ class SetValuesEditor extends StatelessWidget {
         inset(
           SetFieldGuide(
             label: l.sessionWeight,
-            hint: l.sessionTapValueToType,
             color: tokens.accentText,
             guide: tokens.lineStrong,
           ),
@@ -91,7 +90,7 @@ class SetValuesEditor extends StatelessWidget {
           value: reps.toDouble(),
           step: 1,
           max: 50,
-          itemExtent: 56,
+          itemExtent: 47.6,
           format: (v) =>
               !repsAvailable && v == reps ? '—' : v.toInt().toString(),
           semanticLabel: l.sessionReps,

@@ -1709,5 +1709,7 @@
   "bodyZoomIn": "Zoom in",
   "bodyZoomOut": "Zoom out",
   "bodyResetView": "Reset view",
-  "bodyExploreInfo": "About muscle selection"
+  "bodyExploreInfo": "About muscle selection",
+  "sessionSetOptions": "{set} options",
+  "@sessionSetOptions": {"placeholders": {"set": {"type": "String"}}}
 }

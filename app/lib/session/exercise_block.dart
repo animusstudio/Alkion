@@ -10,8 +10,10 @@ import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../util/prescription_format.dart';
 import '../widgets/pr_badge.dart';
+import '../widgets/pending_input.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_action_sheet.dart';
 import 'active_session_controller.dart';
 import 'live_set_card.dart';
 import 'set_line.dart';
@@ -45,7 +47,7 @@ import 'set_line.dart';
   );
 }
 
-/// Logged work has the same confirmation whether removed by swipe or menu.
+/// Logged work always asks for confirmation before explicit deletion.
 Future<bool> confirmRemoveSessionSet(BuildContext context, SetState set) async {
   if (!set.done) return true;
   final l = AppLocalizations.of(context);
@@ -115,8 +117,7 @@ class ExerciseBlock extends StatefulWidget {
   final void Function(BlockState, SetState)? onClearRir;
   final void Function(BlockState, SetState) onMarkNotDone;
 
-  /// Swipe-left removal of a set. Null disables the swipe. A ticked set is
-  /// confirmed first; an unticked one goes straight away.
+  /// Explicit deletion of a set. Logged sets are confirmed first.
   final void Function(BlockState, SetState)? onRemoveSet;
 
   /// The header's ⋯ button (add set / warm-up, reorder, remove exercise).
@@ -170,182 +171,201 @@ class _ExerciseBlockState extends State<ExerciseBlock>
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: tokens.surface,
-        border: Border(bottom: BorderSide(color: tokens.line)),
+        borderRadius: BorderRadius.circular(AppRadius.control),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Header ─────────────────────────────────────────────────────
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: containsLive
-                ? null
-                : () => setState(() => block.expanded = !block.expanded),
-            onLongPress: widget.onLongPressHeader,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    key: ValueKey('block-badge-${ex.id}'),
-                    constraints: const BoxConstraints(
-                      minWidth: 40,
-                      minHeight: 40,
+          Semantics(
+            expanded: showSets,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: containsLive
+                  ? null
+                  : () {
+                      commitPendingInput();
+                      setState(() => block.expanded = !block.expanded);
+                    },
+              onLongPress: widget.onLongPressHeader,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      key: ValueKey('block-badge-${ex.id}'),
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      decoration: BoxDecoration(
+                        color: tokens.surface2,
+                        borderRadius: BorderRadius.circular(AppRadius.control),
+                      ),
+                      alignment: Alignment.center,
+                      child: allDone
+                          ? AlkionIcon(
+                              AlkionGlyph.check,
+                              size: 18,
+                              color: tokens.text,
+                            )
+                          : Text(
+                              '$doneWorking/${working.length}',
+                              maxLines: 1,
+                              softWrap: false,
+                              style: WorkoutType.mono(
+                                size: 13,
+                                weight: FontWeight.w500,
+                                color: tokens.dim,
+                              ),
+                            ),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    decoration: BoxDecoration(
-                      color: tokens.surface2,
-                      borderRadius: BorderRadius.circular(AppRadius.control),
-                    ),
-                    alignment: Alignment.center,
-                    child: allDone
-                        ? AlkionIcon(
-                            AlkionGlyph.check,
-                            size: 18,
-                            color: tokens.text,
-                          )
-                        : Text(
-                            '$doneWorking/${working.length}',
-                            maxLines: 1,
-                            softWrap: false,
-                            style: WorkoutType.mono(
-                              size: 13,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          FitLabel(
+                            typed
+                                ? (block.catalogSelection ??
+                                          block.allSets
+                                              .firstWhere(
+                                                (s) => s.catalog != null,
+                                              )
+                                              .catalog!
+                                              .selection)
+                                      .displayLabel
+                                : ex.name,
+                            maxLines: 2,
+                            style: WorkoutType.body(
+                              size: 16,
                               weight: FontWeight.w500,
+                              color: tokens.text,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          FitLabel(
+                            typed
+                                ? (block.catalogSelection ??
+                                          block.allSets
+                                              .firstWhere(
+                                                (s) => s.catalog != null,
+                                              )
+                                              .catalog!
+                                              .selection)
+                                      .contextLabel
+                                : subLabel,
+                            maxLines: 3,
+                            style: WorkoutType.body(
+                              size: 12,
                               color: tokens.dim,
                             ),
                           ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        FitLabel(
-                          typed
-                              ? (block.catalogSelection ??
-                                        block.allSets
-                                            .firstWhere(
-                                              (s) => s.catalog != null,
-                                            )
-                                            .catalog!
-                                            .selection)
-                                    .displayLabel
-                              : ex.name,
-                          maxLines: 2,
-                          style: WorkoutType.body(
-                            size: 16,
-                            weight: FontWeight.w500,
-                            color: tokens.text,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        FitLabel(
-                          typed
-                              ? (block.catalogSelection ??
-                                        block.allSets
-                                            .firstWhere(
-                                              (s) => s.catalog != null,
-                                            )
-                                            .catalog!
-                                            .selection)
-                                    .contextLabel
-                              : subLabel,
-                          maxLines: 3,
-                          style: WorkoutType.body(size: 12, color: tokens.dim),
-                        ),
-                        if (!typed && top.topKg > 0) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Flexible(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerLeft,
-                                  child: Text.rich(
-                                    TextSpan(
-                                      children: [
-                                        TextSpan(
-                                          text: unit.fmtWt(top.topKg),
-                                          style: WorkoutType.mono(
-                                            size: 14,
-                                            weight: FontWeight.w500,
-                                            color: tokens.text,
+                          if (!typed && top.topKg > 0) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: unit.fmtWt(top.topKg),
+                                            style: WorkoutType.mono(
+                                              size: 14,
+                                              weight: FontWeight.w500,
+                                              color: tokens.text,
+                                            ),
                                           ),
-                                        ),
-                                        TextSpan(
-                                          text: unit.uLabel,
-                                          style: WorkoutType.mono(
-                                            size: 12,
-                                            color: tokens.dim,
+                                          TextSpan(
+                                            text: unit.uLabel,
+                                            style: WorkoutType.mono(
+                                              size: 12,
+                                              color: tokens.dim,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
+                                      maxLines: 1,
+                                      softWrap: false,
                                     ),
-                                    maxLines: 1,
-                                    softWrap: false,
                                   ),
                                 ),
-                              ),
-                              if (top.isPr) ...[
-                                const SizedBox(width: 8),
-                                const PRBadge(small: true),
+                                if (top.isPr) ...[
+                                  const SizedBox(width: 8),
+                                  const PRBadge(small: true),
+                                ],
                               ],
-                            ],
-                          ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ),
-                  Semantics(
-                    container: true,
-                    button: true,
-                    label: l.sessionExerciseOptions,
-                    excludeSemantics: true,
-                    onTap: () => widget.onMenu(block),
-                    child: IconButton(
-                      key: ValueKey('block-menu-${ex.id}'),
-                      onPressed: () => widget.onMenu(block),
-                      constraints: const BoxConstraints(
-                        minWidth: 48,
-                        minHeight: 48,
                       ),
-                      icon: AlkionIcon(
-                        AlkionGlyph.more,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 14,
+                        horizontal: 4,
+                      ),
+                      child: AlkionIcon(
+                        showSets
+                            ? AlkionGlyph.chevronUp
+                            : AlkionGlyph.chevronDown,
                         size: 20,
                         color: tokens.dim,
                       ),
                     ),
-                  ),
-                ],
+                    Semantics(
+                      container: true,
+                      button: true,
+                      label: l.sessionExerciseOptions,
+                      excludeSemantics: true,
+                      onTap: () => widget.onMenu(block),
+                      child: IconButton(
+                        key: ValueKey('block-menu-${ex.id}'),
+                        onPressed: () => widget.onMenu(block),
+                        constraints: const BoxConstraints(
+                          minWidth: 48,
+                          minHeight: 48,
+                        ),
+                        icon: AlkionIcon(
+                          AlkionGlyph.more,
+                          size: 20,
+                          color: tokens.dim,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
 
           // ── Sets ───────────────────────────────────────────────────────
-          if (showSets)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-              child: AnimatedSize(
-                duration: Motion.of(context, Motion.base),
-                curve: Motion.curve,
-                alignment: Alignment.topCenter,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final s in block.allSets)
-                      _setWidget(
-                        block,
-                        s,
-                        top,
-                        topSetIdOf(block, top.topKg),
-                        tokens,
-                      ),
-                  ],
-                ),
+          SpringExpansion(
+            expanded: showSets,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final s in block.allSets)
+                    _setWidget(
+                      block,
+                      s,
+                      top,
+                      topSetIdOf(block, top.topKg),
+                      tokens,
+                    ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
@@ -389,7 +409,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         selectionLabel: s.catalog == null
             ? null
             : widget.selectionLabel?.call(s),
-        onMenu: widget.onSetMenu == null ? null : () => widget.onSetMenu!(s),
+        onMenu: _canOpenSetMenu ? () => _openSetMenu(block, s) : null,
       );
       child = widget.liveCardKey == null
           ? card
@@ -407,50 +427,48 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         isLivePr: s.catalog == null ? isLiveTop && top.isPr : catalogTop.isPr,
         showRir: widget.showRir,
         showRirPrompt: widget.showRir && s.id == widget.rirPromptSetId,
-        onTap: () => widget.onFocusSet(block, s),
+        onTap: () {
+          commitPendingInput();
+          widget.onFocusSet(block, s);
+        },
+        onMenu: _canOpenSetMenu ? () => _openSetMenu(block, s) : null,
         onRir: (v) => widget.onRir(block, s, v),
         onClearRir: widget.onClearRir == null
             ? null
             : () => widget.onClearRir!(block, s),
       );
     }
-    final onRemoveSet = widget.onRemoveSet;
-    return Reveal(
-      key: ValueKey(s.id),
-      child: onRemoveSet == null
-          ? child
-          : Dismissible(
-              key: ValueKey('dismiss-${s.id}'),
-              direction: DismissDirection.endToStart,
-              background: _RemoveSetBackground(tokens: tokens),
-              confirmDismiss: (_) => confirmRemoveSessionSet(context, s),
-              onDismissed: (_) => onRemoveSet(block, s),
-              child: child,
-            ),
-    );
+    return Reveal(key: ValueKey(s.id), child: child);
   }
-}
 
-// ── Helper sub-widgets ────────────────────────────────────────────────────────
+  bool get _canOpenSetMenu =>
+      widget.onSetMenu != null || widget.onRemoveSet != null;
 
-/// Red trash background revealed while a set row is swiped left.
-class _RemoveSetBackground extends StatelessWidget {
-  const _RemoveSetBackground({required this.tokens});
-
-  final WorkoutTokens tokens;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      alignment: Alignment.centerRight,
-      padding: const EdgeInsets.only(right: 14),
-      decoration: BoxDecoration(
-        color: tokens.surface2,
-        border: Border.all(color: tokens.danger),
-        borderRadius: BorderRadius.circular(AppRadius.control),
-      ),
-      child: AlkionIcon(AlkionGlyph.delete, size: 18, color: tokens.danger),
+  Future<void> _openSetMenu(BlockState block, SetState set) async {
+    commitPendingInput();
+    if (widget.onSetMenu != null) {
+      widget.onSetMenu!(set);
+      return;
+    }
+    final l = AppLocalizations.of(context);
+    final remove = await showWActionSheet<bool>(
+      context,
+      title: set.isWarmup
+          ? l.sessionLiveWarmup
+          : l.sessionLiveSet(block.workingSets.indexOf(set) + 1),
+      actions: [
+        WSheetAction(
+          label: l.commonDelete,
+          value: true,
+          icon: AlkionGlyph.delete,
+          destructive: true,
+        ),
+      ],
     );
+    if (remove != true || !mounted) return;
+    if (await confirmRemoveSessionSet(context, set) && mounted) {
+      widget.onRemoveSet?.call(block, set);
+    }
   }
 }
 

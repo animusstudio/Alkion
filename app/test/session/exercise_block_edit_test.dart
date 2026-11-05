@@ -85,7 +85,7 @@ void main() {
     ),
   );
 
-  Finder rowOf(String setId) => find.byKey(ValueKey('dismiss-$setId'));
+  Finder menuOf(String setId) => find.byKey(ValueKey('set-menu-$setId'));
 
   testWidgets('the live set renders as the card, the others as lines', (
     tester,
@@ -215,29 +215,84 @@ void main() {
     expect(find.text('Remove exercise'), findsNothing);
   });
 
-  testWidgets('swiping an unticked set left removes it without asking', (
-    tester,
-  ) async {
-    await tester.pumpWidget(host(_block(), live: 's2'));
-    await tester.pumpAndSettle();
-    await tester.drag(rowOf('s1'), const Offset(-600, 0));
-    await tester.pumpAndSettle();
-    expect(find.text('Remove set?'), findsNothing);
-    expect(removed, ['s1']);
-  });
-
-  testWidgets('swiping a ticked set asks first; cancelling keeps it', (
+  testWidgets('horizontal drags cannot delete active or collapsed sets', (
     tester,
   ) async {
     await tester.pumpWidget(host(_block(firstDone: true)));
     await tester.pumpAndSettle();
-    await tester.drag(rowOf('s1'), const Offset(-600, 0));
+    expect(find.byType(Dismissible), findsNothing);
+    await tester.drag(find.byType(SetLine), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const Key('live-weight')),
+      const Offset(-100, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(removed, isEmpty);
+    expect(find.text('Remove set?'), findsNothing);
+  });
+
+  testWidgets('pending set deletes through its own explicit menu', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(_block()));
+    await tester.pumpAndSettle();
+    await tester.tap(menuOf('s1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(removed, ['s1']);
+    expect(find.text('Remove set?'), findsNothing);
+  });
+
+  testWidgets('logged set deletion asks first; cancelling keeps exact values', (
+    tester,
+  ) async {
+    final block = _block(firstDone: true);
+    final before = block.workingSets.first.toJson();
+    await tester.pumpWidget(host(block));
+    await tester.pumpAndSettle();
+    await tester.tap(menuOf('s1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
     expect(find.text('Remove set?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(removed, isEmpty);
-    expect(rowOf('s1'), findsOneWidget);
+    expect(block.workingSets.first.toJson(), before);
+    expect(menuOf('s1'), findsOneWidget);
+  });
+
+  testWidgets('active set has its own explicit delete menu', (tester) async {
+    await tester.pumpWidget(host(_block()));
+    await tester.pumpAndSettle();
+    await tester.tap(menuOf('s2'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(removed, ['s2']);
+  });
+
+  testWidgets('opening the active set menu commits and stops a moving ruler', (
+    tester,
+  ) async {
+    final block = _block();
+    await tester.pumpWidget(host(block));
+    await tester.pumpAndSettle();
+    await tester.fling(
+      find.byKey(const Key('live-weight')),
+      const Offset(-120, 0),
+      3000,
+    );
+    await tester.pump(const Duration(milliseconds: 32));
+    await tester.tap(menuOf('s2'));
+    final committed = block.workingSets.last.toJson();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 2));
+    expect(block.workingSets.last.toJson(), committed);
+    expect(removed, isEmpty);
+    expect(find.text('Delete'), findsOneWidget);
   });
 
   testWidgets('no overflow on a narrow phone at large text (Italian)', (

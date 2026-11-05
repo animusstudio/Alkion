@@ -135,9 +135,6 @@ class CatalogSetValuesEditor extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SetFieldGuide(
               label: '$label${optional ? ' · ${l.catalogOptional}' : ''}',
-              hint: metric == evidence.selection.profile.metrics.first
-                  ? l.sessionTapValueToType
-                  : null,
               color: context.tokens.accentText,
               guide: context.tokens.lineStrong,
             ),
@@ -148,7 +145,7 @@ class CatalogSetValuesEditor extends StatelessWidget {
               onPressed: enabled ? type : null,
               style: TextButton.styleFrom(minimumSize: const Size(48, 80)),
               child: FitLabel(
-                '${valid ? raw : '—'} $inputUnit · ${l.sessionTapValueToType}',
+                '${valid ? raw : '—'} $inputUnit',
                 maxLines: 3,
                 style: WorkoutType.mono(size: 20, color: context.tokens.text),
               ),
