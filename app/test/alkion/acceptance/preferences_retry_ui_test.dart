@@ -39,6 +39,7 @@ void main() {
               runtime = await AlkionRuntime.open(
                 Directory('${root.path}/dev.animusstudio.alkion.dev'),
               );
+              expect(runtime!.settings.muscleTargetsEnabled, isFalse);
               await seedExercise(
                 runtime!.store,
                 'exact-kg',
