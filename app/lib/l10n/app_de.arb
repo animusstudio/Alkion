@@ -866,7 +866,7 @@
   "catalogBasket": "Auswahl · {count}",
   "catalogSelectedCount": "Ausgewählte Einträge: {count}",
   "catalogRemoveOccurrence": "Eintrag {position} entfernen: {name}",
-  "catalogMatchingExecutions": "{count} Ausführungen",
+  "catalogMatchingExecutions": "{count, plural, one {1 Ausführung} other {{count} Ausführungen}}",
   "catalogInDay": "In diesem Trainingstag",
   "catalogCurrent": "Aktuelle Variante",
   "catalogCurrentSetup": "Aktuell: {name}",

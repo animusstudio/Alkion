@@ -25,6 +25,7 @@ import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/ruler_picker.dart';
+import 'package:alkion/widgets/fit_label.dart';
 import '../support/l10n_harness.dart';
 import '../support/app_fonts.dart';
 import '../support/layout_expect.dart';
@@ -1186,6 +1187,48 @@ void main() {
           );
         }
       }
+    }
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final language in ['en', 'de', 'it']) {
+      testWidgets('narrow-enlarged-header $language ${brightness.name}', (
+        tester,
+      ) async {
+        real.setPhone(tester, width: 320, textScale: 2);
+        final controller = ActiveSessionController()
+          ..seedForTest(real.longDraft());
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          _harness(
+            controller,
+            locale: Locale(language),
+            brightness: brightness,
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        final title = find.byKey(const ValueKey('block-title-ex1'));
+        expect(tester.renderObject<RenderFitLabel>(title).ellipsized, isFalse);
+        expect(tester.getSize(title).height, greaterThan(50));
+        final l = lookupAppLocalizations(Locale(language));
+        expect(find.textContaining(l.muscleChest), findsWidgets);
+        expect(
+          tester.getSize(find.byKey(const ValueKey('block-menu-ex1'))).height,
+          greaterThanOrEqualTo(48),
+        );
+        final reps = find.byKey(const Key('live-reps'));
+        await tester.ensureVisible(reps);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(reps).bottom,
+          lessThanOrEqualTo(
+            tester.getRect(find.byKey(const Key('log-set-bar'))).top,
+          ),
+        );
+        expect(tester.getRect(reps).top, greaterThanOrEqualTo(0));
+        expect(tester.takeException(), isNull);
+        await _teardown(tester);
+      });
     }
   }
 }

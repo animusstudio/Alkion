@@ -1530,7 +1530,7 @@
       }
     }
   },
-  "catalogMatchingExecutions": "{count} executions",
+  "catalogMatchingExecutions": "{count, plural, one {1 execution} other {{count} executions}}",
   "@catalogMatchingExecutions": {
     "placeholders": {
       "count": {

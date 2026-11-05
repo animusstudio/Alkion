@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../data/muscles.dart';
 import '../domain/evidence.dart';
 import '../theme/app_theme.dart';
 import '../theme/alkion_icon.dart';
@@ -165,7 +166,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
       unavailable: l.trainingUnavailable,
     );
     final subLabel =
-        '${ex.muscleGroup} · $prescription${resolved.rirUnavailable ? ' · ${l.trainingRirUnavailable}' : ''}';
+        '${localizedMuscle(context, ex.muscleGroup)} · $prescription${resolved.rirUnavailable ? ' · ${l.trainingRirUnavailable}' : ''}';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -191,10 +192,12 @@ class _ExerciseBlockState extends State<ExerciseBlock>
               onLongPress: widget.onLongPressHeader,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final stacked =
+                        constraints.maxWidth - 128 <
+                        MediaQuery.textScalerOf(context).scale(16) * 8;
+                    final badge = Container(
                       key: ValueKey('block-badge-${ex.id}'),
                       constraints: const BoxConstraints(
                         minWidth: 40,
@@ -222,125 +225,147 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                                 color: tokens.dim,
                               ),
                             ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          FitLabel(
-                            typed
-                                ? (block.catalogSelection ??
-                                          block.allSets
-                                              .firstWhere(
-                                                (s) => s.catalog != null,
-                                              )
-                                              .catalog!
-                                              .selection)
-                                      .displayLabel
-                                : ex.name,
-                            maxLines: 2,
-                            style: WorkoutType.body(
-                              size: 16,
-                              weight: FontWeight.w500,
-                              color: tokens.text,
-                            ),
+                    );
+                    final labels = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        FitLabel(
+                          key: ValueKey('block-title-${ex.id}'),
+                          typed
+                              ? (block.catalogSelection ??
+                                        block.allSets
+                                            .firstWhere(
+                                              (s) => s.catalog != null,
+                                            )
+                                            .catalog!
+                                            .selection)
+                                    .displayLabel
+                              : ex.name,
+                          maxLines: stacked ? 5 : 2,
+                          style: WorkoutType.body(
+                            size: 16,
+                            weight: FontWeight.w500,
+                            color: tokens.text,
                           ),
-                          const SizedBox(height: 4),
-                          FitLabel(
-                            typed
-                                ? (block.catalogSelection ??
-                                          block.allSets
-                                              .firstWhere(
-                                                (s) => s.catalog != null,
-                                              )
-                                              .catalog!
-                                              .selection)
-                                      .contextLabel
-                                : subLabel,
-                            maxLines: 3,
-                            style: WorkoutType.body(
-                              size: 12,
+                        ),
+                        const SizedBox(height: 4),
+                        FitLabel(
+                          typed
+                              ? (block.catalogSelection ??
+                                        block.allSets
+                                            .firstWhere(
+                                              (s) => s.catalog != null,
+                                            )
+                                            .catalog!
+                                            .selection)
+                                    .contextLabel
+                              : subLabel,
+                          maxLines: 3,
+                          style: WorkoutType.body(size: 12, color: tokens.dim),
+                        ),
+                        if (!typed && top.topKg > 0) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text.rich(
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: unit.fmtWt(top.topKg),
+                                          style: WorkoutType.mono(
+                                            size: 14,
+                                            weight: FontWeight.w500,
+                                            color: tokens.text,
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: unit.uLabel,
+                                          style: WorkoutType.mono(
+                                            size: 12,
+                                            color: tokens.dim,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    maxLines: 1,
+                                    softWrap: false,
+                                  ),
+                                ),
+                              ),
+                              if (top.isPr) ...[
+                                const SizedBox(width: 8),
+                                const PRBadge(small: true),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ],
+                    );
+                    final controls = Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                            horizontal: 4,
+                          ),
+                          child: AlkionIcon(
+                            showSets
+                                ? AlkionGlyph.chevronUp
+                                : AlkionGlyph.chevronDown,
+                            size: 20,
+                            color: tokens.dim,
+                          ),
+                        ),
+                        Semantics(
+                          container: true,
+                          button: true,
+                          label: l.sessionExerciseOptions,
+                          excludeSemantics: true,
+                          onTap: () => widget.onMenu(block),
+                          child: IconButton(
+                            key: ValueKey('block-menu-${ex.id}'),
+                            onPressed: () => widget.onMenu(block),
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
+                            icon: AlkionIcon(
+                              AlkionGlyph.more,
+                              size: 20,
                               color: tokens.dim,
                             ),
                           ),
-                          if (!typed && top.topKg > 0) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text.rich(
-                                      TextSpan(
-                                        children: [
-                                          TextSpan(
-                                            text: unit.fmtWt(top.topKg),
-                                            style: WorkoutType.mono(
-                                              size: 14,
-                                              weight: FontWeight.w500,
-                                              color: tokens.text,
-                                            ),
-                                          ),
-                                          TextSpan(
-                                            text: unit.uLabel,
-                                            style: WorkoutType.mono(
-                                              size: 12,
-                                              color: tokens.dim,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      maxLines: 1,
-                                      softWrap: false,
-                                    ),
-                                  ),
-                                ),
-                                if (top.isPr) ...[
-                                  const SizedBox(width: 8),
-                                  const PRBadge(small: true),
-                                ],
-                              ],
-                            ),
-                          ],
+                        ),
+                      ],
+                    );
+                    if (stacked) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(children: [badge, const Spacer(), controls]),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsetsDirectional.only(end: 12),
+                            child: labels,
+                          ),
                         ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                        horizontal: 4,
-                      ),
-                      child: AlkionIcon(
-                        showSets
-                            ? AlkionGlyph.chevronUp
-                            : AlkionGlyph.chevronDown,
-                        size: 20,
-                        color: tokens.dim,
-                      ),
-                    ),
-                    Semantics(
-                      container: true,
-                      button: true,
-                      label: l.sessionExerciseOptions,
-                      excludeSemantics: true,
-                      onTap: () => widget.onMenu(block),
-                      child: IconButton(
-                        key: ValueKey('block-menu-${ex.id}'),
-                        onPressed: () => widget.onMenu(block),
-                        constraints: const BoxConstraints(
-                          minWidth: 48,
-                          minHeight: 48,
-                        ),
-                        icon: AlkionIcon(
-                          AlkionGlyph.more,
-                          size: 20,
-                          color: tokens.dim,
-                        ),
-                      ),
-                    ),
-                  ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        badge,
+                        const SizedBox(width: 12),
+                        Expanded(child: labels),
+                        controls,
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -350,7 +375,7 @@ class _ExerciseBlockState extends State<ExerciseBlock>
           SpringExpansion(
             expanded: showSets,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
