@@ -1231,4 +1231,42 @@ void main() {
       });
     }
   }
+
+  testWidgets(
+    'catalog live label omits only duplicate header identity and retains a different set context',
+    (tester) async {
+      real.setPhone(tester, width: 412);
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final a = _typedSet('same-header', _typedEvidence());
+      final b = _typedSet(
+        'different-context',
+        _typedEvidence(context: 'Machine B'),
+      );
+      final block = _block(warm: [], work: [a, b])
+        ..catalogSelection = a.catalog!.selection;
+      controller.seedForTest(_draftWith([block]));
+      final before = [a.toJson(), b.toJson()];
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        find.descendant(
+          of: find.byType(LiveSetCard),
+          matching: find.textContaining('Synthetic execution'),
+        ),
+        findsNothing,
+      );
+      controller.focusSet(b);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(LiveSetCard),
+          matching: find.text('Synthetic execution · Machine B'),
+        ),
+        findsOneWidget,
+      );
+      expect([a.toJson(), b.toJson()], before);
+      await _teardown(tester);
+    },
+  );
 }

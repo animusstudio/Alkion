@@ -959,5 +959,6 @@
   "bodyZoomOut": "Verkleinern",
   "bodyResetView": "Ansicht zurücksetzen",
   "bodyExploreInfo": "Über die Muskelauswahl",
-  "sessionSetOptions": "Optionen für {set}"
+  "sessionSetOptions": "Optionen für {set}",
+  "catalogMoreMeasurements": "Weitere Messwerte"
 }

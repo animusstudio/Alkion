@@ -959,5 +959,6 @@
   "bodyZoomOut": "Alejar",
   "bodyResetView": "Restablecer vista",
   "bodyExploreInfo": "Acerca de la selección muscular",
-  "sessionSetOptions": "Opciones de {set}"
+  "sessionSetOptions": "Opciones de {set}",
+  "catalogMoreMeasurements": "Más mediciones"
 }

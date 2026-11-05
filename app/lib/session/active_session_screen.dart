@@ -1046,10 +1046,32 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                                                 unit: quantityUnit,
                                               ),
                                     ),
-                                selectionLabel: (set) => [
-                                  _typedSetLabel(trial, set.catalog!.selection),
-                                  set.catalog!.selection.contextLabel,
-                                ].where((part) => part.isNotEmpty).join(' · '),
+                                selectionLabel: (set) {
+                                  final selection = set.catalog!.selection;
+                                  final header =
+                                      block.catalogSelection ??
+                                      block.allSets
+                                          .firstWhere(
+                                            (candidate) =>
+                                                candidate.catalog != null,
+                                          )
+                                          .catalog!
+                                          .selection;
+                                  final label = _typedSetLabel(
+                                    trial,
+                                    selection,
+                                  );
+                                  if (selection.compatibilityKey ==
+                                          header.compatibilityKey &&
+                                      label == header.displayLabel &&
+                                      selection.contextLabel ==
+                                          header.contextLabel) {
+                                    return '';
+                                  }
+                                  return [label, selection.contextLabel]
+                                      .where((part) => part.isNotEmpty)
+                                      .join(' · ');
+                                },
                                 referenceBuilder: (set) {
                                   final selection = set.catalog!.selection;
                                   final metrics =

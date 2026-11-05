@@ -126,7 +126,7 @@ class LiveSetCard extends StatelessWidget {
               ],
             ),
           ),
-          if (selectionLabel != null)
+          if (selectionLabel != null && selectionLabel!.isNotEmpty)
             inset(FitLabel(selectionLabel!, maxLines: 3, style: caption())),
           const SizedBox(height: 10),
           if (valuesEditor == null &&

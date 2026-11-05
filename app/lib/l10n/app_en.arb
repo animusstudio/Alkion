@@ -1711,5 +1711,6 @@
   "bodyResetView": "Reset view",
   "bodyExploreInfo": "About muscle selection",
   "sessionSetOptions": "{set} options",
-  "@sessionSetOptions": {"placeholders": {"set": {"type": "String"}}}
+  "@sessionSetOptions": {"placeholders": {"set": {"type": "String"}}},
+  "catalogMoreMeasurements": "More measurements"
 }
