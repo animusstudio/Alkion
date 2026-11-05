@@ -69,6 +69,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   final _scroll = ScrollController();
   CharacterBodyStatus _status = CharacterBodyStatus.loading;
   Animation<double>? _coverAnimation;
+  Animation<double>? _entryAnimation;
   bool _viewportCheckQueued = false;
   bool _inViewport = false;
   int _pickEpoch = 0;
@@ -129,7 +130,16 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final animation = ModalRoute.of(context)?.secondaryAnimation;
+    final route = ModalRoute.of(context);
+    final entry = route?.animation;
+    if (!identical(entry, _entryAnimation)) {
+      _entryAnimation?.removeListener(_queueViewportCheck);
+      _entryAnimation = entry;
+      // The first layout may still be below the screen during sheet entrance.
+      // Admission must not depend on a native status: hidden loads are deferred.
+      _entryAnimation?.addListener(_queueViewportCheck);
+    }
+    final animation = route?.secondaryAnimation;
     if (!identical(animation, _coverAnimation)) {
       _coverAnimation?.removeStatusListener(_routeTransitionChanged);
       _coverAnimation = animation;
@@ -159,7 +169,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _viewportCheckQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _viewportCheckQueued = false;
-      if (!mounted) return;
+      if (!mounted || !_scroll.hasClients) return;
       final box = _artKey.currentContext?.findRenderObject();
       final scrollBox = _scroll.position.context.storageContext
           .findRenderObject();
@@ -204,6 +214,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _pickEpoch++;
     WidgetsBinding.instance.removeObserver(this);
     _coverAnimation?.removeStatusListener(_routeTransitionChanged);
+    _entryAnimation?.removeListener(_queueViewportCheck);
     _scroll.dispose();
     _controller.removeListener(_controllerChanged);
     if (widget.controller == null) _controller.dispose();

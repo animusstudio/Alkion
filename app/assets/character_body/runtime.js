@@ -75,7 +75,7 @@ window.AlkionBody={
  },
  hostPaused(value){hostHidden=!!value;const hidden=hostHidden||document.hidden,changed=state.hidden!==hidden;state.hidden=hidden;if(changed)rendered=null;if(hidden)cancelLoad();if(changed&&!hidden&&needsLoad)load();else if(changed&&!hidden)loop.invalidate();else loop.reconcile();},
  // A pooled native surface starts a new lease without retaining caller state.
- reset(value){if(value===lease)return;lease=value;rendered=null;input=null;muscles=null;command=-1;turn=0;retry=-1;state.visible=false;state.paused=true;loop.stop();cancelLoad();if(!state.ready)needsLoad=true;state.failed=false;started=performance.now();frames=0;totalMs=0;maxMs=0;loadMs=0;stages={cacheHit:state.ready?1:0};},
+ reset(value){if(value===lease)return;lease=value;rendered=null;canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);input=null;muscles=null;command=-1;turn=0;retry=-1;state.visible=false;state.paused=true;loop.stop();cancelLoad();if(!state.ready)needsLoad=true;state.failed=false;started=performance.now();frames=0;totalMs=0;maxMs=0;loadMs=0;stages={cacheHit:state.ready?1:0};},
  dispose(){rendered=null;loadGeneration++;abort?.abort();state.ready=false;loop.stop();renderer?.dispose();renderer=null;mesh=null;meshes.clear();fontReady=null;},
 };
 canvas.addEventListener('renderfailure',()=>fail('error'));

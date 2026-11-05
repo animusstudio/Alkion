@@ -32,10 +32,10 @@ class CatalogLabels {
     'Explorar músculos',
   ][_language];
   String get chooseMuscle => [
-    'Choose a muscle on the body or in the list.',
-    'Scegli un muscolo sul corpo o nell’elenco.',
-    'Wähle einen Muskel am Körper oder in der Liste.',
-    'Elige un músculo en el cuerpo o en la lista.',
+    'Select muscle',
+    'Scegli muscolo',
+    'Muskel auswählen',
+    'Elige músculo',
   ][_language];
   String get showExercises => [
     'Show exercises',

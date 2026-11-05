@@ -92,6 +92,7 @@ internal class CharacterBodyView(
     private var attached = false
     private var hostIsPaused = true
     private var paused = true
+    private var viewId = id
     private var lease = 0L
     private var resetPending = false
     val reusable: Boolean get() = !processGone
@@ -259,7 +260,7 @@ internal class CharacterBodyView(
                             rendered = token
                         } else if (status != "ready") invalidatePick()
                         channel.invokeMethod("status", safe)
-                        if (BuildConfig.DEBUG) Log.i("AlkionBody", "$status $metrics")
+                        if (BuildConfig.DEBUG) Log.i("AlkionBody", "view=$viewId lease=$lease $status $metrics")
                     }
                 }
             }
@@ -299,6 +300,7 @@ internal class CharacterBodyView(
         }
     }
     fun rebind(id: Int, messenger: BinaryMessenger) {
+        viewId = id
         disposed = false
         evaluations = LatestBodyEvaluation { script, complete -> web.evaluateJavascript(script) { complete.run() } }
         lease++

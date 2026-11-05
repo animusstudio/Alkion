@@ -6,7 +6,10 @@ import 'package:alkion/catalog_ui/catalog_muscle_explorer.dart';
 import 'package:alkion/data/body_workload.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/ui/character_body.dart';
+import 'package:alkion/ui/body_figure.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -68,6 +71,116 @@ Future<void> openList(WidgetTester tester) async {
 
 void main() {
   setUpAll(preloadAppFonts);
+
+  for (final workloadSheet in [false, true]) {
+    testWidgets(
+      'Android ${workloadSheet ? 'workload' : 'explorer'} sheet entrance admits loading without an earlier native status',
+      (tester) async {
+        explorerPhone(tester);
+        CharacterBody.debugForceAndroid = true;
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        final messenger = tester.binding.defaultBinaryMessenger;
+        final displays = <Map<Object?, Object?>>[];
+        final channels = <String>[];
+        addTearDown(() {
+          CharacterBody.debugForceAndroid = false;
+          debugDefaultTargetPlatformOverride = null;
+          messenger.setMockMethodCallHandler(
+            SystemChannels.platform_views,
+            null,
+          );
+          for (final name in channels) {
+            messenger.setMockMethodCallHandler(MethodChannel(name), null);
+          }
+        });
+        messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
+          call,
+        ) async {
+          if (call.method == 'create') {
+            final id = (call.arguments as Map)['id'] as int;
+            final name = 'dev.animusstudio.alkion/character-body/$id';
+            channels.add(name);
+            messenger.setMockMethodCallHandler(MethodChannel(name), (
+              call,
+            ) async {
+              if (call.method == 'display') {
+                displays.add(Map.of(call.arguments as Map));
+              }
+              return null;
+            });
+            return 1;
+          }
+          if (call.method == 'resize') {
+            return {
+              'width': (call.arguments as Map)['width'],
+              'height': (call.arguments as Map)['height'],
+            };
+          }
+          return null;
+        });
+        final state = discoveryState();
+        addTearDown(state.dispose);
+        await tester.pumpWidget(
+          discoveryApp(
+            Builder(
+              builder: (context) => TextButton(
+                onPressed: () => workloadSheet
+                    ? showBodyWorkloadSheet(
+                        context,
+                        workload: () => calculateWorkoutWorkload(
+                          mode: WorkoutWorkloadMode.planned,
+                          exercises: const [],
+                        ),
+                      )
+                    : showCatalogMuscleExplorer(
+                        context,
+                        index: state.index('en'),
+                      ),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Open'));
+        await tester.pumpAndSettle();
+        expect(displays, isNotEmpty);
+        expect(
+          displays.last['visible'],
+          isTrue,
+          reason:
+              'Loading waits for viewport admission; admission cannot wait for a load status',
+        );
+        expect(displays.last['paused'], !workloadSheet);
+        if (!workloadSheet) {
+          expect((displays.last['interaction'] as Map)['enabled'], isTrue);
+        }
+        final reply = Completer<void>();
+        messenger.handlePlatformMessage(
+          channels.last,
+          const StandardMethodCodec().encodeMethodCall(
+            MethodCall('status', {
+              'version': 2,
+              'status': 'ready',
+              'generation':
+                  (displays.last['interaction'] as Map?)?['generation'] ?? 0,
+              'frame': 1,
+              'load': 1,
+              'layout': 1,
+            }),
+          ),
+          (_) => reply.complete(),
+        );
+        await reply.future;
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('character-body-loading-silhouette')),
+          findsNothing,
+        );
+        await tester.pumpWidget(const SizedBox());
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
 
   testWidgets(
     'native result controls selection with exact surface-local coordinates',
