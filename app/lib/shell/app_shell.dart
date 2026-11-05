@@ -119,6 +119,7 @@ class _AppShellState extends State<AppShell> {
       child: Scaffold(
         extendBody: true,
         body: WorkoutCanvas(
+          ambient: _index == 0 || _index == 3,
           child: Stack(
             children: [
               _TabFade(

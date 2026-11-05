@@ -8,6 +8,7 @@ Widget canvas({
   Brightness brightness = Brightness.dark,
   bool reducedMotion = false,
   bool ticking = true,
+  bool ambient = true,
   Widget child = const SizedBox(width: 48, height: 48),
 }) => MediaQuery(
   data: MediaQueryData(disableAnimations: reducedMotion),
@@ -23,23 +24,32 @@ Widget canvas({
       enabled: ticking,
       child: Directionality(
         textDirection: TextDirection.ltr,
-        child: Center(child: WorkoutCanvas(child: child)),
+        child: Center(
+          child: WorkoutCanvas(ambient: ambient, child: child),
+        ),
       ),
     ),
   ),
 );
 
 double opacity(WidgetTester tester) => tester
-    .renderObject<RenderAnimatedOpacity>(find.byType(FadeTransition))
+    .renderObject<RenderAnimatedOpacity>(
+      find
+          .descendant(
+            of: find.byType(WorkoutCanvas, skipOffstage: false),
+            matching: find.byType(FadeTransition, skipOffstage: false),
+          )
+          .first,
+    )
     .opacity
     .value;
 
 void main() {
   for (final brightness in Brightness.values) {
-    testWidgets('$brightness: quiet fade loops over unchanged square dots', (
+    testWidgets('$brightness: default hosts keep static square dots', (
       tester,
     ) async {
-      await tester.pumpWidget(canvas(brightness: brightness));
+      await tester.pumpWidget(canvas(brightness: brightness, ambient: false));
       final tokens = brightness == Brightness.dark
           ? WorkoutTokens.dark(accents[0])
           : WorkoutTokens.light(accents[0]);
@@ -63,15 +73,10 @@ void main() {
         tester.widget<ColoredBox>(find.byType(ColoredBox)).color,
         tokens.bg,
       );
-      expect(opacity(tester), closeTo(0.25, 0.001));
-      await tester.pump(const Duration(seconds: 4));
-      expect(opacity(tester), closeTo(0.325, 0.002));
-      await tester.pump(const Duration(seconds: 4));
-      expect(opacity(tester), closeTo(0.4, 0.001));
-      await tester.pump(const Duration(seconds: 4));
-      expect(opacity(tester), closeTo(0.325, 0.002));
-      await tester.pump(const Duration(seconds: 4));
-      expect(opacity(tester), closeTo(0.25, 0.001));
+      expect(opacity(tester), closeTo(.25, .001));
+      await tester.pump(const Duration(seconds: 20));
+      expect(opacity(tester), .25);
+      expect(tester.binding.transientCallbackCount, 0);
       expect(
         tester.widget<CustomPaint>(find.byType(CustomPaint)).painter,
         same(painter),
@@ -81,11 +86,67 @@ void main() {
     });
   }
 
+  testWidgets('ASCII opt-in breathes a cached picture without repainting it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(canvas());
+    final painter = tester
+        .widget<CustomPaint>(find.byType(CustomPaint))
+        .painter!;
+    void paint(Canvas target) => painter.paint(target, const Size(48, 48));
+    expect(paint, paintsExactlyCountTimes(#drawPicture, 1));
+    expect(opacity(tester), closeTo(.018, .0001));
+    await tester.pump(const Duration(seconds: 4));
+    expect(opacity(tester), closeTo(.025, .0001));
+    await tester.pump(const Duration(seconds: 4));
+    expect(opacity(tester), closeTo(.032, .0001));
+    expect(
+      tester.widget<CustomPaint>(find.byType(CustomPaint)).painter,
+      same(painter),
+    );
+    await tester.pumpWidget(canvas(ambient: false));
+    expect(opacity(tester), .25);
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.pumpWidget(canvas());
+    expect(tester.binding.transientCallbackCount, 1);
+    await tester.pumpWidget(const SizedBox());
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an obscured route stops the ambient controller', (tester) async {
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: const WorkoutCanvas(ambient: true, child: SizedBox.expand()),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 4));
+    final phase = opacity(tester);
+    navigator.currentState!.push(
+      PageRouteBuilder<void>(
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (_, _, _) => const SizedBox.expand(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.pump(const Duration(seconds: 20));
+    expect(opacity(tester), phase);
+    navigator.currentState!.pop();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(opacity(tester), greaterThan(phase));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'initial and changing reduced motion stay static and dispose safely',
     (tester) async {
       await tester.pumpWidget(canvas(reducedMotion: true));
-      expect(opacity(tester), 0.25);
+      expect(opacity(tester), .018);
       expect(tester.binding.transientCallbackCount, 0);
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
@@ -94,10 +155,10 @@ void main() {
       await tester.pump(const Duration(seconds: 4));
       final phase = opacity(tester);
       await tester.pumpWidget(canvas(reducedMotion: true));
-      expect(opacity(tester), 0.25);
+      expect(opacity(tester), .018);
       expect(tester.binding.transientCallbackCount, 0);
       await tester.pump(const Duration(seconds: 20));
-      expect(opacity(tester), 0.25);
+      expect(opacity(tester), .018);
       await tester.pumpWidget(canvas());
       expect(opacity(tester), closeTo(phase, 0.001));
       await tester.pump(const Duration(seconds: 1));

@@ -314,14 +314,16 @@ class PlanScreenState extends State<PlanScreen> {
         .muscleTargetsEnabled;
     if (!targetsEnabled && _activeTab == 'targets') _activeTab = 'split';
     final tokens = context.tokens;
-    return ColoredBox(
-      color: tokens.bg,
-      child: Column(
-        children: [
-          _buildHeader(context, tokens),
-          Expanded(child: _buildBody()),
-        ],
-      ),
+    return Column(
+      children: [
+        _buildHeader(context, tokens),
+        Expanded(
+          child: ColoredBox(
+            color: _editor == null ? Colors.transparent : tokens.bg,
+            child: _buildBody(),
+          ),
+        ),
+      ],
     );
   }
 }
