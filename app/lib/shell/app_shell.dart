@@ -38,6 +38,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   bool _profileOpened = false;
+  bool _planEditorOpen = false;
   String? _progressTarget;
 
   final _planKey = GlobalKey<PlanScreenState>();
@@ -119,7 +120,7 @@ class _AppShellState extends State<AppShell> {
       child: Scaffold(
         extendBody: true,
         body: WorkoutCanvas(
-          ambient: _index == 0 || _index == 3,
+          ambient: _index == 0 || (_index == 3 && !_planEditorOpen),
           child: Stack(
             children: [
               _TabFade(
@@ -146,7 +147,14 @@ class _AppShellState extends State<AppShell> {
                         initialTarget: _progressTarget,
                       ),
                       HistoryScreen(onOpenProfile: _openProfile),
-                      PlanScreen(key: _planKey),
+                      PlanScreen(
+                        key: _planKey,
+                        onEditorChanged: (open) {
+                          if (_planEditorOpen != open) {
+                            setState(() => _planEditorOpen = open);
+                          }
+                        },
+                      ),
                       if (_profileOpened)
                         ProfileScreen(
                           embedded: true,

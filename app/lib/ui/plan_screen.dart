@@ -56,7 +56,10 @@ String planEyebrow(AppLocalizations l, int? dayCount) =>
 ///
 /// [_activeTab] tracks 'split' | 'exercises' while at the list level.
 class PlanScreen extends StatefulWidget {
-  const PlanScreen({super.key});
+  const PlanScreen({super.key, this.onEditorChanged});
+
+  /// Lets the shell pause decorative work behind fully opaque editors.
+  final ValueChanged<bool>? onEditorChanged;
 
   @override
   State<PlanScreen> createState() => PlanScreenState();
@@ -105,6 +108,7 @@ class PlanScreenState extends State<PlanScreen> {
   void _openEditor(String kind, String? id) {
     if (_editor != null) return;
     setState(() => _editor = _EditorRoute(kind: kind, id: id));
+    widget.onEditorChanged?.call(true);
   }
 
   /// Closes [route]'s editor if it is still the open one, so a late Save or
@@ -112,6 +116,7 @@ class PlanScreenState extends State<PlanScreen> {
   void _closeEditor(_EditorRoute route) {
     if (!identical(_editor, route)) return;
     setState(() => _editor = null);
+    widget.onEditorChanged?.call(false);
   }
 
   /// Whether the open editor would lose edits if closed now.
