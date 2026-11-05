@@ -1,5 +1,7 @@
 package dev.animusstudio.alkion
 
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.graphics.Color
@@ -32,11 +34,40 @@ internal class CharacterBodyFactory(context: Context, private val messenger: Bin
     private val application = context.applicationContext
     private val views = mutableSetOf<CharacterBodyView>()
     private var paused = true
-    override fun create(context: Context, viewId: Int, args: Any?): PlatformView =
-        CharacterBodyView(MutableContextWrapper(application), viewId, messenger, { views.remove(it) }).also {
-            views.add(it)
-            it.hostPaused(paused)
+    // One idle runtime at most. Its context is application-only while detached;
+    // it is paused and has no channel/caller state. Extra surfaces are destroyed.
+    private var idle: CharacterBodyView? = null
+    private var closed = false
+    private val memory = object : ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) {
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) clearIdle()
         }
+        override fun onLowMemory() = clearIdle()
+        override fun onConfigurationChanged(configuration: Configuration) = Unit
+    }
+    init { application.registerComponentCallbacks(memory) }
+    fun clearIdle() { idle?.destroy(); idle = null }
+    fun close() {
+        if (closed) return
+        closed = true
+        clearIdle()
+        views.toList().forEach { it.dispose() }
+        application.unregisterComponentCallbacks(memory)
+    }
+    override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
+        check(!closed) { "Body factory is closed" }
+        val reused = idle?.takeIf { it.reusable }
+        idle?.takeIf { !it.reusable }?.destroy()
+        idle = null
+        val view = reused?.also { it.rebind(viewId, messenger) } ?: CharacterBodyView(
+            MutableContextWrapper(application), viewId, messenger, { released ->
+                views.remove(released)
+                if (!closed && idle == null && released.reusable) idle = released else released.destroy()
+            })
+        views.add(view)
+        view.hostPaused(paused)
+        return view
+    }
     fun hostPaused(value: Boolean) { paused = value; views.toList().forEach { it.hostPaused(value) } }
 }
 
@@ -49,9 +80,9 @@ internal class CharacterBodyView(
 ) : PlatformView {
     private val application = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
-    private val channel = MethodChannel(messenger, "dev.animusstudio.alkion/character-body/$id")
+    private var channel = MethodChannel(messenger, "dev.animusstudio.alkion/character-body/$id")
     private val web = WebView(context)
-    private val evaluations = LatestBodyEvaluation { script, complete ->
+    private var evaluations = LatestBodyEvaluation { script, complete ->
         web.evaluateJavascript(script) { complete.run() }
     }
     private val container = FrameLayout(context)
@@ -61,6 +92,9 @@ internal class CharacterBodyView(
     private var attached = false
     private var hostIsPaused = true
     private var paused = true
+    private var lease = 0L
+    private var resetPending = false
+    val reusable: Boolean get() = !processGone
     private var display: JSONObject? = null
     private var rendered: Map<String, Any?>? = null
     private var pickRequest: Map<*, *>? = null
@@ -141,14 +175,15 @@ internal class CharacterBodyView(
                 } catch (_: java.io.IOException) { denied(404) }
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-                if (!disposed) {
+                val wasDisposed = disposed
+                if (!processGone) {
                     invalidatePick()
                     processGone = true
                     evaluations.close()
                     loaded = false
                     container.removeView(web)
                     web.destroy()
-                    channel.invokeMethod("status", mapOf("version" to 2, "status" to "error", "yaw" to 0.0))
+                    if (!wasDisposed) channel.invokeMethod("status", mapOf("version" to 2, "status" to "error", "yaw" to 0.0))
                 }
                 return true
             }
@@ -162,9 +197,11 @@ internal class CharacterBodyView(
             @JavascriptInterface fun postMessage(text: String) {
                 if (disposed || text.length > 1024) return
                 val event = try { JSONObject(text) } catch (_: Exception) { return }
-                if (event.optInt("version") != 2) return
+                if (event.optInt("version") != 2 || event.optLong("lease", -1) != lease) return
+                val eventLease = lease
+                main.post { if (eventLease == lease) resetPending = false }
                 if (event.optString("type") == "pick") {
-                    if (event.keys().asSequence().toSet() != setOf("version", "id", "generation", "frame", "load", "layout", "x", "y", "type", "region")) return
+                    if (event.keys().asSequence().toSet() != setOf("version", "id", "generation", "frame", "load", "layout", "x", "y", "type", "region", "lease")) return
                     for (key in listOf("x", "y")) {
                         val coordinate = event.optDouble(key, -1.0)
                         if (!coordinate.isFinite() || coordinate < 0 || coordinate >= 1) return
@@ -178,7 +215,7 @@ internal class CharacterBodyView(
                     safe["region"] = if (event.isNull("region")) null else event.optString("region")
                     main.post {
                         val request = pickRequest
-                        if (!disposed && !processGone && !paused && request != null &&
+                        if (!disposed && !processGone && eventLease == lease && !paused && request != null &&
                             BodyPickGuard.matches(request, safe, rendered)) {
                             val result = pickResult
                             pickResult = null
@@ -212,11 +249,11 @@ internal class CharacterBodyView(
                     }
                 }
                 // Only aggregate renderer timings; no workout or source payload in logs.
-                val metrics = listOf("frames", "totalMs", "maxMs", "loadMs").associateWith {
+                val metrics = listOf("frames", "totalMs", "maxMs", "loadMs", "manifestMs", "binaryMs", "maskMs", "hashMs", "prepareMs", "fontMs", "rendererMs", "firstFrameMs", "cacheHit").associateWith {
                     event.optDouble(it, 0.0).takeIf { value -> value.isFinite() && value >= 0 } ?: 0.0
                 }
                 main.post {
-                    if (!disposed && !processGone) {
+                    if (!disposed && !processGone && eventLease == lease) {
                         if (status == "ready" && token.size == BodyPickGuard.TOKEN.size &&
                             token["generation"] == display?.optJSONObject("interaction")?.optLong("generation")) {
                             rendered = token
@@ -227,6 +264,10 @@ internal class CharacterBodyView(
                 }
             }
         }, "AlkionNative")
+        bindChannel()
+        web.loadUrl(origin + "index.html")
+    }
+    private fun bindChannel() {
         channel.setMethodCallHandler { call, result ->
             if (disposed || processGone) { result.error("disposed", "Body surface disposed", null); return@setMethodCallHandler }
             if (call.method == "pick") {
@@ -256,15 +297,24 @@ internal class CharacterBodyView(
             sendDisplay()
             result.success(null)
         }
-        web.loadUrl(origin + "index.html")
+    }
+    fun rebind(id: Int, messenger: BinaryMessenger) {
+        disposed = false
+        evaluations = LatestBodyEvaluation { script, complete -> web.evaluateJavascript(script) { complete.run() } }
+        lease++
+        resetPending = true
+        display = null
+        channel = MethodChannel(messenger, "dev.animusstudio.alkion/character-body/$id")
+        bindChannel()
     }
     private fun sendDisplay() {
         if (disposed || processGone || !loaded) return
+        val reset = if (resetPending) ",window.AlkionBody.reset($lease)" else ""
         val update = display?.let { ",window.AlkionBody.update($it)" } ?: ""
         // Include lifecycle in every replaceable snapshot. A late display
         // completion can never drain an older unpaused state after a pause.
         val pick = pickRequest?.let { ",window.AlkionBody.pick(${JSONObject(it)})" } ?: ""
-        evaluations.offer("window.AlkionBody && (window.AlkionBody.hostPaused($paused)$update$pick)")
+        evaluations.offer("window.AlkionBody && (window.AlkionBody.hostPaused($paused)$reset$update$pick)")
     }
     fun hostPaused(value: Boolean) {
         hostIsPaused = value
@@ -293,18 +343,28 @@ internal class CharacterBodyView(
     override fun dispose() {
         if (disposed) return
         invalidatePick()
-        disposed = true
         attached = false
+        hostIsPaused = true
+        paused = true
         context.baseContext = application
+        display = null
+        // Suspend before releasing the method channel. The retained renderer and
+        // two validated meshes do no frame work until the next explicit lease.
+        if (!processGone) web.evaluateJavascript("window.AlkionBody && window.AlkionBody.hostPaused(true)", null)
         evaluations.close()
+        disposed = true
         channel.setMethodCallHandler(null)
+        web.onPause()
+        onDispose(this)
+    }
+    fun destroy() {
         if (!processGone) {
             web.removeJavascriptInterface("AlkionNative")
             web.stopLoading()
             container.removeView(web)
             web.destroy()
+            processGone = true
         }
-        onDispose(this)
     }
     private fun denied(code: Int) = WebResourceResponse("text/plain", "UTF-8", code,
         if (code == 404) "Not Found" else "Forbidden", mapOf("Cache-Control" to "no-store"), ByteArrayInputStream(byteArrayOf()))
@@ -314,7 +374,7 @@ internal class CharacterBodyView(
 internal fun validateDisplay(raw: Any?): JSONObject? {
     val map = raw as? Map<*, *> ?: return null
     val keys = setOf("version", "style", "scores", "neutral", "accent", "background", "theme", "visible", "reduced", "compact", "paused", "yaw", "turn", "command", "revision", "retry")
-    if (map.keys != keys && map.keys != keys + "interaction") return null
+    if (map.keys - setOf("interaction", "view") != keys) return null
     if (map["version"] != 2 || map["style"] !in listOf("male", "female") || map["theme"] !in listOf("light", "dark")) return null
     if (listOf("visible", "reduced", "compact", "paused").any { map[it] !is Boolean }) return null
     for (key in listOf("neutral", "accent", "background")) {
@@ -331,6 +391,16 @@ internal fun validateDisplay(raw: Any?): JSONObject? {
     for (key in listOf("command", "revision", "retry")) {
         val number = map[key]
         if ((number !is Int && number !is Long) || (number as Number).toLong() !in 0..9007199254740991L) return null
+    }
+    if (map.containsKey("view")) {
+        val view = map["view"] as? Map<*, *> ?: return null
+        if (view.keys != setOf("zoom", "x", "y")) return null
+        val zoom = (view["zoom"] as? Number)?.toDouble() ?: return null
+        if (!zoom.isFinite() || zoom !in 1.0..3.0) return null
+        for (key in listOf("x", "y")) {
+            val offset = (view[key] as? Number)?.toDouble() ?: return null
+            if (!offset.isFinite() || Math.abs(offset) > (zoom - 1) / 2) return null
+        }
     }
     if (map.containsKey("interaction")) {
         val interaction = map["interaction"] as? Map<*, *> ?: return null

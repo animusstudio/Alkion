@@ -80,6 +80,34 @@ void main() {
     },
   );
 
+  test(
+    'viewport zoom and pan stay finite, bounded and notify exact revisions',
+    () {
+      final controller = CharacterBodyController();
+      var changes = 0;
+      controller.addListener(() => changes++);
+      controller.setViewport(9, const Offset(4, -4));
+      expect(controller.zoom, 3);
+      expect(controller.pan, const Offset(1, -1));
+      controller.setViewport(3, const Offset(1, -1));
+      expect(changes, 1);
+      controller.setViewport(double.nan, Offset.zero);
+      controller.setViewport(2, const Offset(double.infinity, 0));
+      expect(changes, 1);
+      controller.zoomBy(-99);
+      expect(controller.zoom, 1);
+      expect(controller.pan, Offset.zero);
+      controller.setViewport(2, const Offset(.2, -.3));
+      controller.back();
+      controller.resetView();
+      expect(controller.zoom, 1);
+      expect(controller.pan, Offset.zero);
+      expect(controller.yaw, 0);
+      expect(controller.paused, isTrue);
+      controller.dispose();
+    },
+  );
+
   test('unbound picks and invalid surface coordinates are ignored', () async {
     final controller = CharacterBodyController();
     expect(
@@ -256,6 +284,9 @@ void main() {
     for (final transition in <VoidCallback>[
       () => controller.rotateBy(.1),
       () => controller.back(),
+      () => controller.zoomBy(.5),
+      () => controller.setViewport(2, const Offset(.25, -.25)),
+      () => controller.resetView(),
       () => controller.retry(),
       () => surfaceWidth = 150,
       () => visible = false,

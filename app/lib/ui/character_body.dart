@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/body_workload.dart';
+import '../theme/motion.dart';
+import '../theme/typography.dart';
 
 enum CharacterBodyStyle { male, female }
 
@@ -16,6 +18,8 @@ enum CharacterBodyStatus { loading, ready, unavailable, error }
 /// right. Automatic yaw updates do not notify listeners or rebuild the parent.
 class CharacterBodyController extends ChangeNotifier {
   double _yaw = 0;
+  double _zoom = 1;
+  Offset _pan = Offset.zero;
   // Cumulative modulo turn is independent of delayed autoplay telemetry.
   // JS applies its difference at the current rendered angle, even when the
   // native queue replaces intermediate drag messages with the latest one.
@@ -47,6 +51,33 @@ class CharacterBodyController extends ChangeNotifier {
 
   double get yaw => _yaw;
   bool get paused => _paused;
+  double get zoom => _zoom;
+  Offset get pan => _pan;
+
+  /// Screen-normalized translation is shared by rendering and retained pixels.
+  /// Bounds keep at least the unzoomed viewport within reach at either extreme.
+  void setViewport(double zoom, Offset pan) {
+    if (!zoom.isFinite || !pan.dx.isFinite || !pan.dy.isFinite) return;
+    final bounded = zoom.clamp(1.0, 3.0);
+    final limit = (bounded - 1) / 2;
+    final nextPan = Offset(
+      pan.dx.clamp(-limit, limit),
+      pan.dy.clamp(-limit, limit),
+    );
+    if (_zoom == bounded && _pan == nextPan) return;
+    _zoom = bounded;
+    _pan = nextPan;
+    _paused = true;
+    _revision++;
+    notifyListeners();
+  }
+
+  void zoomBy(double delta) => setViewport(_zoom + delta, _pan);
+  void resetView() {
+    _zoom = 1;
+    _pan = Offset.zero;
+    front();
+  }
 
   void front() => _hold(0);
   void back() => _hold(math.pi);
@@ -362,6 +393,11 @@ class _CharacterBodyState extends State<CharacterBody>
     'command': widget.controller._command,
     'revision': widget.controller._revision,
     'retry': widget.controller._retry,
+    'view': {
+      'zoom': widget.controller.zoom,
+      'x': widget.controller.pan.dx,
+      'y': widget.controller.pan.dy,
+    },
     if (widget.pickingEnabled)
       'interaction': {
         'enabled': true,
@@ -453,15 +489,61 @@ class _CharacterBodyState extends State<CharacterBody>
           if (_supported)
             ExcludeSemantics(
               child: IgnorePointer(
-                child: AndroidView(
-                  key: ValueKey(_retryGeneration),
-                  viewType: 'dev.animusstudio.alkion/character-body',
-                  onPlatformViewCreated: _created,
-                  layoutDirection: TextDirection.ltr,
+                child: AnimatedOpacity(
+                  opacity: _status == CharacterBodyStatus.ready ? 1 : .65,
+                  duration: widget.reducedMotion
+                      ? Duration.zero
+                      : Motion.of(context, Motion.base),
+                  curve: Curves.easeOutCubic,
+                  child: AndroidView(
+                    key: ValueKey(_retryGeneration),
+                    viewType: 'dev.animusstudio.alkion/character-body',
+                    onPlatformViewCreated: _created,
+                    layoutDirection: TextDirection.ltr,
+                  ),
                 ),
               ),
             ),
-          if (_status != CharacterBodyStatus.ready && widget.fallback != null)
+          if (_status == CharacterBodyStatus.loading)
+            ExcludeSemantics(
+              child: IgnorePointer(
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 40),
+                      child: Text(
+                        '     .::.     \n'
+                        '     ::::     \n'
+                        '   .:####:.   \n'
+                        '  :##:##:##:  \n'
+                        ' .## :##: ##. \n'
+                        ' :#: :##: :#: \n'
+                        ' ::  :##:  :: \n'
+                        '     ####     \n'
+                        '    :#::#:    \n'
+                        '    ##  ##    \n'
+                        '    #:  :#    \n'
+                        '   :#:  :#:   \n'
+                        '   ::    ::   ',
+                        key: const Key('character-body-loading-silhouette'),
+                        textAlign: TextAlign.center,
+                        textScaler: TextScaler.noScaling,
+                        style: WorkoutType.mono(
+                          size: widget.compact ? 9 : 11,
+                          color: widget.neutral.withValues(alpha: .35),
+                        ).copyWith(height: 1.05),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (_status == CharacterBodyStatus.loading && widget.fallback != null)
+            Positioned(bottom: 8, left: 0, right: 0, child: widget.fallback!),
+          if (_status != CharacterBodyStatus.loading &&
+              _status != CharacterBodyStatus.ready &&
+              widget.fallback != null)
             widget.fallback!,
         ],
       );

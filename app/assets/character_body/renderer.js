@@ -3,22 +3,38 @@ import {bodyFit,fullerMesh} from './geometry.js';
 import {posedMesh} from './pose-geometry.js';
 import {regions} from './protocol.js';
 
-export async function loadMesh(style,signal){
+// The caller owns a two-style cache; failed or aborted loads are never retained.
+export async function loadMesh(style,signal,timings={}){
  if(style!=='male'&&style!=='female')throw new Error('Invalid body style');
- const root=`models/${style}/`;
- const response=await fetch(root+'body.mesh.json',{signal});if(!response.ok)throw new Error(response.status===404?'art_unavailable':'art_error');
- const manifest=await response.json();if(manifest.version!==1||manifest.binary!=='body.mesh.bin')throw new Error('Unsupported body mesh');
- const binary=await fetch(root+'body.mesh.bin',{signal});if(!binary.ok)throw new Error('Body mesh unavailable');
- const bytes=await binary.arrayBuffer(),data={manifest};
+ const root=`models/${style}/`,start=performance.now();
+ const fetchPart=async name=>{const response=await fetch(root+name,{signal});if(!response.ok)throw new Error(response.status===404?'art_unavailable':'art_error');return response;};
+ const mask=new Image();mask.src=root+'regions.png';
+ const maskReady=mask.decode().then(()=>{timings.maskMs=performance.now()-start;return mask;});
+ // All immutable inputs are independent. Hash/layout validation still precedes use.
+ const [manifest,bytes,masks]=await Promise.all([
+  fetchPart('body.mesh.json').then(response=>response.json()).then(value=>{timings.manifestMs=performance.now()-start;return value;}),
+  fetchPart('body.mesh.bin').then(response=>response.arrayBuffer()).then(value=>{timings.binaryMs=performance.now()-start;return value;}),maskReady,
+ ]);
+ if(signal?.aborted)throw new Error('aborted');
+ if(manifest.version!==1||manifest.binary!=='body.mesh.bin')throw new Error('Unsupported body mesh');
+ const hashStart=performance.now();
  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),n=>n.toString(16).padStart(2,'0')).join('');
+ timings.hashMs=performance.now()-hashStart;
+ if(signal?.aborted)throw new Error('aborted');
  if(hash!==manifest.sha256)throw new Error('Body mesh integrity mismatch');
- const types={'<f4':Float32Array,'<u4':Uint32Array,'|u1':Uint8Array};
+ const data={manifest,masks},types={'<f4':Float32Array,'<u4':Uint32Array,'|u1':Uint8Array};
  for(const [name,a] of Object.entries(manifest.attributes)){
   const Type=types[a.type];if(!Type||!Number.isSafeInteger(a.count)||a.count<=0||a.byteOffset<0||a.byteOffset%Type.BYTES_PER_ELEMENT||a.byteOffset+a.count*Type.BYTES_PER_ELEMENT>bytes.byteLength)throw new Error('Invalid body mesh attribute');
   data[name]=new Type(bytes,a.byteOffset,a.count);
  }
  if(data.positions.length!==manifest.vertices*3||data.normals.length!==data.positions.length||data.uv.length!==manifest.vertices*2||data.indices.length!==manifest.triangles*3)throw new Error('Body mesh layout mismatch');
- const masks=new Image();masks.src=root+'regions.png';await masks.decode();data.masks=masks;return style==='female'?posedMesh(data):fullerMesh(data);
+ const prepareStart=performance.now(),prepared=style==='female'?posedMesh(data):fullerMesh(data);
+ timings.prepareMs=performance.now()-prepareStart;return prepared;
+}
+
+/** A null/unknown atlas entry can never be a selection, including no selection. */
+export function atlasRegionColor(region,muscles,theme,selected=null){
+ return selected!==null&&regions.includes(selected)&&region===selected?`rgb(${colors[theme].accent.join(',')})`:regionColor(region,muscles,theme);
 }
 
 const glyphIndices=Object.fromEntries([...glyphAlphabet].map((glyph,index)=>[glyph,index]));
@@ -42,11 +58,11 @@ export class VolumeRenderer{
   const compile=(type,source)=>{const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader));return shader;};
   const vs=compile(gl.VERTEX_SHADER,`
    attribute vec3 position;attribute vec3 normal;attribute vec2 uv;
-   uniform float yaw;uniform float aspect;uniform float fit;uniform float depthRange;
+   uniform float yaw;uniform float aspect;uniform float fit;uniform float depthRange;uniform vec2 pan;
    varying vec3 viewNormal;varying vec2 sourceUV;varying float sourceDepth;
    void main(){float c=cos(yaw),s=sin(yaw);vec3 p=vec3(c*position.x+s*position.z,position.y,-s*position.x+c*position.z);
     sourceDepth=.5+p.z/(2.0*depthRange);viewNormal=vec3(c*normal.x+s*normal.z,normal.y,-s*normal.x+c*normal.z);sourceUV=uv;
-    gl_Position=vec4(p.x*fit/aspect,p.y*fit,-p.z/depthRange,1.0);}`);
+    gl_Position=vec4(p.x*fit/aspect+pan.x,p.y*fit+pan.y,-p.z/depthRange,1.0);}`);
   const fs=compile(gl.FRAGMENT_SHADER,`
    precision mediump float;uniform sampler2D sourceMasks;
    varying vec3 viewNormal;varying vec2 sourceUV;varying float sourceDepth;
@@ -71,12 +87,12 @@ export class VolumeRenderer{
   const index=gl.createBuffer();this.buffers.push(index);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,index);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,mesh.indices,gl.STATIC_DRAW);
   this.texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,this.texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,mesh.masks);gl.uniform1i(gl.getUniformLocation(program,'sourceMasks'),0);
-  this.fitLocation=gl.getUniformLocation(program,'fit');
+  this.fitLocation=gl.getUniformLocation(program,'fit');this.panLocation=gl.getUniformLocation(program,'pan');
   gl.uniform1f(gl.getUniformLocation(program,'depthRange'),mesh.radius);
   this.yawLocation=gl.getUniformLocation(program,'yaw');this.aspectLocation=gl.getUniformLocation(program,'aspect');
   gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LESS);gl.disable(gl.BLEND);gl.disable(gl.DITHER);
   this.atlas=document.createElement('canvas');this.lost=false;
-  this.surface.addEventListener('webglcontextlost',event=>{event.preventDefault();this.lost=true;canvas.dispatchEvent(new Event('renderfailure'));});
+  this.surface.addEventListener('webglcontextlost',event=>{event.preventDefault();if(this.disposed)return;this.lost=true;canvas.dispatchEvent(new Event('renderfailure'));});
  }
  resize(){
   const width=this.canvas.clientWidth,height=this.canvas.clientHeight;if(!width||!height)return false;
@@ -112,7 +128,7 @@ export class VolumeRenderer{
   raster.width=this.atlas.width*scale;raster.height=this.atlas.height*scale;
   const ink=raster.getContext('2d');ink.scale(scale,scale);ink.textAlign='left';ink.textBaseline='alphabetic';
   this.mesh.manifest.regions.forEach((region,i)=>{
-   ink.fillStyle=region===selected?`rgb(${colors[theme].accent.join(',')})`:regionColor(region,muscles,theme);
+   ink.fillStyle=atlasRegionColor(region,muscles,theme,selected);
    for(let g=0;g<glyphAlphabet.length;g++){
     const m=metrics[g],size=Math.min(fontSize,this.cellW*inkFit/(m.left+m.right),this.cellH*inkFit/(m.ascent+m.descent));
     ink.font=`400 ${size}px "Space Mono"`;
@@ -125,9 +141,9 @@ export class VolumeRenderer{
   for(let at=3;at<coverage.data.length;at+=4)coverage.data[at]=Math.round(255*glyphCoverage(coverage.data[at]/255,theme,this.compact));
   ctx.putImageData(coverage,0,0);
  }
- draw(yaw,muscles,theme,mode='characters',selected=null){
+ draw(yaw,muscles,theme,mode='characters',selected=null,view={zoom:1,x:0,y:0}){
   if(this.lost)throw new Error('Graphics context lost');if(!this.resize())return;
-  this.buildAtlas(muscles,theme,selected);const gl=this.gl;gl.useProgram(this.program);gl.uniform1f(this.yawLocation,yaw);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,bodyFit(this.mesh,aspect));
+  this.buildAtlas(muscles,theme,selected);const gl=this.gl;gl.useProgram(this.program);gl.uniform1f(this.yawLocation,yaw);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,bodyFit(this.mesh,aspect)*view.zoom);gl.uniform2f(this.panLocation,view.x*2,-view.y*2);
   gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.drawElements(gl.TRIANGLES,this.mesh.indices.length,gl.UNSIGNED_INT,0);
   gl.readPixels(0,0,this.surface.width,this.surface.height,gl.RGBA,gl.UNSIGNED_BYTE,this.pixels);
   this.pickWidth=this.canvas.clientWidth;this.pickHeight=this.canvas.clientHeight;
@@ -166,5 +182,5 @@ export class VolumeRenderer{
   this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);this.ctx.drawImage(this.diagnostic,0,0,this.canvas.width,this.canvas.height);
   this.drawCount++;this.glyphCount=0;this.canvas.dataset.glyphCount='0';this.canvas.dataset.materialSignature='diagnostic';this.canvas.dataset.glyphHistogram='{}';
  }
- dispose(){for(const b of this.buffers)this.gl.deleteBuffer(b);this.gl.deleteTexture(this.texture);this.gl.deleteProgram(this.program);}
+ dispose(){this.disposed=true;for(const b of this.buffers)this.gl.deleteBuffer(b);this.gl.deleteTexture(this.texture);this.gl.deleteProgram(this.program);this.gl.getExtension('WEBGL_lose_context')?.loseContext();}
 }

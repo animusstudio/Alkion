@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {webcrypto} from 'node:crypto';
 import {runInNewContext} from 'node:vm';
 import {validateDisplay,validatePick,regions} from '../assets/character_body/protocol.js';
-import {loadMesh,pickSurfaceRegion} from '../assets/character_body/renderer.js';
+import {loadMesh,pickSurfaceRegion,VolumeRenderer} from '../assets/character_body/renderer.js';
 import {fullerMesh} from '../assets/character_body/geometry.js';
 import {posedMesh} from '../assets/character_body/pose-geometry.js';
 import {MotionLoop} from '../assets/character_body/motion.js';
@@ -32,6 +32,22 @@ for(const style of ['male','female']){
 assert.deepEqual(urls,['models/male/body.mesh.json','models/male/body.mesh.bin','models/female/body.mesh.json','models/female/body.mesh.bin']);
 corrupt=true;await assert.rejects(loadMesh('male'),/integrity/);await assert.rejects(loadMesh('invalid'),/style/);
 globalThis.fetch=async()=>({ok:false,status:404});await assert.rejects(loadMesh('male'),/art_unavailable/);
+
+// Exercise the actual atlas builder with the production converter's null row.
+// Capture ink per row rather than testing a stand-in selection predicate.
+const inkRows=[];
+const ink={scale(){},fillText(){inkRows.push(this.fillStyle);}};
+const atlasContext={measureText:()=>({actualBoundingBoxLeft:0,actualBoundingBoxRight:70,actualBoundingBoxAscent:70,actualBoundingBoxDescent:0}),drawImage(){},getImageData:()=>({data:new Uint8ClampedArray(4)}),putImageData(){}};
+globalThis.document={createElement:()=>({getContext:()=>ink})};
+const atlas={mesh:{manifest:{regions:[null,...regions]}},canvas:{width:100},cols:10,rows:20,atlas:{getContext:()=>atlasContext},compact:false};
+for(const selected of [null,...regions]){
+ inkRows.length=0;atlas.atlasKey='';
+ VolumeRenderer.prototype.buildAtlas.call(atlas,Object.fromEntries(regions.map(key=>[key,{score:0}])),'dark',selected);
+ const rowSize=inkRows.length/(regions.length+1);
+ const accent='rgb(255,104,53)';
+ for(let row=0;row<=regions.length;row++)assert.equal(inkRows[row*rowSize]===accent,row>0&&regions[row-1]===selected,`atlas row ${row}, selection ${selected}`);
+}
+console.log('PASS: actual null-neutral atlas remains neutral; each mapped selection accents only its own row');
 
 // Exercise the production runtime with fake graphics and a controlled RAF clock.
 // Counts cover all renderer draws, not just outstanding animation callbacks.
@@ -87,12 +103,22 @@ const token=()=>Object.fromEntries(['generation','frame','load','layout'].map(ke
 const pick=(patch={})=>window.AlkionBody.pick({version:2,id:42,x:.5,y:.5,...token(),...patch});
 pick();assert.equal(events.at(-1).region,'chest');
 pick({frame:0});assert.equal(events.at(-1).region,null);
+const beforeZoom=token();update({view:{zoom:3,x:.5,y:-.4}});pick(beforeZoom);assert.equal(events.at(-1).region,null,'Zoom/pan invalidates old pixels');frame();pick();assert.equal(events.at(-1).region,'chest');
 const oldToken=token();update({turn:.9,interaction:{enabled:true,selected:null,generation:8}});
 pick(oldToken);assert.equal(events.at(-1).region,null,'A pending rotation cannot pick old pixels');frame();
 pick();assert.equal(events.at(-1).region,'chest');
 resized();pick();assert.equal(events.at(-1).region,null,'Layout invalidation rejects retained pixels');frame();
 window.AlkionBody.hostPaused(true);pick();assert.equal(events.at(-1).region,null);window.AlkionBody.hostPaused(false);frame();
 update({interaction:{enabled:false,selected:null,generation:9}});frame();pick();assert.equal(events.at(-1).region,null);
+// Style cache and native lease reuse do not re-prepare immutable models.
+const cacheBaseline=loadCount;
+update({style:'male'});await flush();frame();assert.equal(loadCount,cacheBaseline+1);
+update({style:'female'});await flush();frame();assert.equal(loadCount,cacheBaseline+1);
+window.AlkionBody.hostPaused(true);window.AlkionBody.reset(1);window.AlkionBody.hostPaused(false);
+update({retry:0,command:0,yaw:0,turn:0,view:{zoom:1,x:0,y:0}});await flush();frame();assert.equal(loadCount,cacheBaseline+1,'Warm lease reuses prepared style and renderer');near(lastYaw,0);
+assert.equal(events.at(-1).lease,1);assert.equal(events.at(-1).cacheHit,1);
+window.AlkionBody.hostPaused(true);const hiddenBaseline=loadCount;update({style:'male',retry:3});await flush();assert.equal(loadCount,hiddenBaseline,'No hidden model preparation');
+window.AlkionBody.hostPaused(false);await flush();frame();assert.equal(loadCount,hiddenBaseline+1);
 update({paused:true});resized();assert.equal(raf.size,1);window.AlkionBody.dispose();assert.equal(raf.size,0);baseline=draws;frame();assert.equal(draws,baseline);assert.ok(disposals>=2);
 console.log('PASS: protocol v2, exact style dispatch, one latest draw/frame, no identical paused redraws, cumulative drag continuity, lifecycle/reduced motion/retry/disposal');
 
@@ -110,3 +136,6 @@ assert.equal(validatePick(request),request);
 for(const patch of [{id:-1},{generation:.5},{frame:NaN},{load:Infinity},{layout:1e20},{x:1},{y:-.1},{x:NaN},{region:'chest'}])assert.throws(()=>validatePick({...request,...patch}));
 for(const patch of [{enabled:1},{selected:'core'},{generation:-1},{selected:'chest',enabled:false}])assert.throws(()=>validateDisplay({...display,interaction:{enabled:true,selected:null,generation:0,...patch}}));
 console.log('PASS: exact top-left normalized surface picking, background/neutral/unknown rejection and bounded interaction protocol');
+
+for(const view of [{zoom:0,x:0,y:0},{zoom:3.1,x:0,y:0},{zoom:1,x:.01,y:0},{zoom:3,x:1.1,y:0},{zoom:2,x:0,y:NaN},{zoom:2,x:0,y:0,other:1}])assert.throws(()=>validateDisplay({...display,view}));
+assert.equal(validateDisplay({...display,view:{zoom:3,x:1,y:-1}}).view.zoom,3);
