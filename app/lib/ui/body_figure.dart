@@ -141,7 +141,7 @@ class _BodyFigureState extends State<BodyFigure> {
 }
 
 // Display geometry is independently versioned from every retained semantic map.
-const bodySurfaceProjectionRevision = 'alkion-surface-2';
+const bodySurfaceProjectionRevision = 'alkion-surface-3';
 
 class _WorkloadView {
   const _WorkloadView({
@@ -192,6 +192,8 @@ String _regionLabel(BuildContext context, WorkloadMuscle muscle) {
     WorkloadMuscle.glutes => l.bodyGlutes,
     WorkloadMuscle.core => l.bodyCore,
     WorkloadMuscle.forearms => l.bodyForearms,
+    WorkloadMuscle.adductors => l.bodyAdductors,
+    WorkloadMuscle.abductors => l.bodyAbductors,
     _ => localizedMuscle(context, muscle.name),
   };
 }

@@ -5,7 +5,7 @@ import java.util.Set;
 
 /** Dependency-free protocol guard shared by the native host and bridge checks. */
 final class BodyPickGuard {
-    static final Set<String> REGIONS = Set.of("chest", "back", "shoulders", "biceps", "triceps", "quads", "hamstrings", "calves", "glutes", "core", "forearms");
+    static final Set<String> REGIONS = Set.of("chest", "back", "shoulders", "biceps", "triceps", "quads", "hamstrings", "calves", "glutes", "core", "forearms", "adductors", "abductors");
     static final Set<String> TOKEN = Set.of("generation", "frame", "load", "layout");
     private static final Set<String> KEYS = Set.of("version", "id", "generation", "frame", "load", "layout", "x", "y");
     static boolean integer(Object value) {
@@ -13,7 +13,7 @@ final class BodyPickGuard {
             ((Number) value).longValue() >= 0 && ((Number) value).longValue() <= 9007199254740991L;
     }
     static boolean request(Map<?, ?> value) {
-        if (!value.keySet().equals(KEYS) || !Integer.valueOf(3).equals(value.get("version"))) return false;
+        if (!value.keySet().equals(KEYS) || !Integer.valueOf(4).equals(value.get("version"))) return false;
         for (String key : TOKEN) if (!integer(value.get(key))) return false;
         if (!integer(value.get("id"))) return false;
         for (String key : Set.of("x", "y")) {

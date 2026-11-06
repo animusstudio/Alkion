@@ -205,14 +205,14 @@ void main() {
         ),
       ),
     );
-    Future<void> report({int frame = 1}) async {
+    Future<void> report({int frame = 1, int version = 4}) async {
       final generation = (display!['interaction'] as Map)['generation'];
       final completer = Completer<void>();
       tester.binding.defaultBinaryMessenger.handlePlatformMessage(
         channelName(),
         const StandardMethodCodec().encodeMethodCall(
           MethodCall('status', {
-            'version': 3,
+            'version': version,
             'status': 'ready',
             'generation': generation,
             'frame': frame,
@@ -242,13 +242,23 @@ void main() {
     await tester.pumpWidget(body());
     await tester.pump();
     expect(await startPick(), isNull);
+    // A protocol v3 status never admits picking.
+    await report(version: 3);
+    expect(await startPick(), isNull);
     await report();
     var result = startPick();
     await tester.pump();
+    expect(request!['version'], 4);
     expect(request!['x'], .5);
     expect(request!['y'], .5);
     complete();
     expect(await result, WorkloadMuscle.chest);
+    for (final region in [WorkloadMuscle.adductors, WorkloadMuscle.abductors]) {
+      result = startPick();
+      await tester.pump();
+      complete(region: region.name);
+      expect(await result, region);
+    }
     result = startPick();
     await tester.pump();
     complete(region: 'alien');

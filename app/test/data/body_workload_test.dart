@@ -27,6 +27,22 @@ void main() {
     );
   });
 
+  test('legacy groups outside the original eight never color a region', () {
+    final result = calculateWorkoutWorkload(
+      mode: WorkoutWorkloadMode.saved,
+      exercises: [
+        for (final group in ['adductors', 'abductors', 'glutes'])
+          WorkloadExerciseInput(
+            muscleGroup: group,
+            sets: const [WorkloadSetInput(completed: true, isWarmup: false)],
+          ),
+      ],
+    );
+    expect(result.legacyMuscles.values.every((m) => m.count == 0), isTrue);
+    expect(result.coverage!.unmappedSets, 3);
+    expect(result.coverage!.mappedSets, 0);
+  });
+
   for (final raw in fixture['cases'] as List) {
     final sample = raw as Map<String, dynamic>;
     test('shared workout fixture: ${sample['id']}', () {
@@ -251,7 +267,7 @@ void main() {
         ),
       ];
       for (final result in results) {
-        expect(result.legacyMuscles.length, 11);
+        expect(result.legacyMuscles.length, 13);
         expect(
           result.legacyMuscles.values.every(
             (m) => m.count == 0 && m.score == 0,

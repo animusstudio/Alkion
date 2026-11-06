@@ -1755,6 +1755,8 @@
   "bodyGlutes": "Glutes",
   "bodyCore": "Core",
   "bodyForearms": "Forearms",
+  "bodyAdductors": "Adductors",
+  "bodyAbductors": "Abductors",
   "bodyDeclaredReview": "Declared human review",
   "bodyPendingReview": "Pending",
   "bodyDeclaredReviewed": "Declared reviewed",

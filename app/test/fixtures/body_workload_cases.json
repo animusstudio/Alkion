@@ -11,7 +11,9 @@
     "triceps",
     "glutes",
     "core",
-    "forearms"
+    "forearms",
+    "adductors",
+    "abductors"
   ],
   "cases": [
     {
@@ -162,6 +164,14 @@
           "forearms": {
             "count": 0,
             "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -246,6 +256,14 @@
             "score": 0.0
           },
           "forearms": {
+            "count": 0,
+            "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
             "count": 0,
             "score": 0.0
           }
@@ -384,6 +402,14 @@
           "forearms": {
             "count": 0,
             "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -495,6 +521,14 @@
           "forearms": {
             "count": 0,
             "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -589,6 +623,14 @@
             "score": 0.0
           },
           "forearms": {
+            "count": 0,
+            "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
             "count": 0,
             "score": 0.0
           }
@@ -697,6 +739,14 @@
           "forearms": {
             "count": 0,
             "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -783,6 +833,14 @@
           "forearms": {
             "count": 0,
             "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -846,6 +904,14 @@
             "score": 0.0
           },
           "forearms": {
+            "count": 0,
+            "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
             "count": 0,
             "score": 0.0
           }
@@ -929,6 +995,14 @@
           "forearms": {
             "count": 0,
             "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -1003,6 +1077,14 @@
             "score": 0.0
           },
           "forearms": {
+            "count": 0,
+            "score": 0.0
+          },
+          "adductors": {
+            "count": 0,
+            "score": 0.0
+          },
+          "abductors": {
             "count": 0,
             "score": 0.0
           }

@@ -39,7 +39,7 @@ export function atlasRegionColor(region,muscles,theme,selected=null){
 }
 
 const glyphIndices=Object.fromEntries([...glyphAlphabet].map((glyph,index)=>[glyph,index]));
-const diagnosticColors=[[118,124,138],[255,105,70],[100,165,255],[240,190,70],[140,210,100],[200,140,240],[70,205,200],[245,130,190],[170,180,250],[255,145,70],[110,225,145],[240,100,170]];
+const diagnosticColors=[[118,124,138],[255,105,70],[100,165,255],[240,190,70],[140,210,100],[200,140,240],[70,205,200],[245,130,190],[170,180,250],[255,145,70],[110,225,145],[240,100,170],[255,235,40],[40,235,255]];
 
 /** Sample only the frontmost retained raster pixel; no radius or neighbour search. */
 export function pickSurfaceRegion(pixels,width,height,manifestRegions,x,y){

@@ -1003,6 +1003,8 @@
   "bodyGlutes": "Glutei",
   "bodyCore": "Addominali",
   "bodyForearms": "Avambracci",
+  "bodyAdductors": "Adduttori",
+  "bodyAbductors": "Abduttori",
   "bodyDeclaredReview": "Revisione umana dichiarata",
   "bodyPendingReview": "In attesa",
   "bodyDeclaredReviewed": "Dichiarato revisionato",

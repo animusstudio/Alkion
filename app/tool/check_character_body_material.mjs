@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {sampleSurfaceCell,materialGlyph,materialAlpha,columnPhase} from '../assets/character_body/material.js';
+import {surfaceRegions} from '../assets/character_body/regions.js';
 
 // Frozen output digests from the accepted sampler, before optimization. The
 // cases describe synthetic surfaces, rather than duplicating its algorithm.
@@ -58,4 +59,11 @@ for(const [name,cases] of [['occupancy',occupancy],['boundaries',boundaries],['d
 }
 const pixels=surface(21,21,()=>128),original=pixels.slice();
 sampleSurfaceCell(pixels,21,21,3,3,false,0,scratch);assert.deepEqual(pixels,original,'Sampling never mutates source pixels');
+// Every installed atlas row, including the adductor and abductor fields, reaches
+// the glyph atlas as its own retained surface id.
+assert.equal(surfaceRegions.length,14);
+for(let id=0;id<surfaceRegions.length;id++){
+ const rows=new Uint8Array(9*9*4);for(let at=0;at<rows.length;at+=4)rows.set([180,id,128,255],at);
+ assert.equal(sampleSurfaceCell(rows,9,9,1,1,false,0,scratch).region,id,`atlas row ${id}`);
+}
 console.log(`PASS: ${samples} frozen-reference material cases, both themes/optical sizes, all occupancy masks, boundaries/depth cutoffs, reusable output and immutable pixels`);

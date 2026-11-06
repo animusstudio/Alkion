@@ -235,6 +235,36 @@ void main() {
       '0',
     );
   });
+  for (final (locale, adductors, abductors) in [
+    ('en', 'Adductors', 'Abductors'),
+    ('it', 'Adduttori', 'Abduttori'),
+    ('de', 'Adduktoren', 'Abduktoren'),
+    ('es', 'Aductores', 'Abductores'),
+  ]) {
+    testWidgets('readable counts list all thirteen regions in $locale', (
+      tester,
+    ) async {
+      final empty = calculateWorkoutWorkload(
+        mode: WorkoutWorkloadMode.planned,
+        exercises: const [],
+      );
+      await tester.pumpWidget(
+        wrapL10n(
+          SingleChildScrollView(child: BodyWorkloadCounts(workload: empty)),
+          locale: Locale(locale),
+        ),
+      );
+      expect(WorkloadMuscle.values, hasLength(13));
+      for (final muscle in WorkloadMuscle.values) {
+        expect(
+          find.byKey(ValueKey('body-count-${muscle.name}')),
+          findsOneWidget,
+        );
+      }
+      expect(find.text(adductors), findsOneWidget);
+      expect(find.text(abductors), findsOneWidget);
+    });
+  }
   testWidgets('route coverage and scroll viewport stop compact artwork', (
     tester,
   ) async {

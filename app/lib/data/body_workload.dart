@@ -14,7 +14,9 @@ enum WorkloadMuscle {
   triceps,
   glutes,
   core,
-  forearms;
+  forearms,
+  adductors,
+  abductors;
 
   static WorkloadMuscle? fromKey(String? key) {
     for (final muscle in values) {

@@ -184,7 +184,7 @@ internal class CharacterBodyView(
                     loaded = false
                     container.removeView(web)
                     web.destroy()
-                    if (!wasDisposed) channel.invokeMethod("status", mapOf("version" to 3, "status" to "error", "yaw" to 0.0))
+                    if (!wasDisposed) channel.invokeMethod("status", mapOf("version" to 4, "status" to "error", "yaw" to 0.0))
                 }
                 return true
             }
@@ -198,7 +198,7 @@ internal class CharacterBodyView(
             @JavascriptInterface fun postMessage(text: String) {
                 if (disposed || text.length > 1024) return
                 val event = try { JSONObject(text) } catch (_: Exception) { return }
-                if (event.optInt("version") != 3 || event.optLong("lease", -1) != lease) return
+                if (event.optInt("version") != 4 || event.optLong("lease", -1) != lease) return
                 val eventLease = lease
                 main.post { if (eventLease == lease) resetPending = false }
                 if (event.optString("type") == "pick") {
@@ -227,13 +227,13 @@ internal class CharacterBodyView(
                     return
                 }
                 val status = event.optString("status")
-                if (event.optInt("version") != 3 || status !in listOf("loading", "ready", "unavailable", "error")) return
+                if (event.optInt("version") != 4 || status !in listOf("loading", "ready", "unavailable", "error")) return
                 val yaw = event.optDouble("yaw", 0.0)
                 if (!yaw.isFinite() || yaw < 0 || yaw >= Math.PI * 2) return
                 val command = event.optDouble("command", -1.0)
                 val turn = event.optDouble("turn", -1.0)
                 val revision = event.optDouble("revision", -1.0)
-                val safe = mutableMapOf<String, Any>("version" to 3, "status" to status, "yaw" to yaw)
+                val safe = mutableMapOf<String, Any>("version" to 4, "status" to status, "yaw" to yaw)
                 if (command.isFinite() && command >= 0 && command <= 9007199254740991.0 &&
                     command == Math.floor(command) && turn.isFinite() && turn >= 0 && turn < Math.PI * 2 &&
                     revision.isFinite() && revision >= 0 && revision <= 9007199254740991.0 && revision == Math.floor(revision)) {
@@ -377,13 +377,13 @@ internal fun validateDisplay(raw: Any?): JSONObject? {
     val map = raw as? Map<*, *> ?: return null
     val keys = setOf("version", "style", "scores", "neutral", "accent", "background", "theme", "visible", "reduced", "compact", "paused", "yaw", "turn", "command", "revision", "retry")
     if (map.keys - setOf("interaction", "view") != keys) return null
-    if (map["version"] != 3 || map["style"] !in listOf("male", "female") || map["theme"] !in listOf("light", "dark")) return null
+    if (map["version"] != 4 || map["style"] !in listOf("male", "female") || map["theme"] !in listOf("light", "dark")) return null
     if (listOf("visible", "reduced", "compact", "paused").any { map[it] !is Boolean }) return null
     for (key in listOf("neutral", "accent", "background")) {
         val rgb = map[key] as? List<*> ?: return null
         if (rgb.size != 3 || rgb.any { it !is Int || it !in 0..255 }) return null
     }
-    val muscles = setOf("chest", "back", "shoulders", "quads", "hamstrings", "calves", "biceps", "triceps", "glutes", "core", "forearms")
+    val muscles = setOf("chest", "back", "shoulders", "quads", "hamstrings", "calves", "biceps", "triceps", "glutes", "core", "forearms", "adductors", "abductors")
     val scores = map["scores"] as? Map<*, *> ?: return null
     if (scores.keys != muscles || scores.values.any { it !is Number || !it.toDouble().isFinite() || it.toDouble() !in 0.0..1.0 }) return null
     val yaw = (map["yaw"] as? Number)?.toDouble() ?: return null

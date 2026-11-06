@@ -10,7 +10,7 @@ let rendered=null,frameId=0,layout=0;
 let frames=0,totalMs=0,maxMs=0,lastReport=0,loadMs=0,started=performance.now(),stages={},lease=0;
 const meshes=new Map();let fontReady=null,needsLoad=false,loading=false;
 function report(status){
- window.AlkionNative?.postMessage(JSON.stringify({version:3,status,yaw:state.yaw,command,turn,revision:input?.revision??0,frames,totalMs,maxMs,loadMs,lease,...stages,...(input?.interaction?.enabled&&rendered?rendered:{})}));
+ window.AlkionNative?.postMessage(JSON.stringify({version:4,status,yaw:state.yaw,command,turn,revision:input?.revision??0,frames,totalMs,maxMs,loadMs,lease,...stages,...(input?.interaction?.enabled&&rendered?rendered:{})}));
 }
 function fail(status){rendered=null;state.ready=false;state.failed=true;loop.stop();renderer?.dispose();renderer=null;mesh=null;canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);report(status);}
 function draw(){

@@ -196,6 +196,78 @@ WorkloadSetInput set(
 );
 
 void main() {
+  test('mapped hip nodes count into the adductor and abductor regions', () {
+    final f = SyntheticMuscleCatalog();
+    configure(f, const [
+      (
+        node: 'adductor_magnus',
+        kind: 'strength',
+        role: 'primary',
+        regions: ['adductors'],
+        parent: null,
+      ),
+      (
+        node: 'gluteus_medius',
+        kind: 'strength',
+        role: 'secondary',
+        regions: ['abductors'],
+        parent: null,
+      ),
+      (
+        node: 'piriformis',
+        kind: 'strength',
+        role: 'stabilizer',
+        regions: <String>[],
+        parent: null,
+      ),
+    ]);
+    final profile = f.load().muscleProfileFor(
+      SyntheticMuscleCatalog.variantId,
+    )!;
+    final result = calculateWorkoutWorkload(
+      mode: WorkoutWorkloadMode.saved,
+      exercises: [
+        input(profile, [set('one'), set('two'), set('three', warmup: true)]),
+      ],
+    );
+    expect(result.muscles[WorkloadMuscle.adductors]!.count, 2);
+    expect(result.muscles[WorkloadMuscle.abductors]!.count, 2);
+    expect(
+      result
+          .regionCounts(
+            role: CatalogMuscleRole.primary,
+          )[WorkloadMuscle.adductors]!
+          .count,
+      2,
+    );
+    expect(
+      result
+          .regionCounts(
+            role: CatalogMuscleRole.primary,
+          )[WorkloadMuscle.abductors]!
+          .count,
+      0,
+    );
+    expect(
+      result
+          .regionCounts(
+            role: CatalogMuscleRole.secondary,
+          )[WorkloadMuscle.abductors]!
+          .score,
+      .4,
+    );
+    for (final other in WorkloadMuscle.values.where(
+      (m) => m != WorkloadMuscle.adductors && m != WorkloadMuscle.abductors,
+    )) {
+      expect(result.muscles[other]!.count, 0, reason: other.name);
+    }
+    expect(
+      result.anatomy.singleWhere((n) => n.id == 'piriformis').unmappedReason,
+      isNotNull,
+    );
+    expect(result.coverage!.warmupSets, 1);
+  });
+
   test(
     'physical set unions preserve role/kind distinctions and deep anatomy',
     () {

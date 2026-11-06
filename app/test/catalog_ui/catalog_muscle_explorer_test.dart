@@ -159,7 +159,7 @@ void main() {
           channels.last,
           const StandardMethodCodec().encodeMethodCall(
             MethodCall('status', {
-              'version': 3,
+              'version': 4,
               'status': 'ready',
               'generation':
                   (displays.last['interaction'] as Map?)?['generation'] ?? 0,
@@ -266,6 +266,8 @@ void main() {
                 WorkloadMuscle.glutes,
                 WorkloadMuscle.core,
                 WorkloadMuscle.forearms,
+                WorkloadMuscle.adductors,
+                WorkloadMuscle.abductors,
               }.contains(region)
               ? null
               : region,

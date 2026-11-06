@@ -456,7 +456,7 @@ void main() {
         await tester.tap(find.text(l.bodyEvidenceDetails));
         await tester.pumpAndSettle();
         expect(
-          find.text('${l.bodySurfaceProjection}: alkion-surface-2'),
+          find.text('${l.bodySurfaceProjection}: alkion-surface-3'),
           findsOneWidget,
         );
         expect(find.textContaining(l.bodyHumanReview), findsOneWidget);
@@ -471,7 +471,7 @@ void main() {
             ('coverage', find.text('${l.bodyPartialProfiles}: 1')),
             (
               'evidence',
-              find.text('${l.bodySurfaceProjection}: alkion-surface-2'),
+              find.text('${l.bodySurfaceProjection}: alkion-surface-3'),
             ),
           ]) {
             await tester.ensureVisible(target);
