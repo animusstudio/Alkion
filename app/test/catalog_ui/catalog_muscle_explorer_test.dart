@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import '../support/app_fonts.dart';
+import '../support/layout_expect.dart';
 import 'catalog_discovery_picker_test.dart';
 
 /// Keeps the actual CharacterBody and gesture surface in the tree, controlling
@@ -51,6 +52,49 @@ CharacterBody body(WidgetTester tester) =>
     tester.widget<CharacterBody>(find.byType(CharacterBody));
 Finder get diagram => find.byKey(const Key('catalog-body-diagram'));
 Finder muscle(String key) => find.byKey(ValueKey('catalog-muscle-$key'));
+
+/// Page content outside the canvas: a vertical drag there scrolls the sheet.
+Finder get outsideCanvas => find.byKey(const Key('catalog-muscle-list-link'));
+Finder get zoomIn => find.byKey(const Key('catalog-body-zoom-in'));
+Finder get zoomOut => find.byKey(const Key('catalog-body-zoom-out'));
+
+ScrollPosition explorerScroll(WidgetTester tester) => tester
+    .state<ScrollableState>(
+      find.descendant(
+        of: find.byKey(const Key('catalog-muscle-explorer-scroll')),
+        matching: find.byType(Scrollable),
+      ),
+    )
+    .position;
+
+/// The explorer's own status; zoom appears with ready artwork. The host has no
+/// WebView, so tests report ready through the canvas's status callback.
+Future<void> reportReady(WidgetTester tester) async {
+  body(tester).onStatus!(CharacterBodyStatus.ready);
+  await tester.pumpAndSettle();
+}
+
+Future<PendingBodyController> pumpExplorer(
+  WidgetTester tester, {
+  String? selected,
+}) async {
+  explorerPhone(tester);
+  final state = discoveryState();
+  addTearDown(state.dispose);
+  final controller = PendingBodyController();
+  addTearDown(controller.dispose);
+  await tester.pumpWidget(
+    discoveryApp(
+      CatalogMuscleExplorer(
+        index: state.index('en'),
+        selected: selected,
+        controller: controller,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return controller;
+}
 
 Future<void> revealArtwork(WidgetTester tester) async {
   final scroll = find.descendant(
@@ -445,7 +489,7 @@ void main() {
           case 'retry':
             await tester.tap(find.byKey(const Key('catalog-body-retry')));
           case 'hide':
-            await tester.drag(diagram, const Offset(0, -500));
+            await tester.drag(outsideCanvas, const Offset(0, -500));
         }
         await tester.pumpAndSettle();
         pending.complete(WorkloadMuscle.hamstrings);
@@ -522,103 +566,355 @@ void main() {
   );
 
   testWidgets(
-    'horizontal drag rotates without picking; vertical drag scrolls without picking',
+    'one-finger drag orbits both axes, clamps pitch and owns the canvas in the scrolling sheet',
     (tester) async {
-      explorerPhone(tester);
-      final state = discoveryState();
-      addTearDown(state.dispose);
-      final controller = PendingBodyController();
-      addTearDown(controller.dispose);
-      await tester.pumpWidget(
-        discoveryApp(
-          CatalogMuscleExplorer(
-            index: state.index('en'),
-            controller: controller,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.drag(diagram, const Offset(90, 0));
-      await tester.pump();
-      expect(controller.yaw, greaterThan(0));
-      expect(controller.paused, isTrue);
-      expect(controller.requests, isEmpty);
-      final yaw = controller.yaw;
+      final controller = await pumpExplorer(tester);
       await openList(tester);
       await revealArtwork(tester);
-      await tester.drag(diagram, const Offset(0, -500));
+      final scroll = explorerScroll(tester);
+      expect(scroll.maxScrollExtent, greaterThan(200));
+      final centre = tester.getCenter(diagram);
+      // Upward on the canvas: tilts the camera down, never scrolls the page.
+      var finger = await tester.startGesture(centre, pointer: 1);
+      await finger.moveBy(const Offset(0, -30)); // past slop: begins only
+      await tester.pump();
+      expect(
+        controller.pitch,
+        0,
+        reason: 'Movement before slop is not applied',
+      );
+      await finger.moveBy(const Offset(0, -20));
+      await tester.pump();
+      expect(controller.pitch, closeTo(-20 * .009, 1e-9));
+      expect(controller.yaw, 0);
+      for (var i = 0; i < 10; i++) {
+        await finger.moveBy(const Offset(0, -20));
+      }
+      await tester.pump();
+      expect(controller.pitch, -CharacterBodyController.maxPitch);
+      await finger.up();
       await tester.pumpAndSettle();
-      expect(controller.yaw, yaw);
+      expect(scroll.pixels, 0, reason: 'The canvas owns vertical drags');
+      expect(body(tester).visible, isTrue);
+      // Downward clamps at +45°; sideways turns at the accepted rate.
+      finger = await tester.startGesture(centre, pointer: 2);
+      await finger.moveBy(const Offset(0, 30));
+      for (var i = 0; i < 12; i++) {
+        await finger.moveBy(const Offset(0, 20));
+      }
+      await tester.pump();
+      expect(controller.pitch, CharacterBodyController.maxPitch);
+      await finger.moveBy(const Offset(40, -10));
+      await tester.pump();
+      expect(controller.yaw, closeTo(40 * .009, 1e-9));
+      expect(
+        controller.pitch,
+        closeTo(CharacterBodyController.maxPitch - 10 * .009, 1e-9),
+      );
+      await finger.up();
+      await tester.pumpAndSettle();
+      expect(scroll.pixels, 0);
+      expect(controller.paused, isTrue);
+      expect(
+        controller.requests,
+        isEmpty,
+        reason: 'A drag release never picks',
+      );
+      final view = (controller.yaw, controller.pitch);
+      // The same vertical drag outside the canvas still scrolls the page.
+      await tester.drag(outsideCanvas, const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(scroll.pixels, greaterThan(100));
+      expect((controller.yaw, controller.pitch), view);
       expect(controller.requests, isEmpty);
-      expect(body(tester).visible, isFalse);
+      // Front and a list choice of abductors (the side view) level the camera.
+      await revealArtwork(tester);
+      await tester.tap(find.byKey(const Key('catalog-body-front')));
+      await tester.pump();
+      expect((controller.yaw, controller.pitch), (0.0, 0.0));
+      await tester.drag(diagram, const Offset(0, 120));
+      await tester.pump();
+      expect(controller.pitch, greaterThan(0));
+      await tester.ensureVisible(muscle('abductors'));
+      await tester.tap(muscle('abductors'));
+      await tester.pumpAndSettle();
+      expect((controller.yaw, controller.pitch), (math.pi / 2, 0.0));
+      expect(body(tester).selectedRegion, WorkloadMuscle.abductors);
       await tester.pumpWidget(const SizedBox());
     },
   );
 
   testWidgets(
-    'two-finger viewport gestures and accessible controls preserve picks',
+    'a second finger after an orbit pinches around its focal point and pans without jumps',
     (tester) async {
-      explorerPhone(tester);
-      final state = discoveryState();
-      addTearDown(state.dispose);
-      final controller = PendingBodyController();
-      addTearDown(controller.dispose);
-      await tester.pumpWidget(
-        discoveryApp(
-          CatalogMuscleExplorer(
-            index: state.index('en'),
-            controller: controller,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final center = tester.getCenter(diagram);
-      final first = await tester.startGesture(
-        center - const Offset(20, 0),
-        pointer: 1,
-      );
-      final second = await tester.startGesture(
-        center + const Offset(20, 0),
-        pointer: 2,
-      );
-      await second.moveBy(const Offset(50, 0));
+      final controller = await pumpExplorer(tester);
+      await openList(tester);
+      await revealArtwork(tester);
+      final scroll = explorerScroll(tester);
+      final centre = tester.getCenter(diagram);
+      final size = tester.getSize(diagram);
+      // The first finger moves past slop and orbits BEFORE the second lands,
+      // the order a real hand produces and injected input never covered.
+      final first = await tester.createGesture(pointer: 1);
+      await first.down(centre - const Offset(40, 0));
+      await first.moveBy(const Offset(30, 0));
+      await first.moveBy(const Offset(10, 0));
       await tester.pump();
-      expect(controller.zoom, closeTo(2.25, .01));
-      await first.moveBy(const Offset(0, 20));
-      await second.moveBy(const Offset(0, 20));
+      final yaw = controller.yaw;
+      expect(yaw, closeTo(10 * .009, 1e-9));
+      final second = await tester.createGesture(pointer: 2);
+      await second.down(centre + const Offset(40, 0));
       await tester.pump();
-      expect(controller.pan.dy, greaterThan(0));
-      await first.up();
+      expect(
+        (controller.yaw, controller.pitch, controller.zoom, controller.pan),
+        (yaw, 0.0, 1.0, Offset.zero),
+        reason: 'A landing finger re-bases without a jump',
+      );
+      // Span 20 → 40 around a focal point 20 → 40 px right of centre: the
+      // artwork point under the old focal point stays under the new one.
+      await second.moveBy(const Offset(40, 0));
+      await tester.pump();
+      expect(controller.zoom, closeTo(2, 1e-9));
+      expect(controller.pan.dx, closeTo(0, 1e-9));
+      // Off-centre focal point: span 40 → 60 moves the focal point from 40 to 20
+      // px right of centre. Artwork point (40 - 0) / 2 = 20 under the old focal
+      // point now sits under the new one: pan = 20 - 20 * 3 = -40 px.
+      await first.moveBy(const Offset(-40, 0));
+      await tester.pump();
+      expect(controller.zoom, closeTo(3, 1e-9));
+      expect(controller.pan.dx, closeTo(-40 / size.width, 1e-9));
+      final zoomed = controller.pan;
+      // Two fingers moving together pan; orbit stays where it was.
+      await first.moveBy(const Offset(0, 30));
+      await second.moveBy(const Offset(0, 30));
+      await tester.pump();
+      expect(controller.zoom, 3);
+      expect(controller.pan.dy, closeTo(30 / size.height, 1e-9));
+      expect(controller.pan.dx, closeTo(zoomed.dx, 1e-9));
+      expect((controller.yaw, controller.pitch), (yaw, 0.0));
+      // Lifting one finger re-bases too; the other resumes orbiting from it.
+      final viewport = (controller.zoom, controller.pan);
       await second.up();
+      await tester.pump();
+      expect((controller.zoom, controller.pan), viewport);
+      expect((controller.yaw, controller.pitch), (yaw, 0.0));
+      await first.moveBy(const Offset(20, 10));
+      await tester.pump();
+      expect(controller.yaw, closeTo(yaw + 20 * .009, 1e-9));
+      expect(controller.pitch, closeTo(10 * .009, 1e-9));
+      expect((controller.zoom, controller.pan), viewport);
+      await first.up();
       await tester.pumpAndSettle();
+      expect(scroll.pixels, 0, reason: 'The page never scrolled');
       expect(
         controller.requests,
         isEmpty,
         reason: 'Pinch release is never a pick',
       );
+      // Pinching in stops at 1×, where pan returns to the centre.
+      final a = await tester.startGesture(centre - const Offset(60, 0));
+      final b = await tester.startGesture(centre + const Offset(60, 0));
+      await b.moveBy(const Offset(-110, 0));
+      await tester.pump();
+      expect((controller.zoom, controller.pan), (1.0, Offset.zero));
+      await a.up();
+      await b.up();
+      await tester.pumpAndSettle();
+      expect(controller.requests, isEmpty);
+      // A tap still selects after orbit, zoom and pan.
+      await tester.tap(diagram);
+      expect(controller.requests, hasLength(1));
+      controller.requests.single.result.complete(WorkloadMuscle.chest);
+      await tester.pumpAndSettle();
+      expect(body(tester).selectedRegion, WorkloadMuscle.chest);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a tap within slop picks, a cancelled touch does not, and a second finger turns a tap into a pinch',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      final centre = tester.getCenter(diagram);
+      final finger = await tester.startGesture(centre);
+      await finger.moveBy(const Offset(6, -6));
+      await finger.up();
+      await tester.pump();
+      expect(controller.requests, hasLength(1));
+      expect(
+        controller.requests.single.position,
+        centre + const Offset(6, -6) - tester.getTopLeft(diagram),
+      );
+      expect((controller.yaw, controller.pitch), (0.0, 0.0));
+      final cancelled = await tester.startGesture(centre);
+      await cancelled.cancel();
+      await tester.pump();
+      expect(controller.requests, hasLength(1));
+      final a = await tester.startGesture(centre, pointer: 7);
+      final b = await tester.startGesture(centre + const Offset(30, 0));
+      await b.up();
+      await a.up();
+      await tester.pump();
+      expect(controller.requests, hasLength(1), reason: 'No pick after two');
+      // The earlier tap's pick is now stale and cannot select.
+      controller.requests.single.result.complete(WorkloadMuscle.quads);
+      await tester.pumpAndSettle();
+      expect(body(tester).selectedRegion, isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'zoom overlay sits inside the canvas bottom-right, works, bounds and never picks',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final controller = await pumpExplorer(tester);
+      expect(zoomIn, findsNothing, reason: 'Zoom appears with drawn artwork');
+      await reportReady(tester);
+      final canvas = tester.getRect(diagram);
+      final inRect = tester.getRect(zoomIn), outRect = tester.getRect(zoomOut);
+      for (final rect in [inRect, outRect]) {
+        expect(canvas.contains(rect.topLeft), isTrue);
+        expect(
+          canvas.contains(rect.bottomRight - const Offset(.1, .1)),
+          isTrue,
+        );
+        expect(rect.shortestSide, greaterThanOrEqualTo(48));
+      }
+      expect(canvas.right - inRect.right, lessThanOrEqualTo(8));
+      expect(canvas.bottom - inRect.bottom, lessThanOrEqualTo(8));
+      expect(outRect.right, lessThanOrEqualTo(inRect.left));
+      for (final key in ['front', 'back', 'reset']) {
+        final rect = tester.getRect(find.byKey(Key('catalog-body-$key')));
+        expect(rect.bottom, lessThanOrEqualTo(canvas.top), reason: key);
+      }
+      expect(
+        tester.getSemantics(zoomOut),
+        isSemantics(
+          tooltip: 'Zoom out',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+        ),
+      );
+      // A disabled button absorbs the tap: nothing beneath is picked.
+      await tester.tap(zoomOut, warnIfMissed: false);
+      await tester.pump();
+      expect(controller.zoom, 1);
+      for (var i = 0; i < 4; i++) {
+        await tester.tap(zoomIn);
+        await tester.pump();
+      }
+      expect(controller.zoom, 3);
+      expect(tester.widget<IconButton>(zoomIn).onPressed, isNull);
+      expect(
+        tester.getSemantics(zoomIn),
+        isSemantics(
+          tooltip: 'Zoom in',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+        ),
+      );
+      await tester.tap(zoomOut);
+      await tester.pump();
+      expect(controller.zoom, 2.5);
+      expect(
+        tester.getSemantics(zoomOut),
+        isSemantics(
+          tooltip: 'Zoom out',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          isFocusable: true,
+          hasTapAction: true,
+          hasFocusAction: true,
+        ),
+      );
+      expect(controller.requests, isEmpty, reason: 'Overlay taps never pick');
+      // A drag starting on a button is the button's, never an orbit.
+      await tester.drag(zoomOut, const Offset(-60, -60));
+      await tester.pump();
+      expect((controller.yaw, controller.pitch), (0.0, 0.0));
       await tester.tap(find.byKey(const Key('catalog-body-reset')));
       await tester.pump();
       expect(controller.zoom, 1);
       expect(controller.pan, Offset.zero);
-      for (var i = 0; i < 4; i++) {
-        await tester.tap(find.byKey(const Key('catalog-body-zoom-in')));
-        await tester.pump();
-      }
-      expect(controller.zoom, 3);
-      expect(
-        tester
-            .widget<IconButton>(find.byKey(const Key('catalog-body-zoom-in')))
-            .onPressed,
-        isNull,
-      );
-      for (final key in [
-        'catalog-body-zoom-in',
-        'catalog-body-zoom-out',
-        'catalog-body-reset',
-        'catalog-muscle-info',
-      ]) {
-        final size = tester.getSize(find.byKey(Key(key)));
-        expect(size.shortestSide, greaterThanOrEqualTo(48));
+      expect(controller.requests, isEmpty);
+      // Failed artwork drops the overlay; Retry stays in the row.
+      body(tester).onStatus!(CharacterBodyStatus.error);
+      await tester.pumpAndSettle();
+      expect(zoomIn, findsNothing);
+      expect(find.byKey(const Key('catalog-body-retry')), findsOneWidget);
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'zoom overlay layout sweep: 320/412dp, 1x/2x text, both themes, four locales',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      for (final width in [320.0, 412.0]) {
+        tester.view.physicalSize = Size(width, 640);
+        for (final scale in [1.0, 2.0]) {
+          for (final brightness in Brightness.values) {
+            for (final locale in ['en', 'it', 'de', 'es']) {
+              final where = '$width $scale $brightness $locale';
+              await tester.pumpWidget(
+                discoveryApp(
+                  Builder(
+                    builder: (context) => MediaQuery(
+                      data: MediaQuery.of(
+                        context,
+                      ).copyWith(textScaler: TextScaler.linear(scale)),
+                      child: CatalogMuscleExplorer(
+                        key: ValueKey(where),
+                        index: state.index(locale),
+                      ),
+                    ),
+                  ),
+                  locale: locale,
+                  brightness: brightness,
+                ),
+              );
+              await tester.pumpAndSettle();
+              await reportReady(tester);
+              final canvas = tester.getRect(diagram);
+              final controls = [
+                for (final key in ['front', 'back', 'reset'])
+                  tester.getRect(find.byKey(Key('catalog-body-$key'))),
+              ];
+              for (final button in [zoomIn, zoomOut]) {
+                final rect = tester.getRect(button);
+                expect(rect.shortestSide, greaterThanOrEqualTo(48));
+                expect(
+                  canvas.intersect(rect).size,
+                  rect.size,
+                  reason: '$where: inside the canvas',
+                );
+                expect(rect.center.dx, greaterThan(canvas.center.dx));
+                expect(rect.center.dy, greaterThan(canvas.center.dy));
+                for (final control in controls) {
+                  expect(rect.overlaps(control), isFalse, reason: where);
+                }
+              }
+              expect(tester.takeException(), isNull, reason: where);
+              await tester.tap(find.byKey(const Key('catalog-muscle-info')));
+              await tester.pumpAndSettle();
+              expectNoSplitWords(
+                tester,
+                within: find.byType(CatalogMuscleExplorer),
+                where: where,
+              );
+              expect(tester.takeException(), isNull, reason: where);
+            }
+          }
+        }
       }
       await tester.pumpWidget(const SizedBox());
     },

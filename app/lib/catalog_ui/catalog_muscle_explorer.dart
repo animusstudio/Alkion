@@ -62,8 +62,6 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   String? _selected;
   bool _listExpanded = false;
   bool _showInfo = false;
-  double _gestureZoom = 1;
-  Offset _gesturePan = Offset.zero;
   late CharacterBodyController _controller;
   final _listKey = GlobalKey();
   final _artKey = GlobalKey();
@@ -212,6 +210,44 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     if (_groups.any((g) => g.key == region.name)) _select(region.name);
   }
 
+  // Radians per logical pixel, on both orbit axes: the accepted turn rate.
+  static const _orbitRate = .009;
+
+  void _manipulationStarted() {
+    _pickEpoch++;
+    _controller.pause();
+  }
+
+  void _orbit(Offset delta) =>
+      _controller.orbitBy(delta.dx * _orbitRate, delta.dy * _orbitRate);
+
+  // The viewport and focal point when the current set of fingers landed.
+  double _baseZoom = 1;
+  Offset _basePan = Offset.zero;
+  Offset _baseFocal = Offset.zero;
+
+  void _transformStarted(Offset focal) {
+    _baseZoom = _controller.zoom;
+    _basePan = _controller.pan;
+    _baseFocal = focal;
+  }
+
+  /// Pinch and pan in one step: the artwork point under the base focal point
+  /// stays under the current one. Pan is normalized to the surface, as the
+  /// renderer applies it; the controller clamps both zoom and pan.
+  void _transform(double scale, Offset focal, Size size) {
+    if (size.isEmpty) return;
+    final next = (_baseZoom * scale).clamp(1.0, 3.0);
+    final centre = size.center(Offset.zero);
+    final pan = Offset(_basePan.dx * size.width, _basePan.dy * size.height);
+    final moved =
+        (focal - centre) - (_baseFocal - centre - pan) * (next / _baseZoom);
+    _controller.setViewport(
+      next,
+      Offset(moved.dx / size.width, moved.dy / size.height),
+    );
+  }
+
   void _statusChanged(CharacterBodyStatus status) {
     if (!mounted || status == _status) return;
     _pickEpoch++;
@@ -325,37 +361,14 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                           'catalog-body-front',
                           l.bodyViewFront,
                           _controller.front,
-                          _controller.yaw.abs() < .01,
+                          _controller.yaw.abs() < .01 && _controller.pitch == 0,
                         ),
                         _viewControl(
                           'catalog-body-back',
                           l.bodyViewBack,
                           _controller.back,
-                          (_controller.yaw - math.pi).abs() < .01,
-                        ),
-                        IconButton(
-                          key: const Key('catalog-body-zoom-out'),
-                          tooltip: l.bodyZoomOut,
-                          constraints: const BoxConstraints(
-                            minWidth: 48,
-                            minHeight: 48,
-                          ),
-                          onPressed: _controller.zoom > 1
-                              ? () => _controller.zoomBy(-.5)
-                              : null,
-                          icon: const AlkionIcon(AlkionGlyph.minus),
-                        ),
-                        IconButton(
-                          key: const Key('catalog-body-zoom-in'),
-                          tooltip: l.bodyZoomIn,
-                          constraints: const BoxConstraints(
-                            minWidth: 48,
-                            minHeight: 48,
-                          ),
-                          onPressed: _controller.zoom < 3
-                              ? () => _controller.zoomBy(.5)
-                              : null,
-                          icon: const AlkionIcon(AlkionGlyph.add),
+                          (_controller.yaw - math.pi).abs() < .01 &&
+                              _controller.pitch == 0,
                         ),
                         IconButton(
                           key: const Key('catalog-body-reset'),
@@ -391,82 +404,110 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                             _surfaceSize = constraints.biggest;
                             _pickEpoch++;
                           }
-                          return GestureDetector(
+                          final size = constraints.biggest;
+                          final canvas = RawGestureDetector(
                             key: const Key('catalog-body-diagram'),
                             behavior: HitTestBehavior.opaque,
                             excludeFromSemantics: true,
-                            onTapDown: (_) => _pickEpoch++,
-                            onTapCancel: () => _pickEpoch++,
-                            onTapUp: (details) => _pick(
-                              details.localPosition,
-                              constraints.biggest,
-                            ),
-                            onHorizontalDragStart: (_) => _controller.pause(),
-                            onHorizontalDragUpdate: (details) =>
-                                _controller.rotateBy(details.delta.dx * .009),
-                            child: RawGestureDetector(
-                              gestures: {
-                                _BodyTransformGestureRecognizer:
-                                    GestureRecognizerFactoryWithHandlers<
-                                      _BodyTransformGestureRecognizer
-                                    >(_BodyTransformGestureRecognizer.new, (
-                                      recognizer,
-                                    ) {
-                                      recognizer.onStart = () {
-                                        _pickEpoch++;
-                                        _controller.pause();
-                                        _gestureZoom = _controller.zoom;
-                                        _gesturePan = _controller.pan;
-                                      };
-                                      recognizer.onUpdate = (scale, delta) {
-                                        _controller.setViewport(
-                                          _gestureZoom * scale,
-                                          _gesturePan +
-                                              Offset(
-                                                delta.dx / constraints.maxWidth,
-                                                delta.dy /
-                                                    constraints.maxHeight,
-                                              ),
-                                        );
-                                      };
-                                    }),
-                              },
-                              child: CharacterBody(
-                                style: style,
-                                scores: const {},
-                                neutral: t.text,
-                                accent: t.accentText,
-                                background: t.surface,
-                                brightness: Theme.of(context).brightness,
-                                visible: visible,
-                                reducedMotion: MediaQuery.disableAnimationsOf(
-                                  context,
-                                ),
-                                compact: false,
-                                controller: _controller,
-                                pickingEnabled: true,
-                                selectedRegion: WorkloadMuscle.fromKey(
-                                  _selected,
-                                ),
-                                onStatus: _statusChanged,
-                                fallback: Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Text(
-                                      _status == CharacterBodyStatus.loading
-                                          ? l.bodyLoadingArtwork
-                                          : l.bodyArtworkUnavailable,
-                                      key: const Key('catalog-body-fallback'),
-                                      textAlign: TextAlign.center,
-                                      style: WorkoutType.body(
-                                        size: 14,
-                                        color: t.dim,
-                                      ),
+                            gestures: {
+                              BodyManipulationGestureRecognizer:
+                                  GestureRecognizerFactoryWithHandlers<
+                                    BodyManipulationGestureRecognizer
+                                  >(
+                                    () => BodyManipulationGestureRecognizer(
+                                      debugOwner: this,
+                                    ),
+                                    (recognizer) {
+                                      recognizer
+                                        ..onDown = (() => _pickEpoch++)
+                                        ..onStart = _manipulationStarted
+                                        ..onOrbit = _orbit
+                                        ..onTransformStart = _transformStarted
+                                        ..onTransform = (scale, focal) {
+                                          _transform(scale, focal, size);
+                                        }
+                                        ..onTap = (position) {
+                                          _pick(position, size);
+                                        }
+                                        ..onEnd = (() => _pickEpoch++);
+                                    },
+                                  ),
+                            },
+                            child: CharacterBody(
+                              style: style,
+                              scores: const {},
+                              neutral: t.text,
+                              accent: t.accentText,
+                              background: t.surface,
+                              brightness: Theme.of(context).brightness,
+                              visible: visible,
+                              reducedMotion: MediaQuery.disableAnimationsOf(
+                                context,
+                              ),
+                              compact: false,
+                              controller: _controller,
+                              pickingEnabled: true,
+                              selectedRegion: WorkloadMuscle.fromKey(_selected),
+                              onStatus: _statusChanged,
+                              fallback: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Text(
+                                    _status == CharacterBodyStatus.loading
+                                        ? l.bodyLoadingArtwork
+                                        : l.bodyArtworkUnavailable,
+                                    key: const Key('catalog-body-fallback'),
+                                    textAlign: TextAlign.center,
+                                    style: WorkoutType.body(
+                                      size: 14,
+                                      color: t.dim,
                                     ),
                                   ),
                                 ),
                               ),
                             ),
+                          );
+                          return Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              canvas,
+                              // Zoom acts on drawn artwork, so it appears with
+                              // it. A sibling above the canvas: its taps never
+                              // reach the canvas recognizer, and the opaque
+                              // listener keeps gaps between buttons from
+                              // picking the artwork beneath.
+                              if (_status == CharacterBodyStatus.ready)
+                                Positioned(
+                                  right: 4,
+                                  bottom: 4,
+                                  child: Listener(
+                                    key: const Key('catalog-body-zoom'),
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _zoomControl(
+                                          'catalog-body-zoom-out',
+                                          l.bodyZoomOut,
+                                          AlkionGlyph.minus,
+                                          _controller.zoom > 1
+                                              ? () => _controller.zoomBy(-.5)
+                                              : null,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        _zoomControl(
+                                          'catalog-body-zoom-in',
+                                          l.bodyZoomIn,
+                                          AlkionGlyph.add,
+                                          _controller.zoom < 3
+                                              ? () => _controller.zoomBy(.5)
+                                              : null,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
                           );
                         },
                       ),
@@ -623,6 +664,27 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     );
   }
 
+  Widget _zoomControl(
+    String key,
+    String tooltip,
+    AlkionGlyph glyph,
+    VoidCallback? action,
+  ) {
+    final t = context.tokens;
+    return IconButton(
+      key: ValueKey(key),
+      tooltip: tooltip,
+      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+      // Legible over glyph artwork; the canvas colour, slightly translucent.
+      style: IconButton.styleFrom(
+        backgroundColor: t.surface.withValues(alpha: .88),
+        disabledBackgroundColor: t.surface.withValues(alpha: .88),
+      ),
+      onPressed: action,
+      icon: AlkionIcon(glyph),
+    );
+  }
+
   Widget _viewControl(
     String key,
     String label,
@@ -642,59 +704,171 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   );
 }
 
-/// Joins the arena only when a second pointer arrives. A single vertical drag
-/// remains the sheet's scroll gesture, and a single horizontal drag rotates.
-class _BodyTransformGestureRecognizer extends OneSequenceGestureRecognizer {
-  final _points = <int, Offset>{};
-  bool _active = false;
-  double _initialSpan = 1;
-  Offset _initialFocal = Offset.zero;
-  VoidCallback? onStart;
-  void Function(double scale, Offset translation)? onUpdate;
+/// The body canvas's only recognizer. It wins every pointer that lands on the
+/// canvas at pointer down, so neither the page scroll nor a sheet drag can
+/// claim it before a second finger arrives. Arbitration is then internal:
+///
+/// - one pointer released before moving past touch slop is a tap ([onTap]);
+/// - one pointer past slop orbits by its movement ([onOrbit]);
+/// - two or more pointers pinch and pan around their focal point: each
+///   [onTransformStart] takes a base, and [onTransform] reports the span ratio
+///   and focal point against it, so a clamped zoom never drifts.
+///
+/// Adding or lifting a finger re-bases the focal point and span, so the next
+/// update continues from where the fingers are, without a jump. Movement before
+/// slop is not applied. After any manipulation the sequence ends with [onEnd];
+/// a release never becomes a tap. Pointers outside the canvas never reach it.
+class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
+  BodyManipulationGestureRecognizer({super.debugOwner});
 
-  Offset get _focal => (_points.values.first + _points.values.elementAt(1)) / 2;
-  double get _span =>
-      (_points.values.first - _points.values.elementAt(1)).distance;
+  /// A first pointer landed: any earlier pending pick is now stale.
+  VoidCallback? onDown;
+
+  /// The first movement past slop, or a second pointer: manipulation begins.
+  VoidCallback? onStart;
+
+  /// One-pointer movement since the previous update, in logical pixels.
+  ValueChanged<Offset>? onOrbit;
+
+  /// Two or more pointers (re)based at this focal point (local coordinates).
+  ValueChanged<Offset>? onTransformStart;
+
+  /// The span ratio and current focal point against the latest base.
+  void Function(double scale, Offset focal)? onTransform;
+
+  /// A single pointer released below slop, at its local release position.
+  ValueChanged<Offset>? onTap;
+
+  /// The sequence ended without a tap: after manipulation, or cancelled.
+  VoidCallback? onEnd;
+
+  final _points = <int, Offset>{};
+  final _downs = <int, Offset>{};
+  bool _manipulating = false;
+  bool _tap = false;
+  double _slop = kTouchSlop;
+  Offset _last = Offset.zero;
+  double _baseSpan = 0;
 
   @override
   void addAllowedPointer(PointerDownEvent event) {
     startTrackingPointer(event.pointer, event.transform);
+    // Eager: win this pointer's arena now; taps are decided below.
+    resolvePointer(event.pointer, GestureDisposition.accepted);
     _points[event.pointer] = event.localPosition;
-    if (_points.length == 2 && !_active) {
-      _active = true;
-      _initialFocal = _focal;
-      _initialSpan = math.max(1, _span);
-      resolve(GestureDisposition.accepted);
-      onStart?.call();
+    _downs[event.pointer] = event.localPosition;
+    if (_points.length == 1 && !_manipulating) {
+      _tap = true;
+      _slop = computeHitSlop(event.kind, gestureSettings);
+      onDown?.call();
+    } else {
+      _tap = false;
+      _begin();
     }
+    _rebase();
+  }
+
+  // Another device or button must not reject pointers this sequence has won.
+  @override
+  void handleNonAllowedPointer(PointerDownEvent event) {}
+
+  void _begin() {
+    if (_manipulating) return;
+    _manipulating = true;
+    onStart?.call();
+  }
+
+  Offset get _focal {
+    var sum = Offset.zero;
+    for (final point in _points.values) {
+      sum += point;
+    }
+    return sum / _points.length.toDouble();
+  }
+
+  double _spanAround(Offset focal) {
+    var spread = 0.0;
+    for (final point in _points.values) {
+      spread += (point - focal).distance;
+    }
+    return spread / _points.length;
+  }
+
+  void _rebase() {
+    if (_points.isEmpty) return;
+    _last = _focal;
+    _baseSpan = _spanAround(_last);
+    if (_manipulating && _points.length > 1) onTransformStart?.call(_last);
   }
 
   @override
   void handleEvent(PointerEvent event) {
+    if (!_points.containsKey(event.pointer)) return;
     if (event is PointerMoveEvent) {
       _points[event.pointer] = event.localPosition;
-      if (_active && _points.length == 2) {
-        onUpdate?.call(_span / _initialSpan, _focal - _initialFocal);
+      if (!_manipulating) {
+        if ((event.localPosition - _downs[event.pointer]!).distance <= _slop) {
+          return;
+        }
+        _tap = false;
+        _begin();
+        _rebase();
+        return;
       }
+      final focal = _focal;
+      if (_points.length == 1) {
+        final delta = focal - _last;
+        _last = focal;
+        if (delta != Offset.zero) onOrbit?.call(delta);
+        return;
+      }
+      final span = _spanAround(focal);
+      if (_baseSpan <= 0) {
+        // Fingers that landed on one spot take their base once they part.
+        if (span > 0) _rebase();
+        return;
+      }
+      onTransform?.call(span / _baseSpan, focal);
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
-      if (!_active) resolve(GestureDisposition.rejected);
-      _points.remove(event.pointer);
-      stopTrackingPointer(event.pointer);
+      if (event is PointerCancelEvent) _tap = false;
+      _release(event.pointer, event.localPosition);
     }
+  }
+
+  void _release(int pointer, Offset position) {
+    _points.remove(pointer);
+    _downs.remove(pointer);
+    if (_points.isEmpty) {
+      final tap = _tap && !_manipulating;
+      _manipulating = false;
+      _tap = false;
+      if (tap) {
+        onTap?.call(position);
+      } else {
+        onEnd?.call();
+      }
+    } else {
+      _rebase();
+    }
+    stopTrackingPointer(pointer);
   }
 
   @override
   void rejectGesture(int pointer) {
-    _points.remove(pointer);
-    stopTrackingPointer(pointer);
+    // Another eager recognizer won first: never tap or move for this pointer.
+    if (!_points.containsKey(pointer)) return;
+    _tap = false;
+    _release(pointer, _points[pointer]!);
   }
 
   @override
   void didStopTrackingLastPointer(int pointer) {
     _points.clear();
-    _active = false;
+    _downs.clear();
+    _manipulating = false;
+    _tap = false;
   }
 
   @override
-  String get debugDescription => 'body two-finger zoom and pan';
+  String get debugDescription => 'body orbit, pinch and pan';
 }
