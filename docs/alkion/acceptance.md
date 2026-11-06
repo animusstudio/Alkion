@@ -15,9 +15,9 @@ status and pick messages use bridge protocol 4 in Dart, JavaScript, Kotlin and
 the Java pick guard. Each side rejects version 3 and unknown regions.
 
 - Explore muscles no longer limits artwork to eight regions. A tap or a list
-  choice selects and highlights each of the thirteen. Adductors and abductors
-  open on the front view; glutes stay on the back. Abductors open on a held
-  side view (a quarter turn), and choosing them from the list turns there.
+  choice selects and highlights each of the thirteen. Adductors open on the
+  front view and glutes on the back. Abductors open on a held side view (a
+  quarter turn), and choosing them from the list turns there.
 - The hint in all four locales now just says to tap a muscle or use the list.
 - Workload counts take region ids from the semantic map through
   `WorkloadMuscle.fromKey`, so a node mapped to `adductors` or `abductors`
