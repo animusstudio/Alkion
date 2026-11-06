@@ -277,7 +277,7 @@ class _CharacterBodyState extends State<CharacterBody>
       return null;
     }
     final request = <String, Object>{
-      'version': 2,
+      'version': 3,
       'id': ++_requestId,
       ...rendered,
       'x': operation.position.dx / operation.size.width,
@@ -374,7 +374,7 @@ class _CharacterBodyState extends State<CharacterBody>
   ];
 
   Map<String, Object> _display() => {
-    'version': 2,
+    'version': 3,
     'style': widget.style.name,
     'scores': {
       for (final muscle in WorkloadMuscle.values)
@@ -445,7 +445,7 @@ class _CharacterBodyState extends State<CharacterBody>
     _channel!.setMethodCallHandler((call) async {
       if (!mounted || call.method != 'status' || call.arguments is! Map) return;
       final event = call.arguments as Map;
-      if (event['version'] != 2) return;
+      if (event['version'] != 3) return;
       if (widget.pickingEnabled && event['generation'] == _generation) {
         const keys = ['generation', 'frame', 'load', 'layout'];
         if (keys.every(

@@ -6,11 +6,28 @@ import {validateDisplay,validatePick,regions} from '../assets/character_body/pro
 import {loadMesh,pickSurfaceRegion,VolumeRenderer} from '../assets/character_body/renderer.js';
 import {fullerMesh} from '../assets/character_body/geometry.js';
 import {posedMesh} from '../assets/character_body/pose-geometry.js';
+import {surfaceRegions} from '../assets/character_body/regions.js';
 import {MotionLoop} from '../assets/character_body/motion.js';
 
-const display={version:2,style:'male',scores:Object.fromEntries(regions.map(k=>[k,0])),neutral:[240,240,245],accent:[255,104,53],background:[12,12,14],theme:'dark',visible:true,reduced:false,compact:true,paused:true,yaw:0,turn:0,command:0,revision:0,retry:0};
+const display={version:3,style:'male',scores:Object.fromEntries(regions.map(k=>[k,0])),neutral:[240,240,245],accent:[255,104,53],background:[12,12,14],theme:'dark',visible:true,reduced:false,compact:true,paused:true,yaw:0,turn:0,command:0,revision:0,retry:0};
 assert.equal(validateDisplay(display),display);
-for(const patch of [{version:1},{turn:NaN},{turn:-1},{turn:Math.PI*2},{revision:-1},{revision:.1},{revision:Number.MAX_SAFE_INTEGER+1},{style:'../outside'},{yaw:NaN},{yaw:Math.PI*2},{command:-1},{retry:.1},{neutral:[256,0,0]},{visible:1},{scores:{...display.scores,chest:Infinity}},{scores:{...display.scores,alien:0}},{records:[]}])assert.throws(()=>validateDisplay({...display,...patch}));
+assert.deepEqual(surfaceRegions.filter(Boolean),regions);
+// Static cross-language contract parity complements (but does not execute) the
+// Android guard. Native queue behavior is exercised by its separate JVM check.
+const native=readFileSync(new URL('../android/app/src/main/kotlin/dev/animusstudio/alkion/CharacterBodyView.kt',import.meta.url),'utf8');
+const nativeKeys=[...native.match(/val muscles = setOf\(([^)]+)\)/)[1].matchAll(/"([a-z]+)"/g)].map(m=>m[1]);
+assert.deepEqual(nativeKeys,regions);assert.match(native,/map\["version"\] != 3/);
+assert.ok(native.includes('"regions.js"'));assert.ok(!native.includes('"version" to 2'));
+const dart=readFileSync(new URL('../lib/ui/character_body.dart',import.meta.url),'utf8');
+assert.ok(dart.includes("'version': 3")&&dart.includes("event['version'] != 3"));
+
+const coarse=JSON.parse(readFileSync(new URL('../test/fixtures/body_workload_cases.json',import.meta.url)));
+assert.equal(coarse.version,2);assert.equal(coarse.projection,'legacy-coarse');assert.deepEqual(coarse.canonicalMuscles,regions);
+const countScore=n=>n<=0?0:n===1?.2:n<=3?.4:n<=6?.6:n<=10?.8:1;
+for(const example of coarse.cases)if(example.expected.availability==='ready')for(const {count,score} of Object.values(example.expected.muscles))assert.equal(score,countScore(count));
+const oldScores=Object.fromEntries(regions.slice(0,8).map(k=>[k,0]));
+assert.throws(()=>validateDisplay({...display,scores:oldScores}));
+for(const patch of [{version:1},{version:2},{turn:NaN},{turn:-1},{turn:Math.PI*2},{revision:-1},{revision:.1},{revision:Number.MAX_SAFE_INTEGER+1},{style:'../outside'},{yaw:NaN},{yaw:Math.PI*2},{command:-1},{retry:.1},{neutral:[256,0,0]},{visible:1},{scores:{...display.scores,chest:Infinity}},{scores:{...display.scores,alien:0}},{records:[]}])assert.throws(()=>validateDisplay({...display,...patch}));
 
 // Production loader: exact style dispatch, same-origin paths, hash failure.
 const positions=new Float32Array([-.5,-1,-.2,.5,.6,.1,-.2,1,.3]);
@@ -100,7 +117,7 @@ failLoad=true;update({retry:1});await flush();assert.equal(events.at(-1).status,
 failLoad=false;update({retry:2,style:'female'});await flush();frame();assert.equal(events.at(-1).status,'ready');assert.equal(loadCount,3);
 update({paused:true,interaction:{enabled:true,selected:null,generation:7}});frame();
 const token=()=>Object.fromEntries(['generation','frame','load','layout'].map(key=>[key,events.findLast(event=>event.status==='ready')[key]]));
-const pick=(patch={})=>window.AlkionBody.pick({version:2,id:42,x:.5,y:.5,...token(),...patch});
+const pick=(patch={})=>window.AlkionBody.pick({version:3,id:42,x:.5,y:.5,...token(),...patch});
 pick();assert.equal(events.at(-1).region,'chest');
 pick({frame:0});assert.equal(events.at(-1).region,null);
 const beforeZoom=token();update({view:{zoom:3,x:.5,y:-.4}});pick(beforeZoom);assert.equal(events.at(-1).region,null,'Zoom/pan invalidates old pixels');frame();pick();assert.equal(events.at(-1).region,'chest');
@@ -120,7 +137,7 @@ assert.equal(events.at(-1).lease,1);assert.equal(events.at(-1).cacheHit,1);
 window.AlkionBody.hostPaused(true);const hiddenBaseline=loadCount;update({style:'male',retry:3});await flush();assert.equal(loadCount,hiddenBaseline,'No hidden model preparation');
 window.AlkionBody.hostPaused(false);await flush();frame();assert.equal(loadCount,hiddenBaseline+1);
 update({paused:true});resized();assert.equal(raf.size,1);window.AlkionBody.dispose();assert.equal(raf.size,0);baseline=draws;frame();assert.equal(draws,baseline);assert.ok(disposals>=2);
-console.log('PASS: protocol v2, exact style dispatch, one latest draw/frame, no identical paused redraws, cumulative drag continuity, lifecycle/reduced motion/retry/disposal');
+console.log('PASS: protocol v3, exact style dispatch, one latest draw/frame, no identical paused redraws, cumulative drag continuity, lifecycle/reduced motion/retry/disposal');
 
 // Exact retained-pixel addressing (WebGL bottom-up), including neutral and
 // background; no neighbour/hidden-region approximation is permitted.
@@ -131,10 +148,10 @@ assert.equal(pickSurfaceRegion(pixels,3,2,names,0,0),'chest');
 assert.equal(pickSurfaceRegion(pixels,3,2,names,.5,.1),'back');
 assert.equal(pickSurfaceRegion(pixels,3,2,names,.99,.99),'back');
 for(const [x,y] of [[.99,0],[0,.8],[.5,.8],[1,0],[0,1],[-.01,0],[NaN,0],[0,Infinity]])assert.equal(pickSurfaceRegion(pixels,3,2,names,x,y),null);
-const request={version:2,id:1,generation:0,frame:1,load:1,layout:0,x:.5,y:.5};
+const request={version:3,id:1,generation:0,frame:1,load:1,layout:0,x:.5,y:.5};
 assert.equal(validatePick(request),request);
-for(const patch of [{id:-1},{generation:.5},{frame:NaN},{load:Infinity},{layout:1e20},{x:1},{y:-.1},{x:NaN},{region:'chest'}])assert.throws(()=>validatePick({...request,...patch}));
-for(const patch of [{enabled:1},{selected:'core'},{generation:-1},{selected:'chest',enabled:false}])assert.throws(()=>validateDisplay({...display,interaction:{enabled:true,selected:null,generation:0,...patch}}));
+for(const patch of [{id:-1},{generation:.5},{frame:NaN},{load:Infinity},{layout:1e20},{x:1},{y:-.1},{x:NaN},{region:'chest'},{version:2}])assert.throws(()=>validatePick({...request,...patch}));
+for(const patch of [{enabled:1},{selected:'alien'},{generation:-1},{selected:'chest',enabled:false}])assert.throws(()=>validateDisplay({...display,interaction:{enabled:true,selected:null,generation:0,...patch}}));
 console.log('PASS: exact top-left normalized surface picking, background/neutral/unknown rejection and bounded interaction protocol');
 
 for(const view of [{zoom:0,x:0,y:0},{zoom:3.1,x:0,y:0},{zoom:1,x:.01,y:0},{zoom:3,x:1.1,y:0},{zoom:2,x:0,y:NaN},{zoom:2,x:0,y:0,other:1}])assert.throws(()=>validateDisplay({...display,view}));

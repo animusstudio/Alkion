@@ -36,7 +36,7 @@ public final class CharacterBodyBridgeCheck {
         require(sent.equals(List.of("initial", "turn=120", "visible=false,paused=true", "replacement-view")),
             "Old view callback affected replacement");
         replacement.close();
-        Map<String, Object> request = new HashMap<>(Map.of("version", 2, "id", 1, "generation", 2, "frame", 3, "load", 4, "layout", 5, "x", .5, "y", .5));
+        Map<String, Object> request = new HashMap<>(Map.of("version", 3, "id", 1, "generation", 2, "frame", 3, "load", 4, "layout", 5, "x", .5, "y", .5));
         Map<String, Object> event = new HashMap<>(Map.of("id", 1L, "generation", 2L, "frame", 3L, "load", 4L, "layout", 5L, "region", "chest"));
         Map<String, Object> rendered = new HashMap<>(event);
         require(BodyPickGuard.request(request), "Valid pick request rejected");
@@ -46,10 +46,14 @@ public final class CharacterBodyBridgeCheck {
             require(!BodyPickGuard.matches(request, event, rendered), "Stale " + key + " accepted");
             rendered.put(key, event.get(key));
         }
-        event.put("region", "core");
+        event.put("region", "forearms");
+        require(BodyPickGuard.matches(request, event, rendered), "Projected region rejected");
+        event.put("region", "alien");
         require(!BodyPickGuard.matches(request, event, rendered), "Unknown region accepted");
         event.put("region", null);
         require(BodyPickGuard.matches(request, event, rendered), "Background result rejected");
+        request.put("version", 2); require(!BodyPickGuard.request(request), "Old protocol accepted");
+        request.put("version", 3);
         request.put("x", Double.NaN); require(!BodyPickGuard.request(request), "NaN accepted");
         request.put("x", 1); require(!BodyPickGuard.request(request), "Out-of-bounds coordinate accepted");
         request.put("x", .5); request.put("id", .5); require(!BodyPickGuard.request(request), "Fractional identity accepted");

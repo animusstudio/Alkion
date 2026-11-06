@@ -2,6 +2,7 @@ import {glyphAlphabet,tonalGlyphs,samplingPitch,columnPhase,glyphCoverage,sample
 import {bodyFit,fullerMesh} from './geometry.js';
 import {posedMesh} from './pose-geometry.js';
 import {regions} from './protocol.js';
+import {surfaceRegions,regionProjectionGLSL,surfaceProjectionRevision} from './regions.js';
 
 // The caller owns a two-style cache; failed or aborted loads are never retained.
 export async function loadMesh(style,signal,timings={}){
@@ -29,7 +30,7 @@ export async function loadMesh(style,signal,timings={}){
  }
  if(data.positions.length!==manifest.vertices*3||data.normals.length!==data.positions.length||data.uv.length!==manifest.vertices*2||data.indices.length!==manifest.triangles*3)throw new Error('Body mesh layout mismatch');
  const prepareStart=performance.now(),prepared=style==='female'?posedMesh(data):fullerMesh(data);
- timings.prepareMs=performance.now()-prepareStart;return prepared;
+ timings.prepareMs=performance.now()-prepareStart;return {...prepared,regionPositions:data.positions};
 }
 
 /** A null/unknown atlas entry can never be a selection, including no selection. */
@@ -38,7 +39,7 @@ export function atlasRegionColor(region,muscles,theme,selected=null){
 }
 
 const glyphIndices=Object.fromEntries([...glyphAlphabet].map((glyph,index)=>[glyph,index]));
-const diagnosticColors=[[118,124,138],[255,105,70],[100,165,255],[240,190,70],[140,210,100],[200,140,240],[70,205,200],[245,130,190],[170,180,250]];
+const diagnosticColors=[[118,124,138],[255,105,70],[100,165,255],[240,190,70],[140,210,100],[200,140,240],[70,205,200],[245,130,190],[170,180,250],[255,145,70],[110,225,145],[240,100,170]];
 
 /** Sample only the frontmost retained raster pixel; no radius or neighbour search. */
 export function pickSurfaceRegion(pixels,width,height,manifestRegions,x,y){
@@ -50,22 +51,24 @@ export function pickSurfaceRegion(pixels,width,height,manifestRegions,x,y){
 
 /** A real indexed depth-buffered surface sampled into character cells. */
 export class VolumeRenderer{
- constructor(canvas,mesh,compact=false){
+ constructor(canvas,mesh,compact=false,{diagnostics=false}={}){
+  this.diagnostics=diagnostics;
   this.canvas=canvas;this.mesh=mesh;this.compact=compact;this.sample={};this.drawCount=0;this.glyphCount=0;
   this.ctx=canvas.getContext('2d');if(!this.ctx)throw new Error('Canvas unavailable');
   this.surface=document.createElement('canvas');const gl=this.gl=this.surface.getContext('webgl',{alpha:true,antialias:false,preserveDrawingBuffer:true});
   if(!gl||!gl.getExtension('OES_element_index_uint'))throw new Error('Indexed graphics unavailable');
   const compile=(type,source)=>{const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader));return shader;};
   const vs=compile(gl.VERTEX_SHADER,`
-   attribute vec3 position;attribute vec3 normal;attribute vec2 uv;
+   attribute vec3 position;attribute vec3 normal;attribute vec2 uv;attribute vec3 regionPosition;
    uniform float yaw;uniform float aspect;uniform float fit;uniform float depthRange;uniform vec2 pan;
-   varying vec3 viewNormal;varying vec2 sourceUV;varying float sourceDepth;
+   varying vec3 viewNormal;varying vec2 sourceUV;varying float sourceDepth;varying vec3 sourcePosition;
    void main(){float c=cos(yaw),s=sin(yaw);vec3 p=vec3(c*position.x+s*position.z,position.y,-s*position.x+c*position.z);
-    sourceDepth=.5+p.z/(2.0*depthRange);viewNormal=vec3(c*normal.x+s*normal.z,normal.y,-s*normal.x+c*normal.z);sourceUV=uv;
+    sourceDepth=.5+p.z/(2.0*depthRange);viewNormal=vec3(c*normal.x+s*normal.z,normal.y,-s*normal.x+c*normal.z);sourceUV=uv;sourcePosition=regionPosition;
     gl_Position=vec4(p.x*fit/aspect+pan.x,p.y*fit+pan.y,-p.z/depthRange,1.0);}`);
   const fs=compile(gl.FRAGMENT_SHADER,`
    precision mediump float;uniform sampler2D sourceMasks;
-   varying vec3 viewNormal;varying vec2 sourceUV;varying float sourceDepth;
+   varying vec3 viewNormal;varying vec2 sourceUV;varying float sourceDepth;varying vec3 sourcePosition;
+   ${regionProjectionGLSL}
    void main(){vec3 vn=normalize(viewNormal);
     vec4 mask=texture2D(sourceMasks,sourceUV);
     float diffuse=max(0.0,dot(vn,normalize(vec3(-.65,.80,.85))));
@@ -76,11 +79,11 @@ export class VolumeRenderer{
     // Posed female-source surface and inverse-Jacobian transported normals.
     // The atlas contributes identity only;
     // its original colors and printed muscle abbreviations never enter tone.
-    gl_FragColor=vec4(shade,mask.r,sourceDepth,1.0);}`);
+    gl_FragColor=vec4(shade,projectRegion(sourcePosition,mask.r),sourceDepth,1.0);}`);
   const program=this.program=gl.createProgram();gl.attachShader(program,vs);gl.attachShader(program,fs);gl.linkProgram(program);
   if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));
   gl.deleteShader(vs);gl.deleteShader(fs);gl.useProgram(program);this.buffers=[];
-  for(const [name,size,data] of [['position',3,mesh.positions],['normal',3,mesh.normals],['uv',2,mesh.uv]]){
+  for(const [name,size,data] of [['position',3,mesh.positions],['normal',3,mesh.normals],['uv',2,mesh.uv],['regionPosition',3,mesh.regionPositions]]){
    const buffer=gl.createBuffer();this.buffers.push(buffer);gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);
    const location=gl.getAttribLocation(program,name);gl.enableVertexAttribArray(location);gl.vertexAttribPointer(location,size,gl.FLOAT,false,0,0);
   }
@@ -106,7 +109,7 @@ export class VolumeRenderer{
  buildAtlas(muscles,theme,selected=null){
   const key=JSON.stringify([muscles,theme,selected,colors[theme],this.cols,this.rows,this.canvas.width]);if(key===this.atlasKey)return;this.atlasKey=key;
   this.cellW=this.canvas.width/this.cols;this.cellH=this.canvas.height/this.rows;this.tileW=Math.ceil(this.cellW+3);this.tileH=Math.ceil(this.cellH+3);
-  this.atlas.width=this.tileW*glyphAlphabet.length;this.atlas.height=this.tileH*this.mesh.manifest.regions.length;
+  this.atlas.width=this.tileW*glyphAlphabet.length;this.atlas.height=this.tileH*surfaceRegions.length;
   // Measure visible ink rather than the em/advance box. Space Mono capitals
   // occupy about 70% of an em; em fitting left empty bands between every row.
   const ctx=this.atlas.getContext('2d');ctx.font='400 100px "Space Mono"';
@@ -127,7 +130,7 @@ export class VolumeRenderer{
   const raster=document.createElement('canvas'),scale=4;
   raster.width=this.atlas.width*scale;raster.height=this.atlas.height*scale;
   const ink=raster.getContext('2d');ink.scale(scale,scale);ink.textAlign='left';ink.textBaseline='alphabetic';
-  this.mesh.manifest.regions.forEach((region,i)=>{
+  surfaceRegions.forEach((region,i)=>{
    ink.fillStyle=atlasRegionColor(region,muscles,theme,selected);
    for(let g=0;g<glyphAlphabet.length;g++){
     const m=metrics[g],size=Math.min(fontSize,this.cellW*inkFit/(m.left+m.right),this.cellH*inkFit/(m.ascent+m.descent));
@@ -160,13 +163,13 @@ export class VolumeRenderer{
    count++;histogram[glyph]=(histogram[glyph]||0)+1;
    signature=Math.imul(signature^cell.at^cell.shade^glyph.charCodeAt(0)^phase,16777619)>>>0;
   }
-  ctx.globalAlpha=1;this.drawCount++;this.glyphCount=count;this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);
+  ctx.globalAlpha=1;this.drawCount++;this.glyphCount=count;this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.surfaceProjection=surfaceProjectionRevision;if(this.diagnostics){const regionPixels={};for(let at=0;at<this.pixels.length;at+=4)if(this.pixels[at+3]){const id=surfaceRegions[this.pixels[at+1]];if(id)regionPixels[id]=(regionPixels[id]||0)+1;}this.canvas.dataset.regionPixels=JSON.stringify(regionPixels);}
  }
  // Normalized native coordinates address the retained, depth-tested surface,
  // not a nearby glyph/anchor. WebGL readback rows run bottom to top.
  pick(x,y){
   if(this.lost||this.pickWidth!==this.canvas.clientWidth||this.pickHeight!==this.canvas.clientHeight)return null;
-  return pickSurfaceRegion(this.pixels,this.surface.width,this.surface.height,this.mesh.manifest.regions,x,y);
+  return pickSurfaceRegion(this.pixels,this.surface.width,this.surface.height,surfaceRegions,x,y);
  }
  drawDiagnostic(mode,theme){
   const width=this.surface.width,height=this.surface.height,pixels=new Uint8ClampedArray(width*height*4);

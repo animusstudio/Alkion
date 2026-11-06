@@ -97,7 +97,10 @@ class _CharacterBodyPreviewState extends State<CharacterBodyPreview> {
                                 scores: coloured
                                     ? const {
                                         WorkloadMuscle.chest: 1,
-                                        WorkloadMuscle.quads: .5,
+                                        WorkloadMuscle.quads: .4,
+                                        WorkloadMuscle.glutes: 1,
+                                        WorkloadMuscle.core: .6,
+                                        WorkloadMuscle.forearms: .8,
                                       }
                                     : const {},
                                 neutral: t.text,
