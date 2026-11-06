@@ -5,7 +5,9 @@ import '../theme/alkion_icon.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../data/body_workload.dart';
-import '../data/body_workload_adapters.dart';
+import '../data/body_workload_projection.dart';
+import '../catalog/catalog.dart';
+import '../catalog_ui/catalog_trial_scope.dart';
 import '../ui/body_figure.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
@@ -42,8 +44,8 @@ class SessionSummaryScreen extends StatefulWidget {
 }
 
 class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
-  late final SessionRepository _sessionRepo;
-  late final ExerciseRepository _exerciseRepo;
+  LocalDatabase? _database;
+  StoreToken? _dependencyToken;
 
   SessionSummaryRow? _session;
   List<ExerciseBlockData>? _blocks;
@@ -53,28 +55,61 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     WorkoutWorkloadMode.saved,
   );
 
+  WorkoutWorkload _currentWorkload = WorkoutWorkload.loading(
+    WorkoutWorkloadMode.saved,
+  );
+  CatalogBundle? _bundle;
+  bool _started = false;
+  int _loadEpoch = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bundle = CatalogTrialScope.maybeOf(context)?.bundle;
+    final database = Provider.of<LocalDatabase>(context);
+    final token = database.token;
+    if (!_started ||
+        !identical(bundle, _bundle) ||
+        !identical(database, _database) ||
+        _dependencyToken?.profileId != token.profileId ||
+        _dependencyToken?.generation != token.generation) {
+      _started = true;
+      _bundle = bundle;
+      _database = database;
+      _dependencyToken = token;
+      _load();
+    }
+  }
+
   /// Error state: [_notFound] means the session row was missing; otherwise
   /// [_loadError] (when non-null) carries the raw exception detail. Resolved to
   /// a localized message at build time so the locale is fully available.
   bool _notFound = false;
   String? _loadError;
 
-  @override
-  void initState() {
-    super.initState();
-    _sessionRepo = SessionRepository.local(context.read<LocalDatabase>());
-    _exerciseRepo = ExerciseRepository.local(context.read<LocalDatabase>());
-    _load();
-  }
-
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
+    final database = context.read<LocalDatabase>();
+    final token = database.token;
+    final sessionRepo = SessionRepository.local(database);
+    final exerciseRepo = ExerciseRepository.local(database);
+    _loading = true;
+    _loadError = null;
+    _notFound = false;
+    _workload = WorkoutWorkload.loading(WorkoutWorkloadMode.saved);
+    _currentWorkload = WorkoutWorkload.loading(WorkoutWorkloadMode.saved);
     try {
       // Read the session summary row
-      final rows = await context.read<LocalDatabase>().getAll(
+      final rows = await database.getAll(
         'SELECT * FROM sessions WHERE id = ?',
         [widget.sessionId],
       );
-      if (!mounted) return;
+      if (!mounted ||
+          epoch != _loadEpoch ||
+          !identical(database, context.read<LocalDatabase>())) {
+        return;
+      }
+      requireWorkloadToken(database, token);
       if (rows.isEmpty) {
         setState(() {
           _notFound = true;
@@ -86,28 +121,44 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       final session = SessionSummaryRow.fromRow(rows.first);
 
       // Read and group sets
-      final sets = await _sessionRepo.setsForSession(widget.sessionId);
-      final blocks = _sessionRepo.groupIntoBlocks(sets);
+      final sets = await sessionRepo.setsForSession(widget.sessionId);
+      final blocks = sessionRepo.groupIntoBlocks(sets);
 
       // Load exercise names for display
-      final allExercises = await _exerciseRepo.all();
+      final allExercises = await exerciseRepo.all();
       final names = {for (final e in allExercises) e.id: e.name};
 
-      if (!mounted) return;
+      final views = await resolveSavedWorkloads(
+        database: database,
+        sets: sets,
+        exercisesById: {for (final e in allExercises) e.id: e},
+        currentBundle: _bundle,
+      );
+      requireWorkloadToken(database, token);
+      if (!mounted ||
+          epoch != _loadEpoch ||
+          !identical(database, context.read<LocalDatabase>())) {
+        return;
+      }
       setState(() {
-        _workload = savedWorkoutWorkload(
-          sets: sets,
-          exercisesById: {for (final e in allExercises) e.id: e},
-        );
+        _workload = views.recorded;
+        _currentWorkload = views.current;
         _session = session;
         _blocks = blocks;
         _exerciseNames = names;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted ||
+          epoch != _loadEpoch ||
+          !identical(database, context.read<LocalDatabase>())) {
+        return;
+      }
       setState(() {
         _workload = WorkoutWorkload.unavailable(WorkoutWorkloadMode.saved);
+        _currentWorkload = WorkoutWorkload.unavailable(
+          WorkoutWorkloadMode.saved,
+        );
         _loadError = '$e';
         _loading = false;
       });
@@ -131,8 +182,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : errorMessage != null
           ? _ErrorState(
-              onWorkload: () =>
-                  showBodyWorkloadSheet(context, workload: () => _workload),
+              onWorkload: () => showBodyWorkloadSheet(
+                context,
+                workload: () => _workload,
+                currentWorkload: () => _currentWorkload,
+              ),
               error: errorMessage,
               doneLabel: l.commonDone,
               tokens: tokens,
@@ -140,8 +194,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   Navigator.of(context).popUntil((route) => route.isFirst),
             )
           : _SummaryBody(
-              onWorkload: () =>
-                  showBodyWorkloadSheet(context, workload: () => _workload),
+              onWorkload: () => showBodyWorkloadSheet(
+                context,
+                workload: () => _workload,
+                currentWorkload: () => _currentWorkload,
+              ),
               session: _session!,
               blocks: _blocks!,
               exerciseNames: _exerciseNames,

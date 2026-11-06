@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/active_session_draft.dart';
+import '../catalog/catalog.dart';
 import '../data/day_template_repository.dart'; // resolveSlot, DayTemplate
 import '../data/exercise_repository.dart';
 import '../data/finished_session_store.dart';
@@ -1329,6 +1330,7 @@ class ActiveSessionController extends ChangeNotifier {
     DayTemplate template, {
     required ExerciseRepository exerciseRepo,
     required SessionRepository sessionRepo,
+    CatalogBundle? currentBundle,
   }) async {
     // Count all slots, including unresolved references, before any lookup.
     if (template.slots.length > freshTemplateSlotLimit) {
@@ -1378,6 +1380,44 @@ class ActiveSessionController extends ChangeNotifier {
       authoredRepRanges.add(authoredRepRangeFor(slot, exercise));
     }
 
+    // The planned current assessment becomes an immutable active selection.
+    // Upgrade only an exact compatible execution; unavailable/incompatible
+    // current choices retain recorded selections and their evidence.
+    if (currentBundle != null) {
+      final repository = CatalogExecutionRepository.local(sessionRepo.db);
+      final resolutions = await repository.resolveMuscles(
+        [
+          for (final selection in selections)
+            if (selection != null) selection,
+        ],
+        currentBundle: currentBundle,
+        currentAssessment: true,
+      );
+      final upgraded = <String, CatalogSelectionEvidence>{};
+      for (var i = 0; i < selections.length; i++) {
+        final selection = selections[i];
+        if (selection == null ||
+            resolutions[selection.muscleResolutionKey]?.profile == null) {
+          continue;
+        }
+        if (selection.bundleDigest == currentBundle.digest) continue;
+        var frozen = upgraded[selection.muscleResolutionKey];
+        if (frozen == null) {
+          final owned = await repository.commitPrepared(
+            await repository.prepareSelection(
+              bundle: currentBundle,
+              variantId: selection.variantId,
+              setupId: selection.contextId,
+              catalogNamespace: selection.catalogNamespace,
+              displayLabel: selection.displayLabel,
+            ),
+          );
+          frozen = owned.selection;
+          upgraded[selection.muscleResolutionKey] = frozen;
+        }
+        selections[i] = frozen;
+      }
+    }
     // No generated block, per-set UUID or draft mutation precedes preflight.
     final blocks = <BlockState>[];
     _originSlotIds.clear();

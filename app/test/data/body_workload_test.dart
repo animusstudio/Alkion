@@ -16,9 +16,15 @@ void main() {
           as Map<String, dynamic>;
 
   test('canonical IDs match existing catalog and shared fixture exactly', () {
-    expect(fixture['version'], 1);
-    expect(WorkloadMuscle.values.map((m) => m.name), kMuscleLabels.keys);
-    expect(fixture['canonicalMuscles'], kMuscleLabels.keys.toList());
+    expect(fixture['version'], 2);
+    expect(
+      WorkloadMuscle.values.take(8).map((m) => m.name),
+      kMuscleLabels.keys,
+    );
+    expect(
+      fixture['canonicalMuscles'],
+      WorkloadMuscle.values.map((m) => m.name).toList(),
+    );
   });
 
   for (final raw in fixture['cases'] as List) {
@@ -61,8 +67,8 @@ void main() {
         _slot(_exercise('custom'), workSets: 3),
       ]);
       expect(result.mode, WorkoutWorkloadMode.planned);
-      expect(result.muscles[WorkloadMuscle.chest]!.count, 4);
-      expect(result.muscles[WorkloadMuscle.back]!.score, .5);
+      expect(result.legacyMuscles[WorkloadMuscle.chest]!.count, 4);
+      expect(result.legacyMuscles[WorkloadMuscle.back]!.score, .4);
       expect(result.coverage!.mappedSets, 6);
       expect(result.coverage!.unmappedSets, 3);
       expect(result.coverage!.status, WorkloadCoverageStatus.partial);
@@ -89,7 +95,7 @@ void main() {
     expect(
       plannedWorkoutWorkload(
         Iterable.generate(100, (_) => slot),
-      ).muscles[WorkloadMuscle.chest]!.count,
+      ).legacyMuscles[WorkloadMuscle.chest]!.count,
       100,
     );
     expect(
@@ -106,7 +112,7 @@ void main() {
     final slot = _slot(_exercise('chest'), workSets: 99, warmupSets: 1);
     final slots = List.generate(10, (_) => slot);
     expect(
-      plannedWorkoutWorkload(slots).muscles[WorkloadMuscle.chest]!.count,
+      plannedWorkoutWorkload(slots).legacyMuscles[WorkloadMuscle.chest]!.count,
       990,
     );
     expect(
@@ -150,19 +156,19 @@ void main() {
       block.warmupSets.add(_live('warmup', warmup: true));
       final draft = _draft([block]);
       final original = activeWorkoutWorkload(draft);
-      expect(original.muscles[WorkloadMuscle.chest]!.count, 1);
+      expect(original.legacyMuscles[WorkloadMuscle.chest]!.count, 1);
       expect(original.coverage!.pendingSets, 1);
       pending.done = true;
       pending.weightKg = 999;
       pending.reps = 99;
       pending.rir = 5;
       expect(
-        activeWorkoutWorkload(draft).muscles[WorkloadMuscle.chest]!.count,
+        activeWorkoutWorkload(draft).legacyMuscles[WorkloadMuscle.chest]!.count,
         2,
       );
       block.workingSets.add(_live('added'));
       expect(
-        activeWorkoutWorkload(draft).muscles[WorkloadMuscle.chest]!.count,
+        activeWorkoutWorkload(draft).legacyMuscles[WorkloadMuscle.chest]!.count,
         3,
       );
       block.workingSets.removeLast();
@@ -178,8 +184,8 @@ void main() {
         WorkloadCoverageStatus.empty,
       );
       // Already-calculated projections never change as the draft is edited.
-      expect(original.muscles[WorkloadMuscle.chest]!.count, 1);
-      expect(() => original.muscles.clear(), throwsUnsupportedError);
+      expect(original.legacyMuscles[WorkloadMuscle.chest]!.count, 1);
+      expect(() => original.legacyMuscles.clear(), throwsUnsupportedError);
     },
   );
 
@@ -193,7 +199,7 @@ void main() {
       _live('deleted', raw: {'is_warmup': 0, 'deleted': 1}),
     ]);
     final result = activeWorkoutWorkload(_draft([block]).deepCopy());
-    expect(result.muscles[WorkloadMuscle.back]!.count, 1);
+    expect(result.legacyMuscles[WorkloadMuscle.back]!.count, 1);
     expect(result.coverage!.unknownKindSets, 3);
     expect(result.coverage!.warmupSets, 1);
     expect(result.coverage!.deletedSets, 1);
@@ -222,7 +228,7 @@ void main() {
         },
       );
       expect(result.mode, WorkoutWorkloadMode.saved);
-      expect(result.muscles[WorkloadMuscle.chest]!.count, 2);
+      expect(result.legacyMuscles[WorkloadMuscle.chest]!.count, 2);
       expect(result.coverage!.mappedSets, 2);
       expect(result.coverage!.unmappedSets, 2);
       expect(result.coverage!.unknownKindSets, 3);
@@ -245,9 +251,11 @@ void main() {
         ),
       ];
       for (final result in results) {
-        expect(result.muscles.length, 8);
+        expect(result.legacyMuscles.length, 11);
         expect(
-          result.muscles.values.every((m) => m.count == 0 && m.score == 0),
+          result.legacyMuscles.values.every(
+            (m) => m.count == 0 && m.score == 0,
+          ),
           true,
         );
       }
@@ -262,7 +270,7 @@ Map<String, Object?> _output(WorkoutWorkload result) {
     'mode': result.mode.name,
     'availability': result.availability.name,
     'muscles': {
-      for (final entry in result.muscles.entries)
+      for (final entry in result.legacyMuscles.entries)
         entry.key.name: {
           'count': entry.value.count,
           'score': entry.value.score,

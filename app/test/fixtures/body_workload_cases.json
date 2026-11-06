@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "canonicalMuscles": [
     "chest",
     "back",
@@ -8,7 +8,10 @@
     "hamstrings",
     "calves",
     "biceps",
-    "triceps"
+    "triceps",
+    "glutes",
+    "core",
+    "forearms"
   ],
   "cases": [
     {
@@ -118,35 +121,47 @@
         "muscles": {
           "chest": {
             "count": 3,
-            "score": 1.0
+            "score": 0.4
           },
           "back": {
             "count": 2,
-            "score": 0.6666666666666666
+            "score": 0.4
           },
           "shoulders": {
             "count": 1,
-            "score": 0.3333333333333333
+            "score": 0.2
           },
           "quads": {
             "count": 1,
-            "score": 0.3333333333333333
+            "score": 0.2
           },
           "hamstrings": {
             "count": 1,
-            "score": 0.3333333333333333
+            "score": 0.2
           },
           "calves": {
             "count": 1,
-            "score": 0.3333333333333333
+            "score": 0.2
           },
           "biceps": {
             "count": 1,
-            "score": 0.3333333333333333
+            "score": 0.2
           },
           "triceps": {
             "count": 1,
-            "score": 0.3333333333333333
+            "score": 0.2
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -219,6 +234,18 @@
             "score": 0.0
           },
           "triceps": {
+            "count": 0,
+            "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
             "count": 0,
             "score": 0.0
           }
@@ -316,11 +343,11 @@
         "muscles": {
           "chest": {
             "count": 2,
-            "score": 1.0
+            "score": 0.4
           },
           "back": {
             "count": 1,
-            "score": 0.5
+            "score": 0.2
           },
           "shoulders": {
             "count": 0,
@@ -343,6 +370,18 @@
             "score": 0.0
           },
           "triceps": {
+            "count": 0,
+            "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
             "count": 0,
             "score": 0.0
           }
@@ -427,7 +466,7 @@
           },
           "quads": {
             "count": 3,
-            "score": 1.0
+            "score": 0.4
           },
           "hamstrings": {
             "count": 0,
@@ -435,13 +474,25 @@
           },
           "calves": {
             "count": 1,
-            "score": 0.3333333333333333
+            "score": 0.2
           },
           "biceps": {
             "count": 0,
             "score": 0.0
           },
           "triceps": {
+            "count": 0,
+            "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
             "count": 0,
             "score": 0.0
           }
@@ -528,6 +579,18 @@
           "triceps": {
             "count": 0,
             "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -597,7 +660,7 @@
           },
           "back": {
             "count": 1,
-            "score": 1.0
+            "score": 0.2
           },
           "shoulders": {
             "count": 0,
@@ -620,6 +683,18 @@
             "score": 0.0
           },
           "triceps": {
+            "count": 0,
+            "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
             "count": 0,
             "score": 0.0
           }
@@ -696,6 +771,18 @@
           "triceps": {
             "count": 0,
             "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -747,6 +834,18 @@
             "score": 0.0
           },
           "triceps": {
+            "count": 0,
+            "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
             "count": 0,
             "score": 0.0
           }
@@ -818,6 +917,18 @@
           "triceps": {
             "count": 0,
             "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -882,6 +993,18 @@
           "triceps": {
             "count": 0,
             "score": 0.0
+          },
+          "glutes": {
+            "count": 0,
+            "score": 0.0
+          },
+          "core": {
+            "count": 0,
+            "score": 0.0
+          },
+          "forearms": {
+            "count": 0,
+            "score": 0.0
           }
         },
         "coverage": {
@@ -919,5 +1042,6 @@
         "coverage": null
       }
     }
-  ]
+  ],
+  "projection": "legacy-coarse"
 }

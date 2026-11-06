@@ -1,4 +1,6 @@
 import '../session/active_session_controller.dart';
+import '../domain/catalog_execution.dart';
+import 'catalog_execution_repository.dart';
 import 'body_workload.dart';
 import 'models.dart';
 
@@ -6,7 +8,11 @@ import 'models.dart';
 /// Preflights the fresh-session limits before generating any set inputs. Invalid
 /// prescriptions throw [FreshSessionLimitException] and need explicit correction;
 /// callers must present an unavailable projection rather than empty success.
-WorkoutWorkload plannedWorkoutWorkload(Iterable<ResolvedSlot> slots) {
+WorkoutWorkload plannedWorkoutWorkload(
+  Iterable<ResolvedSlot> slots, {
+  List<CatalogSelectionEvidence?> selections = const [],
+  Map<String, CatalogMuscleResolution> resolutions = const {},
+}) {
   final boundedSlots = <ResolvedSlot>[];
   var remaining = freshGeneratedSetLimit;
   for (final slot in slots) {
@@ -42,12 +48,22 @@ WorkoutWorkload plannedWorkoutWorkload(Iterable<ResolvedSlot> slots) {
   }
   return calculateWorkoutWorkload(
     mode: WorkoutWorkloadMode.planned,
-    exercises: boundedSlots.map(
-      (slot) => WorkloadExerciseInput(
-        muscleGroup: slot.exercise.muscleGroup,
+    exercises: boundedSlots.indexed.map(
+      (entry) => WorkloadExerciseInput(
+        catalogBacked:
+            (entry.$1 < selections.length && selections[entry.$1] != null) ||
+            entry.$2.exercise.executionDefinition != null,
+        resolution: entry.$1 < selections.length
+            ? resolutions[selections[entry.$1]?.muscleResolutionKey]
+            : null,
+        muscleGroup: entry.$2.exercise.muscleGroup,
         sets: Iterable.generate(
-          slot.workSets,
-          (_) => const WorkloadSetInput(completed: false, isWarmup: false),
+          entry.$2.workSets,
+          (index) => WorkloadSetInput(
+            physicalId: 'planned:${entry.$1}:$index',
+            completed: false,
+            isWarmup: false,
+          ),
         ),
       ),
     ),
@@ -56,22 +72,31 @@ WorkoutWorkload plannedWorkoutWorkload(Iterable<ResolvedSlot> slots) {
 
 /// Takes the controller's current draft; no cached totals or planned targets.
 /// Reinvoke after completion, undo, add/remove, edits or resume.
-WorkoutWorkload activeWorkoutWorkload(SessionDraft draft) =>
-    calculateWorkoutWorkload(
-      mode: WorkoutWorkloadMode.active,
-      exercises: draft.blocks.map(
-        (block) => WorkloadExerciseInput(
-          muscleGroup: block.exercise.muscleGroup,
-          sets: block.workingSets.map(
-            (set) => WorkloadSetInput(
-              completed: set.done,
-              isWarmup: _warmupEvidence(set.isWarmup, set.rawFields),
-              deleted: _deleted(set.rawFields),
-            ),
+WorkoutWorkload activeWorkoutWorkload(
+  SessionDraft draft, {
+  Map<String, CatalogMuscleResolution> resolutions = const {},
+}) => calculateWorkoutWorkload(
+  mode: WorkoutWorkloadMode.active,
+  exercises: draft.blocks.expand(
+    (block) => [...block.warmupSets, ...block.workingSets].map(
+      (set) => WorkloadExerciseInput(
+        muscleGroup: block.exercise.muscleGroup,
+        catalogBacked: set.catalog != null || block.catalogSelection != null,
+        resolution:
+            resolutions[(set.catalog?.selection ?? block.catalogSelection)
+                ?.muscleResolutionKey],
+        sets: [
+          WorkloadSetInput(
+            physicalId: '${draft.sessionId}:${set.id}',
+            completed: set.done,
+            isWarmup: _warmupEvidence(set.isWarmup, set.rawFields),
+            deleted: _deleted(set.rawFields),
           ),
-        ),
+        ],
       ),
-    );
+    ),
+  ),
+);
 
 /// Project one saved workout's current sets and exercise metadata, obtained by
 /// the caller. A missing exercise remains explicitly unmapped. Read errors must
@@ -79,13 +104,19 @@ WorkoutWorkload activeWorkoutWorkload(SessionDraft draft) =>
 WorkoutWorkload savedWorkoutWorkload({
   required Iterable<LoggedSet> sets,
   required Map<String, Exercise> exercisesById,
+  Map<String, CatalogMuscleResolution> resolutions = const {},
 }) => calculateWorkoutWorkload(
   mode: WorkoutWorkloadMode.saved,
   exercises: sets.map(
     (set) => WorkloadExerciseInput(
       muscleGroup: exercisesById[set.exerciseId]?.muscleGroup,
+      catalogBacked:
+          set.catalog != null ||
+          exercisesById[set.exerciseId]?.executionDefinition != null,
+      resolution: resolutions[set.catalog?.selection.muscleResolutionKey],
       sets: [
         WorkloadSetInput(
+          physicalId: set.id,
           completed: true,
           isWarmup: _warmupEvidence(set.isWarmup, set.rawFields),
           deleted: _deleted(set.rawFields),

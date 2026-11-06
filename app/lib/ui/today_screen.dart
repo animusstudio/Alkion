@@ -7,6 +7,10 @@ import 'package:provider/provider.dart';
 import '../data/bodyweight_repository.dart';
 import '../data/body_workload.dart';
 import '../data/body_workload_adapters.dart';
+import '../data/body_workload_projection.dart';
+import '../data/catalog_execution_repository.dart';
+import '../catalog/catalog.dart';
+import '../catalog_ui/catalog_trial_scope.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
@@ -118,6 +122,8 @@ class _TodayScreenState extends State<TodayScreen> {
   late final DayTemplateRepository _days;
   late final SessionRepository _sessions;
   late final ExerciseRepository _exercises;
+  late final LocalDatabase _workloadDatabase;
+  late final StoreToken _workloadToken;
 
   // ── nextInRotation resolved once; refreshed reactively via stream ─────────────
   DayTemplate? _nextDay;
@@ -146,6 +152,68 @@ class _TodayScreenState extends State<TodayScreen> {
   List<Exercise>? _workloadCatalog;
   bool _workloadReadFailed = false;
   bool _daysReadFailed = false;
+  bool _muscleReadFailed = false;
+  Map<String, CatalogMuscleResolution>? _muscleResolutions;
+  CatalogBundle? _muscleBundle;
+  int _muscleReadEpoch = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bundle = CatalogTrialScope.maybeOf(context)?.bundle;
+    final database = Provider.of<LocalDatabase>(context);
+    if (!identical(database, _workloadDatabase) ||
+        database.token.profileId != _workloadToken.profileId ||
+        database.token.generation != _workloadToken.generation) {
+      _muscleReadEpoch++;
+      _muscleResolutions = null;
+      _muscleReadFailed = true;
+      return;
+    }
+    if (!identical(bundle, _muscleBundle)) {
+      _muscleBundle = bundle;
+      _loadWorkloadProfiles();
+    }
+  }
+
+  Future<void> _loadWorkloadProfiles() async {
+    final epoch = ++_muscleReadEpoch;
+    final database = context.read<LocalDatabase>();
+    final token = database.token;
+    _muscleResolutions = null;
+    if (!identical(database, _workloadDatabase) ||
+        token.profileId != _workloadToken.profileId ||
+        token.generation != _workloadToken.generation) {
+      _muscleReadFailed = true;
+      return;
+    }
+    try {
+      final results = await CatalogExecutionRepository.local(database)
+          .resolveMuscles(
+            [
+              for (final day in _dayList)
+                for (final slot in day.slots)
+                  if (slot.catalog != null) slot.catalog!,
+            ],
+            currentBundle: _muscleBundle,
+            currentAssessment: true,
+          );
+      requireWorkloadToken(database, token);
+      if (!mounted ||
+          epoch != _muscleReadEpoch ||
+          !identical(database, context.read<LocalDatabase>())) {
+        return;
+      }
+      setState(() {
+        _muscleResolutions = results;
+        _muscleReadFailed = false;
+      });
+    } catch (_) {
+      if (!mounted || epoch != _muscleReadEpoch) return;
+      setState(() => _muscleReadFailed = true);
+    }
+  }
+
   StreamSubscription<List<Exercise>>? _workloadCatalogSub;
 
   // ── Cached section streams ────────────────────────────────────────────────────
@@ -171,6 +239,8 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void initState() {
     super.initState();
+    _workloadDatabase = context.read<LocalDatabase>();
+    _workloadToken = _workloadDatabase.token;
     _stats = StatsRepository.local(context.read<LocalDatabase>());
     _bw = BodyweightRepository.local(context.read<LocalDatabase>());
     _targets = MuscleTargetRepository.local(context.read<LocalDatabase>());
@@ -246,6 +316,7 @@ class _TodayScreenState extends State<TodayScreen> {
           _rotationLoaded = true;
           _recomputeRotation();
         });
+        _loadWorkloadProfiles();
       },
       onError: (Object e, StackTrace st) {
         // Mark the rotation as loaded so the UI shows its real empty state
@@ -287,6 +358,7 @@ class _TodayScreenState extends State<TodayScreen> {
     _sessionsSub?.cancel();
     _daysSub?.cancel();
     _workloadCatalogSub?.cancel();
+    _muscleReadEpoch++;
     super.dispose();
   }
 
@@ -481,7 +553,9 @@ class _TodayScreenState extends State<TodayScreen> {
     if (index >= _dayList.length) {
       return calculateWorkoutWorkload(mode: mode, exercises: const []);
     }
-    if (_workloadReadFailed) return WorkoutWorkload.unavailable(mode);
+    if (_workloadReadFailed || _muscleReadFailed) {
+      return WorkoutWorkload.unavailable(mode);
+    }
     final catalog = _workloadCatalog;
     if (catalog == null) return WorkoutWorkload.loading(mode);
     final byId = {for (final exercise in catalog) exercise.id: exercise};
@@ -490,9 +564,24 @@ class _TodayScreenState extends State<TodayScreen> {
       for (final slot in _dayList[index].slots) {
         final exercise = byId[slot.exerciseId];
         if (exercise == null) return WorkoutWorkload.unavailable(mode);
-        slots.add(resolveFreshPrescription(slot, exercise));
+        slots.add(
+          slot.catalog == null
+              ? resolveFreshPrescription(slot, exercise)
+              : resolveSlot(slot, exercise),
+        );
       }
-      return plannedWorkoutWorkload(slots);
+      final selections = [
+        for (final slot in _dayList[index].slots) slot.catalog,
+      ];
+      if (selections.any((selection) => selection != null) &&
+          _muscleResolutions == null) {
+        return WorkoutWorkload.loading(mode);
+      }
+      return plannedWorkoutWorkload(
+        slots,
+        selections: selections,
+        resolutions: _muscleResolutions ?? const {},
+      );
     } on FreshSessionLimitException {
       return WorkoutWorkload.unavailable(mode);
     } on FreshPrescriptionUnavailableException {

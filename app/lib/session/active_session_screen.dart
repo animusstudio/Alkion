@@ -13,7 +13,7 @@ import 'package:provider/provider.dart';
 import '../data/exercise_repository.dart';
 import '../data/day_template_repository.dart';
 import '../data/catalog_execution_repository.dart';
-import '../data/body_workload_adapters.dart';
+import '../data/body_workload_projection.dart';
 import '../ui/body_figure.dart';
 import '../data/session_repository.dart';
 import '../data/session_writer.dart';
@@ -422,11 +422,19 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
     if (picked == 'workload') {
       commitPendingInput();
-      await showBodyWorkloadSheet(
-        context,
-        workload: () => activeWorkoutWorkload(c.draft),
-        changes: c,
+      final projection = ActiveWorkloadProjection(
+        c,
+        context.read<LocalDatabase?>(),
       );
+      try {
+        await showBodyWorkloadSheet(
+          context,
+          workload: () => projection.workload,
+          changes: projection,
+        );
+      } finally {
+        projection.dispose();
+      }
       return;
     }
     if (picked == 'finish') {
