@@ -258,7 +258,18 @@ void main() {
         await tester.pump();
         expect(tester.widget<ChoiceChip>(chip).selected, isTrue);
         expect(tester.getSize(chip).height, greaterThanOrEqualTo(48));
-        expect(body(tester).selectedRegion, WorkloadMuscle.fromKey(group.key));
+        // Workload-only regions stay list-only in the explorer.
+        final region = WorkloadMuscle.fromKey(group.key);
+        expect(
+          body(tester).selectedRegion,
+          const {
+                WorkloadMuscle.glutes,
+                WorkloadMuscle.core,
+                WorkloadMuscle.forearms,
+              }.contains(region)
+              ? null
+              : region,
+        );
       }
       await tester.ensureVisible(muscle('core'));
       await tester.tap(muscle('core'));

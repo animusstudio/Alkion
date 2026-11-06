@@ -38,6 +38,8 @@ Future<String?> showCatalogMuscleExplorer(
 
 /// Native catalog navigation over the approved body artwork. The artwork only
 /// locates its eight mapped regions; all catalog groups have a list equivalent.
+/// Workload-only display regions (glutes, core, forearms) are not explorer
+/// targets: they stay list-only here and never select or highlight artwork.
 class CatalogMuscleExplorer extends StatefulWidget {
   const CatalogMuscleExplorer({
     super.key,
@@ -83,6 +85,22 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     'hamstrings',
     'calves',
   };
+
+  static const _artworkRegions = {
+    WorkloadMuscle.chest,
+    WorkloadMuscle.back,
+    WorkloadMuscle.shoulders,
+    WorkloadMuscle.quads,
+    WorkloadMuscle.hamstrings,
+    WorkloadMuscle.calves,
+    WorkloadMuscle.biceps,
+    WorkloadMuscle.triceps,
+  };
+
+  static WorkloadMuscle? _artworkRegion(String? key) {
+    final region = WorkloadMuscle.fromKey(key);
+    return _artworkRegions.contains(region) ? region : null;
+  }
 
   List<CatalogBrowseGroup> get _groups =>
       widget.index.browseGroups.where((g) => g.kind == 'muscle').toList();
@@ -199,6 +217,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     final epoch = ++_pickEpoch;
     final region = await _controller.pick(point, size);
     if (!mounted || epoch != _pickEpoch || region == null) return;
+    if (!_artworkRegions.contains(region)) return;
     if (_groups.any((g) => g.key == region.name)) _select(region.name);
   }
 
@@ -435,9 +454,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                                 compact: false,
                                 controller: _controller,
                                 pickingEnabled: true,
-                                selectedRegion: WorkloadMuscle.fromKey(
-                                  _selected,
-                                ),
+                                selectedRegion: _artworkRegion(_selected),
                                 onStatus: _statusChanged,
                                 fallback: Center(
                                   child: Padding(

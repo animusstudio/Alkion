@@ -91,7 +91,7 @@ void main() {
       await settleReal(tester, ticks: 5);
       WorkoutWorkload projection() =>
           tester.widget<BodyFigure>(find.byType(BodyFigure)).workload;
-      expect(projection().muscles[WorkloadMuscle.chest]!.count, 5);
+      expect(projection().legacyMuscles[WorkloadMuscle.chest]!.count, 5);
       final body = tester.widget<CharacterBody>(find.byType(CharacterBody));
       final scores = Map.of(body.scores);
       await tester.drag(find.byType(CharacterBody), const Offset(-80, 0));
@@ -99,8 +99,8 @@ void main() {
       expect(body.controller.paused, isTrue);
       expect(body.controller.yaw, isNot(0));
       expect(find.byType(BottomSheet), findsNothing);
-      expect(projection().muscles[WorkloadMuscle.chest]!.count, 5);
-      expect(projection().muscles[WorkloadMuscle.quads]!.count, 0);
+      expect(projection().legacyMuscles[WorkloadMuscle.chest]!.count, 5);
+      expect(projection().legacyMuscles[WorkloadMuscle.quads]!.count, 0);
       expect(
         tester.widget<CharacterBody>(find.byType(CharacterBody)).scores,
         scores,
@@ -108,8 +108,8 @@ void main() {
       // The existing split paging gesture begins beside the artwork.
       await tester.drag(find.byType(PageView), const Offset(-500, 0));
       await settleReal(tester, ticks: 10);
-      expect(projection().muscles[WorkloadMuscle.quads]!.count, 3);
-      expect(projection().muscles[WorkloadMuscle.chest]!.count, 0);
+      expect(projection().legacyMuscles[WorkloadMuscle.quads]!.count, 3);
+      expect(projection().legacyMuscles[WorkloadMuscle.chest]!.count, 0);
       await tester.drag(find.byType(PageView), const Offset(-500, 0));
       await settleReal(tester, ticks: 10);
       expect(projection().coverage!.status, WorkloadCoverageStatus.empty);

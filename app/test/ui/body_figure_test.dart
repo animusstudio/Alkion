@@ -224,7 +224,11 @@ void main() {
       mode: WorkoutWorkloadMode.planned,
       exercises: const [],
     );
-    await tester.pumpWidget(wrapL10n(BodyWorkloadCounts(workload: empty)));
+    await tester.pumpWidget(
+      wrapL10n(
+        SingleChildScrollView(child: BodyWorkloadCounts(workload: empty)),
+      ),
+    );
     expect(find.text('No working sets to map yet.'), findsOneWidget);
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('body-count-chest'))).data,
