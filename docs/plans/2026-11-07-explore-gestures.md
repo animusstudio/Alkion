@@ -1,6 +1,6 @@
 # Explore muscles 3D gestures and zoom controls
 
-Date: 2026-11-07. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-07. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-07.
 Parent: [development](../alkion/development.md).
 Baseline: `3a38ba6`; branch `feat/explore-gestures-20261107`.
 
@@ -93,6 +93,6 @@ Then a small Animus pin PR.
 
 ## Task state
 
-- T1–T3: pending approval.
+- T1: in progress. T2, T3: pending.
 
-Next: owner approval, then T1.
+Next: T1.
