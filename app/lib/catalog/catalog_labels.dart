@@ -50,10 +50,10 @@ class CatalogLabels {
     'Lista de músculos',
   ][_language];
   String get modelMuscleHint => [
-    'Tap one of 8 regions on the body. For forearms, core, glutes, adductors and abductors, use the full list below. Drag sideways to turn.',
-    'Tocca una delle 8 regioni del corpo. Per avambracci, core, glutei, adduttori e abduttori, usa l’elenco completo sotto. Trascina di lato per ruotare.',
-    'Tippe auf eine von 8 Körperregionen. Unterarme, Rumpf, Gesäß, Adduktoren und Abduktoren findest du in der vollständigen Liste unten. Zum Drehen seitlich ziehen.',
-    'Toca una de las 8 regiones del cuerpo. Para antebrazos, core, glúteos, aductores y abductores, usa la lista completa de abajo. Arrastra de lado para girar.',
+    'Tap a muscle on the body, or choose one from the list below. Drag sideways to turn.',
+    'Tocca un muscolo sul corpo o sceglilo dall’elenco sotto. Trascina di lato per ruotare.',
+    'Tippe auf einen Muskel am Körper oder wähle ihn in der Liste unten. Zum Drehen seitlich ziehen.',
+    'Toca un músculo en el cuerpo o elígelo en la lista de abajo. Arrastra de lado para girar.',
   ][_language];
   String get targetExplanation => [
     'Target muscles are the reviewed catalog’s main exercise groups. Secondary muscles support the movement; include them in Filters.',

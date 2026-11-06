@@ -229,7 +229,7 @@ void main() {
   );
 
   testWidgets(
-    'list-only selection clears mapped highlight and stays available without artwork',
+    'list selection highlights every region and stays available without artwork',
     (tester) async {
       explorerPhone(tester);
       final state = discoveryState();
@@ -250,33 +250,28 @@ void main() {
       expect(find.byKey(const Key('catalog-body-fallback')), findsOneWidget);
       expect(find.byKey(const Key('catalog-body-retry')), findsOneWidget);
       await openList(tester);
-      for (final group
-          in state.index('en').browseGroups.where((g) => g.kind == 'muscle')) {
+      final groups = state
+          .index('en')
+          .browseGroups
+          .where((g) => g.kind == 'muscle');
+      // All thirteen display regions are explorer targets.
+      expect(
+        groups.map((g) => WorkloadMuscle.fromKey(g.key)).toSet(),
+        WorkloadMuscle.values.toSet(),
+      );
+      for (final group in groups) {
         final chip = muscle(group.key);
         await tester.ensureVisible(chip);
         await tester.tap(chip);
         await tester.pump();
         expect(tester.widget<ChoiceChip>(chip).selected, isTrue);
         expect(tester.getSize(chip).height, greaterThanOrEqualTo(48));
-        // Workload-only regions stay list-only in the explorer.
-        final region = WorkloadMuscle.fromKey(group.key);
-        expect(
-          body(tester).selectedRegion,
-          const {
-                WorkloadMuscle.glutes,
-                WorkloadMuscle.core,
-                WorkloadMuscle.forearms,
-                WorkloadMuscle.adductors,
-                WorkloadMuscle.abductors,
-              }.contains(region)
-              ? null
-              : region,
-        );
+        expect(body(tester).selectedRegion, WorkloadMuscle.fromKey(group.key));
       }
       await tester.ensureVisible(muscle('core'));
       await tester.tap(muscle('core'));
       await tester.pump();
-      expect(body(tester).selectedRegion, isNull);
+      expect(body(tester).selectedRegion, WorkloadMuscle.core);
       final data = tester.getSemantics(muscle('core')).getSemanticsData();
       expect(data.flagsCollection.isSelected, Tristate.isTrue);
       expect(find.text('Show exercises · Core'), findsOneWidget);
@@ -284,6 +279,64 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets(
+    'taps on the five hip, trunk and forearm groups select and highlight them',
+    (tester) async {
+      explorerPhone(tester);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      final controller = PendingBodyController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        discoveryApp(
+          CatalogMuscleExplorer(
+            index: state.index('en'),
+            controller: controller,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (final (region, label) in [
+        (WorkloadMuscle.glutes, 'Glutes'),
+        (WorkloadMuscle.core, 'Core'),
+        (WorkloadMuscle.forearms, 'Forearms'),
+        (WorkloadMuscle.adductors, 'Adductors'),
+        (WorkloadMuscle.abductors, 'Abductors'),
+      ]) {
+        await revealArtwork(tester);
+        await tester.tap(diagram);
+        controller.requests.last.result.complete(region);
+        await tester.pumpAndSettle();
+        expect(body(tester).selectedRegion, region);
+        expect(find.text('Show exercises · $label'), findsOneWidget);
+        await openList(tester);
+        expect(tester.widget<ChoiceChip>(muscle(region.name)).selected, isTrue);
+      }
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  for (final (group, yaw) in [
+    ('adductors', 0.0),
+    ('abductors', 0.0),
+    ('glutes', math.pi),
+  ]) {
+    testWidgets('$group opens on its facing view', (tester) async {
+      explorerPhone(tester);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      await tester.pumpWidget(
+        discoveryApp(
+          CatalogMuscleExplorer(index: state.index('en'), selected: group),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(body(tester).controller.yaw, yaw);
+      expect(body(tester).selectedRegion, WorkloadMuscle.fromKey(group));
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets(
     'new taps, list choices, turn, retry and hiding discard older picks',
@@ -559,7 +612,7 @@ void main() {
             await tester.ensureVisible(muscle('core'));
             await tester.tap(muscle('core'));
             await tester.pumpAndSettle();
-            expect(body(tester).selectedRegion, isNull);
+            expect(body(tester).selectedRegion, WorkloadMuscle.core);
             expect(
               tester.takeException(),
               isNull,
