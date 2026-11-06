@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {sampleSurfaceCell,materialGlyph,materialAlpha,columnPhase} from '../assets/character_body/material.js';
 import {surfaceRegions} from '../assets/character_body/regions.js';
+import {orbitFrame} from '../assets/character_body/renderer.js';
+import {maxPitch} from '../assets/character_body/protocol.js';
 
 // Frozen output digests from the accepted sampler, before optimization. The
 // cases describe synthetic surfaces, rather than duplicating its algorithm.
@@ -65,5 +67,19 @@ assert.equal(surfaceRegions.length,14);
 for(let id=0;id<surfaceRegions.length;id++){
  const rows=new Uint8Array(9*9*4);for(let at=0;at<rows.length;at+=4)rows.set([180,id,128,255],at);
  assert.equal(sampleSurfaceCell(rows,9,9,1,1,false,0,scratch).region,id,`atlas row ${id}`);
+}
+// Camera pitch feeds the sampler only through the depth byte. At pitch 0 the
+// depth scale is the accepted radial extent, so the frozen digests above still
+// describe the level view; any tilt keeps every depth byte in range (no clip).
+{
+ const mesh={radius:.37,halfHeight:1,bounds:[[-.3,-1,-.37],[.3,.98,.37]]},level=orbitFrame(mesh,0);
+ assert.equal(level.depthRange,mesh.radius);assert.equal(level.cos,1);assert.equal(level.sin,0);
+ for(const pitch of [-maxPitch,-.2,.2,maxPitch]){
+  const o=orbitFrame(mesh,pitch);assert.ok(o.depthRange>mesh.radius,'A tilt widens, never narrows, the depth range');
+  for(const y of [mesh.bounds[0][1],mesh.bounds[1][1]])for(const z of [-mesh.radius,mesh.radius]){
+   const depth=.5+(o.sin*(y-o.centerY)+o.cos*z)/(2*o.depthRange);
+   assert.ok(depth>=0&&depth<=1,`pitch ${pitch}: depth byte ${depth} outside the sampler range`);
+  }
+ }
 }
 console.log(`PASS: ${samples} frozen-reference material cases, both themes/optical sizes, all occupancy masks, boundaries/depth cutoffs, reusable output and immutable pixels`);

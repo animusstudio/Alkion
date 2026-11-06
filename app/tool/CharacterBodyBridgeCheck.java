@@ -36,7 +36,7 @@ public final class CharacterBodyBridgeCheck {
         require(sent.equals(List.of("initial", "turn=120", "visible=false,paused=true", "replacement-view")),
             "Old view callback affected replacement");
         replacement.close();
-        Map<String, Object> request = new HashMap<>(Map.of("version", 4, "id", 1, "generation", 2, "frame", 3, "load", 4, "layout", 5, "x", .5, "y", .5));
+        Map<String, Object> request = new HashMap<>(Map.of("version", 5, "id", 1, "generation", 2, "frame", 3, "load", 4, "layout", 5, "x", .5, "y", .5));
         Map<String, Object> event = new HashMap<>(Map.of("id", 1L, "generation", 2L, "frame", 3L, "load", 4L, "layout", 5L, "region", "chest"));
         Map<String, Object> rendered = new HashMap<>(event);
         require(BodyPickGuard.request(request), "Valid pick request rejected");
@@ -55,13 +55,30 @@ public final class CharacterBodyBridgeCheck {
         require(!BodyPickGuard.matches(request, event, rendered), "Unknown region accepted");
         event.put("region", null);
         require(BodyPickGuard.matches(request, event, rendered), "Background result rejected");
-        for (int old : new int[] {2, 3, 5}) {
+        require(BodyPickGuard.VERSION == 5, "Bridge protocol is not version 5");
+        for (int old : new int[] {2, 3, 4, 6}) {
             request.put("version", old); require(!BodyPickGuard.request(request), "Protocol " + old + " accepted");
         }
-        request.put("version", 4);
+        request.put("version", 5);
         request.put("x", Double.NaN); require(!BodyPickGuard.request(request), "NaN accepted");
         request.put("x", 1); require(!BodyPickGuard.request(request), "Out-of-bounds coordinate accepted");
         request.put("x", .5); request.put("id", .5); require(!BodyPickGuard.request(request), "Fractional identity accepted");
+        Map<String, Object> view = new HashMap<>(Map.of("zoom", 2.0, "x", .25, "y", -.5, "pitch", 0.0));
+        require(BodyPickGuard.view(view), "Valid view rejected");
+        for (double pitch : new double[] {Math.PI / 4, -Math.PI / 4, .3}) {
+            view.put("pitch", pitch); require(BodyPickGuard.view(view), "Bounded pitch rejected: " + pitch);
+        }
+        for (double pitch : new double[] {Math.nextUp(Math.PI / 4), -Math.nextUp(Math.PI / 4), Math.PI / 2, Double.NaN, Double.POSITIVE_INFINITY}) {
+            view.put("pitch", pitch); require(!BodyPickGuard.view(view), "Out-of-range pitch accepted: " + pitch);
+        }
+        view.put("pitch", 0.0);
+        view.remove("pitch"); require(!BodyPickGuard.view(view), "Version-4 view without pitch accepted");
+        view.put("pitch", "0"); require(!BodyPickGuard.view(view), "Non-numeric pitch accepted");
+        view.put("pitch", 0.0); view.put("extra", 1.0); require(!BodyPickGuard.view(view), "Extra view key accepted");
+        view.remove("extra"); view.put("zoom", 3.5); require(!BodyPickGuard.view(view), "Zoom past 3 accepted");
+        view.put("zoom", 1.0); require(!BodyPickGuard.view(view), "Pan at unzoomed view accepted");
+        view.put("x", 0.0); view.put("y", 0.0); require(BodyPickGuard.view(view), "Unzoomed level view rejected");
+        System.out.println("PASS: protocol 5 view pitch bounds, version 4 and missing/out-of-range pitch rejected");
         System.out.println("PASS: native one-in-flight/latest-slot, hidden replacement, stale callback and disposal fences");
     }
 

@@ -108,6 +108,54 @@ void main() {
     },
   );
 
+  test('orbit pitch clamps to 45 degrees and every held view levels it', () {
+    final controller = CharacterBodyController();
+    var changes = 0;
+    controller.addListener(() => changes++);
+    expect(CharacterBodyController.maxPitch, math.pi / 4);
+    expect(controller.pitch, 0);
+    controller.orbitBy(.2, .3);
+    expect(controller.yaw, closeTo(.2, 1e-12));
+    expect(controller.pitch, closeTo(.3, 1e-12));
+    expect(controller.paused, isTrue);
+    expect(changes, 1);
+    controller.orbitBy(0, 9);
+    expect(controller.pitch, math.pi / 4);
+    // Held at the bound: further tilt is no change and no revision.
+    controller.orbitBy(0, .1);
+    expect(changes, 2);
+    controller.orbitBy(0, -99);
+    expect(controller.pitch, -math.pi / 4);
+    controller.orbitBy(double.nan, .1);
+    controller.orbitBy(.1, double.infinity);
+    expect(controller.pitch, -math.pi / 4);
+    expect(controller.yaw, closeTo(.2, 1e-12));
+    // A turn at the pitch bound still turns.
+    controller.orbitBy(.1, -.1);
+    expect(controller.yaw, closeTo(.3, 1e-12));
+    expect(controller.pitch, -math.pi / 4);
+    for (final view in <VoidCallback>[
+      controller.front,
+      controller.back,
+      controller.side,
+      controller.resetView,
+    ]) {
+      controller.orbitBy(0, .4 - controller.pitch);
+      expect(controller.pitch, closeTo(.4, 1e-12));
+      view();
+      expect(controller.pitch, 0);
+    }
+    controller.side();
+    expect(controller.yaw, math.pi / 2);
+    // rotateBy keeps its pitch and its pause-on-any-finite-turn behavior.
+    controller.orbitBy(0, .2);
+    controller.resume();
+    controller.rotateBy(0);
+    expect(controller.paused, isTrue);
+    expect(controller.pitch, closeTo(.2, 1e-12));
+    controller.dispose();
+  });
+
   test('unbound picks and invalid surface coordinates are ignored', () async {
     final controller = CharacterBodyController();
     expect(
@@ -205,7 +253,7 @@ void main() {
         ),
       ),
     );
-    Future<void> report({int frame = 1, int version = 4}) async {
+    Future<void> report({int frame = 1, int version = 5}) async {
       final generation = (display!['interaction'] as Map)['generation'];
       final completer = Completer<void>();
       tester.binding.defaultBinaryMessenger.handlePlatformMessage(
@@ -242,13 +290,23 @@ void main() {
     await tester.pumpWidget(body());
     await tester.pump();
     expect(await startPick(), isNull);
-    // A protocol v3 status never admits picking.
-    await report(version: 3);
-    expect(await startPick(), isNull);
+    // Protocol v3/v4 statuses never admit picking.
+    for (final old in [3, 4]) {
+      await report(version: old);
+      expect(await startPick(), isNull);
+    }
+    expect(display!['version'], 5);
+    expect(display!['view'], {'zoom': 1.0, 'x': 0.0, 'y': 0.0, 'pitch': 0.0});
+    controller.orbitBy(0, .3);
+    await tester.pump();
+    expect((display!['view'] as Map)['pitch'], .3);
+    controller.front();
+    await tester.pump();
+    expect((display!['view'] as Map)['pitch'], 0.0);
     await report();
     var result = startPick();
     await tester.pump();
-    expect(request!['version'], 4);
+    expect(request!['version'], 5);
     expect(request!['x'], .5);
     expect(request!['y'], .5);
     complete();
@@ -293,6 +351,7 @@ void main() {
     expect(await latest, WorkloadMuscle.back);
     for (final transition in <VoidCallback>[
       () => controller.rotateBy(.1),
+      () => controller.orbitBy(0, -.2),
       () => controller.back(),
       () => controller.zoomBy(.5),
       () => controller.setViewport(2, const Offset(.25, -.25)),

@@ -17,7 +17,12 @@ enum CharacterBodyStatus { loading, ready, unavailable, error }
 /// Native controls own this controller. Drag deltas are radians; positive turns
 /// right. Automatic yaw updates do not notify listeners or rebuild the parent.
 class CharacterBodyController extends ChangeNotifier {
+  /// Camera elevation bound in radians, in either direction (45°).
+  static const maxPitch = math.pi / 4;
+
   double _yaw = 0;
+  // Camera elevation; positive looks down from above. Never animated.
+  double _pitch = 0;
   double _zoom = 1;
   Offset _pan = Offset.zero;
   // Cumulative modulo turn is independent of delayed autoplay telemetry.
@@ -50,6 +55,9 @@ class CharacterBodyController extends ChangeNotifier {
   }
 
   double get yaw => _yaw;
+
+  /// Camera elevation in radians, within ±[maxPitch]. Positive looks down.
+  double get pitch => _pitch;
   bool get paused => _paused;
   double get zoom => _zoom;
   Offset get pan => _pan;
@@ -84,10 +92,18 @@ class CharacterBodyController extends ChangeNotifier {
 
   /// A held lateral view, a quarter turn from the front.
   void side() => _hold(math.pi / 2);
-  void rotateBy(double radians) {
-    if (!radians.isFinite) return;
-    _yaw = (_yaw + radians) % (math.pi * 2);
-    _turn = (_turn + radians) % (math.pi * 2);
+  void rotateBy(double radians) => orbitBy(radians, 0);
+
+  /// One manual orbit step: [yaw] turns as [rotateBy]; [pitch] raises the
+  /// camera, clamped to ±[maxPitch]. A tilt-only step held at the bound is
+  /// ignored; any finite turn, including zero, pauses as before.
+  void orbitBy(double yaw, double pitch) {
+    if (!yaw.isFinite || !pitch.isFinite) return;
+    final nextPitch = (_pitch + pitch).clamp(-maxPitch, maxPitch);
+    if (yaw == 0 && pitch != 0 && nextPitch == _pitch) return;
+    _yaw = (_yaw + yaw) % (math.pi * 2);
+    _turn = (_turn + yaw) % (math.pi * 2);
+    _pitch = nextPitch;
     _paused = true;
     _revision++;
     notifyListeners();
@@ -95,6 +111,7 @@ class CharacterBodyController extends ChangeNotifier {
 
   void _hold(double value) {
     _yaw = value % (math.pi * 2);
+    _pitch = 0;
     _turn = 0;
     _paused = true;
     _command++;
@@ -184,6 +201,10 @@ class CharacterBody extends StatefulWidget {
   @override
   State<CharacterBody> createState() => _CharacterBodyState();
 }
+
+/// Bridge protocol shared by display, status and pick messages. Version 5 adds
+/// the view's camera `pitch`; every side rejects other versions.
+const _protocol = 5;
 
 class _CharacterPick {
   _CharacterPick(
@@ -280,7 +301,7 @@ class _CharacterBodyState extends State<CharacterBody>
       return null;
     }
     final request = <String, Object>{
-      'version': 4,
+      'version': _protocol,
       'id': ++_requestId,
       ...rendered,
       'x': operation.position.dx / operation.size.width,
@@ -377,7 +398,7 @@ class _CharacterBodyState extends State<CharacterBody>
   ];
 
   Map<String, Object> _display() => {
-    'version': 4,
+    'version': _protocol,
     'style': widget.style.name,
     'scores': {
       for (final muscle in WorkloadMuscle.values)
@@ -400,6 +421,7 @@ class _CharacterBodyState extends State<CharacterBody>
       'zoom': widget.controller.zoom,
       'x': widget.controller.pan.dx,
       'y': widget.controller.pan.dy,
+      'pitch': widget.controller.pitch,
     },
     if (widget.pickingEnabled)
       'interaction': {
@@ -448,7 +470,7 @@ class _CharacterBodyState extends State<CharacterBody>
     _channel!.setMethodCallHandler((call) async {
       if (!mounted || call.method != 'status' || call.arguments is! Map) return;
       final event = call.arguments as Map;
-      if (event['version'] != 4) return;
+      if (event['version'] != _protocol) return;
       if (widget.pickingEnabled && event['generation'] == _generation) {
         const keys = ['generation', 'frame', 'load', 'layout'];
         if (keys.every(

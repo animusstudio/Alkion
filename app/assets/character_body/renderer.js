@@ -1,7 +1,7 @@
 import {glyphAlphabet,tonalGlyphs,samplingPitch,columnPhase,glyphCoverage,sampleSurfaceCell,materialGlyph,materialAlpha,regionColor,colors} from './material.js';
 import {bodyFit,fullerMesh} from './geometry.js';
 import {posedMesh} from './pose-geometry.js';
-import {regions} from './protocol.js';
+import {regions,maxPitch} from './protocol.js';
 import {surfaceRegions,regionProjectionGLSL,surfaceProjectionRevision} from './regions.js';
 
 // The caller owns a two-style cache; failed or aborted loads are never retained.
@@ -38,6 +38,41 @@ export function atlasRegionColor(region,muscles,theme,selected=null){
  return selected!==null&&regions.includes(selected)&&region===selected?`rgb(${colors[theme].accent.join(',')})`:regionColor(region,muscles,theme);
 }
 
+// Per-mesh height bins with their widest radial (x,z) distance: one O(n) pass,
+// then tilted bounds over bins only. Bin edges keep every bound conservative.
+const orbitBins=new WeakMap(),binCount=512;
+function heightBins(mesh,centerY){
+ let bins=orbitBins.get(mesh);if(bins)return bins;
+ const p=mesh.positions,low=mesh.bounds[0][1]-centerY,span=Math.max(1e-9,mesh.bounds[1][1]-mesh.bounds[0][1]),radial=new Float64Array(binCount).fill(-1);
+ for(let at=0;at<p.length;at+=3){const bin=Math.min(binCount-1,Math.floor((p[at+1]-centerY-low)/span*binCount));radial[bin]=Math.max(radial[bin],Math.hypot(p[at],p[at+2]));}
+ bins=[];for(let bin=0;bin<binCount;bin++)if(radial[bin]>=0)bins.push([low+bin*span/binCount,low+(bin+1)*span/binCount,radial[bin]]);
+ orbitBins.set(mesh,bins);return bins;
+}
+
+/**
+ * Camera elevation orbits the body's vertical centre after yaw. Pitch 0 is the
+ * accepted frame exactly: depth range = radial extent, extent = half height.
+ * A tilt bounds every vertex at any yaw, |y'| = |c + (y-c)cos - z sin| and
+ * |z'| = |(y-c)sin + z cos| with |z| at most the vertex's radial distance, so
+ * nothing is clipped; neither range ever narrows below the level frame's.
+ */
+export function orbitFrame(mesh,pitch=0){
+ const p=Math.max(-maxPitch,Math.min(maxPitch,Number.isFinite(pitch)?pitch:0)),cos=Math.cos(p),sin=Math.sin(p),s=Math.abs(sin);
+ const centerY=mesh.bounds?(mesh.bounds[0][1]+mesh.bounds[1][1])/2:0;
+ if(p===0)return {cos,sin,centerY,depthRange:mesh.radius,extent:mesh.halfHeight};
+ let extent=0,depth=0;
+ if(mesh.positions&&mesh.bounds){
+  for(const [a,b,r] of heightBins(mesh,centerY)){
+   extent=Math.max(extent,Math.abs(centerY+a*cos)+r*s,Math.abs(centerY+b*cos)+r*s);
+   depth=Math.max(depth,Math.max(Math.abs(a),Math.abs(b))*s+r*cos);
+  }
+ }else{
+  const reach=mesh.bounds?Math.max(mesh.bounds[1][1]-centerY,centerY-mesh.bounds[0][1]):mesh.halfHeight;
+  extent=Math.abs(centerY)+reach*cos+mesh.radius*s;depth=mesh.radius*cos+reach*s;
+ }
+ return {cos,sin,centerY,depthRange:Math.max(mesh.radius,depth),extent:Math.max(mesh.halfHeight,extent)};
+}
+
 const glyphIndices=Object.fromEntries([...glyphAlphabet].map((glyph,index)=>[glyph,index]));
 const diagnosticColors=[[118,124,138],[255,105,70],[100,165,255],[240,190,70],[140,210,100],[200,140,240],[70,205,200],[245,130,190],[170,180,250],[255,145,70],[110,225,145],[240,100,170],[255,235,40],[40,235,255]];
 
@@ -60,10 +95,14 @@ export class VolumeRenderer{
   const compile=(type,source)=>{const shader=gl.createShader(type);gl.shaderSource(shader,source);gl.compileShader(shader);if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader));return shader;};
   const vs=compile(gl.VERTEX_SHADER,`
    attribute vec3 position;attribute vec3 normal;attribute vec2 uv;attribute vec3 regionPosition;
-   uniform float yaw;uniform float aspect;uniform float fit;uniform float depthRange;uniform vec2 pan;
+   uniform float yaw;uniform vec2 pitch;uniform float centerY;uniform float aspect;uniform float fit;uniform float depthRange;uniform vec2 pan;
    varying vec3 viewNormal;varying vec2 sourceUV;varying float sourceDepth;varying vec3 sourcePosition;
-   void main(){float c=cos(yaw),s=sin(yaw);vec3 p=vec3(c*position.x+s*position.z,position.y,-s*position.x+c*position.z);
-    sourceDepth=.5+p.z/(2.0*depthRange);viewNormal=vec3(c*normal.x+s*normal.z,normal.y,-s*normal.x+c*normal.z);sourceUV=uv;sourcePosition=regionPosition;
+   void main(){float c=cos(yaw),s=sin(yaw),pc=pitch.x,ps=pitch.y;vec3 q=vec3(c*position.x+s*position.z,position.y-centerY,-s*position.x+c*position.z);
+    // Positive pitch raises the camera: the top leans toward the viewer.
+    // At pitch 0 (pc=1, ps=0) every term reduces exactly to the accepted frame.
+    vec3 p=vec3(q.x,position.y+(pc-1.0)*q.y-ps*q.z,ps*q.y+pc*q.z);
+    vec3 yn=vec3(c*normal.x+s*normal.z,normal.y,-s*normal.x+c*normal.z);
+    sourceDepth=.5+p.z/(2.0*depthRange);viewNormal=vec3(yn.x,pc*yn.y-ps*yn.z,ps*yn.y+pc*yn.z);sourceUV=uv;sourcePosition=regionPosition;
     gl_Position=vec4(p.x*fit/aspect+pan.x,p.y*fit+pan.y,-p.z/depthRange,1.0);}`);
   const fs=compile(gl.FRAGMENT_SHADER,`
    precision mediump float;uniform sampler2D sourceMasks;
@@ -91,7 +130,7 @@ export class VolumeRenderer{
   this.texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,this.texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,mesh.masks);gl.uniform1i(gl.getUniformLocation(program,'sourceMasks'),0);
   this.fitLocation=gl.getUniformLocation(program,'fit');this.panLocation=gl.getUniformLocation(program,'pan');
-  gl.uniform1f(gl.getUniformLocation(program,'depthRange'),mesh.radius);
+  this.depthLocation=gl.getUniformLocation(program,'depthRange');this.pitchLocation=gl.getUniformLocation(program,'pitch');this.centerLocation=gl.getUniformLocation(program,'centerY');
   this.yawLocation=gl.getUniformLocation(program,'yaw');this.aspectLocation=gl.getUniformLocation(program,'aspect');
   gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LESS);gl.disable(gl.BLEND);gl.disable(gl.DITHER);
   this.atlas=document.createElement('canvas');this.lost=false;
@@ -144,9 +183,10 @@ export class VolumeRenderer{
   for(let at=3;at<coverage.data.length;at+=4)coverage.data[at]=Math.round(255*glyphCoverage(coverage.data[at]/255,theme,this.compact));
   ctx.putImageData(coverage,0,0);
  }
- draw(yaw,muscles,theme,mode='characters',selected=null,view={zoom:1,x:0,y:0}){
+ draw(yaw,muscles,theme,mode='characters',selected=null,view={zoom:1,x:0,y:0,pitch:0}){
   if(this.lost)throw new Error('Graphics context lost');if(!this.resize())return;
-  this.buildAtlas(muscles,theme,selected);const gl=this.gl;gl.useProgram(this.program);gl.uniform1f(this.yawLocation,yaw);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,bodyFit(this.mesh,aspect)*view.zoom);gl.uniform2f(this.panLocation,view.x*2,-view.y*2);
+  this.buildAtlas(muscles,theme,selected);const gl=this.gl;gl.useProgram(this.program);gl.uniform1f(this.yawLocation,yaw);
+  const orbit=orbitFrame(this.mesh,view.pitch??0);gl.uniform2f(this.pitchLocation,orbit.cos,orbit.sin);gl.uniform1f(this.centerLocation,orbit.centerY);gl.uniform1f(this.depthLocation,orbit.depthRange);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,(orbit.extent===this.mesh.halfHeight?bodyFit(this.mesh,aspect):Math.min(.96/orbit.extent,.96*aspect/this.mesh.radius))*view.zoom);gl.uniform2f(this.panLocation,view.x*2,-view.y*2);
   gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.drawElements(gl.TRIANGLES,this.mesh.indices.length,gl.UNSIGNED_INT,0);
   gl.readPixels(0,0,this.surface.width,this.surface.height,gl.RGBA,gl.UNSIGNED_BYTE,this.pixels);
   this.pickWidth=this.canvas.clientWidth;this.pickHeight=this.canvas.clientHeight;
@@ -163,7 +203,7 @@ export class VolumeRenderer{
    count++;histogram[glyph]=(histogram[glyph]||0)+1;
    signature=Math.imul(signature^cell.at^cell.shade^glyph.charCodeAt(0)^phase,16777619)>>>0;
   }
-  ctx.globalAlpha=1;this.drawCount++;this.glyphCount=count;this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.surfaceProjection=surfaceProjectionRevision;if(this.diagnostics){const regionPixels={};for(let at=0;at<this.pixels.length;at+=4)if(this.pixels[at+3]){const id=surfaceRegions[this.pixels[at+1]];if(id)regionPixels[id]=(regionPixels[id]||0)+1;}this.canvas.dataset.regionPixels=JSON.stringify(regionPixels);}
+  ctx.globalAlpha=1;this.drawCount++;this.glyphCount=count;this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.pitch=String(view.pitch??0);this.canvas.dataset.surfaceProjection=surfaceProjectionRevision;if(this.diagnostics){const regionPixels={};for(let at=0;at<this.pixels.length;at+=4)if(this.pixels[at+3]){const id=surfaceRegions[this.pixels[at+1]];if(id)regionPixels[id]=(regionPixels[id]||0)+1;}this.canvas.dataset.regionPixels=JSON.stringify(regionPixels);}
  }
  // Normalized native coordinates address the retained, depth-tested surface,
  // not a nearby glyph/anchor. WebGL readback rows run bottom to top.

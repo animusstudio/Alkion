@@ -159,7 +159,7 @@ void main() {
           channels.last,
           const StandardMethodCodec().encodeMethodCall(
             MethodCall('status', {
-              'version': 4,
+              'version': 5,
               'status': 'ready',
               'generation':
                   (displays.last['interaction'] as Map?)?['generation'] ?? 0,
