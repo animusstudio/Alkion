@@ -212,7 +212,7 @@ void main() {
         channelName(),
         const StandardMethodCodec().encodeMethodCall(
           MethodCall('status', {
-            'version': 2,
+            'version': 3,
             'status': 'ready',
             'generation': generation,
             'frame': frame,
@@ -251,7 +251,7 @@ void main() {
     expect(await result, WorkloadMuscle.chest);
     result = startPick();
     await tester.pump();
-    complete(region: 'core');
+    complete(region: 'alien');
     expect(await result, isNull);
     result = startPick();
     await tester.pump();
