@@ -41,6 +41,18 @@ oracle matching 741 partial and 19 unknown profiles. Host loading took about
 No device, Android rendering or phone qualification is claimed. Publication is
 approved, gated on exact outgoing-range review and an owner-run push.
 
+Dev packaging follow-up: the Android Gradle guard admitted only schema 3 Dev
+manifests, so a private Dev APK with the muscle bundle could not be built. It
+now admits schema 4 only with exactly the staged muscle bundle and scope
+registry, each matching its manifest source SHA-256. A one-byte change to the
+staged bundle fails closed; independent review passes. With the reviewed
+760-variant inputs and private body assets, the optimized ARM64 Dev APK (SHA-256
+`0075a6093821a665ba64900a6b3faa9f15f8564122d1598565f8690ce3f396da`) passes the
+APK verifier. Owner-directed in-place installation on Nothing A024 reports
+Success: the device APK hash matches, launch is Status ok, the process runs and
+first-install identity is retained. No data was cleared and no profile or UI was
+inspected, so the heatmap and the eleven-region views remain the owner's hands-on check.
+
 ## Artwork, discovery and live-workout refinement — 2026-11-05
 
 The [approved plan](../plans/2026-11-05-ui-performance-refinement.md) is implemented
