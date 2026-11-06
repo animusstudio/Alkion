@@ -8,7 +8,7 @@ pipeline in one Android system WebView. No new package is required.
 ## Caller interface
 
 - `CharacterBodyStyle.male` / `.female` select artwork, not personal gender data.
-- `CharacterBodyController`: `front()`, `back()`, `rotateBy(radians)`, `resume()`,
+- `CharacterBodyController`: `front()`, `back()`, `side()`, `rotateBy(radians)`, `resume()`,
   `pause()`, `retry()`; readable `yaw` (radians) and `paused`. Default is paused at
   front. Manual turns pause. Own/dispose the controller with the native controls.
 - Required widget fields: `style`, `scores: Map<WorkloadMuscle,double>`,

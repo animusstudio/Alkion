@@ -81,6 +81,9 @@ class CharacterBodyController extends ChangeNotifier {
 
   void front() => _hold(0);
   void back() => _hold(math.pi);
+
+  /// A held lateral view, a quarter turn from the front.
+  void side() => _hold(math.pi / 2);
   void rotateBy(double radians) {
     if (!radians.isFinite) return;
     _yaw = (_yaw + radians) % (math.pi * 2);

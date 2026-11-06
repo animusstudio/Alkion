@@ -77,9 +77,10 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   Object? _configuration;
   Size? _surfaceSize;
 
-  // Groups whose surface faces backward open on the back view. Adductors open
-  // on the front with the inner thigh. The abductor field is lateral, and the
-  // front view shows more of it than the back, where the glutes cover the hip.
+  // Groups whose surface faces backward open on the back view; adductors and
+  // every other group open on the front. The abductor field is lateral and is
+  // only a sliver at the pelvis edge from the front or back, so opening on it
+  // or choosing it from the list holds a side view instead.
   static const _posterior = {
     'back',
     'triceps',
@@ -87,6 +88,17 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     'hamstrings',
     'calves',
   };
+  static const _lateral = 'abductors';
+
+  void _openingView() {
+    if (_selected == _lateral) {
+      _controller.side();
+    } else if (_posterior.contains(_selected)) {
+      _controller.back();
+    } else {
+      _controller.front();
+    }
+  }
 
   List<CatalogBrowseGroup> get _groups =>
       widget.index.browseGroups.where((g) => g.kind == 'muscle').toList();
@@ -99,11 +111,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
         ? widget.selected
         : null;
     _controller = widget.controller ?? CharacterBodyController();
-    if (_posterior.contains(_selected)) {
-      _controller.back();
-    } else {
-      _controller.front();
-    }
+    _openingView();
     _controller.addListener(_controllerChanged);
     _scroll.addListener(_scrollChanged);
   }
@@ -116,11 +124,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       _controller.removeListener(_controllerChanged);
       if (oldWidget.controller == null) _controller.dispose();
       _controller = widget.controller ?? CharacterBodyController();
-      if (_posterior.contains(_selected)) {
-        _controller.back();
-      } else {
-        _controller.front();
-      }
+      _openingView();
       _controller.addListener(_controllerChanged);
     }
   }
@@ -194,9 +198,11 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     });
   }
 
-  void _select(String group) {
+  void _select(String group, {bool fromList = false}) {
     _pickEpoch++;
     setState(() => _selected = group);
+    // A tap already shows its region; only a list choice turns to abductors.
+    if (fromList && group == _lateral) _controller.side();
   }
 
   Future<void> _pick(Offset point, Size size) async {
@@ -558,7 +564,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                                 ),
                               ),
                               selected: _selected == group.key,
-                              onSelected: (_) => _select(group.key),
+                              onSelected: (_) =>
+                                  _select(group.key, fromList: true),
                             ),
                         ],
                       ),

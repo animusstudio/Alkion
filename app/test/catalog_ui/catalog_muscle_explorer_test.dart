@@ -318,9 +318,13 @@ void main() {
   );
 
   for (final (group, yaw) in [
+    ('chest', 0.0),
+    ('core', 0.0),
+    ('forearms', 0.0),
     ('adductors', 0.0),
-    ('abductors', 0.0),
+    ('abductors', math.pi / 2),
     ('glutes', math.pi),
+    ('hamstrings', math.pi),
   ]) {
     testWidgets('$group opens on its facing view', (tester) async {
       explorerPhone(tester);
@@ -337,6 +341,56 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+
+  testWidgets(
+    'only a list choice of abductors turns to the side; taps there keep it',
+    (tester) async {
+      explorerPhone(tester);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      final controller = PendingBodyController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        discoveryApp(
+          CatalogMuscleExplorer(
+            index: state.index('en'),
+            selected: 'glutes',
+            controller: controller,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(controller.yaw, math.pi);
+      await openList(tester);
+      for (final group in ['chest', 'adductors', 'core', 'quads']) {
+        await tester.ensureVisible(muscle(group));
+        await tester.tap(muscle(group));
+        await tester.pump();
+        expect(controller.yaw, math.pi, reason: group);
+      }
+      await tester.ensureVisible(muscle('abductors'));
+      await tester.tap(muscle('abductors'));
+      await tester.pumpAndSettle();
+      expect(controller.yaw, math.pi / 2);
+      expect(controller.paused, isTrue);
+      expect(body(tester).selectedRegion, WorkloadMuscle.abductors);
+      // A tap on the field from the side still returns and keeps abductors.
+      await revealArtwork(tester);
+      await tester.tap(diagram);
+      controller.requests.last.result.complete(WorkloadMuscle.abductors);
+      await tester.pumpAndSettle();
+      expect(body(tester).selectedRegion, WorkloadMuscle.abductors);
+      expect(controller.yaw, math.pi / 2);
+      // A tap that lands on abductors from the front does not turn the body.
+      await tester.tap(find.byKey(const Key('catalog-body-front')));
+      await tester.pumpAndSettle();
+      await tester.tap(diagram);
+      controller.requests.last.result.complete(WorkloadMuscle.abductors);
+      await tester.pumpAndSettle();
+      expect(controller.yaw, 0);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets(
     'new taps, list choices, turn, retry and hiding discard older picks',

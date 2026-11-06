@@ -16,7 +16,8 @@ the Java pick guard. Each side rejects version 3 and unknown regions.
 
 - Explore muscles no longer limits artwork to eight regions. A tap or a list
   choice selects and highlights each of the thirteen. Adductors and abductors
-  open on the front view; glutes stay on the back.
+  open on the front view; glutes stay on the back. Abductors open on a held
+  side view (a quarter turn), and choosing them from the list turns there.
 - The hint in all four locales now just says to tap a muscle or use the list.
 - Workload counts take region ids from the semantic map through
   `WorkloadMuscle.fromKey`, so a node mapped to `adductors` or `abductors`
@@ -58,7 +59,7 @@ forearms through the code-defined `alkion-surface-2` projection) over the
 2026-11-05 body loading, renderer, native bridge and exploration refinements.
 The display, status and pick bridge protocol is version 3 throughout. Explore
 muscles keeps its eight selectable regions; the three workload-only regions stay
-list-only there. All four locales keep both refinement and heatmap strings.
+list-only there (superseded by the 2026-11-06 thirteen-region section). All four locales keep both refinement and heatmap strings.
 
 The reviewed catalog input assesses **760 variants: 741 partial, 19 unknown and
 none complete**. These are agent assessments; qualified human review is pending
@@ -89,7 +90,8 @@ staged bundle fails closed; independent review passes. With the reviewed
 APK verifier. Owner-directed in-place installation on Nothing A024 reports
 Success: the device APK hash matches, launch is Status ok, the process runs and
 first-install identity is retained. No data was cleared and no profile or UI was
-inspected, so the heatmap and the eleven-region views remain the owner's hands-on check.
+inspected, so the heatmap and the eleven-region views remain the owner's hands-on check
+(regions superseded by the 2026-11-06 thirteen-region section).
 
 ## Artwork, discovery and live-workout refinement — 2026-11-05
 
@@ -246,7 +248,7 @@ The [approved plan](../plans/2026-11-04-explore-muscles-3d.md) is implemented at
 region to select/highlight its browse group, drag horizontally to turn, or use
 Front/Back. Show exercises applies the selection through the existing filter.
 All thirteen groups retain labeled native list controls; the five unmapped
-groups remain list-only. Selection uses separate categorical color, not workload.
+groups remain list-only (superseded by the 2026-11-06 thirteen-region section). Selection uses separate categorical color, not workload.
 Unavailable artwork retains the list, confirmation and retry; model asset staging
 and redistribution boundaries remain unchanged.
 
