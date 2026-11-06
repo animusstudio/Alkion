@@ -4,3 +4,4 @@ library;
 export 'catalog_bundle.dart';
 export 'catalog_index.dart';
 export 'catalog_labels.dart';
+export 'catalog_muscle.dart';

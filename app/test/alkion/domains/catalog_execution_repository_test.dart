@@ -21,6 +21,7 @@ import 'package:alkion/recovery/restore.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/store/schema.dart';
 import '../../catalog/catalog_fixture.dart';
+import '../../catalog/muscle_fixture.dart';
 import 'prepared_intent_retry_test.dart' show FaultDatabase;
 
 void main() {
@@ -136,6 +137,426 @@ void main() {
   }
 
   test(
+    'muscle-only upgrade pins future selections and preserves old active/saved bytes through restore',
+    () async {
+      final repo = CatalogExecutionRepository.local(store);
+      final fixture = SyntheticMuscleCatalog();
+      final old = await repo.commitPrepared(
+        await repo.prepareSelection(
+          bundle: fixture.loadV1(),
+          variantId: SyntheticMuscleCatalog.variantId,
+          displayLabel: 'Owned synthetic name',
+        ),
+      );
+      expect(old.exercise.muscleGroup, '');
+      final oldJson = jsonEncode(old.selection.toJson());
+      await finish('synthetic-old-muscle-workout', [metrics(old.selection)]);
+      final prepared = await repo.prepareSelection(
+        bundle: fixture.load(),
+        variantId: SyntheticMuscleCatalog.variantId,
+        displayLabel: 'Changed catalog label',
+      );
+      final fresh = await repo.commitPrepared(prepared);
+      await repo.commitPrepared(prepared);
+      expect(fresh.exercise.id, old.exercise.id);
+      expect(fresh.exercise.name, 'Owned synthetic name');
+      expect(fresh.selection.contextId, old.selection.contextId);
+      expect(
+        fresh.selection.contextRevision,
+        old.selection.contextRevision + 1,
+      );
+      expect(
+        fresh.selection.bindingRevision,
+        old.selection.bindingRevision! + 1,
+      );
+      expect(fresh.selection.musclePinDigest, isNotNull);
+      await store.readTransaction(
+        (tx) => validateCatalogSelection(tx, old.selection),
+      );
+      expect(jsonEncode(old.selection.toJson()), oldJson);
+      final resolved = await repo.resolveMuscles([
+        old.selection,
+        fresh.selection,
+      ]);
+      expect(
+        resolved[old.selection.muscleResolutionKey]!.profile!.isLegacy,
+        isTrue,
+      );
+      expect(
+        resolved[fresh.selection.muscleResolutionKey]!
+            .profile!
+            .relationships
+            .single
+            .role,
+        CatalogMuscleRole.primary,
+      );
+      final second = SyntheticMuscleCatalog(
+        previous: fixture,
+        role: 'secondary',
+      );
+      final updated = await repo.commitPrepared(
+        await repo.prepareSelection(
+          bundle: second.load(),
+          variantId: SyntheticMuscleCatalog.variantId,
+          displayLabel: 'New label',
+        ),
+      );
+      expect(updated.selection.contextRevision, 3);
+      expect(updated.selection.bindingRevision, 3);
+      final current = await repo.resolveMuscles(
+        [fresh.selection],
+        currentBundle: second.load(),
+        currentAssessment: true,
+      );
+      expect(
+        current[fresh.selection.muscleResolutionKey]!.recordedProfile!.revision,
+        2,
+      );
+      expect(
+        current[fresh.selection.muscleResolutionKey]!.profile!.revision,
+        3,
+      );
+      await finish('synthetic-v2-muscle-workout', [metrics(fresh.selection)]);
+      final backup = await createBackup(
+        store,
+        await Directory('${root.path}/muscle-backups').create(),
+      );
+      final target = Directory(
+        '${root.path}/muscle-restored/dev.animusstudio.alkion.dev',
+      );
+      await target.parent.create(recursive: true);
+      await RestoreService(target).restore(File(backup.path));
+      final restoredProfile = await AlkionProfile.open(supportRoot: target);
+      final restored = await LocalStore.open(
+        profile: restoredProfile,
+        expectedProfileId: restoredProfile.profileId,
+        schema: catalogExecutionSchemaRegistry(),
+      );
+      try {
+        final pins = await CatalogExecutionRepository.local(
+          restored,
+        ).resolveMuscles([old.selection, fresh.selection, updated.selection]);
+        expect(pins.values.every((p) => p.available), isTrue);
+        expect(
+          (await restored.getAll('SELECT * FROM catalog_pins')).length,
+          (await store.getAll('SELECT * FROM catalog_pins')).length,
+        );
+        final rows = await restored.getAll(
+          'SELECT catalog_set_bytes FROM sets WHERE profile_id=? AND session_id=?',
+          [restored.profileId, 'synthetic-v2-muscle-workout'],
+        );
+        expect(
+          CatalogSetEvidence.fromJson(
+            decodeCatalogBytes(rows.single['catalog_set_bytes']!),
+          ).selection.musclePinDigest,
+          fresh.selection.musclePinDigest,
+        );
+      } finally {
+        await restored.close();
+      }
+    },
+  );
+  test(
+    'recorded v1 and v2 selections require their immutable revisions',
+    () async {
+      final repo = CatalogExecutionRepository.local(store);
+      final fixture = SyntheticMuscleCatalog();
+      final legacy = await repo.commitPrepared(
+        await repo.prepareSelection(
+          bundle: fixture.loadV1(),
+          variantId: SyntheticMuscleCatalog.variantId,
+          displayLabel: 'Synthetic',
+        ),
+      );
+      final selected = await repo.commitPrepared(
+        await repo.prepareSelection(
+          bundle: fixture.load(),
+          variantId: SyntheticMuscleCatalog.variantId,
+          displayLabel: 'Synthetic',
+        ),
+      );
+      for (final original in [legacy.selection, selected.selection]) {
+        for (final field in ['contextRevision', 'bindingRevision']) {
+          final changed = CatalogSelectionEvidence.fromJson({
+            ...original.toJson(),
+            field: (original.toJson()[field] as int) + 999,
+          });
+          for (final current in [false, true]) {
+            final result = (await repo.resolveMuscles(
+              [changed, changed],
+              currentAssessment: current,
+              currentBundle: fixture.load(),
+            )).values.single;
+            expect(result.available, isFalse);
+            expect(
+              result.reason,
+              field == 'contextRevision'
+                  ? 'catalog_context_unavailable'
+                  : 'catalog_binding_unavailable',
+            );
+          }
+        }
+      }
+      final newer = await repo.commitPrepared(
+        await repo.prepareSelection(
+          bundle: SyntheticMuscleCatalog(previous: fixture).load(),
+          variantId: SyntheticMuscleCatalog.variantId,
+          displayLabel: 'Synthetic',
+        ),
+      );
+      for (final original in [legacy.selection, selected.selection]) {
+        final substituted = CatalogSelectionEvidence.fromJson({
+          ...original.toJson(),
+          'version': 2,
+          'bundleDigest': newer.selection.bundleDigest,
+          'musclePinNamespace': newer.selection.musclePinNamespace,
+          'musclePinDigest': newer.selection.musclePinDigest,
+          'executionSha256': newer.selection.executionSha256,
+        });
+        expect(
+          (await repo.resolveMuscles([substituted])).values.single.reason,
+          'catalog_context_mismatch',
+        );
+      }
+      await store.writeTransaction((tx) async {
+        for (final table in [
+          'exercises',
+          'exercise_catalog_bindings',
+          'exercise_tracking_contexts',
+        ]) {
+          await tx.execute('UPDATE $table SET deleted=1 WHERE profile_id=?', [
+            store.profileId,
+          ]);
+        }
+      });
+      final retained = await repo.resolveMuscles([
+        legacy.selection,
+        selected.selection,
+        newer.selection,
+        selected.selection,
+      ]);
+      expect(retained.length, 3);
+      expect(retained.values.every((r) => r.available), isTrue);
+    },
+  );
+
+  test('corrupt deleted and mismatched immutable bindings stay unknown', () async {
+    final repo = CatalogExecutionRepository.local(store);
+    final fixture = SyntheticMuscleCatalog();
+    final selected = (await repo.commitPrepared(
+      await repo.prepareSelection(
+        bundle: fixture.load(),
+        variantId: SyntheticMuscleCatalog.variantId,
+        displayLabel: 'Synthetic',
+      ),
+    )).selection;
+    final binding = await store.getOptional(
+      "SELECT * FROM record_revisions WHERE kind='catalogBinding' AND record_id=? AND revision=?",
+      [selected.bindingId, selected.bindingRevision],
+    );
+    final context = await store.getOptional(
+      "SELECT * FROM record_revisions WHERE kind='trackingContext' AND record_id=? AND revision=?",
+      [selected.contextId, selected.contextRevision],
+    );
+    for (final (offset, bytes, deleted, reason) in [
+      (100, Uint8List.fromList([255]), 0, 'catalog_binding_corrupt'),
+      (200, binding!['payload_bytes'], 1, 'catalog_binding_unavailable'),
+      (
+        300,
+        localBytes({
+          ...decodeCatalogBytes(binding['payload_bytes']!),
+          'bundle_digest': 'f' * 64,
+        }),
+        0,
+        'catalog_binding_mismatch',
+      ),
+    ]) {
+      final selection = CatalogSelectionEvidence.fromJson({
+        ...selected.toJson(),
+        'contextRevision': selected.contextRevision + offset,
+        'bindingRevision': selected.bindingRevision! + offset,
+      });
+      await store.writeTransaction((tx) async {
+        for (final (row, revision, payload, tombstone) in [
+          (binding, selection.bindingRevision, bytes, deleted),
+          (
+            context!,
+            selection.contextRevision,
+            localBytes({
+              ...decodeCatalogBytes(context['payload_bytes']!),
+              'execution_bytes': localBytes(selection.toJson()).toList(),
+            }),
+            0,
+          ),
+        ]) {
+          await tx.execute(
+            'INSERT INTO record_revisions VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+            [
+              store.profileId,
+              row['kind'],
+              row['record_id'],
+              revision,
+              tombstone,
+              row['layer'],
+              payload,
+              row['family'],
+              row['operation_id'],
+              row['source_revision_id'],
+              row['created_at'],
+            ],
+          );
+        }
+      });
+      expect(
+        (await repo.resolveMuscles([selection])).values.single.reason,
+        reason,
+      );
+    }
+    expect(
+      (await repo.resolveMuscles([selected])).values.single.available,
+      isTrue,
+    );
+  });
+
+  test(
+    'missing conflicting and corrupt pins are explicit, current tombstones retain history',
+    () async {
+      final repo = CatalogExecutionRepository.local(store);
+      final old = await select();
+      final original = (await store.getAll(
+        'SELECT * FROM catalog_pins',
+      )).single;
+      final raw = decodeCatalogBytes(original['raw_bytes']!);
+      final missing = CatalogSelectionEvidence.fromJson({
+        ...old.selection.toJson(),
+        'bundleDigest': 'f' * 64,
+      });
+      expect(
+        (await repo.resolveMuscles([missing])).values.single.reason,
+        'catalog_context_mismatch',
+      );
+      final fixture = SyntheticMuscleCatalog();
+      final fresh = await repo.commitPrepared(
+        await repo.prepareSelection(
+          bundle: fixture.load(),
+          variantId: SyntheticMuscleCatalog.variantId,
+          displayLabel: 'Synthetic',
+          setupId: 'new-v2-context',
+        ),
+      );
+      await store.writeTransaction((tx) async {
+        await tx.execute('UPDATE exercises SET deleted=1 WHERE profile_id=?', [
+          store.profileId,
+        ]);
+        await tx.execute(
+          'UPDATE exercise_catalog_bindings SET deleted=1 WHERE profile_id=?',
+          [store.profileId],
+        );
+      });
+      expect(
+        (await repo.resolveMuscles([fresh.selection])).values.single.available,
+        isTrue,
+      );
+      final changed = syntheticCatalog();
+      (changed['variants'] as List).first['facets'] = {'grip': 'supinated'};
+      final current = await repo.resolveMuscles(
+        [fresh.selection],
+        currentBundle: CatalogBundle.fromJsonString(jsonEncode(changed)),
+        currentAssessment: true,
+      );
+      expect(current.values.single.reason, 'incompatible_current_execution');
+      expect(current.values.single.recordedProfile, isNotNull);
+      final conflicting = {
+        ...raw,
+        'muscleRelationships': [
+          {'anatomyNodeId': 'synthetic-other', 'role': 'primary'},
+        ],
+      };
+      final bytes = localBytes(conflicting),
+          hash = catalogHash(utf8.decode(localBytes(conflicting)));
+      await store.writeTransaction(
+        (tx) => tx.execute('INSERT INTO catalog_pins VALUES(?,?,?,?,?,?,?,?)', [
+          store.profileId,
+          original['namespace'],
+          hash,
+          hash,
+          original['schema_version'],
+          bytes,
+          original['ancestry_bytes'],
+          original['created_at'],
+        ]),
+      );
+      expect(
+        (await repo.resolveMuscles([old.selection])).values.single.reason,
+        'conflicting_pins',
+      );
+      // Import-like corrupt bytes can be inserted but the immutable table refuses
+      // mutation/deletion. The resolver independently verifies content hashes.
+      await store.writeTransaction(
+        (tx) => tx.execute('INSERT INTO catalog_pins VALUES(?,?,?,?,?,?,?,?)', [
+          store.profileId,
+          original['namespace'],
+          'synthetic-corrupt-pin',
+          '0' * 64,
+          original['schema_version'],
+          original['raw_bytes'],
+          original['ancestry_bytes'],
+          original['created_at'],
+        ]),
+      );
+      expect(
+        (await repo.resolveMuscles([old.selection])).values.single.reason,
+        'corrupt_pin',
+      );
+      expect(
+        (await repo.resolveMuscles([fresh.selection])).values.single.available,
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'pin resolution is profile/namespace scoped and missing legacy pins stay explicit',
+    () async {
+      final repo = CatalogExecutionRepository.local(store);
+      final selected = await select();
+      final changedNamespace = CatalogSelectionEvidence.fromJson({
+        ...selected.selection.toJson(),
+        'catalogNamespace': 'another-catalog',
+      });
+      final result = await repo.resolveMuscles([changedNamespace]);
+      expect(
+        result[changedNamespace.muscleResolutionKey]!.reason,
+        'foreign_profile_or_namespace',
+      );
+      final otherProfile = await AlkionProfile.open(
+        supportRoot: Directory(
+          '${root.path}/other/dev.animusstudio.alkion.dev',
+        ),
+      );
+      final otherStore = await LocalStore.open(
+        profile: otherProfile,
+        expectedProfileId: otherProfile.profileId,
+        schema: catalogExecutionSchemaRegistry(),
+      );
+      try {
+        final otherRepo = CatalogExecutionRepository.local(otherStore);
+        await otherRepo.commitPrepared(
+          await otherRepo.prepareSelection(
+            bundle: bundle(),
+            variantId: selected.selection.variantId,
+            displayLabel: 'Other profile selection',
+          ),
+        );
+        final result = await otherRepo.resolveMuscles([selected.selection]);
+        expect(result.values.single.reason, 'foreign_profile_or_namespace');
+      } finally {
+        await otherStore.close();
+      }
+    },
+  );
+
+  test(
     'catalog lazy binding is concurrent/restart idempotent, setups share definition, mismatched revision refuses',
     () async {
       final repo = CatalogExecutionRepository.local(store), catalog = bundle();
@@ -168,6 +589,8 @@ void main() {
       );
       final raw = syntheticCatalog();
       raw['catalog_revision'] = 'synthetic-changed-bundle';
+      (raw['variants'] as List).first['revision'] = 2;
+      (raw['muscle_profiles'] as List).first['variant_revision'] = 2;
       await expectLater(
         repo.prepareSelection(
           bundle: CatalogBundle.fromJsonString(jsonEncode(raw)),

@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
@@ -9,6 +10,203 @@ import '../domain/local_action.dart';
 import '../store/local_store.dart';
 import 'exercise_repository.dart';
 import 'models.dart';
+
+final class CatalogMuscleResolution {
+  const CatalogMuscleResolution({
+    this.profile,
+    this.recordedProfile,
+    this.reason,
+    this.currentAssessment = false,
+  });
+  final CatalogMuscleProfile? profile, recordedProfile;
+  final String? reason;
+  final bool currentAssessment;
+  bool get available => profile != null;
+}
+
+CatalogMuscleProfile _legacyMusclePin(
+  Map<String, dynamic> pin,
+  CatalogSelectionEvidence selection,
+) {
+  final execution = <String, dynamic>{
+    'variant_id': pin['variantId'],
+    'variant_revision': pin['variantRevision'],
+    'family_id': pin['familyId'],
+    'equipment_kind': pin['equipmentKind'],
+    'facets': pin['facets'],
+    'measurement_profile': (pin['measurementProfile'] as Map)['key'],
+  };
+  return CatalogMuscleProfile.fromSnapshot({
+    'format': 'alkion-muscle-pin',
+    'version': 2,
+    'legacy': true,
+    'sourceNamespace': selection.catalogNamespace,
+    'sourceRevision': 'legacy-unavailable',
+    'sourceBundleSha256': pin['bundleDigest'],
+    'catalogNamespace': selection.catalogNamespace,
+    'execution': execution,
+    'executionSha256': catalogHash(catalogCanonicalJson(execution)),
+    'profile': {
+      'coverage': pin['muscleCoverage'],
+      'relationships': [
+        for (final r in pin['muscleRelationships'] as List)
+          {
+            'anatomy_node_id': r['anatomyNodeId'],
+            'kind': 'strength',
+            'role': r['role'],
+          },
+      ],
+    },
+    'assessment': {'assessment_status': 'legacy_unavailable'},
+    'anatomy': {'revision': 'legacy-unavailable', 'nodes': <dynamic>[]},
+    'semanticMap': {
+      'revision': null,
+      'regions': <dynamic>[],
+      'mappings': <dynamic>[],
+    },
+    'claims': <dynamic>[],
+    'sources': <dynamic>[],
+  });
+}
+
+final class _CatalogDecodedPin {
+  _CatalogDecodedPin(this.hash, this.fields);
+  final String hash;
+  final Map<String, dynamic> fields;
+  CatalogMuscleProfile? profile;
+}
+
+final class _CatalogMusclePinRead {
+  _CatalogMusclePinRead(List<Map<String, dynamic>> rows) {
+    for (final row in rows) {
+      (_namespaces[row['namespace']] ??= []).add(row);
+      (_ids[(row['namespace'], row['pin_id'])] ??= []).add(row);
+    }
+  }
+  final _namespaces = <Object?, List<Map<String, dynamic>>>{};
+  final _ids = <(Object?, Object?), List<Map<String, dynamic>>>{};
+  final _decoded =
+      HashMap<Map<String, dynamic>, _CatalogDecodedPin?>.identity();
+
+  List<Map<String, dynamic>> matching(CatalogSelectionEvidence selection) =>
+      selection.musclePinDigest == null
+      ? _namespaces['${selection.catalogNamespace}:execution'] ?? const []
+      : _ids[(selection.musclePinNamespace, selection.musclePinDigest)] ??
+            const [];
+
+  _CatalogDecodedPin? decode(Map<String, dynamic> row) {
+    if (_decoded.containsKey(row)) return _decoded[row];
+    try {
+      final bytes = (row['raw_bytes'] as List).cast<int>();
+      return _decoded[row] = _CatalogDecodedPin(
+        sha256.convert(bytes).toString(),
+        decodeCatalogBytes(bytes),
+      );
+    } on Object {
+      _decoded[row] = null;
+      return null;
+    }
+  }
+}
+
+CatalogMuscleResolution _resolveRecordedMuscle(
+  CatalogSelectionEvidence selection,
+  List<Map<String, dynamic>> rows, {
+  _CatalogMusclePinRead? pinRead,
+}) {
+  if (selection.variantId == null) {
+    return const CatalogMuscleResolution(reason: 'unbound');
+  }
+  final explicit = selection.musclePinDigest != null;
+  if (explicit &&
+      (selection.musclePinNamespace != 'alkion.exercise-catalog:muscle' ||
+          selection.catalogNamespace != 'alkion-exercises')) {
+    return const CatalogMuscleResolution(reason: 'namespace_mismatch');
+  }
+  final candidates = <String, CatalogMuscleProfile>{};
+  var corrupt = false;
+  final pins = pinRead ?? _CatalogMusclePinRead(rows);
+  for (final row in pins.matching(selection)) {
+    if (row['namespace'] !=
+        (explicit
+            ? selection.musclePinNamespace
+            : '${selection.catalogNamespace}:execution')) {
+      continue;
+    }
+    if (explicit && row['pin_id'] != selection.musclePinDigest) continue;
+    try {
+      final decoded = pins.decode(row);
+      if (decoded == null) {
+        corrupt = true;
+        continue;
+      }
+      final hash = decoded.hash;
+      final pin = decoded.fields;
+      if (explicit) {
+        if (row['schema_version'] != 'alkion-muscle-pin/2' ||
+            hash != row['digest'] ||
+            hash != row['pin_id'] ||
+            hash != selection.musclePinDigest ||
+            pin['format'] != 'alkion-muscle-pin' ||
+            pin['version'] != 2 ||
+            pin['catalogNamespace'] != selection.catalogNamespace ||
+            pin['sourceCatalogSha256'] != selection.bundleDigest ||
+            pin['sourceNamespace'] != 'alkion.exercise-catalog' ||
+            pin['executionSha256'] != selection.executionSha256 ||
+            (pin['execution'] as Map)['variant_id'] != selection.variantId ||
+            (pin['execution'] as Map)['variant_revision'] !=
+                selection.variantRevision ||
+            catalogHash(catalogCanonicalJson(pin['execution'])) !=
+                pin['executionSha256']) {
+          corrupt = true;
+          continue;
+        }
+        if (decoded.profile == null) {
+          validateMuscleSchema(pin['profile'], definition: 'profile');
+        }
+        if ((pin['profile'] as Map)['variant_id'] != selection.variantId ||
+            (pin['profile'] as Map)['variant_revision'] !=
+                selection.variantRevision ||
+            (pin['profile'] as Map)['execution_sha256'] !=
+                selection.executionSha256 ||
+            (pin['execution'] as Map)['family_id'] != selection.familyId) {
+          corrupt = true;
+          continue;
+        }
+        candidates[hash] = decoded.profile ??=
+            CatalogMuscleProfile.fromSnapshot(pin);
+      } else {
+        if (pin['variantId'] != selection.variantId ||
+            pin['variantRevision'] != selection.variantRevision ||
+            pin['bundleDigest'] != selection.bundleDigest) {
+          continue;
+        }
+        if (row['schema_version'] != 'alkion-execution-pin/1' ||
+            hash != row['digest'] ||
+            hash != row['pin_id'] ||
+            pin['familyId'] != selection.familyId ||
+            catalogCanonicalJson(pin['measurementProfile']) !=
+                catalogCanonicalJson(selection.profile.toJson()) ||
+            pin['equipmentKind'] is! String ||
+            pin['facets'] is! Map) {
+          corrupt = true;
+          continue;
+        }
+        candidates[hash] = decoded.profile ??= _legacyMusclePin(pin, selection);
+      }
+    } on Object {
+      corrupt = true;
+    }
+  }
+  if (corrupt) return const CatalogMuscleResolution(reason: 'corrupt_pin');
+  if (candidates.isEmpty) {
+    return const CatalogMuscleResolution(reason: 'missing_pin');
+  }
+  if (candidates.length != 1) {
+    return const CatalogMuscleResolution(reason: 'conflicting_pins');
+  }
+  return CatalogMuscleResolution(profile: candidates.values.single);
+}
 
 final class CatalogOwnedSelection {
   const CatalogOwnedSelection({
@@ -28,6 +226,55 @@ final class PreparedCatalogSelection {
   final StoreToken token;
 }
 
+/// Checks historical payloads only. Mutable projection tombstones do not erase
+/// the exact revisions retained by an active or recorded selection.
+String? _catalogSelectionHistoryFailure(
+  CatalogSelectionEvidence selection,
+  Map<String, dynamic>? context,
+  Map<String, dynamic>? binding,
+) {
+  if (context == null || context['deleted'] == 1) {
+    return 'catalog_context_unavailable';
+  }
+  if (selection.bindingId != null &&
+      (binding == null || binding['deleted'] == 1)) {
+    return 'catalog_binding_unavailable';
+  }
+  try {
+    final fields = decodeCatalogBytes(context['payload_bytes']!);
+    final pinned = CatalogSelectionEvidence.fromJson(
+      decodeCatalogBytes(fields['execution_bytes']!),
+    );
+    if (catalogCanonicalJson(pinned.toJson()) !=
+        catalogCanonicalJson(selection.toJson())) {
+      return 'catalog_context_mismatch';
+    }
+  } on Object {
+    return 'catalog_context_corrupt';
+  }
+  if (selection.bindingId != null) {
+    try {
+      final fields = decodeCatalogBytes(binding!['payload_bytes']!);
+      if (fields['exercise_id'] != selection.exerciseId ||
+          fields['variant_id'] != selection.variantId ||
+          fields['variant_revision'] != selection.variantRevision ||
+          fields['bundle_digest'] != selection.bundleDigest ||
+          fields['family_id'] != selection.familyId ||
+          fields['catalog_namespace'] != selection.catalogNamespace ||
+          fields['label_policy'] != selection.labelPolicy ||
+          base64Encode(localBytes(selection.profile.toJson())) !=
+              base64Encode(
+                (fields['measurement_profile_bytes'] as List).cast<int>(),
+              )) {
+        return 'catalog_binding_mismatch';
+      }
+    } on Object {
+      return 'catalog_binding_corrupt';
+    }
+  }
+  return null;
+}
+
 /// Verifies the pinned revision, never the mutable current context label.
 Future<void> validateCatalogSelection(
   LocalRead tx,
@@ -37,38 +284,24 @@ Future<void> validateCatalogSelection(
     "SELECT payload_bytes,deleted FROM record_revisions WHERE profile_id=? AND kind='trackingContext' AND record_id=? AND revision=?",
     [tx.profileId, selection.contextId, selection.contextRevision],
   );
-  if (context == null || context['deleted'] == 1) {
-    throw const StoreException('catalog_context_unavailable');
-  }
-  final fields = decodeCatalogBytes(context['payload_bytes']!);
-  final pinned = CatalogSelectionEvidence.fromJson(
-    decodeCatalogBytes(fields['execution_bytes']!),
-  );
-  if (base64Encode(localBytes(pinned.toJson())) !=
-      base64Encode(localBytes(selection.toJson()))) {
-    throw const StoreException('catalog_context_mismatch');
-  }
-  if (selection.bindingId != null) {
-    final binding = await tx.getOptional(
-      "SELECT payload_bytes,deleted FROM record_revisions WHERE profile_id=? AND kind='catalogBinding' AND record_id=? AND revision=?",
-      [tx.profileId, selection.bindingId, selection.bindingRevision],
+  final binding = selection.bindingId == null
+      ? null
+      : await tx.getOptional(
+          "SELECT payload_bytes,deleted FROM record_revisions WHERE profile_id=? AND kind='catalogBinding' AND record_id=? AND revision=?",
+          [tx.profileId, selection.bindingId, selection.bindingRevision],
+        );
+  final failure = _catalogSelectionHistoryFailure(selection, context, binding);
+  if (failure != null) throw StoreException(failure);
+  if (selection.musclePinDigest != null) {
+    final resolution = _resolveRecordedMuscle(
+      selection,
+      await tx.getAll(
+        'SELECT * FROM catalog_pins WHERE profile_id=? AND namespace=? AND pin_id=?',
+        [tx.profileId, selection.musclePinNamespace, selection.musclePinDigest],
+      ),
     );
-    if (binding == null || binding['deleted'] == 1) {
-      throw const StoreException('catalog_binding_unavailable');
-    }
-    final fields = decodeCatalogBytes(binding['payload_bytes']!);
-    if (fields['exercise_id'] != selection.exerciseId ||
-        fields['variant_id'] != selection.variantId ||
-        fields['variant_revision'] != selection.variantRevision ||
-        fields['bundle_digest'] != selection.bundleDigest ||
-        fields['family_id'] != selection.familyId ||
-        fields['catalog_namespace'] != selection.catalogNamespace ||
-        fields['label_policy'] != selection.labelPolicy ||
-        base64Encode(localBytes(selection.profile.toJson())) !=
-            base64Encode(
-              (fields['measurement_profile_bytes'] as List).cast<int>(),
-            )) {
-      throw const StoreException('catalog_binding_mismatch');
+    if (!resolution.available) {
+      throw StoreException('catalog_${resolution.reason}');
     }
   }
 }
@@ -130,6 +363,9 @@ final class CatalogExecutionRepository {
     String? operationId,
   }) async {
     final token = db.token;
+    if (bundle?.schemaVersion == 2 && catalogNamespace != 'alkion-exercises') {
+      throw const StoreException('catalog_namespace_mismatch');
+    }
     final variant = variantId == null ? null : bundle?.variants[variantId];
     if ((variantId != null && variant == null) ||
         (variantId == null && (customId == null || profile == null))) {
@@ -157,24 +393,74 @@ final class CatalogExecutionRepository {
       if (binding != null &&
           (binding['deleted'] == 1 ||
               binding['variant_revision'] != variant!.revision ||
-              binding['bundle_digest'] != bundle!.digest)) {
+              binding['catalog_namespace'] != catalogNamespace)) {
         throw const StoreException('incompatible_catalog_revision');
       }
       final context = await tx.record(
         LocalRef(tx.profileId, RecordKind.trackingContext, contextId),
       );
-      if (context != null) {
-        final selection = CatalogSelectionEvidence.fromJson(
-          decodeCatalogBytes(context['execution_bytes']!),
-        );
-        if (context['deleted'] == 1 ||
-            selection.exerciseId != exerciseId ||
-            selection.variantId != variantId ||
-            selection.bundleDigest != bundle?.digest) {
+      final previousSelection = context == null
+          ? null
+          : CatalogSelectionEvidence.fromJson(
+              decodeCatalogBytes(context['execution_bytes']!),
+            );
+      final upgradingBinding =
+          binding != null && binding['bundle_digest'] != bundle?.digest;
+      final upgradingContext =
+          previousSelection != null &&
+          previousSelection.bundleDigest != bundle?.digest;
+      if (previousSelection != null) {
+        if (context!['deleted'] == 1 ||
+            previousSelection.exerciseId != exerciseId ||
+            previousSelection.variantId != variantId ||
+            previousSelection.catalogNamespace != catalogNamespace) {
           throw const StoreException('catalog_context_mismatch');
         }
-        await validateCatalogSelection(tx, selection);
-        return PreparedCatalogSelection(selection, null, token);
+        await validateCatalogSelection(tx, previousSelection);
+        if (!upgradingContext && !upgradingBinding) {
+          return PreparedCatalogSelection(previousSelection, null, token);
+        }
+      }
+      if (upgradingBinding || upgradingContext) {
+        final pins = await tx.getAll(
+          'SELECT * FROM catalog_pins WHERE profile_id=?',
+          [tx.profileId],
+        );
+        // A binding can have several contexts. Use its exact immutable selection,
+        // never a label or a current definition as evidence of compatibility.
+        CatalogSelectionEvidence? observed = previousSelection;
+        if (upgradingBinding &&
+            (observed == null ||
+                observed.bindingRevision != binding['revision'])) {
+          final contexts = await tx.getAll(
+            'SELECT execution_bytes FROM exercise_tracking_contexts WHERE profile_id=? AND binding_id=? AND binding_revision=?',
+            [tx.profileId, bindingId, binding['revision']],
+          );
+          if (contexts.isNotEmpty) {
+            observed = CatalogSelectionEvidence.fromJson(
+              decodeCatalogBytes(contexts.first['execution_bytes']!),
+            );
+          }
+        }
+        final old = observed == null
+            ? const CatalogMuscleResolution(reason: 'missing_pin')
+            : _resolveRecordedMuscle(observed, pins);
+        final current = bundle?.muscleProfileFor(variantId!);
+        if (old.profile == null ||
+            current == null ||
+            old.profile!.executionSha256 != current.executionSha256 ||
+            (!old.profile!.isLegacy &&
+                !current.isLegacy &&
+                catalogCanonicalJson(
+                      old.profile!.snapshot['measurementDefinition'],
+                    ) !=
+                    catalogCanonicalJson(
+                      current.snapshot['measurementDefinition'],
+                    )) ||
+            catalogCanonicalJson(observed!.profile.toJson()) !=
+                catalogCanonicalJson(metricProfile.toJson())) {
+          throw const StoreException('incompatible_catalog_revision');
+        }
       }
       final exercise = await tx.record(
         LocalRef(tx.profileId, RecordKind.exercise, exerciseId),
@@ -198,20 +484,36 @@ final class CatalogExecutionRepository {
       final selection = CatalogSelectionEvidence(
         exerciseId: exerciseId,
         contextId: contextId,
-        contextRevision: 1,
+        contextRevision: (context?['revision'] as int? ?? 0) + 1,
         bindingId: bindingId,
-        bindingRevision:
-            binding?['revision'] as int? ?? (bindingId == null ? null : 1),
+        bindingRevision: bindingId == null
+            ? null
+            : (binding?['revision'] as int? ?? 0) +
+                  (binding == null || upgradingBinding ? 1 : 0),
         familyId: variant?.familyId,
         variantId: variantId,
         variantRevision: variant?.revision,
         bundleDigest: bundle?.digest,
+        musclePinNamespace: bundle?.schemaVersion == 2
+            ? 'alkion.exercise-catalog:muscle'
+            : null,
+        musclePinDigest: bundle?.schemaVersion == 2
+            ? sha256
+                  .convert(
+                    localBytes(bundle!.muscleProfileFor(variantId!)!.toJson()),
+                  )
+                  .toString()
+            : null,
+        executionSha256: bundle?.schemaVersion == 2
+            ? bundle!.muscleProfileFor(variantId!)!.executionSha256
+            : null,
         catalogNamespace: catalogNamespace,
         profile: metricProfile,
         displayLabel: label,
-        contextLabel: nickname?.trim() ?? '',
-        resistanceSource: resistanceSource,
-        loadConvention: loadConvention,
+        contextLabel: previousSelection?.contextLabel ?? nickname?.trim() ?? '',
+        resistanceSource:
+            previousSelection?.resistanceSource ?? resistanceSource,
+        loadConvention: previousSelection?.loadConvention ?? loadConvention,
       );
       final definition = CatalogExecutionDefinition(
         profile: metricProfile,
@@ -224,6 +526,11 @@ final class CatalogExecutionRepository {
         'definition': definition.toJson(),
         'create_exercise': exercise == null,
         'create_binding': bindingId != null && binding == null,
+        'upgrade_binding': upgradingBinding,
+        'binding_base': binding?['revision'],
+        'context_base': context?['revision'] ?? 0,
+        if (selection.musclePinDigest != null)
+          'muscle_pin': bundle!.muscleProfileFor(variantId!)!.toJson(),
         if (variant != null)
           'pin': {
             'variantId': variant.id,
@@ -251,7 +558,7 @@ final class CatalogExecutionRepository {
             ? LocalActionKind.catalogDefinitionCreate
             : LocalActionKind.catalogContextCreate,
         exercise == null ? exerciseId : contextId,
-        0,
+        exercise == null ? 0 : (context?['revision'] as int? ?? 0),
         input,
         operationId: operationId,
         dependencies: binding == null
@@ -354,6 +661,23 @@ final class CatalogExecutionRepository {
         'context_revision': selection.contextRevision,
       };
     }
+    if (await tx.latestRevision(
+          LocalRef(
+            tx.profileId,
+            RecordKind.trackingContext,
+            selection.contextId,
+          ),
+        ) !=
+        (input['context_base'] ?? 0)) {
+      throw const StoreException('revision_conflict');
+    }
+    if (input['upgrade_binding'] == true) {
+      await observedRecord(
+        tx,
+        LocalRef(tx.profileId, RecordKind.catalogBinding, selection.bindingId!),
+        input['binding_base'] as int,
+      );
+    }
     if (input['create_exercise'] == true) {
       final ref = LocalRef(
         tx.profileId,
@@ -377,7 +701,7 @@ final class CatalogExecutionRepository {
         'execution_definition_bytes': localBytes(input['definition']),
       });
     }
-    if (input['create_binding'] == true) {
+    if (input['create_binding'] == true || input['upgrade_binding'] == true) {
       await putDomain(
         tx,
         LocalRef(tx.profileId, RecordKind.catalogBinding, selection.bindingId!),
@@ -393,6 +717,8 @@ final class CatalogExecutionRepository {
           'measurement_profile_bytes': localBytes(selection.profile.toJson()),
         },
       );
+    }
+    if (input['pin'] != null) {
       final pinBytes = localBytes(input['pin']);
       final digest = sha256.convert(pinBytes).toString();
       await tx.execute(
@@ -405,6 +731,28 @@ final class CatalogExecutionRepository {
           'alkion-execution-pin/1',
           pinBytes,
           localBytes({'bundle_digest': selection.bundleDigest}),
+          intent.createdAt,
+        ],
+      );
+    }
+    if (input['muscle_pin'] != null) {
+      final bytes = localBytes(input['muscle_pin']);
+      if (sha256.convert(bytes).toString() != selection.musclePinDigest) {
+        throw const StoreException('catalog_pin_mismatch');
+      }
+      await tx.execute(
+        'INSERT OR IGNORE INTO catalog_pins VALUES(?,?,?,?,?,?,?,?)',
+        [
+          tx.profileId,
+          selection.musclePinNamespace,
+          selection.musclePinDigest,
+          selection.musclePinDigest,
+          'alkion-muscle-pin/2',
+          bytes,
+          localBytes({
+            'source_bundle_sha256':
+                (input['muscle_pin'] as Map)['sourceBundleSha256'],
+          }),
           intent.createdAt,
         ],
       );
@@ -434,6 +782,158 @@ final class CatalogExecutionRepository {
       'context_id': selection.contextId,
     };
   }
+
+  /// One profile-scoped read supplies every pin used by the workout. Current
+  /// definitions and their tombstones do not erase immutable historical pins.
+  Future<Map<String, CatalogMuscleResolution>> resolveMuscles(
+    List<CatalogSelectionEvidence> selections, {
+    CatalogBundle? currentBundle,
+    bool currentAssessment = false,
+  }) => db.readTransaction((tx) async {
+    final unique = {
+      for (final selection in selections)
+        selection.muscleResolutionKey: selection,
+    };
+    if (unique.isEmpty) return {};
+    final rows = <Map<String, dynamic>>[];
+    final explicitPins = {
+      for (final selection in unique.values)
+        if (selection.musclePinDigest != null)
+          (selection.musclePinNamespace, selection.musclePinDigest),
+    }.toList();
+    for (var offset = 0; offset < explicitPins.length; offset += 250) {
+      final chunk = explicitPins.skip(offset).take(250).toList();
+      rows.addAll(
+        await tx.getAll(
+          'SELECT * FROM catalog_pins WHERE profile_id=? AND '
+          '(${List.filled(chunk.length, '(namespace=? AND pin_id=?)').join(' OR ')})',
+          [
+            tx.profileId,
+            for (final ref in chunk) ...[ref.$1, ref.$2],
+          ],
+        ),
+      );
+    }
+    // V1 has no pin pointer; only its execution namespace can supply candidates.
+    final legacyNamespaces = {
+      for (final selection in unique.values)
+        if (selection.musclePinDigest == null && selection.variantId != null)
+          '${selection.catalogNamespace}:execution',
+    };
+    for (final namespace in legacyNamespaces) {
+      rows.addAll(
+        await tx.getAll(
+          'SELECT * FROM catalog_pins WHERE profile_id=? AND namespace=?',
+          [tx.profileId, namespace],
+        ),
+      );
+    }
+    final references = <(String, String, int)>{
+      for (final selection in unique.values) ...[
+        ('trackingContext', selection.contextId, selection.contextRevision),
+        if (selection.bindingId != null)
+          ('catalogBinding', selection.bindingId!, selection.bindingRevision!),
+      ],
+    }.toList();
+    final history = <(String, String, int), Map<String, dynamic>>{};
+    // Stay below SQLite's portable parameter limit while batching exact refs.
+    for (var offset = 0; offset < references.length; offset += 250) {
+      final chunk = references.skip(offset).take(250).toList();
+      for (final row in await tx.getAll(
+        'SELECT kind,record_id,revision,payload_bytes,deleted FROM record_revisions '
+        'WHERE profile_id=? AND (${List.filled(chunk.length, '(kind=? AND record_id=? AND revision=?)').join(' OR ')})',
+        [
+          tx.profileId,
+          for (final ref in chunk) ...[ref.$1, ref.$2, ref.$3],
+        ],
+      )) {
+        history[(
+              row['kind'] as String,
+              row['record_id'] as String,
+              row['revision'] as int,
+            )] =
+            row;
+      }
+    }
+    final pins = _CatalogMusclePinRead(rows);
+    return {
+      for (final entry in unique.entries)
+        entry.key: (() {
+          final selection = entry.value;
+          if (selection.variantId != null &&
+              selection.exerciseId !=
+                  _id(
+                    'exercise:${selection.catalogNamespace}:${selection.variantId}',
+                  )) {
+            return const CatalogMuscleResolution(
+              reason: 'foreign_profile_or_namespace',
+            );
+          }
+          final failure = _catalogSelectionHistoryFailure(
+            selection,
+            history[(
+              'trackingContext',
+              selection.contextId,
+              selection.contextRevision,
+            )],
+            history[(
+              'catalogBinding',
+              selection.bindingId,
+              selection.bindingRevision,
+            )],
+          );
+          if (failure != null) {
+            return CatalogMuscleResolution(
+              reason: failure,
+              currentAssessment: currentAssessment,
+            );
+          }
+          final recorded = _resolveRecordedMuscle(
+            selection,
+            rows,
+            pinRead: pins,
+          );
+          if (!currentAssessment) return recorded;
+          final current = currentBundle?.muscleProfileFor(
+            selection.variantId ?? '',
+          );
+          if (recorded.profile == null) {
+            return CatalogMuscleResolution(
+              reason: recorded.reason,
+              currentAssessment: true,
+            );
+          }
+          if (current == null) {
+            return CatalogMuscleResolution(
+              recordedProfile: recorded.profile,
+              reason: 'current_unavailable',
+              currentAssessment: true,
+            );
+          }
+          if (selection.catalogNamespace != 'alkion-exercises' ||
+              current.executionSha256 != recorded.profile!.executionSha256 ||
+              (!current.isLegacy &&
+                  !recorded.profile!.isLegacy &&
+                  catalogCanonicalJson(
+                        current.snapshot['measurementDefinition'],
+                      ) !=
+                      catalogCanonicalJson(
+                        recorded.profile!.snapshot['measurementDefinition'],
+                      ))) {
+            return CatalogMuscleResolution(
+              recordedProfile: recorded.profile,
+              reason: 'incompatible_current_execution',
+              currentAssessment: true,
+            );
+          }
+          return CatalogMuscleResolution(
+            profile: current,
+            recordedProfile: recorded.profile,
+            currentAssessment: true,
+          );
+        })(),
+    };
+  });
 
   Future<List<CatalogSelectionEvidence>> selectionsForExercise(
     String id,

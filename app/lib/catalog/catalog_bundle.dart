@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import 'catalog_browse.dart';
+import 'catalog_muscle.dart';
 export 'catalog_browse.dart';
 
 /// Invalid, incompatible or tampered inputs are surfaced to the caller. The
@@ -236,6 +237,8 @@ class CatalogTerm {
 class CatalogBundle {
   CatalogBundle._({
     required this.digest,
+    required this.schemaVersion,
+    required this.muscleProfiles,
     required this.catalogRevision,
     required this.searchRevision,
     required this.families,
@@ -250,6 +253,10 @@ class CatalogBundle {
     this.browseUnavailableReason = 'missing',
   });
   final String digest, catalogRevision, searchRevision;
+  final int schemaVersion;
+  final Map<String, CatalogMuscleProfile> muscleProfiles;
+  CatalogMuscleProfile? muscleProfileFor(String variantId) =>
+      muscleProfiles[variantId];
   final CatalogBrowse? browse;
 
   /// Stable reason code for localized UI; never contains source details.
@@ -287,6 +294,8 @@ class CatalogBundle {
     String? browseSha256,
     String? browseRevision,
     String? sourceSha256,
+    List<int>? muscleBundleBytes,
+    List<int>? trustedScopeRegistryBytes,
   }) {
     final digest = sha256.convert(bytes).toString();
     if (expectedSha256 != null && expectedSha256 != digest) {
@@ -294,10 +303,27 @@ class CatalogBundle {
     }
     try {
       final root = catalogObject(jsonDecode(utf8.decode(bytes)), 'catalog');
-      if (root['schema_version'] != 1 ||
+      if (![1, 2].contains(root['schema_version']) ||
           root['format'] != 'alkion-exercise-catalog') {
         throw const CatalogFormatException('Unsupported catalog format/schema');
       }
+      final schemaVersion = root['schema_version'] as int;
+      if (schemaVersion == 2 &&
+          (muscleBundleBytes == null ||
+              trustedScopeRegistryBytes == null ||
+              root.containsKey('muscle_profiles'))) {
+        throw const CatalogFormatException(
+          'Authoritative muscle bundle required',
+        );
+      }
+      final assessed = schemaVersion == 2
+          ? CatalogMuscleBundle.fromBytes(
+              muscleBundleBytes!,
+              root,
+              trustedScopeRegistryBytes!,
+              digest,
+            )
+          : null;
       final revision = catalogString(
         root['catalog_revision'],
         'catalog_revision',
@@ -429,7 +455,9 @@ class CatalogBundle {
         }
       }
       final muscles = <String, Map<String, dynamic>>{};
-      for (final row in rows('muscle_profiles')) {
+      for (final row in rows(
+        schemaVersion == 1 ? 'muscle_profiles' : 'legacy_muscle_profiles',
+      )) {
         if (row.containsKey('id')) identify(row, 'muscle_profiles');
         final id = catalogString(row['variant_id'], 'variant_id');
         if (muscles.containsKey(id)) {
@@ -503,8 +531,19 @@ class CatalogBundle {
           equipmentKind: row['equipment_kind'],
           facets: facets,
           measurementProfileKey: row['measurement_profile'],
-          muscleCoverage: muscle['coverage'],
-          muscleRelationships: relationships,
+          muscleCoverage:
+              assessed?.profiles[row['id']]?.coverage ?? muscle['coverage'],
+          muscleRelationships: assessed == null
+              ? relationships
+              : [
+                  for (final relation
+                      in assessed.profiles[row['id']]!.relationships)
+                    if (relation.kind == CatalogMuscleKind.strength)
+                      CatalogMuscleRelationship(
+                        relation.anatomyNodeId,
+                        relation.role!.name,
+                      ),
+                ],
         );
       }
       if (variants.length != muscles.length ||
@@ -620,7 +659,51 @@ class CatalogBundle {
           browseUnavailableReason = 'invalid';
         }
       }
+      final muscleProfiles =
+          assessed?.profiles ??
+          <String, CatalogMuscleProfile>{
+            for (final row in rows('variants'))
+              row['id'] as String: CatalogMuscleProfile.fromSnapshot({
+                'format': 'alkion-muscle-pin',
+                'version': 2,
+                'legacy': true,
+                'sourceNamespace': 'alkion-exercises',
+                'sourceRevision': revision,
+                'sourceBundleSha256': digest,
+                'catalogNamespace': 'alkion-exercises',
+                'catalogRevision': revision,
+                'execution': catalogExecutionSnapshot(row),
+                'executionSha256': catalogHash(
+                  catalogCanonicalJson(catalogExecutionSnapshot(row)),
+                ),
+                'profile': {
+                  ...muscles[row['id']]!,
+                  'relationships': [
+                    for (final relation
+                        in muscles[row['id']]!['relationships'] as List)
+                      {
+                        ...catalogObject(relation, 'relationship'),
+                        'kind': 'strength',
+                      },
+                  ],
+                },
+                'assessment': {'assessment_status': 'legacy_unavailable'},
+                'anatomy': {
+                  'revision': 'legacy-unversioned',
+                  'nodes': root['anatomy_nodes'] ?? [],
+                },
+                'semanticMap': {
+                  'revision': null,
+                  'regions': <dynamic>[],
+                  'mappings': <dynamic>[],
+                },
+                'claims': <dynamic>[],
+                'sources': <dynamic>[],
+              }),
+          };
       final bundle = CatalogBundle._(
+        schemaVersion: schemaVersion,
+        muscleProfiles: Map.unmodifiable(muscleProfiles),
         browse: browse,
         browseUnavailableReason: browseUnavailableReason,
         digest: digest,

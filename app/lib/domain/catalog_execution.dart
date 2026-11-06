@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import '../catalog/catalog_bundle.dart' show CatalogMeasurementProfile;
+import '../catalog/catalog_bundle.dart'
+    show CatalogMeasurementProfile, catalogCanonicalJson, catalogHash;
 import 'evidence.dart';
 
 Map<String, dynamic> catalogEvidenceObject(Object? value) {
@@ -159,6 +160,9 @@ final class CatalogSelectionEvidence {
     this.variantId,
     this.variantRevision,
     this.bundleDigest,
+    this.musclePinNamespace,
+    this.musclePinDigest,
+    this.executionSha256,
     this.catalogNamespace = 'alkion-exercises',
     this.labelPolicy = 'eligible-familiar/1',
     this.resistanceSource = 'unknown',
@@ -172,7 +176,12 @@ final class CatalogSelectionEvidence {
       variantRevision,
       bundleDigest,
     ];
-    if (exerciseId.isEmpty ||
+    if ((musclePinNamespace == null) != (musclePinDigest == null) ||
+        (musclePinDigest != null &&
+            (variantId == null ||
+                executionSha256 == null ||
+                !RegExp(r'^[0-9a-f]{64}$').hasMatch(musclePinDigest!))) ||
+        exerciseId.isEmpty ||
         contextId.isEmpty ||
         contextRevision < 1 ||
         displayLabel.trim().isEmpty ||
@@ -193,6 +202,8 @@ final class CatalogSelectionEvidence {
   final String exerciseId, contextId, displayLabel, contextLabel;
   final int contextRevision;
   final String? bindingId, familyId, variantId, bundleDigest;
+  final String? musclePinNamespace, musclePinDigest, executionSha256;
+  String get muscleResolutionKey => catalogHash(catalogCanonicalJson(toJson()));
   final int? bindingRevision, variantRevision;
   final String catalogNamespace, labelPolicy, resistanceSource, loadConvention;
   final CatalogMeasurementProfileEvidence profile;
@@ -216,7 +227,12 @@ final class CatalogSelectionEvidence {
   ]);
   Map<String, Object?> toJson() => {
     'format': 'alkion-catalog-selection',
-    'version': 1,
+    'version': musclePinDigest == null ? 1 : 2,
+    if (musclePinDigest != null) ...{
+      'musclePinNamespace': musclePinNamespace,
+      'musclePinDigest': musclePinDigest,
+      'executionSha256': executionSha256,
+    },
     'exerciseId': exerciseId,
     'contextId': contextId,
     'contextRevision': contextRevision,
@@ -235,7 +251,30 @@ final class CatalogSelectionEvidence {
     'loadConvention': loadConvention,
   };
   factory CatalogSelectionEvidence.fromJson(Map<String, dynamic> json) {
-    _envelope(json, 'alkion-catalog-selection', {
+    if (json['version'] != 1 && json['version'] != 2) {
+      throw const FormatException('Unsupported catalog selection version');
+    }
+    if (json['version'] == 1 &&
+        [
+          'musclePinNamespace',
+          'musclePinDigest',
+          'executionSha256',
+        ].any(json.containsKey)) {
+      throw const FormatException('Unexpected v1 muscle reference');
+    }
+    if (json['version'] == 2 &&
+        [
+          'musclePinNamespace',
+          'musclePinDigest',
+          'executionSha256',
+        ].any((k) => json[k] == null)) {
+      throw const FormatException('Missing v2 muscle reference');
+    }
+    final normalized = {...json, 'version': 1};
+    _envelope(normalized, 'alkion-catalog-selection', {
+      'musclePinNamespace',
+      'musclePinDigest',
+      'executionSha256',
       'exerciseId',
       'contextId',
       'contextRevision',
@@ -263,6 +302,9 @@ final class CatalogSelectionEvidence {
       variantId: json['variantId'] as String?,
       variantRevision: json['variantRevision'] as int?,
       bundleDigest: json['bundleDigest'] as String?,
+      musclePinNamespace: json['musclePinNamespace'] as String?,
+      musclePinDigest: json['musclePinDigest'] as String?,
+      executionSha256: json['executionSha256'] as String?,
       catalogNamespace: json['catalogNamespace'] as String,
       labelPolicy: json['labelPolicy'] as String,
       displayLabel: json['displayLabel'] as String,

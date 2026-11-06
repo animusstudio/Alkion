@@ -105,6 +105,8 @@ def _verify_catalog_assets(archive, entries, assets_dir, *, development=False):
     metadata = manifest.get('browse')
     if metadata is not None:
         names.add(stager.BROWSE_NAME)
+    if manifest.get('muscle_bundle') is not None:
+        names.update((stager.MUSCLE_NAME, stager.SCOPE_NAME))
     allowed = {directory / name for name in names}
     if any(p.is_symlink() or (p.is_file() and p not in allowed) for p in root.rglob('*')):
         raise ValueError('Unexpected staged catalog asset inventory')
@@ -125,10 +127,11 @@ def _verify_catalog_assets(archive, entries, assets_dir, *, development=False):
                 stager.sha256(data[stager.BROWSE_NAME]) != metadata.get('projection_sha256') or
                 browse['classification_revision'] != metadata.get('classification_revision')):
             raise ValueError('Browse APK manifest mismatch')
+    muscle, scopes = (stager.muscle_manifest(catalog, data) if catalog['schema_version'] == 2 else (None, None))
     source_digest = manifest.get('source_sha256')
     if (not isinstance(source_digest, str) or not stager.re.fullmatch(r'[0-9a-f]{64}', source_digest) or
             manifest != stager.manifest_for(catalog, source_digest, catalog_digest, metadata,
-                                           development=development)):
+                                           development=development, muscle=muscle, scopes=scopes)):
         raise ValueError('Invalid catalog APK manifest')
     packaged = {name for name in entries if name.startswith('assets/' + prefix) and
                 not entries[name].is_dir()}

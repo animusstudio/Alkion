@@ -11,6 +11,8 @@ from pathlib import Path
 import re
 import tempfile
 
+from catalog_muscle_contract import validate_inputs
+
 APP = Path(__file__).resolve().parents[1]
 ASSETS = APP / 'assets/catalog_trial'
 ANDROID_ASSETS = APP / 'build/private-catalog-trial/assets'
@@ -18,6 +20,8 @@ DEV_ANDROID_ASSETS = APP / 'build/private-catalog-dev/assets'
 CATALOG_NAME = 'catalog.dev.json'
 MANIFEST_NAME = 'manifest.dev.json'
 BROWSE_NAME = 'browse.dev.json'
+MUSCLE_NAME = 'muscles.dev.json'
+SCOPE_NAME = 'muscle-scopes.dev.json'
 MUSCLE_GROUPS = set('chest back shoulders biceps triceps forearms quads hamstrings glutes calves core adductors abductors'.split())
 ACTIVITY_GROUPS = {'mobility', 'conditioning', 'whole_body'}
 LOCALES = {'en', 'it', 'de', 'es'}
@@ -106,8 +110,14 @@ def project(source):
     source = _object(source)
     if (source.get('format') != 'alkion-exercise-catalog' or
             type(source.get('schema_version')) is not int or
-            source['schema_version'] != 1):
+            source['schema_version'] not in (1, 2)):
         raise ValueError('Unsupported catalog format/schema')
+    if source['schema_version'] == 2:
+        if 'muscle_profiles' in source or 'legacy_muscle_profiles' not in source or 'muscle_bundle_ref' not in source:
+            raise ValueError('Authoritative v2 muscle pointer required')
+        # V2 retains complete measurement definitions and the authoritative pointer.
+        # The referenced muscle bundle is staged byte-for-byte, never projected.
+        return source
     if _array(source.get('equipment_models')):
         raise ValueError('Equipment models are not admitted for this trial')
     result = {key: source[key] for key in
@@ -233,7 +243,16 @@ def project_browse(source, catalog, source_digest, projection_digest):
     return result
 
 
-def manifest_for(catalog, source_digest, projection_digest, browse=None, *, development=False):
+def muscle_manifest(catalog, files):
+    bundle, scopes = decode(files[MUSCLE_NAME]), decode(files[SCOPE_NAME])
+    validate_inputs(catalog, bundle, scopes, files[MUSCLE_NAME])
+    return ({'namespace': bundle['namespace'], 'revision': bundle['revision'],
+             'source_sha256': sha256(files[MUSCLE_NAME])},
+            {'revision': scopes['revision'], 'source_sha256': sha256(files[SCOPE_NAME]),
+             'canonical_sha256': bundle['scope_registry_ref']['sha256']})
+
+
+def manifest_for(catalog, source_digest, projection_digest, browse=None, *, development=False, muscle=None, scopes=None):
     manifest = {
         'format': 'alkion-catalog-trial-manifest',
         'schema_version': 1,
@@ -243,7 +262,7 @@ def manifest_for(catalog, source_digest, projection_digest, browse=None, *, deve
         'projection_sha256': projection_digest,
         'catalog_revision': catalog['catalog_revision'],
         'search_revision': catalog['search_revision'],
-        'counts': {key: len(catalog[key])
+        'counts': {key: len(catalog['legacy_muscle_profiles'] if key == 'muscle_profiles' and catalog['schema_version'] == 2 else catalog[key])
                    for key in (*TABLE_FIELDS, 'equipment_models')},
         'muscle_evidence': 'partial_or_unknown_editorial_roles',
         'media_included': False,
@@ -259,6 +278,13 @@ def manifest_for(catalog, source_digest, projection_digest, browse=None, *, deve
         del manifest['private_trial_only']
         manifest['private_development_only'] = True
         manifest['notices'] = [DEV_NOTICE]
+    if catalog['schema_version'] == 2:
+        if muscle is None or scopes is None:
+            raise ValueError('V2 muscle bundle and trusted scopes required')
+        manifest['schema_version'] = 4
+        manifest['muscle_bundle'] = muscle
+        manifest['scope_registry'] = scopes
+        manifest['muscle_evidence'] = 'versioned_scoped_assessments_declared_human_review'
     return manifest
 
 
@@ -284,7 +310,7 @@ def _write_files(directory, files):
             path.replace(directory / name)
 
 
-def stage(source_path, expected_sha256, browse_path=None, browse_sha256=None):
+def stage(source_path, expected_sha256, browse_path=None, browse_sha256=None, muscle_path=None, muscle_sha256=None, scopes_path=None, scopes_sha256=None):
     if not re.fullmatch(r'[0-9a-f]{64}', expected_sha256):
         raise ValueError('An explicit lowercase SHA-256 is required')
     if source_path.is_symlink() or not source_path.is_file():
@@ -294,8 +320,20 @@ def stage(source_path, expected_sha256, browse_path=None, browse_sha256=None):
         raise ValueError('Input does not match the reviewed SHA-256')
     catalog = project(decode(data))
     projected = encode(catalog)
-    manifest = manifest_for(catalog, expected_sha256, sha256(projected))
-    files = {CATALOG_NAME: projected}
+    muscle_metadata, scope_metadata = None, None
+    extra_files = {}
+    if catalog["schema_version"] == 2:
+        for path, expected, name in [(muscle_path, muscle_sha256, MUSCLE_NAME), (scopes_path, scopes_sha256, SCOPE_NAME)]:
+            if path is None or not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected) or path.is_symlink() or not path.is_file():
+                raise ValueError("Explicit reviewed muscle bundle and trusted scope files/hashes required")
+            extra_files[name] = path.read_bytes()
+            if sha256(extra_files[name]) != expected:
+                raise ValueError("Muscle staging input SHA mismatch")
+        muscle_metadata, scope_metadata = muscle_manifest(catalog, extra_files)
+    elif any(v is not None for v in [muscle_path, muscle_sha256, scopes_path, scopes_sha256]):
+        raise ValueError("V1 catalog does not reference a v2 muscle artifact")
+    manifest = manifest_for(catalog, expected_sha256, sha256(projected), muscle=muscle_metadata, scopes=scope_metadata)
+    files = {CATALOG_NAME: projected, **extra_files}
     if (browse_path is None) != (browse_sha256 is None):
         raise ValueError('Both explicit browse input and SHA-256 are required')
     if browse_path is not None:
@@ -311,7 +349,7 @@ def stage(source_path, expected_sha256, browse_path=None, browse_sha256=None):
             'source_sha256': browse_sha256,
             'projection_sha256': sha256(files[BROWSE_NAME]),
             'classification_revision': browse['classification_revision'],
-        })
+        }, muscle=muscle_metadata, scopes=scope_metadata)
     files[MANIFEST_NAME] = encode(manifest)
     mirror = ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
     for directory in (ASSETS, mirror):
@@ -366,8 +404,18 @@ def verify(*, development=False):
             raise ValueError('Browse manifest or projection mismatch')
     elif (assets / BROWSE_NAME).exists():
         raise ValueError('Unbound browse staging inventory')
+    muscle_metadata, scope_metadata = None, None
+    if catalog['schema_version'] == 2:
+        for name in (MUSCLE_NAME, SCOPE_NAME):
+            path = assets / name
+            if path.is_symlink() or not path.is_file():
+                raise ValueError('Muscle staging absent or redirected')
+            files[name] = path.read_bytes()
+        muscle_metadata, scope_metadata = muscle_manifest(catalog, files)
+    elif any((assets / name).exists() for name in (MUSCLE_NAME, SCOPE_NAME)):
+        raise ValueError('Unbound muscle staging inventory')
     expected = manifest_for(catalog, source_digest, sha256(files[CATALOG_NAME]),
-                            browse_metadata, development=development)
+                            browse_metadata, development=development, muscle=muscle_metadata, scopes=scope_metadata)
     if manifest != expected:
         raise ValueError('Private trial manifest does not match the projection')
     _safe_output(mirror)
@@ -388,12 +436,12 @@ def stage_development():
     """Admit the retained reviewed projection without rewriting either trial copy."""
     trial = verify()
     files = {name: (ASSETS / name).read_bytes()
-             for name in (CATALOG_NAME, BROWSE_NAME)
-             if name == CATALOG_NAME or trial.get('browse') is not None}
+             for name in (CATALOG_NAME, BROWSE_NAME, MUSCLE_NAME, SCOPE_NAME)
+             if name == CATALOG_NAME or (name == BROWSE_NAME and trial.get('browse') is not None) or (name in (MUSCLE_NAME, SCOPE_NAME) and trial.get('muscle_bundle') is not None)}
     catalog = project(decode(files[CATALOG_NAME]))
     files[MANIFEST_NAME] = encode(manifest_for(
         catalog, trial['source_sha256'], trial['projection_sha256'],
-        trial.get('browse'), development=True))
+        trial.get('browse'), development=True, muscle=trial.get('muscle_bundle'), scopes=trial.get('scope_registry')))
     directory = DEV_ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
     _safe_output(DEV_ANDROID_ASSETS)
     if DEV_ANDROID_ASSETS.exists():
@@ -411,6 +459,10 @@ def main():
     parser.add_argument('--expected-sha256')
     parser.add_argument('--browse-input')
     parser.add_argument('--browse-sha256')
+    parser.add_argument('--muscle-input', type=Path)
+    parser.add_argument('--muscle-sha256')
+    parser.add_argument('--scopes-input', type=Path)
+    parser.add_argument('--scopes-sha256')
     parser.add_argument('--verify', action='store_true')
     parser.add_argument('--stage-dev', action='store_true')
     parser.add_argument('--verify-dev', action='store_true')
@@ -418,7 +470,7 @@ def main():
     if sum((args.verify, args.stage_dev, args.verify_dev)) > 1:
         parser.error('Select one staging or verification mode')
     if args.verify or args.stage_dev or args.verify_dev:
-        if args.input or args.expected_sha256 or args.browse_input or args.browse_sha256:
+        if any([args.input, args.expected_sha256, args.browse_input, args.browse_sha256, args.muscle_input, args.muscle_sha256, args.scopes_input, args.scopes_sha256]):
             parser.error('This mode uses only the previously staged private inputs')
         manifest = stage_development() if args.stage_dev else verify(development=args.verify_dev)
     else:
@@ -426,7 +478,7 @@ def main():
             parser.error('Explicit --input and --expected-sha256 are required')
         manifest = stage(args.input, args.expected_sha256,
                          Path(args.browse_input) if args.browse_input else None,
-                         args.browse_sha256 or None)
+                         args.browse_sha256 or None, args.muscle_input, args.muscle_sha256, args.scopes_input, args.scopes_sha256)
     print('Private catalog verified: ' +
           str(manifest['counts']['variants']) + ' variants; projection SHA-256 ' +
           manifest['projection_sha256'] + '; redistribution remains uncleared')

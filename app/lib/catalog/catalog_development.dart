@@ -46,7 +46,7 @@ Future<CatalogDevelopmentInput> loadDevelopmentCatalog({
     );
     if (manifest is! Map<String, dynamic> ||
         manifest['format'] != 'alkion-catalog-development-manifest' ||
-        manifest['schema_version'] != 3 ||
+        ![3, 4].contains(manifest['schema_version']) ||
         manifest['private_development_only'] != true ||
         manifest['redistribution_cleared'] != false ||
         manifest['media_included'] != false ||
@@ -63,7 +63,23 @@ Future<CatalogDevelopmentInput> loadDevelopmentCatalog({
         // Classification is optional; name search remains usable.
       }
     }
+    final muscle = manifest['muscle_bundle'];
+    final scopes = manifest['scope_registry'];
+    List<int>? muscleBytes, scopeBytes;
+    if (manifest['schema_version'] == 4) {
+      if (muscle is! Map || scopes is! Map) {
+        throw const FormatException('Missing muscle manifest');
+      }
+      muscleBytes = await asset('assets/catalog_trial/muscles.dev.json');
+      scopeBytes = await asset('assets/catalog_trial/muscle-scopes.dev.json');
+      if (catalogHash(utf8.decode(muscleBytes)) != muscle['source_sha256'] ||
+          catalogHash(utf8.decode(scopeBytes)) != scopes['source_sha256']) {
+        throw const FormatException('Muscle manifest digest mismatch');
+      }
+    }
     final bundle = CatalogBundle.fromBytes(
+      muscleBundleBytes: muscleBytes,
+      trustedScopeRegistryBytes: scopeBytes,
       await asset('assets/catalog_trial/catalog.dev.json'),
       expectedSha256: manifest['projection_sha256'] as String,
       browseBytes: browseBytes,
@@ -79,8 +95,32 @@ Future<CatalogDevelopmentInput> loadDevelopmentCatalog({
           : null,
     );
     if (bundle.catalogRevision != manifest['catalog_revision'] ||
-        bundle.searchRevision != manifest['search_revision']) {
+        bundle.searchRevision != manifest['search_revision'] ||
+        (bundle.schemaVersion == 2) != (manifest['schema_version'] == 4)) {
       throw const FormatException('Development catalog revision mismatch');
+    }
+    if (bundle.schemaVersion == 2) {
+      final profile = bundle.muscleProfiles.values.first;
+      final registryRef = profile.snapshot['scopeRegistryRef'] as Map;
+      if (muscle is! Map ||
+          scopes is! Map ||
+          muscle.keys.toSet().difference({
+            'namespace',
+            'revision',
+            'source_sha256',
+          }).isNotEmpty ||
+          scopes.keys.toSet().difference({
+            'revision',
+            'source_sha256',
+            'canonical_sha256',
+          }).isNotEmpty ||
+          muscle['namespace'] != profile.sourceNamespace ||
+          muscle['revision'] != profile.sourceRevision ||
+          muscle['source_sha256'] != profile.sourceBundleDigest ||
+          scopes['revision'] != registryRef['revision'] ||
+          scopes['canonical_sha256'] != registryRef['sha256']) {
+        throw const FormatException('Muscle manifest reference mismatch');
+      }
     }
     return CatalogDevelopmentInput(bundle: bundle);
   } on Object {

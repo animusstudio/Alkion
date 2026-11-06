@@ -1,0 +1,397 @@
+{
+  "catalog": {
+    "format": "alkion-exercise-catalog",
+    "schema_version": 2,
+    "catalog_revision": "synthetic.1",
+    "search_revision": "synthetic-search.1",
+    "equipment_kinds": [
+      "dumbbell"
+    ],
+    "facet_vocabulary": {
+      "grip": [
+        "neutral",
+        "supinated"
+      ]
+    },
+    "equipment_models": [],
+    "families": [
+      {
+        "id": "10000000-0000-4000-8000-000000000001",
+        "key": "synthetic_curl_family",
+        "names": {
+          "en": "Synthetic curl"
+        }
+      }
+    ],
+    "variants": [
+      {
+        "id": "10000000-0000-4000-8000-000000000010",
+        "key": "synthetic_curl",
+        "family_id": "10000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "names": {
+          "en": "Synthetic curl"
+        },
+        "equipment_kind": "dumbbell",
+        "facets": {
+          "grip": "neutral"
+        },
+        "measurement_profile": "load_reps"
+      }
+    ],
+    "measurement_profiles": [
+      {
+        "key": "load_reps",
+        "required_metrics": [
+          "reported_load",
+          "repetitions"
+        ],
+        "optional_metrics": [],
+        "progression_policy": "load_reps_only"
+      }
+    ],
+    "anatomy_nodes": [
+      {
+        "id": "synthetic_elbow",
+        "names": {
+          "en": "Synthetic elbow muscle",
+          "it": "Muscolo sintetico del gomito"
+        }
+      }
+    ],
+    "legacy_muscle_profiles": [
+      {
+        "id": "synthetic_profile",
+        "variant_id": "10000000-0000-4000-8000-000000000010",
+        "variant_revision": 1,
+        "revision": 1,
+        "coverage": "unknown",
+        "side_scope": "unspecified",
+        "relationships": [],
+        "coverage_note": "Synthetic legacy evidence is unavailable.",
+        "review": {
+          "status": "pending",
+          "reviewer_id": null,
+          "reviewed_on": null,
+          "rationale": "No qualified human review."
+        },
+        "coverage_scope": {
+          "anatomy_node_ids": [
+            "synthetic_elbow"
+          ],
+          "roles": [
+            "primary"
+          ],
+          "notes": "Synthetic single cell."
+        }
+      }
+    ],
+    "collections": [],
+    "aliases": [],
+    "scoped_terms": [],
+    "abbreviations": [],
+    "muscle_bundle_ref": {
+      "namespace": "alkion.exercise-catalog",
+      "revision": "synthetic-muscles.2",
+      "sha256": "4f5a0b35be13340bedd3e58484db245dc74bcf4ecc00f22fcb78f15a37dbdb5f"
+    }
+  },
+  "bundle": {
+    "format": "alkion-muscle-assessment-bundle",
+    "schema_version": 2,
+    "namespace": "alkion.exercise-catalog",
+    "revision": "synthetic-muscles.2",
+    "catalog_binding": {
+      "catalog_namespace": "alkion-exercises",
+      "catalog_revision": "synthetic.1",
+      "baseline_catalog_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "execution_catalog_sha256": "77b14a54741a40b8a5c3176c3027f21847975d061e5207b86a708531defeb503"
+    },
+    "scope_registry_ref": {
+      "revision": "synthetic-scopes.1",
+      "sha256": "bc984e2185cc9c080c856650297bd6d0e4bc82c0d92af39b5e611a3e19995b43"
+    },
+    "anatomy": {
+      "revision": "synthetic-anatomy.1",
+      "nodes": [
+        {
+          "id": "synthetic_elbow",
+          "parent_id": null,
+          "kind": "muscle",
+          "names": {
+            "en": "Synthetic elbow muscle",
+            "it": "Muscolo sintetico del gomito"
+          },
+          "review_status": "candidate",
+          "evidence_ids": []
+        }
+      ]
+    },
+    "semantic_map": {
+      "revision": "synthetic-map.1",
+      "regions": [
+        {
+          "id": "synthetic_arm_surface",
+          "names": {
+            "en": "Synthetic arm surface",
+            "it": "Superficie sintetica del braccio"
+          },
+          "view": "front",
+          "side_scope": "combined",
+          "geometry_ref": null,
+          "review_status": "symbolic_only"
+        }
+      ],
+      "mappings": [
+        {
+          "anatomy_node_id": "synthetic_elbow",
+          "render_region_ids": [
+            "synthetic_arm_surface"
+          ],
+          "mapping_status": "editorial_candidate",
+          "evidence_ids": []
+        }
+      ]
+    },
+    "actors": [
+      {
+        "id": "synthetic_researcher",
+        "kind": "agent",
+        "name": "Synthetic researcher"
+      },
+      {
+        "id": "synthetic_reconciler",
+        "kind": "agent",
+        "name": "Synthetic reconciler"
+      }
+    ],
+    "sources": [
+      {
+        "id": "synthetic_source",
+        "url": "https://catalog.example/execution",
+        "title": "Synthetic exact execution",
+        "publisher_id": "synthetic_publisher",
+        "publication_status": "current",
+        "source_kind": "official_reference"
+      }
+    ],
+    "claims": [
+      {
+        "id": "synthetic_claim",
+        "source_id": "synthetic_source",
+        "url": "https://catalog.example/execution",
+        "locator": "Synthetic section",
+        "accessed_on": "2026-11-03",
+        "access_result": "accessible",
+        "support_status": "supports",
+        "claim_kind": "execution_relationship",
+        "variant_id": "10000000-0000-4000-8000-000000000010",
+        "variant_revision": 1,
+        "execution_sha256": "d52b82cd5b5a5620ed3c50ecc6ec1996cab7bdae76c5c86bbf09eb862df6b7ad",
+        "anatomy_node_id": "synthetic_elbow",
+        "kind": "strength",
+        "role": "primary",
+        "action": "synthetic flexion",
+        "establishes": "Synthetic role",
+        "setup_comparison": "Exact synthetic setup",
+        "exact_setup_match": true,
+        "granularity": "muscle"
+      }
+    ],
+    "profiles": [
+      {
+        "id": "synthetic_profile",
+        "revision": 2,
+        "variant_id": "10000000-0000-4000-8000-000000000010",
+        "variant_revision": 1,
+        "execution_sha256": "d52b82cd5b5a5620ed3c50ecc6ec1996cab7bdae76c5c86bbf09eb862df6b7ad",
+        "scope_ref": {
+          "id": "synthetic_scope",
+          "revision": 1,
+          "sha256": "c0c2fb8a7067b341f7d534cf153b43f42ab2a90500b74dd9f0dde9d217cc264c"
+        },
+        "assessment_id": "synthetic_assessment",
+        "coverage": "complete",
+        "side_scope": "unspecified",
+        "relationships": [
+          {
+            "id": "synthetic_relationship",
+            "cell_id": "synthetic_cell",
+            "anatomy_node_id": "synthetic_elbow",
+            "kind": "strength",
+            "role": "primary",
+            "phase": "synthetic resisted phase",
+            "confidence": "moderate",
+            "confidence_criteria": {
+              "rationale": "One synthetic source.",
+              "limitations": [
+                "Synthetic fixture only."
+              ],
+              "independent_source_ids": [
+                "synthetic_source"
+              ],
+              "exact_execution_supported": true,
+              "material_conflict": false
+            },
+            "evidence_basis": "direct",
+            "claim_ids": [
+              "synthetic_claim"
+            ],
+            "rationale": "Synthetic relation.",
+            "setup_comparison": "Exact synthetic execution.",
+            "reasoning_chain": []
+          }
+        ],
+        "coverage_note": "Complete only within the synthetic single-cell scope.",
+        "human_review": {
+          "status": "pending",
+          "reviewer_id": null,
+          "reviewed_on": null,
+          "attestation_id": null,
+          "rationale": "No qualified human review."
+        },
+        "previous_profile": {
+          "id": "synthetic_profile",
+          "revision": 1,
+          "sha256": "aa478372f4bc2438e12ba006f0b94c5c2968884e0fbf358a570916012d8b15e6"
+        },
+        "change_rationale": "Synthetic revision."
+      }
+    ],
+    "assessments": [
+      {
+        "id": "synthetic_assessment",
+        "variant_id": "10000000-0000-4000-8000-000000000010",
+        "variant_revision": 1,
+        "execution_sha256": "d52b82cd5b5a5620ed3c50ecc6ec1996cab7bdae76c5c86bbf09eb862df6b7ad",
+        "profile_id": "synthetic_profile",
+        "profile_revision": 2,
+        "profile_sha256": "208c6de71b70751eaad1bafc325cb2f60d0d0248e89233025345b9cbc777c1af",
+        "catalog_revision": "synthetic.1",
+        "execution_catalog_sha256": "77b14a54741a40b8a5c3176c3027f21847975d061e5207b86a708531defeb503",
+        "anatomy_revision": "synthetic-anatomy.1",
+        "scope_ref": {
+          "id": "synthetic_scope",
+          "revision": 1,
+          "sha256": "c0c2fb8a7067b341f7d534cf153b43f42ab2a90500b74dd9f0dde9d217cc264c"
+        },
+        "assessment_status": "assessed",
+        "researcher_id": "synthetic_researcher",
+        "reconciler_id": "synthetic_reconciler",
+        "reconciliation": {
+          "status": "accepted",
+          "reviewed_on": "2026-11-03",
+          "rationale": "Independent synthetic reconciliation."
+        },
+        "searched_on": "2026-11-03T01:00:00Z",
+        "setup": {
+          "equipment": null,
+          "grip": null,
+          "support": null,
+          "angle": null,
+          "resistance_direction": null,
+          "laterality": null,
+          "execution_phase": null
+        },
+        "search_log": [
+          {
+            "query": "synthetic exact execution",
+            "url": "https://catalog.example/execution",
+            "access_result": "accessible",
+            "outcome": "Stipulated synthetic evidence; no network research."
+          }
+        ],
+        "dispositions": [
+          {
+            "cell_id": "synthetic_cell",
+            "status": "supported",
+            "relationship_ids": [
+              "synthetic_relationship"
+            ],
+            "claim_ids": [
+              "synthetic_claim"
+            ],
+            "rationale": "Synthetic closure.",
+            "next_evidence_needed": null
+          }
+        ],
+        "closure_rationale": "Single predeclared synthetic cell.",
+        "unresolved": [],
+        "contradictions": [],
+        "omitted_claims": []
+      }
+    ],
+    "profile_history": [
+      {
+        "schema_version": 1,
+        "profile_id": "synthetic_profile",
+        "profile_revision": 1,
+        "profile_sha256": "aa478372f4bc2438e12ba006f0b94c5c2968884e0fbf358a570916012d8b15e6",
+        "payload": {
+          "id": "synthetic_profile",
+          "variant_id": "10000000-0000-4000-8000-000000000010",
+          "variant_revision": 1,
+          "revision": 1,
+          "coverage": "unknown",
+          "side_scope": "unspecified",
+          "relationships": [],
+          "coverage_note": "Synthetic legacy evidence is unavailable.",
+          "review": {
+            "status": "pending",
+            "reviewer_id": null,
+            "reviewed_on": null,
+            "rationale": "No qualified human review."
+          },
+          "coverage_scope": {
+            "anatomy_node_ids": [
+              "synthetic_elbow"
+            ],
+            "roles": [
+              "primary"
+            ],
+            "notes": "Synthetic single cell."
+          }
+        },
+        "source_artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "reason": "Synthetic predecessor retained."
+      }
+    ],
+    "legacy_evidence": [],
+    "legacy_source_refs": []
+  },
+  "scopes": {
+    "format": "alkion-muscle-scope-registry",
+    "schema_version": 2,
+    "revision": "synthetic-scopes.1",
+    "scopes": [
+      {
+        "id": "synthetic_scope",
+        "revision": 1,
+        "anatomy_revision": "synthetic-anatomy.1",
+        "declared_on": "2026-11-03T00:00:00Z",
+        "declared_by": "synthetic_editor",
+        "rationale": "Predeclared synthetic scope.",
+        "applicable_actions": [
+          "synthetic flexion"
+        ],
+        "cells": [
+          {
+            "id": "synthetic_cell",
+            "anatomy_node_id": "synthetic_elbow",
+            "kind": "strength",
+            "role": "primary",
+            "action": "synthetic flexion"
+          }
+        ],
+        "exclusions": [],
+        "execution_bindings": [
+          {
+            "variant_id": "10000000-0000-4000-8000-000000000010",
+            "variant_revision": 1,
+            "execution_sha256": "d52b82cd5b5a5620ed3c50ecc6ec1996cab7bdae76c5c86bbf09eb862df6b7ad"
+          }
+        ]
+      }
+    ]
+  }
+}

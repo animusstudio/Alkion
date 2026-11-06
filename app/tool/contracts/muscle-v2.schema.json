@@ -1,0 +1,1964 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:alkion:muscle-assessment:schema:2",
+  "$ref": "#/$defs/bundle",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$"
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8000
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "format": "date-time"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "kind": {
+      "enum": [
+        "strength",
+        "stretch_target",
+        "mobility_target",
+        "conditioning_participation"
+      ]
+    },
+    "role": {
+      "anyOf": [
+        {
+          "enum": [
+            "primary",
+            "secondary",
+            "stabilizer"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "access": {
+      "enum": [
+        "accessible",
+        "blocked",
+        "missing",
+        "error"
+      ]
+    },
+    "profile_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "sha256"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "agent",
+            "human"
+          ]
+        },
+        "name": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name"
+      ]
+    },
+    "setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "equipment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "grip": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "support": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "angle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resistance_direction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "laterality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "execution_phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "equipment",
+        "grip",
+        "support",
+        "angle",
+        "resistance_direction",
+        "laterality",
+        "execution_phase"
+      ]
+    },
+    "search": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "$ref": "#/$defs/text"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/url"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "access_result": {
+          "$ref": "#/$defs/access"
+        },
+        "outcome": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "query",
+        "url",
+        "access_result",
+        "outcome"
+      ]
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/text"
+        },
+        "next_evidence_needed": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "reason",
+        "next_evidence_needed"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "url": {
+          "$ref": "#/$defs/url"
+        },
+        "title": {
+          "$ref": "#/$defs/text"
+        },
+        "publisher_id": {
+          "$ref": "#/$defs/id"
+        },
+        "publication_status": {
+          "enum": [
+            "current",
+            "retracted",
+            "withdrawn",
+            "unverified"
+          ]
+        },
+        "source_kind": {
+          "enum": [
+            "official_reference",
+            "research_publication",
+            "anatomy_reference",
+            "equipment_manual"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "url",
+        "title",
+        "publisher_id",
+        "publication_status",
+        "source_kind"
+      ]
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "anatomy_node_id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "action": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "id",
+        "anatomy_node_id",
+        "kind",
+        "role",
+        "action"
+      ]
+    },
+    "variant_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "variant_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "variant_revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "execution_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "variant_id",
+        "variant_revision",
+        "execution_sha256"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "anatomy_revision": {
+          "$ref": "#/$defs/id"
+        },
+        "declared_on": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "declared_by": {
+          "$ref": "#/$defs/id"
+        },
+        "rationale": {
+          "$ref": "#/$defs/text"
+        },
+        "applicable_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 1
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cell"
+          },
+          "minItems": 1
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0
+        },
+        "execution_bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/variant_binding"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "anatomy_revision",
+        "declared_on",
+        "declared_by",
+        "rationale",
+        "applicable_actions",
+        "cells",
+        "exclusions",
+        "execution_bindings"
+      ]
+    },
+    "scope_registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "alkion-muscle-scope-registry"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "revision": {
+          "$ref": "#/$defs/id"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "format",
+        "schema_version",
+        "revision",
+        "scopes"
+      ]
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "source_id": {
+          "$ref": "#/$defs/id"
+        },
+        "url": {
+          "$ref": "#/$defs/url"
+        },
+        "locator": {
+          "$ref": "#/$defs/text"
+        },
+        "accessed_on": {
+          "$ref": "#/$defs/date"
+        },
+        "access_result": {
+          "$ref": "#/$defs/access"
+        },
+        "support_status": {
+          "enum": [
+            "supports",
+            "contradicts",
+            "rejected",
+            "unverified"
+          ]
+        },
+        "claim_kind": {
+          "enum": [
+            "execution_relationship",
+            "execution_mechanics",
+            "anatomy_action",
+            "scope_exclusion"
+          ]
+        },
+        "variant_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "variant_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "execution_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "anatomy_node_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/kind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "action": {
+          "$ref": "#/$defs/text"
+        },
+        "establishes": {
+          "$ref": "#/$defs/text"
+        },
+        "setup_comparison": {
+          "$ref": "#/$defs/text"
+        },
+        "exact_setup_match": {
+          "type": "boolean"
+        },
+        "granularity": {
+          "enum": [
+            "group",
+            "muscle",
+            "muscle_region",
+            "movement_only"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "url",
+        "locator",
+        "accessed_on",
+        "access_result",
+        "support_status",
+        "claim_kind",
+        "variant_id",
+        "variant_revision",
+        "execution_sha256",
+        "anatomy_node_id",
+        "kind",
+        "role",
+        "action",
+        "establishes",
+        "setup_comparison",
+        "exact_setup_match",
+        "granularity"
+      ]
+    },
+    "confidence_criteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rationale": {
+          "$ref": "#/$defs/text"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0
+        },
+        "independent_source_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 1
+        },
+        "exact_execution_supported": {
+          "type": "boolean"
+        },
+        "material_conflict": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "rationale",
+        "limitations",
+        "independent_source_ids",
+        "exact_execution_supported",
+        "material_conflict"
+      ]
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "cell_id": {
+          "$ref": "#/$defs/id"
+        },
+        "anatomy_node_id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "phase": {
+          "$ref": "#/$defs/text"
+        },
+        "confidence": {
+          "enum": [
+            "unassessed",
+            "low",
+            "moderate",
+            "high"
+          ]
+        },
+        "confidence_criteria": {
+          "$ref": "#/$defs/confidence_criteria"
+        },
+        "evidence_basis": {
+          "enum": [
+            "direct",
+            "biomechanical_inference"
+          ]
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 1
+        },
+        "rationale": {
+          "$ref": "#/$defs/text"
+        },
+        "setup_comparison": {
+          "$ref": "#/$defs/text"
+        },
+        "reasoning_chain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "cell_id",
+        "anatomy_node_id",
+        "kind",
+        "role",
+        "phase",
+        "confidence",
+        "confidence_criteria",
+        "evidence_basis",
+        "claim_ids",
+        "rationale",
+        "setup_comparison",
+        "reasoning_chain"
+      ]
+    },
+    "human_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "reviewed"
+          ]
+        },
+        "reviewer_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewed_on": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attestation_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "status",
+        "reviewer_id",
+        "reviewed_on",
+        "attestation_id",
+        "rationale"
+      ]
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "variant_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "variant_revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "execution_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "scope_ref": {
+          "$ref": "#/$defs/profile_ref"
+        },
+        "assessment_id": {
+          "$ref": "#/$defs/id"
+        },
+        "coverage": {
+          "enum": [
+            "unknown",
+            "partial",
+            "complete"
+          ]
+        },
+        "side_scope": {
+          "enum": [
+            "unspecified",
+            "bilateral",
+            "left",
+            "right"
+          ]
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relationship"
+          },
+          "minItems": 0
+        },
+        "coverage_note": {
+          "$ref": "#/$defs/text"
+        },
+        "human_review": {
+          "$ref": "#/$defs/human_review"
+        },
+        "previous_profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/profile_ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "change_rationale": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "variant_id",
+        "variant_revision",
+        "execution_sha256",
+        "scope_ref",
+        "assessment_id",
+        "coverage",
+        "side_scope",
+        "relationships",
+        "coverage_note",
+        "human_review",
+        "previous_profile",
+        "change_rationale"
+      ]
+    },
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cell_id": {
+          "$ref": "#/$defs/id"
+        },
+        "status": {
+          "enum": [
+            "supported",
+            "excluded",
+            "unresolved"
+          ]
+        },
+        "relationship_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "rationale": {
+          "$ref": "#/$defs/text"
+        },
+        "next_evidence_needed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cell_id",
+        "status",
+        "relationship_ids",
+        "claim_ids",
+        "rationale",
+        "next_evidence_needed"
+      ]
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "changes_requested"
+          ]
+        },
+        "reviewed_on": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "status",
+        "reviewed_on",
+        "rationale"
+      ]
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "variant_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "variant_revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "execution_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        },
+        "profile_revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "profile_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "catalog_revision": {
+          "$ref": "#/$defs/id"
+        },
+        "execution_catalog_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "anatomy_revision": {
+          "$ref": "#/$defs/id"
+        },
+        "scope_ref": {
+          "$ref": "#/$defs/profile_ref"
+        },
+        "assessment_status": {
+          "enum": [
+            "pending",
+            "assessed"
+          ]
+        },
+        "researcher_id": {
+          "$ref": "#/$defs/id"
+        },
+        "reconciler_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reconciliation": {
+          "$ref": "#/$defs/reconciliation"
+        },
+        "searched_on": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "$ref": "#/$defs/timestamp"
+            }
+          ]
+        },
+        "setup": {
+          "$ref": "#/$defs/setup"
+        },
+        "search_log": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/search"
+          },
+          "minItems": 1
+        },
+        "dispositions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/disposition"
+          },
+          "minItems": 0
+        },
+        "closure_rationale": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/text"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gap"
+          },
+          "minItems": 0
+        },
+        "contradictions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0
+        },
+        "omitted_claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "variant_id",
+        "variant_revision",
+        "execution_sha256",
+        "profile_id",
+        "profile_revision",
+        "profile_sha256",
+        "catalog_revision",
+        "execution_catalog_sha256",
+        "anatomy_revision",
+        "scope_ref",
+        "assessment_status",
+        "researcher_id",
+        "reconciler_id",
+        "reconciliation",
+        "searched_on",
+        "setup",
+        "search_log",
+        "dispositions",
+        "closure_rationale",
+        "unresolved",
+        "contradictions",
+        "omitted_claims"
+      ]
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        },
+        "profile_revision": {
+          "$ref": "#/$defs/revision"
+        },
+        "profile_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "payload": {
+          "type": "object"
+        },
+        "source_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "schema_version",
+        "profile_id",
+        "profile_revision",
+        "profile_sha256",
+        "payload",
+        "source_artifact_sha256",
+        "reason"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schema_version": {
+                "const": 1
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/v1_muscle_profile"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/profile"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "v1_anatomy_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/v1_key"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/v1_key"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "group",
+            "muscle",
+            "muscle_region"
+          ]
+        },
+        "names": {
+          "$ref": "#/$defs/v1_names"
+        },
+        "review_status": {
+          "enum": [
+            "candidate",
+            "reviewed"
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_id"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "parent_id",
+        "kind",
+        "names",
+        "review_status",
+        "evidence_ids"
+      ]
+    },
+    "v1_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "v1_names": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "en": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "it": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "en",
+        "it"
+      ]
+    },
+    "v1_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "v1_render_region": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/v1_key"
+        },
+        "names": {
+          "$ref": "#/$defs/v1_names"
+        },
+        "view": {
+          "enum": [
+            "front",
+            "back"
+          ]
+        },
+        "side_scope": {
+          "enum": [
+            "combined",
+            "left",
+            "right"
+          ]
+        },
+        "geometry_ref": {
+          "type": "null"
+        },
+        "review_status": {
+          "enum": [
+            "symbolic_only"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "names",
+        "view",
+        "side_scope",
+        "geometry_ref",
+        "review_status"
+      ]
+    },
+    "v1_render_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "anatomy_node_id": {
+          "$ref": "#/$defs/v1_key"
+        },
+        "render_region_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_key"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "mapping_status": {
+          "enum": [
+            "editorial_candidate",
+            "human_reviewed"
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_id"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "anatomy_node_id",
+        "render_region_ids",
+        "mapping_status",
+        "evidence_ids"
+      ]
+    },
+    "v1_muscle_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/v1_id"
+        },
+        "variant_id": {
+          "$ref": "#/$defs/v1_uuid"
+        },
+        "variant_revision": {
+          "$ref": "#/$defs/v1_positive_revision"
+        },
+        "revision": {
+          "$ref": "#/$defs/v1_positive_revision"
+        },
+        "coverage": {
+          "enum": [
+            "partial",
+            "unknown",
+            "complete"
+          ]
+        },
+        "side_scope": {
+          "enum": [
+            "unspecified",
+            "bilateral",
+            "left",
+            "right"
+          ]
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_relationship"
+          },
+          "minItems": 0
+        },
+        "coverage_note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "review": {
+          "$ref": "#/$defs/v1_review"
+        },
+        "coverage_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "anatomy_node_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/v1_key"
+              },
+              "uniqueItems": true
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "primary",
+                  "secondary",
+                  "stabilizer"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "notes": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "anatomy_node_ids",
+            "roles",
+            "notes"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "variant_id",
+        "variant_revision",
+        "revision",
+        "coverage",
+        "side_scope",
+        "relationships",
+        "coverage_note",
+        "review",
+        "coverage_scope"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "const": "unknown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "relationships": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "enum": [
+                  "partial",
+                  "complete"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "relationships": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "v1_uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "v1_positive_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "v1_relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "anatomy_node_id": {
+          "$ref": "#/$defs/v1_key"
+        },
+        "role": {
+          "enum": [
+            "primary",
+            "secondary",
+            "stabilizer"
+          ]
+        },
+        "relative_emphasis": {
+          "anyOf": [
+            {
+              "enum": [
+                "major",
+                "moderate",
+                "minor"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "unassessed",
+            "low",
+            "moderate",
+            "high"
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_id"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "review_status": {
+          "enum": [
+            "editorial_candidate",
+            "human_reviewed"
+          ]
+        }
+      },
+      "required": [
+        "anatomy_node_id",
+        "role",
+        "relative_emphasis",
+        "confidence",
+        "evidence_ids",
+        "review_status"
+      ]
+    },
+    "v1_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "reviewed"
+          ]
+        },
+        "reviewer_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/v1_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewed_on": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "status",
+        "reviewer_id",
+        "reviewed_on",
+        "rationale"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "pending"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reviewer_id": {
+                "type": "null"
+              },
+              "reviewed_on": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "reviewed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reviewer_id": {
+                "$ref": "#/$defs/v1_id"
+              },
+              "reviewed_on": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                "format": "date"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "v1_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/v1_id"
+        },
+        "source_ref_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_id"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "source_record_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_variant_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/v1_uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mapping_status": {
+          "enum": [
+            "candidate",
+            "not_applicable"
+          ]
+        },
+        "mapping_relation": {
+          "enum": [
+            "exact",
+            "broader",
+            "narrower",
+            "related",
+            "unresolved",
+            "not_applicable"
+          ]
+        },
+        "assertion_kind": {
+          "enum": [
+            "identity_candidate",
+            "anatomical_action",
+            "editorial_role_assignment",
+            "measurement_limit"
+          ]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 3000
+        },
+        "review_status": {
+          "enum": [
+            "human_review_pending",
+            "human_reviewed"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "source_ref_ids",
+        "source_record_id",
+        "target_variant_id",
+        "mapping_status",
+        "mapping_relation",
+        "assertion_kind",
+        "rationale",
+        "review_status"
+      ]
+    },
+    "v1_source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/v1_id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "url": {
+          "$ref": "#/$defs/v1_url"
+        },
+        "source_kind": {
+          "enum": [
+            "candidate_dataset",
+            "anatomy_text",
+            "research",
+            "methodology",
+            "exercise_reference"
+          ]
+        },
+        "snapshot": {
+          "$ref": "#/$defs/v1_snapshot"
+        },
+        "source_rights_declaration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "assertion_admission": {
+          "enum": [
+            "reference_only_no_content_import"
+          ]
+        },
+        "review_status": {
+          "enum": [
+            "candidate_reference",
+            "reviewed_reference"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "url",
+        "source_kind",
+        "snapshot",
+        "source_rights_declaration",
+        "assertion_admission",
+        "review_status"
+      ]
+    },
+    "v1_url": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 2000,
+      "pattern": "^https://[^\\s]+$"
+    },
+    "v1_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/v1_revision"
+        },
+        "url": {
+          "$ref": "#/$defs/v1_url"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/v1_sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewed_on": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "format": "date"
+        },
+        "capture_status": {
+          "enum": [
+            "captured_bytes",
+            "reference_only"
+          ]
+        }
+      },
+      "required": [
+        "revision",
+        "url",
+        "sha256",
+        "capture_status",
+        "reviewed_on"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "capture_status": {
+                "const": "captured_bytes"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "sha256": {
+                "$ref": "#/$defs/v1_sha256"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capture_status": {
+                "const": "reference_only"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "sha256": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "v1_revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "v1_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "anatomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/id"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_anatomy_node"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "revision",
+        "nodes"
+      ]
+    },
+    "semantic_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/id"
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_render_region"
+          },
+          "minItems": 0
+        },
+        "mappings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_render_mapping"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "revision",
+        "regions",
+        "mappings"
+      ]
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "alkion-muscle-assessment-bundle"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "namespace": {
+          "const": "alkion.exercise-catalog"
+        },
+        "revision": {
+          "$ref": "#/$defs/id"
+        },
+        "catalog_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "catalog_namespace": {
+              "const": "alkion-exercises"
+            },
+            "catalog_revision": {
+              "$ref": "#/$defs/id"
+            },
+            "baseline_catalog_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "execution_catalog_sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "catalog_namespace",
+            "catalog_revision",
+            "baseline_catalog_sha256",
+            "execution_catalog_sha256"
+          ]
+        },
+        "scope_registry_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/$defs/id"
+            },
+            "sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          },
+          "required": [
+            "revision",
+            "sha256"
+          ]
+        },
+        "anatomy": {
+          "$ref": "#/$defs/anatomy"
+        },
+        "semantic_map": {
+          "$ref": "#/$defs/semantic_map"
+        },
+        "actors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/actor"
+          },
+          "minItems": 1
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          },
+          "minItems": 0
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim"
+          },
+          "minItems": 0
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/profile"
+          },
+          "minItems": 1
+        },
+        "assessments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assessment"
+          },
+          "minItems": 1
+        },
+        "profile_history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/history"
+          },
+          "minItems": 0
+        },
+        "legacy_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_evidence"
+          },
+          "minItems": 0
+        },
+        "legacy_source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/v1_source_ref"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "format",
+        "schema_version",
+        "namespace",
+        "revision",
+        "catalog_binding",
+        "scope_registry_ref",
+        "anatomy",
+        "semantic_map",
+        "actors",
+        "sources",
+        "claims",
+        "profiles",
+        "assessments",
+        "profile_history",
+        "legacy_evidence",
+        "legacy_source_refs"
+      ]
+    }
+  }
+}
