@@ -716,7 +716,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
 ///
 /// Adding or lifting a finger re-bases the focal point and span, so the next
 /// update continues from where the fingers are, without a jump. Movement before
-/// slop is not applied. After any manipulation the sequence ends with [onEnd];
+/// slop is not applied, and the finger left after a pinch or pan must pass slop
+/// again from where it was re-based before it orbits. After any manipulation the sequence ends with [onEnd];
 /// a release never becomes a tap. Pointers outside the canvas never reach it.
 class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   BodyManipulationGestureRecognizer({super.debugOwner});
@@ -746,6 +747,9 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   final _downs = <int, Offset>{};
   bool _manipulating = false;
   bool _tap = false;
+  // The single finger left after a multi-pointer phase, still within slop of
+  // its re-base position: it holds the view until it moves deliberately.
+  bool _settling = false;
   double _slop = kTouchSlop;
   Offset _last = Offset.zero;
   double _baseSpan = 0;
@@ -763,6 +767,7 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
       onDown?.call();
     } else {
       _tap = false;
+      _settling = false;
       _begin();
     }
     _rebase();
@@ -817,6 +822,13 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
       }
       final focal = _focal;
       if (_points.length == 1) {
+        if (_settling) {
+          if ((focal - _last).distance <= _slop) return;
+          // Past slop: orbit from here, without applying the slop distance.
+          _settling = false;
+          _last = focal;
+          return;
+        }
         final delta = focal - _last;
         _last = focal;
         if (delta != Offset.zero) onOrbit?.call(delta);
@@ -842,12 +854,14 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
       final tap = _tap && !_manipulating;
       _manipulating = false;
       _tap = false;
+      _settling = false;
       if (tap) {
         onTap?.call(position);
       } else {
         onEnd?.call();
       }
     } else {
+      if (_manipulating && _points.length == 1) _settling = true;
       _rebase();
     }
     stopTrackingPointer(pointer);
@@ -866,6 +880,7 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
     _points.clear();
     _downs.clear();
     _manipulating = false;
+    _settling = false;
     _tap = false;
   }
 

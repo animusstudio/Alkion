@@ -128,9 +128,14 @@ void main() {
       expect(log.transforms.last.$1, closeTo(1, 1e-12));
       expect(log.transforms.last.$2, const Offset(200, 112));
       await second.up();
-      // The remaining finger orbits from where it is, not from the base.
+      // The remaining finger holds within slop of its re-base position, then
+      // orbits from where it passed slop, not from the base.
       await first.moveBy(const Offset(-7, 3));
-      expect(log.orbit, const Offset(3, 3));
+      expect(log.orbit, const Offset(10, 0));
+      await first.moveBy(const Offset(-20, 0));
+      expect(log.orbit, const Offset(10, 0));
+      await first.moveBy(const Offset(5, 4));
+      expect(log.orbit, const Offset(15, 4));
       expect(log.starts, hasLength(3), reason: 'One finger never transforms');
       await first.up();
       await tester.pumpAndSettle();
@@ -154,6 +159,49 @@ void main() {
       await b.up();
       expect(log.events, ['down', 'start', 'end']);
       expect(log.taps, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'the finger left after a pinch needs slop again before orbiting, and never taps',
+    (tester) async {
+      final (log, scroll) = await _pump(tester);
+      final centre = tester.getCenter(_canvas);
+      final a = await tester.startGesture(centre - const Offset(30, 0));
+      final b = await tester.startGesture(centre + const Offset(30, 0));
+      await b.moveBy(const Offset(30, 0));
+      expect(log.transforms, hasLength(1));
+      await b.up();
+      // Hand jitter while the second finger lifts: no orbit at all.
+      await a.moveBy(const Offset(5, -4));
+      await a.moveBy(const Offset(-3, 8));
+      await a.moveBy(const Offset(6, 6)); // 8, 10 from the re-base: within slop
+      expect(log.orbits, isEmpty);
+      // Past slop it re-bases without applying the slop distance...
+      await a.moveBy(const Offset(0, 12));
+      expect(log.orbits, isEmpty);
+      // ...then orbits continuously with every later movement.
+      await a.moveBy(const Offset(4, 0));
+      await a.moveBy(const Offset(0, -9));
+      expect(log.orbit, const Offset(4, -9));
+      await a.up();
+      expect(log.events, ['down', 'start', 'end']);
+      expect(log.taps, isEmpty, reason: 'A release after a pinch never taps');
+      // A second finger landing again pinches at once; the next lift settles.
+      final c = await tester.startGesture(centre);
+      final d = await tester.startGesture(centre + const Offset(40, 0));
+      await d.up();
+      final e = await tester.startGesture(centre + const Offset(0, 40));
+      await e.moveBy(const Offset(0, 20));
+      expect(log.transforms, hasLength(2), reason: 'Re-landing ends settling');
+      await e.up();
+      await c.moveBy(const Offset(10, 0));
+      expect(log.orbit, const Offset(4, -9));
+      await c.up();
+      expect(log.taps, isEmpty);
+      await tester.tap(_canvas);
+      expect(log.taps, hasLength(1), reason: 'Lifting all fingers resets');
+      expect(scroll.offset, 0);
     },
   );
 

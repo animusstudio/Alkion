@@ -10,13 +10,15 @@ observed: 2026-11-07
 
 Implements T1 of the approved [Explore gestures plan](../plans/2026-11-07-explore-gestures.md).
 The owner's phone showed only one-finger sideways turning: pinch and two-finger
-pan did nothing, and vertical drags scrolled the page. The cause was arena
-competition for the first pointer among a horizontal drag, a separate
-two-pointer recognizer and the page scroll. Explore now has one recognizer on
+pan did nothing, and vertical drags scrolled the page. The suspected cause is
+arena competition for the first pointer among a horizontal drag, a separate
+two-pointer recognizer and the page scroll; the owner's phone check (A3) is
+what confirms it. Explore now has one recognizer on
 the canvas that wins each pointer landing there at pointer down and arbitrates
 internally. A tap within slop picks. One finger orbits: sideways turns, vertical
 tilts. Two fingers pinch-zoom (1–3×) around their focal point and pan. Adding
-or lifting a finger re-bases without a jump. Drags and pinches never select.
+or lifting a finger re-bases without a jump; the finger left after a pinch
+orbits only once it moves past slop again. Drags and pinches never select.
 Outside the canvas the page still scrolls.
 
 - Camera pitch is new controller and renderer state, clamped to ±45°. Front,
@@ -38,8 +40,9 @@ from canvas drags while drags outside it scroll; focal-point zoom and two-finger
 pan; no jump when a finger lands or lifts, including a third; no selection on
 drag or pinch release; a tap still selecting; and the overlay's position,
 bounds, semantics and absorbed taps. A layout sweep covers 320/412 dp × 1×/2× ×
-both themes × four locales. With eager acceptance removed, the scroll and
-second-finger tests fail.
+both themes × four locales. A temporary mutation that removed eager
+acceptance (then reverted) made exactly the one-finger scroll test and the
+second-finger pinch test fail.
 
 A host Chromium WebGL proof with the staged private meshes rendered both styles
 at eight views: level front, ±45° front, 20° front and oblique, a −17° oblique,

@@ -698,6 +698,15 @@ void main() {
       await tester.pump();
       expect((controller.zoom, controller.pan), viewport);
       expect((controller.yaw, controller.pitch), (yaw, 0.0));
+      // The finger left after a pinch holds the view within slop, so the end
+      // of a pinch never jump-rotates the body.
+      await first.moveBy(const Offset(6, -6));
+      await tester.pump();
+      expect((controller.yaw, controller.pitch), (yaw, 0.0));
+      // Past slop it re-bases there, then orbits continuously.
+      await first.moveBy(const Offset(20, 0));
+      await tester.pump();
+      expect((controller.yaw, controller.pitch), (yaw, 0.0));
       await first.moveBy(const Offset(20, 10));
       await tester.pump();
       expect(controller.yaw, closeTo(yaw + 20 * .009, 1e-9));

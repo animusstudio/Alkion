@@ -153,7 +153,9 @@ it. Pointers outside the canvas never reach it; the page scrolls as before.
   not applied.
 - Two or more pointers pinch-zoom (1–3×) around their focal point and pan. Each
   change in the pointer set re-bases focal point, span, zoom and pan, so adding
-  or lifting a finger never jumps, and a clamped zoom never drifts.
+  or lifting a finger never jumps, and a clamped zoom never drifts. The finger
+  left after a pinch or pan orbits only after it passes slop again from its
+  re-base position, so the end of a pinch never jump-rotates the body.
 - Any manipulation or cancellation invalidates pending picks; a release after
   manipulation never selects.
 
