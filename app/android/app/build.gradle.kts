@@ -143,11 +143,25 @@ if (isolatedCatalogTrial || privateCatalogDev || configuredTarget == catalogTria
         File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/manifest.dev.json")
     ) as? Map<*, *>
     val browseMetadata = manifest?.get("browse") as? Map<*, *>
+    // Schema 4 (Dev only) adds the versioned muscle bundle and its trusted scope registry.
+    val muscleMetadata = manifest?.get("muscle_bundle") as? Map<*, *>
+    val scopeMetadata = manifest?.get("scope_registry") as? Map<*, *>
+    val muscleSchema = privateCatalogDev && manifest?.get("schema_version") == 4 &&
+        muscleMetadata != null && scopeMetadata != null
+    val stagedDigest = { name: String ->
+        MessageDigest.getInstance("SHA-256").digest(
+            File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/$name").readBytes()
+        ).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
     val relativeFiles = setOf(
         "flutter_assets/assets/catalog_trial/catalog.dev.json",
         "flutter_assets/assets/catalog_trial/manifest.dev.json",
-    ) + if (manifest?.get("schema_version") in setOf(2, 3) && browseMetadata != null)
-        setOf("flutter_assets/assets/catalog_trial/browse.dev.json") else emptySet()
+    ) + (if (manifest?.get("schema_version") in setOf(2, 3, 4) && browseMetadata != null)
+        setOf("flutter_assets/assets/catalog_trial/browse.dev.json") else emptySet()) +
+        if (muscleSchema) setOf(
+            "flutter_assets/assets/catalog_trial/muscles.dev.json",
+            "flutter_assets/assets/catalog_trial/muscle-scopes.dev.json",
+        ) else emptySet()
     require(catalogTrialAssets.walkTopDown().filter { it.isFile }
             .map { it.relativeTo(catalogTrialAssets).invariantSeparatorsPath }.toSet() == relativeFiles
     ) { "Stage and verify the exact private catalog trial assets first" }
@@ -156,7 +170,8 @@ if (isolatedCatalogTrial || privateCatalogDev || configuredTarget == catalogTria
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     val admittedScope = manifest != null && if (privateCatalogDev)
         manifest["format"] == "alkion-catalog-development-manifest" &&
-            manifest["schema_version"] == 3 && manifest["private_development_only"] == true &&
+            (manifest["schema_version"] == 3 || muscleSchema) &&
+            manifest["private_development_only"] == true &&
             !manifest.containsKey("private_trial_only")
         else manifest["format"] == "alkion-catalog-trial-manifest" &&
             manifest["schema_version"] in setOf(1, 2) && manifest["private_trial_only"] == true
@@ -164,12 +179,14 @@ if (isolatedCatalogTrial || privateCatalogDev || configuredTarget == catalogTria
         manifest["redistribution_cleared"] == false && manifest["media_included"] == false &&
         manifest["projection_sha256"] == payloadDigest
     ) { "Private catalog trial admission manifest or projection digest is invalid" }
-    require((manifest["schema_version"] in setOf(1, 3) && browseMetadata == null) ||
-        (manifest["schema_version"] in setOf(2, 3) && browseMetadata != null &&
-            browseMetadata["projection_sha256"] == MessageDigest.getInstance("SHA-256").digest(
-                File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/browse.dev.json").readBytes()
-            ).joinToString("") { "%02x".format(it.toInt() and 0xff) })
+    require((manifest["schema_version"] in setOf(1, 3, 4) && browseMetadata == null) ||
+        (manifest["schema_version"] in setOf(2, 3, 4) && browseMetadata != null &&
+            browseMetadata["projection_sha256"] == stagedDigest("browse.dev.json"))
     ) { "Private catalog browse admission digest is invalid" }
+    require(!muscleSchema || (
+        muscleMetadata?.get("source_sha256") == stagedDigest("muscles.dev.json") &&
+            scopeMetadata?.get("source_sha256") == stagedDigest("muscle-scopes.dev.json"))
+    ) { "Private catalog muscle admission digest is invalid" }
 }
 if (isolatedBodyPreview) {
     val requestedTasks = gradle.startParameter.taskNames
