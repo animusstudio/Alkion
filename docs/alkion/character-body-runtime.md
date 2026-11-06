@@ -18,7 +18,7 @@ pipeline in one Android system WebView. No new package is required.
   produce neutral artwork. Values crossing the bridge are finite and bounded.
 - Optional `pickingEnabled` defaults to false. When true, paused ready artwork
   supports `await controller.pick(localPosition, surfaceSize)`, returning an
-  eight-region `WorkloadMuscle` or null. Coordinates and size refer to the exact
+  eleven-region `WorkloadMuscle` or null. Coordinates and size refer to the exact
   `CharacterBody` layout bounds. Null covers background, neutral pixels,
   unavailable artwork, invalid coordinates and stale frames; it leaves caller
   selection unchanged. The caller owns tap/drag arbitration and selected state.
@@ -42,7 +42,7 @@ lighting, male `fullerMesh` and female `posedMesh` remain the approved functions
 Palette changes invalidate the glyph atlas without changing geometry or glyph
 selection. Existing source studies remain untouched.
 
-The internal display protocol is version 2, validated in Dart's native host and
+The internal display protocol is version 3, validated in Dart's native host and
 JavaScript. In addition to bounded `yaw`, it carries `turn`, a cumulative manual
 turn modulo 2π. Front/Back advance `command` and reset `turn`; relative drag
 keeps that absolute command and accumulates `turn`. JavaScript applies the
@@ -66,16 +66,58 @@ background time. Character sampling reuses renderer-owned temporary storage;
 its shade, anchor, coverage, edge direction, glyph and alpha outputs match the
 accepted sampler's frozen synthetic references.
 
+## Documented sets and surface projection
+
+The exact display region keys are `chest`, `back`, `shoulders`, `quads`,
+`hamstrings`, `calves`, `biceps`, `triceps`, `glutes`, `core` and `forearms`.
+Dart emits all eleven; Android and JavaScript reject missing/extra keys and old
+protocol versions. The glyph atlas has a neutral row plus one row per region.
+
+`regions.js` defines the independently versioned installed projection
+`alkion-surface-2`. Its original source-coordinate fields select the posterior
+pelvis, abdominal wall and lower arms before male fullness or female posing.
+The shader receives those coordinates separately from the posed surface. Source
+positions, normals, topology, UVs, binary hashes and the original eight-region
+PNG masks remain unchanged. Older regions retain their original mask outside
+those new fields. Deep anatomy and unsupported semantic mappings remain named
+text; a catalog label never selects pixels by itself. This is a coarse display
+projection, not a precise anatomical segmentation.
+
+The body sheet separates strength (all roles, primary, secondary, stabilizer),
+stretch targets, mobility targets, conditioning participation and coarse legacy
+groups. Each view uses the same distinct physical-set region counts as its text
+list. Fixed bins are `0`, `1`, `2–3`, `4–6`, `7–10`, `11+`, with respective
+renderer values `0`, `.2`, `.4`, `.6`, `.8`, `1`. No per-workout normalization or
+fractional credit is used. Region and role totals are not additive. Zero means
+no documented sets in the selected view; evidence gaps remain unknown.
+
+Whole-workout coverage remains visible alongside the selected view, including
+partial/unknown profiles, legacy attribution, unmapped anatomy and excluded
+sets. Unknown side uses the labelled combined surface without asserting either
+side's participation. A partly mapped node is distinguished from a node with no
+supported surface. Automatic initial selection follows loaded evidence,
+including deep-only participation, until the person explicitly chooses a view.
+
+Saved views default to recorded assessment; the explicitly selected current view
+uses only the resolver's matching execution and does not rewrite observations.
+Expandable details distinguish assessment status, scoped completeness,
+relationship confidence, declared human review and this app's lack of verified
+human qualification. They retain recorded/current profile and bundle provenance,
+semantic-map revision and installed display projection separately. Inference is
+labelled with its supplied rationale. Legacy pins without historical semantic
+mapping remain text-only; no historical pixels are claimed.
+
 ## Visible-surface picking
 
 The renderer samples its retained depth-tested RGBA pixels. Native top-left
 normalized coordinates map directly to one raster pixel, reversing WebGL's row
 order. Transparent pixels, neutral mask ID and any unrecognized region return
 null; no nearest-anchor, neighbouring-cell or hidden-surface search is used.
-The allowlist is chest, back, shoulders, biceps, triceps, quads, hamstrings and
-calves. Picking adds no scene, model or GPU readback.
+The allowlist is the eleven display regions above; picking reads the same
+installed surface projection as the glyph atlas. Picking adds no scene, model
+or GPU readback.
 
-The optional version-2 `interaction` display member contains `enabled`, nullable
+The optional version-3 `interaction` display member contains `enabled`, nullable
 `selected` and an integer `generation`. Opted-in frames report that generation
 plus monotonic `frame`, `load` and `layout` identities. A pick request carries
 those exact four identities, a bounded integer request ID and normalized x/y
@@ -154,7 +196,7 @@ Focused checks from the repository root:
 `node app/tool/check_character_body_material.mjs`,
 `python3 app/tool/check_character_body_bridge.py` (JDK 17+),
 `python3 app/tool/test_stage_character_body.py`,
-`make -C app test TEST=test/ui/character_body_test.dart`.
+`make -C app test TEST='test/ui/character_body_test.dart test/ui/body_figure_test.dart test/ui/body_catalog_views_test.dart'`.
 They establish host-side protocol/loader/motion/material/native-queue/stager/controller behavior,
 including exact synthetic surface-pixel mapping and delayed MethodChannel
 responses across frame, layout, style, rotation, retry and disposal changes, not
@@ -164,3 +206,15 @@ background/resume/disposal, offline manifest and bounded load/frame/memory costs
 The full triangle counts and GPU readback remain intentional performance risks;
 no downsampling, sampled-angle replacement or device-wide performance claim is
 made by this implementation.
+
+The catalog-profile UI checkpoint uses synthetic recorded/current, role/kind,
+legacy, deep/unmapped, partial and unknown cases at 320dp with 2× text in EN, IT,
+DE and ES. Optional `ALKION_BODY_UI_CAPTURES` writes only those widget captures
+to an explicitly selected disposable directory. Host WebGL proof separately
+inspects both artwork styles, front/back, compact/enlarged and light/dark, with
+individual new-region color changes at identical angle, size and material.
+The renderer's source-region pixel histogram is opt-in via the constructor's
+`{diagnostics: true}` fourth argument; ordinary app rendering does not compute it.
+Canvas readback fixtures should initialize a `willReadFrequently` 2D context
+before renderer creation to avoid browser backend changes between comparison
+images. These checks do not establish Android/WebView or phone qualification.
