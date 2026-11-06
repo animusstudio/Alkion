@@ -38,12 +38,21 @@ eleven earlier regions are unchanged in every render; each new pixel was
 neutral before. The captures stay private.
 
 Host checks: analysis reports zero issues; check-only formatting passes (516
-files). The full suite runs 2,661 tests: 2,655 pass, three expected optional skips
-and the three known `catalog_metric_controls_test.dart` failures. Character body
+files). After the side-view fix the full suite runs 2,666 tests: 2,660 pass,
+three expected optional skips and the three known
+`catalog_metric_controls_test.dart` failures. Character body
 protocol/loader/picking, material (12,248 cases plus all 14 atlas rows) and
-native bridge checks pass, as do 65 tool Python tests. The actual-catalog
-consumer check against the revision-4 bundle and every device check are not run
-here. No device, Android rendering or phone qualification is claimed.
+native bridge checks pass, as do 65 tool Python tests. Independent reviews of
+the change and of the side-view fix pass.
+
+The actual-catalog consumer check against semantic map revision 4 (bundle
+`2026-11-06-muscle.2`) passes integration and both freeze modes. The optimized
+ARM64 Dev APK with those inputs and the private body assets (SHA-256
+`2409cd066fd8fd6c4950f901b908ede2c8a13484a4e816c1ec0b9ac20069606b`) passes the
+APK verifier. Owner-directed in-place installation on Nothing A024 succeeded:
+the device hash matches, launch is Status ok, the process runs and first-install
+identity is retained. No data was cleared and no profile or UI was inspected, so
+the on-device region review remains the owner's.
 
 ## Catalog muscle profiles and workout heatmap — 2026-11-06
 
