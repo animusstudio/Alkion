@@ -6,6 +6,44 @@ observed: 2026-11-06
 
 # Alkion integrated acceptance
 
+## Thirteen Explore and heatmap regions — 2026-11-06
+
+Implemented on `213ee82` for the approved hip-regions plan. It adds two display
+regions: `adductors` and `abductors`. They are code-defined fields in the
+installed projection `alkion-surface-3`, so the atlas has 14 rows. Display,
+status and pick messages use bridge protocol 4 in Dart, JavaScript, Kotlin and
+the Java pick guard. Each side rejects version 3 and unknown regions.
+
+- Explore muscles no longer limits artwork to eight regions. A tap or a list
+  choice selects and highlights each of the thirteen. Adductors and abductors
+  open on the front view; glutes stay on the back.
+- The hint in all four locales now just says to tap a muscle or use the list.
+- Workload counts take region ids from the semantic map through
+  `WorkloadMuscle.fromKey`, so a node mapped to `adductors` or `abductors`
+  counts there. Legacy `muscleGroup` evidence stays limited to the original
+  eight groups. Revision-3 pins map no node to the new regions, so the recorded
+  views of workouts saved under revision 3 do not change.
+
+Precedence: glutes, core and forearms first; then any painted mask region keeps
+its pixel; only then the lateral-hip and inner-thigh fields claim unpainted
+surface. A host Chromium WebGL proof with the staged private meshes rendered
+region diagnostics for both styles at front, back, both sides and two oblique
+angles, full body and hip close-up (20 renders), plus accent selection of each
+new field. Abductors sit on the side of the pelvis between the iliac crest and
+the greater trochanter, behind the abdominal wall and beside the gluteal field.
+Adductors cover the inner thigh from the groin toward mid-thigh, front and back.
+Compared with `alkion-surface-2` at identical angles, the pixel counts of all
+eleven earlier regions are unchanged in every render; each new pixel was
+neutral before. The captures stay private.
+
+Host checks: analysis reports zero issues; check-only formatting passes (516
+files). The full suite runs 2,661 tests: 2,655 pass, three expected optional skips
+and the three known `catalog_metric_controls_test.dart` failures. Character body
+protocol/loader/picking, material (12,248 cases plus all 14 atlas rows) and
+native bridge checks pass, as do 65 tool Python tests. The actual-catalog
+consumer check against the revision-4 bundle and every device check are not run
+here. No device, Android rendering or phone qualification is claimed.
+
 ## Catalog muscle profiles and workout heatmap — 2026-11-06
 
 The [approved muscle coverage plan](../plans/2026-11-03-catalog-muscle-coverage.md)

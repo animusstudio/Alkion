@@ -17,14 +17,15 @@ pipeline in one Android system WebView. No new package is required.
   unavailable reads retain separate native coverage/count UI. Missing scores
   produce neutral artwork. Values crossing the bridge are finite and bounded.
 - Optional `pickingEnabled` defaults to false. When true, paused ready artwork
-  supports `await controller.pick(localPosition, surfaceSize)`, returning an
-  eleven-region `WorkloadMuscle` or null. Coordinates and size refer to the exact
+  supports `await controller.pick(localPosition, surfaceSize)`, returning a
+  thirteen-region `WorkloadMuscle` or null. Coordinates and size refer to the exact
   `CharacterBody` layout bounds. Null covers background, neutral pixels,
   unavailable artwork, invalid coordinates and stale frames; it leaves caller
   selection unchanged. The caller owns tap/drag arbitration and selected state.
 - Optional `selectedRegion` applies a categorical accent to that region's glyphs
   only when picking is enabled. It never changes workload scores, membership,
-  geometry, masks, shade, glyph choice or alpha. Pass null for list-only groups.
+  geometry, masks, shade, glyph choice or alpha. Pass null for groups without a
+  display region.
 - Optional `onStatus` receives `loading`, `ready`, `unavailable`, `error`;
   `fallback` is native Flutter UI shown whenever artwork is not ready. Localize
   that content in the caller. Unsupported platforms return `unavailable`.
@@ -42,7 +43,7 @@ lighting, male `fullerMesh` and female `posedMesh` remain the approved functions
 Palette changes invalidate the glyph atlas without changing geometry or glyph
 selection. Existing source studies remain untouched.
 
-The internal display protocol is version 3, validated in Dart's native host and
+The internal display protocol is version 4, validated in Dart's native host and
 JavaScript. In addition to bounded `yaw`, it carries `turn`, a cumulative manual
 turn modulo 2π. Front/Back advance `command` and reset `turn`; relative drag
 keeps that absolute command and accumulates `turn`. JavaScript applies the
@@ -69,17 +70,29 @@ accepted sampler's frozen synthetic references.
 ## Documented sets and surface projection
 
 The exact display region keys are `chest`, `back`, `shoulders`, `quads`,
-`hamstrings`, `calves`, `biceps`, `triceps`, `glutes`, `core` and `forearms`.
-Dart emits all eleven; Android and JavaScript reject missing/extra keys and old
-protocol versions. The glyph atlas has a neutral row plus one row per region.
+`hamstrings`, `calves`, `biceps`, `triceps`, `glutes`, `core`, `forearms`,
+`adductors` and `abductors`. Dart emits all thirteen; Android and JavaScript
+reject missing/extra keys and protocol versions before 4. The glyph atlas has a
+neutral row plus one row per region (14 rows).
 
 `regions.js` defines the independently versioned installed projection
-`alkion-surface-2`. Its original source-coordinate fields select the posterior
-pelvis, abdominal wall and lower arms before male fullness or female posing.
-The shader receives those coordinates separately from the posed surface. Source
-positions, normals, topology, UVs, binary hashes and the original eight-region
-PNG masks remain unchanged. Older regions retain their original mask outside
-those new fields. Deep anatomy and unsupported semantic mappings remain named
+`alkion-surface-3`. Its original source-coordinate fields select the posterior
+pelvis, abdominal wall, lower arms, medial proximal thigh and lateral hip before
+male fullness or female posing. The shader receives those coordinates
+separately from the posed surface. Source positions, normals, topology, UVs,
+binary hashes and the original eight-region PNG masks remain unchanged.
+
+Fields are tested in order. Glutes, core and forearms come first and keep their
+`alkion-surface-2` pixels exactly. Every painted mask region then keeps its own
+pixel, so quads keep the anterior thigh and hamstrings the posterior thigh. Only
+then do the two hip fields claim surface the masks leave unpainted:
+
+- abductors: the side of the pelvis from the iliac crest to the greater
+  trochanter, behind the abdominal wall and lateral to the gluteal field;
+- adductors: the inner thigh from the groin toward mid-thigh, front and back,
+  beside but not on the midline.
+
+Older regions retain their original mask outside the code-defined fields. Deep anatomy and unsupported semantic mappings remain named
 text; a catalog label never selects pixels by itself. This is a coarse display
 projection, not a precise anatomical segmentation.
 
@@ -113,11 +126,11 @@ The renderer samples its retained depth-tested RGBA pixels. Native top-left
 normalized coordinates map directly to one raster pixel, reversing WebGL's row
 order. Transparent pixels, neutral mask ID and any unrecognized region return
 null; no nearest-anchor, neighbouring-cell or hidden-surface search is used.
-The allowlist is the eleven display regions above; picking reads the same
+The allowlist is the thirteen display regions above; picking reads the same
 installed surface projection as the glyph atlas. Picking adds no scene, model
 or GPU readback.
 
-The optional version-3 `interaction` display member contains `enabled`, nullable
+The optional version-4 `interaction` display member contains `enabled`, nullable
 `selected` and an integer `generation`. Opted-in frames report that generation
 plus monotonic `frame`, `load` and `layout` identities. A pick request carries
 those exact four identities, a bounded integer request ID and normalized x/y
@@ -213,7 +226,11 @@ DE and ES. Optional `ALKION_BODY_UI_CAPTURES` writes only those widget captures
 to an explicitly selected disposable directory. A host WebGL proof on the
 pre-replay tree (not repeated on the current renderer) inspected both artwork
 styles, front/back, compact/enlarged and light/dark, with individual new-region
-color changes at identical angle, size and material.
+color changes at identical angle, size and material. A second host WebGL proof
+of `alkion-surface-3` (2026-11-06) rendered both styles' region diagnostics at
+front, back, both sides and two oblique angles, and the accent selection of each
+hip field. The captures stay private; only the conclusions are recorded in
+[acceptance](acceptance.md).
 The renderer's source-region pixel histogram is opt-in via the constructor's
 `{diagnostics: true}` fourth argument; ordinary app rendering does not compute it.
 Canvas readback fixtures should initialize a `willReadFrequently` 2D context
