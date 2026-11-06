@@ -8,9 +8,13 @@ pipeline in one Android system WebView. No new package is required.
 ## Caller interface
 
 - `CharacterBodyStyle.male` / `.female` select artwork, not personal gender data.
-- `CharacterBodyController`: `front()`, `back()`, `side()`, `rotateBy(radians)`, `resume()`,
-  `pause()`, `retry()`; readable `yaw` (radians) and `paused`. Default is paused at
-  front. Manual turns pause. Own/dispose the controller with the native controls.
+- `CharacterBodyController`: `front()`, `back()`, `side()`, `rotateBy(radians)`,
+  `orbitBy(yaw, pitch)`, `zoomBy`, `setViewport`, `resetView()`, `resume()`,
+  `pause()`, `retry()`; readable `yaw` and `pitch` (radians), `zoom`, `pan` and
+  `paused`. Default is paused at front, level. Manual turns pause. `pitch` is
+  camera elevation (positive looks down from above), clamped to ±45°
+  (`maxPitch`); it is never animated. Front, Back, Side and Reset return it to 0.
+  Own/dispose the controller with the native controls.
 - Required widget fields: `style`, `scores: Map<WorkloadMuscle,double>`,
   `neutral`, `accent`, `background`, `brightness`, `visible`, `reducedMotion`,
   `compact`, `controller`. Scores are accepted calculator aggregates only;
@@ -32,8 +36,9 @@ pipeline in one Android system WebView. No new package is required.
 - Caller supplies bounded dimensions: compact 128×212; enlarged retains the
   same aspect ratio. `compact` selects the approved optical sampling pitch.
 - Artwork ignores pointer input and is excluded from semantics. Native outer
-  controls/gestures own input: horizontal delta × .009 radians matches the study.
-  Caller owns pager/scroll arbitration, route/sheet/viewport visibility and
+  controls/gestures own input: horizontal delta × .009 radians matches the study;
+  Explore applies the same rate to vertical delta as pitch. Caller owns
+  pager/scroll arbitration, route/sheet/viewport visibility and
   reduced-motion preference. Widget and Android host also observe app lifecycle.
   Mount only the selected card's renderer; destroy compact while enlarged is open.
 
@@ -43,8 +48,11 @@ lighting, male `fullerMesh` and female `posedMesh` remain the approved functions
 Palette changes invalidate the glyph atlas without changing geometry or glyph
 selection. Existing source studies remain untouched.
 
-The internal display protocol is version 4, validated in Dart's native host and
-JavaScript. In addition to bounded `yaw`, it carries `turn`, a cumulative manual
+The internal bridge protocol is version 5 for display, status and pick messages,
+validated in Dart, the Android host (Kotlin plus the shared Java guard) and
+JavaScript; each rejects every other version, including 4. Version 5 adds
+`pitch` to the display `view` (`zoom`, `x`, `y`, `pitch`): a finite camera
+elevation within ±π/4, so a view without it or beyond it is invalid. In addition to bounded `yaw`, it carries `turn`, a cumulative manual
 turn modulo 2π. Front/Back advance `command` and reset `turn`; relative drag
 keeps that absolute command and accumulates `turn`. JavaScript applies the
 difference from the last accepted turn at its current rendered angle. The first
@@ -72,7 +80,7 @@ accepted sampler's frozen synthetic references.
 The exact display region keys are `chest`, `back`, `shoulders`, `quads`,
 `hamstrings`, `calves`, `biceps`, `triceps`, `glutes`, `core`, `forearms`,
 `adductors` and `abductors`. Dart emits all thirteen; Android and JavaScript
-reject missing/extra keys and protocol versions before 4. The glyph atlas has a
+reject missing/extra keys and any protocol version other than 5. The glyph atlas has a
 neutral row plus one row per region (14 rows).
 
 `regions.js` defines the independently versioned installed projection
@@ -120,6 +128,41 @@ semantic-map revision and installed display projection separately. Inference is
 labelled with its supplied rationale. Legacy pins without historical semantic
 mapping remain text-only; no historical pixels are claimed.
 
+## Camera pitch
+
+The renderer turns the mesh by yaw, then orbits the camera about the body's
+vertical centre (the middle of its height bounds) by pitch. Lighting stays in
+view space, as with yaw. At pitch 0 every term reduces exactly to the accepted
+frame: a host WebGL comparison at front, side, back and oblique views of both
+styles gives byte-identical retained pixels and canvases. A tilt bounds every
+vertex at any yaw from per-height-bin radial extents, so the depth range and
+framing widen only as needed: nothing clips, and neither range ever narrows
+below the level frame's. The body therefore never grows on tilt and shrinks a
+few percent only where it would otherwise leave the canvas. A wider depth range
+slightly coarsens the material's depth input at a tilt.
+
+## Explore gestures
+
+Explore muscles has one recognizer on the canvas,
+`BodyManipulationGestureRecognizer`. It accepts each pointer that lands on the
+canvas at pointer down, so neither the page scroll nor the sheet drag can claim
+it. Pointers outside the canvas never reach it; the page scrolls as before.
+
+- One pointer released within touch slop is a tap and picks.
+- One pointer past slop orbits: dx turns, dy tilts. Movement before slop is
+  not applied.
+- Two or more pointers pinch-zoom (1–3×) around their focal point and pan. Each
+  change in the pointer set re-bases focal point, span, zoom and pan, so adding
+  or lifting a finger never jumps, and a clamped zoom never drifts.
+- Any manipulation or cancellation invalidates pending picks; a release after
+  manipulation never selects.
+
+The zoom −/+ buttons are an overlay at the canvas's bottom-right, shown with
+ready artwork. They are siblings above the recognizer, inside an opaque
+listener, so their taps (even on a disabled button) never reach the canvas.
+Front, Back, Reset and Retry stay in the row above. There is no fling inertia
+and no added animation; reduced motion is unchanged.
+
 ## Visible-surface picking
 
 The renderer samples its retained depth-tested RGBA pixels. Native top-left
@@ -130,7 +173,7 @@ The allowlist is the thirteen display regions above; picking reads the same
 installed surface projection as the glyph atlas. Picking adds no scene, model
 or GPU readback.
 
-The optional version-4 `interaction` display member contains `enabled`, nullable
+The optional `interaction` display member contains `enabled`, nullable
 `selected` and an integer `generation`. Opted-in frames report that generation
 plus monotonic `frame`, `load` and `layout` identities. A pick request carries
 those exact four identities, a bounded integer request ID and normalized x/y
@@ -138,7 +181,9 @@ in [0,1). Dart, the native host and JavaScript validate their respective boundar
 only a response matching the latest request and current rendered identities can
 produce a region. Picking requires paused, ready, visible artwork. Rotation,
 layout/style/selection changes, retry, hiding, app lifecycle and disposal
-invalidate earlier picks. The renderer also rejects pixels after its canvas
+invalidate earlier picks; pitch is view state, so a tilt does too. Because a
+pick names the exact rendered frame, it reads the tilted pixels the person
+sees. The renderer also rejects pixels after its canvas
 layout changes until a fresh draw. Existing display-only callers omit the
 interaction member and retain their original periodic telemetry and behavior.
 
@@ -209,7 +254,10 @@ Focused checks from the repository root:
 `node app/tool/check_character_body_material.mjs`,
 `python3 app/tool/check_character_body_bridge.py` (JDK 17+),
 `python3 app/tool/test_stage_character_body.py`,
-`make -C app test TEST='test/ui/character_body_test.dart test/ui/body_figure_test.dart test/ui/body_catalog_views_test.dart'`.
+`make -C app test TEST='test/ui/character_body_test.dart test/ui/body_figure_test.dart test/ui/body_catalog_views_test.dart test/catalog_ui/body_manipulation_gesture_test.dart test/catalog_ui/catalog_muscle_explorer_test.dart'`.
+The gesture tests drive real multi-pointer sequences inside scrolling ancestors,
+including a second finger landing after the first has passed slop; they are
+not native touch qualification.
 They establish host-side protocol/loader/motion/material/native-queue/stager/controller behavior,
 including exact synthetic surface-pixel mapping and delayed MethodChannel
 responses across frame, layout, style, rotation, retry and disposal changes, not

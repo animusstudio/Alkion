@@ -1,10 +1,65 @@
 ---
 app: alkion
 stage: development
-observed: 2026-11-06
+observed: 2026-11-07
 ---
 
 # Alkion integrated acceptance
+
+## Explore muscles 3D gestures — 2026-11-07
+
+Implements T1 of the approved [Explore gestures plan](../plans/2026-11-07-explore-gestures.md).
+The owner's phone showed only one-finger sideways turning: pinch and two-finger
+pan did nothing, and vertical drags scrolled the page. The cause was arena
+competition for the first pointer among a horizontal drag, a separate
+two-pointer recognizer and the page scroll. Explore now has one recognizer on
+the canvas that wins each pointer landing there at pointer down and arbitrates
+internally. A tap within slop picks. One finger orbits: sideways turns, vertical
+tilts. Two fingers pinch-zoom (1–3×) around their focal point and pan. Adding
+or lifting a finger re-bases without a jump. Drags and pinches never select.
+Outside the canvas the page still scrolls.
+
+- Camera pitch is new controller and renderer state, clamped to ±45°. Front,
+  Back, Side and Reset level it, and abductors still open on the side view.
+  Display, status and pick messages use bridge protocol 5 in Dart, JavaScript,
+  Kotlin and the shared Java guard; each rejects version 4, a view without
+  pitch and any pitch beyond ±45°.
+- Zoom −/+ moved into a bottom-right overlay inside the canvas (48 dp targets,
+  existing keys, tooltips and semantics). It appears with ready artwork and
+  disables at 1× and 3×. Its taps never reach the canvas. Front, Back, Reset and
+  Retry stay in the row above.
+- The hint in four locales now reads roughly "Tap a muscle or use the list.
+  Drag to rotate, pinch to zoom."
+
+Widget tests drive real multi-pointer sequences inside the explorer's scrolling
+sheet and in a plain `ListView`. The first finger moves past slop before the
+second lands. The tests cover: both orbit axes; the pitch clamp; no page scroll
+from canvas drags while drags outside it scroll; focal-point zoom and two-finger
+pan; no jump when a finger lands or lifts, including a third; no selection on
+drag or pinch release; a tap still selecting; and the overlay's position,
+bounds, semantics and absorbed taps. A layout sweep covers 320/412 dp × 1×/2× ×
+both themes × four locales. With eager acceptance removed, the scroll and
+second-finger tests fail.
+
+A host Chromium WebGL proof with the staged private meshes rendered both styles
+at eight views: level front, ±45° front, 20° front and oblique, a −17° oblique,
++45° back and −45° side. It used region diagnostics, glyph material and the
+real runtime page over protocol 5. The camera orbits the body's vertical centre:
++45° looks down on head, shoulders and feet, −45° up at chin and underside. The
+body stays framed and unclipped at every tilt. The first proof found the male
+feet touching the bottom edge at a 20° oblique; the framing now bounds each
+height band's radial extent and shrinks only where needed. Through the runtime,
+a pick at a pixel owned by each visible region returned that region in all
+tilted views (150 of 150; level views also all agree); v4 picks went unanswered. At pitch 0, front, side,
+back and oblique renders of both styles are byte-identical to the previous
+renderer (16 of 16 retained buffers and canvases). The captures stay private.
+
+Host checks: analysis reports zero issues; check-only formatting passes (517
+files). The full suite runs 2,675 tests: 2,669 pass, three expected optional
+skips and the three known `catalog_metric_controls_test.dart` failures. Body
+protocol/loader/picking/orbit, material (12,248 cases) and native bridge checks
+pass, as do 65 tool Python tests. No APK was built and no device was used.
+Native pinch, pan and tilt on Nothing A024 remain the owner's check (A3, A6).
 
 ## Thirteen Explore and heatmap regions — 2026-11-06
 

@@ -93,6 +93,7 @@ Then a small Animus pin PR.
 
 ## Task state
 
-- T1: in progress. T2, T3: pending.
+- T1: implemented 2026-11-07 (host checks and private WebGL proof pass; see
+  [acceptance](../alkion/acceptance.md)). T2, T3: pending.
 
-Next: T1.
+Next: T2.
