@@ -16,10 +16,8 @@ Separate `catalog_pins` snapshots store coverage and node/role pairs; bindings s
 identity/measurement fields. Body workload still
 uses only the legacy `muscle_group`. Catalog-created exercises leave that field
 empty. The current eight-region rendering contract also omits glutes, core and forearms.
-Initial inspection: `a0e240c19ede9a533905889fa5f06b0a5789db79`. Owner-directed
-main alignment merged `ffc6ac64cc837d321a02cf2f39c59512d29c37a5` at
-`30267500e36413464ccc4d5be399396726a1142b`, without conflicts. Runtime/assets
-match main exactly. Preserve its schema-6 recovery, catalog UI/media and current
+Work began on an earlier internal baseline and was aligned with the then-current
+main without conflicts; runtime/assets matched main exactly. Preserve its schema-6 recovery, catalog UI/media and current
 760-variant private staging contract; migrations 1–6 remain frozen.
 
 ## Contract decisions
@@ -136,17 +134,14 @@ bundle upgrade and mapping retention. Baseline focused workload/body tests: 41 p
 zero skipped at the inspected app SHA. Public documentation checker retains two
 pre-existing MakeHuman license relative-link errors; no new-plan error.
 
-Post-alignment focused catalog/workload/backup/restore verification at `3026750`:
+Post-alignment focused catalog/workload/backup/restore verification:
 **PASS, 83 tests, zero skipped**. Offline bootstrap/localization and whitespace pass.
 The aligned public-tree docs check retains four main-existing license-link errors
 (two MakeHuman, two workout-guide); no error in this plan.
 No full-suite rerun or new native qualification claimed for this documentation branch.
 
-Next: implement C1–C4 under the approved contract; independent task/final review required.
-
-C1 admission parity follow-up independently reviewed by coordinator: complete
+C1 admission parity follow-up independently reviewed: complete
 profiles require scope/search ordering, exact closure evidence and confidence
 criteria; partial profiles retain explicit gaps. Schema mirrors canonical bytes.
 Ten Dart contract, 29 SQLite/workload and 44 Python staging tests pass; analysis
-reports zero issues and whitespace passes. Local logs (not in this tree): 20261103-163918,
-163956, 163958 and 164013 `c1-parity-*`. No human qualification is inferred.
+reports zero issues and whitespace passes. No human qualification is inferred.

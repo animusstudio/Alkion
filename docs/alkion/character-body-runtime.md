@@ -210,9 +210,10 @@ made by this implementation.
 The catalog-profile UI checkpoint uses synthetic recorded/current, role/kind,
 legacy, deep/unmapped, partial and unknown cases at 320dp with 2× text in EN, IT,
 DE and ES. Optional `ALKION_BODY_UI_CAPTURES` writes only those widget captures
-to an explicitly selected disposable directory. Host WebGL proof separately
-inspects both artwork styles, front/back, compact/enlarged and light/dark, with
-individual new-region color changes at identical angle, size and material.
+to an explicitly selected disposable directory. A host WebGL proof on the
+pre-replay tree (not repeated on the current renderer) inspected both artwork
+styles, front/back, compact/enlarged and light/dark, with individual new-region
+color changes at identical angle, size and material.
 The renderer's source-region pixel histogram is opt-in via the constructor's
 `{diagnostics: true}` fourth argument; ordinary app rendering does not compute it.
 Canvas readback fixtures should initialize a `willReadFrequently` 2D context
