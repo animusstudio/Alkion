@@ -1,10 +1,45 @@
 ---
 app: alkion
 stage: development
-observed: 2026-11-05
+observed: 2026-11-06
 ---
 
 # Alkion integrated acceptance
+
+## Catalog muscle profiles and workout heatmap — 2026-11-06
+
+The [approved muscle coverage plan](../plans/2026-11-03-catalog-muscle-coverage.md)
+is delivered on public `375e22f` as new commits. Its reviewed change set was
+first qualified locally on 2026-11-04 (43 focused and 2,551 full serial tests,
+three existing skips); that local history is not part of this tree. The catalog
+muscle v2 contract is parsed, validated and pinned in `catalog_pins`; planned,
+active and saved body views count primary, secondary and stabilizer sets per
+region from exact catalog profiles, and the coarse `muscleGroup` path still
+serves non-catalog exercises. Display regions grow to eleven (glutes, core and
+forearms through the code-defined `alkion-surface-2` projection) over the
+2026-11-05 body loading, renderer, native bridge and exploration refinements.
+The display, status and pick bridge protocol is version 3 throughout. Explore
+muscles keeps its eight selectable regions; the three workload-only regions stay
+list-only there. All four locales keep both refinement and heatmap strings.
+
+The reviewed catalog input assesses **760 variants: 741 partial, 19 unknown and
+none complete**. These are agent assessments; qualified human review is pending
+and is not inferred. The research dossier stays in Animus; this tree carries only
+the contract, consumer code and synthetic fixtures.
+
+Host checks at the delivery head: analysis reports zero issues; check-only
+formatting passes (516 files, zero changes). The full suite runs 2,651 tests:
+2,645 pass, three expected optional skips, and three
+`catalog_metric_controls_test.dart` optional-control failures that reproduce
+identically on unmodified `375e22f` and are outside this delivery. Character body
+protocol/loader/picking, material (12,248 cases) and native bridge checks pass,
+as do 65 tool Python tests. The actual-760 consumer replay against the reviewed
+catalog (SHA-256 `d157bd1e…`, muscles `53c88e7a…`) passes integration and both
+freeze modes: 760 unique pins, 2,280 observations, and an independent set-union
+oracle matching 741 partial and 19 unknown profiles. Host loading took about
+4.4s with about 490MB peak RSS; this is not Android performance evidence.
+No device, Android rendering or phone qualification is claimed. Publication is
+approved, gated on exact outgoing-range review and an owner-run push.
 
 ## Artwork, discovery and live-workout refinement — 2026-11-05
 
