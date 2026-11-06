@@ -94,6 +94,11 @@ Then a small Animus pin PR.
 ## Task state
 
 - T1: implemented 2026-11-07 (host checks and private WebGL proof pass; see
-  [acceptance](../alkion/acceptance.md)). T2, T3: pending.
+  [acceptance](../alkion/acceptance.md)).
+- T2: independent review PASS-with-findings, no blockers. The end-of-pinch orbit
+  and the cause wording were fixed at `cddd54d`; the fix re-check passed.
+- T3: the Dev APK built from `cddd54d` with the current private inputs passes the
+  APK verifier, after stale build intermediates were cleared. It is installed in
+  place on Nothing A024: hash match, launch ok, first-install identity kept.
 
-Next: T2.
+Next: owner phone check (A3), then outgoing review, owner publish and the Animus pin.
