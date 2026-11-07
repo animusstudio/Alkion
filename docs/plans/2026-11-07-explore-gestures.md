@@ -173,7 +173,8 @@ ease to a stop at the zoom and pan bounds. All other T4 inertia rules apply.
 - T5: implemented at `b7ee0c8`; host load 3.9 s to 1.4 s; catalog tests
   pass, except the 3 known failures. Measured on A024 (see Device below).
 - T6: implemented on host at `acec5f1` (two-finger pan/zoom coast; focused
-  and full suites pass except the 3 known failures). Device feel check pending.
+  and full suites pass except the 3 known failures). Owner feel check on A024
+  (2026-11-07): feels good.
 - Review fixes: the independent review of `8d5f580..8b0dd3b` passed with four
   findings, fixed on host at `e1ac797` (background stops the coast),
   `4e07802` (loader digest test through the isolate), `68c2dd9` (CPU compose
@@ -185,5 +186,6 @@ ease to a stop at the zoom and pan bounds. All other T4 inertia rules apply.
   the first frame, with Home at about 3–4 s; see
   [acceptance](../alkion/acceptance.md).
 
-Next: install the normal `478d0bb` build, the owner's T6 feel check, the owner
-publish and the Animus pin.
+- Install: the final normal `478d0bb` build was installed in place on A024 on
+  2026-11-07: hash `15e211ff…` match, cold launch 0.58 s, first-install identity
+  kept. The owner's T6 feel check followed (above).
