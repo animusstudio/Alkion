@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 
@@ -72,27 +73,18 @@ Future<CatalogDevelopmentInput> loadDevelopmentCatalog({
       }
       muscleBytes = await asset('assets/catalog_trial/muscles.dev.json');
       scopeBytes = await asset('assets/catalog_trial/muscle-scopes.dev.json');
-      if (catalogHash(utf8.decode(muscleBytes)) != muscle['source_sha256'] ||
-          catalogHash(utf8.decode(scopeBytes)) != scopes['source_sha256']) {
-        throw const FormatException('Muscle manifest digest mismatch');
-      }
     }
-    final bundle = CatalogBundle.fromBytes(
-      muscleBundleBytes: muscleBytes,
-      trustedScopeRegistryBytes: scopeBytes,
-      await asset('assets/catalog_trial/catalog.dev.json'),
-      expectedSha256: manifest['projection_sha256'] as String,
-      browseBytes: browseBytes,
-      browseSha256: browse is Map && browse['projection_sha256'] is String
-          ? browse['projection_sha256'] as String
-          : null,
-      browseRevision:
-          browse is Map && browse['classification_revision'] is String
-          ? browse['classification_revision'] as String
-          : null,
-      sourceSha256: manifest['source_sha256'] is String
-          ? manifest['source_sha256'] as String
-          : null,
+    final catalogBytes = await asset('assets/catalog_trial/catalog.dev.json');
+    // Hashing and validating the large muscle bundle takes seconds on a phone;
+    // keep it off the UI thread so startup frames still draw.
+    final bundle = await Isolate.run(
+      () => _verifiedBundle(
+        catalogBytes,
+        manifest,
+        browseBytes,
+        muscleBytes,
+        scopeBytes,
+      ),
     );
     if (bundle.catalogRevision != manifest['catalog_revision'] ||
         bundle.searchRevision != manifest['search_revision'] ||
@@ -127,4 +119,38 @@ Future<CatalogDevelopmentInput> loadDevelopmentCatalog({
     // A rejected private asset never prevents ordinary local app startup.
     return const CatalogDevelopmentInput(unavailable: true);
   }
+}
+
+CatalogBundle _verifiedBundle(
+  List<int> catalogBytes,
+  Map<String, dynamic> manifest,
+  List<int>? browseBytes,
+  List<int>? muscleBytes,
+  List<int>? scopeBytes,
+) {
+  final browse = manifest['browse'];
+  if (manifest['schema_version'] == 4) {
+    final muscle = manifest['muscle_bundle'] as Map,
+        scopes = manifest['scope_registry'] as Map;
+    if (catalogHash(utf8.decode(muscleBytes!)) != muscle['source_sha256'] ||
+        catalogHash(utf8.decode(scopeBytes!)) != scopes['source_sha256']) {
+      throw const FormatException('Muscle manifest digest mismatch');
+    }
+  }
+  return CatalogBundle.fromBytes(
+    muscleBundleBytes: muscleBytes,
+    trustedScopeRegistryBytes: scopeBytes,
+    catalogBytes,
+    expectedSha256: manifest['projection_sha256'] as String,
+    browseBytes: browseBytes,
+    browseSha256: browse is Map && browse['projection_sha256'] is String
+        ? browse['projection_sha256'] as String
+        : null,
+    browseRevision: browse is Map && browse['classification_revision'] is String
+        ? browse['classification_revision'] as String
+        : null,
+    sourceSha256: manifest['source_sha256'] is String
+        ? manifest['source_sha256'] as String
+        : null,
+  );
 }

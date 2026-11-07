@@ -534,6 +534,9 @@ final class CatalogMuscleBundle {
     final profiles = <String, CatalogMuscleProfile>{};
     final freezer = _CatalogSnapshotFreezer();
     final profileIds = <String>{};
+    final scopeHashes = HashMap<Object, String>.identity();
+    final scopeCells =
+        HashMap<Object, Map<String, Map<String, dynamic>>>.identity();
     for (final value in root['profiles'] as List) {
       final p = catalogObject(value, 'profile'),
           variant = variants[p['variant_id']];
@@ -569,7 +572,11 @@ final class CatalogMuscleBundle {
           scope = scopes['${scopeRef['id']}:${scopeRef['revision']}'];
       if (scope == null ||
           scope['revision'] != scopeRef['revision'] ||
-          catalogHash(catalogCanonicalJson(scope)) != scopeRef['sha256'] ||
+          scopeHashes.putIfAbsent(
+                scope,
+                () => catalogHash(catalogCanonicalJson(scope)),
+              ) !=
+              scopeRef['sha256'] ||
           scope['anatomy_revision'] != anatomy['revision'] ||
           !(scope['execution_bindings'] as List).any(
             (b) =>
@@ -604,7 +611,10 @@ final class CatalogMuscleBundle {
               review['attestation_id'] == null)) {
         throw const CatalogFormatException('Invalid human review');
       }
-      final cells = index(scope['cells'], 'scope cells');
+      final cells = scopeCells.putIfAbsent(
+        scope,
+        () => index(scope['cells'], 'scope cells'),
+      );
       final relationshipIds = <String>{},
           relationshipCells = <String>{},
           usedClaims = <String>{};
