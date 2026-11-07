@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:alkion/catalog_ui/catalog_muscle_explorer.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ class _Log {
   final transforms = <(double, Offset)>[];
   final taps = <Offset>[];
   final flings = <Offset>[];
+  final transformFlings = <(Offset, Offset, double)>[];
 
   Offset get orbit => orbits.fold(Offset.zero, (sum, delta) => sum + delta);
 }
@@ -49,6 +52,9 @@ Future<(_Log, ScrollController)> _pump(WidgetTester tester) async {
                         })
                         ..onTap = log.taps.add
                         ..onFling = log.flings.add
+                        ..onTransformFling = ((focal, velocity, rate) {
+                          log.transformFlings.add((focal, velocity, rate));
+                        })
                         ..onEnd = (() => log.events.add('end'));
                     }),
               },
@@ -279,6 +285,105 @@ void main() {
       await tester.pump(const Duration(milliseconds: 60));
       await held.up(timeStamp: const Duration(milliseconds: 150));
       expect(log.flings.single, Offset.zero);
+    },
+  );
+
+  /// Two fingers [half] px either side of [centre]; each 10 ms step multiplies
+  /// their spread by [growth] and moves both by [step]. Returns the fingers
+  /// and the last move's time stamp.
+  Future<(TestGesture, TestGesture, Duration)> pinch(
+    WidgetTester tester,
+    Offset centre, {
+    double growth = 1,
+    Offset step = Offset.zero,
+    double half = 30,
+    int moves = 8,
+  }) async {
+    final a = await tester.createGesture();
+    final b = await tester.createGesture();
+    await a.down(centre - Offset(half, 0));
+    await b.down(centre + Offset(half, 0));
+    var spread = half, focal = centre, time = Duration.zero;
+    for (var i = 0; i < moves; i++) {
+      time += const Duration(milliseconds: 10);
+      spread *= growth;
+      focal += step;
+      await a.moveTo(focal - Offset(spread, 0), timeStamp: time);
+      await b.moveTo(focal + Offset(spread, 0), timeStamp: time);
+    }
+    return (a, b, time);
+  }
+
+  testWidgets(
+    'lifting a finger out of a pinch reports its log-scale rate once; the last lift never flings',
+    (tester) async {
+      final (log, _) = await _pump(tester);
+      final centre = tester.getCenter(_canvas);
+      final local = centre - tester.getTopLeft(_canvas);
+      final (a, b, time) = await pinch(tester, centre, growth: 1.02);
+      expect(log.transformFlings, isEmpty, reason: 'Moving never flings');
+      await a.up(timeStamp: time);
+      expect(log.transformFlings, hasLength(1));
+      final (focal, velocity, rate) = log.transformFlings.single;
+      expect(focal.dx, closeTo(local.dx, 1e-9));
+      expect(focal.dy, closeTo(local.dy, 1e-9));
+      // Spread × 1.02 per 10 ms is a log-scale rate of ln(1.02) / 10 ms.
+      expect(rate, closeTo(math.log(1.02) / .01, .01));
+      expect(velocity.distance, lessThan(kMinFlingVelocity));
+      // The finger left settles: its jittery lift is neither orbit nor fling.
+      await b.moveBy(
+        const Offset(6, 0),
+        timeStamp: time + const Duration(milliseconds: 10),
+      );
+      await b.up(timeStamp: time + const Duration(milliseconds: 10));
+      expect(log.transformFlings, hasLength(1));
+      expect(log.flings, isEmpty);
+      expect(log.orbits, isEmpty);
+      expect(log.events, ['down', 'start', 'end']);
+      expect(log.taps, isEmpty);
+    },
+  );
+
+  testWidgets('a two-finger pan reports its focal velocity and no zoom rate', (
+    tester,
+  ) async {
+    final (log, _) = await _pump(tester);
+    final (a, b, time) = await pinch(
+      tester,
+      tester.getCenter(_canvas),
+      step: const Offset(10, -4),
+    );
+    await b.up(timeStamp: time);
+    final (_, velocity, rate) = log.transformFlings.single;
+    expect(velocity.dx, closeTo(1000, 50));
+    expect(velocity.dy, closeTo(-400, 30));
+    expect(rate, closeTo(0, 1e-9));
+    await a.up(timeStamp: time);
+    expect(log.flings, isEmpty);
+    expect(log.transformFlings, hasLength(1));
+  });
+
+  testWidgets(
+    'a cancel, a three-to-two lift and an unmoved pair report no transform fling',
+    (tester) async {
+      final (log, _) = await _pump(tester);
+      final centre = tester.getCenter(_canvas);
+      // A cancelled finger never flings the pair it leaves.
+      final (a, b, _) = await pinch(tester, centre, growth: 1.05);
+      await a.cancel();
+      await b.up();
+      expect(log.transformFlings, isEmpty);
+      // Lifting one of three stays in two-pointer mode and re-bases; the pair
+      // left has not moved since, so its later lift has nothing to report.
+      final (c, d, time) = await pinch(tester, centre, growth: 1.05);
+      final e = await tester.startGesture(centre + const Offset(0, 50));
+      await c.moveBy(const Offset(-5, 0), timeStamp: time);
+      await e.up(timeStamp: time);
+      expect(log.transformFlings, isEmpty);
+      await d.up(timeStamp: time);
+      expect(log.transformFlings, isEmpty);
+      await c.up(timeStamp: time);
+      expect(log.flings, isEmpty);
     },
   );
 

@@ -251,6 +251,21 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   static const _inertiaRest = .001; // radians of remaining travel per axis
   late final Ticker _inertia;
   double _yawRate = 0, _pitchRate = 0, _coasted = 0;
+
+  // Inertia after a two-finger release, with the same τ. Pan keeps the focal
+  // point's velocity (threshold as orbit, capped like a flick); zoom keeps the
+  // pinch's log-scale rate, so a 2.5/s cap coasts at most e^(2.5τ) ≈ 2.25×.
+  // Both travel totals are cut so the coast eases into the zoom and pan
+  // bounds. The coast applies absolute targets from its release base, as the
+  // direct gesture does; at rest it lands on the full travel (a bound it eased
+  // into), a final step kept below a fifth of a pixel at the canvas edge.
+  static const _maxPanSpeed = 1500.0; // logical px/s
+  static const _minZoomRate = .25; // log-scale/s: below ~8% total coast
+  static const _maxZoomRate = 2.5; // log-scale/s
+  static const _panRest = .2; // logical px of remaining travel per axis
+  static const _zoomRest = .0003; // log-scale of remaining travel
+  bool _coastingViewport = false;
+  double _zoomTravel = 0, _panTravelX = 0, _panTravelY = 0;
   bool _touchStoppedInertia = false;
   bool _reducedMotion = false;
   int _viewCommand = 0;
@@ -274,6 +289,9 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   }
 
   void _orbit(Offset delta) {
+    // A finger left after a pinch that moves deliberately takes over from
+    // wherever the two-finger coast has reached.
+    _stopInertia();
     _pendingOrbit += delta;
     _scheduleInput();
   }
@@ -335,8 +353,73 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     }
     _pitchRate = pitchRate;
     _coasted = 0;
+    _coastingViewport = false;
     _stopInertia();
     _inertia.start();
+  }
+
+  /// A lift left two-finger mode. The coast is decided here, not at the final
+  /// release: the view keeps moving from the frame the two-finger motion
+  /// ended, so nothing freezes between two staggered lifts and then restarts.
+  /// The settling finger left behind leaves it running and never flings an
+  /// orbit; a deliberate orbit, a re-landing finger or a new touch stops it
+  /// where it has reached, so every hand-off is jump-free.
+  void _transformFling(Offset focal, Offset velocity, double scaleRate) {
+    _applyInput();
+    final size = _surfaceSize;
+    if (_reducedMotion || !mounted || size == null || size.isEmpty) return;
+    var speed = velocity.distance;
+    if (!speed.isFinite || speed < _minFlingSpeed) {
+      velocity = Offset.zero;
+    } else if (speed > _maxPanSpeed) {
+      velocity = velocity * (_maxPanSpeed / speed);
+    }
+    var rate = scaleRate.isFinite && scaleRate.abs() >= _minZoomRate
+        ? scaleRate.clamp(-_maxZoomRate, _maxZoomRate)
+        : 0.0;
+    // The coast continues the gesture from the view the fingers left.
+    _baseZoom = _controller.zoom;
+    _basePan = _controller.pan;
+    _baseFocal = focal;
+    // Total log-zoom travel is rate × τ: limit it to reach 1× or 3× with zero
+    // velocity instead of stopping hard at the bound.
+    final room = rate > 0 ? math.log(3 / _baseZoom) : math.log(_baseZoom);
+    if (rate.abs() * _inertiaTau > room) {
+      rate = rate.sign * math.max(0, room) / _inertiaTau;
+    }
+    _zoomTravel = rate * _inertiaTau;
+    // Likewise pan, against the pan bound at the coast's final zoom: the
+    // final pan (px) is the focal travel plus what zoom about the focal point
+    // alone produces. A cut shortens a travel, never reverses it.
+    final ratio = math.exp(_zoomTravel);
+    final zoom = _baseZoom * ratio;
+    _panTravelX = _towardBound(
+      velocity.dx * _inertiaTau,
+      (focal.dx - size.width / 2) * (1 - ratio) +
+          _basePan.dx * size.width * ratio,
+      (zoom - 1) / 2 * size.width,
+    );
+    _panTravelY = _towardBound(
+      velocity.dy * _inertiaTau,
+      (focal.dy - size.height / 2) * (1 - ratio) +
+          _basePan.dy * size.height * ratio,
+      (zoom - 1) / 2 * size.height,
+    );
+    _stopInertia();
+    if (_zoomTravel.abs() < _zoomRest &&
+        _panTravelX.abs() < _panRest &&
+        _panTravelY.abs() < _panRest) {
+      return;
+    }
+    _coasted = 0;
+    _coastingViewport = true;
+    _inertia.start();
+  }
+
+  static double _towardBound(double travel, double rest, double limit) {
+    if (travel > 0 && rest + travel > limit) return math.max(0, limit - rest);
+    if (travel < 0 && rest + travel < -limit) return math.min(0, -limit - rest);
+    return travel;
   }
 
   void _inertiaTick(Duration elapsed) {
@@ -347,6 +430,28 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     final t = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
     // Fraction of the total coast (rate × τ) travelled by t.
     final coasted = 1 - math.exp(-t / _inertiaTau);
+    if (_coastingViewport) {
+      final size = _surfaceSize;
+      if (size == null) {
+        _stopInertia();
+        return;
+      }
+      final remaining = 1 - coasted;
+      final rest =
+          _zoomTravel.abs() * remaining < _zoomRest &&
+          _panTravelX.abs() * remaining < _panRest &&
+          _panTravelY.abs() * remaining < _panRest;
+      // At rest, land on the full travel.
+      final f = rest ? 1.0 : coasted;
+      _viewportAt(
+        math.exp(_zoomTravel * f),
+        _baseFocal.dx + _panTravelX * f,
+        _baseFocal.dy + _panTravelY * f,
+        size,
+      );
+      if (rest) _stopInertia();
+      return;
+    }
     final step = coasted - _coasted;
     _coasted = coasted;
     _controller.orbitBy(
@@ -370,7 +475,9 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   Offset _baseFocal = Offset.zero;
 
   void _transformStarted(Offset focal) {
-    // A new base must start from the view the fingers have produced so far.
+    // A new base must start from the view the fingers have produced so far,
+    // or from wherever a coast has reached.
+    _stopInertia();
     _applyInput();
     _baseZoom = _controller.zoom;
     _basePan = _controller.pan;
@@ -380,16 +487,23 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   /// Pinch and pan in one step: the artwork point under the base focal point
   /// stays under the current one. Pan is normalized to the surface, as the
   /// renderer applies it; the controller clamps both zoom and pan.
-  void _transform(double scale, Offset focal, Size size) {
+  void _transform(double scale, Offset focal, Size size) =>
+      _viewportAt(scale, focal.dx, focal.dy, size);
+
+  // In scalars, so the coast's per-frame path builds only the pan it sends.
+  void _viewportAt(double scale, double focalX, double focalY, Size size) {
     if (size.isEmpty) return;
     final next = (_baseZoom * scale).clamp(1.0, 3.0);
-    final centre = size.center(Offset.zero);
-    final pan = Offset(_basePan.dx * size.width, _basePan.dy * size.height);
-    final moved =
-        (focal - centre) - (_baseFocal - centre - pan) * (next / _baseZoom);
+    final ratio = next / _baseZoom;
+    final cx = size.width / 2, cy = size.height / 2;
+    final movedX =
+        (focalX - cx) - (_baseFocal.dx - cx - _basePan.dx * size.width) * ratio;
+    final movedY =
+        (focalY - cy) -
+        (_baseFocal.dy - cy - _basePan.dy * size.height) * ratio;
     _controller.setViewport(
       next,
-      Offset(moved.dx / size.width, moved.dy / size.height),
+      Offset(movedX / size.width, movedY / size.height),
     );
   }
 
@@ -584,6 +698,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                                           _pick(position, size);
                                         }
                                         ..onFling = _fling
+                                        ..onTransformFling = _transformFling
                                         ..onEnd = _gestureEnded;
                                     },
                                   ),
@@ -646,7 +761,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                                           l.bodyZoomOut,
                                           AlkionGlyph.minus,
                                           _controller.zoom > 1
-                                              ? () => _controller.zoomBy(-.5)
+                                              ? () => _zoomStep(-.5)
                                               : null,
                                         ),
                                         const SizedBox(width: 4),
@@ -655,7 +770,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                                           l.bodyZoomIn,
                                           AlkionGlyph.add,
                                           _controller.zoom < 3
-                                              ? () => _controller.zoomBy(.5)
+                                              ? () => _zoomStep(.5)
                                               : null,
                                         ),
                                       ],
@@ -819,6 +934,14 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     );
   }
 
+  // The buttons sit above the canvas, so their touch never reaches the
+  // recognizer: a step stops any coast itself, which would otherwise
+  // overwrite it on the next frame.
+  void _zoomStep(double delta) {
+    _stopInertia();
+    _controller.zoomBy(delta);
+  }
+
   Widget _zoomControl(
     String key,
     String tooltip,
@@ -872,10 +995,11 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
 /// Adding or lifting a finger re-bases the focal point and span, so the next
 /// update continues from where the fingers are, without a jump. Movement before
 /// slop is not applied, and the finger left after a pinch or pan must pass slop
-/// again from where it was re-based before it orbits. After any manipulation
-/// the sequence ends with [onEnd], preceded by [onFling] when it ended in a
-/// one-finger orbit; a release never becomes a tap. Pointers outside the
-/// canvas never reach it.
+/// again from where it was re-based before it orbits. A lift that leaves
+/// two-pointer mode reports the pinch and pan's release rates
+/// ([onTransformFling]). After any manipulation the sequence ends with
+/// [onEnd], preceded by [onFling] when it ended in a one-finger orbit; a
+/// release never becomes a tap. Pointers outside the canvas never reach it.
 class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   BodyManipulationGestureRecognizer({super.debugOwner});
 
@@ -901,6 +1025,13 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   /// (logical pixels per second), measured over that orbit segment only.
   ValueChanged<Offset>? onFling;
 
+  /// A lift (not a cancel) left two-pointer mode after a tracked pinch or pan:
+  /// the last focal point, its velocity (logical pixels per second) and the
+  /// span's log-scale rate (per second, positive spreads), measured over that
+  /// two-pointer segment only. The finger left, if any, is settling.
+  void Function(Offset focal, Offset velocity, double scaleRate)?
+  onTransformFling;
+
   /// The sequence ended without a tap: after manipulation, or cancelled.
   VoidCallback? onEnd;
 
@@ -916,6 +1047,9 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   double _baseSpan = 0;
   // The current one-finger orbit segment; null in any other phase.
   VelocityTracker? _velocity;
+  // The current two-pointer segment: focal point, and log span as dx. Null
+  // until it first moves with parted fingers, and in any other phase.
+  VelocityTracker? _focalVelocity, _spanVelocity;
   PointerDeviceKind _kind = PointerDeviceKind.touch;
 
   @override
@@ -966,8 +1100,8 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
 
   void _rebase() {
     if (_points.isEmpty) return;
-    // Any change in the pointer set ends the orbit segment a fling measures.
-    _velocity = null;
+    // Any change in the pointer set ends the segment a fling measures.
+    _velocity = _focalVelocity = _spanVelocity = null;
     _last = _focal;
     _baseSpan = _spanAround(_last);
     if (_manipulating && _points.length > 1) onTransformStart?.call(_last);
@@ -1010,6 +1144,14 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
         if (span > 0) _rebase();
         return;
       }
+      if (span > 0) {
+        (_focalVelocity ??= VelocityTracker.withKind(
+          _kind,
+        )).addPosition(event.timeStamp, focal);
+        (_spanVelocity ??= VelocityTracker.withKind(
+          _kind,
+        )).addPosition(event.timeStamp, Offset(math.log(span), 0));
+      }
       onTransform?.call(span / _baseSpan, focal);
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       if (event is PointerCancelEvent) _tap = false;
@@ -1032,6 +1174,15 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
     final orbit = _points.length == 1 && !_settling && !cancelled
         ? _velocity
         : null;
+    // Measured before this lift re-bases the remaining fingers.
+    final transform =
+        _points.length == 2 && !cancelled && _focalVelocity != null
+        ? (
+            _focal,
+            _focalVelocity!.getVelocity().pixelsPerSecond,
+            _spanVelocity!.getVelocity().pixelsPerSecond.dx,
+          )
+        : null;
     _points.remove(pointer);
     _downs.remove(pointer);
     if (_points.isEmpty) {
@@ -1050,6 +1201,9 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
     } else {
       if (_manipulating && _points.length == 1) _settling = true;
       _rebase();
+      if (transform != null) {
+        onTransformFling?.call(transform.$1, transform.$2, transform.$3);
+      }
     }
     stopTrackingPointer(pointer);
   }
@@ -1069,7 +1223,7 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
     _manipulating = false;
     _settling = false;
     _tap = false;
-    _velocity = null;
+    _velocity = _focalVelocity = _spanVelocity = null;
   }
 
   @override
