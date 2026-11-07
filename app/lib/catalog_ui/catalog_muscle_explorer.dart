@@ -127,6 +127,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       if (oldWidget.controller == null) _controller.dispose();
       _stopInertia();
       _dropInput();
+      _dragPans = null;
       _controller = widget.controller ?? CharacterBodyController();
       _openingView();
       _viewCommand = _controller.viewCommand;
@@ -245,6 +246,27 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   // Radians per logical pixel, on both orbit axes: the accepted turn rate.
   static const _orbitRate = .009;
 
+  // Above this zoom a one-finger drag pans vertically instead of tilting:
+  // dx still turns, dy moves the body by the finger's distance, within the
+  // two-finger pan bound, and pitch holds. At 1.02× that bound leaves 1% of
+  // the canvas height each way, so below it a pan would barely move and tilt
+  // is kept. Pinching in and a coast easing into 1× land exactly on 1×.
+  static const _panZoom = 1.02;
+
+  // Whether the current one-finger drag pans (true) or tilts (false); null
+  // until it first moves. It is chosen once per one-finger segment, from the
+  // zoom when that segment starts to move: at the start of the gesture, or
+  // when the finger left after a pinch or pan leaves its settling slop. A
+  // change in the finger count resets it, so it never switches mid-drag.
+  bool? _dragPans;
+
+  bool _choosePan() {
+    // A pinch still pending for this frame applies first, so the choice reads
+    // the zoom the fingers have produced.
+    if (_pendingTransform != null) _applyInput();
+    return _controller.zoom > _panZoom;
+  }
+
   // Inertia after a one-finger orbit release: exponential decay with time
   // constant [_inertiaTau], so the body coasts 63% of its remaining travel
   // per τ and settles in about 3τ. A release below [_minFlingSpeed] does not
@@ -284,6 +306,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _pickEpoch++;
     _touchStoppedInertia = _inertia.isActive;
     _stopInertia();
+    _dragPans = null;
   }
 
   void _manipulationStarted() {
@@ -296,6 +319,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     // A finger left after a pinch that moves deliberately takes over from
     // wherever the two-finger coast has reached.
     _stopInertia();
+    _dragPans ??= _choosePan();
     _pendingOrbit += delta;
     _scheduleInput();
   }
@@ -322,22 +346,36 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     if (!mounted) return;
     final orbit = _pendingOrbit, transform = _pendingTransform;
     _dropInput();
-    if (orbit != Offset.zero) {
-      _controller.orbitBy(orbit.dx * _orbitRate, orbit.dy * _orbitRate);
-    }
     final size = _surfaceSize;
+    // The pinch first: it sets an absolute viewport that a pan step adds to.
     if (transform != null && size != null) {
       _transform(transform.$1, transform.$2, size);
+    }
+    if (orbit == Offset.zero) return;
+    if (_dragPans != true) {
+      _controller.orbitBy(orbit.dx * _orbitRate, orbit.dy * _orbitRate);
+      return;
+    }
+    if (orbit.dx != 0) _controller.orbitBy(orbit.dx * _orbitRate, 0);
+    if (orbit.dy != 0 && size != null && !size.isEmpty) {
+      // The controller clamps to the same bound as a two-finger pan.
+      final pan = _controller.pan;
+      _controller.setViewport(
+        _controller.zoom,
+        Offset(pan.dx, pan.dy + orbit.dy / size.height),
+      );
     }
   }
 
   void _gestureEnded() {
     _applyInput();
     _pickEpoch++;
+    _dragPans = null;
   }
 
   void _fling(Offset velocity) {
     _applyInput();
+    final pans = _dragPans ??= _choosePan();
     if (_reducedMotion || !mounted) return;
     var speed = velocity.distance;
     if (!speed.isFinite || speed < _minFlingSpeed) return;
@@ -346,6 +384,11 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       speed = _maxFlingSpeed;
     }
     _yawRate = velocity.dx * _orbitRate;
+    _coasted = 0;
+    if (pans) {
+      _panFling(velocity.dy);
+      return;
+    }
     var pitchRate = velocity.dy * _orbitRate;
     // Total coast is rate × τ. Limit pitch so it eases into ±45°, arriving
     // with zero velocity instead of stopping hard at the bound.
@@ -356,9 +399,31 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       pitchRate = pitchRate.sign * math.max(0, room) / _inertiaTau;
     }
     _pitchRate = pitchRate;
-    _coasted = 0;
     _coastingViewport = false;
     _stopInertia();
+    _inertia.start();
+  }
+
+  /// A zoomed one-finger release: yaw coasts as an orbit does, and the
+  /// vertical velocity coasts the pan by the two-finger pan rules, cut to
+  /// ease into the pan bound at the current zoom. Pitch holds.
+  void _panFling(double velocityY) {
+    _pitchRate = 0;
+    _zoomTravel = _panTravelX = _panTravelY = 0;
+    final size = _surfaceSize;
+    if (size != null && !size.isEmpty) {
+      _baseZoom = _controller.zoom;
+      _basePan = _controller.pan;
+      _baseFocal = size.center(Offset.zero);
+      _panTravelY = _towardBound(
+        velocityY * _inertiaTau,
+        _basePan.dy * size.height,
+        (_baseZoom - 1) / 2 * size.height,
+      );
+    }
+    _coastingViewport = _panTravelY.abs() >= _panRest;
+    _stopInertia();
+    if (!_coastingViewport && _yawRate == 0) return;
     _inertia.start();
   }
 
@@ -415,6 +480,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
         _panTravelY.abs() < _panRest) {
       return;
     }
+    _yawRate = _pitchRate = 0;
     _coasted = 0;
     _coastingViewport = true;
     _inertia.start();
@@ -434,6 +500,9 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     final t = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
     // Fraction of the total coast (rate × τ) travelled by t.
     final coasted = 1 - math.exp(-t / _inertiaTau);
+    // A viewport coast and an orbit coast can run together (a zoomed
+    // one-finger release pans and turns); each rests on its own.
+    var moving = false;
     if (_coastingViewport) {
       final size = _surfaceSize;
       if (size == null) {
@@ -453,20 +522,28 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
         _baseFocal.dy + _panTravelY * f,
         size,
       );
-      if (rest) _stopInertia();
-      return;
+      if (rest) {
+        _coastingViewport = false;
+      } else {
+        moving = true;
+      }
     }
-    final step = coasted - _coasted;
-    _coasted = coasted;
-    _controller.orbitBy(
-      _yawRate * _inertiaTau * step,
-      _pitchRate * _inertiaTau * step,
-    );
-    final remaining = (1 - coasted) * _inertiaTau;
-    if (_yawRate.abs() * remaining < _inertiaRest &&
-        _pitchRate.abs() * remaining < _inertiaRest) {
-      _stopInertia();
+    if (_yawRate != 0 || _pitchRate != 0) {
+      final step = coasted - _coasted;
+      _coasted = coasted;
+      _controller.orbitBy(
+        _yawRate * _inertiaTau * step,
+        _pitchRate * _inertiaTau * step,
+      );
+      final remaining = (1 - coasted) * _inertiaTau;
+      if (_yawRate.abs() * remaining < _inertiaRest &&
+          _pitchRate.abs() * remaining < _inertiaRest) {
+        _yawRate = _pitchRate = 0;
+      } else {
+        moving = true;
+      }
     }
+    if (!moving) _stopInertia();
   }
 
   void _stopInertia() {
@@ -486,6 +563,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _baseZoom = _controller.zoom;
     _basePan = _controller.pan;
     _baseFocal = focal;
+    // A new finger count: the next one-finger segment chooses its mode anew.
+    _dragPans = null;
   }
 
   /// Pinch and pan in one step: the artwork point under the base focal point
@@ -1013,7 +1092,8 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   /// The first movement past slop, or a second pointer: manipulation begins.
   VoidCallback? onStart;
 
-  /// One-pointer movement since the previous update, in logical pixels.
+  /// One-pointer movement since the previous update, in logical pixels. The
+  /// explorer turns by dx, and tilts by dy at 1× or pans by it when zoomed.
   ValueChanged<Offset>? onOrbit;
 
   /// Two or more pointers (re)based at this focal point (local coordinates).

@@ -14,20 +14,21 @@ const rate = .009;
 const maxFling = 1500.0;
 const maxZoomRate = 2.5; // log-scale per second
 
-/// A one-finger orbit at [step] per 10 ms (100 × [step] px/s) after crossing
-/// slop, released at the last move's time stamp.
+/// A one-finger orbit at [step] per [interval] ms (100 × [step] px/s at the
+/// default 10 ms) after crossing slop, released at the last move's time stamp.
 Future<TestGesture> flick(
   WidgetTester tester,
   Offset step, {
   int moves = 8,
+  int interval = 10,
   bool release = true,
 }) async {
   final finger = await tester.createGesture();
   await finger.down(tester.getCenter(diagram));
-  var ms = 10;
+  var ms = interval;
   await finger.moveBy(step * 3, timeStamp: Duration(milliseconds: ms));
   for (var i = 0; i < moves; i++) {
-    ms += 10;
+    ms += interval;
     await finger.moveBy(step, timeStamp: Duration(milliseconds: ms));
   }
   await tester.pump();
@@ -586,6 +587,269 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  /// Moves [finger] by each of [moves], one frame each, then holds it still
+  /// past the velocity tracker's stop window and lifts it, so it never coasts.
+  Future<void> dragHeld(
+    WidgetTester tester,
+    TestGesture finger,
+    List<Offset> moves,
+  ) async {
+    for (final move in moves) {
+      await finger.moveBy(move);
+      await tester.pump();
+    }
+    await tester.pump(const Duration(milliseconds: 60));
+    await finger.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'above 1x a one-finger vertical drag pans within the pan bound and holds pitch; at 1x it tilts',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      final height = tester.getSize(diagram).height;
+      final centre = tester.getCenter(diagram);
+      // At 1×: a vertical drag tilts, as before.
+      await dragHeld(tester, await tester.startGesture(centre), const [
+        Offset(0, 30), // past slop: begins only
+        Offset(0, 20),
+      ]);
+      final pitch = controller.pitch;
+      expect(pitch, closeTo(20 * rate, 1e-9));
+      expect((controller.zoom, controller.pan), (1.0, Offset.zero));
+      // Zoomed: dx still turns, dy pans by the finger's distance; the tilt
+      // reached at 1× holds.
+      controller.setViewport(2, Offset.zero);
+      final finger = await tester.startGesture(centre);
+      await finger.moveBy(const Offset(0, 30));
+      await tester.pump();
+      expect(controller.pan, Offset.zero, reason: 'Slop is not applied');
+      await finger.moveBy(const Offset(12, 24));
+      await tester.pump();
+      expect(controller.yaw, closeTo(12 * rate, 1e-9));
+      expect(controller.pitch, pitch);
+      expect(controller.zoom, 2);
+      expect(controller.pan.dx, 0);
+      expect(controller.pan.dy, closeTo(24 / height, 1e-9));
+      // It stops at the two-finger pan bound, (zoom − 1) / 2, and moving
+      // back leaves the bound at once.
+      for (var i = 0; i < 10; i++) {
+        await finger.moveBy(const Offset(0, 30));
+        await tester.pump();
+        expect(controller.pan.dy, lessThanOrEqualTo(.5));
+      }
+      expect(controller.pan.dy, .5);
+      await finger.moveBy(const Offset(0, -30));
+      await tester.pump();
+      expect(controller.pan.dy, closeTo(.5 - 30 / height, 1e-9));
+      expect(controller.pitch, pitch);
+      await dragHeld(tester, finger, const []);
+      expect(controller.pitch, pitch);
+      expect(controller.requests, isEmpty, reason: 'A drag never picks');
+      // The threshold: just above 1× still tilts; past 1.02× it pans.
+      for (final (zoom, pans) in [(1.01, false), (1.03, true)]) {
+        controller.setViewport(zoom, Offset.zero);
+        final before = controller.pitch;
+        await dragHeld(tester, await tester.startGesture(centre), const [
+          Offset(0, -30),
+          Offset(0, -2),
+        ]);
+        expect(controller.pitch == before, pans, reason: '$zoom×');
+        expect(controller.pan.dy != 0, pans, reason: '$zoom×');
+      }
+      // Back at 1×, vertical tilts again.
+      controller.setViewport(1, Offset.zero);
+      final level = controller.pitch;
+      await dragHeld(tester, await tester.startGesture(centre), const [
+        Offset(0, -30),
+        Offset(0, -10),
+      ]);
+      expect(controller.pitch, closeTo(level - 10 * rate, 1e-9));
+      expect(controller.pan, Offset.zero);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'the mode is chosen per one-finger segment: a pinch re-base changes it without a jump',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      final height = tester.getSize(diagram).height;
+      final centre = tester.getCenter(diagram);
+      // Started at 1×: the drag tilts.
+      final first = await tester.createGesture(pointer: 1);
+      await first.down(centre - const Offset(40, 0));
+      await first.moveBy(const Offset(0, 30));
+      await first.moveBy(const Offset(0, 10));
+      await tester.pump();
+      final pitch = controller.pitch;
+      expect(pitch, closeTo(10 * rate, 1e-9));
+      // A second finger re-bases and pinches to 1.5×.
+      final second = await tester.createGesture(pointer: 2);
+      await second.down(centre + const Offset(40, 40));
+      await tester.pump();
+      expect(controller.pitch, pitch, reason: 'Landing is not movement');
+      await second.moveBy(const Offset(40, 0)); // span 40 → 60
+      await tester.pump();
+      expect(controller.zoom, closeTo(1.5, 1e-9));
+      final pinched = (controller.yaw, controller.pitch, controller.pan);
+      // Lifting re-bases to one finger; it settles, then pans from where it
+      // passed slop, and the tilt it made before the pinch holds.
+      await second.up();
+      await tester.pump();
+      expect((controller.yaw, controller.pitch, controller.pan), pinched);
+      await first.moveBy(const Offset(0, 6));
+      await first.moveBy(const Offset(0, 20)); // past slop: re-bases only
+      await tester.pump();
+      expect((controller.yaw, controller.pitch, controller.pan), pinched);
+      await first.moveBy(const Offset(4, 10));
+      await tester.pump();
+      expect(controller.yaw, closeTo(pinched.$1 + 4 * rate, 1e-9));
+      expect(controller.pitch, pitch);
+      expect(controller.pan.dx, pinched.$3.dx);
+      expect(controller.pan.dy, closeTo(pinched.$3.dy + 10 / height, 1e-9));
+      // A pinch back to 1× re-bases again: the finger left now tilts.
+      final third = await tester.createGesture(pointer: 3);
+      await third.down(centre + const Offset(60, 40));
+      await third.moveBy(const Offset(-80, 0));
+      await tester.pump();
+      expect((controller.zoom, controller.pan), (1.0, Offset.zero));
+      await third.up();
+      await tester.pump();
+      await first.moveBy(const Offset(0, -20)); // past slop: re-bases only
+      await tester.pump();
+      expect(controller.pitch, pitch);
+      await dragHeld(tester, first, const [Offset(0, -10)]);
+      expect(controller.pitch, closeTo(pitch - 10 * rate, 1e-9));
+      expect((controller.zoom, controller.pan), (1.0, Offset.zero));
+      expect(controller.requests, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a zoomed one-finger release coasts yaw and pan, decays, and eases into the pan bound',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      final height = tester.getSize(diagram).height;
+      // At 3× from near the top bound, the lower bound is far away: the pan
+      // coasts velocity × τ.
+      controller.setViewport(3, const Offset(0, -.9));
+      // 400 px/s; 32 px directly.
+      await flick(tester, const Offset(0, 8), moves: 4, interval: 20);
+      final released = (controller.yaw, controller.pan.dy);
+      expect(released.$2, closeTo(-.9 + 32 / height, 1e-9));
+      await tester.pump(); // a coast's first tick has zero elapsed time
+      final steps = <double>[];
+      var last = released.$2;
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        steps.add(controller.pan.dy - last);
+        last = controller.pan.dy;
+      }
+      expect(steps.first, greaterThan(0), reason: 'The pan keeps going');
+      for (var i = 1; i < steps.length; i++) {
+        expect(steps[i], lessThan(steps[i - 1]), reason: 'Smooth decay');
+      }
+      await tester.pumpAndSettle();
+      expect(tester.binding.hasScheduledFrame, isFalse, reason: 'Ticker stops');
+      expect(
+        controller.pan.dy,
+        closeTo(released.$2 + 400 * tau / height, 3 / height),
+      );
+      // Velocity estimation leaves only float noise on the unused axis.
+      expect(controller.yaw, closeTo(released.$1, 1e-6));
+      expect((controller.pitch, controller.zoom), (0.0, 3.0));
+      expect(controller.pan.dx, closeTo(0, 1e-9));
+      expect(controller.requests, isEmpty, reason: 'Coasting never picks');
+      // At 1.5× the bound is a quarter height. From the top bound the flick
+      // pans 48 px directly, and its 390 px coast is cut to ease into the
+      // lower bound, while the yaw coasts on as an orbit release does.
+      controller.setViewport(1.5, const Offset(0, -.25));
+      await flick(tester, const Offset(4, 12), moves: 4); // (400, 1200) px/s
+      final yaw = controller.yaw;
+      expect(controller.pan.dy, closeTo(-.25 + 48 / height, 1e-9));
+      await tester.pump();
+      final pans = <double>[controller.pan.dy];
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(controller.pan.dy, lessThanOrEqualTo(.25));
+        expect(controller.pitch, 0, reason: 'Pitch holds while zoomed');
+        pans.add(controller.pan.dy);
+      }
+      // Decelerating into the bound, not clamped at speed: the step that
+      // reaches it, and the one before, are sub-pixel.
+      final landing = pans.indexWhere((pan) => (pan - .25).abs() < 1e-9);
+      expect(landing, greaterThan(10), reason: 'It rests on the bound');
+      for (var i = 2; i < landing; i++) {
+        expect(pans[i] - pans[i - 1], lessThan(pans[i - 1] - pans[i - 2]));
+      }
+      expect((pans[landing] - pans[landing - 1]) * height, lessThan(.5));
+      expect((pans[landing - 1] - pans[landing - 2]) * height, lessThan(.5));
+      await tester.pumpAndSettle();
+      expect(controller.pan.dy, closeTo(.25, 1e-9));
+      final turned = (controller.yaw - yaw) % (math.pi * 2);
+      expect(turned, closeTo(400 * rate * tau, .1));
+      expect(controller.zoom, 1.5);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a touch stops a zoomed pan coast without selecting; Reset cancels one',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      controller.setViewport(3, const Offset(0, -1));
+      await flick(tester, const Offset(2, 10));
+      final released = controller.pan.dy;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(controller.pan.dy, greaterThan(released), reason: 'It coasts');
+      await tester.tap(diagram);
+      final stopped = (controller.yaw, controller.pan);
+      expect(controller.requests, isEmpty, reason: 'The touch only stops');
+      await tester.pump(const Duration(milliseconds: 500));
+      expect((controller.yaw, controller.pan), stopped);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.tap(diagram);
+      expect(controller.requests, hasLength(1));
+      controller.requests.single.result.complete(WorkloadMuscle.chest);
+      await tester.pumpAndSettle();
+      expect(body(tester).selectedRegion, WorkloadMuscle.chest);
+      controller.setViewport(3, Offset.zero);
+      await flick(tester, const Offset(2, -10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tap(find.byKey(const Key('catalog-body-reset')));
+      await tester.pump();
+      final view = (controller.yaw, controller.pitch);
+      expect((controller.zoom, controller.pan), (1.0, Offset.zero));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect((controller.zoom, controller.pan), (1.0, Offset.zero));
+      expect((controller.yaw, controller.pitch), view);
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('reduced motion: a zoomed one-finger release does not coast', (
+    tester,
+  ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        FakeAccessibilityFeatures.allOn;
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final controller = await pumpExplorer(tester);
+    controller.setViewport(2, Offset.zero);
+    await flick(tester, const Offset(4, 4));
+    final released = (controller.yaw, controller.pitch, controller.pan);
+    expect(released.$3.dy, greaterThan(0), reason: 'Direct panning works');
+    expect(released.$2, 0);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect((controller.yaw, controller.pitch, controller.pan), released);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('closing the explorer mid-coast disposes the ticker cleanly', (
     tester,

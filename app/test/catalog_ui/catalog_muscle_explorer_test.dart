@@ -703,15 +703,22 @@ void main() {
       await first.moveBy(const Offset(6, -6));
       await tester.pump();
       expect((controller.yaw, controller.pitch), (yaw, 0.0));
-      // Past slop it re-bases there, then orbits continuously.
+      // Past slop it re-bases there, then turns continuously. Zoomed, its
+      // vertical movement pans instead of tilting.
       await first.moveBy(const Offset(20, 0));
       await tester.pump();
       expect((controller.yaw, controller.pitch), (yaw, 0.0));
+      expect((controller.zoom, controller.pan), viewport);
       await first.moveBy(const Offset(20, 10));
       await tester.pump();
       expect(controller.yaw, closeTo(yaw + 20 * .009, 1e-9));
-      expect(controller.pitch, closeTo(10 * .009, 1e-9));
-      expect((controller.zoom, controller.pan), viewport);
+      expect(controller.pitch, 0.0);
+      expect(controller.zoom, viewport.$1);
+      expect(controller.pan.dx, viewport.$2.dx);
+      expect(
+        controller.pan.dy,
+        closeTo(viewport.$2.dy + 10 / size.height, 1e-9),
+      );
       await first.up();
       await tester.pumpAndSettle();
       expect(scroll.pixels, 0, reason: 'The page never scrolled');

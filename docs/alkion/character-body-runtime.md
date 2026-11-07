@@ -200,7 +200,13 @@ it. Pointers outside the canvas never reach it; the page scrolls as before.
 
 - One pointer released within touch slop is a tap and picks.
 - One pointer past slop orbits: dx turns, dy tilts. Movement before slop is
-  not applied.
+  not applied. Above 1.02× zoom, dy pans the body vertically instead, by the
+  finger's distance and within the two-finger pan bound; dx still turns and
+  pitch holds its value. At 1.02× that bound leaves 1% of the canvas height
+  each way, so just above 1× a drag still tilts. The mode is chosen once per
+  one-finger segment, from the zoom when it starts to move: at the start of
+  the gesture, or when the finger left after a pinch or pan leaves its slop.
+  A change in the finger count resets it, so it never switches mid-drag.
 - Two or more pointers pinch-zoom (1–3×) around their focal point and pan. Each
   change in the pointer set re-bases focal point, span, zoom and pan, so adding
   or lifting a finger never jumps, and a clamped zoom never drifts. The finger
@@ -227,6 +233,13 @@ a hidden surface or closing the explorer stop it; under reduced motion it never
 starts. The ticker is created in `initState` and disposed with the explorer.
 The explorer rebuilds only when Front/Back selection or the zoom bounds change,
 not on every orbit frame.
+
+A zoomed one-finger release that pans coasts yaw as above and the vertical
+pan by the two-finger pan rules below (the same τ, 50 px/s threshold and
+1,500 px/s cap): the pan travel is velocity × τ, cut to ease into the pan bound
+at the current zoom, landing on it at rest. Pitch does not coast. A touch,
+Front, Back, Side, Reset, the zoom buttons, leaving the foreground and reduced
+motion stop or prevent it as they do every coast.
 
 A two-finger release coasts too (T6), with the same τ. The lift that leaves
 two-finger mode decides it, measured over that two-finger segment: the focal
