@@ -164,6 +164,40 @@ for(const event of events)assert.ok(JSON.stringify(event).length<900,`Status rep
 for(const event of events)for(const key of ['tFrames','tMsgs','iP50','iP90','iMax','dP50','dP90','glMs','readMs','composeMs'])if(key in event)assert.ok(Number.isFinite(event[key])&&event[key]>=0,key);
 console.log('PASS: protocol v5, exact style dispatch, one latest draw/frame, no identical paused redraws, cumulative drag continuity, lifecycle/reduced motion/retry/disposal');
 
+// Asynchronous readback: a frame's pick identity is published only after its
+// pixels land, only for the latest drawn frame, and never after invalidation.
+{
+ const events=[],raf=new Map(),timers=[];let counter=0,ready=false,draws=0;
+ const window={AlkionNative:{postMessage:json=>events.push(JSON.parse(json))},addEventListener(){}};
+ const canvas={getContext:()=>({clearRect(){}}),addEventListener(){}};
+ const document={getElementById:()=>canvas,fonts:{load:async()=>[{}]},addEventListener(){},hidden:false};
+ let resized;
+ runInNewContext(runtime,{window,document,performance:{now:()=>0},AbortController,setTimeout:cb=>{timers.push(cb);return timers.length;},
+  ResizeObserver:class{constructor(callback){resized=callback;}observe(){}},
+  MotionLoop:class extends MotionLoop{constructor(state,draw){super(state,draw,{request:cb=>{const id=++counter;raf.set(id,cb);return id;},cancel:id=>raf.delete(id)});}},
+  VolumeRenderer:class{pollReadback(){return ready;}finishReadback(){ready=true;return true;}pick(){return 'chest';}draw(){draws++;ready=false;}dispose(){}},
+  loadMesh:async()=>({}),colors:{},validateDisplay,validatePick,protocolVersion});
+ const frame=()=>{const callbacks=[...raf];raf.clear();for(const [,callback] of callbacks)callback(16);};
+ const runTimers=()=>{const pending=timers.splice(0);for(const cb of pending)cb();};
+ const tokens=()=>events.filter(e=>e.status==='ready'&&Number.isInteger(e.frame)).map(e=>e.frame);
+ let current={...display,interaction:{enabled:true,selected:null,generation:1}};
+ const update=patch=>window.AlkionBody.update(current={...current,...patch});
+ const pickAt=frame=>{const n=events.length;window.AlkionBody.pick({version:5,id:7,generation:1,frame,load:1,layout:0,x:.5,y:.5});return events.slice(n).find(e=>e.type==='pick')?.region??null;};
+ update({});await flush();frame();assert.equal(draws,1);
+ assert.deepEqual(tokens(),[],'No pick identity before the pixels land');assert.equal(pickAt(1),null);
+ runTimers();assert.deepEqual(tokens(),[],'Still pending: no identity');
+ ready=true;runTimers();assert.deepEqual(tokens(),[1]);assert.equal(pickAt(1),'chest');
+ // Two draws before either copy lands: only the latest is ever published.
+ update({turn:.1,yaw:.1});frame();assert.equal(pickAt(1),null,'A newer draw retires the old identity');
+ update({turn:.2,yaw:.2});frame();ready=true;runTimers();assert.deepEqual(tokens(),[1,3],'Frame 2 never published');
+ // An input change after the draw invalidates its pending copy.
+ update({turn:.3,yaw:.3});frame();update({view:{zoom:2,x:0,y:0,pitch:.2}});ready=true;runTimers();
+ assert.deepEqual(tokens(),[1,3],'Invalidated pending frame never published');frame();ready=true;runTimers();assert.deepEqual(tokens(),[1,3,5]);
+ // Layout invalidation and a stalled copy: the copy is forced after ~250 polls.
+ resized();frame();for(let i=0;i<260&&timers.length;i++)runTimers();assert.deepEqual(tokens(),[1,3,5,6],'A stalled copy completes');
+ console.log('PASS: async readback publishes only the latest landed frame; invalidation and stalls handled');
+}
+
 // Exact retained-pixel addressing (WebGL bottom-up), including neutral and
 // background; no neighbour/hidden-region approximation is permitted.
 const pixels=new Uint8Array(3*2*4),names=['neutral','chest','back','alien'];

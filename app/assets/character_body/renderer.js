@@ -165,6 +165,9 @@ export class VolumeRenderer{
  constructor(canvas,mesh,compact=false,{diagnostics=false,compose='auto'}={}){
   this.diagnostics=diagnostics;
   this.canvas=canvas;this.mesh=mesh;this.compact=compact;this.sample={};this.drawCount=0;this.glyphCount=0;
+  // drawnFrame counts geometry draws; pixelsFrame names the draw whose bytes
+  // are in this.pixels. Picks need the two to be equal.
+  this.drawnFrame=0;this.pixelsFrame=-1;this.fence=null;this.fenceFrame=-1;
   this.ctx=canvas.getContext('2d');if(!this.ctx)throw new Error('Canvas unavailable');
   this.surface=document.createElement('canvas');
   // WebGL2 composes glyphs on the GPU; WebGL1 keeps the CPU reference path.
@@ -229,7 +232,7 @@ export class VolumeRenderer{
   this.gw=this.cols*3;this.gh=this.rows*3;
   if(this.gpu){this.surface.width=w;this.surface.height=h;this.resizeComposer();}
   else{this.surface.width=this.gw;this.surface.height=this.gh;this.gl.viewport(0,0,this.gw,this.gh);}
-  this.pixels=new Uint8Array(this.gw*this.gh*4);this.atlasKey='';return true;
+  this.pixels=new Uint8Array(this.gw*this.gh*4);this.pixelsFrame=-1;this.atlasKey='';return true;
  }
  buildAtlas(muscles,theme,selected=null){
   const key=JSON.stringify([muscles,theme,selected,colors[theme],this.cols,this.rows,this.canvas.width]);if(key===this.atlasKey)return;this.atlasKey=key;
@@ -276,10 +279,17 @@ export class VolumeRenderer{
   const t0=performance.now();
   if(this.gpu){gl.bindVertexArray(this.geometryVAO);gl.bindFramebuffer(gl.FRAMEBUFFER,this.geometryFBO);gl.viewport(0,0,this.gw,this.gh);gl.enable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.texture);}
   gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.drawElements(gl.TRIANGLES,this.mesh.indices.length,gl.UNSIGNED_INT,0);
-  const t1=performance.now();gl.readPixels(0,0,this.gw,this.gh,gl.RGBA,gl.UNSIGNED_BYTE,this.pixels);
+  const t1=performance.now();this.drawnFrame++;
+  if(this.gpu){
+   // Asynchronous readback: queue the copy into a pixel-pack buffer behind a
+   // fence. Pixels (for picking only) land when the GPU finishes, without a
+   // stall; a newer frame's request replaces an older one still in flight.
+   gl.bindBuffer(gl.PIXEL_PACK_BUFFER,this.pack);gl.readPixels(0,0,this.gw,this.gh,gl.RGBA,gl.UNSIGNED_BYTE,0);gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
+   if(this.fence)gl.deleteSync(this.fence);this.fence=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);this.fenceFrame=this.drawnFrame;gl.flush();
+  }else{gl.readPixels(0,0,this.gw,this.gh,gl.RGBA,gl.UNSIGNED_BYTE,this.pixels);this.pixelsFrame=this.drawnFrame;}
   const t2=performance.now();this.stageGl=t1-t0;this.stageRead=t2-t1;this.stageCompose=0;
   this.pickWidth=this.canvas.clientWidth;this.pickHeight=this.canvas.clientHeight;
-  if(mode!=='characters'){this.drawDiagnostic(mode,theme);return;}
+  if(mode!=='characters'){this.finishReadback();this.drawDiagnostic(mode,theme);return;}
   if(this.gpu){this.composeGPU(theme);this.stageCompose=performance.now()-t2;this.drawCount++;this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.pitch=String(view.pitch??0);return;}
   const ctx=this.ctx,pixels=this.pixels,stride=this.gw;ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
   let count=0,signature=2166136261;const histogram={};
@@ -297,8 +307,22 @@ export class VolumeRenderer{
  }
  // Normalized native coordinates address the retained, depth-tested surface,
  // not a nearby glyph/anchor. WebGL readback rows run bottom to top.
+ /** True when this.pixels hold the latest draw; polls a pending GPU copy. */
+ pollReadback(){
+  if(this.pixelsFrame===this.drawnFrame)return true;
+  if(!this.fence||this.lost)return false;
+  const status=this.gl.clientWaitSync(this.fence,0,0);
+  if(status!==this.gl.ALREADY_SIGNALED&&status!==this.gl.CONDITION_SATISFIED)return false;
+  this.copyReadback();return this.pixelsFrame===this.drawnFrame;
+ }
+ /** Waits for the pending copy now: diagnostics and host proofs only. */
+ finishReadback(){if(this.fence&&!this.lost){this.gl.clientWaitSync(this.fence,0,0);this.copyReadback();}return this.pixelsFrame===this.drawnFrame;}
+ copyReadback(){
+  const gl=this.gl;gl.bindBuffer(gl.PIXEL_PACK_BUFFER,this.pack);gl.getBufferSubData(gl.PIXEL_PACK_BUFFER,0,this.pixels);gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
+  gl.deleteSync(this.fence);this.fence=null;this.pixelsFrame=this.fenceFrame;
+ }
  pick(x,y){
-  if(this.lost||this.pickWidth!==this.canvas.clientWidth||this.pickHeight!==this.canvas.clientHeight)return null;
+  if(this.lost||this.pixelsFrame!==this.drawnFrame||this.pickWidth!==this.canvas.clientWidth||this.pickHeight!==this.canvas.clientHeight)return null;
   return pickSurfaceRegion(this.pixels,this.gw,this.gh,surfaceRegions,x,y);
  }
  drawDiagnostic(mode,theme){
@@ -324,7 +348,7 @@ export class VolumeRenderer{
   this.glyphUniforms=uniforms(this.glyphProgram,['cells','cellInfo','shades','cols','canvasSize','cellSize','tileSize','atlasSize','atlas']);
   const texture=(filter=gl.NEAREST)=>{const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,filter],[gl.TEXTURE_MAG_FILTER,filter],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);return t;};
   this.geometryTexture=texture();this.cellTexture=texture();this.cellInfoTexture=texture();this.shadeTexture=texture();this.atlasTexture=texture(gl.LINEAR);
-  this.depthBuffer=gl.createRenderbuffer();this.geometryFBO=gl.createFramebuffer();this.cellFBO=gl.createFramebuffer();this.shadeKey='';
+  this.depthBuffer=gl.createRenderbuffer();this.geometryFBO=gl.createFramebuffer();this.cellFBO=gl.createFramebuffer();this.pack=gl.createBuffer();this.shadeKey='';
  }
  resizeComposer(){
   const gl=this.gl,cols=this.cols,rows=this.rows;
@@ -340,6 +364,8 @@ export class VolumeRenderer{
   const info=new Float32Array(cols*rows*4);
   for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){const at=(row*cols+col)*4;info[at]=glyphThreshold(col,row);info[at+1]=glyphChoice(col,row,2);info[at+2]=columnPhase(col);}
   gl.bindTexture(gl.TEXTURE_2D,this.cellInfoTexture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,cols,rows,0,gl.RGBA,gl.FLOAT,info);
+  if(this.fence){gl.deleteSync(this.fence);this.fence=null;}
+  gl.bindBuffer(gl.PIXEL_PACK_BUFFER,this.pack);gl.bufferData(gl.PIXEL_PACK_BUFFER,this.gw*this.gh*4,gl.STREAM_READ);gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);this.shadeKey='';
  }
  composeGPU(theme){
@@ -368,6 +394,6 @@ export class VolumeRenderer{
   const ctx=this.ctx;ctx.clearRect(0,0,this.canvas.width,this.canvas.height);ctx.drawImage(this.surface,0,0);
  }
  dispose(){this.disposed=true;const gl=this.gl;for(const b of this.buffers)gl.deleteBuffer(b);gl.deleteTexture(this.texture);gl.deleteProgram(this.program);
-  if(this.gpu){for(const t of [this.geometryTexture,this.cellTexture,this.cellInfoTexture,this.shadeTexture,this.atlasTexture])gl.deleteTexture(t);gl.deleteRenderbuffer(this.depthBuffer);gl.deleteFramebuffer(this.geometryFBO);gl.deleteFramebuffer(this.cellFBO);gl.deleteProgram(this.cellProgram);gl.deleteProgram(this.glyphProgram);gl.deleteVertexArray(this.geometryVAO);gl.deleteVertexArray(this.emptyVAO);}
+  if(this.gpu){for(const t of [this.geometryTexture,this.cellTexture,this.cellInfoTexture,this.shadeTexture,this.atlasTexture])gl.deleteTexture(t);gl.deleteRenderbuffer(this.depthBuffer);gl.deleteFramebuffer(this.geometryFBO);gl.deleteFramebuffer(this.cellFBO);gl.deleteProgram(this.cellProgram);gl.deleteProgram(this.glyphProgram);gl.deleteVertexArray(this.geometryVAO);gl.deleteVertexArray(this.emptyVAO);gl.deleteBuffer(this.pack);if(this.fence)gl.deleteSync(this.fence);this.fence=null;}
   gl.getExtension('WEBGL_lose_context')?.loseContext();}
 }

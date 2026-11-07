@@ -6,7 +6,7 @@ import {validateDisplay,validatePick,protocolVersion} from './protocol.js';
 const canvas=document.getElementById('body');
 const state={ready:false,failed:false,paused:true,reduced:false,hidden:false,visible:false,yaw:0};
 let renderer=null,mesh=null,input=null,muscles=null,loadedStyle=null,loadGeneration=0,abort=null,command=-1,turn=0,retry=-1,hostHidden=false;
-let rendered=null,frameId=0,layout=0;
+let rendered=null,drawn=null,frameId=0,layout=0,pollTimer=null,polls=0;
 let frames=0,totalMs=0,maxMs=0,lastReport=0,loadMs=0,started=performance.now(),stages={},lease=0;
 const meshes=new Map();let fontReady=null,needsLoad=false,loading=false;
 // Aggregate timing only: frame intervals during continuous motion, draw stage
@@ -24,17 +24,36 @@ function summarize(now){
 function report(status){
  window.AlkionNative?.postMessage(JSON.stringify({version:protocolVersion,status,yaw:state.yaw,command,turn,revision:input?.revision??0,frames,totalMs:round(totalMs),maxMs:round(maxMs),loadMs:round(loadMs),lease,...stages,...timing.summary,...(input?.interaction?.enabled&&rendered?rendered:{})}));
 }
-function fail(status){rendered=null;state.ready=false;state.failed=true;loop.stop();renderer?.dispose();renderer=null;mesh=null;canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);report(status);}
+// A frame's pick identity is published only once its pixels have landed: the
+// renderer reads back asynchronously, so poll across tasks (fence status
+// changes only between tasks) and only for the latest drawn frame.
+function pollRendered(){
+ pollTimer=null;if(!drawn||!renderer||!state.ready||state.hidden||!state.visible)return;
+ if(renderer.pollReadback?.()??true){
+  rendered=drawn;drawn=null;polls=0;
+  // During continuous motion the next frame is already scheduled: its own
+  // readback reports. The settled frame always reports.
+  if(input?.interaction?.enabled&&loop.handle===null){lastReport=performance.now();report('ready');}
+  return;
+ }
+ // A stalled copy completes synchronously after about a second of polls.
+ if(++polls>250){renderer.finishReadback();pollTimer=setTimeout(pollRendered,0);return;}
+ pollTimer=setTimeout(pollRendered,polls<20?0:4);
+}
+function invalidateRendered(){rendered=null;drawn=null;}
+function schedulePoll(){if(pollTimer===null)pollTimer=setTimeout(pollRendered,0);}
+function fail(status){invalidateRendered();state.ready=false;state.failed=true;loop.stop();renderer?.dispose();renderer=null;mesh=null;canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);report(status);}
 function draw(){
  if(!renderer||!state.ready||state.hidden||!state.visible)return;
  try{
   const begin=performance.now();renderer.draw(state.yaw,muscles,input.theme,'characters',input.interaction?.enabled?input.interaction.selected:null,input.view);
-  rendered={generation:input.interaction?.generation??0,frame:++frameId,load:loadGeneration,layout};
+  rendered=null;drawn={generation:input.interaction?.generation??0,frame:++frameId,load:loadGeneration,layout};polls=0;
+  if(renderer.pollReadback?.()??true){rendered=drawn;drawn=null;}else schedulePoll();
   const end=performance.now(),ms=end-begin;if(frames===0)stages.firstFrameMs=round(end-started);frames++;totalMs+=ms;maxMs=Math.max(maxMs,ms);
   // Only consecutive frames count as intervals; an idle gap is not a frame.
   if(timing.last&&begin-timing.last<100){timing.interval[timing.at]=begin-timing.last;timing.draw[timing.at]=ms;timing.at=(timing.at+1)%ring;timing.n++;}
   timing.last=begin;timing.frames++;timing.gl+=renderer.stageGl||0;timing.read+=renderer.stageRead||0;timing.compose+=renderer.stageCompose||0;summarize(end);
-  if(input.interaction?.enabled||frames===1||performance.now()-lastReport>1000){lastReport=performance.now();report('ready');}
+  if((input.interaction?.enabled&&rendered)||frames===1||performance.now()-lastReport>1000){lastReport=performance.now();report('ready');}
  }catch{fail('error');}
 }
 const loop=new MotionLoop(state,draw);
@@ -43,7 +62,7 @@ function cancelLoad(){
 }
 async function load(){
  if(!input||!state.visible||state.hidden){needsLoad=true;return;}
- rendered=null;const generation=++loadGeneration;abort?.abort();abort=new AbortController();const signal=abort.signal,style=input.style;
+ invalidateRendered();const generation=++loadGeneration;abort?.abort();abort=new AbortController();const signal=abort.signal,style=input.style;
  needsLoad=false;loading=true;loadedStyle=style;state.ready=false;state.failed=false;loop.stop();renderer?.dispose();renderer=null;mesh=null;
  canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);started=performance.now();frames=0;totalMs=0;maxMs=0;stages={cacheHit:meshes.has(style)?1:0};report('loading');
  try{
@@ -64,7 +83,7 @@ window.AlkionBody={
   timing.msgs++;
   try{
    const next=validateDisplay(value),previous=input;input=next;
-   if(JSON.stringify(previous)!==JSON.stringify(next))rendered=null;
+   if(JSON.stringify(previous)!==JSON.stringify(next))invalidateRendered();
    const scoresChanged=!previous||Object.keys(next.scores).some(key=>next.scores[key]!==previous.scores[key]);
    if(scoresChanged)muscles=Object.fromEntries(Object.entries(next.scores).map(([key,score])=>[key,{score}]));
    let changed=JSON.stringify(next.view)!==JSON.stringify(previous?.view)||scoresChanged||JSON.stringify(next.interaction)!==JSON.stringify(previous?.interaction)||!previous||next.theme!==previous.theme||next.compact!==previous.compact||
@@ -89,13 +108,13 @@ window.AlkionBody={
   const region=valid?renderer.pick(request.x,request.y):null;
   window.AlkionNative?.postMessage(JSON.stringify({...request,type:'pick',region,lease}));
  },
- hostPaused(value){hostHidden=!!value;const hidden=hostHidden||document.hidden,changed=state.hidden!==hidden;state.hidden=hidden;if(changed)rendered=null;if(hidden)cancelLoad();if(changed&&!hidden&&needsLoad)load();else if(changed&&!hidden)loop.invalidate();else loop.reconcile();},
+ hostPaused(value){hostHidden=!!value;const hidden=hostHidden||document.hidden,changed=state.hidden!==hidden;state.hidden=hidden;if(changed)invalidateRendered();if(hidden)cancelLoad();if(changed&&!hidden&&needsLoad)load();else if(changed&&!hidden)loop.invalidate();else loop.reconcile();},
  // A pooled native surface starts a new lease without retaining caller state.
- reset(value){if(value===lease)return;lease=value;rendered=null;canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);input=null;muscles=null;command=-1;turn=0;retry=-1;state.visible=false;state.paused=true;loop.stop();cancelLoad();if(!state.ready)needsLoad=true;state.failed=false;started=performance.now();frames=0;totalMs=0;maxMs=0;loadMs=0;stages={cacheHit:state.ready?1:0};},
- dispose(){rendered=null;loadGeneration++;abort?.abort();state.ready=false;loop.stop();renderer?.dispose();renderer=null;mesh=null;meshes.clear();fontReady=null;},
+ reset(value){if(value===lease)return;lease=value;invalidateRendered();canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);input=null;muscles=null;command=-1;turn=0;retry=-1;state.visible=false;state.paused=true;loop.stop();cancelLoad();if(!state.ready)needsLoad=true;state.failed=false;started=performance.now();frames=0;totalMs=0;maxMs=0;loadMs=0;stages={cacheHit:state.ready?1:0};},
+ dispose(){invalidateRendered();loadGeneration++;abort?.abort();state.ready=false;loop.stop();renderer?.dispose();renderer=null;mesh=null;meshes.clear();fontReady=null;},
 };
 canvas.addEventListener('renderfailure',()=>fail('error'));
-new ResizeObserver(()=>{rendered=null;layout++;loop.invalidate();}).observe(canvas);
+new ResizeObserver(()=>{invalidateRendered();layout++;loop.invalidate();}).observe(canvas);
 document.addEventListener('visibilitychange',()=>window.AlkionBody.hostPaused(hostHidden));
 window.addEventListener('pagehide',()=>window.AlkionBody.dispose());
 
