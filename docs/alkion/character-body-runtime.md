@@ -38,9 +38,9 @@ pipeline in one Android system WebView. No new package is required.
 - Caller supplies bounded dimensions: compact 128×212; enlarged retains the
   same aspect ratio. `compact` selects the approved optical sampling pitch.
 - Artwork ignores pointer input and is excluded from semantics. Native outer
-  controls/gestures own input: horizontal delta × .009 radians matches the study.
-  Explore never changes pitch from a gesture; vertical delta pans. Caller owns
-  pager/scroll arbitration, route/sheet/viewport visibility and
+  controls/gestures own input: horizontal delta × .009 radians matches the
+  study. Explore never changes pitch from a gesture; vertical delta pans.
+  Caller owns pager/scroll arbitration, route/sheet/viewport visibility and
   reduced-motion preference. Widget and Android host also observe app lifecycle.
   Mount only the selected card's renderer; destroy compact while enlarged is open.
 
@@ -240,21 +240,24 @@ releases at rest. The coast decays exponentially with time constant
 τ = 325 ms: each τ covers 63% of the remaining travel, the body settles in
 about 3τ, and the total coast is velocity × .009 rad/px × τ. A release slower
 than 50 px/s does not coast; faster flicks are capped at 1,500 px/s (about two
-thirds of a turn). A yaw coast shorter than .001 rad (velocity-estimate noise
-from a vertical release) does not start. Pitch never coasts. A touch on the
+thirds of a turn). The release coasts its dominant axis alone when the other
+axis is at most a third of it (within about 18° of the axis): a vertical flick
+with a few px/s of sideways wobble coasts no yaw, and a near-horizontal one
+coasts no pan. A clearer diagonal, such as 2:1, coasts both. Movement during
+the drag always applies on both axes. Pitch never coasts. A touch on the
 canvas stops the coast and does not select; the next tap picks. Front, Back,
-Side, Reset and a chip choice that opens a held view cancel it. Picks are refused while it runs. Reduced motion,
-a hidden surface or closing the explorer stop it; under reduced motion it never
-starts. The ticker is created in `initState` and disposed with the explorer.
-The explorer rebuilds only when Front/Back selection or the zoom bounds change,
-not on every orbit frame.
+Side, Reset and a chip choice that opens a held view cancel it. Picks are
+refused while it runs. Reduced motion, a hidden surface or closing the
+explorer stop it; under reduced motion it never starts. The ticker is created
+in `initState` and disposed with the explorer. The explorer rebuilds only when
+Front/Back selection or the zoom bounds change, not on every orbit frame.
 
 The same release coasts the vertical pan by the two-finger pan rules below
 (the same τ, 50 px/s threshold and 1,500 px/s cap): the pan travel is
 velocity × τ, cut to ease into the pan bound at the current zoom, landing on it
-at rest; at 1× there is no room, so only yaw coasts. A touch,
-Front, Back, Side, Reset, the zoom buttons, leaving the foreground and reduced
-motion stop or prevent it as they do every coast.
+at rest; at 1× there is no room, so only yaw coasts. A touch, Front, Back,
+Side, Reset, the zoom buttons, leaving the foreground and reduced motion stop
+or prevent it as they do every coast.
 
 A two-finger release coasts too (T6), with the same τ. The lift that leaves
 two-finger mode decides it, measured over that two-finger segment: the focal

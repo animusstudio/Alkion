@@ -777,7 +777,7 @@ void main() {
       // diagonal flick pans 48 px directly, and its 390 px coast is cut to
       // ease into the lower bound, while the yaw coasts on as well.
       controller.setViewport(1.5, const Offset(0, -.25));
-      await flick(tester, const Offset(4, 12), moves: 4); // (400, 1200) px/s
+      await flick(tester, const Offset(6, 12), moves: 4); // (600, 1200) px/s
       final yaw = controller.yaw;
       expect(controller.pan.dy, closeTo(-.25 + 48 / height, 1e-9));
       await tester.pump();
@@ -800,8 +800,56 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.pan.dy, closeTo(.25, 1e-9));
       final turned = (controller.yaw - yaw) % (math.pi * 2);
-      expect(turned, closeTo(400 * rate * tau, .1));
+      expect(turned, closeTo(600 * rate * tau, .1));
       expect(controller.zoom, 1.5);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a release coasts its dominant axis alone; a clear diagonal coasts both',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      final height = tester.getSize(diagram).height;
+      // At 1×, near-vertical flicks with 2 and 5 px/s of sideways wobble
+      // against 300 px/s schedule no yaw coast, and there is no pan room.
+      for (final wobble in [.02, .05]) {
+        await flick(tester, Offset(wobble, 3), moves: 16);
+        final released = (controller.yaw, controller.pan);
+        expect(
+          tester.binding.hasScheduledFrame,
+          isFalse,
+          reason: '${wobble * 100} px/s wobble',
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+        expect((controller.yaw, controller.pan), released);
+        expect(controller.pitch, 0);
+      }
+      // Zoomed, a (60, 120) px/s diagonal coasts both yaw and pan.
+      controller.setViewport(3, const Offset(0, -.9));
+      await flick(tester, const Offset(.6, 1.2), moves: 24);
+      var released = (controller.yaw, controller.pan.dy);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(controller.yaw, greaterThan(released.$1), reason: 'Yaw coasts');
+      expect(controller.pan.dy, greaterThan(released.$2), reason: 'Pan too');
+      await tester.pumpAndSettle();
+      expect(controller.yaw - released.$1, closeTo(60 * rate * tau, .02));
+      expect(
+        controller.pan.dy,
+        closeTo(released.$2 + 120 * tau / height, 3 / height),
+      );
+      // A near-horizontal (300, 20) px/s flick drops the pan coast: yaw
+      // coasts alone.
+      controller.setViewport(3, const Offset(0, -.9));
+      await flick(tester, const Offset(3, .2), moves: 16);
+      released = (controller.yaw, controller.pan.dy);
+      await tester.pumpAndSettle();
+      expect(controller.pan.dy, released.$2, reason: 'No pan coast');
+      final turned = (controller.yaw - released.$1) % (math.pi * 2);
+      expect(turned, closeTo(300 * rate * tau, .05));
+      expect(controller.pitch, 0);
+      expect(controller.requests, isEmpty, reason: 'Coasting never picks');
       await tester.pumpWidget(const SizedBox());
     },
   );

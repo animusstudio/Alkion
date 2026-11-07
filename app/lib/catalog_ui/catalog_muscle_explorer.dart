@@ -277,6 +277,13 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   static const _minFlingSpeed = kMinFlingVelocity; // logical px/s
   static const _maxFlingSpeed = 1500.0; // logical px/s
   static const _inertiaRest = .001; // radians of remaining yaw travel
+
+  // A one-finger release whose velocity on one axis is at least this many
+  // times the other's coasts that axis alone. 3:1 is about 18° off the axis:
+  // a hand's wobble on a straight flick (a few px/s against hundreds) stays
+  // far inside it, while a deliberate diagonal, 2:1 or about 27°, still
+  // coasts both yaw and pan. Direct movement during the drag is unaffected.
+  static const _axisDominance = 3.0;
   late final Ticker _inertia;
   double _yawRate = 0, _coasted = 0;
 
@@ -371,7 +378,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
 
   /// A one-finger release: yaw coasts by the horizontal velocity, and the
   /// vertical velocity coasts the pan by the two-finger pan rules, cut to
-  /// ease into the pan bound at the current zoom (none at 1×). Pitch never
+  /// ease into the pan bound at the current zoom (none at 1×). A release
+  /// that is clearly along one axis coasts that axis only. Pitch never
   /// coasts.
   void _fling(Offset velocity) {
     _applyInput();
@@ -379,10 +387,10 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     final speed = velocity.distance;
     if (!speed.isFinite || speed < _minFlingSpeed) return;
     if (speed > _maxFlingSpeed) velocity = velocity * (_maxFlingSpeed / speed);
-    _yawRate = velocity.dx * _orbitRate;
-    // A near-vertical release leaves velocity-estimate noise in dx; below the
-    // rest travel it would only run one tick, so it does not coast.
-    if (_yawRate.abs() * _inertiaTau < _inertiaRest) _yawRate = 0;
+    // A minor axis at most a third of the other is wobble: it does not coast.
+    final vx = velocity.dx.abs(), vy = velocity.dy.abs();
+    _yawRate = vy >= _axisDominance * vx ? 0 : velocity.dx * _orbitRate;
+    final panVelocity = vx >= _axisDominance * vy ? 0.0 : velocity.dy;
     _coasted = 0;
     _zoomTravel = _panTravelX = _panTravelY = 0;
     final size = _surfaceSize;
@@ -391,7 +399,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       _basePan = _controller.pan;
       _baseFocal = size.center(Offset.zero);
       _panTravelY = _towardBound(
-        velocity.dy * _inertiaTau,
+        panVelocity * _inertiaTau,
         _basePan.dy * size.height,
         (_baseZoom - 1) / 2 * size.height,
       );

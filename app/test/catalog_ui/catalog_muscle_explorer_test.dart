@@ -442,7 +442,8 @@ void main() {
         ('quads', 0.0),
         ('calves', math.pi),
       ]) {
-        // Tilt first: the choice levels the camera as Front and Back do.
+        // Tilt the controller directly (no Explore gesture tilts); a chip
+        // choice still levels it, as Front and Back do.
         controller.orbitBy(.3, .2);
         await tapChip(tester, group);
         await tester.pumpAndSettle();
