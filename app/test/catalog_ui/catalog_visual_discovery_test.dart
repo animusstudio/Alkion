@@ -79,10 +79,11 @@ void main() {
         tester.widget<CharacterBody>(find.byType(CharacterBody)).selectedRegion,
         WorkloadMuscle.chest,
       );
-      await openMuscleList(tester);
       expect(
         tester
-            .widget<ChoiceChip>(find.byKey(const Key('catalog-muscle-chest')))
+            .widget<CatalogMuscleRow>(
+              find.byKey(const Key('catalog-muscle-chest')),
+            )
             .selected,
         isTrue,
       );
@@ -190,15 +191,11 @@ void main() {
                   );
                 }
               }
-              await tester.tap(
-                find.byKey(const Key('catalog-muscle-list-link')),
-              );
-              await tester.pumpAndSettle();
               final chip = find.byKey(const Key('catalog-muscle-biceps'));
               await tester.ensureVisible(chip);
               await tester.tap(chip);
               await tester.pumpAndSettle();
-              expect(tester.widget<ChoiceChip>(chip).selected, isTrue);
+              expect(tester.widget<CatalogMuscleRow>(chip).selected, isTrue);
               expect(tester.getSize(chip).height, greaterThanOrEqualTo(48));
               expect(tester.takeException(), isNull);
               expectNoSplitWords(tester);
