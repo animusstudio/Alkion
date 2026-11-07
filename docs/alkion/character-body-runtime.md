@@ -13,8 +13,9 @@ pipeline in one Android system WebView. No new package is required.
   `pause()`, `retry()`; readable `yaw` and `pitch` (radians), `zoom`, `pan` and
   `paused`. Default is paused at front, level. Manual turns pause. `pitch` is
   camera elevation (positive looks down from above), clamped to ±45°
-  (`maxPitch`); it is never animated. Front, Back, Side and Reset return it to 0.
-  Own/dispose the controller with the native controls.
+  (`maxPitch`). Front, Back, Side and Reset return it to 0 and advance
+  `viewCommand`, which callers that animate the view (orbit inertia) watch to
+  stop. Own/dispose the controller with the native controls.
 - Required widget fields: `style`, `scores: Map<WorkloadMuscle,double>`,
   `neutral`, `accent`, `background`, `brightness`, `visible`, `reducedMotion`,
   `compact`, `controller`. Scores are accepted calculator aggregates only;
@@ -64,7 +65,13 @@ accepts yaw telemetry only for its current triple, so delayed reports cannot
 overwrite a newer gesture. Autoplay retains the existing periodic telemetry;
 relative drag does not depend on more frequent reports.
 
-Android retains one JavaScript evaluation in flight and one replaceable latest
+Dart pipelines displays: the latest state leaves at most once per frame, in a
+post-frame callback after that frame's input and animation, without awaiting
+earlier acknowledgements. At most two messages per channel are unacknowledged;
+further changes coalesce until one is. Messages on one channel stay ordered, and
+a replaced channel's late acknowledgements free nothing. A hidden or
+backgrounded surface sends immediately, because it may get no frames. Android
+retains one JavaScript evaluation in flight and one replaceable latest
 snapshot containing both display and host lifecycle state. Closing a view or
 losing its process invalidates pending work and completion callbacks. One RAF
 scheduler handles manual invalidation, resizing and autoplay: updates before a
@@ -74,6 +81,43 @@ drawing and clears the autoplay time anchor; resuming never catches up elapsed
 background time. Character sampling reuses renderer-owned temporary storage;
 its shade, anchor, coverage, edge direction, glyph and alpha outputs match the
 accepted sampler's frozen synthetic references.
+
+## Rendering pipeline
+
+With WebGL2 (the normal Android WebView), one frame is three GPU passes and no
+CPU work per glyph:
+
+1. the geometry renders into an offscreen 8-bit surface of three samples per
+   cell side, with a 24-bit depth buffer;
+2. a cell pass evaluates the material sampler for every cell into a
+   cols×rows byte surface (glyph, region, shade, coverage count). It mirrors
+   `sampleSurfaceCell` and `materialGlyph` in integer arithmetic. The decisions
+   that depend on floating point (role mix by shade, each cell's threshold and
+   pool choice, column phase, alpha) come from tables built with the same
+   `material.js` functions;
+3. one instanced draw places every glyph from the same atlas, at the same
+   positions and alpha and in the same row-major order, blending premultiplied
+   source-over as Canvas does. The result is copied to the visible canvas once.
+
+Without WebGL2 the renderer keeps the CPU reference path: synchronous readback
+and one Canvas `drawImage` per glyph. A host comparison of both paths (both
+styles and themes, selection, ±45° tilt, zoom and pan, heatmap, explorer and
+compact sizes; SwiftShader and a hardware Vulkan GPU) found identical sampler
+output in every cell and identical geometry bytes. The displayed images
+differ by at most 5/255 per channel, from hardware filtering precision.
+
+Pick pixels are read back asynchronously: the geometry surface is copied into a
+pixel-pack buffer behind a fence and copied out once the GPU has finished, in a
+later task. A frame's pick identity is published only after its pixels land and
+only while it is still the latest drawn frame; any display, layout, lifecycle
+or lease change discards a pending copy. A copy still pending after about a
+second of polling completes synchronously. During continuous motion the next
+frame's readback reports; the settled frame always reports.
+
+The per-frame path allocates no keys or histograms and writes no DOM
+attributes: atlas, palette and display changes are compared field by field;
+tilt bounds are prepared when the renderer is created and cached per pitch.
+Glyph counts, signatures and region histograms are diagnostics only.
 
 ## Documented sets and surface projection
 
@@ -158,12 +202,30 @@ it. Pointers outside the canvas never reach it; the page scrolls as before.
   re-base position, so the end of a pinch never jump-rotates the body.
 - Any manipulation or cancellation invalidates pending picks; a release after
   manipulation never selects.
+- Input applies once per frame: orbit movement accumulates and the latest
+  pinch/pan state wins, applied at the frame's start. Re-bases, releases and
+  taps apply it first, so nothing reads a view that lags the fingers.
+
+A one-finger orbit release coasts (zoom and pan stay direct). The recognizer
+measures release velocity over the final one-finger segment only; pinches,
+cancellations and a settling finger never coast, and a finger held still
+releases at rest. The coast decays exponentially with time constant
+τ = 325 ms: each τ covers 63% of the remaining travel, the body settles in
+about 3τ, and the total coast is velocity × .009 rad/px × τ. A release slower
+than 50 px/s does not coast; faster flicks are capped at 1,500 px/s (about two
+thirds of a turn). Pitch velocity is limited so its coast ends exactly at ±45°,
+arriving with no speed. A touch on the canvas stops the coast and does not
+select; the next tap picks. Front, Back, Side, Reset and a list choice that
+opens a held view cancel it. Picks are refused while it runs. Reduced motion,
+a hidden surface or closing the explorer stop it; under reduced motion it never
+starts. The ticker is created in `initState` and disposed with the explorer.
+The explorer rebuilds only when Front/Back selection or the zoom bounds change,
+not on every orbit frame.
 
 The zoom −/+ buttons are an overlay at the canvas's bottom-right, shown with
 ready artwork. They are siblings above the recognizer, inside an opaque
 listener, so their taps (even on a disabled button) never reach the canvas.
-Front, Back, Reset and Retry stay in the row above. There is no fling inertia
-and no added animation; reduced motion is unchanged.
+Front, Back, Reset and Retry stay in the row above.
 
 ## Visible-surface picking
 
@@ -181,7 +243,8 @@ plus monotonic `frame`, `load` and `layout` identities. A pick request carries
 those exact four identities, a bounded integer request ID and normalized x/y
 in [0,1). Dart, the native host and JavaScript validate their respective boundary;
 only a response matching the latest request and current rendered identities can
-produce a region. Picking requires paused, ready, visible artwork. Rotation,
+produce a region. Picking requires paused, ready, visible artwork whose named
+frame's pixels have landed (see the rendering pipeline). Rotation,
 layout/style/selection changes, retry, hiding, app lifecycle and disposal
 invalidate earlier picks; pitch is view state, so a tilt does too. Because a
 pick names the exact rendered frame, it reads the tilted pixels the person
@@ -239,6 +302,16 @@ visibility/reduced-motion/retry/recreate controls and a native status label.
 Debug-only `AlkionBody` logs report first-load milliseconds and cumulative
 frame count/draw milliseconds/max draw milliseconds at most once per second
 while drawing, plus state transitions. They contain no workout payload.
+
+For device measurement, the private Dev build can opt in to the same log in
+release mode: `ALKION_BODY_TIMING=1` together with `ALKION_PRIVATE_CATALOG_DEV=1`
+sets `BuildConfig.BODY_TIMING`. Every other build keeps it off. Status reports
+then carry an aggregate summary, recomputed at most once per second from
+fixed rings: frames and display messages in the window (`tFrames`, `tMsgs`),
+median, p90 and maximum frame interval during continuous motion (`iP50`,
+`iP90`, `iMax`; idle gaps over 100 ms are not intervals), median and p90 draw
+time (`dP50`, `dP90`) and mean geometry, readback and compose stage times
+(`glMs`, `readMs`, `composeMs`). Numbers only, rounded; no workout data.
 
 ## Offline host and checks
 

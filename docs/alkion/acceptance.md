@@ -6,6 +6,57 @@ observed: 2026-11-07
 
 # Alkion integrated acceptance
 
+## Explore smooth motion and inertia — 2026-11-07 (T4)
+
+Implements the T4 amendment of the [Explore gestures plan](../plans/2026-11-07-explore-gestures.md),
+after the owner's A024 timing build measured a 25 ms median frame interval
+(p90 36 ms, worst 181 ms), a 9.2 ms readback stall, 6.5 ms of CPU glyph compose
+and an awaited acknowledgement per display.
+
+- Dart sends the latest display at most once per frame without awaiting
+  acknowledgements (at most two outstanding); a pause or hide goes out at once.
+- With WebGL2 the glyph layer is composed on the GPU: a cell pass mirrors the
+  material sampler, then one instanced draw places every glyph. WebGL1 keeps the
+  CPU reference path.
+- Pick pixels are read back asynchronously behind a fence; a frame's pick
+  identity is published only after its pixels land and while it is the latest.
+- The per-frame path no longer builds JSON keys, histograms or DOM attributes;
+  tilt bounds are prepared at load.
+- A one-finger orbit release coasts with exponential decay (τ = 325 ms, 50 px/s
+  threshold, 1,500 px/s cap); pitch eases into ±45°. Input applies once per
+  frame. A touch stops the coast without selecting; Front, Back, Side, Reset
+  and a list choice of a held view cancel it; reduced motion disables it;
+  picks are refused while it runs.
+- `ALKION_BODY_TIMING=1` on the private Dev build logs aggregate frame,
+  message and stage timings only.
+
+Parity of the GPU and CPU compose, in a host Chromium proof with the staged
+private meshes over 20 cases: both styles and themes, selection, ±45° tilt,
+zoom and pan, heatmap, explorer and compact sizes. The sampler output (glyph,
+region, shade, coverage) is identical in every cell and the geometry bytes are
+identical, on SwiftShader and on a hardware Vulkan GPU. The displayed images
+differ by at most 2/255 (SwiftShader) and 5/255 (hardware filtering) per
+channel; side-by-side captures are indistinguishable. Through the runtime page,
+170 of 170 tilted-view picks still return their region. A node check confirms
+the GPU's table-driven glyph choice equals `materialGlyph` in 400,896
+shade-by-cell cases; the frozen material digests are unchanged.
+
+Host timing (Chromium on the hardware GPU, 380×300 at 2×, 600 frames of
+continuous orbit with tilt, versus the tree before T4): the runtime's
+main-thread draw median fell from 3.6–3.8 ms to 0.2–0.5 ms (p90 4.3–4.6 to
+0.5–0.7 ms; worst 6.8–8.6 to 1.1 ms), and JavaScript allocation from 60.7 KB to
+3.3 KB per frame. The host GPU holds vsync (16.7 ms) on both trees, so it cannot
+show the phone's readback stall or frame intervals: those, and the A024 target
+(median ≤ 18 ms, p90 ≤ 20 ms, no frame over 50 ms), remain the device
+re-measure.
+
+Host checks: analysis reports zero issues; check-only formatting passes (518
+files). The full suite runs 2,692 tests: 2,686 pass, three expected optional
+skips and the three known `catalog_metric_controls_test.dart` failures. Body
+protocol/loader/picking/async-readback, material (12,248 cases plus the GPU
+table check) and native bridge checks pass, as do 65 tool Python tests. No APK
+was built and no device was used.
+
 ## Explore muscles 3D gestures — 2026-11-07
 
 Implements T1 of the approved [Explore gestures plan](../plans/2026-11-07-explore-gestures.md).

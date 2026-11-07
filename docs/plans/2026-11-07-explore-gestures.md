@@ -141,6 +141,9 @@ the earlier "no fling inertia" decision.
   APK verifier, after stale build intermediates were cleared. It is installed in
   place on Nothing A024: hash match, launch ok, first-install identity kept.
 
-- T3 owner check: gestures work (A3) but feel clanky. T4 added and in progress.
+- T3 owner check: gestures work (A3) but feel clanky. T4 added.
+- T4: implemented 2026-11-07 on host (pipelining, GPU compose, async readback,
+  hitches, inertia, opt-in timing; see [acceptance](../alkion/acceptance.md)).
+  The A024 re-measure with the timing build is pending.
 
-Next: T4, then device re-measure, review, owner publish and the Animus pin.
+Next: device re-measure of T4, review, owner publish and the Animus pin.
