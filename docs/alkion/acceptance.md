@@ -94,7 +94,8 @@ two-pointer recognizer and the page scroll; the owner's phone check (A3) is
 what confirms it. Explore now has one recognizer on
 the canvas that wins each pointer landing there at pointer down and arbitrates
 internally. A tap within slop picks. One finger orbits: sideways turns, vertical
-tilts. Two fingers pinch-zoom (1–3×) around their focal point and pan. Adding
+tilts (later replaced: vertical pans and Explore no longer tilts, owner
+2026-11-07, UX polish T9). Two fingers pinch-zoom (1–3×) around their focal point and pan. Adding
 or lifting a finger re-bases without a jump; the finger left after a pinch
 orbits only once it moves past slop again. Drags and pinches never select.
 Outside the canvas the page still scrolls.
