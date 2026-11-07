@@ -42,7 +42,8 @@ class ArtworkSettings extends SettingsService {
   }
 }
 
-/// A 412 dp phone shows the canvas beside the list; at 320 dp they stack.
+/// A 412×640 dp phone shows the full layout (a canvas of 380×312 dp); at
+/// 320 dp the canvas, label and strip stack in a scrolling page.
 void explorerPhone(WidgetTester tester, {double width = 412}) {
   tester.view.physicalSize = Size(width, 640);
   tester.view.devicePixelRatio = 1;
@@ -54,31 +55,35 @@ CharacterBody body(WidgetTester tester) =>
     tester.widget<CharacterBody>(find.byType(CharacterBody));
 Finder get diagram => find.byKey(const Key('catalog-body-diagram'));
 Finder muscle(String key) => find.byKey(ValueKey('catalog-muscle-$key'));
-bool rowSelected(WidgetTester tester, String key) =>
-    tester.widget<CatalogMuscleRow>(muscle(key)).selected;
+bool chipSelected(WidgetTester tester, String key) =>
+    tester.widget<CatalogMuscleChip>(muscle(key)).selected;
 
-/// A point outside the canvas where a vertical drag scrolls: the stacked
-/// page just below the canvas, or the list column beside it.
+/// A point outside the canvas where a drag scrolls: the stacked page just
+/// below the canvas, or the strip.
 Offset outsideCanvas(WidgetTester tester) => pageScroll.evaluate().isNotEmpty
     ? tester.getRect(diagram).bottomCenter + const Offset(0, 16)
-    : tester.getCenter(listScroll);
+    : tester.getCenter(strip);
 Finder get pageScroll =>
     find.byKey(const Key('catalog-muscle-explorer-scroll'));
-Finder get listScroll => find.byKey(const Key('catalog-muscle-list-scroll'));
+Finder get strip => find.byKey(const Key('catalog-muscle-strip'));
+
+/// How far a chip's centre lies from the strip's centre.
+double offCentre(WidgetTester tester, String key) =>
+    tester.getCenter(muscle(key)).dx - tester.getCenter(strip).dx;
 Finder get zoomIn => find.byKey(const Key('catalog-body-zoom-in'));
 Finder get zoomOut => find.byKey(const Key('catalog-body-zoom-out'));
 
+/// The view's own scrollable: the first in the tree below it, so the
+/// stacked page's, not the strip's within it.
 ScrollPosition scrollOf(WidgetTester tester, Finder view) => tester
     .state<ScrollableState>(
-      find.descendant(of: view, matching: find.byType(Scrollable)),
+      find.descendant(of: view, matching: find.byType(Scrollable)).first,
     )
     .position;
 
-/// What scrolls beside the canvas: the stacked page, or the list column.
-ScrollPosition explorerScroll(WidgetTester tester) => scrollOf(
-  tester,
-  pageScroll.evaluate().isNotEmpty ? pageScroll : listScroll,
-);
+/// What scrolls outside the canvas: the stacked page, or the strip.
+ScrollPosition explorerScroll(WidgetTester tester) =>
+    scrollOf(tester, pageScroll.evaluate().isNotEmpty ? pageScroll : strip);
 
 /// The explorer's own status; zoom appears with ready artwork. The host has no
 /// WebView, so tests report ready through the canvas's status callback.
@@ -110,7 +115,7 @@ Future<PendingBodyController> pumpExplorer(
   return controller;
 }
 
-/// Stacked, scrolls the page back to the canvas; beside the list it never
+/// Stacked, scrolls the page back to the canvas; in the full layout it never
 /// leaves the screen.
 Future<void> revealArtwork(WidgetTester tester) async {
   if (pageScroll.evaluate().isEmpty) return;
@@ -118,7 +123,7 @@ Future<void> revealArtwork(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> tapRow(WidgetTester tester, String key) async {
+Future<void> tapChip(WidgetTester tester, String key) async {
   await tester.ensureVisible(muscle(key));
   await tester.tap(muscle(key));
 }
@@ -278,7 +283,7 @@ void main() {
       controller.requests.single.result.complete(WorkloadMuscle.chest);
       await tester.pumpAndSettle();
       expect(body(tester).selectedRegion, WorkloadMuscle.chest);
-      expect(rowSelected(tester, 'chest'), isTrue);
+      expect(chipSelected(tester, 'chest'), isTrue);
       expect(find.text('Show exercises · Chest'), findsOneWidget);
       await revealArtwork(tester);
       await tester.tap(diagram);
@@ -290,7 +295,7 @@ void main() {
   );
 
   testWidgets(
-    'list selection highlights every region and stays available without artwork',
+    'chip selection highlights every region and stays available without artwork',
     (tester) async {
       explorerPhone(tester);
       final state = discoveryState();
@@ -320,13 +325,13 @@ void main() {
         WorkloadMuscle.values.toSet(),
       );
       for (final group in groups) {
-        await tapRow(tester, group.key);
+        await tapChip(tester, group.key);
         await tester.pump();
-        expect(rowSelected(tester, group.key), isTrue);
+        expect(chipSelected(tester, group.key), isTrue);
         expect(
-          groups.where((g) => rowSelected(tester, g.key)),
+          groups.where((g) => chipSelected(tester, g.key)),
           hasLength(1),
-          reason: 'One row is selected',
+          reason: 'One chip is selected',
         );
         expect(
           tester.getSize(muscle(group.key)).height,
@@ -334,7 +339,7 @@ void main() {
         );
         expect(body(tester).selectedRegion, WorkloadMuscle.fromKey(group.key));
       }
-      await tapRow(tester, 'core');
+      await tapChip(tester, 'core');
       await tester.pump();
       expect(body(tester).selectedRegion, WorkloadMuscle.core);
       final data = tester.getSemantics(muscle('core')).getSemanticsData();
@@ -375,7 +380,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(body(tester).selectedRegion, region);
         expect(find.text('Show exercises · $label'), findsOneWidget);
-        expect(rowSelected(tester, region.name), isTrue);
+        expect(chipSelected(tester, region.name), isTrue);
       }
       await tester.pumpWidget(const SizedBox());
     },
@@ -407,7 +412,7 @@ void main() {
   }
 
   testWidgets(
-    'a list choice turns to the view its group faces; canvas taps keep the view',
+    'a chip choice turns to the view its group faces; canvas taps keep the view',
     (tester) async {
       explorerPhone(tester);
       final state = discoveryState();
@@ -439,13 +444,13 @@ void main() {
       ]) {
         // Tilt first: the choice levels the camera as Front and Back do.
         controller.orbitBy(.3, .2);
-        await tapRow(tester, group);
+        await tapChip(tester, group);
         await tester.pumpAndSettle();
         expect((controller.yaw, controller.pitch), (yaw, 0.0), reason: group);
         expect(controller.paused, isTrue);
         expect(body(tester).selectedRegion, WorkloadMuscle.fromKey(group));
       }
-      await tapRow(tester, 'abductors');
+      await tapChip(tester, 'abductors');
       await tester.pumpAndSettle();
       // A tap on the field from the side returns and keeps abductors.
       await revealArtwork(tester);
@@ -470,7 +475,7 @@ void main() {
   );
 
   testWidgets(
-    'new taps, list choices, turn, retry and hiding discard older picks',
+    'new taps, chip choices, turn, retry and hiding discard older picks',
     (tester) async {
       // Stacked, so scrolling the page can hide the canvas.
       explorerPhone(tester, width: 320);
@@ -496,7 +501,7 @@ void main() {
       await tester.pump();
       expect(body(tester).selectedRegion, WorkloadMuscle.biceps);
       for (final action in [
-        'list',
+        'chip',
         'turn',
         'zoom',
         'pan',
@@ -508,8 +513,8 @@ void main() {
         await tester.tap(diagram);
         final pending = controller.requests.last.result;
         switch (action) {
-          case 'list':
-            await tapRow(tester, 'biceps');
+          case 'chip':
+            await tapChip(tester, 'biceps');
           case 'turn':
             await tester.tap(find.byKey(const Key('catalog-body-back')));
           case 'zoom':
@@ -599,11 +604,14 @@ void main() {
 
   for (final width in [412.0, 320.0]) {
     testWidgets(
-      'one-finger drag orbits both axes, clamps pitch and owns the canvas beside a scrolling list at $width dp',
+      'one-finger drag orbits both axes, clamps pitch and owns the canvas above a scrolling strip or page at $width dp',
       (tester) async {
         final controller = await pumpExplorer(tester, width: width);
+        // Drawn artwork: failed artwork stacks a 120 dp canvas that leaves
+        // the short page nothing to scroll.
+        await reportReady(tester);
         final scroll = explorerScroll(tester);
-        expect(scroll.maxScrollExtent, greaterThan(200));
+        expect(scroll.maxScrollExtent, greaterThan(40));
         final centre = tester.getCenter(diagram);
         // Upward on the canvas: tilts the camera down, never scrolls the page.
         var finger = await tester.startGesture(centre, pointer: 1);
@@ -625,7 +633,7 @@ void main() {
         expect(controller.pitch, -CharacterBodyController.maxPitch);
         await finger.up();
         await tester.pumpAndSettle();
-        expect(scroll.pixels, 0, reason: 'The canvas owns vertical drags');
+        expect(scroll.pixels, 0, reason: 'The canvas owns its drags');
         expect(body(tester).visible, isTrue);
         // Downward clamps at +45°; sideways turns at the accepted rate.
         finger = await tester.startGesture(centre, pointer: 2);
@@ -652,13 +660,19 @@ void main() {
           reason: 'A drag release never picks',
         );
         final view = (controller.yaw, controller.pitch);
-        // The same vertical drag outside the canvas still scrolls the page.
-        await tester.dragFrom(outsideCanvas(tester), const Offset(0, -200));
+        // A drag outside the canvas still scrolls: the stacked page
+        // vertically, or the strip sideways.
+        final stacked = pageScroll.evaluate().isNotEmpty;
+        expect(stacked, width == 320);
+        await tester.dragFrom(
+          outsideCanvas(tester),
+          stacked ? const Offset(0, -200) : const Offset(-200, 0),
+        );
         await tester.pumpAndSettle();
-        expect(scroll.pixels, greaterThan(100));
+        expect(scroll.pixels, greaterThan(40));
         expect((controller.yaw, controller.pitch), view);
         expect(controller.requests, isEmpty);
-        // Front and a list choice of abductors (the side view) level the camera.
+        // Front and a chip choice of abductors (the side view) level the camera.
         await revealArtwork(tester);
         await tester.tap(find.byKey(const Key('catalog-body-front')));
         await tester.pump();
@@ -666,7 +680,7 @@ void main() {
         await tester.drag(diagram, const Offset(0, 120));
         await tester.pump();
         expect(controller.pitch, greaterThan(0));
-        await tapRow(tester, 'abductors');
+        await tapChip(tester, 'abductors');
         await tester.pumpAndSettle();
         expect((controller.yaw, controller.pitch), (math.pi / 2, 0.0));
         expect(body(tester).selectedRegion, WorkloadMuscle.abductors);
@@ -897,20 +911,27 @@ void main() {
   );
 
   testWidgets(
-    'layout sweep: 320/412dp, 1x/2x text, both themes, four locales',
+    'layout sweep: 320/360/412 dp, 1x/2x text, both themes, four locales',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final state = discoveryState();
       addTearDown(state.dispose);
-      for (final width in [320.0, 412.0]) {
-        tester.view.physicalSize = Size(width, 640);
+      for (final size in [
+        const Size(320, 640),
+        const Size(360, 760),
+        const Size(412, 900),
+      ]) {
+        tester.view.physicalSize = size;
         for (final scale in [1.0, 2.0]) {
           for (final brightness in Brightness.values) {
             for (final locale in ['en', 'it', 'de', 'es']) {
-              final where = '$width $scale $brightness $locale';
-              final columns = width == 412 && scale == 1;
+              final where = '$size $scale $brightness $locale';
+              // The full layout from 360×760 at normal text; small phones
+              // and large text on mid-size ones stack.
+              final full =
+                  size.width == 412 || (size.width == 360 && scale == 1);
               await tester.pumpWidget(
                 discoveryApp(
                   Builder(
@@ -932,23 +953,25 @@ void main() {
               await tester.pumpAndSettle();
               await reportReady(tester);
               expect(tester.takeException(), isNull, reason: where);
+              expect(pageScroll, full ? findsNothing : findsOneWidget);
               final canvas = tester.getRect(diagram);
-              final list = tester.getRect(
-                find.byKey(const Key('catalog-muscle-list')),
+              final stripRect = tester.getRect(strip);
+              final show = tester.getRect(
+                find.byKey(const Key('catalog-muscle-show-exercises')),
               );
-              // The list is always there: no disclosure, every row built.
-              expect(
-                find.byKey(const Key('catalog-muscle-list-link')),
-                findsNothing,
-              );
-              expect(find.byType(CatalogMuscleRow), findsNWidgets(14));
-              if (columns) {
-                expect(pageScroll, findsNothing, reason: where);
-                expect(list.left, greaterThan(canvas.right), reason: where);
-                expect(list.top, lessThan(canvas.center.dy), reason: where);
-              } else {
-                expect(listScroll, findsNothing, reason: where);
-                expect(list.top, greaterThan(canvas.bottom), reason: where);
+              // The canvas spans the sheet inside its 16 dp insets.
+              expect(canvas.left, closeTo(16, .5), reason: where);
+              expect(canvas.width, closeTo(size.width - 32, .5), reason: where);
+              // The strip is always there, below the canvas and label, and
+              // every chip is built: no disclosure.
+              expect(find.byType(CatalogMuscleChip), findsNWidgets(14));
+              expect(stripRect.top, greaterThan(canvas.bottom), reason: where);
+              expect(stripRect.width, size.width, reason: where);
+              if (full) {
+                // Nothing but the strip scrolls: it ends above the button.
+                expect(stripRect.bottom, lessThanOrEqualTo(show.top));
+                expect(show.top - stripRect.bottom, lessThanOrEqualTo(12.5));
+                expect(canvas.height, greaterThanOrEqualTo(300), reason: where);
               }
               final controls = [
                 for (final key in ['front', 'back', 'reset'])
@@ -973,27 +996,30 @@ void main() {
                   expect(rect.overlaps(control), isFalse, reason: where);
                 }
               }
-              for (final row in find.byType(CatalogMuscleRow).evaluate()) {
-                final size = (row.renderObject! as RenderBox).size;
+              for (final chip in find.byType(CatalogMuscleChip).evaluate()) {
+                final size = (chip.renderObject! as RenderBox).size;
                 expect(size.height, greaterThanOrEqualTo(48), reason: where);
               }
-              if (columns) {
-                // Beside the canvas, every label fits without an ellipsis.
-                for (final text
-                    in find
-                        .descendant(
-                          of: find.byType(CatalogMuscleRow),
-                          matching: find.byType(RichText),
-                        )
-                        .evaluate()) {
-                  final paragraph = text.renderObject! as RenderParagraph;
-                  expect(
-                    paragraph.didExceedMaxLines,
-                    isFalse,
-                    reason: '$where: ${paragraph.text.toPlainText()}',
-                  );
-                }
+              // Every chip label fits its chip on one line: no ellipsis, no
+              // clipping, no wrap.
+              for (final text
+                  in find
+                      .descendant(
+                        of: find.byType(CatalogMuscleChip),
+                        matching: find.byType(RichText),
+                      )
+                      .evaluate()) {
+                final paragraph = text.renderObject! as RenderParagraph;
+                final label = paragraph.text.toPlainText();
+                expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+                expect(
+                  paragraph.getMaxIntrinsicWidth(double.infinity),
+                  lessThanOrEqualTo(paragraph.size.width + .01),
+                  reason: '$where: $label',
+                );
               }
+              // The opening selection sits at the strip's centre.
+              expect(offCentre(tester, 'core').abs(), lessThan(.5));
               expectNoSplitWords(
                 tester,
                 within: find.byType(CatalogMuscleExplorer),
@@ -1001,9 +1027,11 @@ void main() {
               );
               await tester.tap(find.byKey(const Key('catalog-muscle-info')));
               await tester.pumpAndSettle();
-              await tapRow(tester, 'calves');
+              expect(tester.takeException(), isNull, reason: where);
+              await tapChip(tester, 'calves');
               await tester.pumpAndSettle();
               expect(body(tester).selectedRegion, WorkloadMuscle.calves);
+              expect(offCentre(tester, 'calves').abs(), lessThan(.5));
               expectNoSplitWords(
                 tester,
                 within: find.byType(CatalogMuscleExplorer),
@@ -1018,66 +1046,134 @@ void main() {
     },
   );
 
-  testWidgets('from 360 dp the canvas fills the sheet height beside the list', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final state = discoveryState();
-    addTearDown(state.dispose);
-    for (final size in [const Size(412, 900), const Size(360, 640)]) {
-      tester.view.physicalSize = size;
-      await tester.pumpWidget(
-        discoveryApp(
-          CatalogMuscleExplorer(key: ValueKey(size), index: state.index('en')),
-        ),
-      );
+  testWidgets(
+    'the full layout: the canvas fills the width and the height down to the label and strip',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      for (final (size, art) in [
+        // The A024's 411×911 dp and the 412×900 reference phone.
+        (const Size(411, 911), const Size(379, 567.1)),
+        (const Size(412, 900), const Size(380, 556.8)),
+        (const Size(360, 760), const Size(328, 425.2)),
+        (const Size(412, 640), const Size(380, 312.4)),
+      ]) {
+        tester.view.physicalSize = size;
+        await tester.pumpWidget(
+          discoveryApp(
+            CatalogMuscleExplorer(
+              key: ValueKey(size),
+              index: state.index('en'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await reportReady(tester);
+        expect(pageScroll, findsNothing, reason: '$size');
+        final canvas = tester.getRect(diagram);
+        expect(canvas.size.width, closeTo(art.width, .1), reason: '$size');
+        expect(canvas.size.height, closeTo(art.height, .1), reason: '$size');
+        final drawn = tester.getSize(find.byType(CharacterBody));
+        expect(drawn.width, closeTo(canvas.width, 1e-6));
+        expect(drawn.height, closeTo(canvas.height, 1e-6));
+        final label = tester.getRect(find.text('Select muscle'));
+        final stripRect = tester.getRect(strip);
+        final show = tester.getRect(
+          find.byKey(const Key('catalog-muscle-show-exercises')),
+        );
+        // Controls, canvas, label, strip and the pinned button, in order and
+        // tight: the canvas takes the rest of the height.
+        expect(label.top - canvas.bottom, inInclusiveRange(8, 9));
+        expect(stripRect.top, greaterThanOrEqualTo(label.bottom));
+        expect(stripRect.top - label.bottom, lessThan(12));
+        expect(show.top - stripRect.bottom, closeTo(12, .5));
+        // The strip scrolls on its own; the canvas holds still.
+        final scroll = scrollOf(tester, strip);
+        expect(scroll.maxScrollExtent, greaterThan(500), reason: '$size');
+        await tester.drag(strip, const Offset(-300, 0));
+        await tester.pumpAndSettle();
+        expect(scroll.pixels, greaterThan(0));
+        expect(tester.getRect(diagram), canvas);
+        expect(body(tester).visible, isTrue);
+        // A vertical drag on the strip moves nothing.
+        final pixels = scroll.pixels;
+        await tester.drag(strip, const Offset(0, -200));
+        await tester.pumpAndSettle();
+        expect(scroll.pixels, pixels);
+        expect(tester.getRect(diagram), canvas);
+      }
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'the info notes cover the canvas in the full layout and follow the strip when stacked',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      await tester.tap(find.byKey(const Key('catalog-muscle-info')));
       await tester.pumpAndSettle();
+      final panel = find.byKey(const Key('catalog-muscle-info-panel'));
+      expect(tester.getRect(panel), tester.getRect(diagram));
+      // The panel takes the canvas's touches: no pick, no orbit.
+      await tester.tap(panel);
+      await tester.drag(panel, const Offset(80, 0));
+      await tester.pumpAndSettle();
+      expect(controller.requests, isEmpty);
+      expect(controller.yaw, 0);
+      await tester.tap(find.byKey(const Key('catalog-muscle-info')));
+      await tester.pumpAndSettle();
+      expect(panel, findsNothing);
+      await tester.pumpWidget(const SizedBox());
+
+      await pumpExplorer(tester, width: 320);
+      await tester.tap(find.byKey(const Key('catalog-muscle-info')));
+      await tester.pumpAndSettle();
+      expect(panel, findsNothing);
+      final notes = tester.getRect(find.textContaining('Tap a muscle'));
+      expect(notes.top, greaterThan(tester.getRect(strip).bottom));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'while the notes cover the canvas, its fallback and zoom buttons leave semantics',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpExplorer(tester);
       await reportReady(tester);
-      final canvas = tester.getRect(diagram);
-      final list = tester.getRect(listScroll);
-      final show = tester.getRect(
-        find.byKey(const Key('catalog-muscle-show-exercises')),
-      );
-      // About 55% of the 16 dp-inset width, less the 12 dp gap.
-      expect(
-        canvas.width,
-        closeTo((size.width - 44) * .55, 1),
-        reason: '$size',
-      );
-      expect(canvas.left, 16);
-      expect(list.left, closeTo(canvas.right + 12, 1));
-      expect(list.right, closeTo(size.width - 16, 1));
-      // Only the selected-muscle label lies between canvas and the button.
-      final label = tester.getRect(find.text('Select muscle'));
-      expect(label.top, greaterThanOrEqualTo(canvas.bottom));
-      expect(show.top - canvas.bottom, lessThan(label.height + 40));
-      expect(list.bottom, lessThanOrEqualTo(show.top));
-      expect(canvas.height, greaterThan(size.height * .55), reason: '$size');
-      // The list scrolls on its own; the canvas holds still.
-      final scroll = scrollOf(tester, listScroll);
-      expect(scroll.maxScrollExtent, greaterThan(0), reason: '$size');
-      await tester.dragFrom(
-        tester.getCenter(listScroll),
-        const Offset(0, -300),
-      );
+      Iterable<SemanticsNode> tooltip(String text) =>
+          find.semantics.byPredicate((node) => node.tooltip == text).evaluate();
+      Iterable<SemanticsNode> named(String text) =>
+          find.semantics.byLabel(text).evaluate();
+      expect(tooltip('Zoom in'), hasLength(1));
+      expect(tooltip('Zoom out'), hasLength(1));
+      final info = find.byKey(const Key('catalog-muscle-info'));
+      await tester.tap(info);
       await tester.pumpAndSettle();
-      expect(scroll.pixels, greaterThan(0));
-      expect(tester.getRect(diagram), canvas);
-      expect(body(tester).visible, isTrue);
-    }
-    // Just below 360 dp the two stack.
-    tester.view.physicalSize = const Size(359, 640);
-    await tester.pumpAndSettle();
-    expect(listScroll, findsNothing);
-    expect(pageScroll, findsOneWidget);
-    await tester.pumpWidget(const SizedBox());
-  });
+      expect(tooltip('Zoom in'), isEmpty);
+      expect(tooltip('Zoom out'), isEmpty);
+      // Failed artwork speaks its fallback, except under the notes.
+      body(tester).onStatus!(CharacterBodyStatus.error);
+      await tester.pumpAndSettle();
+      expect(named('Artwork unavailable'), isEmpty);
+      expect(find.semantics.byLabel(RegExp('^Tap a muscle')), findsOne);
+      await tester.tap(info);
+      await tester.pumpAndSettle();
+      expect(named('Artwork unavailable'), hasLength(1));
+      body(tester).onStatus!(CharacterBodyStatus.ready);
+      await tester.pumpAndSettle();
+      expect(tooltip('Zoom in'), hasLength(1));
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   for (final (width, scale) in [(320.0, 1.0), (320.0, 2.0), (412.0, 2.0)]) {
     testWidgets(
-      'at $width dp and ${scale}x text a taller canvas stacks above the inline list',
+      'at $width dp and ${scale}x text a taller canvas stacks above the strip',
       (tester) async {
         explorerPhone(tester, width: width);
         tester.platformDispatcher.textScaleFactorTestValue = scale;
@@ -1089,28 +1185,21 @@ void main() {
         );
         await tester.pumpAndSettle();
         await reportReady(tester);
-        expect(listScroll, findsNothing);
+        expect(pageScroll, findsOneWidget);
         final canvas = tester.getRect(diagram);
         // 55% of the sheet's 94% of the screen, never below the old 300 dp,
-        // leaving 64 dp of the page below a full-width canvas; past the area
-        // cap it narrows, centred.
+        // leaving 64 dp of the page below a full-width canvas.
         final page = tester.getRect(pageScroll).height;
         final height = math.min(math.max(300, 640 * .94 * .55), page - 64);
         expect(canvas.height, closeTo(height, .5));
-        expect(
-          canvas.width,
-          closeTo(math.min(width - 32, 125000 / height), .5),
-        );
-        expect(canvas.center.dx, closeTo(width / 2, .5));
-        expect(
-          tester.getRect(find.byKey(const Key('catalog-muscle-list'))).top,
-          greaterThan(canvas.bottom),
-        );
-        // The rows follow on the same page, without a disclosure.
-        await tapRow(tester, 'triceps');
+        expect(canvas.width, closeTo(width - 32, .5));
+        expect(tester.getRect(strip).top, greaterThan(canvas.bottom));
+        // The chips follow on the same page, without a disclosure.
+        await tapChip(tester, 'triceps');
         await tester.pumpAndSettle();
-        expect(rowSelected(tester, 'triceps'), isTrue);
+        expect(chipSelected(tester, 'triceps'), isTrue);
         expect(body(tester).selectedRegion, WorkloadMuscle.triceps);
+        expect(offCentre(tester, 'triceps').abs(), lessThan(.5));
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
       },
@@ -1118,60 +1207,265 @@ void main() {
   }
 
   testWidgets(
-    'a canvas pick scrolls the list column to its row; stacked, the page holds',
+    'a chip choice selects, centres its chip and turns; re-choosing keeps the view',
     (tester) async {
       final controller = await pumpExplorer(tester);
-      final scroll = scrollOf(tester, listScroll);
-      Rect viewport() => tester.getRect(listScroll);
-      bool rowInView(String key) {
-        final row = tester.getRect(muscle(key));
-        return row.top >= viewport().top - .5 &&
-            row.bottom <= viewport().bottom + .5;
+      expect(offCentre(tester, 'abductors').abs(), lessThan(.5));
+      await tapChip(tester, 'hamstrings');
+      await tester.pumpAndSettle();
+      expect(chipSelected(tester, 'hamstrings'), isTrue);
+      expect(body(tester).selectedRegion, WorkloadMuscle.hamstrings);
+      expect(offCentre(tester, 'hamstrings').abs(), lessThan(.5));
+      expect(controller.yaw, math.pi);
+      expect(find.text('Show exercises · Hamstrings'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a canvas pick centres its chip without turning; stacked, the page holds',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      final scroll = scrollOf(tester, strip);
+      for (final region in [
+        WorkloadMuscle.triceps,
+        WorkloadMuscle.shoulders,
+        WorkloadMuscle.abductors,
+        WorkloadMuscle.calves,
+      ]) {
+        await tester.tap(diagram);
+        controller.requests.last.result.complete(region);
+        await tester.pumpAndSettle();
+        expect(chipSelected(tester, region.name), isTrue);
+        expect(offCentre(tester, region.name).abs(), lessThan(.5));
+        expect(controller.yaw, 0, reason: 'A pick never turns the body');
       }
-
-      expect(rowInView('triceps'), isFalse, reason: 'Below the fold at 640');
-      await tester.tap(diagram);
-      controller.requests.last.result.complete(WorkloadMuscle.triceps);
-      await tester.pumpAndSettle();
-      expect(rowSelected(tester, 'triceps'), isTrue);
-      expect(rowInView('triceps'), isTrue);
       expect(scroll.pixels, greaterThan(0));
-      expect(controller.yaw, 0, reason: 'A pick never turns the body');
-      // A row already in view does not move the list.
-      final offset = scroll.pixels;
-      await tester.tap(diagram);
-      controller.requests.last.result.complete(WorkloadMuscle.shoulders);
-      await tester.pumpAndSettle();
-      expect(rowInView('shoulders'), isTrue);
-      expect(scroll.pixels, offset);
-      // And back up for one above it.
-      await tester.tap(diagram);
-      controller.requests.last.result.complete(WorkloadMuscle.abductors);
-      await tester.pumpAndSettle();
-      expect(rowSelected(tester, 'abductors'), isTrue);
-      expect(rowInView('abductors'), isTrue);
-      // A list choice selects on the canvas.
-      await tapRow(tester, 'calves');
+      // A chip choice selects on the canvas.
+      await tapChip(tester, 'quads');
       await tester.pump();
-      expect(body(tester).selectedRegion, WorkloadMuscle.calves);
-      expect(rowSelected(tester, 'abductors'), isFalse);
+      expect(body(tester).selectedRegion, WorkloadMuscle.quads);
+      expect(chipSelected(tester, 'calves'), isFalse);
       await tester.pumpWidget(const SizedBox());
 
-      // Opening on a group further down starts with its row in view.
+      // Opening on a group further along starts with its chip centred.
       await pumpExplorer(tester, selected: 'triceps');
-      expect(rowInView('triceps'), isTrue);
-      expect(rowSelected(tester, 'triceps'), isTrue);
+      expect(offCentre(tester, 'triceps').abs(), lessThan(.5));
+      expect(chipSelected(tester, 'triceps'), isTrue);
       await tester.pumpWidget(const SizedBox());
 
-      // Stacked, scrolling to the row would move the canvas from the finger.
+      // Stacked, the strip moves and the page keeps the canvas under the
+      // finger.
       final stacked = await pumpExplorer(tester, width: 320);
       final page = scrollOf(tester, pageScroll);
       await tester.tap(diagram);
       stacked.requests.last.result.complete(WorkloadMuscle.triceps);
       await tester.pumpAndSettle();
       expect(page.pixels, 0);
-      expect(rowSelected(tester, 'triceps'), isTrue);
+      expect(chipSelected(tester, 'triceps'), isTrue);
+      expect(offCentre(tester, 'triceps').abs(), lessThan(.5));
       expect(find.text('Show exercises · Triceps'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'a fling or a slow release settles a chip at the centre without selecting',
+    (tester) async {
+      final controller = await pumpExplorer(tester, selected: 'chest');
+      final scroll = scrollOf(tester, strip);
+      final keys = [
+        for (final chip in find.byType(CatalogMuscleChip).evaluate())
+          ((chip.widget.key! as ValueKey<String>).value).substring(
+            'catalog-muscle-'.length,
+          ),
+      ];
+      String centred() => keys.reduce(
+        (a, b) =>
+            offCentre(tester, a).abs() <= offCentre(tester, b).abs() ? a : b,
+      );
+      expect(centred(), 'chest');
+      for (final (offset, speed) in [
+        (const Offset(-150, 0), 1500.0),
+        (const Offset(-60, 0), 3000.0),
+        (const Offset(200, 0), 800.0),
+      ]) {
+        final before = scroll.pixels;
+        await tester.fling(strip, offset, speed);
+        await tester.pumpAndSettle();
+        final key = centred();
+        expect(offCentre(tester, key).abs(), lessThan(.5), reason: '$offset');
+        expect(
+          scroll.pixels,
+          offset.dx < 0 ? greaterThan(before) : lessThan(before),
+        );
+      }
+      // A slow drag released between two chips settles on the nearer one.
+      final gesture = await tester.startGesture(tester.getCenter(strip));
+      for (var i = 0; i < 10; i++) {
+        await gesture.moveBy(const Offset(-7, 0));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(offCentre(tester, centred()).abs(), lessThan(.5));
+      // Scrolling only browses: the selection and view stay.
+      expect(chipSelected(tester, 'chest'), isTrue);
+      expect(body(tester).selectedRegion, WorkloadMuscle.chest);
+      expect(controller.yaw, 0);
+      expect(controller.requests, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('a fling into either end settles the end chip at the centre', (
+    tester,
+  ) async {
+    await pumpExplorer(tester, selected: 'core');
+    final scroll = scrollOf(tester, strip);
+    await tester.fling(strip, const Offset(-600, 0), 4000);
+    await tester.pumpAndSettle();
+    expect(scroll.pixels, scroll.maxScrollExtent);
+    expect(offCentre(tester, 'unclassified').abs(), lessThan(.5));
+    await tester.fling(strip, const Offset(600, 0), 4000);
+    await tester.pumpAndSettle();
+    expect(scroll.pixels, scroll.minScrollExtent);
+    expect(offCentre(tester, 'abductors').abs(), lessThan(.5));
+    expect(chipSelected(tester, 'core'), isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'a drag held still and released without velocity settles a chip at the centre',
+    (tester) async {
+      await pumpExplorer(tester, selected: 'chest');
+      final scroll = scrollOf(tester, strip);
+      final start = scroll.pixels;
+      final gesture = await tester.startGesture(tester.getCenter(strip));
+      await gesture.moveBy(const Offset(-20, 0));
+      await gesture.moveBy(const Offset(-55, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      // Held still: the release carries no velocity.
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(scroll.pixels, isNot(start));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final centres = [
+        for (final chip in find.byType(CatalogMuscleChip).evaluate())
+          ((chip.renderObject! as RenderBox).localToGlobal(Offset.zero).dx +
+                  (chip.renderObject! as RenderBox).size.width / 2) -
+              tester.getCenter(strip).dx,
+      ];
+      expect(centres.map((c) => c.abs()).reduce(math.min), lessThan(.5));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'assistive scrolling and showing a chip on screen settle a chip at the centre',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpExplorer(tester, selected: 'chest');
+      double nearest() => [
+        for (final chip in find.byType(CatalogMuscleChip).evaluate())
+          (chip.renderObject! as RenderBox)
+                  .localToGlobal(
+                    (chip.renderObject! as RenderBox).size.center(Offset.zero),
+                  )
+                  .dx -
+              tester.getCenter(strip).dx,
+      ].map((c) => c.abs()).reduce(math.min);
+      final scroll = scrollOf(tester, strip);
+      // Focus moving to a chip off screen shows it, then the strip settles.
+      final opening = scroll.pixels;
+      final far = tester.getSemantics(muscle('unclassified'));
+      far.owner!.performAction(far.id, SemanticsAction.showOnScreen);
+      await tester.pumpAndSettle();
+      expect(scroll.pixels, greaterThan(opening));
+      expect(nearest(), lessThan(.5));
+      // The strip's own scroll actions move it by part of its width.
+      for (final action in [
+        SemanticsAction.scrollRight,
+        SemanticsAction.scrollLeft,
+      ]) {
+        // The strip is the only horizontal scroller.
+        final node = find.semantics.byAction(action).evaluate().single;
+        final before = scroll.pixels;
+        node.owner!.performAction(node.id, action);
+        await tester.pumpAndSettle();
+        expect(scroll.pixels, isNot(before), reason: '$action');
+        expect(nearest(), lessThan(.5), reason: '$action');
+      }
+      expect(chipSelected(tester, 'chest'), isTrue);
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'text size and locale changes while open measure the chips again and keep the selection centred',
+    (tester) async {
+      explorerPhone(tester);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      final controller = PendingBodyController();
+      addTearDown(controller.dispose);
+      Future<void> show(String locale, double scale) async {
+        await tester.pumpWidget(
+          discoveryApp(
+            Builder(
+              builder: (context) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: CatalogMuscleExplorer(
+                  index: state.index(locale),
+                  selected: 'hamstrings',
+                  controller: controller,
+                ),
+              ),
+            ),
+            locale: locale,
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      void expectFitted(String where) {
+        for (final text
+            in find
+                .descendant(
+                  of: find.byType(CatalogMuscleChip),
+                  matching: find.byType(RichText),
+                )
+                .evaluate()) {
+          final paragraph = text.renderObject! as RenderParagraph;
+          expect(
+            paragraph.getMaxIntrinsicWidth(double.infinity),
+            lessThanOrEqualTo(paragraph.size.width + .01),
+            reason: '$where: ${paragraph.text.toPlainText()}',
+          );
+        }
+        expect(offCentre(tester, 'hamstrings').abs(), lessThan(.5));
+      }
+
+      await show('en', 1);
+      final state0 = tester.state(find.byType(CatalogMuscleExplorer));
+      final en = tester.getSize(muscle('hamstrings'));
+      expectFitted('en');
+      await show('es', 1);
+      expect(tester.state(find.byType(CatalogMuscleExplorer)), same(state0));
+      final es = tester.getSize(muscle('hamstrings'));
+      expect(es.width, greaterThan(en.width), reason: 'Isquiotibiales');
+      expect(find.text('Isquiotibiales'), findsWidgets);
+      expectFitted('es');
+      await show('es', 1.5);
+      final larger = tester.getSize(muscle('hamstrings'));
+      expect(larger.width, greaterThan(es.width));
+      expect(larger.height, greaterThanOrEqualTo(48));
+      expectFitted('es 1.5x');
+      expect(tester.state(find.byType(CatalogMuscleExplorer)), same(state0));
+      expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -1199,8 +1493,8 @@ void main() {
         await tester.pumpAndSettle();
         await reportReady(tester);
         expect(tester.takeException(), isNull);
-        // Beside the list the canvas would be under 300 dp: it stacks.
-        expect(listScroll, findsNothing);
+        // The full layout's canvas would be under 300 dp: it stacks.
+        expect(pageScroll, findsOneWidget);
         final page = tester.getRect(pageScroll);
         final canvas = tester.getRect(diagram);
         // Square, as tall as the old canvas or the whole page allows, with
@@ -1208,11 +1502,7 @@ void main() {
         expect(canvas.height, closeTo(math.min(300, page.height), .5));
         expect(canvas.width, closeTo(canvas.height, .5));
         expect(canvas.left - page.left, greaterThanOrEqualTo(48));
-        expect(
-          canvas.width * canvas.height,
-          lessThanOrEqualTo(125000 + 1),
-          reason: 'Within the area cap',
-        );
+        expect(tester.getRect(strip).top, greaterThan(canvas.bottom));
         final scroll = scrollOf(tester, pageScroll);
         await tester.dragFrom(
           Offset(page.left + 24, canvas.center.dy),
@@ -1220,9 +1510,10 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(scroll.pixels, greaterThan(0));
-        await tapRow(tester, 'calves');
+        await tapChip(tester, 'calves');
         await tester.pumpAndSettle();
         expect(body(tester).selectedRegion, WorkloadMuscle.calves);
+        expect(offCentre(tester, 'calves').abs(), lessThan(.5));
         // Scrolled back, the canvas still orbits and picks.
         await revealArtwork(tester);
         await tester.drag(diagram, const Offset(60, 0));
@@ -1235,7 +1526,7 @@ void main() {
   }
 
   testWidgets(
-    'on tall and wide screens the canvas stays within the old area, narrowing before it shortens',
+    'phones are uncapped; from a 600 dp sheet the canvas stays within 170,000 dp², narrowing first',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -1243,12 +1534,13 @@ void main() {
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       final state = discoveryState();
       addTearDown(state.dispose);
-      for (final (size, scale, columns) in [
-        (const Size(412, 915), 1.0, true),
+      for (final (size, scale, capped) in [
+        (const Size(412, 915), 1.0, false),
         (const Size(412, 915), 2.0, false),
+        (const Size(599, 1000), 1.0, false),
         (const Size(640, 1200), 1.0, true),
         (const Size(1024, 1366), 1.0, true),
-        (const Size(600, 1000), 2.0, false),
+        (const Size(600, 1000), 2.0, true),
       ]) {
         final where = '$size ${scale}x';
         tester.view.physicalSize = size;
@@ -1264,18 +1556,18 @@ void main() {
         await tester.pumpAndSettle();
         await reportReady(tester);
         expect(tester.takeException(), isNull, reason: where);
-        expect(listScroll, columns ? findsOneWidget : findsNothing);
         final canvas = tester.getSize(diagram);
-        expect(
-          canvas.width * canvas.height,
-          lessThanOrEqualTo(125000 + 1),
-          reason: where,
-        );
-        expect(canvas.height, greaterThanOrEqualTo(300), reason: where);
-        expect(canvas.height, greaterThan(canvas.width), reason: where);
-        if (!columns) {
-          expect(canvas.height, lessThanOrEqualTo(420), reason: where);
+        if (capped) {
+          expect(
+            canvas.width * canvas.height,
+            lessThanOrEqualTo(170000 + 1),
+            reason: where,
+          );
+          expect(canvas.height, greaterThan(canvas.width), reason: where);
+        } else {
+          expect(canvas.width, size.width - 32, reason: where);
         }
+        expect(canvas.height, greaterThanOrEqualTo(300), reason: where);
         // The drawn surface is what the picks measure.
         expect(tester.getSize(find.byType(CharacterBody)), canvas);
       }
@@ -1284,71 +1576,80 @@ void main() {
   );
 
   testWidgets(
-    'choosing the selected row again keeps the view the person turned to',
+    'choosing the selected chip again keeps the view the person turned to',
     (tester) async {
       final controller = await pumpExplorer(tester);
-      await tapRow(tester, 'hamstrings');
+      await tapChip(tester, 'hamstrings');
       await tester.pumpAndSettle();
       expect(controller.yaw, math.pi);
       controller.orbitBy(.4, .2);
       final turned = (controller.yaw, controller.pitch);
-      await tapRow(tester, 'hamstrings');
+      await tapChip(tester, 'hamstrings');
       await tester.pumpAndSettle();
       expect((controller.yaw, controller.pitch), turned);
-      expect(rowSelected(tester, 'hamstrings'), isTrue);
-      // A different row still turns to its own view.
-      await tapRow(tester, 'chest');
+      expect(chipSelected(tester, 'hamstrings'), isTrue);
+      expect(offCentre(tester, 'hamstrings').abs(), lessThan(.5));
+      // A different chip still turns to its own view.
+      await tapChip(tester, 'chest');
       await tester.pumpAndSettle();
       expect((controller.yaw, controller.pitch), (0.0, 0.0));
       await tester.pumpWidget(const SizedBox());
     },
   );
 
-  testWidgets('each muscle row is one selectable button node with its label', (
-    tester,
-  ) async {
-    final semantics = tester.ensureSemantics();
-    await pumpExplorer(tester, selected: 'chest');
-    for (final (key, label, selected) in [
-      ('chest', 'Chest', true),
-      ('biceps', 'Biceps', false),
-      ('unclassified', 'Unclassified', false),
-    ]) {
-      final node = tester.getSemantics(muscle(key));
-      final data = node.getSemanticsData();
-      expect(data.label, label);
-      expect(data.flagsCollection.isButton, isTrue, reason: label);
-      expect(
-        data.flagsCollection.isSelected,
-        selected ? Tristate.isTrue : Tristate.isFalse,
-        reason: label,
-      );
-      expect(data.hasAction(SemanticsAction.tap), isTrue, reason: label);
-      expect(node.childrenCount, 0, reason: 'Glyph and label merge');
-      // No other node over the row carries its label or takes its tap.
-      final row = tester.getRect(muscle(key));
-      bool over(SemanticsNode other) => row.contains(
-        MatrixUtils.transformRect(_globalTransform(other), other.rect).center,
-      );
-      final taps = find.semantics
-          .byAction(SemanticsAction.tap)
-          .evaluate()
-          .where(over);
-      expect(taps, [node], reason: label);
-      final named = find.semantics.byLabel(label).evaluate().where(over);
-      expect(named, [node], reason: label);
-    }
-    semantics.dispose();
-    await tester.pumpWidget(const SizedBox());
-  });
+  testWidgets(
+    'each muscle chip is one selectable button node with its label; the strip adds no label',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpExplorer(tester, selected: 'chest');
+      for (final (key, label, selected) in [
+        ('chest', 'Chest', true),
+        ('biceps', 'Biceps', false),
+        ('unclassified', 'Unclassified', false),
+      ]) {
+        await tester.ensureVisible(muscle(key));
+        await tester.pumpAndSettle();
+        final node = tester.getSemantics(muscle(key));
+        final data = node.getSemanticsData();
+        expect(data.label, label);
+        expect(data.flagsCollection.isButton, isTrue, reason: label);
+        expect(
+          data.flagsCollection.isSelected,
+          selected ? Tristate.isTrue : Tristate.isFalse,
+          reason: label,
+        );
+        expect(data.hasAction(SemanticsAction.tap), isTrue, reason: label);
+        expect(node.childrenCount, 0, reason: 'Glyph and label merge');
+        // No other node over the chip carries its label or takes its tap.
+        final chip = tester.getRect(muscle(key));
+        bool over(SemanticsNode other) => chip.contains(
+          MatrixUtils.transformRect(_globalTransform(other), other.rect).center,
+        );
+        final taps = find.semantics
+            .byAction(SemanticsAction.tap)
+            .evaluate()
+            .where(over);
+        expect(taps, [node], reason: label);
+        final named = find.semantics.byLabel(label).evaluate().where(over);
+        expect(named, [node], reason: label);
+      }
+      // The strip itself is a plain scrolling container.
+      final stripNode = tester.getSemantics(strip);
+      expect(stripNode.getSemanticsData().label, isEmpty);
+      expect(find.text('Muscle list'), findsNothing);
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets(
-    'switching layouts keeps the canvas surface, view and selection',
+    'switching layouts keeps the canvas surface, view, selection and centred chip',
     (tester) async {
       final controller = await pumpExplorer(tester, selected: 'back');
       final element = tester.element(find.byType(CharacterBody));
       controller.zoomBy(.5);
       await tester.pump();
+      expect(pageScroll, findsNothing);
       tester.view.physicalSize = const Size(320, 640);
       await tester.pumpAndSettle();
       expect(pageScroll, findsOneWidget);
@@ -1358,12 +1659,14 @@ void main() {
         reason: 'The native surface moves rather than restarting',
       );
       expect((controller.yaw, controller.zoom), (math.pi, 1.5));
-      expect(rowSelected(tester, 'back'), isTrue);
+      expect(chipSelected(tester, 'back'), isTrue);
+      expect(offCentre(tester, 'back').abs(), lessThan(.5));
       tester.view.physicalSize = const Size(412, 640);
       await tester.pumpAndSettle();
-      expect(listScroll, findsOneWidget);
+      expect(pageScroll, findsNothing);
       expect(tester.element(find.byType(CharacterBody)), same(element));
       expect(body(tester).visible, isTrue);
+      expect(offCentre(tester, 'back').abs(), lessThan(.5));
       await tester.pumpWidget(const SizedBox());
     },
   );

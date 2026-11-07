@@ -205,11 +205,11 @@ Future<void> finishFilters(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// The explorer's list is always built, beside the canvas or below it.
+/// The explorer's strip always builds every chip, under the canvas.
 Future<void> selectMuscle(WidgetTester tester, String key) async {
-  final row = find.byKey(ValueKey('catalog-muscle-$key'));
-  await tester.ensureVisible(row);
-  await tester.tap(row);
+  final chip = find.byKey(ValueKey('catalog-muscle-$key'));
+  await tester.ensureVisible(chip);
+  await tester.tap(chip);
   await tester.pump(const Duration(milliseconds: 400));
   await tester.tap(find.byKey(const Key('catalog-muscle-show-exercises')));
   await tester.pump(const Duration(milliseconds: 400));
