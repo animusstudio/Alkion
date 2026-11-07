@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -164,7 +165,15 @@ class GlyphSkeleton extends StatefulWidget {
 
   /// Whether the shared sweep clock is running (any skeleton is sweeping).
   @visibleForTesting
-  static bool get debugSweepRunning => _GlyphClock._ticker?.isActive ?? false;
+  static bool get debugSweepRunning => _GlyphClock._timer != null;
+
+  /// Sweep steps taken so far; each one repaints the sweeping skeletons.
+  @visibleForTesting
+  static int get debugSweepSteps => _GlyphClock.debugSteps;
+
+  /// Skeletons currently holding the shared sweep.
+  @visibleForTesting
+  static int get debugSweepUsers => _GlyphClock._users;
 
   @override
   State<GlyphSkeleton> createState() => _GlyphSkeletonState();
@@ -385,13 +394,18 @@ class _GlyphActive extends InheritedWidget {
   bool updateShouldNotify(_GlyphActive oldWidget) => active != oldWidget.active;
 }
 
-/// One shared loop for every sweeping skeleton, so bands move in step and an
-/// idle app schedules no frames. Phase advances at most every 33 ms.
+/// One shared loop for every sweeping skeleton, so bands move in step. A
+/// periodic timer advances the phase every [_frame]; each step repaints the
+/// sweeping skeletons, so a sweep asks for about 30 frames a second rather
+/// than one per vsync, and an idle app schedules none. While frames are
+/// disabled (app hidden) the timer stops and resumes on the next frame.
 abstract final class _GlyphClock {
+  static const _frame = Duration(milliseconds: 33);
   static final phase = ValueNotifier<double>(0);
-  static Ticker? _ticker;
+  static Timer? _timer;
   static int _users = 0;
-  static int _step = -1;
+  static int _step = 0;
+  static bool _awaitingFrame = false;
   static final Listenable repaint = Listenable.merge([
     phase,
     PaintingBinding.instance.systemFonts,
@@ -399,23 +413,38 @@ abstract final class _GlyphClock {
 
   static void acquire() {
     if (_users++ > 0) return;
-    _step = -1;
-    (_ticker ??= Ticker(_tick, debugLabel: 'glyph-sweep')).start();
+    _step = 0;
+    phase.value = 0;
+    _start();
   }
 
   static void release() {
     if (_users == 0 || --_users > 0) return;
-    _ticker?.stop();
+    _timer?.cancel();
+    _timer = null;
   }
 
-  static void _tick(Duration elapsed) {
-    final ms = elapsed.inMilliseconds;
-    final step = ms ~/ 33;
-    if (step == _step) return;
-    _step = step;
+  static void _start() => _timer ??= Timer.periodic(_frame, _tick);
+
+  static void _tick(Timer timer) {
+    if (!SchedulerBinding.instance.framesEnabled) {
+      timer.cancel();
+      _timer = null;
+      if (_awaitingFrame) return;
+      _awaitingFrame = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _awaitingFrame = false;
+        if (_users > 0) _start();
+      });
+      return;
+    }
+    _step++;
+    debugSteps++;
     final cycle = Motion.glyphSweep.inMilliseconds;
-    phase.value = (ms % cycle) / cycle;
+    phase.value = (_step * _frame.inMilliseconds % cycle) / cycle;
   }
+
+  static int debugSteps = 0;
 }
 
 /// Glyph sprites rendered once per pixel ratio in white, tinted per cell.
@@ -519,9 +548,9 @@ class _GlyphField {
     List<double> ys,
     List<int> glyphs,
     List<double> weights,
-    List<double> positions, [
-    double mult = 1,
-  ]) {
+    List<double> positions,
+    List<double> scales,
+  ) {
     count = xs.length;
     transforms = Float32List(count * 4);
     rects = Float32List(count * 4);
@@ -529,9 +558,9 @@ class _GlyphField {
     base = Uint8List.fromList(glyphs);
     weight = Float32List.fromList(weights);
     position = Float32List.fromList(positions);
-    final scale = atlas.cell.width / atlas.spriteWidth * mult;
+    final unit = atlas.cell.width / atlas.spriteWidth;
     for (var i = 0; i < count; i++) {
-      transforms[i * 4] = scale;
+      transforms[i * 4] = unit * scales[i];
       transforms[i * 4 + 1] = 0;
       transforms[i * 4 + 2] = xs[i];
       transforms[i * 4 + 3] = ys[i];
@@ -544,17 +573,14 @@ class _GlyphField {
     rects[r + 1] = 0;
     rects[r + 2] = ((glyph + 1) * _atlasWidth).toDouble();
     rects[r + 3] = _atlasHeight.toDouble();
-    int channel(double a, double b) =>
-        ((a + (b - a) * s) * 255).round().clamp(0, 255);
     final a = (alpha * (from.a + (to.a - from.a) * s) * 255).round().clamp(
       0,
       255,
     );
-    colors[i] =
-        (a << 24) |
-        (channel(from.r, to.r) << 16) |
-        (channel(from.g, to.g) << 8) |
-        channel(from.b, to.b);
+    final r8 = ((from.r + (to.r - from.r) * s) * 255).round().clamp(0, 255);
+    final g8 = ((from.g + (to.g - from.g) * s) * 255).round().clamp(0, 255);
+    final b8 = ((from.b + (to.b - from.b) * s) * 255).round().clamp(0, 255);
+    colors[i] = (a << 24) | (r8 << 16) | (g8 << 8) | b8;
   }
 
   // Sprite size of the atlas in use for the current frame.
@@ -612,23 +638,29 @@ class _SkeletonPainter extends CustomPainter {
   void _layout(Size size, _GlyphAtlas atlas) {
     final cw = atlas.cell.width, ch = atlas.cell.height;
     final xs = <double>[], ys = <double>[], weights = <double>[];
-    final glyphs = <int>[], positions = <double>[];
-    var mult = 1.0;
+    final glyphs = <int>[], positions = <double>[], scales = <double>[];
     // The band leans slightly, so it reads as a sweep rather than a column.
     final span = size.width + _bandLean * size.height;
-    void add(double x, double y, int glyph, double w) {
+    void add(double x, double y, int glyph, double w, [double scale = 1]) {
       xs.add(x);
       ys.add(y);
       glyphs.add(glyph);
       weights.add(w);
+      scales.add(scale);
       positions.add(span <= 0 ? 0 : (x + cw / 2 + _bandLean * y) / span);
     }
 
     void dither(Rect r, int seed, {bool centre = false}) {
-      final cols = (r.width / cw).floor(), rows = (r.height / ch).floor();
+      if (r.width <= 0 || r.height <= 0) return;
+      // A block thinner than a cell (a 10 dp line, or 12 dp at a fractional
+      // pixel ratio) still gets one row: its glyphs shrink to fit inside it.
+      final scale = math.min(1.0, math.min(r.height / ch, r.width / cw));
+      final pw = cw * scale, ph = ch * scale;
+      final cols = (r.width / pw + 1e-6).floor();
+      final rows = (r.height / ph + 1e-6).floor();
       if (cols <= 0 || rows <= 0) return;
-      final x0 = r.left + (centre ? (r.width - cols * cw) / 2 : 0);
-      final y0 = r.top + (r.height - rows * ch) / 2;
+      final x0 = r.left + (centre ? (r.width - cols * pw) / 2 : 0);
+      final y0 = r.top + (r.height - rows * ph) / 2;
       for (var row = 0; row < rows; row++) {
         for (var col = 0; col < cols; col++) {
           final h = _hash(col, row + seed * 97);
@@ -637,7 +669,13 @@ class _SkeletonPainter extends CustomPainter {
               : h % 3 == 0
               ? 2
               : 1;
-          add(x0 + col * cw, y0 + row * ch, glyph, glyph == 2 ? .36 : .28);
+          add(
+            x0 + col * pw,
+            y0 + row * ph,
+            glyph,
+            glyph == 2 ? .36 : .28,
+            scale,
+          );
         }
       }
     }
@@ -672,7 +710,7 @@ class _SkeletonPainter extends CustomPainter {
         final k = math.max(1, (sh / sourceRows / ch).round());
         final rows = sourceRows * k, cols = sourceCols * k;
         final cellW = sw / cols, cellH = sh / rows;
-        mult = math.min(cellW / cw, cellH / ch);
+        final mult = math.min(cellW / cw, cellH / ch);
         final left = (size.width - sw) / 2, top = (size.height - sh) / 2;
         final dx = (cellW - cw * mult) / 2, dy = (cellH - ch * mult) / 2;
         for (var row = 0; row < rows; row++) {
@@ -681,16 +719,16 @@ class _SkeletonPainter extends CustomPainter {
             final h = _hash(col, row);
             switch (kGlyphBodySilhouette[row ~/ k][col ~/ k]) {
               case '#':
-                add(x, y, h % 3 == 0 ? 3 : 4, .5);
+                add(x, y, h % 3 == 0 ? 3 : 4, .5, mult);
               case ':':
-                add(x, y, h % 4 == 0 ? 1 : 2, .4);
+                add(x, y, h % 4 == 0 ? 1 : 2, .4, mult);
               case '.':
-                add(x, y, h % 2 == 0 ? 0 : 1, .32);
+                add(x, y, h % 2 == 0 ? 0 : 1, .32, mult);
             }
           }
         }
     }
-    field.fill(atlas, xs, ys, glyphs, weights, positions, mult);
+    field.fill(atlas, xs, ys, glyphs, weights, positions, scales);
   }
 
   @override
@@ -796,6 +834,7 @@ class _DissolvePainter extends CustomPainter {
         List.filled(xs.length, 0),
         List.filled(xs.length, 0),
         distances,
+        List.filled(xs.length, 1),
       );
     }
     field.useAtlas(atlas);
