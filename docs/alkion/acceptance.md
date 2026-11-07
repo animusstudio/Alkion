@@ -67,6 +67,21 @@ protocol/loader/picking/async-readback, material (12,248 cases plus the GPU
 table check) and native bridge checks pass, as do 65 tool Python tests. No APK
 was built and no device was used.
 
+Device re-measure on Nothing A024, 2026-11-07. The timing build of `b7ee0c8`
+(T4 plus T5) was installed in place, keeping the first install. The same six
+adb one-finger drags gave a frame interval median of 16.6 ms in every window,
+p90 17.4–18.5 ms and a worst frame of 34 ms. That meets the target, against
+25 / 36 / 181 ms before T4. Renderer work had a median of 0.4–0.5 ms
+(readback 0.12 ms, compose 0.27 ms), and messages equalled frames.
+
+The owner reports orbit is "definitely smoother". T5 startup, three cold
+starts: before T5 the first frame took 9.9 s, with 562 skipped main-thread
+frames. With T5 it took 0.56–0.64 s, with no skipped-frame or long-frame
+report. Home replaced the catalog loading screen about 3–4 s after launch.
+
+Device checks of the normal build at `478d0bb` and of the T6 feel remain
+open.
+
 ## Explore muscles 3D gestures — 2026-11-07
 
 Implements T1 of the approved [Explore gestures plan](../plans/2026-11-07-explore-gestures.md).

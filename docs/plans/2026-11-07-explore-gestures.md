@@ -177,6 +177,13 @@ ease to a stop at the zoom and pan bounds. All other T4 inertia rules apply.
 - Review fixes: the independent review of `8d5f580..8b0dd3b` passed with four
   findings, fixed on host at `e1ac797` (background stops the coast),
   `4e07802` (loader digest test through the isolate), `68c2dd9` (CPU compose
-  fallback) and `e1d1a5c` (fence-less frame redraws once). Re-check pending.
+  fallback) and `e1d1a5c` (fence-less frame redraws once). The fix re-check
+  passed, with no blockers. `68c2dd9` fails the body JS checker on its own,
+  because its check needs `e1d1a5c`; the head passes.
+- Device: the A024 timing build meets the T4 target (median 16.6 ms, p90
+  ≤ 18.5 ms, worst 34 ms). The T5 cold start went from 9.9 s to about 0.6 s to
+  the first frame, with Home at about 3–4 s; see
+  [acceptance](../alkion/acceptance.md).
 
-Next: device re-measure of T4, review, owner publish and the Animus pin.
+Next: install the normal `478d0bb` build, the owner's T6 feel check, the owner
+publish and the Animus pin.
