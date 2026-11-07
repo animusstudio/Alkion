@@ -45,7 +45,10 @@ function heightBins(mesh,centerY){
  let bins=orbitBins.get(mesh);if(bins)return bins;
  const p=mesh.positions,low=mesh.bounds[0][1]-centerY,span=Math.max(1e-9,mesh.bounds[1][1]-mesh.bounds[0][1]),radial=new Float64Array(binCount).fill(-1);
  for(let at=0;at<p.length;at+=3){const bin=Math.min(binCount-1,Math.floor((p[at+1]-centerY-low)/span*binCount));radial[bin]=Math.max(radial[bin],Math.hypot(p[at],p[at+2]));}
- bins=[];for(let bin=0;bin<binCount;bin++)if(radial[bin]>=0)bins.push([low+bin*span/binCount,low+(bin+1)*span/binCount,radial[bin]]);
+ // Flat (low, high, radial) triples: evaluated every tilted frame without garbage.
+ let used=0;for(let bin=0;bin<binCount;bin++)if(radial[bin]>=0)used++;
+ bins=new Float64Array(used*3);let at=0;
+ for(let bin=0;bin<binCount;bin++)if(radial[bin]>=0){bins[at++]=low+bin*span/binCount;bins[at++]=low+(bin+1)*span/binCount;bins[at++]=radial[bin];}
  orbitBins.set(mesh,bins);return bins;
 }
 
@@ -62,7 +65,9 @@ export function orbitFrame(mesh,pitch=0){
  if(p===0)return {cos,sin,centerY,depthRange:mesh.radius,extent:mesh.halfHeight};
  let extent=0,depth=0;
  if(mesh.positions&&mesh.bounds){
-  for(const [a,b,r] of heightBins(mesh,centerY)){
+  const bins=heightBins(mesh,centerY);
+  for(let at=0;at<bins.length;at+=3){
+   const a=bins[at],b=bins[at+1],r=bins[at+2];
    extent=Math.max(extent,Math.abs(centerY+a*cos)+r*s,Math.abs(centerY+b*cos)+r*s);
    depth=Math.max(depth,Math.max(Math.abs(a),Math.abs(b))*s+r*cos);
   }
@@ -220,6 +225,8 @@ export class VolumeRenderer{
   gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LESS);gl.disable(gl.BLEND);gl.disable(gl.DITHER);
   this.atlas=document.createElement('canvas');this.lost=false;
   if(this.gpu)this.createComposer(compile);
+  // Prepare the tilt bounds now, during load, not on the first tilted frame.
+  orbitFrame(mesh,maxPitch);
   this.surface.addEventListener('webglcontextlost',event=>{event.preventDefault();if(this.disposed)return;this.lost=true;canvas.dispatchEvent(new Event('renderfailure'));});
  }
  resize(){
@@ -235,7 +242,12 @@ export class VolumeRenderer{
   this.pixels=new Uint8Array(this.gw*this.gh*4);this.pixelsFrame=-1;this.atlasKey='';return true;
  }
  buildAtlas(muscles,theme,selected=null){
-  const key=JSON.stringify([muscles,theme,selected,colors[theme],this.cols,this.rows,this.canvas.width]);if(key===this.atlasKey)return;this.atlasKey=key;
+  // Compared field by field: no per-frame key string. The caller keeps one
+  // muscles object until its scores change.
+  const key=this.atlasKey,palette=colors[theme];
+  if(key&&key.muscles===muscles&&key.theme===theme&&key.selected===selected&&key.cols===this.cols&&key.rows===this.rows&&key.width===this.canvas.width&&
+   key.neutral.every((v,i)=>v===palette.neutral[i])&&key.accent.every((v,i)=>v===palette.accent[i]))return;
+  this.atlasKey={muscles,theme,selected,cols:this.cols,rows:this.rows,width:this.canvas.width,neutral:[...palette.neutral],accent:[...palette.accent]};
   this.cellW=this.canvas.width/this.cols;this.cellH=this.canvas.height/this.rows;this.tileW=Math.ceil(this.cellW+3);this.tileH=Math.ceil(this.cellH+3);
   this.atlas.width=this.tileW*glyphAlphabet.length;this.atlas.height=this.tileH*surfaceRegions.length;
   // Measure visible ink rather than the em/advance box. Space Mono capitals
@@ -275,7 +287,7 @@ export class VolumeRenderer{
  draw(yaw,muscles,theme,mode='characters',selected=null,view={zoom:1,x:0,y:0,pitch:0}){
   if(this.lost)throw new Error('Graphics context lost');if(!this.resize())return;
   this.buildAtlas(muscles,theme,selected);const gl=this.gl;gl.useProgram(this.program);gl.uniform1f(this.yawLocation,yaw);
-  const orbit=orbitFrame(this.mesh,view.pitch??0);gl.uniform2f(this.pitchLocation,orbit.cos,orbit.sin);gl.uniform1f(this.centerLocation,orbit.centerY);gl.uniform1f(this.depthLocation,orbit.depthRange);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,(orbit.extent===this.mesh.halfHeight?bodyFit(this.mesh,aspect):Math.min(.96/orbit.extent,.96*aspect/this.mesh.radius))*view.zoom);gl.uniform2f(this.panLocation,view.x*2,-view.y*2);
+  const pitch=view.pitch??0;if(this.orbitPitch!==pitch){this.orbit=orbitFrame(this.mesh,pitch);this.orbitPitch=pitch;}const orbit=this.orbit;gl.uniform2f(this.pitchLocation,orbit.cos,orbit.sin);gl.uniform1f(this.centerLocation,orbit.centerY);gl.uniform1f(this.depthLocation,orbit.depthRange);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,(orbit.extent===this.mesh.halfHeight?bodyFit(this.mesh,aspect):Math.min(.96/orbit.extent,.96*aspect/this.mesh.radius))*view.zoom);gl.uniform2f(this.panLocation,view.x*2,-view.y*2);
   const t0=performance.now();
   if(this.gpu){gl.bindVertexArray(this.geometryVAO);gl.bindFramebuffer(gl.FRAMEBUFFER,this.geometryFBO);gl.viewport(0,0,this.gw,this.gh);gl.enable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.texture);}
   gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.drawElements(gl.TRIANGLES,this.mesh.indices.length,gl.UNSIGNED_INT,0);
@@ -290,9 +302,9 @@ export class VolumeRenderer{
   const t2=performance.now();this.stageGl=t1-t0;this.stageRead=t2-t1;this.stageCompose=0;
   this.pickWidth=this.canvas.clientWidth;this.pickHeight=this.canvas.clientHeight;
   if(mode!=='characters'){this.finishReadback();this.drawDiagnostic(mode,theme);return;}
-  if(this.gpu){this.composeGPU(theme);this.stageCompose=performance.now()-t2;this.drawCount++;this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.pitch=String(view.pitch??0);return;}
+  if(this.gpu){this.composeGPU(theme);this.stageCompose=performance.now()-t2;this.drawCount++;if(this.diagnostics){this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.pitch=String(pitch);}return;}
   const ctx=this.ctx,pixels=this.pixels,stride=this.gw;ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
-  let count=0,signature=2166136261;const histogram={};
+  const diagnostics=this.diagnostics;let count=0,signature=2166136261;const histogram=diagnostics?{}:null;
   for(let row=0;row<this.rows;row++)for(let col=0;col<this.cols;col++){
    const phase=columnPhase(col);
    const cell=sampleSurfaceCell(pixels,stride,this.gh,col,row,this.compact,phase,this.sample);if(!cell)continue;
@@ -300,10 +312,12 @@ export class VolumeRenderer{
    const g=glyphIndices[glyph];
    ctx.globalAlpha=materialAlpha(cell.shade,theme,cell.coverage,this.compact);
    ctx.drawImage(this.atlas,g*this.tileW,cell.region*this.tileH,this.tileW,this.tileH,col*this.cellW+(this.cellW-this.tileW)/2,(row+phase/3)*this.cellH+(this.cellH-this.tileH)/2,this.tileW,this.tileH);
-   count++;histogram[glyph]=(histogram[glyph]||0)+1;
-   signature=Math.imul(signature^cell.at^cell.shade^glyph.charCodeAt(0)^phase,16777619)>>>0;
+   count++;if(diagnostics){histogram[glyph]=(histogram[glyph]||0)+1;
+    signature=Math.imul(signature^cell.at^cell.shade^glyph.charCodeAt(0)^phase,16777619)>>>0;}
   }
-  ctx.globalAlpha=1;this.stageCompose=performance.now()-t2;this.drawCount++;this.glyphCount=count;this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.pitch=String(view.pitch??0);this.canvas.dataset.surfaceProjection=surfaceProjectionRevision;if(this.diagnostics){const regionPixels={};for(let at=0;at<this.pixels.length;at+=4)if(this.pixels[at+3]){const id=surfaceRegions[this.pixels[at+1]];if(id)regionPixels[id]=(regionPixels[id]||0)+1;}this.canvas.dataset.regionPixels=JSON.stringify(regionPixels);}
+  ctx.globalAlpha=1;this.stageCompose=performance.now()-t2;this.drawCount++;this.glyphCount=count;
+  // DOM writes and histograms cost style work and garbage per frame: proofs only.
+  if(diagnostics){this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.pitch=String(pitch);this.canvas.dataset.surfaceProjection=surfaceProjectionRevision;const regionPixels={};for(let at=0;at<this.pixels.length;at+=4)if(this.pixels[at+3]){const id=surfaceRegions[this.pixels[at+1]];if(id)regionPixels[id]=(regionPixels[id]||0)+1;}this.canvas.dataset.regionPixels=JSON.stringify(regionPixels);}
  }
  // Normalized native coordinates address the retained, depth-tested surface,
  // not a nearby glyph/anchor. WebGL readback rows run bottom to top.
@@ -337,7 +351,7 @@ export class VolumeRenderer{
   this.diagnostic??=document.createElement('canvas');this.diagnostic.width=width;this.diagnostic.height=height;
   this.diagnostic.getContext('2d').putImageData(new ImageData(pixels,width,height),0,0);
   this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);this.ctx.drawImage(this.diagnostic,0,0,this.canvas.width,this.canvas.height);
-  this.drawCount++;this.glyphCount=0;this.canvas.dataset.glyphCount='0';this.canvas.dataset.materialSignature='diagnostic';this.canvas.dataset.glyphHistogram='{}';
+  this.drawCount++;this.glyphCount=0;if(this.diagnostics){this.canvas.dataset.glyphCount='0';this.canvas.dataset.materialSignature='diagnostic';this.canvas.dataset.glyphHistogram='{}';}
  }
  createComposer(compile){
   const gl=this.gl,link=(vs,fs)=>{const program=gl.createProgram(),v=compile(gl.VERTEX_SHADER,vs),f=compile(gl.FRAGMENT_SHADER,fs);gl.attachShader(program,v);gl.attachShader(program,f);gl.linkProgram(program);
@@ -348,7 +362,8 @@ export class VolumeRenderer{
   this.glyphUniforms=uniforms(this.glyphProgram,['cells','cellInfo','shades','cols','canvasSize','cellSize','tileSize','atlasSize','atlas']);
   const texture=(filter=gl.NEAREST)=>{const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,filter],[gl.TEXTURE_MAG_FILTER,filter],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);return t;};
   this.geometryTexture=texture();this.cellTexture=texture();this.cellInfoTexture=texture();this.shadeTexture=texture();this.atlasTexture=texture(gl.LINEAR);
-  this.depthBuffer=gl.createRenderbuffer();this.geometryFBO=gl.createFramebuffer();this.cellFBO=gl.createFramebuffer();this.pack=gl.createBuffer();this.shadeKey='';
+  this.depthBuffer=gl.createRenderbuffer();this.geometryFBO=gl.createFramebuffer();this.cellFBO=gl.createFramebuffer();this.pack=gl.createBuffer();this.shadeTheme=null;
+  this.bindUnit=(unit,texture,location)=>{gl.activeTexture(gl.TEXTURE0+unit);gl.bindTexture(gl.TEXTURE_2D,texture);gl.uniform1i(location,unit);};
  }
  resizeComposer(){
   const gl=this.gl,cols=this.cols,rows=this.rows;
@@ -366,19 +381,19 @@ export class VolumeRenderer{
   gl.bindTexture(gl.TEXTURE_2D,this.cellInfoTexture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,cols,rows,0,gl.RGBA,gl.FLOAT,info);
   if(this.fence){gl.deleteSync(this.fence);this.fence=null;}
   gl.bindBuffer(gl.PIXEL_PACK_BUFFER,this.pack);gl.bufferData(gl.PIXEL_PACK_BUFFER,this.gw*this.gh*4,gl.STREAM_READ);gl.bindBuffer(gl.PIXEL_PACK_BUFFER,null);
-  gl.bindFramebuffer(gl.FRAMEBUFFER,null);this.shadeKey='';
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);this.shadeTheme=null;
  }
  composeGPU(theme){
-  const gl=this.gl,key=`${theme}/${this.compact}`;
-  if(this.shadeKey!==key){
+  const gl=this.gl;
+  if(this.shadeTheme!==theme||this.shadeCompact!==this.compact){
    // Row 0: role mix by shade. Row 1: alpha by shade, full and partial cells.
    const table=new Float32Array(256*2*4);
    for(let shade=0;shade<256;shade++){const {lower,upper,mix}=glyphRoleMix(shade),at=shade*4,alpha=(256+shade)*4;
     table[at]=mix;table[at+1]=lower;table[at+2]=upper;table[alpha]=materialAlpha(shade,theme,1,this.compact);table[alpha+1]=materialAlpha(shade,theme,8/9,this.compact);}
-   gl.bindTexture(gl.TEXTURE_2D,this.shadeTexture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,256,2,0,gl.RGBA,gl.FLOAT,table);this.shadeKey=key;
+   gl.bindTexture(gl.TEXTURE_2D,this.shadeTexture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,256,2,0,gl.RGBA,gl.FLOAT,table);this.shadeTheme=theme;this.shadeCompact=this.compact;
   }
   if(this.atlasDirty){gl.bindTexture(gl.TEXTURE_2D,this.atlasTexture);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,true);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,this.atlas);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);this.atlasDirty=false;}
-  const bind=(unit,texture,location)=>{gl.activeTexture(gl.TEXTURE0+unit);gl.bindTexture(gl.TEXTURE_2D,texture);gl.uniform1i(location,unit);};
+  const bind=this.bindUnit;
   gl.bindVertexArray(this.emptyVAO);gl.disable(gl.DEPTH_TEST);
   // One sampler evaluation per cell into a cols×rows byte surface.
   gl.bindFramebuffer(gl.FRAMEBUFFER,this.cellFBO);gl.viewport(0,0,this.cols,this.rows);gl.disable(gl.BLEND);

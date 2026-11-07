@@ -3,6 +3,9 @@ export const regions=Object.freeze(['chest','back','shoulders','quads','hamstrin
 // Protocol 5 adds the view's camera pitch, bounded to the controller's ±45°.
 export const protocolVersion=5,maxPitch=Math.PI/4;
 const keys=['version','style','scores','neutral','accent','background','theme','visible','reduced','compact','paused','yaw','turn','command','revision','retry'];
+// Exactly these own keys (plain parsed objects), without per-message arrays.
+function exactKeys(value,names){let count=0;for(const key in value){if(!Object.hasOwn(value,key)||!names.includes(key))return false;count++;}return count===names.length;}
+const viewKeys=['pitch','x','y','zoom'],interactionKeys=['enabled','generation','selected'];
 export function validateDisplay(input){
  if(!input||typeof input!=='object'||(Object.keys(input).length!==keys.length+(Object.hasOwn(input,'interaction')?1:0)+(Object.hasOwn(input,'view')?1:0))||keys.some(k=>!Object.hasOwn(input,k)))throw new Error('Invalid display state');
  if(input.version!==protocolVersion||!['male','female'].includes(input.style)||!['light','dark'].includes(input.theme))throw new Error('Invalid display version/style');
@@ -14,11 +17,11 @@ export function validateDisplay(input){
  for(const k of ['command','revision','retry'])if(!Number.isSafeInteger(input[k])||input[k]<0)throw new Error('Invalid command');
  if(Object.hasOwn(input,'view')){
   const v=input.view;
-  if(!v||Object.keys(v).sort().join(',')!=='pitch,x,y,zoom'||!Number.isFinite(v.zoom)||v.zoom<1||v.zoom>3||['x','y'].some(k=>!Number.isFinite(v[k])||Math.abs(v[k])>(v.zoom-1)/2)||!Number.isFinite(v.pitch)||Math.abs(v.pitch)>maxPitch)throw new Error('Invalid viewport');
+  if(!v||typeof v!=='object'||!exactKeys(v,viewKeys)||!Number.isFinite(v.zoom)||v.zoom<1||v.zoom>3||['x','y'].some(k=>!Number.isFinite(v[k])||Math.abs(v[k])>(v.zoom-1)/2)||!Number.isFinite(v.pitch)||Math.abs(v.pitch)>maxPitch)throw new Error('Invalid viewport');
  }
  if(Object.hasOwn(input,'interaction')){
   const i=input.interaction;
-  if(!i||Object.keys(i).sort().join(',')!=='enabled,generation,selected'||typeof i.enabled!=='boolean'||!Number.isSafeInteger(i.generation)||i.generation<0||!(i.selected===null||regions.includes(i.selected))||(!i.enabled&&i.selected!==null))throw new Error('Invalid interaction');
+  if(!i||typeof i!=='object'||!exactKeys(i,interactionKeys)||typeof i.enabled!=='boolean'||!Number.isSafeInteger(i.generation)||i.generation<0||!(i.selected===null||regions.includes(i.selected))||(!i.enabled&&i.selected!==null))throw new Error('Invalid interaction');
  }
  return input;
 }

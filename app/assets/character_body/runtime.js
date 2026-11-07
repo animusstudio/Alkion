@@ -1,7 +1,7 @@
 import {VolumeRenderer,loadMesh} from './renderer.js';
 import {colors} from './material.js';
 import {MotionLoop} from './motion.js';
-import {validateDisplay,validatePick,protocolVersion} from './protocol.js';
+import {validateDisplay,validatePick,protocolVersion,regions} from './protocol.js';
 
 const canvas=document.getElementById('body');
 const state={ready:false,failed:false,paused:true,reduced:false,hidden:false,visible:false,yaw:0};
@@ -39,6 +39,16 @@ function pollRendered(){
  // A stalled copy completes synchronously after about a second of polls.
  if(++polls>250){renderer.finishReadback();pollTimer=setTimeout(pollRendered,0);return;}
  pollTimer=setTimeout(pollRendered,polls<20?0:4);
+}
+// Field comparisons over the validated display shape: no per-message strings.
+const sameRGB=(a,b)=>a[0]===b[0]&&a[1]===b[1]&&a[2]===b[2];
+function sameView(a,b){return a===b||(!!a&&!!b&&a.zoom===b.zoom&&a.x===b.x&&a.y===b.y&&a.pitch===b.pitch);}
+function sameInteraction(a,b){return a===b||(!!a&&!!b&&a.enabled===b.enabled&&a.selected===b.selected&&a.generation===b.generation);}
+function sameScores(a,b){for(const key of regions)if(a[key]!==b[key])return false;return true;}
+function sameDisplay(a,b){
+ return !!a&&a.version===b.version&&a.style===b.style&&a.theme===b.theme&&a.visible===b.visible&&a.reduced===b.reduced&&a.compact===b.compact&&a.paused===b.paused&&
+  a.yaw===b.yaw&&a.turn===b.turn&&a.command===b.command&&a.revision===b.revision&&a.retry===b.retry&&sameRGB(a.neutral,b.neutral)&&sameRGB(a.accent,b.accent)&&
+  sameRGB(a.background,b.background)&&sameScores(a.scores,b.scores)&&sameView(a.view,b.view)&&sameInteraction(a.interaction,b.interaction);
 }
 function invalidateRendered(){rendered=null;drawn=null;}
 function schedulePoll(){if(pollTimer===null)pollTimer=setTimeout(pollRendered,0);}
@@ -83,12 +93,12 @@ window.AlkionBody={
   timing.msgs++;
   try{
    const next=validateDisplay(value),previous=input;input=next;
-   if(JSON.stringify(previous)!==JSON.stringify(next))invalidateRendered();
-   const scoresChanged=!previous||Object.keys(next.scores).some(key=>next.scores[key]!==previous.scores[key]);
+   if(!sameDisplay(previous,next))invalidateRendered();
+   const scoresChanged=!previous||!sameScores(next.scores,previous.scores);
    if(scoresChanged)muscles=Object.fromEntries(Object.entries(next.scores).map(([key,score])=>[key,{score}]));
-   let changed=JSON.stringify(next.view)!==JSON.stringify(previous?.view)||scoresChanged||JSON.stringify(next.interaction)!==JSON.stringify(previous?.interaction)||!previous||next.theme!==previous.theme||next.compact!==previous.compact||
-    next.neutral.some((value,i)=>value!==previous.neutral[i])||next.accent.some((value,i)=>value!==previous.accent[i]);
-   colors[next.theme]={neutral:next.neutral,accent:next.accent};
+   let changed=!previous||!sameView(next.view,previous.view)||scoresChanged||!sameInteraction(next.interaction,previous.interaction)||next.theme!==previous.theme||next.compact!==previous.compact||
+    !sameRGB(next.neutral,previous.neutral)||!sameRGB(next.accent,previous.accent);
+   const palette=colors[next.theme];if(!palette||!sameRGB(palette.neutral,next.neutral)||!sameRGB(palette.accent,next.accent))colors[next.theme]={neutral:next.neutral,accent:next.accent};
    state.visible=next.visible;state.reduced=next.reduced;state.paused=next.paused;
    const yaw=state.yaw;
    if(next.command!==command){command=next.command;state.yaw=next.yaw;}

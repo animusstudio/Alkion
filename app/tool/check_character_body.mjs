@@ -94,7 +94,7 @@ runInNewContext(runtime,{
  ResizeObserver:class{constructor(callback){resized=callback;}observe(){}},
  MotionLoop:class extends MotionLoop{constructor(state,draw){super(state,draw,{request:cb=>{const id=++counter;raf.set(id,cb);return id;},cancel:id=>raf.delete(id)});}},
  VolumeRenderer:class{constructor(_canvas,_mesh,compact){this.compact=compact;}set pixels(value){if(value===null)bufferResets++;}pick(){return 'chest';}draw(yaw,_muscles,_theme,_mode,_selected,view){draws++;lastYaw=yaw;lastView=view;}dispose(){disposals++;}},
- loadMesh:async()=>{loadCount++;if(failLoad)throw new Error('art_unavailable');return {};},colors:{},validateDisplay,validatePick,protocolVersion,
+ loadMesh:async()=>{loadCount++;if(failLoad)throw new Error('art_unavailable');return {};},colors:{},validateDisplay,validatePick,protocolVersion,regions,
 });
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
 const frame=(time=now+16)=>{now=time;const callbacks=[...raf];raf.clear();for(const [,callback] of callbacks)callback(now);};
@@ -141,6 +141,11 @@ const beforeTilt=token();update({view:{zoom:3,x:.5,y:-.4,pitch:-maxPitch}});pick
 frame();assert.equal(lastView.pitch,-maxPitch);pick();assert.equal(events.at(-1).region,'chest','A pick reads the tilted frame it names');
 assert.equal(events.findLast(event=>event.status==='ready').version,5);
 {const before=events.length;pick({version:4});assert.equal(events.length,before,'A v4 pick is never answered');}
+// Field-by-field display comparison: every visual input still retires old pixels.
+for(const patch of [{neutral:[1,2,3]},{accent:[9,9,9]},{scores:{...display.scores,chest:.4}},{theme:'light'},{interaction:{enabled:true,selected:'back',generation:7}},{view:{zoom:3,x:.5,y:-.4,pitch:.1}}]){
+ const before=token();update(patch);pick(before);assert.equal(events.at(-1).region,null,`Stale after ${Object.keys(patch)[0]}`);frame();pick();assert.equal(events.at(-1).region,'chest',Object.keys(patch)[0]);
+}
+{const before=token(),n=events.length;update({});pick(before);assert.equal(events.at(-1).region,'chest','An identical display keeps the frame');assert.equal(events.length,n+1);}
 const oldToken=token();update({turn:.9,interaction:{enabled:true,selected:null,generation:8}});
 pick(oldToken);assert.equal(events.at(-1).region,null,'A pending rotation cannot pick old pixels');frame();
 pick();assert.equal(events.at(-1).region,'chest');
@@ -176,7 +181,7 @@ console.log('PASS: protocol v5, exact style dispatch, one latest draw/frame, no 
   ResizeObserver:class{constructor(callback){resized=callback;}observe(){}},
   MotionLoop:class extends MotionLoop{constructor(state,draw){super(state,draw,{request:cb=>{const id=++counter;raf.set(id,cb);return id;},cancel:id=>raf.delete(id)});}},
   VolumeRenderer:class{pollReadback(){return ready;}finishReadback(){ready=true;return true;}pick(){return 'chest';}draw(){draws++;ready=false;}dispose(){}},
-  loadMesh:async()=>({}),colors:{},validateDisplay,validatePick,protocolVersion});
+  loadMesh:async()=>({}),colors:{},validateDisplay,validatePick,protocolVersion,regions});
  const frame=()=>{const callbacks=[...raf];raf.clear();for(const [,callback] of callbacks)callback(16);};
  const runTimers=()=>{const pending=timers.splice(0);for(const cb of pending)cb();};
  const tokens=()=>events.filter(e=>e.status==='ready'&&Number.isInteger(e.frame)).map(e=>e.frame);
