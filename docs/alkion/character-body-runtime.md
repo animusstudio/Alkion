@@ -283,8 +283,12 @@ Scrolling only browses. A chip choice of another group turns to the view it
 faces, from the same table as the opening view; choosing the selected chip
 again keeps the view. A canvas pick never turns. Either way, and for the
 opening selection, the selected chip moves to the centre. Each chip is one
-button node with its label and selected state. The info notes cover the
-canvas while open. When that canvas would be under 300 dp (short and
+button node with its label and selected state. Implicit scrolling stays
+on, so focus or an assistive `showOnScreen` brings a chip into view, and that
+move also ends by settling a chip at the centre. Chips are measured again
+when the text size, locale or system fonts change. The info notes cover the
+canvas while open, and the canvas, its fallback and the zoom buttons leave
+the semantics tree until they close. When that canvas would be under 300 dp (short and
 landscape viewports, large text on small phones; estimated without the
 selection or artwork status, so neither switches layout), it stacks instead:
 a canvas 55% of the sheet's height (300–420 dp), then the label, the strip
