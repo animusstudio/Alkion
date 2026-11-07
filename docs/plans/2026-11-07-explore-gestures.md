@@ -91,6 +91,46 @@ and the owner-run publish.
 inputs and install it in place on Nothing A024 for the owner's check (A3, A6).
 Then a small Animus pin PR.
 
+## T4 — Smooth motion and inertia (amendment, approved 2026-11-07)
+
+The owner reports that the gestures work but feel clanky. On Nothing A024, a
+private timing build measured six one-finger drags (212 frames):
+- frame interval median 25 ms (about 40 fps), p90 36 ms, worst 181 ms;
+- renderer work median 16.4 ms: `readPixels` 9.2 ms (a synchronous GPU stall on
+  a 87k-pixel surface) and CPU glyph compose 6.5 ms (1,405 `drawImage` calls
+  over 9,680 cells);
+- about 9 ms of each interval lost to the Dart-to-native round trip, because
+  Dart awaits every display acknowledgement.
+
+The owner also asked for fluid motion with inertia. This amendment supersedes
+the earlier "no fling inertia" decision.
+
+- **Pipelining:** Dart sends the latest display at most once per vsync and does
+  not await the previous acknowledgement; native coalesces as now.
+- **No stall:** the per-frame path no longer blocks on `readPixels`. Use
+  asynchronous readback (WebGL2 pixel buffer plus fence) or an equivalent.
+  Picking reads the newest completed frame, which is named exactly as now.
+- **GPU glyph compose:** draw the glyph layer in one batched GPU draw. The look
+  must stay identical, guarded by the material checks, plus a host image
+  comparison against the CPU path.
+- **Hitches:** find and remove the long frames (GC, layout or allocation per
+  frame).
+- **Inertia:**
+  - a one-finger orbit release keeps yaw and pitch velocity, with capped speed
+    and smooth exponential decay;
+  - pitch eases to a stop at ±45°;
+  - input applies once per frame;
+  - a touch stops the inertia without selecting; Front, Back, Side and Reset
+    cancel it;
+  - reduced motion disables it;
+  - picks stay invalid while moving;
+  - zoom and pan stay direct.
+- **Opt-in timing:** keep an opt-in aggregate timing log for the private Dev
+  build (renderer stage times, message and frame counts only), so device
+  measurements are reproducible.
+- **Target on A024:** median frame interval ≤ 18 ms, p90 ≤ 20 ms, no frame over
+  50 ms during orbit, measured with the timing build before and after.
+
 ## Task state
 
 - T1: implemented 2026-11-07 (host checks and private WebGL proof pass; see
@@ -101,4 +141,6 @@ Then a small Animus pin PR.
   APK verifier, after stale build intermediates were cleared. It is installed in
   place on Nothing A024: hash match, launch ok, first-install identity kept.
 
-Next: owner phone check (A3), then outgoing review, owner publish and the Animus pin.
+- T3 owner check: gestures work (A3) but feel clanky. T4 added and in progress.
+
+Next: T4, then device re-measure, review, owner publish and the Animus pin.
