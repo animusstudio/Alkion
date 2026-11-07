@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../data/body_workload.dart';
@@ -229,8 +230,15 @@ class _CharacterBodyState extends State<CharacterBody>
   MethodChannel? _channel;
   CharacterBodyStatus _status = CharacterBodyStatus.loading;
   bool _resumed = true;
-  bool _sending = false;
+  // Display pipelining: the latest state goes out at most once per frame,
+  // without awaiting earlier acknowledgements, and at most [_maxInFlight]
+  // unacknowledged messages per channel (native replaces them latest-wins).
+  static const _maxInFlight = 2;
   bool _pending = false;
+  bool _frameFlush = false;
+  bool _immediateFlush = false;
+  int _inFlight = 0;
+  int _channelGeneration = 0;
   int _retryGeneration = 0;
   int _generation = 0;
   int _requestId = 0;
@@ -382,6 +390,7 @@ class _CharacterBodyState extends State<CharacterBody>
       // not just a lost WebGL context. Counts and caller state stay native.
       _channel?.setMethodCallHandler(null);
       _channel = null;
+      _resetSends();
       setState(() {
         _retryGeneration = widget.controller._retry;
         _status = CharacterBodyStatus.loading;
@@ -435,22 +444,68 @@ class _CharacterBodyState extends State<CharacterBody>
       value != null && value.isFinite ? value.clamp(0.0, 1.0) : 0.0;
 
   // Coalesce rebuild/drag updates; never queue an unbounded stream of JS work.
-  Future<void> _send() async {
+  void _send() {
     _pending = true;
-    if (_sending || _channel == null || !mounted) return;
-    _sending = true;
-    try {
-      while (_pending && mounted && _channel != null) {
-        _pending = false;
-        await _channel!.invokeMethod<void>('display', _display());
-      }
-    } on PlatformException {
-      _setStatus(CharacterBodyStatus.error);
-    } on MissingPluginException {
-      _setStatus(CharacterBodyStatus.unavailable);
-    } finally {
-      _sending = false;
+    if (_channel == null || !mounted) return;
+    _scheduleFlush();
+  }
+
+  void _scheduleFlush() {
+    if (_inFlight >= _maxInFlight) return;
+    if (!_resumed || !widget.visible) {
+      // Hidden or backgrounded surfaces may get no frames: deliver now, even
+      // with a frame flush pending, so a pause or hide always arrives.
+      if (_immediateFlush) return;
+      _immediateFlush = true;
+      scheduleMicrotask(() {
+        _immediateFlush = false;
+        _flush();
+      });
+      return;
     }
+    if (_frameFlush) return;
+    _frameFlush = true;
+    // After this frame's input, animation and build, so a gesture or inertia
+    // step applied in the frame leaves in the same frame.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _frameFlush = false;
+      _flush();
+    });
+    SchedulerBinding.instance.ensureVisualUpdate();
+  }
+
+  void _flush() {
+    final channel = _channel;
+    if (!_pending || channel == null || !mounted || _inFlight >= _maxInFlight) {
+      return;
+    }
+    _pending = false;
+    _inFlight++;
+    final generation = _channelGeneration;
+    channel
+        .invokeMethod<void>('display', _display())
+        .then<void>(
+          (_) {},
+          onError: (Object error) {
+            if (!mounted || generation != _channelGeneration) return;
+            if (error is MissingPluginException) {
+              _setStatus(CharacterBodyStatus.unavailable);
+            } else {
+              _setStatus(CharacterBodyStatus.error);
+            }
+          },
+        )
+        .whenComplete(() {
+          // A replaced channel's late acknowledgements free nothing new.
+          if (generation != _channelGeneration) return;
+          _inFlight--;
+          if (_pending && mounted) _scheduleFlush();
+        });
+  }
+
+  void _resetSends() {
+    _channelGeneration++;
+    _inFlight = 0;
   }
 
   void _setStatus(CharacterBodyStatus status) {
@@ -466,6 +521,7 @@ class _CharacterBodyState extends State<CharacterBody>
   void _created(int id) {
     if (!mounted) return;
     _invalidatePick();
+    _resetSends();
     _channel = MethodChannel('dev.animusstudio.alkion/character-body/$id');
     _channel!.setMethodCallHandler((call) async {
       if (!mounted || call.method != 'status' || call.arguments is! Map) return;
@@ -583,6 +639,7 @@ class _CharacterBodyState extends State<CharacterBody>
     WidgetsBinding.instance.removeObserver(this);
     _channel?.setMethodCallHandler(null);
     _channel = null;
+    _resetSends();
     super.dispose();
   }
 }

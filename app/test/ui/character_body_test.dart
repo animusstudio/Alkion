@@ -391,6 +391,122 @@ void main() {
   });
 
   testWidgets(
+    'displays pipeline once per frame without awaiting acks, two in flight at most',
+    (tester) async {
+      CharacterBody.debugForceAndroid = true;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final messenger = tester.binding.defaultBinaryMessenger;
+      final displays = <Map<Object?, Object?>>[];
+      final replies = <Completer<void>>[];
+      final channels = <String>[];
+      addTearDown(() {
+        CharacterBody.debugForceAndroid = false;
+        debugDefaultTargetPlatformOverride = null;
+        messenger.setMockMethodCallHandler(SystemChannels.platform_views, null);
+        for (final name in channels) {
+          messenger.setMockMethodCallHandler(MethodChannel(name), null);
+        }
+      });
+      messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
+        call,
+      ) async {
+        if (call.method == 'create') {
+          final name =
+              'dev.animusstudio.alkion/character-body/${(call.arguments as Map)['id']}';
+          channels.add(name);
+          // Acknowledgements are held until the test releases them.
+          messenger.setMockMethodCallHandler(MethodChannel(name), (call) {
+            if (call.method != 'display') return Future.value();
+            displays.add(Map.of(call.arguments as Map));
+            final reply = Completer<void>();
+            replies.add(reply);
+            return reply.future;
+          });
+          return 1;
+        }
+        if (call.method == 'resize') {
+          return {
+            'width': (call.arguments as Map)['width'],
+            'height': (call.arguments as Map)['height'],
+          };
+        }
+        return null;
+      });
+      final controller = CharacterBodyController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 128,
+              height: 212,
+              child: CharacterBody(
+                style: CharacterBodyStyle.male,
+                scores: const {},
+                neutral: Colors.white,
+                accent: Colors.orange,
+                background: Colors.black,
+                brightness: Brightness.dark,
+                visible: true,
+                reducedMotion: true,
+                compact: true,
+                controller: controller,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(displays, hasLength(1));
+      // 120 changes inside one frame leave as one message with the latest
+      // state, while the first acknowledgement is still outstanding.
+      for (var i = 0; i < 120; i++) {
+        controller.orbitBy(.01, 0);
+      }
+      await tester.pump();
+      expect(displays, hasLength(2));
+      expect(displays.last['turn'] as double, closeTo(1.2, 1e-9));
+      expect(replies.first.isCompleted, isFalse);
+      // Two unacknowledged messages hold further sends: no storm, no queue.
+      controller.orbitBy(0, .2);
+      await tester.pump();
+      controller.orbitBy(0, .1);
+      await tester.pump();
+      expect(displays, hasLength(2));
+      // One acknowledgement frees a slot for only the latest state.
+      replies.first.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(displays, hasLength(3));
+      expect(
+        (displays.last['view'] as Map)['pitch'] as double,
+        closeTo(.3, 1e-9),
+      );
+      for (final reply in replies) {
+        if (!reply.isCompleted) reply.complete();
+      }
+      await tester.pump();
+      await tester.pump();
+      expect(displays, hasLength(3), reason: 'Idle frames send nothing');
+      // A pause leaves without waiting for a frame.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await Future<void>.value();
+      expect(displays, hasLength(4));
+      expect(displays.last['visible'], isFalse);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (final reply in replies) {
+        if (!reply.isCompleted) reply.complete();
+      }
+      await tester.pumpWidget(const SizedBox());
+      for (final reply in replies) {
+        if (!reply.isCompleted) reply.complete();
+      }
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+
+  testWidgets(
     'non-Android host preserves fallback regardless of theme target',
     (tester) async {
       final controller = CharacterBodyController();
