@@ -150,33 +150,42 @@ then do the two hip fields claim surface the masks leave unpainted:
 - adductors: the inner thigh from the groin toward mid-thigh, front and back,
   beside but not on the midline.
 
-Older regions retain their original mask outside the code-defined fields. Deep anatomy and unsupported semantic mappings remain named
-text; a catalog label never selects pixels by itself. This is a coarse display
+Older regions retain their original mask outside the code-defined fields. Deep anatomy and unsupported semantic mappings claim no
+pixels; a catalog label never selects pixels by itself. This is a coarse display
 projection, not a precise anatomical segmentation.
 
-The body sheet separates strength (all roles, primary, secondary, stabilizer),
-stretch targets, mobility targets, conditioning participation and coarse legacy
-groups. Each view uses the same distinct physical-set region counts as its text
-list. Fixed bins are `0`, `1`, `2–3`, `4–6`, `7–10`, `11+`, with respective
-renderer values `0`, `.2`, `.4`, `.6`, `.8`, `1`. No per-workout normalization or
-fractional credit is used. Region and role totals are not additive. Zero means
-no documented sets in the selected view; evidence gaps remain unknown.
+The workload counts keep separate strength (all roles, primary, secondary,
+stabilizer), stretch-target, mobility-target, conditioning-participation and
+coarse legacy views. Each view uses distinct physical-set region counts. Fixed
+bins are `0`, `1`, `2–3`, `4–6`, `7–10`, `11+`, with respective renderer values
+`0`, `.2`, `.4`, `.6`, `.8`, `1`. No per-workout normalization or fractional
+credit is used. Region and role totals are not additive. Zero means no
+documented sets in the shown view; evidence gaps remain unknown. Unknown side
+uses the labelled combined surface without asserting either side's
+participation.
 
-Whole-workout coverage remains visible alongside the selected view, including
-partial/unknown profiles, legacy attribution, unmapped anatomy and excluded
-sets. Unknown side uses the labelled combined surface without asserting either
-side's participation. A partly mapped node is distinguished from a node with no
-supported surface. Automatic initial selection follows loaded evidence,
-including deep-only participation, until the person explicitly chooses a view.
+The body sheet was trimmed by owner decision on 2026-11-07. It shows only:
 
-Saved views default to recorded assessment; the explicitly selected current view
-uses only the resolver's matching execution and does not rewrite observations.
-Expandable details distinguish assessment status, scoped completeness,
-relationship confidence, declared human review and this app's lack of verified
-human qualification. They retain recorded/current profile and bundle provenance,
-semantic-map revision and installed display projection separately. Inference is
-labelled with its supplied rationale. Legacy pins without historical semantic
-mapping remain text-only; no historical pixels are claimed.
+- a header with the title and close;
+- a one-line mode subtitle: planned, completed or saved working sets;
+- the close-up body, at least 420 dp high, turned by horizontal drag, with
+  Reload only after an artwork failure;
+- the six-bin legend in one row;
+- the 13 region set counts, in two columns where they fit.
+
+The view follows the automatic selection from loaded evidence: strength, then
+stretch, mobility, conditioning and legacy, including deep-only participation.
+Stretch-only work therefore shows stretch targets. There is no manual view
+choice. Saved workouts show the recorded assessment, and the resolver's current
+assessment is not offered. The view chips, Front/Back/Pause, the meaning
+paragraphs, whole-workout coverage, documented anatomy and the assessment and
+display details are no longer shown.
+
+Only the display was reduced. Counts, bins, coverage, the recorded/current
+resolution and the profile, bundle, semantic-map and display-projection
+provenance are computed and retained as before. The Today card and the session
+summary open the sheet through a 48 dp workload button; the compact Today art
+opens it on tap.
 
 ## Camera pitch
 
