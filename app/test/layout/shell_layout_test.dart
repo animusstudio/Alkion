@@ -153,12 +153,13 @@ void main() {
         find.byType(HistoryScreen),
         'History $name',
       );
-      final card = find
-          .descendant(
-            of: find.byType(HistoryScreen),
-            matching: find.byType(SessionCard),
-          )
-          .first;
+      final cards = find.descendant(
+        of: find.byType(HistoryScreen),
+        matching: find.byType(SessionCard),
+      );
+      // The stacked 4-week band can push the first card past the built range.
+      await scrollIntoView(tester, find.byType(HistoryScreen), cards);
+      final card = cards.first;
       await tester.ensureVisible(card);
       await tester.tap(card, warnIfMissed: false);
       await settleReal(tester, ticks: 15);

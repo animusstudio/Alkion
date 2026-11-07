@@ -218,6 +218,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               : null,
           tokens: tokens,
         ),
+        const SizedBox(height: 8),
         Text(
           l.alkionCompatibility,
           style: WorkoutType.body(size: 12, color: tokens.faint),
@@ -408,27 +409,62 @@ class _SummaryRow extends StatelessWidget {
       (l.historySummaryPrs, '$prCount', prCount, null),
       (l.historySummaryVolume, volumeDisplay, null, volumeSemantics),
     ];
-    return Row(
-      children: [
-        for (var i = 0; i < cards.length; i++) ...[
-          if (i > 0) const SizedBox(width: 8),
-          Expanded(
-            child: _SummaryCard(
-              label: cards[i].$1,
-              value: cards[i].$2,
-              intValue: cards[i].$3,
-              semanticsLabel: cards[i].$4,
-              tokens: tokens,
+    final stacked =
+        MediaQuery.sizeOf(context).width < 360 &&
+        MediaQuery.textScalerOf(context).scale(12) > 18;
+    final sections = [
+      for (var i = 0; i < cards.length; i++)
+        _SummarySection(
+          key: ValueKey('history-summary-$i'),
+          label: cards[i].$1,
+          value: cards[i].$2,
+          intValue: cards[i].$3,
+          semanticsLabel: cards[i].$4,
+          tokens: tokens,
+        ),
+    ];
+    // A flat band like Today's stat tiles: hairlines above and below, equal
+    // sections split by 1 px rules, no boxes. It stacks (rules between) on a
+    // narrow phone at large text, where three columns no longer fit.
+    Widget rule({required bool vertical}) => vertical
+        ? ColoredBox(color: tokens.line, child: const SizedBox(width: 1))
+        : ColoredBox(color: tokens.line, child: const SizedBox(height: 1));
+    return DecoratedBox(
+      key: const ValueKey('history-summary-band'),
+      decoration: BoxDecoration(
+        border: Border.symmetric(horizontal: BorderSide(color: tokens.line)),
+      ),
+      child: stacked
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < sections.length; i++) ...[
+                  if (i > 0) rule(vertical: false),
+                  sections[i],
+                ],
+              ],
+            )
+          : IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < sections.length; i++) ...[
+                    if (i > 0) rule(vertical: true),
+                    Expanded(child: sections[i]),
+                  ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ],
     );
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({
+/// One section of the 4-week band. The value box and the label box have fixed
+/// heights (one value line, two label lines, at the current text scale), so
+/// every section is the same height whatever the locale or value length.
+class _SummarySection extends StatelessWidget {
+  const _SummarySection({
+    super.key,
     required this.label,
     required this.value,
     required this.tokens,
@@ -451,43 +487,65 @@ class _SummaryCard extends StatelessWidget {
     return _build(context, value);
   }
 
+  static double _lineHeight(BuildContext context, TextStyle style) {
+    final painter = TextPainter(
+      text: TextSpan(text: 'Ag', style: style),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
   Widget _build(BuildContext context, String value) {
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: BorderRadius.circular(AppRadius.radius),
-        border: Border.all(color: tokens.line),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              semanticsLabel: semanticsLabel,
-              maxLines: 1,
-              softWrap: false,
-              style: WorkoutType.mono(
-                size: 22,
-                weight: FontWeight.w400,
-                color: tokens.text,
+    final valueStyle = WorkoutType.mono(
+      size: 22,
+      weight: FontWeight.w400,
+      color: tokens.text,
+    );
+    final labelStyle = WorkoutType.mono(
+      size: 12,
+      color: tokens.faint,
+      letterSpacing: 0.07 * 9.5,
+    );
+    return MergeSemantics(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: _lineHeight(context, valueStyle),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value,
+                  semanticsLabel: semanticsLabel,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: valueStyle,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 6),
-          FitLabel(
-            AppLocalizations.of(context).historySummarySuffix(label),
-            maxLines: 2,
-            style: WorkoutType.mono(
-              size: 12,
-              color: tokens.faint,
-              letterSpacing: 0.07 * 9.5,
+            const SizedBox(height: 6),
+            SizedBox(
+              height: _lineHeight(context, labelStyle) * 2,
+              width: double.infinity,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: FitLabel(
+                  AppLocalizations.of(context).historySummarySuffix(label),
+                  maxLines: 2,
+                  style: labelStyle,
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

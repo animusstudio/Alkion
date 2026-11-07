@@ -4,6 +4,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/data/session_repository.dart';
 import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/transfer/transfer_service.dart';
 import 'package:alkion/ui/history_screen.dart';
 import 'package:alkion/units/unit_service.dart';
@@ -110,7 +112,7 @@ void main() {
     testWidgets('an expanded card keeps its footer actions inside it at 320dp, '
         '2.0x in Italian', (tester) async {
       await harness.open(tester);
-      setPhone(tester, width: 320, textScale: 2.0);
+      setPhone(tester, width: 320, height: 1500, textScale: 2.0);
       await tester.pumpWidget(
         harness.wrap(
           const Scaffold(body: HistoryScreen()),
@@ -141,6 +143,120 @@ void main() {
       await harness.unmount(tester);
     });
   });
+  group('HistoryScreen 4-week band', () {
+    final harness = ScreenHarness();
+    tearDown(harness.close);
+
+    final band = find.byKey(const ValueKey('history-summary-band'));
+    final sections = [
+      for (var i = 0; i < 3; i++) find.byKey(ValueKey('history-summary-$i')),
+    ];
+
+    for (final dark in [true, false]) {
+      for (final locale in ['en', 'de', 'es', 'it']) {
+        for (final width in [320.0, 412.0]) {
+          for (final scale in [1.0, 2.0]) {
+            final name =
+                '${dark ? 'dark' : 'light'} $locale ${width.toInt()}dp '
+                '${scale}x';
+            testWidgets('is a flat band of equal sections: $name', (
+              tester,
+            ) async {
+              await harness.open(tester);
+              setPhone(tester, width: width, textScale: scale);
+              final brightness = dark ? Brightness.dark : Brightness.light;
+              await tester.pumpWidget(
+                harness.wrap(
+                  Theme(
+                    data: buildTheme(brightness, accents[0]),
+                    child: const Scaffold(body: HistoryScreen()),
+                  ),
+                  locale: Locale(locale),
+                ),
+              );
+              await pumpUntilFound(tester, band);
+              await settleReal(tester, ticks: 5);
+              expectLayoutHolds(tester, 'band $name');
+
+              final rects = [for (final s in sections) tester.getRect(s)];
+              final stacked = width < 360 && scale > 1.5;
+              for (final r in rects.skip(1)) {
+                expect(
+                  r.height,
+                  closeTo(rects.first.height, 0.01),
+                  reason: name,
+                );
+                expect(r.width, closeTo(rects.first.width, 0.01), reason: name);
+              }
+              if (stacked) {
+                expect(rects[1].top, greaterThan(rects[0].bottom - 0.01));
+                expect(rects[2].top, greaterThan(rects[1].bottom - 0.01));
+              } else {
+                expect(rects[1].left, greaterThan(rects[0].right - 0.01));
+                expect(rects[2].left, greaterThan(rects[1].right - 0.01));
+                expect(rects[1].top, closeTo(rects[0].top, 0.01));
+              }
+
+              // No card: no fill, radius, shape or clip anywhere in the band,
+              // only the hairline rules (tokens.line).
+              final tokens = tester.element(band).tokens;
+              final decorations = tester.widgetList<DecoratedBox>(
+                find.descendant(of: band, matching: find.byType(DecoratedBox)),
+              );
+              for (final d in decorations) {
+                final deco = d.decoration as BoxDecoration;
+                expect(deco.borderRadius, isNull, reason: name);
+                expect(deco.color, isNull, reason: name);
+                expect(deco.boxShadow, isNull, reason: name);
+                expect(deco.shape, BoxShape.rectangle, reason: name);
+              }
+              for (final type in [ClipRRect, Material, Card, PhysicalModel]) {
+                expect(
+                  find.descendant(of: band, matching: find.byType(type)),
+                  findsNothing,
+                  reason: '$type in $name',
+                );
+              }
+              final rules = tester.widgetList<ColoredBox>(
+                find.descendant(of: band, matching: find.byType(ColoredBox)),
+              );
+              expect(rules.length, 2, reason: name);
+              for (final rule in rules) {
+                expect(rule.color, tokens.line, reason: name);
+              }
+              await harness.unmount(tester);
+            });
+          }
+        }
+      }
+    }
+
+    testWidgets('each section reads as one node: value and label', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await harness.open(tester);
+      setPhone(tester, width: 412);
+      await tester.pumpWidget(
+        harness.wrap(const Scaffold(body: HistoryScreen())),
+      );
+      await pumpUntilFound(tester, band);
+      await settleReal(tester, ticks: 5);
+      final l = lookupAppLocalizations(const Locale('en'));
+      final labels = [
+        l.historySummarySessions,
+        l.historySummaryPrs,
+        l.historySummaryVolume,
+      ];
+      for (var i = 0; i < 3; i++) {
+        final node = tester.getSemantics(sections[i]);
+        expect(node.label, contains(l.historySummarySuffix(labels[i])));
+      }
+      semantics.dispose();
+      await harness.unmount(tester);
+    });
+  });
+
   group('HistoryScreen volume states', () {
     final harness = ScreenHarness();
     tearDown(harness.close);
@@ -162,7 +278,8 @@ void main() {
           expect(result.status, ImportStatus.selected);
         },
       );
-      setPhone(tester, width: 320, textScale: 2.0);
+      // Tall enough that the stacked 4-week band leaves the first card built.
+      setPhone(tester, width: 320, height: 1500, textScale: 2.0);
       await tester.pumpWidget(
         harness.wrap(
           Scaffold(
