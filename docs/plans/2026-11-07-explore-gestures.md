@@ -172,6 +172,7 @@ ease to a stop at the zoom and pan bounds. All other T4 inertia rules apply.
   definitely smoother.
 - T5: implemented at `b7ee0c8`; host load 3.9 s to 1.4 s; catalog tests
   pass, except the 3 known failures. The A024 measurement is pending.
-- T6: in progress.
+- T6: implemented on host at `acec5f1` (two-finger pan/zoom coast; focused
+  and full suites pass except the 3 known failures). Device feel check pending.
 
 Next: device re-measure of T4, review, owner publish and the Animus pin.

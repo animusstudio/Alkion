@@ -29,6 +29,11 @@ and an awaited acknowledgement per display.
   picks are refused while it runs.
 - `ALKION_BODY_TIMING=1` on the private Dev build logs aggregate frame,
   message and stage timings only.
+- T6 (`acec5f1`, host only): a two-finger release coasts pan (focal velocity,
+  1,500 px/s cap) and zoom (log-scale rate, 2.5/s cap) with the same τ, easing
+  into 1×/3× and the pan bound; the lift leaving two-finger mode decides it and
+  the last finger never flings. Real multi-pointer tests cover coast, bounds,
+  touch-stop without selection, reduced motion, takeover, buttons and hiding.
 
 Parity of the GPU and CPU compose, in a host Chromium proof with the staged
 private meshes over 20 cases: both styles and themes, selection, ±45° tilt,

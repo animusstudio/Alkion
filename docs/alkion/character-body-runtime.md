@@ -206,7 +206,7 @@ it. Pointers outside the canvas never reach it; the page scrolls as before.
   pinch/pan state wins, applied at the frame's start. Re-bases, releases and
   taps apply it first, so nothing reads a view that lags the fingers.
 
-A one-finger orbit release coasts (zoom and pan stay direct). The recognizer
+A one-finger orbit release coasts; for two-finger inertia see below. The recognizer
 measures release velocity over the final one-finger segment only; pinches,
 cancellations and a settling finger never coast, and a finger held still
 releases at rest. The coast decays exponentially with time constant
@@ -221,6 +221,18 @@ a hidden surface or closing the explorer stop it; under reduced motion it never
 starts. The ticker is created in `initState` and disposed with the explorer.
 The explorer rebuilds only when Front/Back selection or the zoom bounds change,
 not on every orbit frame.
+
+A two-finger release coasts too (T6), with the same τ. The lift that leaves
+two-finger mode decides it, measured over that two-finger segment: the focal
+point's velocity pans (50 px/s threshold, 1,500 px/s cap) and the span's
+log-scale rate zooms (0.25/s threshold, 2.5/s cap, at most about 2.25×) about
+the release focal point. Both travels are cut so the coast eases into 1×/3×
+and into the pan bound at its final zoom, and it lands on them at rest with a
+sub-pixel last step. Deciding at that lift keeps the view moving from the frame
+the fingers stopped; the finger left settles and never flings an orbit. Its
+deliberate orbit, a re-landing finger, a new touch (which never selects) or a
+zoom button stop the coast where it has reached, as do the orbit-coast rules
+above.
 
 The zoom −/+ buttons are an overlay at the canvas's bottom-right, shown with
 ready artwork. They are siblings above the recognizer, inside an opaque
