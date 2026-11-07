@@ -343,6 +343,8 @@ export class VolumeRenderer{
   if(status!==this.gl.ALREADY_SIGNALED&&status!==this.gl.CONDITION_SATISFIED)return false;
   this.copyReadback();return this.pixelsFrame===this.drawnFrame;
  }
+ /** False when no copy can still land: nothing is queued, or the context is gone. */
+ readbackPending(){return !!this.fence&&!this.lost;}
  /** Waits for the pending copy now: diagnostics and host proofs only. */
  finishReadback(){if(this.fence&&!this.lost){this.gl.clientWaitSync(this.fence,0,0);this.copyReadback();}return this.pixelsFrame===this.drawnFrame;}
  copyReadback(){

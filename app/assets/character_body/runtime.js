@@ -6,7 +6,7 @@ import {validateDisplay,validatePick,protocolVersion,regions} from './protocol.j
 const canvas=document.getElementById('body');
 const state={ready:false,failed:false,paused:true,reduced:false,hidden:false,visible:false,yaw:0};
 let renderer=null,mesh=null,input=null,muscles=null,loadedStyle=null,loadGeneration=0,abort=null,command=-1,turn=0,retry=-1,hostHidden=false;
-let rendered=null,drawn=null,frameId=0,layout=0,pollTimer=null,polls=0;
+let rendered=null,drawn=null,frameId=0,layout=0,pollTimer=null,polls=0,staleRedraw=false;
 let frames=0,totalMs=0,maxMs=0,lastReport=0,loadMs=0,started=performance.now(),stages={},lease=0;
 const meshes=new Map();let fontReady=null,needsLoad=false,loading=false;
 // Aggregate timing only: frame intervals during continuous motion, draw stage
@@ -30,12 +30,16 @@ function report(status){
 function pollRendered(){
  pollTimer=null;if(!drawn||!renderer||!state.ready||state.hidden||!state.visible)return;
  if(renderer.pollReadback?.()??true){
-  rendered=drawn;drawn=null;polls=0;
+  rendered=drawn;drawn=null;polls=0;staleRedraw=false;
   // During continuous motion the next frame is already scheduled: its own
   // readback reports. The settled frame always reports.
   if(input?.interaction?.enabled&&loop.handle===null){lastReport=performance.now();report('ready');}
   return;
  }
+ // No copy can land for this frame (a resize retired its fence before a
+ // draw followed): stop polling and draw once more, so a pick frame is still
+ // published. One redraw per published frame; never a polling loop.
+ if(renderer.readbackPending?.()===false){drawn=null;polls=0;if(!staleRedraw){staleRedraw=true;loop.invalidate();}return;}
  // A stalled copy completes synchronously after about a second of polls.
  if(++polls>250){renderer.finishReadback();pollTimer=setTimeout(pollRendered,0);return;}
  pollTimer=setTimeout(pollRendered,polls<20?0:4);
@@ -58,7 +62,7 @@ function draw(){
  try{
   const begin=performance.now();renderer.draw(state.yaw,muscles,input.theme,'characters',input.interaction?.enabled?input.interaction.selected:null,input.view);
   rendered=null;drawn={generation:input.interaction?.generation??0,frame:++frameId,load:loadGeneration,layout};polls=0;
-  if(renderer.pollReadback?.()??true){rendered=drawn;drawn=null;}else schedulePoll();
+  if(renderer.pollReadback?.()??true){rendered=drawn;drawn=null;staleRedraw=false;}else schedulePoll();
   const end=performance.now(),ms=end-begin;if(frames===0)stages.firstFrameMs=round(end-started);frames++;totalMs+=ms;maxMs=Math.max(maxMs,ms);
   // Only consecutive frames count as intervals; an idle gap is not a frame.
   if(timing.last&&begin-timing.last<100){timing.interval[timing.at]=begin-timing.last;timing.draw[timing.at]=ms;timing.at=(timing.at+1)%ring;timing.n++;}
