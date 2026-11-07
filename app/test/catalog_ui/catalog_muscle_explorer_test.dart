@@ -1138,6 +1138,39 @@ void main() {
     },
   );
 
+  testWidgets(
+    'while the notes cover the canvas, its fallback and zoom buttons leave semantics',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpExplorer(tester);
+      await reportReady(tester);
+      Iterable<SemanticsNode> tooltip(String text) =>
+          find.semantics.byPredicate((node) => node.tooltip == text).evaluate();
+      Iterable<SemanticsNode> named(String text) =>
+          find.semantics.byLabel(text).evaluate();
+      expect(tooltip('Zoom in'), hasLength(1));
+      expect(tooltip('Zoom out'), hasLength(1));
+      final info = find.byKey(const Key('catalog-muscle-info'));
+      await tester.tap(info);
+      await tester.pumpAndSettle();
+      expect(tooltip('Zoom in'), isEmpty);
+      expect(tooltip('Zoom out'), isEmpty);
+      // Failed artwork speaks its fallback, except under the notes.
+      body(tester).onStatus!(CharacterBodyStatus.error);
+      await tester.pumpAndSettle();
+      expect(named('Artwork unavailable'), isEmpty);
+      expect(find.semantics.byLabel(RegExp('^Tap a muscle')), findsOne);
+      await tester.tap(info);
+      await tester.pumpAndSettle();
+      expect(named('Artwork unavailable'), hasLength(1));
+      body(tester).onStatus!(CharacterBodyStatus.ready);
+      await tester.pumpAndSettle();
+      expect(tooltip('Zoom in'), hasLength(1));
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   for (final (width, scale) in [(320.0, 1.0), (320.0, 2.0), (412.0, 2.0)]) {
     testWidgets(
       'at $width dp and ${scale}x text a taller canvas stacks above the strip',
@@ -1281,6 +1314,158 @@ void main() {
       expect(body(tester).selectedRegion, WorkloadMuscle.chest);
       expect(controller.yaw, 0);
       expect(controller.requests, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('a fling into either end settles the end chip at the centre', (
+    tester,
+  ) async {
+    await pumpExplorer(tester, selected: 'core');
+    final scroll = scrollOf(tester, strip);
+    await tester.fling(strip, const Offset(-600, 0), 4000);
+    await tester.pumpAndSettle();
+    expect(scroll.pixels, scroll.maxScrollExtent);
+    expect(offCentre(tester, 'unclassified').abs(), lessThan(.5));
+    await tester.fling(strip, const Offset(600, 0), 4000);
+    await tester.pumpAndSettle();
+    expect(scroll.pixels, scroll.minScrollExtent);
+    expect(offCentre(tester, 'abductors').abs(), lessThan(.5));
+    expect(chipSelected(tester, 'core'), isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'a drag held still and released without velocity settles a chip at the centre',
+    (tester) async {
+      await pumpExplorer(tester, selected: 'chest');
+      final scroll = scrollOf(tester, strip);
+      final start = scroll.pixels;
+      final gesture = await tester.startGesture(tester.getCenter(strip));
+      await gesture.moveBy(const Offset(-20, 0));
+      await gesture.moveBy(const Offset(-55, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      // Held still: the release carries no velocity.
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(scroll.pixels, isNot(start));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final centres = [
+        for (final chip in find.byType(CatalogMuscleChip).evaluate())
+          ((chip.renderObject! as RenderBox).localToGlobal(Offset.zero).dx +
+                  (chip.renderObject! as RenderBox).size.width / 2) -
+              tester.getCenter(strip).dx,
+      ];
+      expect(centres.map((c) => c.abs()).reduce(math.min), lessThan(.5));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'assistive scrolling and showing a chip on screen settle a chip at the centre',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpExplorer(tester, selected: 'chest');
+      double nearest() => [
+        for (final chip in find.byType(CatalogMuscleChip).evaluate())
+          (chip.renderObject! as RenderBox)
+                  .localToGlobal(
+                    (chip.renderObject! as RenderBox).size.center(Offset.zero),
+                  )
+                  .dx -
+              tester.getCenter(strip).dx,
+      ].map((c) => c.abs()).reduce(math.min);
+      final scroll = scrollOf(tester, strip);
+      // Focus moving to a chip off screen shows it, then the strip settles.
+      final opening = scroll.pixels;
+      final far = tester.getSemantics(muscle('unclassified'));
+      far.owner!.performAction(far.id, SemanticsAction.showOnScreen);
+      await tester.pumpAndSettle();
+      expect(scroll.pixels, greaterThan(opening));
+      expect(nearest(), lessThan(.5));
+      // The strip's own scroll actions move it by part of its width.
+      for (final action in [
+        SemanticsAction.scrollRight,
+        SemanticsAction.scrollLeft,
+      ]) {
+        // The strip is the only horizontal scroller.
+        final node = find.semantics.byAction(action).evaluate().single;
+        final before = scroll.pixels;
+        node.owner!.performAction(node.id, action);
+        await tester.pumpAndSettle();
+        expect(scroll.pixels, isNot(before), reason: '$action');
+        expect(nearest(), lessThan(.5), reason: '$action');
+      }
+      expect(chipSelected(tester, 'chest'), isTrue);
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'text size and locale changes while open measure the chips again and keep the selection centred',
+    (tester) async {
+      explorerPhone(tester);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      final controller = PendingBodyController();
+      addTearDown(controller.dispose);
+      Future<void> show(String locale, double scale) async {
+        await tester.pumpWidget(
+          discoveryApp(
+            Builder(
+              builder: (context) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: CatalogMuscleExplorer(
+                  index: state.index(locale),
+                  selected: 'hamstrings',
+                  controller: controller,
+                ),
+              ),
+            ),
+            locale: locale,
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      void expectFitted(String where) {
+        for (final text
+            in find
+                .descendant(
+                  of: find.byType(CatalogMuscleChip),
+                  matching: find.byType(RichText),
+                )
+                .evaluate()) {
+          final paragraph = text.renderObject! as RenderParagraph;
+          expect(
+            paragraph.getMaxIntrinsicWidth(double.infinity),
+            lessThanOrEqualTo(paragraph.size.width + .01),
+            reason: '$where: ${paragraph.text.toPlainText()}',
+          );
+        }
+        expect(offCentre(tester, 'hamstrings').abs(), lessThan(.5));
+      }
+
+      await show('en', 1);
+      final state0 = tester.state(find.byType(CatalogMuscleExplorer));
+      final en = tester.getSize(muscle('hamstrings'));
+      expectFitted('en');
+      await show('es', 1);
+      expect(tester.state(find.byType(CatalogMuscleExplorer)), same(state0));
+      final es = tester.getSize(muscle('hamstrings'));
+      expect(es.width, greaterThan(en.width), reason: 'Isquiotibiales');
+      expect(find.text('Isquiotibiales'), findsWidgets);
+      expectFitted('es');
+      await show('es', 1.5);
+      final larger = tester.getSize(muscle('hamstrings'));
+      expect(larger.width, greaterThan(es.width));
+      expect(larger.height, greaterThanOrEqualTo(48));
+      expectFitted('es 1.5x');
+      expect(tester.state(find.byType(CatalogMuscleExplorer)), same(state0));
+      expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },
   );

@@ -118,6 +118,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    PaintingBinding.instance.systemFonts.addListener(_systemFontsChanged);
     _selected = _groups.any((g) => g.key == widget.selected)
         ? widget.selected
         : null;
@@ -626,6 +627,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _dropInput();
     _inertia.dispose();
     WidgetsBinding.instance.removeObserver(this);
+    PaintingBinding.instance.systemFonts.removeListener(_systemFontsChanged);
     _coverAnimation?.removeStatusListener(_routeTransitionChanged);
     _entryAnimation?.removeListener(_queueViewportCheck);
     _scroll.dispose();
@@ -978,7 +980,12 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  Center(child: art(_capped(constraints.biggest))),
+                  // Hidden under the notes, the canvas, its fallback text and
+                  // the zoom buttons leave the semantics tree too.
+                  ExcludeSemantics(
+                    excluding: _showInfo,
+                    child: Center(child: art(_capped(constraints.biggest))),
+                  ),
                   // The notes cover the canvas while open; there is no page
                   // to scroll them into.
                   if (_showInfo)
@@ -1140,6 +1147,15 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     }
     _chipKey = key;
     return _chipMetrics = (widths: widths, height: math.max(48, height + 12));
+  }
+
+  // New system fonts change every label's width: measure the chips again.
+  void _systemFontsChanged() {
+    if (!mounted) return;
+    setState(() {
+      _chipKey = null;
+      _chipMetrics = null;
+    });
   }
 
   /// One horizontal strip of chips: each muscle group in the index's order
@@ -1521,6 +1537,10 @@ class CatalogMuscleChip extends StatelessWidget {
 /// to rest and springs to the chip centre nearest that point, keeping the
 /// release velocity. [targets] reads the strip's current centres, so a
 /// relayout never leaves stale stops in a kept physics object.
+///
+/// Implicit scrolling stays allowed, so focus traversal and an assistive
+/// `showOnScreen` still bring a chip into view; that jump or animation ends
+/// in a ballistic of zero velocity, which settles a chip at the centre.
 class _CentreSnapPhysics extends ScrollPhysics {
   const _CentreSnapPhysics(this.targets, {super.parent});
   final List<double> Function() targets;
@@ -1564,9 +1584,6 @@ class _CentreSnapPhysics extends ScrollPhysics {
       tolerance: tolerance,
     );
   }
-
-  @override
-  bool get allowImplicitScrolling => false;
 }
 
 /// The body canvas's only recognizer. It wins every pointer that lands on the
