@@ -205,33 +205,11 @@ Future<void> finishFilters(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> openMuscleList(WidgetTester tester) async {
-  final disclosure = find.byKey(const Key('catalog-muscle-list-link'));
-  final anyChip = find.byWidgetPredicate(
-    (widget) =>
-        widget is ChoiceChip &&
-        widget.key is ValueKey<String> &&
-        (widget.key as ValueKey<String>).value.startsWith('catalog-muscle-'),
-  );
-  if (anyChip.evaluate().isEmpty) {
-    await tester.ensureVisible(disclosure);
-    await tester.tap(disclosure);
-    await tester.pump(const Duration(milliseconds: 400));
-  }
-}
-
+/// The explorer's list is always built, beside the canvas or below it.
 Future<void> selectMuscle(WidgetTester tester, String key) async {
-  await openMuscleList(tester);
-  final chip = find.byKey(ValueKey('catalog-muscle-$key'));
-  await tester.scrollUntilVisible(
-    chip,
-    160,
-    scrollable: find.descendant(
-      of: find.byKey(const Key('catalog-muscle-explorer-scroll')),
-      matching: find.byType(Scrollable),
-    ),
-  );
-  await tester.tap(chip);
+  final row = find.byKey(ValueKey('catalog-muscle-$key'));
+  await tester.ensureVisible(row);
+  await tester.tap(row);
   await tester.pump(const Duration(milliseconds: 400));
   await tester.tap(find.byKey(const Key('catalog-muscle-show-exercises')));
   await tester.pump(const Duration(milliseconds: 400));

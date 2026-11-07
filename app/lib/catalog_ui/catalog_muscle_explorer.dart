@@ -12,6 +12,7 @@ import '../l10n/app_localizations.dart';
 import '../settings/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
+import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../ui/character_body.dart';
 import '../widgets/fit_label.dart';
@@ -61,12 +62,14 @@ class CatalogMuscleExplorer extends StatefulWidget {
 class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   String? _selected;
-  bool _listExpanded = false;
   bool _showInfo = false;
   late CharacterBodyController _controller;
-  final _listKey = GlobalKey();
   final _artKey = GlobalKey();
+  // The stacked page, which scrolls the canvas with the list beneath it.
   final _scroll = ScrollController();
+  // The list column beside the canvas, which scrolls on its own.
+  final _listScroll = ScrollController();
+  final _rowKeys = <String, GlobalKey>{};
   CharacterBodyStatus _status = CharacterBodyStatus.loading;
   Animation<double>? _coverAnimation;
   Animation<double>? _entryAnimation;
@@ -78,8 +81,9 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
 
   // Groups whose surface faces backward open on the back view; adductors and
   // every other group open on the front. The abductor field is lateral and is
-  // only a sliver at the pelvis edge from the front or back, so opening on it
-  // or choosing it from the list holds a side view instead.
+  // only a sliver at the pelvis edge from the front or back, so it holds a
+  // side view instead. Opening on a group and choosing it from the list both
+  // turn the body to that view.
   static const _posterior = {
     'back',
     'triceps',
@@ -89,10 +93,12 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   };
   static const _lateral = 'abductors';
 
-  void _openingView() {
-    if (_selected == _lateral) {
+  void _openingView() => _face(_selected);
+
+  void _face(String? group) {
+    if (group == _lateral) {
       _controller.side();
-    } else if (_posterior.contains(_selected)) {
+    } else if (_posterior.contains(group)) {
       _controller.back();
     } else {
       _controller.front();
@@ -116,6 +122,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _scroll.addListener(_scrollChanged);
     // Created here, never lazily: dispose must not create a ticker.
     _inertia = createTicker(_inertiaTick);
+    // Beside the canvas, an opening choice further down starts in view.
+    if (_selected != null) _revealRow(_selected!, animate: false);
   }
 
   @override
@@ -205,19 +213,21 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _viewportCheckQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _viewportCheckQueued = false;
-      if (!mounted || !_scroll.hasClients) return;
+      if (!mounted) return;
       final box = _artKey.currentContext?.findRenderObject();
-      final scrollBox = _scroll.position.context.storageContext
-          .findRenderObject();
-      if (box is! RenderBox ||
-          !box.hasSize ||
-          scrollBox is! RenderBox ||
-          !scrollBox.hasSize) {
-        return;
+      if (box is! RenderBox || !box.hasSize) return;
+      var viewport = Offset.zero & MediaQuery.sizeOf(context);
+      // Stacked, the canvas scrolls with the page; beside the list it holds
+      // still, and only the sheet's entrance can place it off screen.
+      if (_scroll.hasClients) {
+        final scrollBox = _scroll.position.context.storageContext
+            .findRenderObject();
+        if (scrollBox is! RenderBox || !scrollBox.hasSize) return;
+        viewport = viewport.intersect(
+          scrollBox.localToGlobal(Offset.zero) & scrollBox.size,
+        );
       }
       final rect = box.localToGlobal(Offset.zero) & box.size;
-      final viewport = (scrollBox.localToGlobal(Offset.zero) & scrollBox.size)
-          .intersect(Offset.zero & MediaQuery.sizeOf(context));
       final visible = rect.overlaps(viewport);
       if (visible != _inViewport) {
         _pickEpoch++;
@@ -228,9 +238,16 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
 
   void _select(String group, {bool fromList = false}) {
     _pickEpoch++;
+    final again = _selected == group;
     setState(() => _selected = group);
-    // A tap already shows its region; only a list choice turns to abductors.
-    if (fromList && group == _lateral) _controller.side();
+    // A tap already shows its region and keeps the view; a list choice turns
+    // to the view its group faces, and a tap brings its row into the list.
+    // Choosing the selected row again keeps the view the person turned to.
+    if (fromList) {
+      if (!again) _face(group);
+    } else {
+      _revealRow(group);
+    }
   }
 
   Future<void> _pick(Offset point, Size size) async {
@@ -611,6 +628,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _coverAnimation?.removeStatusListener(_routeTransitionChanged);
     _entryAnimation?.removeListener(_queueViewportCheck);
     _scroll.dispose();
+    _listScroll.dispose();
     _controller.removeListener(_controllerChanged);
     if (widget.controller == null) _controller.dispose();
     super.dispose();
@@ -633,6 +651,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     final configuration = (
       style,
       MediaQuery.sizeOf(context),
+      // Text size can switch between the column and stacked layouts.
+      MediaQuery.textScalerOf(context),
       Theme.of(context).brightness,
       visible,
       MediaQuery.disableAnimationsOf(context),
@@ -648,8 +668,9 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     final failed =
         _status == CharacterBodyStatus.error ||
         _status == CharacterBodyStatus.unavailable;
+    final sheetHeight = MediaQuery.sizeOf(context).height * .94;
     return SizedBox(
-      height: MediaQuery.sizeOf(context).height * .94,
+      height: sheetHeight,
       child: SafeArea(
         top: false,
         child: Column(
@@ -674,10 +695,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                         minWidth: 48,
                         minHeight: 48,
                       ),
-                      onPressed: () {
-                        _pickEpoch++;
-                        setState(() => _showInfo = !_showInfo);
-                      },
+                      onPressed: _toggleInfo,
                       icon: const AlkionIcon(AlkionGlyph.info),
                     ),
                   ),
@@ -697,289 +715,55 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
               ),
             ),
             Expanded(
-              child: SingleChildScrollView(
-                controller: _scroll,
-                key: const Key('catalog-muscle-explorer-scroll'),
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final controls = _viewControls(l, failed);
+                  final label = _selectedLabel(labels, selected);
+                  final list = _muscleList(labels, l);
+                  if (_columns(constraints)) {
+                    return _columnLayout(
+                      controls,
+                      (size) =>
+                          _art(l, style: style, visible: visible, size: size),
+                      label,
+                      list,
+                      labels,
+                      l,
+                    );
+                  }
+                  return SingleChildScrollView(
+                    controller: _scroll,
+                    key: const Key('catalog-muscle-explorer-scroll'),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _viewControl(
-                          'catalog-body-front',
-                          l.bodyViewFront,
-                          _controller.front,
-                          _controller.yaw.abs() < .01 && _controller.pitch == 0,
-                        ),
-                        _viewControl(
-                          'catalog-body-back',
-                          l.bodyViewBack,
-                          _controller.back,
-                          (_controller.yaw - math.pi).abs() < .01 &&
-                              _controller.pitch == 0,
-                        ),
-                        IconButton(
-                          key: const Key('catalog-body-reset'),
-                          tooltip: l.bodyResetView,
-                          constraints: const BoxConstraints(
-                            minWidth: 48,
-                            minHeight: 48,
+                        controls,
+                        const SizedBox(height: 8),
+                        Center(
+                          child: _art(
+                            l,
+                            style: style,
+                            visible: visible,
+                            size: failed
+                                ? Size(constraints.maxWidth - 32, 120)
+                                : _stackedArt(
+                                    constraints.maxWidth - 32,
+                                    constraints.maxHeight,
+                                    sheetHeight,
+                                  ),
                           ),
-                          onPressed: _controller.resetView,
-                          icon: const AlkionIcon(AlkionGlyph.refresh),
                         ),
-                        if (failed)
-                          TextButton(
-                            key: const Key('catalog-body-retry'),
-                            style: TextButton.styleFrom(
-                              minimumSize: const Size(48, 48),
-                            ),
-                            onPressed: _controller.retry,
-                            child: FitLabel(
-                              l.bodyRetryArtwork,
-                              style: WorkoutType.body(size: 14, color: t.text),
-                            ),
-                          ),
+                        const SizedBox(height: 12),
+                        label,
+                        if (_showInfo) const SizedBox(height: 16),
+                        ..._info(labels, l),
+                        const SizedBox(height: 16),
+                        list,
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      key: _artKey,
-                      height: failed ? 120 : 300,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          if (_surfaceSize != constraints.biggest) {
-                            _surfaceSize = constraints.biggest;
-                            _pickEpoch++;
-                          }
-                          final size = constraints.biggest;
-                          final canvas = RawGestureDetector(
-                            key: const Key('catalog-body-diagram'),
-                            behavior: HitTestBehavior.opaque,
-                            excludeFromSemantics: true,
-                            gestures: {
-                              BodyManipulationGestureRecognizer:
-                                  GestureRecognizerFactoryWithHandlers<
-                                    BodyManipulationGestureRecognizer
-                                  >(
-                                    () => BodyManipulationGestureRecognizer(
-                                      debugOwner: this,
-                                    ),
-                                    (recognizer) {
-                                      recognizer
-                                        ..onDown = _touchDown
-                                        ..onStart = _manipulationStarted
-                                        ..onOrbit = _orbit
-                                        ..onTransformStart = _transformStarted
-                                        ..onTransform = _queueTransform
-                                        ..onTap = (position) {
-                                          _applyInput();
-                                          _pick(position, size);
-                                        }
-                                        ..onFling = _fling
-                                        ..onTransformFling = _transformFling
-                                        ..onEnd = _gestureEnded;
-                                    },
-                                  ),
-                            },
-                            child: CharacterBody(
-                              style: style,
-                              scores: const {},
-                              neutral: t.text,
-                              accent: t.accentText,
-                              background: t.surface,
-                              brightness: Theme.of(context).brightness,
-                              visible: visible,
-                              reducedMotion: MediaQuery.disableAnimationsOf(
-                                context,
-                              ),
-                              compact: false,
-                              controller: _controller,
-                              pickingEnabled: true,
-                              selectedRegion: WorkloadMuscle.fromKey(_selected),
-                              onStatus: _statusChanged,
-                              fallback: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Text(
-                                    _status == CharacterBodyStatus.loading
-                                        ? l.bodyLoadingArtwork
-                                        : l.bodyArtworkUnavailable,
-                                    key: const Key('catalog-body-fallback'),
-                                    textAlign: TextAlign.center,
-                                    style: WorkoutType.body(
-                                      size: 14,
-                                      color: t.dim,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                          return Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              canvas,
-                              // Zoom acts on drawn artwork, so it appears with
-                              // it. A sibling above the canvas: its taps never
-                              // reach the canvas recognizer, and the opaque
-                              // listener keeps gaps between buttons from
-                              // picking the artwork beneath.
-                              if (_status == CharacterBodyStatus.ready)
-                                Positioned(
-                                  right: 4,
-                                  bottom: 4,
-                                  child: Listener(
-                                    key: const Key('catalog-body-zoom'),
-                                    behavior: HitTestBehavior.opaque,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        _zoomControl(
-                                          'catalog-body-zoom-out',
-                                          l.bodyZoomOut,
-                                          AlkionGlyph.minus,
-                                          _controller.zoom > 1
-                                              ? () => _zoomStep(-.5)
-                                              : null,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        _zoomControl(
-                                          'catalog-body-zoom-in',
-                                          l.bodyZoomIn,
-                                          AlkionGlyph.add,
-                                          _controller.zoom < 3
-                                              ? () => _zoomStep(.5)
-                                              : null,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Semantics(
-                      liveRegion: true,
-                      child: FitLabel(
-                        selected == null
-                            ? labels.chooseMuscle
-                            : widget.index.groupLabel(selected),
-                        maxLines: 2,
-                        textAlign: TextAlign.center,
-                        style: WorkoutType.body(size: 18, color: t.text),
-                      ),
-                    ),
-                    if (_showInfo) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        labels.modelMuscleHint,
-                        style: WorkoutType.body(size: 14, color: t.dim),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        labels.targetExplanation,
-                        style: WorkoutType.body(size: 14, color: t.dim),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        l.catalogBrowseOnlyNotice,
-                        style: WorkoutType.body(size: 13, color: t.dim),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Semantics(
-                      key: _listKey,
-                      expanded: _listExpanded,
-                      child: TextButton.icon(
-                        key: const Key('catalog-muscle-list-link'),
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(48, 48),
-                        ),
-                        onPressed: () {
-                          _pickEpoch++;
-                          setState(() => _listExpanded = !_listExpanded);
-                        },
-                        icon: AlkionIcon(
-                          _listExpanded
-                              ? AlkionGlyph.chevronUp
-                              : AlkionGlyph.chevronDown,
-                        ),
-                        label: FitLabel(
-                          labels.muscleList,
-                          style: WorkoutType.body(size: 14, color: t.text),
-                        ),
-                      ),
-                    ),
-                    if (_listExpanded) ...[
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final group in _groups)
-                            ChoiceChip(
-                              chipAnimationStyle: Motion.chip(context),
-                              key: ValueKey('catalog-muscle-${group.key}'),
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.padded,
-                              avatar: AlkionIcon(
-                                catalogGroupGlyph(group.key),
-                                color: _selected == group.key ? t.bg : t.text,
-                                size: 20,
-                              ),
-                              visualDensity: VisualDensity.standard,
-                              label: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxWidth: math.max(
-                                    48,
-                                    MediaQuery.sizeOf(context).width - 128,
-                                  ),
-                                  minHeight: 32,
-                                ),
-                                child: Center(
-                                  widthFactor: 1,
-                                  child: FitLabel(
-                                    widget.index.groupLabel(group),
-                                    maxLines: 2,
-                                    style: WorkoutType.body(
-                                      size: 14,
-                                      color: _selected == group.key
-                                          ? t.bg
-                                          : t.text,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              selected: _selected == group.key,
-                              onSelected: (_) =>
-                                  _select(group.key, fromList: true),
-                            ),
-                        ],
-                      ),
-                      TextButton(
-                        key: const Key('catalog-muscle-unclassified'),
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(48, 48),
-                        ),
-                        onPressed: () {
-                          _pickEpoch++;
-                          Navigator.pop(context, CatalogFilter.unclassified);
-                        },
-                        child: FitLabel(
-                          l.catalogUnclassified,
-                          style: WorkoutType.body(size: 14, color: t.text),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                  );
+                },
               ),
             ),
             Padding(
@@ -1013,6 +797,417 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // The canvas's share of the sheet width beside the list, and of the sheet
+  // height when the two stack.
+  static const _columnArtFlex = 55, _columnListFlex = 45;
+  static const _stackedArtShare = .55;
+
+  // Two columns from this sheet width up, while the list column still holds
+  // about nine ems of its 14 pt labels at the current text size (up to 1.3×
+  // text at 412 dp, normal text at 360 dp), and the canvas beside it still
+  // gets [_minColumnArtHeight]. Otherwise the two stack and the page scrolls:
+  // a landscape phone stacks.
+  static const _minColumnsWidth = 360.0;
+  static const _minListEms = 9.0;
+  static const _minColumnArtHeight = 300.0;
+
+  // The canvas never exceeds the old 380×300 dp canvas's area by more than
+  // about 10%, so the renderer's pick readback (about .75 px per dp² of
+  // canvas) stays near the old 85,680 px on tall phones and tablets. Stacked,
+  // it is also at most 420 dp high. The body is upright, so a capped canvas
+  // first narrows, down to [_minArtAspect] of its height, and only then
+  // shortens.
+  static const _maxArtArea = 125000.0; // dp²
+  static const _maxStackedArtHeight = 420.0;
+  static const _minArtAspect = .6;
+
+  // Stacked, a drag off the canvas must always be able to scroll the page:
+  // a canvas as wide as the page leaves this much of the page under it in
+  // view, and a narrower one leaves at least this much beside it.
+  static const _stackedScrollStrip = 64.0;
+  static const _stackedScrollMargins = 96.0;
+
+  bool _columns(BoxConstraints constraints) {
+    final width = constraints.maxWidth;
+    if (width < _minColumnsWidth) return false;
+    final scaler = MediaQuery.textScalerOf(context);
+    // The list column: the sheet less its 16 dp insets and the 12 dp gap.
+    final list =
+        (width - 44) * _columnListFlex / (_columnArtFlex + _columnListFlex);
+    if (list < scaler.scale(14) * _minListEms) return false;
+    // Beside the canvas: the 12 dp inset, one row of view controls, two 8 dp
+    // gaps and a line of the 18 pt selection label.
+    final art = constraints.maxHeight - 12 - 48 - 16 - scaler.scale(18) * 1.4;
+    return art >= _minColumnArtHeight;
+  }
+
+  /// 55% of the sheet height, at least the old 300 dp and at most 420 dp,
+  /// within the area cap. The upright body needs no more width than height:
+  /// where the page is wider (landscape, tablets), the canvas is square and
+  /// may fill the page's height, since the page scrolls beside it. Otherwise
+  /// it spans the page and leaves a strip of the page in view beneath it.
+  static Size _stackedArt(double width, double viewport, double sheet) {
+    final tall = math.min(
+      math.max(300.0, sheet * _stackedArtShare),
+      _maxStackedArtHeight,
+    );
+    if (width - tall >= _stackedScrollMargins) {
+      final side = math.max(120.0, math.min(tall, viewport));
+      return _cappedArt(side, side);
+    }
+    final height = math.max(
+      120.0,
+      math.min(tall, viewport - _stackedScrollStrip),
+    );
+    return _cappedArt(width, height);
+  }
+
+  /// The canvas within [_maxArtArea]: narrower first, then shorter.
+  static Size _cappedArt(double width, double height) {
+    if (width * height <= _maxArtArea) return Size(width, height);
+    final narrowed = math.min(
+      width,
+      math.max(_maxArtArea / height, math.sqrt(_maxArtArea * _minArtAspect)),
+    );
+    return Size(narrowed, math.min(height, _maxArtArea / narrowed));
+  }
+
+  /// Canvas beside an always-visible list that scrolls on its own: the
+  /// canvas fills the height above the pinned button and never scrolls.
+  Widget _columnLayout(
+    Widget controls,
+    Widget Function(Size size) art,
+    Widget label,
+    Widget list,
+    CatalogLabels labels,
+    AppLocalizations l,
+  ) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          flex: _columnArtFlex,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              controls,
+              const SizedBox(height: 8),
+              // Within the area cap, centred in the room above the label.
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Center(
+                    child: art(
+                      _cappedArt(constraints.maxWidth, constraints.maxHeight),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              label,
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: _columnListFlex,
+          child: SingleChildScrollView(
+            controller: _listScroll,
+            key: const Key('catalog-muscle-list-scroll'),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ..._info(labels, l),
+                if (_showInfo) const SizedBox(height: 16),
+                list,
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  void _toggleInfo() {
+    _pickEpoch++;
+    setState(() => _showInfo = !_showInfo);
+    // Beside the canvas the notes open at the top of the list column.
+    if (_showInfo && _listScroll.hasClients) {
+      final duration = Motion.of(context, Motion.base);
+      if (duration == Duration.zero) {
+        _listScroll.jumpTo(0);
+      } else {
+        _listScroll.animateTo(0, duration: duration, curve: Motion.curve);
+      }
+    }
+  }
+
+  Widget _viewControls(AppLocalizations l, bool failed) => Wrap(
+    alignment: WrapAlignment.center,
+    spacing: 4,
+    runSpacing: 4,
+    children: [
+      _viewControl(
+        'catalog-body-front',
+        l.bodyViewFront,
+        _controller.front,
+        _controller.yaw.abs() < .01 && _controller.pitch == 0,
+      ),
+      _viewControl(
+        'catalog-body-back',
+        l.bodyViewBack,
+        _controller.back,
+        (_controller.yaw - math.pi).abs() < .01 && _controller.pitch == 0,
+      ),
+      IconButton(
+        key: const Key('catalog-body-reset'),
+        tooltip: l.bodyResetView,
+        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+        onPressed: _controller.resetView,
+        icon: const AlkionIcon(AlkionGlyph.refresh),
+      ),
+      if (failed)
+        TextButton(
+          key: const Key('catalog-body-retry'),
+          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+          onPressed: _controller.retry,
+          child: FitLabel(
+            l.bodyRetryArtwork,
+            style: WorkoutType.body(size: 14, color: context.tokens.text),
+          ),
+        ),
+    ],
+  );
+
+  Widget _selectedLabel(CatalogLabels labels, CatalogBrowseGroup? selected) =>
+      Semantics(
+        liveRegion: true,
+        child: FitLabel(
+          selected == null
+              ? labels.chooseMuscle
+              : widget.index.groupLabel(selected),
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          style: WorkoutType.body(size: 18, color: context.tokens.text),
+        ),
+      );
+
+  List<Widget> _info(CatalogLabels labels, AppLocalizations l) {
+    if (!_showInfo) return const [];
+    final t = context.tokens;
+    return [
+      Text(
+        labels.modelMuscleHint,
+        style: WorkoutType.body(size: 14, color: t.dim),
+      ),
+      const SizedBox(height: 12),
+      Text(
+        labels.targetExplanation,
+        style: WorkoutType.body(size: 14, color: t.dim),
+      ),
+      const SizedBox(height: 12),
+      Text(
+        l.catalogBrowseOnlyNotice,
+        style: WorkoutType.body(size: 13, color: t.dim),
+      ),
+    ];
+  }
+
+  /// The always-visible list: one row per muscle group, in the index's
+  /// order (the browse index carries no body-area grouping), then
+  /// Unclassified, which opens its own results directly.
+  Widget _muscleList(CatalogLabels labels, AppLocalizations l) {
+    final t = context.tokens;
+    return Column(
+      key: const Key('catalog-muscle-list'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: FitLabel(
+              labels.muscleList,
+              maxLines: 2,
+              style: WorkoutType.body(
+                size: 12,
+                color: t.faint,
+                letterSpacing: .06 * 12,
+              ),
+            ),
+          ),
+        ),
+        for (final group in _groups)
+          KeyedSubtree(
+            key: _rowKeys.putIfAbsent(group.key, GlobalKey.new),
+            child: CatalogMuscleRow(
+              key: ValueKey('catalog-muscle-${group.key}'),
+              glyph: catalogGroupGlyph(group.key),
+              label: widget.index.groupLabel(group),
+              selected: _selected == group.key,
+              onTap: () => _select(group.key, fromList: true),
+            ),
+          ),
+        CatalogMuscleRow(
+          key: const Key('catalog-muscle-unclassified'),
+          glyph: catalogGroupGlyph(null),
+          label: l.catalogUnclassified,
+          selected: false,
+          onTap: () {
+            _pickEpoch++;
+            Navigator.pop(context, CatalogFilter.unclassified);
+          },
+        ),
+      ],
+    );
+  }
+
+  /// Brings a canvas-picked group's row into the list column. Stacked, the
+  /// list lies below the canvas in the same page: scrolling to it would move
+  /// the canvas away from the finger, so the label beneath the canvas shows
+  /// the choice there instead.
+  void _revealRow(String group, {bool animate = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_listScroll.hasClients) return;
+      final row = _rowKeys[group]?.currentContext;
+      final box = row?.findRenderObject();
+      final viewport = _listScroll.position.context.storageContext
+          .findRenderObject();
+      if (row == null ||
+          box is! RenderBox ||
+          !box.hasSize ||
+          viewport is! RenderBox ||
+          !viewport.hasSize) {
+        return;
+      }
+      final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
+      if (top >= 0 && top + box.size.height <= viewport.size.height) return;
+      Scrollable.ensureVisible(
+        row,
+        alignment: .5,
+        duration: animate ? Motion.of(context, Motion.base) : Duration.zero,
+        curve: Motion.curve,
+      );
+    });
+  }
+
+  // The art box keeps one global key in both layouts, so a width or text
+  // size change moves the native surface instead of recreating it.
+  Widget _art(
+    AppLocalizations l, {
+    required CharacterBodyStyle style,
+    required bool visible,
+    required Size size,
+  }) {
+    final t = context.tokens;
+    return SizedBox.fromSize(
+      key: _artKey,
+      size: size,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (_surfaceSize != constraints.biggest) {
+            _surfaceSize = constraints.biggest;
+            _pickEpoch++;
+          }
+          final size = constraints.biggest;
+          final canvas = RawGestureDetector(
+            key: const Key('catalog-body-diagram'),
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            gestures: {
+              BodyManipulationGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<
+                    BodyManipulationGestureRecognizer
+                  >(() => BodyManipulationGestureRecognizer(debugOwner: this), (
+                    recognizer,
+                  ) {
+                    recognizer
+                      ..onDown = _touchDown
+                      ..onStart = _manipulationStarted
+                      ..onOrbit = _orbit
+                      ..onTransformStart = _transformStarted
+                      ..onTransform = _queueTransform
+                      ..onTap = (position) {
+                        _applyInput();
+                        _pick(position, size);
+                      }
+                      ..onFling = _fling
+                      ..onTransformFling = _transformFling
+                      ..onEnd = _gestureEnded;
+                  }),
+            },
+            child: CharacterBody(
+              style: style,
+              scores: const {},
+              neutral: t.text,
+              accent: t.accentText,
+              background: t.surface,
+              brightness: Theme.of(context).brightness,
+              visible: visible,
+              reducedMotion: MediaQuery.disableAnimationsOf(context),
+              compact: false,
+              controller: _controller,
+              pickingEnabled: true,
+              selectedRegion: WorkloadMuscle.fromKey(_selected),
+              onStatus: _statusChanged,
+              fallback: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    _status == CharacterBodyStatus.loading
+                        ? l.bodyLoadingArtwork
+                        : l.bodyArtworkUnavailable,
+                    key: const Key('catalog-body-fallback'),
+                    textAlign: TextAlign.center,
+                    style: WorkoutType.body(size: 14, color: t.dim),
+                  ),
+                ),
+              ),
+            ),
+          );
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              canvas,
+              // Zoom acts on drawn artwork, so it appears with it. A sibling
+              // above the canvas: its taps never reach the canvas recognizer,
+              // and the opaque listener keeps gaps between buttons from
+              // picking the artwork beneath.
+              if (_status == CharacterBodyStatus.ready)
+                Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: Listener(
+                    key: const Key('catalog-body-zoom'),
+                    behavior: HitTestBehavior.opaque,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _zoomControl(
+                          'catalog-body-zoom-out',
+                          l.bodyZoomOut,
+                          AlkionGlyph.minus,
+                          _controller.zoom > 1 ? () => _zoomStep(-.5) : null,
+                        ),
+                        const SizedBox(width: 4),
+                        _zoomControl(
+                          'catalog-body-zoom-in',
+                          l.bodyZoomIn,
+                          AlkionGlyph.add,
+                          _controller.zoom < 3 ? () => _zoomStep(.5) : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1055,7 +1250,12 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     selected: selected,
     child: TextButton(
       key: ValueKey(key),
-      style: TextButton.styleFrom(minimumSize: const Size(64, 48)),
+      // Compact, so Front, Back and Reset share one row above a canvas
+      // column about 200 dp wide.
+      style: TextButton.styleFrom(
+        minimumSize: const Size(56, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
       onPressed: action,
       child: FitLabel(
         label,
@@ -1063,6 +1263,80 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       ),
     ),
   );
+}
+
+/// One muscle group in the explorer's list: its glyph and label in a 48 dp
+/// target. The selected row carries the accent mark, glyph and label on a
+/// raised fill, and a selected semantics state.
+class CatalogMuscleRow extends StatelessWidget {
+  const CatalogMuscleRow({
+    super.key,
+    required this.glyph,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final AlkionGlyph glyph;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final duration = Motion.of(context, Motion.fast);
+    final color = selected ? t.accentText : t.text;
+    return Semantics(
+      container: true,
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected ? t.surface3 : Colors.transparent,
+        animationDuration: duration,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 4, 8, 4),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: duration,
+                    curve: Motion.curve,
+                    width: 3,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: selected ? t.accent : Colors.transparent,
+                      borderRadius: BorderRadius.circular(1.5),
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  ExcludeSemantics(
+                    child: AlkionIcon(glyph, size: 20, color: color),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FitLabel(
+                      label,
+                      maxLines: 2,
+                      style: WorkoutType.body(
+                        size: 14,
+                        weight: selected ? FontWeight.w500 : FontWeight.w400,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// The body canvas's only recognizer. It wins every pointer that lands on the

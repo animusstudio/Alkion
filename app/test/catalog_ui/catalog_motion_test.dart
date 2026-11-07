@@ -185,14 +185,14 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 60));
     await captureCatalog(tester, 'body-turn-60ms');
-    await tester.tap(find.byKey(const Key('catalog-muscle-list-link')));
-    await tester.pump();
     await tester.ensureVisible(find.byKey(const Key('catalog-muscle-triceps')));
     await tester.tap(find.byKey(const Key('catalog-muscle-triceps')));
     await tester.pump();
     expect(
       tester
-          .widget<ChoiceChip>(find.byKey(const Key('catalog-muscle-triceps')))
+          .widget<CatalogMuscleRow>(
+            find.byKey(const Key('catalog-muscle-triceps')),
+          )
           .selected,
       isTrue,
     );

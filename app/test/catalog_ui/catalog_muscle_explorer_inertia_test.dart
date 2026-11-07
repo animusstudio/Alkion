@@ -221,8 +221,6 @@ void main() {
     tester,
   ) async {
     final controller = await pumpExplorer(tester);
-    await openList(tester);
-    await revealArtwork(tester);
     await flick(tester, const Offset(10, 0));
     await tester.pump(const Duration(milliseconds: 60));
     await tester.ensureVisible(muscle('abductors'));
@@ -363,7 +361,9 @@ void main() {
   testWidgets(
     'a two-finger pan release coasts, then eases into the pan bound',
     (tester) async {
-      final controller = await pumpExplorer(tester);
+      // The stacked canvas (288 dp wide): the 3× flick stays inside its pan
+      // bound, and the 1.5× bound leaves room to ease beyond the direct pan.
+      final controller = await pumpExplorer(tester, width: 320);
       final width = tester.getSize(diagram).width;
       controller.setViewport(3, Offset.zero);
       await pinch(tester, step: const Offset(6, 0)); // 600 px/s
