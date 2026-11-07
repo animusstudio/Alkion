@@ -16,58 +16,138 @@ const kAlkionForegroundInk = Rect.fromLTRB(
   737 / 1024,
 );
 
-/// The side the Android 12+ launch splash draws the 108 dp foreground layer
-/// at. Over a light window it shows the whole adaptive icon at 240 dp (its
-/// black background in a 160 dp circle); over a window as dark as that
-/// background it draws the sparse foreground alone, enlarged 192/160 to
-/// 288 dp. Either way it is centred in the full window.
-double alkionSplashLayer(Brightness brightness) =>
-    brightness == Brightness.dark ? 288 : 240;
+/// What the Android 12+ launch splash draws for one system theme. The app
+/// sets no `windowSplashScreen*` attributes, so the system uses the launch
+/// theme's window background and the adaptive launcher icon:
+/// - `LaunchTheme` (values/styles.xml) extends `Theme.Light.NoTitleBar`, whose
+///   `colorBackground` is `@android:color/background_light`, #FFFFFF;
+///   values-night/styles.xml extends `Theme.Black.NoTitleBar`, whose
+///   `colorBackground` is `@android:color/background_dark`, #000000.
+/// - The icon background is `ic_launcher_background`, #000000 (colors.xml).
+///   Over the light window it differs, so the whole icon is drawn: the 108 dp
+///   layer at 240 dp, the background masked to a 160 dp disc. Over the black
+///   window it matches, so the sparse foreground is drawn alone, enlarged
+///   192/160 to 288 dp.
+/// The arm keeps its own near-white colour (#F0F0F5) in both. Everything is
+/// centred in the full window.
+@immutable
+class AlkionSplash {
+  const AlkionSplash._({
+    required this.background,
+    required this.layer,
+    required this.disc,
+    required this.bandInk,
+    required this.bandHighlight,
+  });
 
-/// The launcher arm where and as large as the launch splash draws it: centred
-/// in the whole window (no safe-area offset) at [alkionSplashLayer], in
-/// theme ink. Decorative; callers speak their own status.
+  static const light = AlkionSplash._(
+    background: Color(0xFFFFFFFF),
+    layer: 240,
+    disc: 160,
+    // Light-theme dim and text ink, legible on white.
+    bandInk: Color(0xFF535863),
+    bandHighlight: Color(0xFF111217),
+  );
+
+  static const dark = AlkionSplash._(
+    background: Color(0xFF000000),
+    layer: 288,
+    disc: null,
+    // Dark-theme dim and text ink, legible on black.
+    bandInk: Color(0xFFA7A7B3),
+    bandHighlight: Color(0xFFF0F0F5),
+  );
+
+  /// The icon background colour behind the arm when [disc] is drawn.
+  static const discColor = Color(0xFF000000);
+
+  /// The splash for the system theme ([MediaQuery.platformBrightnessOf]),
+  /// which the native splash follows whatever the app's own theme is.
+  static AlkionSplash of(BuildContext context) =>
+      MediaQuery.platformBrightnessOf(context) == Brightness.dark
+      ? dark
+      : light;
+
+  /// The window colour behind everything.
+  final Color background;
+
+  /// Side of the 108 dp foreground layer.
+  final double layer;
+
+  /// Diameter of the black icon-background disc, or null when none is drawn.
+  final double? disc;
+
+  /// Glyph colours for a loading band drawn on [background].
+  final Color bandInk;
+  final Color bandHighlight;
+}
+
+/// The launcher arm exactly as the launch splash draws it for the system
+/// theme ([AlkionSplash.of]): on its window colour, centred in the whole
+/// window (no safe-area offset), at the splash layer size, over the black
+/// disc under a light system theme, in the arm's own colour. Decorative;
+/// callers speak their own status.
 class AlkionSplashMark extends StatelessWidget {
   const AlkionSplashMark({super.key, this.below});
 
-  /// Placed under the arm's ink, centred and as wide as it, inside the layer.
+  /// Placed centred and as wide as the arm's ink, [gap] under the arm or
+  /// under the disc when one is drawn, inside the layer.
   final Widget? below;
 
-  /// Gap between the arm's ink and [below].
+  /// Gap between the arm (or disc) and [below].
   static const gap = 24.0;
+
+  /// Top of [below] within the layer.
+  static double belowTop(AlkionSplash splash) => splash.disc == null
+      ? splash.layer * kAlkionForegroundInk.bottom + gap
+      : (splash.layer + splash.disc!) / 2 + gap;
 
   @override
   Widget build(BuildContext context) {
-    final layer = alkionSplashLayer(Theme.of(context).brightness);
+    final splash = AlkionSplash.of(context);
+    final layer = splash.layer;
     final ink = kAlkionForegroundInk;
-    return Center(
-      child: SizedBox.square(
-        dimension: layer,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned.fill(
-              child: ExcludeSemantics(
+    return ColoredBox(
+      key: const Key('alkion-splash-background'),
+      color: splash.background,
+      child: Center(
+        child: SizedBox.square(
+          dimension: layer,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              if (splash.disc != null)
+                Center(
+                  child: SizedBox.square(
+                    key: const Key('alkion-splash-disc'),
+                    dimension: splash.disc,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AlkionSplash.discColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned.fill(
                 child: Image.asset(
                   kAlkionForegroundAsset,
                   key: const Key('alkion-splash-mark'),
                   width: layer,
                   height: layer,
-                  color: context.tokens.text,
-                  colorBlendMode: BlendMode.srcIn,
                   excludeFromSemantics: true,
                   gaplessPlayback: true,
                 ),
               ),
-            ),
-            if (below != null)
-              Positioned(
-                left: layer * ink.left,
-                width: layer * ink.width,
-                top: layer * ink.bottom + gap,
-                child: below!,
-              ),
-          ],
+              if (below != null)
+                Positioned(
+                  left: layer * ink.left,
+                  width: layer * ink.width,
+                  top: belowTop(splash),
+                  child: below!,
+                ),
+            ],
+          ),
         ),
       ),
     );

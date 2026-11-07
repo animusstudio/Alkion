@@ -471,11 +471,7 @@ Future<void> _launchAlkionRuntime(
         // so the native splash hands over to the same mark without a gap.
         if (identical(present, runApp)) holdFirstFrameForStartupMark();
         present(
-          CatalogLoadingApp(
-            brightness: settings.brightness,
-            accent: settings.accent,
-            locale: settings.locale,
-          ),
+          CatalogLoadingApp(accent: settings.accent, locale: settings.locale),
         );
       },
       connectionFactory: connection == null ? null : (_, _) => connection,

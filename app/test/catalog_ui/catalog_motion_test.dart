@@ -209,10 +209,7 @@ void main() {
       await tester.pumpWidget(
         RepaintBoundary(
           key: const Key('catalog-capture'),
-          child: const CatalogLoadingApp(
-            brightness: Brightness.dark,
-            accent: Colors.orange,
-          ),
+          child: const CatalogLoadingApp(accent: Colors.orange),
         ),
       );
       await tester.pump();
@@ -379,19 +376,17 @@ void main() {
   );
 
   testWidgets(
-    'reduced load handoff is static and retains loading theme/locale',
+    'reduced load handoff is static, in the system theme and stored locale',
     (tester) async {
       tester.platformDispatcher.accessibilityFeaturesTestValue =
           FakeAccessibilityFeatures.allOn;
       addTearDown(
         tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
       );
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       await tester.pumpWidget(
-        const CatalogLoadingApp(
-          brightness: Brightness.light,
-          accent: Colors.orange,
-          locale: Locale('it'),
-        ),
+        const CatalogLoadingApp(accent: Colors.orange, locale: Locale('it')),
       );
       final context = tester.element(find.byType(CatalogStartupMark));
       expect(Theme.of(context).brightness, Brightness.light);
