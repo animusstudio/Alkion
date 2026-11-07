@@ -378,7 +378,7 @@ void main() {
           'canonical_sha256': catalogHash(catalogCanonicalJson(f.scopes)),
         },
       };
-      var missingScopes = false;
+      var missingScopes = false, tamperMuscle = false;
       Future<CatalogDevelopmentInput> load() => loadDevelopmentCatalog(
         enabled: true,
         isAndroid: true,
@@ -393,13 +393,23 @@ void main() {
             return utf8.encode(jsonEncode(manifest));
           }
           if (path.endsWith('catalog.dev.json')) return catalogBytes;
-          if (path.endsWith('muscles.dev.json')) return f.bundleBytes;
+          if (path.endsWith('muscles.dev.json')) {
+            // Trailing whitespace keeps valid UTF-8 JSON with the same
+            // content: only the raw-byte source digest can reject it.
+            return tamperMuscle ? [...f.bundleBytes, 0x20] : f.bundleBytes;
+          }
           if (path.endsWith('muscle-scopes.dev.json') && !missingScopes) {
             return f.scopeBytes;
           }
           throw const FormatException('Synthetic asset absent');
         },
       );
+      expect((await load()).bundle!.schemaVersion, 2);
+      // The digest check runs in the loader's background isolate; its
+      // rejection still reaches the caller as unavailable.
+      tamperMuscle = true;
+      expect((await load()).unavailable, isTrue);
+      tamperMuscle = false;
       expect((await load()).bundle!.schemaVersion, 2);
       missingScopes = true;
       expect((await load()).unavailable, isTrue);
