@@ -250,7 +250,8 @@ internal class CharacterBodyView(
                     }
                 }
                 // Only aggregate renderer timings; no workout or source payload in logs.
-                val metrics = listOf("frames", "totalMs", "maxMs", "loadMs", "manifestMs", "binaryMs", "maskMs", "hashMs", "prepareMs", "fontMs", "rendererMs", "firstFrameMs", "cacheHit").associateWith {
+                val metrics = listOf("frames", "totalMs", "maxMs", "loadMs", "manifestMs", "binaryMs", "maskMs", "hashMs", "prepareMs", "fontMs", "rendererMs", "firstFrameMs", "cacheHit",
+                    "tFrames", "tMsgs", "iP50", "iP90", "iMax", "dP50", "dP90", "glMs", "readMs", "composeMs").associateWith {
                     event.optDouble(it, 0.0).takeIf { value -> value.isFinite() && value >= 0 } ?: 0.0
                 }
                 main.post {
@@ -260,7 +261,8 @@ internal class CharacterBodyView(
                             rendered = token
                         } else if (status != "ready") invalidatePick()
                         channel.invokeMethod("status", safe)
-                        if (BuildConfig.DEBUG) Log.i("AlkionBody", "view=$viewId lease=$lease $status $metrics")
+                        // Debug, or the explicit private Dev timing build (BODY_TIMING).
+                        if (BuildConfig.DEBUG || BuildConfig.BODY_TIMING) Log.i("AlkionBody", "view=$viewId lease=$lease $status $metrics")
                     }
                 }
             }

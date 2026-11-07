@@ -187,8 +187,9 @@ export class VolumeRenderer{
   if(this.lost)throw new Error('Graphics context lost');if(!this.resize())return;
   this.buildAtlas(muscles,theme,selected);const gl=this.gl;gl.useProgram(this.program);gl.uniform1f(this.yawLocation,yaw);
   const orbit=orbitFrame(this.mesh,view.pitch??0);gl.uniform2f(this.pitchLocation,orbit.cos,orbit.sin);gl.uniform1f(this.centerLocation,orbit.centerY);gl.uniform1f(this.depthLocation,orbit.depthRange);const aspect=this.canvas.width/this.canvas.height;gl.uniform1f(this.aspectLocation,aspect);gl.uniform1f(this.fitLocation,(orbit.extent===this.mesh.halfHeight?bodyFit(this.mesh,aspect):Math.min(.96/orbit.extent,.96*aspect/this.mesh.radius))*view.zoom);gl.uniform2f(this.panLocation,view.x*2,-view.y*2);
-  gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.drawElements(gl.TRIANGLES,this.mesh.indices.length,gl.UNSIGNED_INT,0);
-  gl.readPixels(0,0,this.surface.width,this.surface.height,gl.RGBA,gl.UNSIGNED_BYTE,this.pixels);
+  const t0=performance.now();gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.drawElements(gl.TRIANGLES,this.mesh.indices.length,gl.UNSIGNED_INT,0);
+  const t1=performance.now();gl.readPixels(0,0,this.surface.width,this.surface.height,gl.RGBA,gl.UNSIGNED_BYTE,this.pixels);
+  const t2=performance.now();this.stageGl=t1-t0;this.stageRead=t2-t1;this.stageCompose=0;
   this.pickWidth=this.canvas.clientWidth;this.pickHeight=this.canvas.clientHeight;
   if(mode!=='characters'){this.drawDiagnostic(mode,theme);return;}
   const ctx=this.ctx,pixels=this.pixels,stride=this.surface.width;ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
@@ -203,7 +204,7 @@ export class VolumeRenderer{
    count++;histogram[glyph]=(histogram[glyph]||0)+1;
    signature=Math.imul(signature^cell.at^cell.shade^glyph.charCodeAt(0)^phase,16777619)>>>0;
   }
-  ctx.globalAlpha=1;this.drawCount++;this.glyphCount=count;this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.pitch=String(view.pitch??0);this.canvas.dataset.surfaceProjection=surfaceProjectionRevision;if(this.diagnostics){const regionPixels={};for(let at=0;at<this.pixels.length;at+=4)if(this.pixels[at+3]){const id=surfaceRegions[this.pixels[at+1]];if(id)regionPixels[id]=(regionPixels[id]||0)+1;}this.canvas.dataset.regionPixels=JSON.stringify(regionPixels);}
+  ctx.globalAlpha=1;this.stageCompose=performance.now()-t2;this.drawCount++;this.glyphCount=count;this.canvas.dataset.glyphCount=String(count);this.canvas.dataset.materialSignature=String(signature);this.canvas.dataset.glyphHistogram=JSON.stringify(histogram);this.canvas.dataset.yaw=String(yaw);this.canvas.dataset.pitch=String(view.pitch??0);this.canvas.dataset.surfaceProjection=surfaceProjectionRevision;if(this.diagnostics){const regionPixels={};for(let at=0;at<this.pixels.length;at+=4)if(this.pixels[at+3]){const id=surfaceRegions[this.pixels[at+1]];if(id)regionPixels[id]=(regionPixels[id]||0)+1;}this.canvas.dataset.regionPixels=JSON.stringify(regionPixels);}
  }
  // Normalized native coordinates address the retained, depth-tested surface,
  // not a nearby glyph/anchor. WebGL readback rows run bottom to top.

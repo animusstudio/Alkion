@@ -9,8 +9,20 @@ let renderer=null,mesh=null,input=null,muscles=null,loadedStyle=null,loadGenerat
 let rendered=null,frameId=0,layout=0;
 let frames=0,totalMs=0,maxMs=0,lastReport=0,loadMs=0,started=performance.now(),stages={},lease=0;
 const meshes=new Map();let fontReady=null,needsLoad=false,loading=false;
+// Aggregate timing only: frame intervals during continuous motion, draw stage
+// times and message counts. Fixed rings, summarized at most once per second;
+// the native host logs them only in debug or an explicit timing build.
+const ring=256,timing={interval:new Float32Array(ring),draw:new Float32Array(ring),scratch:new Float32Array(ring),n:0,at:0,last:0,msgs:0,gl:0,read:0,compose:0,frames:0,summary:{},summarized:0};
+const round=value=>Math.round(value*100)/100;
+function percentile(values,count,p){const s=timing.scratch.subarray(0,count);s.set(values.subarray(0,count));s.sort();return round(s[Math.min(count-1,Math.floor(p*count))]);}
+function summarize(now){
+ if(now-timing.summarized<1000||!timing.n)return;timing.summarized=now;const n=Math.min(timing.n,ring),f=Math.max(1,timing.frames),out=timing.summary;
+ out.tFrames=timing.frames;out.tMsgs=timing.msgs;out.iP50=percentile(timing.interval,n,.5);out.iP90=percentile(timing.interval,n,.9);out.iMax=percentile(timing.interval,n,1);
+ out.dP50=percentile(timing.draw,n,.5);out.dP90=percentile(timing.draw,n,.9);out.glMs=round(timing.gl/f);out.readMs=round(timing.read/f);out.composeMs=round(timing.compose/f);
+ timing.n=0;timing.at=0;timing.frames=0;timing.msgs=0;timing.gl=0;timing.read=0;timing.compose=0;
+}
 function report(status){
- window.AlkionNative?.postMessage(JSON.stringify({version:protocolVersion,status,yaw:state.yaw,command,turn,revision:input?.revision??0,frames,totalMs,maxMs,loadMs,lease,...stages,...(input?.interaction?.enabled&&rendered?rendered:{})}));
+ window.AlkionNative?.postMessage(JSON.stringify({version:protocolVersion,status,yaw:state.yaw,command,turn,revision:input?.revision??0,frames,totalMs:round(totalMs),maxMs:round(maxMs),loadMs:round(loadMs),lease,...stages,...timing.summary,...(input?.interaction?.enabled&&rendered?rendered:{})}));
 }
 function fail(status){rendered=null;state.ready=false;state.failed=true;loop.stop();renderer?.dispose();renderer=null;mesh=null;canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);report(status);}
 function draw(){
@@ -18,7 +30,10 @@ function draw(){
  try{
   const begin=performance.now();renderer.draw(state.yaw,muscles,input.theme,'characters',input.interaction?.enabled?input.interaction.selected:null,input.view);
   rendered={generation:input.interaction?.generation??0,frame:++frameId,load:loadGeneration,layout};
-  const ms=performance.now()-begin;if(frames===0)stages.firstFrameMs=performance.now()-started;frames++;totalMs+=ms;maxMs=Math.max(maxMs,ms);
+  const end=performance.now(),ms=end-begin;if(frames===0)stages.firstFrameMs=round(end-started);frames++;totalMs+=ms;maxMs=Math.max(maxMs,ms);
+  // Only consecutive frames count as intervals; an idle gap is not a frame.
+  if(timing.last&&begin-timing.last<100){timing.interval[timing.at]=begin-timing.last;timing.draw[timing.at]=ms;timing.at=(timing.at+1)%ring;timing.n++;}
+  timing.last=begin;timing.frames++;timing.gl+=renderer.stageGl||0;timing.read+=renderer.stageRead||0;timing.compose+=renderer.stageCompose||0;summarize(end);
   if(input.interaction?.enabled||frames===1||performance.now()-lastReport>1000){lastReport=performance.now();report('ready');}
  }catch{fail('error');}
 }
@@ -46,6 +61,7 @@ async function load(){
 
 window.AlkionBody={
  update(value){
+  timing.msgs++;
   try{
    const next=validateDisplay(value),previous=input;input=next;
    if(JSON.stringify(previous)!==JSON.stringify(next))rendered=null;

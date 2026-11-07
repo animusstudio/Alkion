@@ -252,6 +252,10 @@ android {
         manifestPlaceholders["oidcRedirectScheme"] = "dev.animusstudio.alkion"
         manifestPlaceholders["alkionAnimusEnabled"] = animusEnabled.toString()
         buildConfigField("boolean", "PRIVATE_CATALOG_DEV", privateCatalogDev.toString())
+        // Aggregate body timing log (stage times, frame and message counts
+        // only): honored only for the private Dev build, off by default.
+        buildConfigField("boolean", "BODY_TIMING", (privateCatalogDev &&
+            providers.environmentVariable("ALKION_BODY_TIMING").orNull == "1").toString())
         manifestPlaceholders["alkionNetworkSecurityConfig"] = when {
             animusPrivateHttp -> "@xml/animus_private_http_network_security_config"
             animusLoopbackHttp -> "@xml/animus_loopback_network_security_config"

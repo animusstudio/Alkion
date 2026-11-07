@@ -25,6 +25,9 @@ const native=readFileSync(new URL('../android/app/src/main/kotlin/dev/animusstud
 const nativeKeys=[...native.match(/val muscles = setOf\(([^)]+)\)/)[1].matchAll(/"([a-z]+)"/g)].map(m=>m[1]);
 assert.deepEqual(nativeKeys,regions);assert.match(native,/map\["version"\] != BodyPickGuard\.VERSION/);assert.ok(native.includes('BodyPickGuard.view(view)'));
 assert.ok(native.includes('"regions.js"'));assert.ok(!/"version" to [23]\b|"version"\) != [23]\b/.test(native));
+assert.ok(native.includes('if (BuildConfig.DEBUG || BuildConfig.BODY_TIMING) Log.i(')&&!/[^|] Log\.i\("AlkionBody"/.test(native.replace('if (BuildConfig.DEBUG || BuildConfig.BODY_TIMING) Log.i("AlkionBody"','')),'Body timing logs only in debug or the explicit timing build');
+const gradle=readFileSync(new URL('../android/app/build.gradle.kts',import.meta.url),'utf8');
+assert.match(gradle,/buildConfigField\("boolean", "BODY_TIMING", \(privateCatalogDev &&\s+providers\.environmentVariable\("ALKION_BODY_TIMING"\)\.orNull == "1"\)\.toString\(\)\)/);
 const guard=readFileSync(new URL('../android/app/src/main/java/dev/animusstudio/alkion/BodyPickGuard.java',import.meta.url),'utf8');
 assert.deepEqual([...guard.match(/REGIONS = Set\.of\(([^)]+)\)/)[1].matchAll(/"([a-z]+)"/g)].map(m=>m[1]).sort(),[...regions].sort());
 assert.ok(guard.includes('static final int VERSION = 5;')&&guard.includes('Integer.valueOf(VERSION)')&&guard.includes('MAX_PITCH = Math.PI / 4')&&guard.includes('Set.of("zoom", "x", "y", "pitch")'));
@@ -154,6 +157,11 @@ assert.equal(events.at(-1).lease,1);assert.equal(events.at(-1).cacheHit,1);
 window.AlkionBody.hostPaused(true);const hiddenBaseline=loadCount;update({style:'male',retry:3});await flush();assert.equal(loadCount,hiddenBaseline,'No hidden model preparation');
 window.AlkionBody.hostPaused(false);await flush();frame();assert.equal(loadCount,hiddenBaseline+1);
 update({paused:true});resized();assert.equal(raf.size,1);window.AlkionBody.dispose();assert.equal(raf.size,0);baseline=draws;frame();assert.equal(draws,baseline);assert.ok(disposals>=2);
+// Native drops a status over 1,024 characters: every report must fit, with
+// the aggregate timing summary (numbers only, rounded) included.
+assert.ok(events.some(event=>Number.isFinite(event.iP50)&&Number.isFinite(event.tMsgs)),'Timing summary reported');
+for(const event of events)assert.ok(JSON.stringify(event).length<900,`Status report too long: ${JSON.stringify(event).length}`);
+for(const event of events)for(const key of ['tFrames','tMsgs','iP50','iP90','iMax','dP50','dP90','glMs','readMs','composeMs'])if(key in event)assert.ok(Number.isFinite(event[key])&&event[key]>=0,key);
 console.log('PASS: protocol v5, exact style dispatch, one latest draw/frame, no identical paused redraws, cumulative drag continuity, lifecycle/reduced motion/retry/disposal');
 
 // Exact retained-pixel addressing (WebGL bottom-up), including neutral and
