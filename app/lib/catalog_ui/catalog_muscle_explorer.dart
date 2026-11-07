@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
@@ -12,7 +13,6 @@ import '../l10n/app_localizations.dart';
 import '../settings/settings_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
-import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../ui/character_body.dart';
 import '../widgets/fit_label.dart';
@@ -40,7 +40,7 @@ Future<String?> showCatalogMuscleExplorer(
 
 /// Native catalog navigation over the approved body artwork. Every installed
 /// display region selects and highlights its matching muscle group; all
-/// catalog groups also have a list equivalent.
+/// catalog groups also have a chip in the strip beneath the canvas.
 class CatalogMuscleExplorer extends StatefulWidget {
   const CatalogMuscleExplorer({
     super.key,
@@ -65,11 +65,17 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   bool _showInfo = false;
   late CharacterBodyController _controller;
   final _artKey = GlobalKey();
-  // The stacked page, which scrolls the canvas with the list beneath it.
+  // The strip keeps its scroll position across the two layouts too.
+  final _stripKey = GlobalKey();
+  // The stacked page, which scrolls the canvas with the strip beneath it.
   final _scroll = ScrollController();
-  // The list column beside the canvas, which scrolls on its own.
-  final _listScroll = ScrollController();
-  final _rowKeys = <String, GlobalKey>{};
+  // The chip strip, which scrolls on its own and snaps a chip to its centre.
+  final _strip = ScrollController();
+  // The strip's scroll offset that centres each chip, in chip order.
+  List<double> _chipTargets = const [];
+  double? _stripWidth;
+  (TextScaler, Locale?, TextStyle, List<String>)? _chipKey;
+  ({List<double> widths, double height})? _chipMetrics;
   CharacterBodyStatus _status = CharacterBodyStatus.loading;
   Animation<double>? _coverAnimation;
   Animation<double>? _entryAnimation;
@@ -82,8 +88,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   // Groups whose surface faces backward open on the back view; adductors and
   // every other group open on the front. The abductor field is lateral and is
   // only a sliver at the pelvis edge from the front or back, so it holds a
-  // side view instead. Opening on a group and choosing it from the list both
-  // turn the body to that view.
+  // side view instead. Opening on a group and choosing its chip both turn
+  // the body to that view.
   static const _posterior = {
     'back',
     'triceps',
@@ -122,8 +128,6 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _scroll.addListener(_scrollChanged);
     // Created here, never lazily: dispose must not create a ticker.
     _inertia = createTicker(_inertiaTick);
-    // Beside the canvas, an opening choice further down starts in view.
-    if (_selected != null) _revealRow(_selected!, animate: false);
   }
 
   @override
@@ -217,8 +221,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       final box = _artKey.currentContext?.findRenderObject();
       if (box is! RenderBox || !box.hasSize) return;
       var viewport = Offset.zero & MediaQuery.sizeOf(context);
-      // Stacked, the canvas scrolls with the page; beside the list it holds
-      // still, and only the sheet's entrance can place it off screen.
+      // Stacked, the canvas scrolls with the page; in the full layout it
+      // holds still, and only the sheet's entrance can place it off screen.
       if (_scroll.hasClients) {
         final scrollBox = _scroll.position.context.storageContext
             .findRenderObject();
@@ -236,18 +240,15 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     });
   }
 
-  void _select(String group, {bool fromList = false}) {
+  void _select(String group, {bool fromChip = false}) {
     _pickEpoch++;
     final again = _selected == group;
     setState(() => _selected = group);
-    // A tap already shows its region and keeps the view; a list choice turns
-    // to the view its group faces, and a tap brings its row into the list.
-    // Choosing the selected row again keeps the view the person turned to.
-    if (fromList) {
-      if (!again) _face(group);
-    } else {
-      _revealRow(group);
-    }
+    // A tap already shows its region and keeps the view; a chip choice turns
+    // to the view its group faces. Choosing the selected chip again keeps the
+    // view the person turned to. Either way its chip comes to the centre.
+    if (fromChip && !again) _face(group);
+    _centreChip(group);
   }
 
   Future<void> _pick(Offset point, Size size) async {
@@ -628,7 +629,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     _coverAnimation?.removeStatusListener(_routeTransitionChanged);
     _entryAnimation?.removeListener(_queueViewportCheck);
     _scroll.dispose();
-    _listScroll.dispose();
+    _strip.dispose();
     _controller.removeListener(_controllerChanged);
     if (widget.controller == null) _controller.dispose();
     super.dispose();
@@ -651,7 +652,7 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     final configuration = (
       style,
       MediaQuery.sizeOf(context),
-      // Text size can switch between the column and stacked layouts.
+      // Text size can switch between the full and stacked layouts.
       MediaQuery.textScalerOf(context),
       Theme.of(context).brightness,
       visible,
@@ -719,14 +720,20 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                 builder: (context, constraints) {
                   final controls = _viewControls(l, failed);
                   final label = _selectedLabel(labels, selected);
-                  final list = _muscleList(labels, l);
-                  if (_columns(constraints)) {
-                    return _columnLayout(
+                  final strip = _chipStrip(l);
+                  Widget art(Size size) =>
+                      _art(l, style: style, visible: visible, size: size);
+                  final labelHeight = _labelHeight(
+                    labels,
+                    constraints.maxWidth - 32,
+                  );
+                  if (!_stacks(constraints, l, labelHeight)) {
+                    return _fullLayout(
                       controls,
-                      (size) =>
-                          _art(l, style: style, visible: visible, size: size),
+                      art,
                       label,
-                      list,
+                      labelHeight,
+                      strip,
                       labels,
                       l,
                     );
@@ -734,32 +741,33 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                   return SingleChildScrollView(
                     controller: _scroll,
                     key: const Key('catalog-muscle-explorer-scroll'),
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    padding: const EdgeInsets.fromLTRB(0, 12, 0, 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        controls,
+                        _inset(controls),
                         const SizedBox(height: 8),
                         Center(
-                          child: _art(
-                            l,
-                            style: style,
-                            visible: visible,
-                            size: failed
+                          child: art(
+                            failed
                                 ? Size(constraints.maxWidth - 32, 120)
-                                : _stackedArt(
-                                    constraints.maxWidth - 32,
-                                    constraints.maxHeight,
-                                    sheetHeight,
+                                : _capped(
+                                    _stackedArt(
+                                      constraints.maxWidth - 32,
+                                      constraints.maxHeight,
+                                      sheetHeight,
+                                    ),
                                   ),
                           ),
                         ),
                         const SizedBox(height: 12),
-                        label,
-                        if (_showInfo) const SizedBox(height: 16),
-                        ..._info(labels, l),
-                        const SizedBox(height: 16),
-                        list,
+                        _inset(label),
+                        const SizedBox(height: 8),
+                        strip,
+                        if (_showInfo) ...[
+                          const SizedBox(height: 16),
+                          _inset(_notes(labels, l)),
+                        ],
                       ],
                     ),
                   );
@@ -801,28 +809,25 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     );
   }
 
-  // The canvas's share of the sheet width beside the list, and of the sheet
-  // height when the two stack.
-  static const _columnArtFlex = 55, _columnListFlex = 45;
+  // Stacked, the canvas's share of the sheet height.
   static const _stackedArtShare = .55;
 
-  // Two columns from this sheet width up, while the list column still holds
-  // about nine ems of its 14 pt labels at the current text size (up to 1.3×
-  // text at 412 dp, normal text at 360 dp), and the canvas beside it still
-  // gets [_minColumnArtHeight]. Otherwise the two stack and the page scrolls:
-  // a landscape phone stacks.
-  static const _minColumnsWidth = 360.0;
-  static const _minListEms = 9.0;
-  static const _minColumnArtHeight = 300.0;
+  // The full layout needs at least this canvas height between the view
+  // controls and the strip; below it (short and landscape viewports, large
+  // text on small phones) the stacked page scrolls instead.
+  static const _minFullArtHeight = 300.0;
 
-  // The canvas never exceeds the old 380×300 dp canvas's area by more than
-  // about 10%, so the renderer's pick readback (about .75 px per dp² of
-  // canvas) stays near the old 85,680 px on tall phones and tablets. Stacked,
-  // it is also at most 420 dp high. The body is upright, so a capped canvas
-  // first narrows, down to [_minArtAspect] of its height, and only then
-  // shortens.
-  static const _maxArtArea = 125000.0; // dp²
+  // Stacked, the canvas is at most 420 dp high.
   static const _maxStackedArtHeight = 420.0;
+
+  // On a phone the canvas takes all the room its layout gives it, so the
+  // body is as large as possible. From a [_capWidth] sheet (tablets) it stays
+  // within [_maxArtArea]: the renderer's pick readback is about .75 px per
+  // dp² of canvas, so at most about 127,000 px. The body is upright, so a
+  // capped canvas first narrows, down to [_minArtAspect] of its height, and
+  // only then shortens.
+  static const _capWidth = 600.0;
+  static const _maxArtArea = 170000.0; // dp²
   static const _minArtAspect = .6;
 
   // Stacked, a drag off the canvas must always be able to scroll the page:
@@ -831,22 +836,86 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   static const _stackedScrollStrip = 64.0;
   static const _stackedScrollMargins = 96.0;
 
-  bool _columns(BoxConstraints constraints) {
-    final width = constraints.maxWidth;
-    if (width < _minColumnsWidth) return false;
-    final scaler = MediaQuery.textScalerOf(context);
-    // The list column: the sheet less its 16 dp insets and the 12 dp gap.
-    final list =
-        (width - 44) * _columnListFlex / (_columnArtFlex + _columnListFlex);
-    if (list < scaler.scale(14) * _minListEms) return false;
-    // Beside the canvas: the 12 dp inset, one row of view controls, two 8 dp
-    // gaps and a line of the 18 pt selection label.
-    final art = constraints.maxHeight - 12 - 48 - 16 - scaler.scale(18) * 1.4;
-    return art >= _minColumnArtHeight;
+  static Widget _inset(Widget child) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: child,
+  );
+
+  /// Whether the full layout's canvas would get less than
+  /// [_minFullArtHeight]. The estimate does not depend on the selection or
+  /// the artwork status, so neither ever switches the layout: it reserves
+  /// the label's tallest group name, the strip and a Retry button.
+  bool _stacks(BoxConstraints constraints, AppLocalizations l, double label) {
+    final controls = _controlsHeight(l, constraints.maxWidth - 32);
+    final strip = _chipMetricsFor(_chipLabels(l)).height;
+    // The 12 dp inset, the controls, three 8 dp gaps, the label and strip.
+    final art = constraints.maxHeight - 12 - controls - 24 - label - strip;
+    return art < _minFullArtHeight;
   }
 
-  /// 55% of the sheet height, at least the old 300 dp and at most 420 dp,
-  /// within the area cap. The upright body needs no more width than height:
+  /// The view controls' wrapped height: Front, Back, Reset and Retry.
+  double _controlsHeight(AppLocalizations l, double width) {
+    final style = WorkoutType.body(size: 14);
+    final row = math.max(48.0, _measure(l.bodyViewFront, style).height);
+    final widths = [
+      math.max(56.0, _measure(l.bodyViewFront, style).width + 16),
+      math.max(56.0, _measure(l.bodyViewBack, style).width + 16),
+      48.0,
+      math.max(48.0, _measure(l.bodyRetryArtwork, style).width + 24),
+    ];
+    var rows = 1;
+    var used = 0.0;
+    for (final w in widths) {
+      if (used > 0 && used + 4 + w > width) {
+        rows++;
+        used = w;
+      } else {
+        used += (used > 0 ? 4 : 0) + w;
+      }
+    }
+    return rows * row + (rows - 1) * 4;
+  }
+
+  /// The selected-muscle label's height for its longest text, so choosing a
+  /// group never resizes the canvas: one or two lines of 18 pt.
+  double _labelHeight(CatalogLabels labels, double width) {
+    final style = WorkoutType.body(size: 18);
+    var lines = 1;
+    for (final text in [
+      labels.chooseMuscle,
+      for (final g in _groups) widget.index.groupLabel(g),
+    ]) {
+      final painter = _painter(text, style)..layout(maxWidth: width);
+      lines = math.max(lines, painter.computeLineMetrics().length);
+      painter.dispose();
+    }
+    return math.min(lines, 2) *
+        MediaQuery.textScalerOf(context).scale(18) *
+        1.4;
+  }
+
+  // Merged over [base], the inherited style the text will meet: the ambient
+  // one, or a chip's own Material default.
+  TextPainter _painter(String text, TextStyle style, {TextStyle? base}) =>
+      TextPainter(
+        text: TextSpan(
+          text: text,
+          style: (base ?? DefaultTextStyle.of(context).style).merge(style),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        locale: Localizations.maybeLocaleOf(context),
+      );
+
+  Size _measure(String text, TextStyle style, {TextStyle? base}) {
+    final painter = _painter(text, style, base: base)..layout();
+    final size = painter.size;
+    painter.dispose();
+    return size;
+  }
+
+  /// 55% of the sheet height, at least the old 300 dp and at most 420 dp.
+  /// The upright body needs no more width than height:
   /// where the page is wider (landscape, tablets), the canvas is square and
   /// may fill the page's height, since the page scrolls beside it. Otherwise
   /// it spans the page and leaves a strip of the page in view beneath it.
@@ -857,94 +926,93 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     );
     if (width - tall >= _stackedScrollMargins) {
       final side = math.max(120.0, math.min(tall, viewport));
-      return _cappedArt(side, side);
+      return Size(side, side);
     }
     final height = math.max(
       120.0,
       math.min(tall, viewport - _stackedScrollStrip),
     );
-    return _cappedArt(width, height);
+    return Size(width, height);
   }
 
-  /// The canvas within [_maxArtArea]: narrower first, then shorter.
-  static Size _cappedArt(double width, double height) {
-    if (width * height <= _maxArtArea) return Size(width, height);
+  /// The canvas, within [_maxArtArea] from a [_capWidth] sheet: narrower
+  /// first, then shorter.
+  Size _capped(Size art) {
+    final area = art.width * art.height;
+    if (MediaQuery.sizeOf(context).width < _capWidth || area <= _maxArtArea) {
+      return art;
+    }
     final narrowed = math.min(
-      width,
-      math.max(_maxArtArea / height, math.sqrt(_maxArtArea * _minArtAspect)),
+      art.width,
+      math.max(
+        _maxArtArea / art.height,
+        math.sqrt(_maxArtArea * _minArtAspect),
+      ),
     );
-    return Size(narrowed, math.min(height, _maxArtArea / narrowed));
+    return Size(narrowed, math.min(art.height, _maxArtArea / narrowed));
   }
 
-  /// Canvas beside an always-visible list that scrolls on its own: the
-  /// canvas fills the height above the pinned button and never scrolls.
-  Widget _columnLayout(
+  /// The default layout: the view controls, then the canvas across the
+  /// sheet's width and down to the selected-muscle label and the strip,
+  /// above the pinned button. Nothing scrolls but the strip.
+  Widget _fullLayout(
     Widget controls,
     Widget Function(Size size) art,
     Widget label,
-    Widget list,
+    double labelHeight,
+    Widget strip,
     CatalogLabels labels,
     AppLocalizations l,
-  ) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          flex: _columnArtFlex,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              controls,
-              const SizedBox(height: 8),
-              // Within the area cap, centred in the room above the label.
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) => Center(
-                    child: art(
-                      _cappedArt(constraints.maxWidth, constraints.maxHeight),
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: controls,
+      ),
+      const SizedBox(height: 8),
+      Expanded(
+        child: _inset(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Center(child: art(_capped(constraints.biggest))),
+                  // The notes cover the canvas while open; there is no page
+                  // to scroll them into.
+                  if (_showInfo)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        key: const Key('catalog-muscle-info-panel'),
+                        color: context.tokens.surface,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: _notes(labels, l),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              label,
-            ],
+                ],
+              );
+            },
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: _columnListFlex,
-          child: SingleChildScrollView(
-            controller: _listScroll,
-            key: const Key('catalog-muscle-list-scroll'),
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ..._info(labels, l),
-                if (_showInfo) const SizedBox(height: 16),
-                list,
-              ],
-            ),
-          ),
+      ),
+      const SizedBox(height: 8),
+      _inset(
+        ConstrainedBox(
+          constraints: BoxConstraints(minHeight: labelHeight),
+          child: Center(child: label),
         ),
-      ],
-    ),
+      ),
+      const SizedBox(height: 8),
+      strip,
+    ],
   );
 
   void _toggleInfo() {
     _pickEpoch++;
     setState(() => _showInfo = !_showInfo);
-    // Beside the canvas the notes open at the top of the list column.
-    if (_showInfo && _listScroll.hasClients) {
-      final duration = Motion.of(context, Motion.base);
-      if (duration == Duration.zero) {
-        _listScroll.jumpTo(0);
-      } else {
-        _listScroll.animateTo(0, duration: duration, curve: Motion.curve);
-      }
-    }
   }
 
   Widget _viewControls(AppLocalizations l, bool failed) => Wrap(
@@ -997,103 +1065,220 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
         ),
       );
 
-  List<Widget> _info(CatalogLabels labels, AppLocalizations l) {
-    if (!_showInfo) return const [];
-    final t = context.tokens;
-    return [
-      Text(
-        labels.modelMuscleHint,
-        style: WorkoutType.body(size: 14, color: t.dim),
-      ),
-      const SizedBox(height: 12),
-      Text(
-        labels.targetExplanation,
-        style: WorkoutType.body(size: 14, color: t.dim),
-      ),
-      const SizedBox(height: 12),
-      Text(
-        l.catalogBrowseOnlyNotice,
-        style: WorkoutType.body(size: 13, color: t.dim),
-      ),
-    ];
-  }
-
-  /// The always-visible list: one row per muscle group, in the index's
-  /// order (the browse index carries no body-area grouping), then
-  /// Unclassified, which opens its own results directly.
-  Widget _muscleList(CatalogLabels labels, AppLocalizations l) {
+  Widget _notes(CatalogLabels labels, AppLocalizations l) {
     final t = context.tokens;
     return Column(
-      key: const Key('catalog-muscle-list'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(
-          header: true,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: FitLabel(
-              labels.muscleList,
-              maxLines: 2,
-              style: WorkoutType.body(
-                size: 12,
-                color: t.faint,
-                letterSpacing: .06 * 12,
-              ),
-            ),
-          ),
+        Text(
+          labels.modelMuscleHint,
+          style: WorkoutType.body(size: 14, color: t.dim),
         ),
-        for (final group in _groups)
-          KeyedSubtree(
-            key: _rowKeys.putIfAbsent(group.key, GlobalKey.new),
-            child: CatalogMuscleRow(
-              key: ValueKey('catalog-muscle-${group.key}'),
-              glyph: catalogGroupGlyph(group.key),
-              label: widget.index.groupLabel(group),
-              selected: _selected == group.key,
-              onTap: () => _select(group.key, fromList: true),
-            ),
-          ),
-        CatalogMuscleRow(
-          key: const Key('catalog-muscle-unclassified'),
-          glyph: catalogGroupGlyph(null),
-          label: l.catalogUnclassified,
-          selected: false,
-          onTap: () {
-            _pickEpoch++;
-            Navigator.pop(context, CatalogFilter.unclassified);
-          },
+        const SizedBox(height: 12),
+        Text(
+          labels.targetExplanation,
+          style: WorkoutType.body(size: 14, color: t.dim),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          l.catalogBrowseOnlyNotice,
+          style: WorkoutType.body(size: 13, color: t.dim),
         ),
       ],
     );
   }
 
-  /// Brings a canvas-picked group's row into the list column. Stacked, the
-  /// list lies below the canvas in the same page: scrolling to it would move
-  /// the canvas away from the finger, so the label beneath the canvas shows
-  /// the choice there instead.
-  void _revealRow(String group, {bool animate = true}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_listScroll.hasClients) return;
-      final row = _rowKeys[group]?.currentContext;
-      final box = row?.findRenderObject();
-      final viewport = _listScroll.position.context.storageContext
-          .findRenderObject();
-      if (row == null ||
-          box is! RenderBox ||
-          !box.hasSize ||
-          viewport is! RenderBox ||
-          !viewport.hasSize) {
-        return;
+  // A chip: [_chipStart] dp, the 20 dp glyph, [_chipGap] dp, the label and
+  // [_chipEnd] dp, at least 48 dp tall; chips sit [_chipSpacing] dp apart and
+  // the strip's ends fade over [_stripFade] dp.
+  static const _chipStart = 12.0, _chipGap = 8.0, _chipEnd = 16.0;
+  static const _chipGlyph = 20.0, _chipSpacing = 8.0, _stripFade = 24.0;
+
+  List<String> _chipLabels(AppLocalizations l) => [
+    for (final g in _groups) widget.index.groupLabel(g),
+    l.catalogUnclassified,
+  ];
+
+  /// Chip widths and the strip's height, measured from the labels rather
+  /// than after layout, so every chip's centre is known before it is built.
+  /// Each label is measured at both weights and takes the wider, so a
+  /// selection never moves a chip.
+  ({List<double> widths, double height}) _chipMetricsFor(List<String> labels) {
+    final styles = [
+      WorkoutType.body(size: 14),
+      WorkoutType.body(size: 14, weight: FontWeight.w500),
+    ];
+    // A chip's label inherits its Material's default text style.
+    final base = Theme.of(context).textTheme.bodyMedium!;
+    final key = (
+      MediaQuery.textScalerOf(context),
+      Localizations.maybeLocaleOf(context),
+      base,
+      labels,
+    );
+    final cached = _chipMetrics;
+    if (cached != null &&
+        _chipKey != null &&
+        _chipKey!.$1 == key.$1 &&
+        _chipKey!.$2 == key.$2 &&
+        _chipKey!.$3 == key.$3 &&
+        listEquals(_chipKey!.$4, key.$4)) {
+      return cached;
+    }
+    var height = 0.0;
+    final widths = <double>[];
+    for (final label in labels) {
+      var width = 0.0;
+      for (final style in styles) {
+        final size = _measure(label, style, base: base);
+        height = math.max(height, size.height);
+        width = math.max(width, size.width);
       }
-      final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-      if (top >= 0 && top + box.size.height <= viewport.size.height) return;
-      Scrollable.ensureVisible(
-        row,
-        alignment: .5,
-        duration: animate ? Motion.of(context, Motion.base) : Duration.zero,
-        curve: Motion.curve,
+      widths.add(
+        _chipStart + _chipGlyph + _chipGap + width.ceilToDouble() + _chipEnd,
       );
+    }
+    _chipKey = key;
+    return _chipMetrics = (widths: widths, height: math.max(48, height + 12));
+  }
+
+  /// One horizontal strip of chips: each muscle group in the index's order
+  /// (the browse index carries no body-area grouping), then Unclassified,
+  /// which opens its own results directly. The strip spans the sheet; its
+  /// ends are padded so the first and last chip can centre too, and a
+  /// release settles the chip nearest its resting point at the centre.
+  Widget _chipStrip(AppLocalizations l) {
+    final labels = _chipLabels(l);
+    final metrics = _chipMetricsFor(labels);
+    return SizedBox(
+      key: _stripKey,
+      height: metrics.height,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final widths = metrics.widths;
+          final lead = math.max(16.0, (width - widths.first) / 2);
+          final trail = math.max(16.0, (width - widths.last) / 2);
+          final centres = <double>[];
+          var x = lead;
+          for (final w in widths) {
+            centres.add(x + w / 2 - width / 2);
+            x += w + _chipSpacing;
+          }
+          final extent = math.max(0.0, x - _chipSpacing + trail - width);
+          _stripLaidOut(width, [for (final c in centres) c.clamp(0, extent)]);
+          final fade = math.min(_stripFade / width, .25);
+          return ShaderMask(
+            blendMode: BlendMode.dstIn,
+            shaderCallback: (rect) => LinearGradient(
+              colors: const [
+                Color(0x00000000),
+                Color(0xFF000000),
+                Color(0xFF000000),
+                Color(0x00000000),
+              ],
+              stops: [0, fade, 1 - fade, 1],
+            ).createShader(rect),
+            child: SingleChildScrollView(
+              key: const Key('catalog-muscle-strip'),
+              controller: _strip,
+              scrollDirection: Axis.horizontal,
+              physics: _CentreSnapPhysics(() => _chipTargets),
+              padding: EdgeInsets.only(left: lead, right: trail),
+              child: Row(
+                children: [
+                  for (var i = 0; i < widths.length; i++) ...[
+                    if (i > 0) const SizedBox(width: _chipSpacing),
+                    SizedBox(
+                      width: widths[i],
+                      height: metrics.height,
+                      child: i < _groups.length
+                          ? CatalogMuscleChip(
+                              key: ValueKey('catalog-muscle-${_groups[i].key}'),
+                              glyph: catalogGroupGlyph(_groups[i].key),
+                              label: labels[i],
+                              selected: _selected == _groups[i].key,
+                              onTap: () =>
+                                  _select(_groups[i].key, fromChip: true),
+                            )
+                          : CatalogMuscleChip(
+                              key: const Key('catalog-muscle-unclassified'),
+                              glyph: catalogGroupGlyph(null),
+                              label: labels[i],
+                              selected: false,
+                              onTap: () {
+                                _pickEpoch++;
+                                Navigator.pop(
+                                  context,
+                                  CatalogFilter.unclassified,
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// New chip centres (first layout, a width, text size or locale change):
+  /// after this frame the selected chip, or else the chip that was nearest
+  /// the centre, sits at the centre again.
+  void _stripLaidOut(double width, List<double> targets) {
+    if (width == _stripWidth && listEquals(targets, _chipTargets)) return;
+    final previous = _chipTargets;
+    _stripWidth = width;
+    _chipTargets = targets;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_strip.hasClients) return;
+      var index = _groups.indexWhere((g) => g.key == _selected);
+      if (index < 0 && previous.isNotEmpty) {
+        index = _nearest(previous, _strip.position.pixels);
+      }
+      if (index >= 0) _scrollStripTo(index, animate: false);
     });
+  }
+
+  /// Brings a group's chip to the strip's centre: after a chip choice, a
+  /// canvas pick or the opening selection. The strip lies beside the
+  /// canvas's lower edge, never over it, so this never moves the canvas.
+  void _centreChip(String group) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final index = _groups.indexWhere((g) => g.key == group);
+      if (index >= 0) _scrollStripTo(index, animate: true);
+    });
+  }
+
+  void _scrollStripTo(int index, {required bool animate}) {
+    if (!_strip.hasClients || index >= _chipTargets.length) return;
+    final position = _strip.position;
+    if (!position.hasContentDimensions) return;
+    final target = _chipTargets[index].clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((target - position.pixels).abs() < .5) return;
+    final duration = animate ? Motion.of(context, Motion.slow) : Duration.zero;
+    if (duration == Duration.zero) {
+      position.jumpTo(target);
+    } else {
+      position.animateTo(target, duration: duration, curve: Motion.curve);
+    }
+  }
+
+  static int _nearest(List<double> targets, double pixels) {
+    var best = 0;
+    for (var i = 1; i < targets.length; i++) {
+      if ((targets[i] - pixels).abs() < (targets[best] - pixels).abs()) {
+        best = i;
+      }
+    }
+    return best;
   }
 
   // The art box keeps one global key in both layouts, so a width or text
@@ -1250,8 +1435,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     selected: selected,
     child: TextButton(
       key: ValueKey(key),
-      // Compact, so Front, Back and Reset share one row above a canvas
-      // column about 200 dp wide.
+      // Compact, so Front, Back and Reset share one row above the canvas on
+      // the narrowest phones.
       style: TextButton.styleFrom(
         minimumSize: const Size(56, 48),
         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1265,11 +1450,11 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   );
 }
 
-/// One muscle group in the explorer's list: its glyph and label in a 48 dp
-/// target. The selected row carries the accent mark, glyph and label on a
-/// raised fill, and a selected semantics state.
-class CatalogMuscleRow extends StatelessWidget {
-  const CatalogMuscleRow({
+/// One muscle group in the explorer's strip: its glyph and label in a 48 dp
+/// pill. The selected chip carries the accent glyph and label on a raised
+/// fill, and a selected semantics state.
+class CatalogMuscleChip extends StatelessWidget {
+  const CatalogMuscleChip({
     super.key,
     required this.glyph,
     required this.label,
@@ -1284,7 +1469,6 @@ class CatalogMuscleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final duration = Motion.of(context, Motion.fast);
     final color = selected ? t.accentText : t.text;
     return Semantics(
       container: true,
@@ -1292,51 +1476,97 @@ class CatalogMuscleRow extends StatelessWidget {
       selected: selected,
       child: Material(
         color: selected ? t.surface3 : Colors.transparent,
-        animationDuration: duration,
-        borderRadius: BorderRadius.circular(AppRadius.control),
+        animationDuration: Motion.of(context, Motion.fast),
+        shape: StadiumBorder(
+          side: BorderSide(color: selected ? t.surface3 : t.line),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(0, 4, 8, 4),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: duration,
-                    curve: Motion.curve,
-                    width: 3,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: selected ? t.accent : Colors.transparent,
-                      borderRadius: BorderRadius.circular(1.5),
+          customBorder: const StadiumBorder(),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 16, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ExcludeSemantics(
+                  child: AlkionIcon(glyph, size: 20, color: color),
+                ),
+                const SizedBox(width: 8),
+                // The strip measured this label at both weights, so it
+                // always fits on one line.
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: WorkoutType.body(
+                      size: 14,
+                      weight: selected ? FontWeight.w500 : FontWeight.w400,
+                      color: color,
                     ),
                   ),
-                  const SizedBox(width: 7),
-                  ExcludeSemantics(
-                    child: AlkionIcon(glyph, size: 20, color: color),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FitLabel(
-                      label,
-                      maxLines: 2,
-                      style: WorkoutType.body(
-                        size: 14,
-                        weight: selected ? FontWeight.w500 : FontWeight.w400,
-                        color: color,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Snaps a release so a chip settles at the strip's centre. The chips vary
+/// in width, so instead of pages it projects where a free fling would come
+/// to rest and springs to the chip centre nearest that point, keeping the
+/// release velocity. [targets] reads the strip's current centres, so a
+/// relayout never leaves stale stops in a kept physics object.
+class _CentreSnapPhysics extends ScrollPhysics {
+  const _CentreSnapPhysics(this.targets, {super.parent});
+  final List<double> Function() targets;
+
+  @override
+  _CentreSnapPhysics applyTo(ScrollPhysics? ancestor) =>
+      _CentreSnapPhysics(targets, parent: buildParent(ancestor));
+
+  @override
+  Simulation? createBallisticSimulation(
+    ScrollMetrics position,
+    double velocity,
+  ) {
+    final stops = targets();
+    // Past an end, the platform's own settle (a bounce back) applies first.
+    if (stops.isEmpty || position.outOfRange) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+    final tolerance = toleranceFor(position);
+    final rest = velocity.abs() < tolerance.velocity
+        ? position.pixels
+        : ClampingScrollSimulation(
+            position: position.pixels,
+            velocity: velocity,
+            tolerance: tolerance,
+          ).x(double.infinity);
+    var target = stops.first;
+    for (final stop in stops) {
+      if ((stop - rest).abs() < (target - rest).abs()) target = stop;
+    }
+    target = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+    if ((target - position.pixels).abs() < tolerance.distance &&
+        velocity.abs() < tolerance.velocity) {
+      return null;
+    }
+    return ScrollSpringSimulation(
+      spring,
+      position.pixels,
+      target,
+      velocity,
+      tolerance: tolerance,
+    );
+  }
+
+  @override
+  bool get allowImplicitScrolling => false;
 }
 
 /// The body canvas's only recognizer. It wins every pointer that lands on the

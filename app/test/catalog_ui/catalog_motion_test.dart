@@ -166,7 +166,7 @@ void main() {
     }
   }
 
-  testWidgets('paused body controls and list keep region selection immediate', (
+  testWidgets('paused body controls and chips keep region selection instant', (
     tester,
   ) async {
     phone(tester, 412, 1);
@@ -190,7 +190,7 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .widget<CatalogMuscleRow>(
+          .widget<CatalogMuscleChip>(
             find.byKey(const Key('catalog-muscle-triceps')),
           )
           .selected,

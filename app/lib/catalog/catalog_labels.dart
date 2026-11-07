@@ -43,12 +43,6 @@ class CatalogLabels {
     'Übungen anzeigen',
     'Mostrar ejercicios',
   ][_language];
-  String get muscleList => [
-    'Muscle list',
-    'Elenco muscoli',
-    'Muskelliste',
-    'Lista de músculos',
-  ][_language];
   String get modelMuscleHint => [
     'Tap a muscle or use the list. Drag to rotate, pinch to zoom.',
     'Tocca un muscolo o usa l’elenco. Trascina per ruotare, pizzica per ingrandire.',

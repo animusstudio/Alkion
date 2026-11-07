@@ -44,7 +44,7 @@ void main() {
   setUpAll(preloadAppFonts);
 
   testWidgets(
-    'body and list use the same reviewed target group without enabling secondary',
+    'body and chips use the same reviewed target group without enabling secondary',
     (tester) async {
       final state = discoveryState();
       addTearDown(state.dispose);
@@ -81,7 +81,7 @@ void main() {
       );
       expect(
         tester
-            .widget<CatalogMuscleRow>(
+            .widget<CatalogMuscleChip>(
               find.byKey(const Key('catalog-muscle-chest')),
             )
             .selected,
@@ -195,7 +195,7 @@ void main() {
               await tester.ensureVisible(chip);
               await tester.tap(chip);
               await tester.pumpAndSettle();
-              expect(tester.widget<CatalogMuscleRow>(chip).selected, isTrue);
+              expect(tester.widget<CatalogMuscleChip>(chip).selected, isTrue);
               expect(tester.getSize(chip).height, greaterThanOrEqualTo(48));
               expect(tester.takeException(), isNull);
               expectNoSplitWords(tester);
@@ -203,7 +203,7 @@ void main() {
                   width == 320 &&
                   scale == 2 &&
                   brightness == Brightness.light) {
-                await captureCatalog(tester, 'body-list-de-320-2x-light');
+                await captureCatalog(tester, 'body-strip-de-320-2x-light');
               }
               semantics.dispose();
               await tester.pumpWidget(const SizedBox());
