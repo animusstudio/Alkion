@@ -79,8 +79,10 @@ starts: before T5 the first frame took 9.9 s, with 562 skipped main-thread
 frames. With T5 it took 0.56–0.64 s, with no skipped-frame or long-frame
 report. Home replaced the catalog loading screen about 3–4 s after launch.
 
-Device checks of the normal build at `478d0bb` and of the T6 feel remain
-open.
+The normal `478d0bb` build was installed in place on A024 on 2026-11-07: the
+hash `15e211ff…` matched, the cold launch took 0.58 s, and the first-install
+identity was kept. The owner's T6 feel check passed the same day ("feels
+good").
 
 ## Explore muscles 3D gestures — 2026-11-07
 

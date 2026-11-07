@@ -30,7 +30,8 @@ two-finger recognizer never becomes active.
 - **One recognizer.** A single scale-style recognizer claims pointers that start
   inside the canvas, so the page scroll cannot win them.
   - With one pointer, horizontal movement turns the body (yaw) and vertical
-    movement tilts it (pitch).
+    movement tilts it (pitch). Superseded above 1.02× zoom, where vertical
+    movement pans instead; see [UX polish](2026-11-07-ux-polish.md).
   - With two pointers, it pinch-zooms around the focal point within the existing
     1–3× bounds and pans.
   - Adding or lifting a finger re-bases the gesture without a jump.
