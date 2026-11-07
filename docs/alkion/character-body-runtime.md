@@ -259,17 +259,24 @@ listener, so their taps (even on a disabled button) never reach the canvas.
 Front, Back, Reset and Retry stay in the row above.
 
 From a 360 dp sheet, while the list column holds about nine ems of its 14 pt
-labels (up to 1.3× text at 412 dp), the canvas takes 55% of the width and the
-full height above the pinned button, beside an always-visible list that
-scrolls on its own; otherwise a canvas 55% of the sheet's height (at least
-300 dp) stacks above the list in one scrolling page. The canvas keeps one
-element across the switch. The list is one 48 dp row per group in the
-index's alphabetical order (the browse index has no body-area grouping), then
-Unclassified. A list choice turns to the view the group faces, from the same
-table as the opening view; a canvas pick never turns and scrolls the list
-column to its row. Stacked, the page holds still so the canvas stays under
-the finger. At 412×900 dp the two-column canvas is about 202×613 dp, a
-189×489 retained pick surface against 357×240 for the old 380×300 canvas.
+labels (up to 1.3× text at 412 dp) and the canvas beside it gets at least
+300 dp of height, the canvas takes 55% of the width and the height above the
+pinned button, beside an always-visible list that scrolls on its own.
+Otherwise, landscape phones included, a canvas 55% of the sheet's height
+(300–420 dp) stacks above the list in one scrolling page: full width with
+64 dp of the page left in view beneath it, or square and up to the page's
+height where the page is at least 96 dp wider. Either way the canvas stays
+within 125,000 dp², about the old 380×300 canvas plus 10%, narrowing to 0.6
+of its height before it shortens, so the pick readback stays near the old
+85,680 px. The canvas keeps one element across the switch. The list is one
+48 dp row per group in the index's alphabetical order (the browse index has
+no body-area grouping), then Unclassified. A list choice of another group
+turns to the view it faces, from the same table as the opening view; choosing
+the selected row again keeps the view. A canvas pick never turns and scrolls
+the list column to its row. Stacked, the page holds still so the canvas stays
+under the finger. At 412×900 dp the two-column canvas is 202×613 dp, a
+189×489 pick surface (92,421 px) against 357×240 (85,680 px) for the old
+380×300 canvas.
 
 ## Visible-surface picking
 
