@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
@@ -409,74 +411,148 @@ class _SummaryRow extends StatelessWidget {
       (l.historySummaryPrs, '$prCount', prCount, null),
       (l.historySummaryVolume, volumeDisplay, null, volumeSemantics),
     ];
-    final stacked =
-        MediaQuery.sizeOf(context).width < 360 &&
-        MediaQuery.textScalerOf(context).scale(12) > 18;
-    final sections = [
-      for (var i = 0; i < cards.length; i++)
-        _SummarySection(
-          key: ValueKey('history-summary-$i'),
-          label: cards[i].$1,
-          value: cards[i].$2,
-          intValue: cards[i].$3,
-          semanticsLabel: cards[i].$4,
-          tokens: tokens,
-        ),
-    ];
     // A flat band like Today's stat tiles: hairlines above and below, equal
-    // sections split by 1 px rules, no boxes. It stacks (rules between) on a
-    // narrow phone at large text, where three columns no longer fit.
-    Widget rule({required bool vertical}) => vertical
-        ? ColoredBox(color: tokens.line, child: const SizedBox(width: 1))
-        : ColoredBox(color: tokens.line, child: const SizedBox(height: 1));
-    return DecoratedBox(
-      key: const ValueKey('history-summary-band'),
-      decoration: BoxDecoration(
-        border: Border.symmetric(horizontal: BorderSide(color: tokens.line)),
-      ),
-      child: stacked
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < sections.length; i++) ...[
-                  if (i > 0) rule(vertical: false),
-                  sections[i],
-                ],
-              ],
-            )
-          : IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var i = 0; i < sections.length; i++) ...[
-                    if (i > 0) rule(vertical: true),
-                    Expanded(child: sections[i]),
-                  ],
-                ],
-              ),
+    // sections split by 1 px rules, no boxes. Three columns are used only when
+    // every label wraps at its natural size and every value stays readable;
+    // otherwise the sections stack (rules between) at natural height.
+    return LayoutBuilder(
+      builder: (context, box) {
+        final stacked = !_summaryRowFits(context, box.maxWidth, [
+          for (final c in cards) (l.historySummarySuffix(c.$1), c.$2),
+        ]);
+        final sections = [
+          for (var i = 0; i < cards.length; i++)
+            _SummarySection(
+              key: ValueKey('history-summary-$i'),
+              label: l.historySummarySuffix(cards[i].$1),
+              value: cards[i].$2,
+              intValue: cards[i].$3,
+              semanticsLabel: cards[i].$4,
+              tokens: tokens,
+              stacked: stacked,
             ),
+        ];
+        Widget rule({required bool vertical}) => ColoredBox(
+          color: tokens.line,
+          child: SizedBox(
+            width: vertical ? 1 : null,
+            height: vertical ? null : 1,
+          ),
+        );
+        return DecoratedBox(
+          key: const ValueKey('history-summary-band'),
+          decoration: BoxDecoration(
+            border: Border.symmetric(
+              horizontal: BorderSide(color: tokens.line),
+            ),
+          ),
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < sections.length; i++) ...[
+                      if (i > 0) rule(vertical: false),
+                      sections[i],
+                    ],
+                  ],
+                )
+              : IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < sections.length; i++) ...[
+                        if (i > 0) rule(vertical: true),
+                        Expanded(child: sections[i]),
+                      ],
+                    ],
+                  ),
+                ),
+        );
+      },
     );
   }
 }
 
-/// One section of the 4-week band. The value box and the label box have fixed
-/// heights (one value line, two label lines, at the current text scale), so
-/// every section is the same height whatever the locale or value length.
+const double _summarySectionPad = 8;
+
+/// Smallest effective value size (sp) a three-column band may shrink to.
+const double _summaryMinValueSp = 18;
+
+TextStyle _summaryValueStyle(WorkoutTokens tokens) =>
+    WorkoutType.mono(size: 22, weight: FontWeight.w400, color: tokens.text);
+
+TextStyle _summaryLabelStyle(WorkoutTokens tokens) =>
+    WorkoutType.mono(size: 12, color: tokens.faint, letterSpacing: 0.07 * 9.5);
+
+TextPainter _summaryPainter(
+  BuildContext context,
+  String text,
+  TextStyle style,
+) {
+  return TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+  );
+}
+
+/// Whether three equal columns hold [items] (label, value) legibly: each label
+/// wraps into two lines at full size without breaking a word, and each value
+/// needs no more shrinking than [_summaryMinValueSp] allows.
+bool _summaryRowFits(
+  BuildContext context,
+  double maxWidth,
+  List<(String, String)> items,
+) {
+  final tokens = context.tokens;
+  final inner = (maxWidth - 2) / 3 - 2 * _summarySectionPad;
+  final scaler = MediaQuery.textScalerOf(context);
+  final neededFit = math.min(1.0, _summaryMinValueSp / scaler.scale(22));
+  var fits = true;
+  for (final (label, value) in items) {
+    for (final word in label.split(' ')) {
+      final p = _summaryPainter(context, word, _summaryLabelStyle(tokens))
+        ..layout();
+      if (p.width > inner + 0.01) fits = false;
+      p.dispose();
+    }
+    final lines = _summaryPainter(context, label, _summaryLabelStyle(tokens))
+      ..maxLines = 2
+      ..layout(maxWidth: inner);
+    if (lines.didExceedMaxLines) fits = false;
+    lines.dispose();
+    final v = _summaryPainter(context, value, _summaryValueStyle(tokens))
+      ..maxLines = 1
+      ..layout();
+    if (inner < v.width * neededFit - 0.01) fits = false;
+    v.dispose();
+  }
+  return fits;
+}
+
+/// One section of the 4-week band. In the three-column row the value box and
+/// the label box have fixed heights (one value line, two label lines, at the
+/// current text scale), so every section is the same height whatever the
+/// locale or value length. Stacked, a section is compact and natural-height:
+/// value and label on one line when they fit, else the label under the value.
 class _SummarySection extends StatelessWidget {
   const _SummarySection({
     super.key,
     required this.label,
     required this.value,
     required this.tokens,
+    required this.stacked,
     this.intValue,
     this.semanticsLabel,
   });
 
+  /// The whole label, suffix included.
   final String label;
   final String value;
   final int? intValue;
   final String? semanticsLabel;
   final WorkoutTokens tokens;
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) {
@@ -488,64 +564,97 @@ class _SummarySection extends StatelessWidget {
   }
 
   static double _lineHeight(BuildContext context, TextStyle style) {
-    final painter = TextPainter(
-      text: TextSpan(text: 'Ag', style: style),
-      maxLines: 1,
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout();
+    final painter = _summaryPainter(context, 'Ag', style)
+      ..maxLines = 1
+      ..layout();
     final height = painter.height;
     painter.dispose();
     return height;
   }
 
   Widget _build(BuildContext context, String value) {
-    final valueStyle = WorkoutType.mono(
-      size: 22,
-      weight: FontWeight.w400,
-      color: tokens.text,
+    final valueStyle = _summaryValueStyle(tokens);
+    final labelStyle = _summaryLabelStyle(tokens);
+    Widget valueText() => Text(
+      value,
+      semanticsLabel: semanticsLabel,
+      maxLines: 1,
+      softWrap: false,
+      style: valueStyle,
     );
-    final labelStyle = WorkoutType.mono(
-      size: 12,
-      color: tokens.faint,
-      letterSpacing: 0.07 * 9.5,
+    Widget fittedValue() => SizedBox(
+      height: _lineHeight(context, valueStyle),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: valueText(),
+      ),
     );
+    final Widget body;
+    if (stacked) {
+      body = LayoutBuilder(
+        builder: (context, box) {
+          final v = _summaryPainter(context, value, valueStyle)
+            ..maxLines = 1
+            ..layout();
+          final l = _summaryPainter(context, label, labelStyle)
+            ..maxLines = 1
+            ..layout();
+          final sideBySide = v.width + 12 + l.width <= box.maxWidth;
+          v.dispose();
+          l.dispose();
+          return sideBySide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    valueText(),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: labelStyle,
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    fittedValue(),
+                    FitLabel(label, maxLines: 2, style: labelStyle),
+                  ],
+                );
+        },
+      );
+    } else {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          fittedValue(),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: _lineHeight(context, labelStyle) * 2,
+            width: double.infinity,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: FitLabel(label, maxLines: 2, style: labelStyle),
+            ),
+          ),
+        ],
+      );
+    }
     return MergeSemantics(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              height: _lineHeight(context, valueStyle),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  value,
-                  semanticsLabel: semanticsLabel,
-                  maxLines: 1,
-                  softWrap: false,
-                  style: valueStyle,
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: _lineHeight(context, labelStyle) * 2,
-              width: double.infinity,
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: FitLabel(
-                  AppLocalizations.of(context).historySummarySuffix(label),
-                  maxLines: 2,
-                  style: labelStyle,
-                ),
-              ),
-            ),
-          ],
+        padding: EdgeInsets.symmetric(
+          horizontal: _summarySectionPad,
+          vertical: stacked ? 8 : 12,
         ),
+        child: body,
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -37,6 +38,20 @@ void expectSpokenUnavailable(WidgetTester tester, AppLocalizations l) {
     ),
   );
   expect(node.label.split('\n'), contains(l.alkionVolumeUnavailableLabel));
+  expect(node.label, isNot(contains('—')));
+}
+
+/// The volume section reads as one node: the spoken unavailable volume and its
+/// label, never the `—`.
+void expectVolumeSectionSpeaksUnavailable(
+  WidgetTester tester,
+  AppLocalizations l,
+) {
+  final node = tester.getSemantics(
+    find.byKey(const ValueKey('history-summary-2')),
+  );
+  expect(node.label, contains(l.alkionVolumeUnavailableLabel));
+  expect(node.label, contains(l.historySummarySuffix(l.historySummaryVolume)));
   expect(node.label, isNot(contains('—')));
 }
 
@@ -112,7 +127,7 @@ void main() {
     testWidgets('an expanded card keeps its footer actions inside it at 320dp, '
         '2.0x in Italian', (tester) async {
       await harness.open(tester);
-      setPhone(tester, width: 320, height: 1500, textScale: 2.0);
+      setPhone(tester, width: 320, textScale: 2.0);
       await tester.pumpWidget(
         harness.wrap(
           const Scaffold(body: HistoryScreen()),
@@ -179,27 +194,49 @@ void main() {
               expectLayoutHolds(tester, 'band $name');
 
               final rects = [for (final s in sections) tester.getRect(s)];
-              final stacked = width < 360 && scale > 1.5;
+              final stacked = rects[1].top > rects[0].top + 1;
               for (final r in rects.skip(1)) {
-                expect(
-                  r.height,
-                  closeTo(rects.first.height, 0.01),
-                  reason: name,
-                );
                 expect(r.width, closeTo(rects.first.width, 0.01), reason: name);
               }
               if (stacked) {
                 expect(rects[1].top, greaterThan(rects[0].bottom - 0.01));
                 expect(rects[2].top, greaterThan(rects[1].bottom - 0.01));
+                debugPrint(
+                  'BAND $name stacked height ${tester.getSize(band).height}',
+                );
               } else {
+                // The row reserves its lines: equal heights in every locale.
+                for (final r in rects.skip(1)) {
+                  expect(
+                    r.height,
+                    closeTo(rects.first.height, 0.01),
+                    reason: name,
+                  );
+                }
                 expect(rects[1].left, greaterThan(rects[0].right - 0.01));
                 expect(rects[2].left, greaterThan(rects[1].right - 0.01));
                 expect(rects[1].top, closeTo(rects[0].top, 0.01));
               }
 
-              // No card: no fill, radius, shape or clip anywhere in the band,
-              // only the hairline rules (tokens.line).
+              // The band's own hairlines: 1 px tokens.line above and below
+              // only, no fill, radius, shadow or shape.
               final tokens = tester.element(band).tokens;
+              final own =
+                  tester.widget<DecoratedBox>(band).decoration as BoxDecoration;
+              final border = own.border as Border;
+              for (final side in [border.top, border.bottom]) {
+                expect(side.color, tokens.line, reason: name);
+                expect(side.width, 1, reason: name);
+                expect(side.style, BorderStyle.solid, reason: name);
+              }
+              expect(border.left, BorderSide.none, reason: name);
+              expect(border.right, BorderSide.none, reason: name);
+              expect(own.borderRadius, isNull, reason: name);
+              expect(own.color, isNull, reason: name);
+              expect(own.boxShadow, isNull, reason: name);
+              expect(own.shape, BoxShape.rectangle, reason: name);
+
+              // No card anywhere inside the band.
               final decorations = tester.widgetList<DecoratedBox>(
                 find.descendant(of: band, matching: find.byType(DecoratedBox)),
               );
@@ -223,6 +260,40 @@ void main() {
               expect(rules.length, 2, reason: name);
               for (final rule in rules) {
                 expect(rule.color, tokens.line, reason: name);
+              }
+
+              // Legible: nothing ellipsized, no value shrunk below 16 sp.
+              final texts = find.descendant(
+                of: band,
+                matching: find.byType(Text),
+              );
+              expect(texts, findsWidgets);
+              for (final element in texts.evaluate()) {
+                final paragraph = element.renderObject! as RenderParagraph;
+                final data = (element.widget as Text).data;
+                expect(
+                  paragraph.didExceedMaxLines,
+                  isFalse,
+                  reason: '$data $name',
+                );
+              }
+              final values = find.descendant(
+                of: band,
+                matching: find.byWidgetPredicate(
+                  (w) => w is Text && w.style?.fontSize == 22,
+                ),
+              );
+              expect(values, findsNWidgets(3), reason: name);
+              for (final value in values.evaluate()) {
+                final box = value.renderObject! as RenderBox;
+                final shrink =
+                    tester.getRect(find.byWidget(value.widget)).width /
+                    box.size.width;
+                expect(
+                  22 * scale * shrink,
+                  greaterThanOrEqualTo(16),
+                  reason: '${(value.widget as Text).data} $name',
+                );
               }
               await harness.unmount(tester);
             });
@@ -251,6 +322,16 @@ void main() {
       for (var i = 0; i < 3; i++) {
         final node = tester.getSemantics(sections[i]);
         expect(node.label, contains(l.historySummarySuffix(labels[i])));
+        // The value is part of the same node.
+        final value = tester.widget<Text>(
+          find.descendant(
+            of: sections[i],
+            matching: find.byWidgetPredicate(
+              (w) => w is Text && w.style?.fontSize == 22,
+            ),
+          ),
+        );
+        expect(node.label, contains(value.semanticsLabel ?? value.data!));
       }
       semantics.dispose();
       await harness.unmount(tester);
@@ -278,8 +359,7 @@ void main() {
           expect(result.status, ImportStatus.selected);
         },
       );
-      // Tall enough that the stacked 4-week band leaves the first card built.
-      setPhone(tester, width: 320, height: 1500, textScale: 2.0);
+      setPhone(tester, width: 320, textScale: 2.0);
       await tester.pumpWidget(
         harness.wrap(
           Scaffold(
@@ -310,6 +390,7 @@ void main() {
         );
         expect(volumeDash(l), findsOneWidget);
         expectSpokenUnavailable(tester, l);
+        expectVolumeSectionSpeaksUnavailable(tester, l);
         expect(find.textContaining('0kg'), findsNothing);
         // Under the tile and in the card header.
         expect(find.text(l.alkionVolumeNoEvidence), findsNWidgets(2));
@@ -367,6 +448,7 @@ void main() {
         );
         expect(volumeDash(l), findsOneWidget);
         expectSpokenUnavailable(tester, l);
+        expectVolumeSectionSpeaksUnavailable(tester, l);
         for (final legacy in ['500kg', '400kg', '900kg', '0kg']) {
           expect(find.text(legacy), findsNothing, reason: legacy);
         }

@@ -938,8 +938,7 @@ void main() {
         },
       );
       try {
-        // Tall enough that the stacked 4-week band leaves the first card built.
-        setPhone(tester, width: width, height: 1500, textScale: scale);
+        setPhone(tester, width: width, textScale: scale);
         await tester.pumpWidget(localized(h, locale, const AppShell()));
         await settleReal(tester, ticks: 12);
         await openTab(tester, AlkionGlyph.history);
