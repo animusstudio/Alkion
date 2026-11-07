@@ -238,11 +238,13 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
 
   void _select(String group, {bool fromList = false}) {
     _pickEpoch++;
+    final again = _selected == group;
     setState(() => _selected = group);
     // A tap already shows its region and keeps the view; a list choice turns
     // to the view its group faces, and a tap brings its row into the list.
+    // Choosing the selected row again keeps the view the person turned to.
     if (fromList) {
-      _face(group);
+      if (!again) _face(group);
     } else {
       _revealRow(group);
     }
@@ -718,10 +720,11 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                   final controls = _viewControls(l, failed);
                   final label = _selectedLabel(labels, selected);
                   final list = _muscleList(labels, l);
-                  if (_columns(constraints.maxWidth)) {
+                  if (_columns(constraints)) {
                     return _columnLayout(
                       controls,
-                      _art(l, style: style, visible: visible, height: null),
+                      (size) =>
+                          _art(l, style: style, visible: visible, size: size),
                       label,
                       list,
                       labels,
@@ -737,15 +740,19 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                       children: [
                         controls,
                         const SizedBox(height: 8),
-                        _art(
-                          l,
-                          style: style,
-                          visible: visible,
-                          // Taller than the old 300 dp, but the page still
-                          // reaches the list below it.
-                          height: failed
-                              ? 120
-                              : math.max(300, sheetHeight * _stackedArtShare),
+                        Center(
+                          child: _art(
+                            l,
+                            style: style,
+                            visible: visible,
+                            size: failed
+                                ? Size(constraints.maxWidth - 32, 120)
+                                : _stackedArt(
+                                    constraints.maxWidth - 32,
+                                    constraints.maxHeight,
+                                    sheetHeight,
+                                  ),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         label,
@@ -800,24 +807,80 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   static const _stackedArtShare = .55;
 
   // Two columns from this sheet width up, while the list column still holds
-  // about nine ems of its 14 pt labels at the current text size: up to 1.3×
-  // text at 412 dp, normal text at 360 dp. Otherwise the two stack.
+  // about nine ems of its 14 pt labels at the current text size (up to 1.3×
+  // text at 412 dp, normal text at 360 dp), and the canvas beside it still
+  // gets [_minColumnArtHeight]. Otherwise the two stack and the page scrolls:
+  // a landscape phone stacks.
   static const _minColumnsWidth = 360.0;
   static const _minListEms = 9.0;
+  static const _minColumnArtHeight = 300.0;
 
-  bool _columns(double width) {
+  // The canvas never exceeds the old 380×300 dp canvas's area by more than
+  // about 10%, so the renderer's pick readback (about .75 px per dp² of
+  // canvas) stays near the old 85,680 px on tall phones and tablets. Stacked,
+  // it is also at most 420 dp high. The body is upright, so a capped canvas
+  // first narrows, down to [_minArtAspect] of its height, and only then
+  // shortens.
+  static const _maxArtArea = 125000.0; // dp²
+  static const _maxStackedArtHeight = 420.0;
+  static const _minArtAspect = .6;
+
+  // Stacked, a drag off the canvas must always be able to scroll the page:
+  // a canvas as wide as the page leaves this much of the page under it in
+  // view, and a narrower one leaves at least this much beside it.
+  static const _stackedScrollStrip = 64.0;
+  static const _stackedScrollMargins = 96.0;
+
+  bool _columns(BoxConstraints constraints) {
+    final width = constraints.maxWidth;
     if (width < _minColumnsWidth) return false;
+    final scaler = MediaQuery.textScalerOf(context);
     // The list column: the sheet less its 16 dp insets and the 12 dp gap.
     final list =
         (width - 44) * _columnListFlex / (_columnArtFlex + _columnListFlex);
-    return list >= MediaQuery.textScalerOf(context).scale(14) * _minListEms;
+    if (list < scaler.scale(14) * _minListEms) return false;
+    // Beside the canvas: the 12 dp inset, one row of view controls, two 8 dp
+    // gaps and a line of the 18 pt selection label.
+    final art = constraints.maxHeight - 12 - 48 - 16 - scaler.scale(18) * 1.4;
+    return art >= _minColumnArtHeight;
+  }
+
+  /// 55% of the sheet height, at least the old 300 dp and at most 420 dp,
+  /// within the area cap. The upright body needs no more width than height:
+  /// where the page is wider (landscape, tablets), the canvas is square and
+  /// may fill the page's height, since the page scrolls beside it. Otherwise
+  /// it spans the page and leaves a strip of the page in view beneath it.
+  static Size _stackedArt(double width, double viewport, double sheet) {
+    final tall = math.min(
+      math.max(300.0, sheet * _stackedArtShare),
+      _maxStackedArtHeight,
+    );
+    if (width - tall >= _stackedScrollMargins) {
+      final side = math.max(120.0, math.min(tall, viewport));
+      return _cappedArt(side, side);
+    }
+    final height = math.max(
+      120.0,
+      math.min(tall, viewport - _stackedScrollStrip),
+    );
+    return _cappedArt(width, height);
+  }
+
+  /// The canvas within [_maxArtArea]: narrower first, then shorter.
+  static Size _cappedArt(double width, double height) {
+    if (width * height <= _maxArtArea) return Size(width, height);
+    final narrowed = math.min(
+      width,
+      math.max(_maxArtArea / height, math.sqrt(_maxArtArea * _minArtAspect)),
+    );
+    return Size(narrowed, math.min(height, _maxArtArea / narrowed));
   }
 
   /// Canvas beside an always-visible list that scrolls on its own: the
   /// canvas fills the height above the pinned button and never scrolls.
   Widget _columnLayout(
     Widget controls,
-    Widget art,
+    Widget Function(Size size) art,
     Widget label,
     Widget list,
     CatalogLabels labels,
@@ -834,7 +897,16 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
             children: [
               controls,
               const SizedBox(height: 8),
-              Expanded(child: art),
+              // Within the area cap, centred in the room above the label.
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Center(
+                    child: art(
+                      _cappedArt(constraints.maxWidth, constraints.maxHeight),
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(height: 8),
               label,
             ],
@@ -1030,12 +1102,12 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     AppLocalizations l, {
     required CharacterBodyStyle style,
     required bool visible,
-    required double? height,
+    required Size size,
   }) {
     final t = context.tokens;
-    return SizedBox(
+    return SizedBox.fromSize(
       key: _artKey,
-      height: height,
+      size: size,
       child: LayoutBuilder(
         builder: (context, constraints) {
           if (_surfaceSize != constraints.biggest) {

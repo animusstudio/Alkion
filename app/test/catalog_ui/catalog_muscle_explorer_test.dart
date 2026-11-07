@@ -1091,9 +1091,17 @@ void main() {
         await reportReady(tester);
         expect(listScroll, findsNothing);
         final canvas = tester.getRect(diagram);
-        // 55% of the sheet's 94% of the screen, never below the old 300 dp.
-        expect(canvas.height, closeTo(math.max(300, 640 * .94 * .55), .5));
-        expect(canvas.width, width - 32);
+        // 55% of the sheet's 94% of the screen, never below the old 300 dp,
+        // leaving 64 dp of the page below a full-width canvas; past the area
+        // cap it narrows, centred.
+        final page = tester.getRect(pageScroll).height;
+        final height = math.min(math.max(300, 640 * .94 * .55), page - 64);
+        expect(canvas.height, closeTo(height, .5));
+        expect(
+          canvas.width,
+          closeTo(math.min(width - 32, 125000 / height), .5),
+        );
+        expect(canvas.center.dx, closeTo(width / 2, .5));
         expect(
           tester.getRect(find.byKey(const Key('catalog-muscle-list'))).top,
           greaterThan(canvas.bottom),
@@ -1167,6 +1175,172 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  for (final size in [const Size(800, 360), const Size(640, 360)]) {
+    testWidgets(
+      'a short ${size.width.toInt()}×${size.height.toInt()} landscape viewport stacks with a canvas the page can scroll past',
+      (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final state = discoveryState();
+        addTearDown(state.dispose);
+        final controller = PendingBodyController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          discoveryApp(
+            CatalogMuscleExplorer(
+              index: state.index('en'),
+              controller: controller,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await reportReady(tester);
+        expect(tester.takeException(), isNull);
+        // Beside the list the canvas would be under 300 dp: it stacks.
+        expect(listScroll, findsNothing);
+        final page = tester.getRect(pageScroll);
+        final canvas = tester.getRect(diagram);
+        // Square, as tall as the old canvas or the whole page allows, with
+        // margins beside it that scroll the page.
+        expect(canvas.height, closeTo(math.min(300, page.height), .5));
+        expect(canvas.width, closeTo(canvas.height, .5));
+        expect(canvas.left - page.left, greaterThanOrEqualTo(48));
+        expect(
+          canvas.width * canvas.height,
+          lessThanOrEqualTo(125000 + 1),
+          reason: 'Within the area cap',
+        );
+        final scroll = scrollOf(tester, pageScroll);
+        await tester.dragFrom(
+          Offset(page.left + 24, canvas.center.dy),
+          const Offset(0, -300),
+        );
+        await tester.pumpAndSettle();
+        expect(scroll.pixels, greaterThan(0));
+        await tapRow(tester, 'calves');
+        await tester.pumpAndSettle();
+        expect(body(tester).selectedRegion, WorkloadMuscle.calves);
+        // Scrolled back, the canvas still orbits and picks.
+        await revealArtwork(tester);
+        await tester.drag(diagram, const Offset(60, 0));
+        await tester.pumpAndSettle();
+        expect(controller.yaw, greaterThan(math.pi));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  testWidgets(
+    'on tall and wide screens the canvas stays within the old area, narrowing before it shortens',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final state = discoveryState();
+      addTearDown(state.dispose);
+      for (final (size, scale, columns) in [
+        (const Size(412, 915), 1.0, true),
+        (const Size(412, 915), 2.0, false),
+        (const Size(640, 1200), 1.0, true),
+        (const Size(1024, 1366), 1.0, true),
+        (const Size(600, 1000), 2.0, false),
+      ]) {
+        final where = '$size ${scale}x';
+        tester.view.physicalSize = size;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        await tester.pumpWidget(
+          discoveryApp(
+            CatalogMuscleExplorer(
+              key: ValueKey(where),
+              index: state.index('en'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await reportReady(tester);
+        expect(tester.takeException(), isNull, reason: where);
+        expect(listScroll, columns ? findsOneWidget : findsNothing);
+        final canvas = tester.getSize(diagram);
+        expect(
+          canvas.width * canvas.height,
+          lessThanOrEqualTo(125000 + 1),
+          reason: where,
+        );
+        expect(canvas.height, greaterThanOrEqualTo(300), reason: where);
+        expect(canvas.height, greaterThan(canvas.width), reason: where);
+        if (!columns) {
+          expect(canvas.height, lessThanOrEqualTo(420), reason: where);
+        }
+        // The drawn surface is what the picks measure.
+        expect(tester.getSize(find.byType(CharacterBody)), canvas);
+      }
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'choosing the selected row again keeps the view the person turned to',
+    (tester) async {
+      final controller = await pumpExplorer(tester);
+      await tapRow(tester, 'hamstrings');
+      await tester.pumpAndSettle();
+      expect(controller.yaw, math.pi);
+      controller.orbitBy(.4, .2);
+      final turned = (controller.yaw, controller.pitch);
+      await tapRow(tester, 'hamstrings');
+      await tester.pumpAndSettle();
+      expect((controller.yaw, controller.pitch), turned);
+      expect(rowSelected(tester, 'hamstrings'), isTrue);
+      // A different row still turns to its own view.
+      await tapRow(tester, 'chest');
+      await tester.pumpAndSettle();
+      expect((controller.yaw, controller.pitch), (0.0, 0.0));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('each muscle row is one selectable button node with its label', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await pumpExplorer(tester, selected: 'chest');
+    for (final (key, label, selected) in [
+      ('chest', 'Chest', true),
+      ('biceps', 'Biceps', false),
+      ('unclassified', 'Unclassified', false),
+    ]) {
+      final node = tester.getSemantics(muscle(key));
+      final data = node.getSemanticsData();
+      expect(data.label, label);
+      expect(data.flagsCollection.isButton, isTrue, reason: label);
+      expect(
+        data.flagsCollection.isSelected,
+        selected ? Tristate.isTrue : Tristate.isFalse,
+        reason: label,
+      );
+      expect(data.hasAction(SemanticsAction.tap), isTrue, reason: label);
+      expect(node.childrenCount, 0, reason: 'Glyph and label merge');
+      // No other node over the row carries its label or takes its tap.
+      final row = tester.getRect(muscle(key));
+      bool over(SemanticsNode other) => row.contains(
+        MatrixUtils.transformRect(_globalTransform(other), other.rect).center,
+      );
+      final taps = find.semantics
+          .byAction(SemanticsAction.tap)
+          .evaluate()
+          .where(over);
+      expect(taps, [node], reason: label);
+      final named = find.semantics.byLabel(label).evaluate().where(over);
+      expect(named, [node], reason: label);
+    }
+    semantics.dispose();
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets(
     'switching layouts keeps the canvas surface, view and selection',
@@ -1245,4 +1419,12 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+}
+
+Matrix4 _globalTransform(SemanticsNode node) {
+  final transform = Matrix4.identity();
+  for (SemanticsNode? n = node; n != null; n = n.parent) {
+    if (n.transform != null) transform.multiply(n.transform!);
+  }
+  return transform;
 }
