@@ -174,11 +174,29 @@ export class VolumeRenderer{
   // are in this.pixels. Picks need the two to be equal.
   this.drawnFrame=0;this.pixelsFrame=-1;this.fence=null;this.fenceFrame=-1;
   this.ctx=canvas.getContext('2d');if(!this.ctx)throw new Error('Canvas unavailable');
-  this.surface=document.createElement('canvas');
+  this.compose=compose;this.composeFallback=false;this.atlas=document.createElement('canvas');this.lost=false;
+  try{this.setup(compose);}catch(error){if(compose!=='auto'||!this.gpu)throw error;this.fallBackToCPU();}
+  // Prepare the tilt bounds now, during load, not on the first tilted frame.
+  orbitFrame(mesh,maxPitch);
+ }
+ /**
+  * In 'auto' mode a WebGL2 composer that fails to compile, link or complete
+  * its framebuffers (at setup or a later resize) falls back once to the CPU
+  * reference path on a fresh surface; that context is never reused.
+  */
+ fallBackToCPU(){
+  const gl=this.gl;this.fence=null;this.fenceFrame=-1;this.gl=null;this.gpu=false;this.composeFallback=true;
+  gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  this.setup('cpu');this.pixels=null;this.pixelsFrame=-1;this.atlasKey='';
+ }
+ setup(compose){
+  const canvas=this.canvas,mesh=this.mesh,surface=this.surface=document.createElement('canvas');
+  // A superseded surface (after a fallback) can no longer fail the renderer.
+  surface.addEventListener('webglcontextlost',event=>{event.preventDefault();if(this.disposed||surface!==this.surface)return;this.lost=true;canvas.dispatchEvent(new Event('renderfailure'));});
   // WebGL2 composes glyphs on the GPU; WebGL1 keeps the CPU reference path.
-  const gl2=compose!=='cpu'?this.surface.getContext('webgl2',{alpha:true,antialias:false,depth:false,premultipliedAlpha:true,preserveDrawingBuffer:false}):null;
+  const gl2=compose!=='cpu'?surface.getContext('webgl2',{alpha:true,antialias:false,depth:false,premultipliedAlpha:true,preserveDrawingBuffer:false}):null;
   this.gpu=!!gl2;
-  const gl=this.gl=gl2||this.surface.getContext('webgl',{alpha:true,antialias:false,preserveDrawingBuffer:true});
+  const gl=this.gl=gl2||surface.getContext('webgl',{alpha:true,antialias:false,preserveDrawingBuffer:true});
   if(!gl||!(this.gpu||gl.getExtension('OES_element_index_uint')))throw new Error('Indexed graphics unavailable');
   if(compose==='gpu'&&!this.gpu)throw new Error('GPU compose unavailable');
   if(this.gpu){this.geometryVAO=gl.createVertexArray();gl.bindVertexArray(this.geometryVAO);}
@@ -223,11 +241,7 @@ export class VolumeRenderer{
   this.depthLocation=gl.getUniformLocation(program,'depthRange');this.pitchLocation=gl.getUniformLocation(program,'pitch');this.centerLocation=gl.getUniformLocation(program,'centerY');
   this.yawLocation=gl.getUniformLocation(program,'yaw');this.aspectLocation=gl.getUniformLocation(program,'aspect');
   gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LESS);gl.disable(gl.BLEND);gl.disable(gl.DITHER);
-  this.atlas=document.createElement('canvas');this.lost=false;
   if(this.gpu)this.createComposer(compile);
-  // Prepare the tilt bounds now, during load, not on the first tilted frame.
-  orbitFrame(mesh,maxPitch);
-  this.surface.addEventListener('webglcontextlost',event=>{event.preventDefault();if(this.disposed)return;this.lost=true;canvas.dispatchEvent(new Event('renderfailure'));});
  }
  resize(){
   const width=this.canvas.clientWidth,height=this.canvas.clientHeight;if(!width||!height)return false;
@@ -237,8 +251,8 @@ export class VolumeRenderer{
   this.cols=Math.max(1,Math.round(width/pitch));this.rows=Math.max(1,Math.round(height/(pitch/samplingPitch.aspect)));
   // The retained geometry surface is three samples per cell side on both paths.
   this.gw=this.cols*3;this.gh=this.rows*3;
-  if(this.gpu){this.surface.width=w;this.surface.height=h;this.resizeComposer();}
-  else{this.surface.width=this.gw;this.surface.height=this.gh;this.gl.viewport(0,0,this.gw,this.gh);}
+  if(this.gpu){this.surface.width=w;this.surface.height=h;try{this.resizeComposer();}catch(error){if(this.compose!=='auto')throw error;this.fallBackToCPU();}}
+  if(!this.gpu){this.surface.width=this.gw;this.surface.height=this.gh;this.gl.viewport(0,0,this.gw,this.gh);}
   this.pixels=new Uint8Array(this.gw*this.gh*4);this.pixelsFrame=-1;this.atlasKey='';return true;
  }
  buildAtlas(muscles,theme,selected=null){

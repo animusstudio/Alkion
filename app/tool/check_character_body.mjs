@@ -250,3 +250,75 @@ for(const pitch of [-maxPitch,-.4,0,.2,maxPitch]){
 // front-facing point drops down the screen.
 {const o=orbitFrame(orbitMesh,maxPitch),[,,crown]=orbitPoint(0,orbitMesh.bounds[1][1],0,0,o),[,chestY]=orbitPoint(0,o.centerY,.3,0,o);assert.ok(crown>0&&chestY<o.centerY);}
 console.log('PASS: protocol 5 view pitch bounds, v4 rejection, tilt invalidation and a bounded camera orbit around the vertical centre');
+
+// GPU compose fallback: on a WebGL2 device whose composer fails to compile,
+// link or complete its framebuffers, at setup or at a later resize, 'auto'
+// mode falls back once to the CPU reference path on a fresh surface, which
+// renders glyphs and picks. Explicit 'gpu' mode still fails. Fake graphics
+// only: the real VolumeRenderer, material sampler and pick addressing run.
+{
+ const chest=surfaceRegions.indexOf('chest'),contexts=[],failures=[],savedDocument=globalThis.document;
+ const glyphDraws={n:0};
+ const fake2d=()=>({measureText:()=>({actualBoundingBoxLeft:0,actualBoundingBoxRight:70,actualBoundingBoxAscent:70,actualBoundingBoxDescent:0}),scale(){},fillText(){},clearRect(){},putImageData(){},
+  drawImage(){glyphDraws.n++;},getImageData:(x,y,w,h)=>({data:new Uint8ClampedArray(Math.max(1,w*h)*4)})});
+ const fill=dst=>{for(let at=0;at<dst.length;at+=4)dst.set([180,chest,128,255],at);};
+ function fakeGL(kind,{failCompose,failFramebuffer}){
+  const constants=new Map(),log={kind,lost:0,linkedComposer:false};let proxy;
+  const gl={log,getExtension:name=>name==='WEBGL_lose_context'?{loseContext(){log.lost++;}}:{},
+   createShader:()=>({}),shaderSource:(shader,source)=>{shader.source=source;},
+   getShaderParameter:shader=>!(failCompose&&shader.source.includes('uniform sampler2D cellInfo')),getShaderInfoLog:()=>'forced composer failure',
+   getProgramParameter:()=>true,getAttribLocation:()=>0,getUniformLocation:()=>({}),
+   checkFramebufferStatus:()=>failFramebuffer?0:proxy.FRAMEBUFFER_COMPLETE,
+   readPixels:(x,y,w,h,format,type,dst)=>{if(ArrayBuffer.isView(dst))fill(dst);},getBufferSubData:(target,offset,dst)=>fill(dst),
+   clientWaitSync:()=>proxy.ALREADY_SIGNALED};
+  proxy=new Proxy(gl,{get:(target,name)=>name in target?target[name]:typeof name==='string'&&/^[A-Z0-9_]+$/.test(name)?(constants.has(name)||constants.set(name,constants.size+1),constants.get(name)):()=>({})});
+  contexts.push(log);return proxy;
+ }
+ const element=options=>{const listeners={};return {width:0,height:0,listeners,addEventListener:(name,cb)=>listeners[name]=cb,
+  getContext:type=>type==='2d'?fake2d():type==='webgl2'?(options.webgl2?fakeGL('webgl2',options):null):fakeGL('webgl',{})};};
+ const run=(options,compose)=>{
+  contexts.length=0;failures.length=0;const surfaces=[];
+  globalThis.document={createElement:()=>{const e=element(options);surfaces.push(e);return e;}};globalThis.devicePixelRatio=1;
+  const canvas={clientWidth:120,clientHeight:200,width:0,height:0,dataset:{},getContext:()=>fake2d(),dispatchEvent:event=>failures.push(event.type)};
+  const mesh={...orbitMesh,regionPositions:orbitMesh.positions,masks:{}};
+  return {renderer:new VolumeRenderer(canvas,mesh,false,{compose}),surfaces};
+ };
+ const muscles=Object.fromEntries(regions.map(key=>[key,{score:0}]));
+ const drawsAndPicks=renderer=>{
+  glyphDraws.n=0;renderer.draw(0,muscles,'dark');
+  assert.ok(renderer.glyphCount>0&&glyphDraws.n>=renderer.glyphCount,'The CPU path composes glyphs');
+  assert.equal(renderer.pollReadback(),true);assert.equal(renderer.pick(.5,.5),'chest','The CPU path picks its own frame');
+ };
+ // Unforced WebGL2 composes on the GPU (the fake accepts every call).
+ {const {renderer}=run({webgl2:true},'auto');assert.equal(renderer.gpu,true);assert.equal(renderer.composeFallback,false);renderer.draw(0,muscles,'dark');assert.equal(renderer.readbackPending(),true);assert.equal(renderer.pick(.5,.5),null,'No pick before the copy lands');assert.equal(renderer.pollReadback(),true);assert.equal(renderer.readbackPending(),false);assert.equal(renderer.pick(.5,.5),'chest');}
+ for(const [name,options] of [['compile',{webgl2:true,failCompose:true}],['framebuffer',{webgl2:true,failFramebuffer:true}]]){
+  const {renderer,surfaces}=run(options,'auto');
+  // A compile failure falls back in the constructor; an incomplete
+  // framebuffer is found by the first resize, inside the first draw.
+  assert.equal(renderer.composeFallback,name==='compile',`${name}: setup-time fallback`);
+  drawsAndPicks(renderer);
+  assert.equal(renderer.gpu,false);assert.equal(renderer.composeFallback,true,`${name}: falls back`);
+  assert.deepEqual(contexts.map(c=>[c.kind,c.lost]),[['webgl2',1],['webgl',0]],`${name}: the failed context is released, a fresh one renders`);
+  // The released context's loss event cannot fail the renderer.
+  const superseded=surfaces.filter(surface=>surface.listeners.webglcontextlost&&surface!==renderer.surface);assert.equal(superseded.length,1);
+  for(const surface of superseded)surface.listeners.webglcontextlost({preventDefault(){}});
+  assert.deepEqual(failures,[],`${name}: a superseded surface's loss is ignored`);
+  assert.equal(renderer.lost,false);drawsAndPicks(renderer);
+  assert.equal(contexts.length,2,`${name}: falls back once`);
+  // A loss on the live CPU surface still fails the renderer.
+  renderer.surface.listeners.webglcontextlost({preventDefault(){}});assert.deepEqual(failures,['renderfailure']);
+  // Explicit GPU compose never falls back.
+  if(name==='compile')assert.throws(()=>run(options,'gpu'),/forced composer failure/);
+  else{const {renderer:gpu}=run(options,'gpu');assert.throws(()=>gpu.draw(0,muscles,'dark'),/surface unavailable/);}
+ }
+ // A resize-time failure after GPU frames already drew also falls back.
+ {
+  const options={webgl2:true},{renderer}=run(options,'auto');renderer.draw(0,muscles,'dark');assert.equal(renderer.gpu,true);
+  options.failFramebuffer=true;renderer.canvas.clientWidth=150;
+  // Contexts already made keep their options: fail the live one's checks too.
+  renderer.gl.checkFramebufferStatus=()=>0;
+  drawsAndPicks(renderer);assert.equal(renderer.composeFallback,true);assert.deepEqual(contexts.map(c=>[c.kind,c.lost]),[['webgl2',1],['webgl',0]]);
+ }
+ globalThis.document=savedDocument;
+ console.log('PASS: a WebGL2 composer failure at setup or resize falls back once to CPU compose, which renders and picks; explicit GPU mode still fails');
+}
