@@ -103,16 +103,18 @@ class _SlideLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final figure = bodyVisible
-        ? BodyFigure(
-            workload:
-                workload ??
-                WorkoutWorkload.loading(WorkoutWorkloadMode.planned),
-          )
-        : const SizedBox(width: 128, height: 260);
     return LayoutBuilder(
       builder: (context, box) {
-        final stacked = _stackedOverview(context, box.maxWidth);
+        final stacked = splitOverviewStacked(context, box.maxWidth);
+        final width = splitFigureWidth(context, box.maxWidth);
+        final figure = bodyVisible
+            ? BodyFigure(
+                width: width,
+                workload:
+                    workload ??
+                    WorkoutWorkload.loading(WorkoutWorkloadMode.planned),
+              )
+            : SizedBox(width: width, height: BodyFigure.heightFor(width));
         final information = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -172,7 +174,7 @@ class _SlideLayout extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(child: information),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: _figureGap),
                   figure,
                 ],
               ),
@@ -183,8 +185,27 @@ class _SlideLayout extends StatelessWidget {
   }
 }
 
-bool _stackedOverview(BuildContext context, double width) =>
+/// Whether a slide [width] wide stacks the figure under its info.
+bool splitOverviewStacked(BuildContext context, double width) =>
     width < 240 || MediaQuery.textScalerOf(context).scale(12) > 18;
+
+const _figureGap = 12.0;
+
+/// The info column keeps at least this width beside the figure.
+const _minInfoWidth = 140.0;
+
+/// The body figure's width on a slide [width] wide. Beside the info it takes
+/// what the info column leaves, from [BodyFigure.compactWidth] up to
+/// [BodyFigure.largeWidth]; stacked under the info it is full size, centred.
+double splitFigureWidth(BuildContext context, double width) {
+  if (splitOverviewStacked(context, width)) {
+    return min(BodyFigure.largeWidth, width);
+  }
+  return (width - _figureGap - _minInfoWidth).clamp(
+    BodyFigure.compactWidth,
+    BodyFigure.largeWidth,
+  );
+}
 
 // ── CustomSlide ───────────────────────────────────────────────────────────────
 
@@ -367,8 +388,10 @@ class _SplitCardState extends State<SplitCard> {
     final body = WorkoutType.body(size: 16);
     final caption = WorkoutType.body(size: 12);
     final mono = WorkoutType.mono(size: 12);
-    final stacked = _stackedOverview(context, width);
-    final infoWidth = stacked ? width : width - 140;
+    final stacked = splitOverviewStacked(context, width);
+    final figureWidth = splitFigureWidth(context, width);
+    final figureHeight = BodyFigure.heightFor(figureWidth);
+    final infoWidth = stacked ? width : width - figureWidth - _figureGap;
     double focusHeight(String? focus) => focus?.isNotEmpty == true
         ? labelHeight(focus!, body, 3, infoWidth) + 16
         : 0;
@@ -394,7 +417,9 @@ class _SplitCardState extends State<SplitCard> {
           8 +
           scaler.scale(12) * 1.4 +
           12 +
-          (stacked ? infoHeight + 12 + 260 : max(infoHeight, 260));
+          (stacked
+              ? infoHeight + 12 + figureHeight
+              : max(infoHeight, figureHeight));
     }
 
     var tallest = totalHeight(

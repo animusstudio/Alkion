@@ -141,11 +141,15 @@ void main() {
 
             if (locale == 'en' && kind == 'working') {
               // The actual Today carousel's custom workout can start immediately.
-              await tester.drag(
+              // The swipe starts beside the body figure, which owns its drags.
+              final pager = tester.getRect(
                 find.descendant(
                   of: find.byType(SplitCard),
                   matching: find.byType(PageView),
                 ),
+              );
+              await tester.dragFrom(
+                Offset(pager.left + 40, pager.center.dy),
                 const Offset(-380, 0),
               );
               await settleReal(tester, ticks: 10);

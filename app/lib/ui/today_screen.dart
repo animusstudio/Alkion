@@ -37,6 +37,7 @@ import '../widgets/prescription_controls.dart';
 import '../widgets/section_label.dart';
 import '../widgets/sparkline.dart';
 import '../widgets/split_card.dart';
+import 'body_figure.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/volume_bars.dart';
 import '../widgets/week_strip.dart';
@@ -1147,33 +1148,58 @@ class _EmptyState extends StatelessWidget {
 }
 
 /// The split card's shape while the rotation loads: the day text beside the
-/// body figure, at the card's 290 dp height.
+/// body figure, sized like the card at this width and text scale.
 class _SplitCardSkeleton extends StatelessWidget {
   const _SplitCardSkeleton();
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 290,
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: GlyphSkeleton.blocks(const [
-              GlyphBlock(12, widthFactor: .4),
-              GlyphBlock(22, widthFactor: .85, gap: 12),
-              GlyphBlock(14, widthFactor: .6, gap: 10),
-              GlyphBlock(12, widthFactor: .7, gap: 24),
-              GlyphBlock(12, widthFactor: .5, gap: 8),
-              GlyphBlock(48, gap: 40),
-            ]),
-          ),
-          const SizedBox(width: 16),
-          const GlyphSkeleton.silhouette(width: 128, height: 212),
-        ],
-      ),
-    ),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final scaler = MediaQuery.textScalerOf(context);
+      // Card padding and border, as in SplitCard.
+      final inner = box.maxWidth - 34;
+      final figureWidth = splitFigureWidth(context, inner);
+      final figureHeight = BodyFigure.heightFor(figureWidth);
+      final stacked = splitOverviewStacked(context, inner);
+      // Title, context line, pager slack, then the Start button below.
+      final header = scaler.scale(28) * 1.3 + 8 + scaler.scale(12) * 1.4 + 12;
+      final info = 3 * (scaler.scale(12) * 2.8 + 14);
+      final body = stacked ? info + 12 + figureHeight : figureHeight;
+      final text = GlyphSkeleton.blocks(const [
+        GlyphBlock(12, widthFactor: .4),
+        GlyphBlock(22, widthFactor: .85, gap: 12),
+        GlyphBlock(14, widthFactor: .6, gap: 10),
+        GlyphBlock(12, widthFactor: .7, gap: 24),
+        GlyphBlock(12, widthFactor: .5, gap: 8),
+      ]);
+      final figure = GlyphSkeleton.silhouette(
+        width: figureWidth,
+        height: BodyFigure.artHeightFor(figureWidth),
+      );
+      return SizedBox(
+        height: 34 + header + body + 4 + 18 + 56,
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    text,
+                    const SizedBox(height: 24),
+                    Center(child: figure),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: text),
+                    const SizedBox(width: 12),
+                    figure,
+                  ],
+                ),
+        ),
+      );
+    },
   );
 }
 

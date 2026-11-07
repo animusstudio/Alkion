@@ -56,9 +56,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     WorkoutWorkloadMode.saved,
   );
 
-  WorkoutWorkload _currentWorkload = WorkoutWorkload.loading(
-    WorkoutWorkloadMode.saved,
-  );
   CatalogBundle? _bundle;
   bool _started = false;
   int _loadEpoch = 0;
@@ -98,7 +95,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _loadError = null;
     _notFound = false;
     _workload = WorkoutWorkload.loading(WorkoutWorkloadMode.saved);
-    _currentWorkload = WorkoutWorkload.loading(WorkoutWorkloadMode.saved);
     try {
       // Read the session summary row
       final rows = await database.getAll(
@@ -143,7 +139,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       }
       setState(() {
         _workload = views.recorded;
-        _currentWorkload = views.current;
         _session = session;
         _blocks = blocks;
         _exerciseNames = names;
@@ -157,9 +152,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       }
       setState(() {
         _workload = WorkoutWorkload.unavailable(WorkoutWorkloadMode.saved);
-        _currentWorkload = WorkoutWorkload.unavailable(
-          WorkoutWorkloadMode.saved,
-        );
         _loadError = '$e';
         _loading = false;
       });
@@ -184,11 +176,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         skeleton: const _SummarySkeleton(),
         builder: (context) => errorMessage != null
             ? _ErrorState(
-                onWorkload: () => showBodyWorkloadSheet(
-                  context,
-                  workload: () => _workload,
-                  currentWorkload: () => _currentWorkload,
-                ),
+                onWorkload: () =>
+                    showBodyWorkloadSheet(context, workload: () => _workload),
                 error: errorMessage,
                 doneLabel: l.commonDone,
                 tokens: tokens,
@@ -196,11 +185,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     Navigator.of(context).popUntil((route) => route.isFirst),
               )
             : _SummaryBody(
-                onWorkload: () => showBodyWorkloadSheet(
-                  context,
-                  workload: () => _workload,
-                  currentWorkload: () => _currentWorkload,
-                ),
+                onWorkload: () =>
+                    showBodyWorkloadSheet(context, workload: () => _workload),
                 session: _session!,
                 blocks: _blocks!,
                 exerciseNames: _exerciseNames,
@@ -398,11 +384,9 @@ class _SummaryBody extends StatelessWidget {
                 ),
               const SizedBox(height: 32),
 
-              TextButton(
+              BodyWorkloadButton(
                 key: const Key('summary-workload'),
                 onPressed: onWorkload,
-                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-                child: Text(l.bodyWorkload),
               ),
               const SizedBox(height: 16),
               // ── Done button ──────────────────────────────────────────
@@ -682,12 +666,11 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            TextButton(
+            BodyWorkloadButton(
               key: const Key('summary-workload'),
               onPressed: onWorkload,
-              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              child: Text(AppLocalizations.of(context).bodyWorkload),
             ),
+            const SizedBox(height: 16),
             PrimaryBtn(doneLabel, enabled: true, onTap: onDone),
           ],
         ),

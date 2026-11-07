@@ -250,7 +250,17 @@ void main() {
         SplitCard(days: _twodays, nextIndex: 0, onStart: (_) {}),
       );
       await tester.pumpAndSettle();
-      expect(findGlyph(AlkionGlyph.chevronRight), findsNothing);
+      // The only chevron is the workload entry's own.
+      expect(
+        findGlyph(AlkionGlyph.chevronRight).evaluate().length,
+        find
+            .descendant(
+              of: find.byKey(const Key('body-workload-entry')),
+              matching: findGlyph(AlkionGlyph.chevronRight),
+            )
+            .evaluate()
+            .length,
+      );
     });
 
     testWidgets(
