@@ -920,8 +920,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            // Header, the live set panel, then the exercise rows.
-            child: GlyphSkeleton.blocks(const [
+            // Header, the live set panel, then the exercise rows. Static: no
+            // load is pending here (e.g. the pop after finish or discard).
+            child: GlyphSkeleton.blocks(active: false, const [
               GlyphBlock(22, widthFactor: .55),
               GlyphBlock(12, widthFactor: .35, gap: 8),
               GlyphBlock(220, gap: 24),
