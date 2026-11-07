@@ -168,10 +168,10 @@ ease to a stop at the zoom and pan bounds. All other T4 inertia rules apply.
 - T3 owner check: gestures work (A3) but feel clanky. T4 added.
 - T4: implemented 2026-11-07 on host (pipelining, GPU compose, async readback,
   hitches, inertia, opt-in timing; see [acceptance](../alkion/acceptance.md)).
-  The A024 re-measure with the timing build is pending. Owner feel check:
+  The A024 re-measure meets the target (see Device below). Owner feel check:
   definitely smoother.
 - T5: implemented at `b7ee0c8`; host load 3.9 s to 1.4 s; catalog tests
-  pass, except the 3 known failures. The A024 measurement is pending.
+  pass, except the 3 known failures. Measured on A024 (see Device below).
 - T6: implemented on host at `acec5f1` (two-finger pan/zoom coast; focused
   and full suites pass except the 3 known failures). Device feel check pending.
 - Review fixes: the independent review of `8d5f580..8b0dd3b` passed with four
