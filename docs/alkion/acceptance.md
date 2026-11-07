@@ -138,7 +138,7 @@ files). The full suite runs 2,675 tests: 2,669 pass, three expected optional
 skips and the three known `catalog_metric_controls_test.dart` failures. Body
 protocol/loader/picking/orbit, material (12,248 cases) and native bridge checks
 pass, as do 65 tool Python tests. No APK was built and no device was used.
-Native pinch, pan and tilt on Nothing A024 remained the owner's check (A3, A6); the owner later confirmed gestures work (plan T3), and the T6 feel check is recorded with T4 above.
+Native pinch, pan and tilt on Nothing A024 remained the owner's check (A3, A6); the owner later confirmed gestures work (plan T3), and the T6 feel check stays open (see T4 above).
 
 ## Thirteen Explore and heatmap regions — 2026-11-06
 
