@@ -408,21 +408,59 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the dissolve runs for Motion.reveal and leaves the child', (
+  /// How far the cleared hole reaches towards a corner, as a share of the
+  /// centre-to-corner distance (0 before it opens, 1 once fully open), read
+  /// from the reveal's own clip.
+  double waveFront(WidgetTester tester) {
+    final clipFinder = find.byType(ClipPath);
+    final path = tester
+        .widget<ClipPath>(clipFinder)
+        .clipper!
+        .getClip(tester.getSize(clipFinder));
+    final size = tester.getSize(clipFinder);
+    final centre = size.center(Offset.zero);
+    Offset at(double share) => centre + centre * share;
+    if (path.contains(at(.001))) return 0;
+    if (!path.contains(at(.999))) return 1;
+    var lo = .001, hi = .999;
+    for (var i = 0; i < 30; i++) {
+      final mid = (lo + hi) / 2;
+      path.contains(at(mid)) ? hi = mid : lo = mid;
+    }
+    return lo;
+  }
+
+  testWidgets('the dissolve wave travels across all of Motion.reveal', (
     tester,
   ) async {
     expect(Motion.reveal, const Duration(milliseconds: 500));
+    // Owner-directed: the dissolve keeps its own gentler curve.
+    expect(Motion.revealCurve, isNot(Motion.curve));
+    double expected(int ms) =>
+        (Motion.revealCurve.transform(ms / 500) * 1.4 - .2).clamp(0, 1);
     await tester.pumpWidget(_app(_reveal(loading: true)));
     expect(find.byType(GlyphSkeleton), findsOneWidget);
     await tester.pumpWidget(_app(_reveal(loading: false)));
-    await tester.pump(const Duration(milliseconds: 250));
+
+    await tester.pump(const Duration(milliseconds: 100));
+    final early = waveFront(tester);
+    // Open at once, but only a small hole: the travel is not front-loaded.
+    expect(early, inExclusiveRange(.03, .3));
+    expect(early, closeTo(expected(100), .02));
+
+    await tester.pump(const Duration(milliseconds: 150));
+    final middle = waveFront(tester);
+    expect(middle, inInclusiveRange(.4, .9));
+    expect(middle, closeTo(expected(250), .02));
     // Mid-wave: the content is laid out and tappable under a passing overlay.
     expect(find.byType(GlyphSkeleton), findsOneWidget);
-    expect(find.byType(ClipPath), findsOneWidget);
     expect(find.text('Ready').hitTestable(), findsOneWidget);
-    // Still covering past the old 300 ms reveal.
+
     await tester.pump(const Duration(milliseconds: 150));
+    // Open to the corners while the last glyphs still clear at the edges.
+    expect(waveFront(tester), 1);
     expect(find.byType(GlyphSkeleton), findsOneWidget);
+
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(GlyphSkeleton), findsNothing);
     expect(find.byType(ClipPath), findsNothing);

@@ -29,6 +29,12 @@ class Motion {
   /// from [slow] so the reveal reads as one unhurried wave.
   static const reveal = Duration(milliseconds: 500);
 
+  /// The [reveal] dissolve's own curve, owner-directed 2026-11-07: [curve]
+  /// front-loads the wave so it looked finished by about 200 ms. This one
+  /// starts at once but keeps about half the travel for after 200 ms, so the
+  /// wave visibly crosses the whole 500 ms. [curve] is unchanged elsewhere.
+  static const revealCurve = Cubic(0.3, 0.2, 0.5, 1);
+
   static AnimationStyle sheet(BuildContext context) => AnimationStyle(
     duration: of(context, base),
     reverseDuration: of(context, base),

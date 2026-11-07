@@ -230,8 +230,8 @@ class _GlyphSkeletonState extends State<GlyphSkeleton> {
 }
 
 /// Dissolves a [GlyphSkeleton] into content once a load finishes: cells run
-/// through a glyph ramp and clear in a wave from the centre within
-/// [Motion.reveal]. Reduced motion, hidden routes and off-screen reveals swap
+/// through a glyph ramp and clear in a wave from the centre over
+/// [Motion.reveal], eased by [Motion.revealCurve]. Reduced motion, hidden routes and off-screen reveals swap
 /// instantly. A reveal never adds a wait: content that is ready on mount is
 /// shown at once unless [revealOnMount] decodes a load that was displayed
 /// elsewhere.
@@ -317,6 +317,7 @@ class _GlyphRevealState extends State<GlyphReveal> {
       event: _reveals,
       onMount: widget.revealOnMount && !loading,
       duration: Motion.reveal,
+      curve: Motion.revealCurve,
       builder: (context, t) {
         if (content == null) return speak(IgnorePointer(child: skeleton));
         final covering = loading || t < 1;

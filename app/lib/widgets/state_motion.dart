@@ -14,10 +14,14 @@ class EventProgress extends StatefulWidget {
     required this.builder,
     this.duration = Motion.base,
     this.onMount = false,
+    this.curve = Motion.curve,
   });
   final Object? event;
   final Duration duration;
   final bool onMount;
+
+  /// Applied to the linear progress before [builder] sees it.
+  final Curve curve;
   final Widget Function(BuildContext context, double progress) builder;
   @override
   State<EventProgress> createState() => _EventProgressState();
@@ -124,7 +128,7 @@ class _EventProgressState extends State<EventProgress>
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _controller,
     builder: (context, _) =>
-        widget.builder(context, Motion.curve.transform(_controller.value)),
+        widget.builder(context, widget.curve.transform(_controller.value)),
   );
 
   @override
