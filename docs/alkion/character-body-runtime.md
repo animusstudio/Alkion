@@ -184,8 +184,8 @@ display details are no longer shown.
 Only the display was reduced. Counts, bins, coverage, the recorded/current
 resolution and the profile, bundle, semantic-map and display-projection
 provenance are computed and retained as before. The Today card and the session
-summary open the sheet through a 48 dp workload button; the compact Today art
-opens it on tap.
+summary open the sheet through a 48 dp workload button, which is the accessible
+entry. The compact Today art also opens it on tap, but is not announced.
 
 ## Camera pitch
 
