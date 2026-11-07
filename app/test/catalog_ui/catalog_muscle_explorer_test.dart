@@ -186,7 +186,15 @@ void main() {
           ),
         );
         await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
+        // The body skeleton sweeps while the artwork loads, so time is pumped
+        // rather than settled until the native ready status below.
+        for (var i = 0; i < 12; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(
+          find.byKey(const Key('character-body-loading-silhouette')),
+          findsOneWidget,
+        );
         expect(displays, isNotEmpty);
         expect(
           displays.last['visible'],

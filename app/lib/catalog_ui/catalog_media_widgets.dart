@@ -7,6 +7,7 @@ import '../catalog/catalog_media.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/typography.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glyph_loading.dart';
 import '../widgets/w_dialog.dart';
 
 /// Decorative: the selection row already speaks the full exercise identity.
@@ -60,6 +61,32 @@ class CatalogArtworkDetails extends StatelessWidget {
   );
 }
 
+/// A decoding image shows a static glyph box in its own rectangle, then
+/// dissolves in on the first frame. A cached (synchronous) image shows at once;
+/// a failed one goes straight to the caller's error builder.
+Widget _decoding(
+  Widget image,
+  int? frame,
+  bool sync, {
+  required Color cover,
+  Color? ink,
+  Color? highlight,
+}) => sync
+    ? image
+    : GlyphReveal(
+        loading: frame == null,
+        cover: cover,
+        highlight: highlight,
+        // Decodes are short: a static field, no sweep loop per thumbnail.
+        skeleton: GlyphSkeleton.box(
+          key: const Key('catalog-artwork-loading'),
+          active: false,
+          ink: ink,
+          highlight: highlight,
+        ),
+        child: image,
+      );
+
 class _ArtworkFrame extends StatelessWidget {
   const _ArtworkFrame({
     required this.asset,
@@ -85,6 +112,14 @@ class _ArtworkFrame extends StatelessWidget {
         ),
         fit: BoxFit.contain,
         excludeFromSemantics: true,
+        frameBuilder: (context, child, frame, sync) => _decoding(
+          child,
+          frame,
+          sync,
+          cover: Colors.black,
+          ink: Colors.white70,
+          highlight: Colors.white,
+        ),
         errorBuilder: (context, error, stack) => Center(
           child: Padding(
             padding: const EdgeInsets.all(8),
@@ -276,6 +311,8 @@ class _MediaFrame extends StatelessWidget {
         color: context.tokens.text,
         colorBlendMode: BlendMode.srcIn,
         excludeFromSemantics: true,
+        frameBuilder: (context, child, frame, sync) =>
+            _decoding(child, frame, sync, cover: context.tokens.surface2),
         errorBuilder: (context, error, stack) => Center(
           child: Padding(
             padding: const EdgeInsets.all(8),

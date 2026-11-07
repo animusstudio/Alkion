@@ -5,7 +5,7 @@ import '../catalog/catalog_labels.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/typography.dart';
-import '../widgets/state_motion.dart';
+import '../widgets/glyph_loading.dart';
 
 /// Only the actual asset/runtime await presents this surface. Cached catalog
 /// pickers never mount it. It reads no profile or storage of its own.
@@ -65,7 +65,8 @@ class CatalogLoadingApp extends StatelessWidget {
   );
 }
 
-/// Static while waiting: no fake progress, repeating ticker or changing labels.
+/// Shown only while the actual catalog load is pending: three result-shaped
+/// rows (thumbnail and two lines) whose band sweeps until the load resolves.
 class CatalogGlyphSkeleton extends StatelessWidget {
   const CatalogGlyphSkeleton({super.key});
   @override
@@ -76,43 +77,39 @@ class CatalogGlyphSkeleton extends StatelessWidget {
       child: SizedBox(
         height: 156,
         width: double.infinity,
-        child: RepaintBoundary(
-          child: CustomPaint(painter: _GlyphPainter(context.tokens.dim)),
+        child: Column(
+          children: [
+            for (var row = 0; row < 3; row++) ...[
+              if (row > 0) const SizedBox(height: 12),
+              SizedBox(
+                height: 44,
+                child: Row(
+                  children: [
+                    const GlyphSkeleton.box(width: 52, height: 44),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Center(
+                        child: GlyphSkeleton.lines(
+                          widths: [.86 - row * .12, .42 + row * .1],
+                          lineHeight: 12,
+                          gap: 8,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     ),
   );
 }
 
-class _GlyphPainter extends CustomPainter {
-  const _GlyphPainter(this.color);
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final ink = Paint()
-      ..color = color
-      ..isAntiAlias = false;
-    for (var row = 0; row < 3; row++) {
-      for (var column = 0; column < (size.width / 7).floor(); column++) {
-        for (var y = 0; y < 5; y++) {
-          // Authored glyph cells with fixed row widths, never invented data.
-          if (column > 3 && column > 19 + row * 3) continue;
-          if ((column * 3 + y + row) % 4 == 0) continue;
-          canvas.drawRect(
-            Rect.fromLTWH(column * 7.0, row * 52.0 + y * 4, 2, 2),
-            ink,
-          );
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_GlyphPainter old) => color != old.color;
-}
-
-/// A single 200ms decode after a displayed await. Content and controls are
-/// available from frame one; this overlay owns neither focus nor semantics.
+/// A single [Motion.slow] glyph dissolve after a displayed await. Content and
+/// controls are available from frame one; the overlay owns neither focus,
+/// pointers nor semantics, and reduced motion shows the content at once.
 class CatalogReadyReveal extends StatelessWidget {
   const CatalogReadyReveal({
     super.key,
@@ -124,47 +121,10 @@ class CatalogReadyReveal extends StatelessWidget {
   @override
   Widget build(BuildContext context) => !enabled
       ? child
-      : EventProgress(
-          event: 'catalog-ready',
-          onMount: true,
-          builder: (context, progress) => Stack(
-            fit: StackFit.passthrough,
-            children: [
-              child,
-              Positioned.fill(
-                child: ExcludeSemantics(
-                  child: IgnorePointer(
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: _DecodePainter(progress, context.tokens.bg),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+      : GlyphReveal(
+          loading: false,
+          revealOnMount: true,
+          skeleton: const SizedBox.expand(),
+          child: child,
         );
-}
-
-class _DecodePainter extends CustomPainter {
-  const _DecodePainter(this.progress, this.color);
-  final double progress;
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress >= 1) return;
-    final ink = Paint()..color = color.withValues(alpha: .4 * (1 - progress));
-    for (var y = 0; y < size.height; y += 8) {
-      for (var x = 0; x < size.width; x += 8) {
-        if (((x ~/ 8) * 3 + (y ~/ 8) * 5) % 8 / 8 >= progress) {
-          canvas.drawRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 3, 3), ink);
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DecodePainter old) =>
-      progress != old.progress || color != old.color;
 }

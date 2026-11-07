@@ -12,6 +12,8 @@ import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/theme/motion.dart';
+import 'package:alkion/widgets/glyph_loading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -252,6 +254,44 @@ void main() {
       expect(pixels.height, lessThanOrEqualTo(cap));
     }
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('decoding artwork holds a static glyph box, then dissolves in', (
+    tester,
+  ) async {
+    final state = _mediaState();
+    addTearDown(state.dispose);
+    final artwork = catalogArtworkForVariant(state.bundle.variants[_benchId])!;
+    // An earlier test may have decoded this asset; a cached frame shows at once.
+    imageCache
+      ..clear()
+      ..clearLiveImages();
+    await tester.pumpWidget(_app(CatalogArtworkDetails(artwork: artwork)));
+    final loading = find.byKey(const Key('catalog-artwork-loading'));
+    final frame = find.descendant(
+      of: find.byType(CatalogArtworkDetails),
+      matching: find.byType(Image),
+    );
+    expect(loading, findsOneWidget);
+    // Same rectangle as the artwork, and no sweep loop for a short decode.
+    expect(tester.getRect(loading), tester.getRect(frame));
+    expect(GlyphSkeleton.debugSweepRunning, isFalse);
+    final image = tester.widget<Image>(frame);
+    await tester.runAsync(
+      () => precacheImage(image.image, tester.element(frame)),
+    );
+    await tester.pump();
+    await tester.pump(Motion.slow);
+    expect(loading, findsNothing);
+    expect(
+      tester
+          .widget<RawImage>(
+            find.descendant(of: frame, matching: find.byType(RawImage)),
+          )
+          .image,
+      isNotNull,
+    );
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../data/body_workload.dart';
 import '../theme/motion.dart';
-import '../theme/typography.dart';
+import '../widgets/glyph_loading.dart';
 
 enum CharacterBodyStyle { male, female }
 
@@ -572,60 +572,53 @@ class _CharacterBodyState extends State<CharacterBody>
         fit: StackFit.expand,
         children: [
           if (_supported)
-            ExcludeSemantics(
-              child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: _status == CharacterBodyStatus.ready ? 1 : .65,
-                  duration: widget.reducedMotion
-                      ? Duration.zero
-                      : Motion.of(context, Motion.base),
-                  curve: Curves.easeOutCubic,
-                  child: AndroidView(
-                    key: ValueKey(_retryGeneration),
-                    viewType: 'dev.animusstudio.alkion/character-body',
-                    onPlatformViewCreated: _created,
-                    layoutDirection: TextDirection.ltr,
-                  ),
-                ),
+            // The native view loads hidden under an opaque body skeleton,
+            // then the skeleton dissolves away; hybrid composition keeps this
+            // Flutter overlay above the platform view.
+            GlyphReveal(
+              loading: _status == CharacterBodyStatus.loading,
+              cover: widget.background,
+              highlight: widget.neutral,
+              skeleton: GlyphSkeleton.silhouette(
+                key: const Key('character-body-loading-silhouette'),
+                active: widget.visible && !widget.reducedMotion,
+                ink: widget.neutral.withValues(alpha: .7),
+                highlight: widget.neutral,
               ),
-            ),
-          if (_status == CharacterBodyStatus.loading)
-            ExcludeSemantics(
-              child: IgnorePointer(
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 40),
-                      child: Text(
-                        '     .::.     \n'
-                        '     ::::     \n'
-                        '   .:####:.   \n'
-                        '  :##:##:##:  \n'
-                        ' .## :##: ##. \n'
-                        ' :#: :##: :#: \n'
-                        ' ::  :##:  :: \n'
-                        '     ####     \n'
-                        '    :#::#:    \n'
-                        '    ##  ##    \n'
-                        '    #:  :#    \n'
-                        '   :#:  :#:   \n'
-                        '   ::    ::   ',
-                        key: const Key('character-body-loading-silhouette'),
-                        textAlign: TextAlign.center,
-                        textScaler: TextScaler.noScaling,
-                        style: WorkoutType.mono(
-                          size: widget.compact ? 9 : 11,
-                          color: widget.neutral.withValues(alpha: .35),
-                        ).copyWith(height: 1.05),
-                      ),
+              child: ExcludeSemantics(
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity:
+                        _status == CharacterBodyStatus.error ||
+                            _status == CharacterBodyStatus.unavailable
+                        ? .65
+                        : 1,
+                    duration: widget.reducedMotion
+                        ? Duration.zero
+                        : Motion.of(context, Motion.base),
+                    curve: Curves.easeOutCubic,
+                    child: AndroidView(
+                      key: ValueKey(_retryGeneration),
+                      viewType: 'dev.animusstudio.alkion/character-body',
+                      onPlatformViewCreated: _created,
+                      layoutDirection: TextDirection.ltr,
                     ),
                   ),
                 ),
               ),
             ),
+          // The skeleton shows loading; the caller's label is spoken only.
           if (_status == CharacterBodyStatus.loading && widget.fallback != null)
-            Positioned(bottom: 8, left: 0, right: 0, child: widget.fallback!),
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Opacity(
+                opacity: 0,
+                alwaysIncludeSemantics: true,
+                child: widget.fallback!,
+              ),
+            ),
           if (_status != CharacterBodyStatus.loading &&
               _status != CharacterBodyStatus.ready &&
               widget.fallback != null)

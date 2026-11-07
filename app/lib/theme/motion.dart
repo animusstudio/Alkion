@@ -21,6 +21,10 @@ class Motion {
   static const ambientCycle = Duration(seconds: 16);
   static const ambientCurve = Curves.easeInOutSine;
 
+  /// One pass of the glyph skeleton's loading band. It runs only while a real
+  /// load is pending; the dissolve into content uses [slow].
+  static const glyphSweep = Duration(milliseconds: 1400);
+
   static AnimationStyle sheet(BuildContext context) => AnimationStyle(
     duration: of(context, base),
     reverseDuration: of(context, base),

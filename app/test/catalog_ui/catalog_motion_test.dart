@@ -7,6 +7,8 @@ import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/widgets/state_motion.dart';
+import 'package:alkion/widgets/glyph_loading.dart';
+import 'package:alkion/theme/motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:alkion/theme/typography.dart';
@@ -255,7 +257,7 @@ void main() {
     },
   );
 
-  testWidgets('decode preserves immediate input and completes within 200ms', (
+  testWidgets('decode preserves immediate input and completes within 300ms', (
     tester,
   ) async {
     var taps = 0;
@@ -273,7 +275,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Ready'));
     expect(taps, 1);
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(Motion.slow);
     final motion =
         tester
                 .widget<AnimatedBuilder>(
@@ -305,11 +307,14 @@ void main() {
       );
       await tester.pump();
       expect(find.byType(CatalogGlyphSkeleton), findsOneWidget);
-      expect(tester.binding.transientCallbackCount, 0);
+      // The band sweeps only while this real load is pending.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(GlyphSkeleton.debugSweepRunning, isTrue);
       pending.complete(state.bundle);
       await tester.pump();
       await tester.pump();
       expect(find.byType(CatalogGlyphSkeleton), findsNothing);
+      expect(GlyphSkeleton.debugSweepRunning, isFalse);
       expect(find.byType(CatalogReadyReveal), findsOneWidget);
       await tester.pumpAndSettle();
       await tester.pumpWidget(const SizedBox());
