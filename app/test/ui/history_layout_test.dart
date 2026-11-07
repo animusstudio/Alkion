@@ -63,6 +63,19 @@ Finder volumeDash(AppLocalizations l) => find.byWidgetPredicate(
       w.semanticsLabel == l.alkionVolumeUnavailableLabel,
 );
 
+const _stackedBandHeights = <String, double>{
+  'en 320 2': 270,
+  'de 320 2': 304,
+  'es 320 2': 338,
+  'it 320 2': 338,
+  'en 412 2': 236,
+  'de 412 2': 236,
+  'es 412 2': 270,
+  'it 412 2': 236,
+  'es 320 1': 143,
+  'it 320 1': 143,
+};
+
 void main() {
   setUpAll(() async {
     await initializeDateFormatting();
@@ -197,20 +210,31 @@ void main() {
               final stacked = rects[1].top > rects[0].top + 1;
               // The list pads 16 dp each side.
               expect(tester.getSize(band).width, width - 32, reason: name);
-              // A normal phone keeps the row (numbers split by vertical rules)
-              // in every locale; narrow 1x en/de keeps it too.
-              if (scale == 1.0 &&
-                  (width == 412 || locale == 'en' || locale == 'de')) {
-                expect(stacked, isFalse, reason: 'row expected: $name');
-              }
+              // Row at 1x on a normal phone in every locale and on narrow
+              // en/de; stacked for narrow es/it at 1x and everything at 2x.
+              final expectStacked =
+                  scale == 2.0 ||
+                  (width == 320 && (locale == 'es' || locale == 'it'));
+              expect(
+                stacked,
+                expectStacked,
+                reason: '${expectStacked ? 'stacked' : 'row'} expected: $name',
+              );
               for (final r in rects.skip(1)) {
                 expect(r.width, closeTo(rects.first.width, 0.01), reason: name);
               }
               if (stacked) {
                 expect(rects[1].top, greaterThan(rects[0].bottom - 0.01));
                 expect(rects[2].top, greaterThan(rects[1].bottom - 0.01));
-                debugPrint(
-                  'BAND $name stacked height ${tester.getSize(band).height}',
+                // Measured compact heights (+10%): a regression to the old
+                // ~440 dp stack fails.
+                final measured =
+                    _stackedBandHeights['$locale ${width.toInt()} ${scale.toInt()}'];
+                expect(measured, isNotNull, reason: name);
+                expect(
+                  tester.getSize(band).height,
+                  lessThanOrEqualTo(measured! * 1.1),
+                  reason: 'stacked band too tall: $name',
                 );
               } else {
                 // The row reserves its lines: equal heights in every locale.
@@ -270,7 +294,8 @@ void main() {
                 expect(rule.color, tokens.line, reason: name);
               }
 
-              // Legible: nothing ellipsized, no value shrunk below 16 sp.
+              // Legible: nothing ellipsized, no value shrunk below 18 sp (row)
+              // or 16 sp (stacked).
               final texts = find.descendant(
                 of: band,
                 matching: find.byType(Text),
@@ -299,7 +324,7 @@ void main() {
                     box.size.width;
                 expect(
                   22 * scale * shrink,
-                  greaterThanOrEqualTo(16),
+                  greaterThanOrEqualTo(stacked ? 16 : 18),
                   reason: '${(value.widget as Text).data} $name',
                 );
               }
