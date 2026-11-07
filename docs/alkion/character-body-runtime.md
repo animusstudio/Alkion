@@ -13,7 +13,8 @@ pipeline in one Android system WebView. No new package is required.
   `pause()`, `retry()`; readable `yaw` and `pitch` (radians), `zoom`, `pan` and
   `paused`. Default is paused at front, level. Manual turns pause. `pitch` is
   camera elevation (positive looks down from above), clamped to ±45°
-  (`maxPitch`). Front, Back, Side and Reset return it to 0 and advance
+  (`maxPitch`); Explore keeps it at 0 (see Camera pitch). Front, Back, Side
+  and Reset return it to 0 and advance
   `viewCommand`, which callers that animate the view (orbit inertia) watch to
   stop. Own/dispose the controller with the native controls.
 - Required widget fields: `style`, `scores: Map<WorkloadMuscle,double>`,
@@ -37,8 +38,8 @@ pipeline in one Android system WebView. No new package is required.
 - Caller supplies bounded dimensions: compact 128×212; enlarged retains the
   same aspect ratio. `compact` selects the approved optical sampling pitch.
 - Artwork ignores pointer input and is excluded from semantics. Native outer
-  controls/gestures own input: horizontal delta × .009 radians matches the study;
-  Explore applies the same rate to vertical delta as pitch. Caller owns
+  controls/gestures own input: horizontal delta × .009 radians matches the study.
+  Explore never changes pitch from a gesture; vertical delta pans. Caller owns
   pager/scroll arbitration, route/sheet/viewport visibility and
   reduced-motion preference. Widget and Android host also observe app lifecycle.
   Mount only the selected card's renderer; destroy compact while enlarged is open.
@@ -200,6 +201,12 @@ below the level frame's. The body therefore never grows on tilt and shrinks a
 few percent only where it would otherwise leave the canvas. A wider depth range
 slightly coarsens the material's depth input at a tilt.
 
+Explore keeps pitch fixed at 0 (owner decision, 2026-11-07): no gesture tilts
+or coasts it, and Front, Back, Side and Reset hold it at 0. The controller's
+`pitch` and `orbitBy` pitch argument, the renderer's camera orbit and protocol
+5's `pitch` field remain, so the bridge, Android host and JavaScript are
+unchanged; Explore always sends 0.
+
 ## Explore gestures
 
 Explore muscles has one recognizer on the canvas,
@@ -208,14 +215,13 @@ canvas at pointer down, so neither the page scroll nor the sheet drag can claim
 it. Pointers outside the canvas never reach it; the strip or page scrolls as before.
 
 - One pointer released within touch slop is a tap and picks.
-- One pointer past slop orbits: dx turns, dy tilts. Movement before slop is
-  not applied. Above 1.02× zoom, dy pans the body vertically instead, by the
-  finger's distance and within the two-finger pan bound; dx still turns and
-  pitch holds its value. At 1.02× that bound leaves 1% of the canvas height
-  each way, so just above 1× a drag still tilts. The mode is chosen once per
-  one-finger segment, from the zoom when it starts to move: at the start of
-  the gesture, or when the finger left after a pinch or pan leaves its slop.
-  A change in the finger count resets it, so it never switches mid-drag.
+- One pointer past slop turns and pans: dx turns, and dy pans the body
+  vertically by the finger's distance, within the two-finger pan bound
+  ±(zoom − 1)/2 of the canvas height. At 1× that bound is 0, so dy does
+  nothing there. It never tilts: pitch stays 0 (owner, 2026-11-07, superseding
+  the earlier tilt at 1× and the 1.02× pan threshold). Movement before slop is
+  not applied. The mapping does not depend on zoom, so nothing changes when a
+  pinch crosses 1×.
 - Two or more pointers pinch-zoom (1–3×) around their focal point and pan. Each
   change in the pointer set re-bases focal point, span, zoom and pan, so adding
   or lifting a finger never jumps, and a clamped zoom never drifts. The finger
@@ -227,26 +233,26 @@ it. Pointers outside the canvas never reach it; the strip or page scrolls as bef
   pinch/pan state wins, applied at the frame's start. Re-bases, releases and
   taps apply it first, so nothing reads a view that lags the fingers.
 
-A one-finger orbit release coasts; for two-finger inertia see below. The recognizer
+A one-finger release coasts; for two-finger inertia see below. The recognizer
 measures release velocity over the final one-finger segment only; pinches,
 cancellations and a settling finger never coast, and a finger held still
 releases at rest. The coast decays exponentially with time constant
 τ = 325 ms: each τ covers 63% of the remaining travel, the body settles in
 about 3τ, and the total coast is velocity × .009 rad/px × τ. A release slower
 than 50 px/s does not coast; faster flicks are capped at 1,500 px/s (about two
-thirds of a turn). Pitch velocity is limited so its coast ends exactly at ±45°,
-arriving with no speed. A touch on the canvas stops the coast and does not
-select; the next tap picks. Front, Back, Side, Reset and a chip choice that
-opens a held view cancel it. Picks are refused while it runs. Reduced motion,
+thirds of a turn). A yaw coast shorter than .001 rad (velocity-estimate noise
+from a vertical release) does not start. Pitch never coasts. A touch on the
+canvas stops the coast and does not select; the next tap picks. Front, Back,
+Side, Reset and a chip choice that opens a held view cancel it. Picks are refused while it runs. Reduced motion,
 a hidden surface or closing the explorer stop it; under reduced motion it never
 starts. The ticker is created in `initState` and disposed with the explorer.
 The explorer rebuilds only when Front/Back selection or the zoom bounds change,
 not on every orbit frame.
 
-A zoomed one-finger release that pans coasts yaw as above and the vertical
-pan by the two-finger pan rules below (the same τ, 50 px/s threshold and
-1,500 px/s cap): the pan travel is velocity × τ, cut to ease into the pan bound
-at the current zoom, landing on it at rest. Pitch does not coast. A touch,
+The same release coasts the vertical pan by the two-finger pan rules below
+(the same τ, 50 px/s threshold and 1,500 px/s cap): the pan travel is
+velocity × τ, cut to ease into the pan bound at the current zoom, landing on it
+at rest; at 1× there is no room, so only yaw coasts. A touch,
 Front, Back, Side, Reset, the zoom buttons, leaving the foreground and reduced
 motion stop or prevent it as they do every coast.
 

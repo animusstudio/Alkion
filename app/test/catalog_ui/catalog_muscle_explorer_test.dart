@@ -604,7 +604,7 @@ void main() {
 
   for (final width in [412.0, 320.0]) {
     testWidgets(
-      'one-finger drag orbits both axes, clamps pitch and owns the canvas above a scrolling strip or page at $width dp',
+      'one-finger drag turns, never tilts, and owns the canvas above a scrolling strip or page at $width dp',
       (tester) async {
         final controller = await pumpExplorer(tester, width: width);
         // Drawn artwork: failed artwork stacks a 120 dp canvas that leaves
@@ -613,43 +613,38 @@ void main() {
         final scroll = explorerScroll(tester);
         expect(scroll.maxScrollExtent, greaterThan(40));
         final centre = tester.getCenter(diagram);
-        // Upward on the canvas: tilts the camera down, never scrolls the page.
+        // Upward on the canvas at 1×: no tilt, no pan, never scrolls the page.
         var finger = await tester.startGesture(centre, pointer: 1);
         await finger.moveBy(const Offset(0, -30)); // past slop: begins only
         await tester.pump();
-        expect(
-          controller.pitch,
-          0,
-          reason: 'Movement before slop is not applied',
-        );
-        await finger.moveBy(const Offset(0, -20));
-        await tester.pump();
-        expect(controller.pitch, closeTo(-20 * .009, 1e-9));
-        expect(controller.yaw, 0);
         for (var i = 0; i < 10; i++) {
           await finger.moveBy(const Offset(0, -20));
         }
         await tester.pump();
-        expect(controller.pitch, -CharacterBodyController.maxPitch);
+        expect((controller.pitch, controller.pan), (0.0, Offset.zero));
+        expect(controller.yaw, 0);
         await finger.up();
         await tester.pumpAndSettle();
         expect(scroll.pixels, 0, reason: 'The canvas owns its drags');
         expect(body(tester).visible, isTrue);
-        // Downward clamps at +45°; sideways turns at the accepted rate.
+        // Downward likewise; sideways turns at the accepted rate.
         finger = await tester.startGesture(centre, pointer: 2);
         await finger.moveBy(const Offset(0, 30));
+        await tester.pump();
+        expect(
+          controller.yaw,
+          0,
+          reason: 'Movement before slop is not applied',
+        );
         for (var i = 0; i < 12; i++) {
           await finger.moveBy(const Offset(0, 20));
         }
         await tester.pump();
-        expect(controller.pitch, CharacterBodyController.maxPitch);
+        expect((controller.pitch, controller.pan), (0.0, Offset.zero));
         await finger.moveBy(const Offset(40, -10));
         await tester.pump();
         expect(controller.yaw, closeTo(40 * .009, 1e-9));
-        expect(
-          controller.pitch,
-          closeTo(CharacterBodyController.maxPitch - 10 * .009, 1e-9),
-        );
+        expect((controller.pitch, controller.pan), (0.0, Offset.zero));
         await finger.up();
         await tester.pumpAndSettle();
         expect(scroll.pixels, 0);
@@ -672,14 +667,15 @@ void main() {
         expect(scroll.pixels, greaterThan(40));
         expect((controller.yaw, controller.pitch), view);
         expect(controller.requests, isEmpty);
-        // Front and a chip choice of abductors (the side view) level the camera.
+        // Front and a chip choice of abductors (the side view) hold a view.
         await revealArtwork(tester);
         await tester.tap(find.byKey(const Key('catalog-body-front')));
         await tester.pump();
         expect((controller.yaw, controller.pitch), (0.0, 0.0));
-        await tester.drag(diagram, const Offset(0, 120));
+        await tester.drag(diagram, const Offset(60, 120));
         await tester.pump();
-        expect(controller.pitch, greaterThan(0));
+        expect(controller.yaw, greaterThan(0));
+        expect(controller.pitch, 0);
         await tapChip(tester, 'abductors');
         await tester.pumpAndSettle();
         expect((controller.yaw, controller.pitch), (math.pi / 2, 0.0));
@@ -746,8 +742,8 @@ void main() {
       await first.moveBy(const Offset(6, -6));
       await tester.pump();
       expect((controller.yaw, controller.pitch), (yaw, 0.0));
-      // Past slop it re-bases there, then turns continuously. Zoomed, its
-      // vertical movement pans instead of tilting.
+      // Past slop it re-bases there, then turns continuously; its vertical
+      // movement pans, as at every zoom.
       await first.moveBy(const Offset(20, 0));
       await tester.pump();
       expect((controller.yaw, controller.pitch), (yaw, 0.0));

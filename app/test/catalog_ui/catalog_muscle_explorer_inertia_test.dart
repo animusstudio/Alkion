@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:alkion/data/body_workload.dart';
-import 'package:alkion/ui/character_body.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -129,29 +128,35 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('pitch eases into the 45 degree bound and never passes it', (
+  testWidgets('a vertical flick at 1x never tilts, pans or coasts', (
     tester,
   ) async {
     final controller = await pumpExplorer(tester);
+    var changes = 0;
+    controller.addListener(() => changes++);
     await flick(tester, const Offset(0, 12)); // 1200 px/s downward
-    final steps = <double>[];
-    var last = controller.pitch;
-    for (var i = 0; i < 40; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-      expect(
-        controller.pitch,
-        lessThanOrEqualTo(CharacterBodyController.maxPitch),
-      );
-      steps.add(controller.pitch - last);
-      last = controller.pitch;
-    }
-    // Arrives with vanishing speed rather than stopping hard at the bound.
-    for (var i = 1; i < steps.length; i++) {
-      expect(steps[i], lessThanOrEqualTo(steps[i - 1] + 1e-12));
-    }
-    expect(steps.last, lessThan(1e-3));
+    // Only the pause at the start of the manipulation notifies.
+    expect(changes, 1, reason: 'Nothing visible changes at 1x');
+    expect(tester.binding.hasScheduledFrame, isFalse, reason: 'No coast');
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      (controller.yaw, controller.pitch, controller.zoom, controller.pan),
+      (0.0, 0.0, 1.0, Offset.zero),
+    );
+    // Upward too: pitch never moves from a gesture.
+    await flick(tester, const Offset(0, -12));
     await tester.pumpAndSettle();
-    expect(controller.pitch, closeTo(CharacterBodyController.maxPitch, .01));
+    expect((controller.pitch, controller.pan), (0.0, Offset.zero));
+    // A diagonal flick coasts its yaw alone.
+    await flick(tester, const Offset(6, 12)); // (600, 1200) px/s
+    final released = controller.yaw;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(controller.yaw, greaterThan(released), reason: 'Yaw coasts');
+    await tester.pumpAndSettle();
+    expect(controller.yaw - released, closeTo(600 * rate * tau, .1));
+    expect((controller.pitch, controller.pan), (0.0, Offset.zero));
+    expect(controller.requests, isEmpty, reason: 'A drag never picks');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -263,7 +268,7 @@ void main() {
     await tester.pump();
     expect(changes, 1);
     expect(controller.yaw, closeTo(30 * rate, 1e-9));
-    expect(controller.pitch, closeTo(20 * rate, 1e-9));
+    expect((controller.pitch, controller.pan), (0.0, Offset.zero));
     await finger.up();
     await tester.pumpWidget(const SizedBox());
   });
@@ -605,21 +610,26 @@ void main() {
   }
 
   testWidgets(
-    'above 1x a one-finger vertical drag pans within the pan bound and holds pitch; at 1x it tilts',
+    'a one-finger vertical drag pans within the pan bound at every zoom and never tilts',
     (tester) async {
       final controller = await pumpExplorer(tester);
       final height = tester.getSize(diagram).height;
       final centre = tester.getCenter(diagram);
-      // At 1×: a vertical drag tilts, as before.
+      // At 1× the pan bound is 0: a vertical drag changes nothing visible.
+      var changes = 0;
+      controller.addListener(() => changes++);
       await dragHeld(tester, await tester.startGesture(centre), const [
         Offset(0, 30), // past slop: begins only
         Offset(0, 20),
+        Offset(0, -45),
       ]);
-      final pitch = controller.pitch;
-      expect(pitch, closeTo(20 * rate, 1e-9));
-      expect((controller.zoom, controller.pan), (1.0, Offset.zero));
-      // Zoomed: dx still turns, dy pans by the finger's distance; the tilt
-      // reached at 1× holds.
+      expect(changes, 1, reason: 'Only the manipulation pause notifies');
+      expect(
+        (controller.yaw, controller.pitch, controller.zoom, controller.pan),
+        (0.0, 0.0, 1.0, Offset.zero),
+      );
+      // Zoomed: a diagonal drag turns by dx and pans by dy, the finger's
+      // distance.
       controller.setViewport(2, Offset.zero);
       final finger = await tester.startGesture(centre);
       await finger.moveBy(const Offset(0, 30));
@@ -628,7 +638,7 @@ void main() {
       await finger.moveBy(const Offset(12, 24));
       await tester.pump();
       expect(controller.yaw, closeTo(12 * rate, 1e-9));
-      expect(controller.pitch, pitch);
+      expect(controller.pitch, 0);
       expect(controller.zoom, 2);
       expect(controller.pan.dx, 0);
       expect(controller.pan.dy, closeTo(24 / height, 1e-9));
@@ -643,59 +653,60 @@ void main() {
       await finger.moveBy(const Offset(0, -30));
       await tester.pump();
       expect(controller.pan.dy, closeTo(.5 - 30 / height, 1e-9));
-      expect(controller.pitch, pitch);
       await dragHeld(tester, finger, const []);
-      expect(controller.pitch, pitch);
+      expect(controller.pitch, 0);
       expect(controller.requests, isEmpty, reason: 'A drag never picks');
-      // The threshold: just above 1× still tilts; past 1.02× it pans.
-      for (final (zoom, pans) in [(1.01, false), (1.03, true)]) {
+      // No zoom threshold: just above 1× it pans within its small bound.
+      for (final zoom in [1.01, 1.03]) {
         controller.setViewport(zoom, Offset.zero);
-        final before = controller.pitch;
         await dragHeld(tester, await tester.startGesture(centre), const [
           Offset(0, -30),
           Offset(0, -2),
         ]);
-        expect(controller.pitch == before, pans, reason: '$zoom×');
-        expect(controller.pan.dy != 0, pans, reason: '$zoom×');
+        expect(controller.pitch, 0, reason: '$zoom×');
+        // At 1.01× the bound, half a percent of the height, clamps it.
+        expect(
+          controller.pan.dy,
+          closeTo(math.max(-2 / height, -(zoom - 1) / 2), 1e-9),
+          reason: '$zoom×',
+        );
+        expect(controller.pan.dy, lessThan(0), reason: '$zoom×');
       }
-      // Back at 1×, vertical tilts again.
+      // Back at 1×, vertical does nothing again.
       controller.setViewport(1, Offset.zero);
-      final level = controller.pitch;
       await dragHeld(tester, await tester.startGesture(centre), const [
         Offset(0, -30),
         Offset(0, -10),
       ]);
-      expect(controller.pitch, closeTo(level - 10 * rate, 1e-9));
-      expect(controller.pan, Offset.zero);
+      expect((controller.pitch, controller.pan), (0.0, Offset.zero));
       await tester.pumpWidget(const SizedBox());
     },
   );
 
   testWidgets(
-    'the mode is chosen per one-finger segment: a pinch re-base changes it without a jump',
+    'a pinch to and from 1x never makes the finger left tilt, and never jumps',
     (tester) async {
       final controller = await pumpExplorer(tester);
       final height = tester.getSize(diagram).height;
       final centre = tester.getCenter(diagram);
-      // Started at 1×: the drag tilts.
+      // Started at 1×: a vertical drag does nothing.
       final first = await tester.createGesture(pointer: 1);
       await first.down(centre - const Offset(40, 0));
       await first.moveBy(const Offset(0, 30));
       await first.moveBy(const Offset(0, 10));
       await tester.pump();
-      final pitch = controller.pitch;
-      expect(pitch, closeTo(10 * rate, 1e-9));
+      expect((controller.pitch, controller.pan), (0.0, Offset.zero));
       // A second finger re-bases and pinches to 1.5×.
       final second = await tester.createGesture(pointer: 2);
       await second.down(centre + const Offset(40, 40));
       await tester.pump();
-      expect(controller.pitch, pitch, reason: 'Landing is not movement');
+      expect(controller.pan, Offset.zero, reason: 'Landing is not movement');
       await second.moveBy(const Offset(40, 0)); // span 40 → 60
       await tester.pump();
       expect(controller.zoom, closeTo(1.5, 1e-9));
       final pinched = (controller.yaw, controller.pitch, controller.pan);
       // Lifting re-bases to one finger; it settles, then pans from where it
-      // passed slop, and the tilt it made before the pinch holds.
+      // passed slop.
       await second.up();
       await tester.pump();
       expect((controller.yaw, controller.pitch, controller.pan), pinched);
@@ -706,10 +717,10 @@ void main() {
       await first.moveBy(const Offset(4, 10));
       await tester.pump();
       expect(controller.yaw, closeTo(pinched.$1 + 4 * rate, 1e-9));
-      expect(controller.pitch, pitch);
+      expect(controller.pitch, 0);
       expect(controller.pan.dx, pinched.$3.dx);
       expect(controller.pan.dy, closeTo(pinched.$3.dy + 10 / height, 1e-9));
-      // A pinch back to 1× re-bases again: the finger left now tilts.
+      // A pinch back to 1× re-bases again: the finger left still never tilts.
       final third = await tester.createGesture(pointer: 3);
       await third.down(centre + const Offset(60, 40));
       await third.moveBy(const Offset(-80, 0));
@@ -719,9 +730,8 @@ void main() {
       await tester.pump();
       await first.moveBy(const Offset(0, -20)); // past slop: re-bases only
       await tester.pump();
-      expect(controller.pitch, pitch);
       await dragHeld(tester, first, const [Offset(0, -10)]);
-      expect(controller.pitch, closeTo(pitch - 10 * rate, 1e-9));
+      expect(controller.pitch, 0);
       expect((controller.zoom, controller.pan), (1.0, Offset.zero));
       expect(controller.requests, isEmpty);
       await tester.pumpWidget(const SizedBox());
@@ -763,9 +773,9 @@ void main() {
       expect((controller.pitch, controller.zoom), (0.0, 3.0));
       expect(controller.pan.dx, closeTo(0, 1e-9));
       expect(controller.requests, isEmpty, reason: 'Coasting never picks');
-      // At 1.5× the bound is a quarter height. From the top bound the flick
-      // pans 48 px directly, and its 390 px coast is cut to ease into the
-      // lower bound, while the yaw coasts on as an orbit release does.
+      // At 1.5× the bound is a quarter height. From the top bound the
+      // diagonal flick pans 48 px directly, and its 390 px coast is cut to
+      // ease into the lower bound, while the yaw coasts on as well.
       controller.setViewport(1.5, const Offset(0, -.25));
       await flick(tester, const Offset(4, 12), moves: 4); // (400, 1200) px/s
       final yaw = controller.yaw;
@@ -775,7 +785,7 @@ void main() {
       for (var i = 0; i < 80; i++) {
         await tester.pump(const Duration(milliseconds: 50));
         expect(controller.pan.dy, lessThanOrEqualTo(.25));
-        expect(controller.pitch, 0, reason: 'Pitch holds while zoomed');
+        expect(controller.pitch, 0, reason: 'Pitch never coasts');
         pans.add(controller.pan.dy);
       }
       // Decelerating into the bound, not clamped at speed: the step that
