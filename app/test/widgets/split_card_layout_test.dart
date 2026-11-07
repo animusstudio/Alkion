@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/l10n/app_localizations.dart';
@@ -50,6 +51,7 @@ Future<void> _pump(
   Locale locale = const Locale('en'),
   bool customOnly = false,
   Brightness brightness = Brightness.dark,
+  List<SplitDayEntry>? days,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1;
@@ -67,7 +69,7 @@ Future<void> _pump(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: SplitCard(
-                days: customOnly ? const [] : _days,
+                days: days ?? (customOnly ? const [] : _days),
                 nextIndex: 0,
                 selectedIndex: page,
                 onStart: (_) {},
@@ -190,6 +192,88 @@ void main() {
           lessThanOrEqualTo(tester.getRect(find.byType(PageView)).bottom),
         );
         expectNoSplitWords(tester, within: find.byType(SplitCard));
+      });
+    }
+  }
+
+  // One-line name and focus, like the loading reference.
+  final typical = [
+    (
+      day: DayTemplate(
+        id: 't1',
+        name: 'Push',
+        focus: 'Chest',
+        position: 0,
+        slots: const [],
+      ),
+      exerciseCount: 4,
+      lastAgo: '—',
+    ),
+  ];
+  for (final (width, scale, stacked) in [
+    (412.0, 1.0, false),
+    (320.0, 1.0, false),
+    (412.0, 2.0, true),
+    (320.0, 2.0, true),
+  ]) {
+    testWidgets('card height is measured exactly at ${width.round()}dp '
+        '${scale}x (stacked: $stacked)', (tester) async {
+      for (final days in [_days, typical]) {
+        await _pump(tester, page: 0, width: width, scale: scale, days: days);
+        expect(tester.takeException(), isNull);
+        final context = tester.element(find.byType(SplitCard));
+        final card = tester.getSize(find.byType(SplitCard));
+        expect(splitOverviewStacked(context, card.width - 34), stacked);
+        // The shared measure matches the card, long name and focus included.
+        expect(splitCardHeight(context, card.width, days), card.height);
+        if (identical(days, typical)) {
+          // Today's loading skeleton reserves exactly this card.
+          expect(splitCardLoadingHeight(context, card.width), card.height);
+        } else {
+          // A longer name or focus can only grow the card on reveal.
+          expect(
+            splitCardLoadingHeight(context, card.width),
+            lessThanOrEqualTo(card.height),
+          );
+        }
+      }
+    });
+  }
+
+  for (final code in ['en', 'de', 'es', 'it']) {
+    for (final (width, scale) in [
+      (412.0, 1.0),
+      (320.0, 1.0),
+      (412.0, 2.0),
+      (320.0, 2.0),
+    ]) {
+      testWidgets('the workload entry label is whole in $code at '
+          '${width.round()}dp ${scale}x', (tester) async {
+        await _pump(
+          tester,
+          page: 0,
+          width: width,
+          scale: scale,
+          locale: Locale(code),
+        );
+        final l = lookupAppLocalizations(Locale(code));
+        final label = find.descendant(
+          of: find.byKey(const Key('body-workload-entry')),
+          matching: find.text(l.bodyWorkloadEntry),
+        );
+        expect(label, findsOneWidget);
+        expect(
+          tester
+              .renderObject<RenderParagraph>(
+                find.descendant(of: label, matching: find.byType(RichText)),
+              )
+              .didExceedMaxLines,
+          isFalse,
+        );
+        // Only the pill speaks the entry; the artwork is not announced.
+        final semantics = tester.ensureSemantics();
+        expect(find.bySemanticsLabel(l.bodyWorkload), findsOneWidget);
+        semantics.dispose();
       });
     }
   }

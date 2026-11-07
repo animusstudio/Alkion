@@ -231,6 +231,16 @@ void main() {
     }
     expect(art(tester).scores[WorkloadMuscle.chest], 0);
     expect(count(tester, WorkloadMuscle.chest), '0');
+    // At 1x the legend is one row of six.
+    final legend = find.byKey(const Key('body-legend'));
+    expect(
+      tester
+          .getTopLeft(find.descendant(of: legend, matching: find.text('11+')))
+          .dy,
+      tester
+          .getTopLeft(find.descendant(of: legend, matching: find.text('0')))
+          .dy,
+    );
     for (final removed in [
       'body-recorded',
       'body-current',
@@ -322,6 +332,31 @@ void main() {
       expect(tester.takeException(), isNull);
       expectWorkloadSheetSections(tester, l, mode: l.bodySaved);
       expectNoSplitWords(tester, within: find.byType(BottomSheet));
+      // Every bin label is whole: the legend wraps rather than ellipsizing.
+      for (final bin in workloadCountBins) {
+        final label = find.descendant(
+          of: find.byKey(const Key('body-legend')),
+          matching: find.text(bin),
+        );
+        expect(
+          tester
+              .renderObject<RenderParagraph>(
+                find.descendant(of: label, matching: find.byType(RichText)),
+              )
+              .didExceedMaxLines,
+          isFalse,
+          reason: '$language legend $bin',
+        );
+      }
+      Finder bin(int i) => find.descendant(
+        of: find.byKey(const Key('body-legend')),
+        matching: find.text(workloadCountBins[i]),
+      );
+      expect(
+        tester.getTopLeft(bin(3)).dy,
+        greaterThan(tester.getTopLeft(bin(0)).dy),
+        reason: 'two rows of three at 2x',
+      );
       // Optional disposable visual proof, never writes to application storage.
       final capture = Platform.environment['ALKION_BODY_UI_CAPTURES'];
       if (capture != null) {

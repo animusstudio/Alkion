@@ -207,6 +207,159 @@ double splitFigureWidth(BuildContext context, double width) {
   );
 }
 
+typedef SplitDayEntry = ({DayTemplate day, int exerciseCount, String lastAgo});
+
+/// The card's padding and border on each side.
+const _cardInset = AppSpacing.pad + 1;
+const _startGap = 18.0;
+
+double _labelHeight(
+  BuildContext context,
+  String text,
+  TextStyle style,
+  int lines,
+  double space,
+) {
+  final painter = TextPainter(
+    text: TextSpan(
+      text: text,
+      style: DefaultTextStyle.of(context).style.merge(style),
+    ),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: lines,
+  )..layout(maxWidth: max(1, space));
+  final height = painter.height;
+  painter.dispose();
+  return height;
+}
+
+/// The pager height for slides [width] wide: the tallest of the Custom slide
+/// and every day in [days], so paging never moves Start. Labels may fit
+/// smaller through FitLabel, but never need more height.
+double splitPagerHeight(
+  BuildContext context,
+  double width,
+  List<SplitDayEntry> days,
+) {
+  final l = AppLocalizations.of(context);
+  final scaler = MediaQuery.textScalerOf(context);
+  double labelHeight(String text, TextStyle style, int lines, double space) =>
+      _labelHeight(context, text, style, lines, space);
+
+  final title = WorkoutType.display(size: 28);
+  final body = WorkoutType.body(size: 16);
+  final caption = WorkoutType.body(size: 12);
+  final mono = WorkoutType.mono(size: 12);
+  final stacked = splitOverviewStacked(context, width);
+  final figureWidth = splitFigureWidth(context, width);
+  final figureHeight = BodyFigure.heightFor(figureWidth);
+  final infoWidth = stacked ? width : width - figureWidth - _figureGap;
+  double focusHeight(String? focus) => focus?.isNotEmpty == true
+      ? labelHeight(focus!, body, 3, infoWidth) + 16
+      : 0;
+  double totalHeight(
+    String name,
+    String? focus,
+    List<({String label, String value})> details,
+    String? hint,
+  ) {
+    final infoHeight =
+        focusHeight(focus) +
+        details.fold<double>(
+          0,
+          (sum, detail) =>
+              sum +
+              labelHeight(detail.label, caption, 2, infoWidth) +
+              2 +
+              labelHeight(detail.value, mono, 2, infoWidth) +
+              12,
+        ) +
+        (hint == null ? 0 : labelHeight(hint, caption, 3, infoWidth));
+    return labelHeight(name, title, 2, width) +
+        8 +
+        scaler.scale(12) * 1.4 +
+        12 +
+        (stacked
+            ? infoHeight + 12 + figureHeight
+            : max(infoHeight, figureHeight));
+  }
+
+  var tallest = totalHeight(
+    l.todayCustomSession,
+    l.splitBuildAsYouGo,
+    [],
+    l.splitAddExercisesLive,
+  );
+  for (final entry in days) {
+    final est = max(20, entry.exerciseCount * 9 + 10);
+    tallest = max(
+      tallest,
+      totalHeight(entry.day.name, entry.day.focus, [
+        (label: l.splitExercises, value: '${entry.exerciseCount}'),
+        (label: l.splitEstTime, value: l.splitEstTimeValue(est)),
+        (
+          label: l.splitLast,
+          value: entry.lastAgo.isEmpty ? '—' : entry.lastAgo,
+        ),
+      ], null),
+    );
+  }
+  return tallest.ceilToDouble() + 4;
+}
+
+/// The Start button's height for a card [width] wide showing [label].
+double _startHeight(BuildContext context, double width, String label) {
+  final density = Theme.of(context).visualDensity.baseSizeAdjustment.dy;
+  final text = _labelHeight(
+    context,
+    label,
+    WorkoutType.body(size: 16, weight: FontWeight.w500),
+    2,
+    width - 2 * _cardInset - 32,
+  );
+  return max(56.0, text + 24) + density;
+}
+
+/// The whole card's height at [width] (outer) for [days], opened on a day
+/// slide (or on Custom when [days] is empty). Shared with Today's skeleton.
+double splitCardHeight(
+  BuildContext context,
+  double width,
+  List<SplitDayEntry> days,
+) {
+  final l = AppLocalizations.of(context);
+  return 2 * _cardInset +
+      splitPagerHeight(context, width - 2 * _cardInset, days) +
+      _startGap +
+      _startHeight(
+        context,
+        width,
+        days.isEmpty ? l.splitStartEmpty : l.splitStartWorkout,
+      );
+}
+
+/// The card height Today reserves while its rotation loads, before any day
+/// is known: the Custom slide and one reference day with a one-line name and
+/// focus, through the same measure as the card. A loaded day whose name or
+/// focus needs more lines than that grows the card by exactly those lines
+/// when it reveals; the days are not known any earlier.
+double splitCardLoadingHeight(BuildContext context, double width) {
+  return splitCardHeight(context, width, [
+    (
+      day: DayTemplate(
+        id: '',
+        name: 'A',
+        focus: 'A',
+        position: 0,
+        slots: const [],
+      ),
+      exerciseCount: 5,
+      lastAgo: '—',
+    ),
+  ]);
+}
+
 // ── CustomSlide ───────────────────────────────────────────────────────────────
 
 /// The final page of the split-picker pager for a free-form custom session.
@@ -259,7 +412,7 @@ class SplitCard extends StatefulWidget {
 
   /// Day slides data. Each entry carries the template, exercise count, and
   /// a human-readable "last trained" label (e.g. '3d ago' or '—').
-  final List<({DayTemplate day, int exerciseCount, String lastAgo})> days;
+  final List<SplitDayEntry> days;
 
   /// Index (within [days]) of the rotation target.
   ///
@@ -364,87 +517,6 @@ class _SplitCardState extends State<SplitCard> {
     }
   }
 
-  // Reserve the tallest slide at this width, so paging never moves Start.
-  // Labels may fit smaller through FitLabel, but never need more height.
-  double _pagerHeight(BuildContext context, double width) {
-    final l = AppLocalizations.of(context);
-    final scaler = MediaQuery.textScalerOf(context);
-    double labelHeight(String text, TextStyle style, int lines, double space) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: text,
-          style: DefaultTextStyle.of(context).style.merge(style),
-        ),
-        textDirection: Directionality.of(context),
-        textScaler: scaler,
-        maxLines: lines,
-      )..layout(maxWidth: max(1, space));
-      final height = painter.height;
-      painter.dispose();
-      return height;
-    }
-
-    final title = WorkoutType.display(size: 28);
-    final body = WorkoutType.body(size: 16);
-    final caption = WorkoutType.body(size: 12);
-    final mono = WorkoutType.mono(size: 12);
-    final stacked = splitOverviewStacked(context, width);
-    final figureWidth = splitFigureWidth(context, width);
-    final figureHeight = BodyFigure.heightFor(figureWidth);
-    final infoWidth = stacked ? width : width - figureWidth - _figureGap;
-    double focusHeight(String? focus) => focus?.isNotEmpty == true
-        ? labelHeight(focus!, body, 3, infoWidth) + 16
-        : 0;
-    double totalHeight(
-      String name,
-      String? focus,
-      List<({String label, String value})> details,
-      String? hint,
-    ) {
-      final infoHeight =
-          focusHeight(focus) +
-          details.fold<double>(
-            0,
-            (sum, detail) =>
-                sum +
-                labelHeight(detail.label, caption, 2, infoWidth) +
-                2 +
-                labelHeight(detail.value, mono, 2, infoWidth) +
-                12,
-          ) +
-          (hint == null ? 0 : labelHeight(hint, caption, 3, infoWidth));
-      return labelHeight(name, title, 2, width) +
-          8 +
-          scaler.scale(12) * 1.4 +
-          12 +
-          (stacked
-              ? infoHeight + 12 + figureHeight
-              : max(infoHeight, figureHeight));
-    }
-
-    var tallest = totalHeight(
-      l.todayCustomSession,
-      l.splitBuildAsYouGo,
-      [],
-      l.splitAddExercisesLive,
-    );
-    for (final entry in widget.days) {
-      final est = max(20, entry.exerciseCount * 9 + 10);
-      tallest = max(
-        tallest,
-        totalHeight(entry.day.name, entry.day.focus, [
-          (label: l.splitExercises, value: '${entry.exerciseCount}'),
-          (label: l.splitEstTime, value: l.splitEstTimeValue(est)),
-          (
-            label: l.splitLast,
-            value: entry.lastAgo.isEmpty ? '—' : entry.lastAgo,
-          ),
-        ], null),
-      );
-    }
-    return tallest.ceilToDouble() + 4;
-  }
-
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
@@ -479,7 +551,11 @@ class _SplitCardState extends State<SplitCard> {
                     children: [
                       // ── Pager ────────────────────────────────────────────────
                       SizedBox(
-                        height: _pagerHeight(context, box.maxWidth),
+                        height: splitPagerHeight(
+                          context,
+                          box.maxWidth,
+                          widget.days,
+                        ),
                         child: ClipRect(
                           child: PageView.builder(
                             controller: _pageController,
@@ -525,7 +601,7 @@ class _SplitCardState extends State<SplitCard> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: _startGap),
                       // ── Start button ─────────────────────────────────────────
                       FilledButton(
                         key: const Key('today-start'),

@@ -1148,23 +1148,17 @@ class _EmptyState extends StatelessWidget {
 }
 
 /// The split card's shape while the rotation loads: the day text beside the
-/// body figure, sized like the card at this width and text scale.
+/// body figure, at the height [splitCardLoadingHeight] measures for the card.
 class _SplitCardSkeleton extends StatelessWidget {
   const _SplitCardSkeleton();
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
-      final scaler = MediaQuery.textScalerOf(context);
       // Card padding and border, as in SplitCard.
       final inner = box.maxWidth - 34;
       final figureWidth = splitFigureWidth(context, inner);
-      final figureHeight = BodyFigure.heightFor(figureWidth);
       final stacked = splitOverviewStacked(context, inner);
-      // Title, context line, pager slack, then the Start button below.
-      final header = scaler.scale(28) * 1.3 + 8 + scaler.scale(12) * 1.4 + 12;
-      final info = 3 * (scaler.scale(12) * 2.8 + 14);
-      final body = stacked ? info + 12 + figureHeight : figureHeight;
       final text = GlyphSkeleton.blocks(const [
         GlyphBlock(12, widthFactor: .4),
         GlyphBlock(22, widthFactor: .85, gap: 12),
@@ -1177,7 +1171,7 @@ class _SplitCardSkeleton extends StatelessWidget {
         height: BodyFigure.artHeightFor(figureWidth),
       );
       return SizedBox(
-        height: 34 + header + body + 4 + 18 + 56,
+        height: splitCardLoadingHeight(context, box.maxWidth),
         child: Padding(
           padding: const EdgeInsets.all(17),
           child: stacked

@@ -163,7 +163,6 @@ class _BodyFigureState extends State<BodyFigure> {
 
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
     final width = widget.width;
     final artHeight = BodyFigure.artHeightFor(width);
     return SizedBox(
@@ -175,9 +174,9 @@ class _BodyFigureState extends State<BodyFigure> {
             height: artHeight,
             child: _expanded
                 ? const SizedBox.expand()
-                : Semantics(
-                    button: true,
-                    label: l.bodyWorkload,
+                // The pill below is the accessible entry; the art's tap is a
+                // shortcut for sighted users and is not announced twice.
+                : ExcludeSemantics(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: _open,
@@ -317,36 +316,65 @@ class _WorkloadSheet extends StatelessWidget {
 }
 
 /// The six fixed count bins as one scale row, in the renderer's ink ramp.
+/// When the widest label cannot fit a sixth of the row at the current text
+/// size, the scale wraps into two rows of three so every label stays whole.
 class _WorkloadLegend extends StatelessWidget {
   const _WorkloadLegend({super.key});
+
+  static const _gap = 4.0;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < workloadCountBins.length; i++) ...[
-          if (i > 0) const SizedBox(width: 4),
-          Expanded(
-            child: Column(
-              children: [
-                Container(
-                  height: 8,
-                  color: Color.lerp(t.text, t.accentText, i / 5),
-                ),
-                const SizedBox(height: 4),
-                FitLabel(
-                  workloadCountBins[i],
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  style: WorkoutType.mono(size: 12, color: t.text),
-                ),
-              ],
-            ),
+    final style = WorkoutType.mono(size: 12, color: t.text);
+    final scaler = MediaQuery.textScalerOf(context);
+    double widest = 0;
+    for (final bin in workloadCountBins) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: bin,
+          style: DefaultTextStyle.of(context).style.merge(style),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      widest = math.max(widest, painter.width);
+      painter.dispose();
+    }
+    Widget cell(int i) => Expanded(
+      child: Column(
+        children: [
+          Container(height: 8, color: Color.lerp(t.text, t.accentText, i / 5)),
+          const SizedBox(height: 4),
+          FitLabel(
+            workloadCountBins[i],
+            maxLines: 1,
+            textAlign: TextAlign.center,
+            style: style,
           ),
         ],
+      ),
+    );
+    Widget row(int from, int to) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = from; i < to; i++) ...[
+          if (i > from) const SizedBox(width: _gap),
+          cell(i),
+        ],
       ],
+    );
+    return LayoutBuilder(
+      builder: (context, box) {
+        const count = 6;
+        final sixth = (box.maxWidth - _gap * (count - 1)) / count;
+        if (widest <= sixth) return row(0, count);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [row(0, 3), const SizedBox(height: 8), row(3, count)],
+        );
+      },
     );
   }
 }
