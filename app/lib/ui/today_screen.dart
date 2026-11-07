@@ -40,6 +40,7 @@ import '../widgets/split_card.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/volume_bars.dart';
 import '../widgets/week_strip.dart';
+import '../widgets/glyph_loading.dart';
 import 'today_labels.dart';
 
 /// Resolves the title shown for the active workout: the live day name when
@@ -437,12 +438,14 @@ class _TodayScreenState extends State<TodayScreen> {
                   dayList: _allDays,
                   onResume: widget.onResume,
                 )
-              else if (_rotationLoaded) ...[
-                _buildSplitCard(),
-                const SizedBox(height: 24),
-              ] else ...[
-                // Loading placeholder — avoids layout jump when data arrives.
-                const SizedBox(height: 290),
+              else ...[
+                // The card-shaped skeleton holds the card's height, so there
+                // is no layout jump when the rotation arrives.
+                GlyphReveal.builder(
+                  loading: !_rotationLoaded,
+                  skeleton: const _SplitCardSkeleton(),
+                  builder: (_) => _buildSplitCard(),
+                ),
                 const SizedBox(height: 24),
               ],
             ],
@@ -891,7 +894,18 @@ class _TodayScreenState extends State<TodayScreen> {
                 if (unavailable)
                   _EmptyState(tokens: tokens, message: l.todayVolumeUnavailable)
                 else if (loading)
-                  _EmptyState(tokens: tokens, message: l.todayVolumeLoading)
+                  Semantics(
+                    key: const Key('today-volume-loading'),
+                    label: l.todayVolumeLoading,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: GlyphSkeleton.lines(
+                        widths: const [.9, .72, .8, .5],
+                        lineHeight: 10,
+                        gap: 10,
+                      ),
+                    ),
+                  )
                 else ...[
                   if (volume!.unknownSets > 0) ...[
                     _EmptyState(
@@ -1130,6 +1144,37 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The split card's shape while the rotation loads: the day text beside the
+/// body figure, at the card's 290 dp height.
+class _SplitCardSkeleton extends StatelessWidget {
+  const _SplitCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 290,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: GlyphSkeleton.blocks(const [
+              GlyphBlock(12, widthFactor: .4),
+              GlyphBlock(22, widthFactor: .85, gap: 12),
+              GlyphBlock(14, widthFactor: .6, gap: 10),
+              GlyphBlock(12, widthFactor: .7, gap: 24),
+              GlyphBlock(12, widthFactor: .5, gap: 8),
+              GlyphBlock(48, gap: 40),
+            ]),
+          ),
+          const SizedBox(width: 16),
+          const GlyphSkeleton.silhouette(width: 128, height: 212),
+        ],
+      ),
+    ),
+  );
 }
 
 // ── Resume hero ─────────────────────────────────────────────────────────────

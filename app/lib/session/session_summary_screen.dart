@@ -20,6 +20,7 @@ import '../units/unit_service.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/state_motion.dart';
 import '../widgets/pr_badge.dart';
+import '../widgets/glyph_loading.dart';
 import '../widgets/tag.dart';
 import '../widgets/plan_form.dart';
 import '../catalog_ui/catalog_evidence_widgets.dart';
@@ -178,35 +179,61 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         : null;
 
     return Scaffold(
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : errorMessage != null
-          ? _ErrorState(
-              onWorkload: () => showBodyWorkloadSheet(
-                context,
-                workload: () => _workload,
-                currentWorkload: () => _currentWorkload,
+      body: GlyphReveal.builder(
+        loading: _loading,
+        skeleton: const _SummarySkeleton(),
+        builder: (context) => errorMessage != null
+            ? _ErrorState(
+                onWorkload: () => showBodyWorkloadSheet(
+                  context,
+                  workload: () => _workload,
+                  currentWorkload: () => _currentWorkload,
+                ),
+                error: errorMessage,
+                doneLabel: l.commonDone,
+                tokens: tokens,
+                onDone: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
+              )
+            : _SummaryBody(
+                onWorkload: () => showBodyWorkloadSheet(
+                  context,
+                  workload: () => _workload,
+                  currentWorkload: () => _currentWorkload,
+                ),
+                session: _session!,
+                blocks: _blocks!,
+                exerciseNames: _exerciseNames,
+                unit: unit,
+                tokens: tokens,
+                onDone: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
               ),
-              error: errorMessage,
-              doneLabel: l.commonDone,
-              tokens: tokens,
-              onDone: () =>
-                  Navigator.of(context).popUntil((route) => route.isFirst),
-            )
-          : _SummaryBody(
-              onWorkload: () => showBodyWorkloadSheet(
-                context,
-                workload: () => _workload,
-                currentWorkload: () => _currentWorkload,
-              ),
-              session: _session!,
-              blocks: _blocks!,
-              exerciseNames: _exerciseNames,
-              unit: unit,
-              tokens: tokens,
-              onDone: () =>
-                  Navigator.of(context).popUntil((route) => route.isFirst),
-            ),
+      ),
+    );
+  }
+}
+
+/// The summary's shape while the finished session loads: the mark, title and
+/// date, the stat tiles, then exercise rows.
+class _SummarySkeleton extends StatelessWidget {
+  const _SummarySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final padding = MediaQuery.paddingOf(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, padding.top + 24, 16, 0),
+      child: GlyphSkeleton.blocks(const [
+        GlyphBlock(72, width: 72, align: 0),
+        GlyphBlock(22, widthFactor: .6, gap: 20, align: 0),
+        GlyphBlock(12, widthFactor: .3, gap: 6, align: 0),
+        GlyphBlock(64, gap: 24),
+        GlyphBlock(14, widthFactor: .55, gap: 24),
+        GlyphBlock(12, widthFactor: .8, gap: 10),
+        GlyphBlock(14, widthFactor: .48, gap: 20),
+        GlyphBlock(12, widthFactor: .72, gap: 10),
+      ]),
     );
   }
 }

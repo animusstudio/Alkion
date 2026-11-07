@@ -814,7 +814,10 @@ void main() {
           if (nextDelete.evaluate().isEmpty) {
             // The second card starts its real SQLite read only on expansion.
             // Distinguish that loading state from a collapsed or disabled row.
-            expect(find.byType(CircularProgressIndicator), findsOneWidget);
+            expect(
+              find.byKey(const Key('history-session-loading')),
+              findsOneWidget,
+            );
           }
           await settleUntilFound(
             tester,

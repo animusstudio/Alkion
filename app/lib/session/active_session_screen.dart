@@ -40,6 +40,7 @@ import 'exercise_picker_sheet.dart';
 import 'log_set_bar.dart';
 import 'reorder_exercises_sheet.dart';
 import 'resume.dart';
+import '../widgets/glyph_loading.dart';
 import 'session_header.dart';
 import 'session_manager.dart';
 import 'session_summary_screen.dart';
@@ -915,7 +916,22 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     if (!controller.hasSession) {
       // Should not normally be seen; the screen is only pushed when a session
       // is already built.
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            // Header, the live set panel, then the exercise rows.
+            child: GlyphSkeleton.blocks(const [
+              GlyphBlock(22, widthFactor: .55),
+              GlyphBlock(12, widthFactor: .35, gap: 8),
+              GlyphBlock(220, gap: 24),
+              GlyphBlock(14, widthFactor: .7, gap: 24),
+              GlyphBlock(14, widthFactor: .5, gap: 16),
+              GlyphBlock(14, widthFactor: .62, gap: 16),
+            ]),
+          ),
+        ),
+      );
     }
 
     final draft = controller.draft;

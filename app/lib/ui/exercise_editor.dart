@@ -21,6 +21,7 @@ import '../util/prescription_format.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/glyph_loading.dart';
 import 'editor_guard.dart';
 
 /// Editor for a single exercise (create or edit).
@@ -568,15 +569,33 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
 
   @override
   Widget build(BuildContext context) {
+    // Track the unit from the first frame, as before loading completes.
+    _syncUnit(context.watch<UnitService>().unit);
+    return GlyphReveal.builder(
+      loading: !_loaded,
+      // Name field, the muscle choices, then the prescription steppers.
+      skeleton: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: GlyphSkeleton.blocks(const [
+          GlyphBlock(48),
+          GlyphBlock(14, widthFactor: .35, gap: 24),
+          GlyphBlock(36, gap: 12),
+          GlyphBlock(36, widthFactor: .7, gap: 8),
+          GlyphBlock(14, widthFactor: .4, gap: 24),
+          GlyphBlock(48, gap: 12),
+          GlyphBlock(48, gap: 12),
+        ]),
+      ),
+      builder: _buildLoaded,
+    );
+  }
+
+  Widget _buildLoaded(BuildContext context) {
     final l = AppLocalizations.of(context);
     final units = context.watch<UnitService>();
     _syncUnit(units.unit);
 
     final tokens = context.tokens;
-
-    if (!_loaded) {
-      return const Center(child: CircularProgressIndicator());
-    }
 
     final canSave = _nameCtrl.text.trim().isNotEmpty;
     final isNew = _editId == null;

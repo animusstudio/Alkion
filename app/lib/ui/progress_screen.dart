@@ -27,6 +27,7 @@ import '../widgets/line_chart.dart';
 import '../widgets/pr_badge.dart';
 import '../widgets/progress_widgets.dart';
 import '../widgets/section_label.dart';
+import '../widgets/glyph_loading.dart';
 import 'bodyweight_view.dart';
 import 'exercise_sheet.dart';
 import 'progress_change.dart';
@@ -355,40 +356,53 @@ class _CatalogProgressViewState extends State<_CatalogProgressView> {
           ),
         ),
         Expanded(
-          child: _contexts == null && _error == null
-              ? const Center(child: CircularProgressIndicator())
-              : selected == null ||
+          child: GlyphReveal.builder(
+            loading: _contexts == null && _error == null,
+            // Metric choices, the headline value, then the chart.
+            skeleton: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: GlyphSkeleton.blocks(const [
+                GlyphBlock(36, widthFactor: .8),
+                GlyphBlock(14, widthFactor: .3, gap: 24),
+                GlyphBlock(32, widthFactor: .5, gap: 8),
+                GlyphBlock(220, gap: 24),
+              ]),
+            ),
+            builder: (context) =>
+                selected == null ||
                     !selected.supportsLoadProgression ||
                     _stream == null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      selected == null &&
-                              _error == null &&
-                              _contexts!.isNotEmpty
-                          ? l.catalogSelectSetup
-                          : l.catalogProgressUnsupported,
-                      style: WorkoutType.body(
-                        size: 16,
-                        color: context.tokens.dim,
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        selected == null &&
+                                _error == null &&
+                                _contexts!.isNotEmpty
+                            ? l.catalogSelectSetup
+                            : l.catalogProgressUnsupported,
+                        style: WorkoutType.body(
+                          size: 16,
+                          color: context.tokens.dim,
+                        ),
                       ),
                     ),
+                  )
+                : StreamBuilder<List<ProgressPoint>>(
+                    stream: _stream,
+                    builder: (context, snapshot) => _LiftView(
+                      catalog: widget.catalog,
+                      exercise: widget.exercise,
+                      metricId: _metric,
+                      metric: kMetrics.firstWhere((m) => m.id == _metric),
+                      rawSeries: snapshot.data ?? [],
+                      unitService: context.watch<UnitService>(),
+                      onPickerTap: widget.onOpenPicker,
+                      onMetricChanged: (value) =>
+                          setState(() => _metric = value),
+                    ),
                   ),
-                )
-              : StreamBuilder<List<ProgressPoint>>(
-                  stream: _stream,
-                  builder: (context, snapshot) => _LiftView(
-                    catalog: widget.catalog,
-                    exercise: widget.exercise,
-                    metricId: _metric,
-                    metric: kMetrics.firstWhere((m) => m.id == _metric),
-                    rawSeries: snapshot.data ?? [],
-                    unitService: context.watch<UnitService>(),
-                    onPickerTap: widget.onOpenPicker,
-                    onMetricChanged: (value) => setState(() => _metric = value),
-                  ),
-                ),
+          ),
         ),
       ],
     );

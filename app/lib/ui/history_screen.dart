@@ -34,6 +34,7 @@ import '../catalog_ui/catalog_evidence_widgets.dart';
 import '../data/catalog_execution_repository.dart';
 import '../domain/catalog_execution.dart';
 import '../widgets/w_action_sheet.dart';
+import '../widgets/glyph_loading.dart';
 
 /// The History tab — sessions grouped by ISO week, expandable to per-exercise
 /// top sets.
@@ -1187,34 +1188,35 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       future: _future,
       builder: (context, snap) {
         final blocks = snap.data;
-        // Spinner only for the very first load; a reload keeps the old data.
-        if (blocks == null && snap.connectionState == ConnectionState.waiting) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Center(
-              child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  color: tokens.faint,
-                ),
-              ),
-            ),
-          );
-        }
         final inProgress = widget.resumeState == SessionResumeState.inProgress;
-        return SessionCardBody(
-          blocks: blocks ?? const [],
-          catalogMap: widget.catalogMap,
-          units: widget.units,
-          resumeState: widget.resumeState,
-          onResume: widget.onResume,
-          // The running workout is where an in-progress session is edited; a
-          // History edit here would be overwritten by its next finish.
-          onEditExercise: inProgress ? null : _editExercise,
-          onAddExercise: _addExercise,
-          onDeleteSession: _deleteSession,
+        // Skeleton only for the very first load; a reload keeps the old data.
+        return GlyphReveal.builder(
+          loading:
+              blocks == null && snap.connectionState == ConnectionState.waiting,
+          cover: tokens.surface,
+          // Two exercise blocks: a name line over its set line.
+          skeleton: Padding(
+            key: const Key('history-session-loading'),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: GlyphSkeleton.blocks(const [
+              GlyphBlock(14, widthFactor: .5),
+              GlyphBlock(12, widthFactor: .8, gap: 8),
+              GlyphBlock(14, widthFactor: .42, gap: 16),
+              GlyphBlock(12, widthFactor: .7, gap: 8),
+            ]),
+          ),
+          builder: (context) => SessionCardBody(
+            blocks: blocks ?? const [],
+            catalogMap: widget.catalogMap,
+            units: widget.units,
+            resumeState: widget.resumeState,
+            onResume: widget.onResume,
+            // The running workout is where an in-progress session is edited; a
+            // History edit here would be overwritten by its next finish.
+            onEditExercise: inProgress ? null : _editExercise,
+            onAddExercise: _addExercise,
+            onDeleteSession: _deleteSession,
+          ),
         );
       },
     );

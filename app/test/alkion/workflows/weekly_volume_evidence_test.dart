@@ -269,7 +269,19 @@ void main() {
               find.byType(TodayScreen),
               find.text(l.todayWeeklyVolume.toUpperCase()),
             );
-            expect(find.text(l.todayVolumeLoading), findsOneWidget);
+            expect(
+              find.byKey(const Key('today-volume-loading')),
+              findsOneWidget,
+            );
+            expect(
+              tester
+                  .widget<Semantics>(
+                    find.byKey(const Key('today-volume-loading')),
+                  )
+                  .properties
+                  .label,
+              l.todayVolumeLoading,
+            );
             expect(find.text(l.todayNoSetsLogged), findsNothing);
             faults.faults.add(null);
             await settleReal(tester, ticks: 2);

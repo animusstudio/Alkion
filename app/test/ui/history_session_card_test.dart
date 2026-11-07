@@ -330,7 +330,7 @@ void main() {
     await tester.pumpWidget(
       card(repo, session: sessionRow()),
     ); // a NEW row object
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byKey(const Key('history-session-loading')), findsNothing);
     await tester.pumpAndSettle();
     expect(repo.loads, 2);
     expect(find.textContaining('102.5', findRichText: true), findsOneWidget);

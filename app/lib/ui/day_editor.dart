@@ -31,6 +31,7 @@ import '../settings/settings_service.dart';
 import '../util/prescription_format.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/glyph_loading.dart';
 import 'editor_guard.dart';
 import 'exercise_sheet.dart';
 
@@ -619,14 +620,27 @@ class _DayEditorState extends State<DayEditor> {
   // ── build ─────────────────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => GlyphReveal.builder(
+    loading: !_loaded,
+    // Name field, the day's options, then its exercise rows.
+    skeleton: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: GlyphSkeleton.blocks(const [
+        GlyphBlock(48),
+        GlyphBlock(14, widthFactor: .4, gap: 24),
+        GlyphBlock(48, gap: 12),
+        GlyphBlock(64, gap: 24),
+        GlyphBlock(64, gap: 12),
+        GlyphBlock(64, gap: 12),
+      ]),
+    ),
+    builder: _buildLoaded,
+  );
+
+  Widget _buildLoaded(BuildContext context) {
     final l = AppLocalizations.of(context);
     final tokens = context.tokens;
     final localeName = Localizations.localeOf(context).toLanguageTag();
-
-    if (!_loaded) {
-      return const Center(child: CircularProgressIndicator());
-    }
 
     final canSave = _nameCtrl.text.trim().isNotEmpty;
     final isOwned = _editId != null;
