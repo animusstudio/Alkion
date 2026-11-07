@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 import '../theme/alkion_icon.dart';
@@ -58,7 +59,7 @@ class CatalogMuscleExplorer extends StatefulWidget {
 }
 
 class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   String? _selected;
   bool _listExpanded = false;
   bool _showInfo = false;
@@ -110,8 +111,11 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
         : null;
     _controller = widget.controller ?? CharacterBodyController();
     _openingView();
+    _viewCommand = _controller.viewCommand;
     _controller.addListener(_controllerChanged);
     _scroll.addListener(_scrollChanged);
+    // Created here, never lazily: dispose must not create a ticker.
+    _inertia = createTicker(_inertiaTick);
   }
 
   @override
@@ -121,8 +125,11 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       _pickEpoch++;
       _controller.removeListener(_controllerChanged);
       if (oldWidget.controller == null) _controller.dispose();
+      _stopInertia();
+      _dropInput();
       _controller = widget.controller ?? CharacterBodyController();
       _openingView();
+      _viewCommand = _controller.viewCommand;
       _controller.addListener(_controllerChanged);
     }
   }
@@ -161,8 +168,26 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
 
   void _controllerChanged() {
     _pickEpoch++;
-    if (mounted) setState(() {});
+    // Front, Back, Side, Reset and a selection's held view end inertia.
+    if (_controller.viewCommand != _viewCommand) {
+      _viewCommand = _controller.viewCommand;
+      _stopInertia();
+      _dropInput();
+    }
+    // The artwork follows the controller directly. Rebuild the explorer only
+    // when what it shows from the controller changes, not every orbit frame.
+    final shown = _shownView;
+    if (shown != _shown && mounted) setState(() => _shown = shown);
   }
+
+  // Front/Back selection and the zoom buttons' bounds.
+  (bool, bool, bool, bool) get _shownView => (
+    _controller.yaw.abs() < .01 && _controller.pitch == 0,
+    (_controller.yaw - math.pi).abs() < .01 && _controller.pitch == 0,
+    _controller.zoom > 1,
+    _controller.zoom < 3,
+  );
+  (bool, bool, bool, bool)? _shown;
 
   void _routeTransitionChanged(AnimationStatus status) {
     _pickEpoch++;
@@ -204,6 +229,9 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   }
 
   Future<void> _pick(Offset point, Size size) async {
+    // Picks are invalid while the body moves, and the touch that stopped an
+    // inertial turn only stops it.
+    if (_inertia.isActive || _touchStoppedInertia) return;
     final epoch = ++_pickEpoch;
     final region = await _controller.pick(point, size);
     if (!mounted || epoch != _pickEpoch || region == null) return;
@@ -213,13 +241,128 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   // Radians per logical pixel, on both orbit axes: the accepted turn rate.
   static const _orbitRate = .009;
 
+  // Inertia after a one-finger orbit release: exponential decay with time
+  // constant [_inertiaTau], so the body coasts 63% of its remaining travel
+  // per τ and settles in about 3τ. A release below [_minFlingSpeed] does not
+  // coast; [_maxFlingSpeed] caps a flick to roughly two thirds of a turn.
+  static const _inertiaTau = .325; // seconds
+  static const _minFlingSpeed = kMinFlingVelocity; // logical px/s
+  static const _maxFlingSpeed = 1500.0; // logical px/s
+  static const _inertiaRest = .001; // radians of remaining travel per axis
+  late final Ticker _inertia;
+  double _yawRate = 0, _pitchRate = 0, _coasted = 0;
+  bool _touchStoppedInertia = false;
+  bool _reducedMotion = false;
+  int _viewCommand = 0;
+
+  // Gesture input applies once per frame: orbit deltas add up, the latest
+  // pinch/pan state wins. Each frame then sends one display.
+  Offset _pendingOrbit = Offset.zero;
+  (double, Offset)? _pendingTransform;
+  int? _inputFrame;
+
+  void _touchDown() {
+    _pickEpoch++;
+    _touchStoppedInertia = _inertia.isActive;
+    _stopInertia();
+  }
+
   void _manipulationStarted() {
     _pickEpoch++;
+    _touchStoppedInertia = false;
     _controller.pause();
   }
 
-  void _orbit(Offset delta) =>
-      _controller.orbitBy(delta.dx * _orbitRate, delta.dy * _orbitRate);
+  void _orbit(Offset delta) {
+    _pendingOrbit += delta;
+    _scheduleInput();
+  }
+
+  void _scheduleInput() {
+    _inputFrame ??= SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _inputFrame = null;
+      _applyInput();
+    });
+  }
+
+  void _dropInput() {
+    if (_inputFrame != null) {
+      SchedulerBinding.instance.cancelFrameCallbackWithId(_inputFrame!);
+      _inputFrame = null;
+    }
+    _pendingOrbit = Offset.zero;
+    _pendingTransform = null;
+  }
+
+  /// Applies coalesced input now: at its frame, or before a re-base, release
+  /// or tap so nothing reads a view that lags the fingers.
+  void _applyInput() {
+    if (!mounted) return;
+    final orbit = _pendingOrbit, transform = _pendingTransform;
+    _dropInput();
+    if (orbit != Offset.zero) {
+      _controller.orbitBy(orbit.dx * _orbitRate, orbit.dy * _orbitRate);
+    }
+    final size = _surfaceSize;
+    if (transform != null && size != null) {
+      _transform(transform.$1, transform.$2, size);
+    }
+  }
+
+  void _gestureEnded() {
+    _applyInput();
+    _pickEpoch++;
+  }
+
+  void _fling(Offset velocity) {
+    _applyInput();
+    if (_reducedMotion || !mounted) return;
+    var speed = velocity.distance;
+    if (!speed.isFinite || speed < _minFlingSpeed) return;
+    if (speed > _maxFlingSpeed) {
+      velocity = velocity * (_maxFlingSpeed / speed);
+      speed = _maxFlingSpeed;
+    }
+    _yawRate = velocity.dx * _orbitRate;
+    var pitchRate = velocity.dy * _orbitRate;
+    // Total coast is rate × τ. Limit pitch so it eases into ±45°, arriving
+    // with zero velocity instead of stopping hard at the bound.
+    final room = pitchRate > 0
+        ? CharacterBodyController.maxPitch - _controller.pitch
+        : _controller.pitch + CharacterBodyController.maxPitch;
+    if (pitchRate.abs() * _inertiaTau > room) {
+      pitchRate = pitchRate.sign * math.max(0, room) / _inertiaTau;
+    }
+    _pitchRate = pitchRate;
+    _coasted = 0;
+    _stopInertia();
+    _inertia.start();
+  }
+
+  void _inertiaTick(Duration elapsed) {
+    if (!mounted || _reducedMotion) {
+      _stopInertia();
+      return;
+    }
+    final t = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
+    // Fraction of the total coast (rate × τ) travelled by t.
+    final coasted = 1 - math.exp(-t / _inertiaTau);
+    final step = coasted - _coasted;
+    _coasted = coasted;
+    _controller.orbitBy(
+      _yawRate * _inertiaTau * step,
+      _pitchRate * _inertiaTau * step,
+    );
+    final remaining = (1 - coasted) * _inertiaTau;
+    if (_yawRate.abs() * remaining < _inertiaRest &&
+        _pitchRate.abs() * remaining < _inertiaRest) {
+      _stopInertia();
+    }
+  }
+
+  void _stopInertia() {
+    if (_inertia.isActive) _inertia.stop();
+  }
 
   // The viewport and focal point when the current set of fingers landed.
   double _baseZoom = 1;
@@ -227,6 +370,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   Offset _baseFocal = Offset.zero;
 
   void _transformStarted(Offset focal) {
+    // A new base must start from the view the fingers have produced so far.
+    _applyInput();
     _baseZoom = _controller.zoom;
     _basePan = _controller.pan;
     _baseFocal = focal;
@@ -248,6 +393,11 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
     );
   }
 
+  void _queueTransform(double scale, Offset focal) {
+    _pendingTransform = (scale, focal);
+    _scheduleInput();
+  }
+
   void _statusChanged(CharacterBodyStatus status) {
     if (!mounted || status == _status) return;
     _pickEpoch++;
@@ -258,6 +408,8 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   @override
   void dispose() {
     _pickEpoch++;
+    _dropInput();
+    _inertia.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _coverAnimation?.removeStatusListener(_routeTransitionChanged);
     _entryAnimation?.removeListener(_queueViewportCheck);
@@ -288,10 +440,13 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
       visible,
       MediaQuery.disableAnimationsOf(context),
     );
+    _reducedMotion = MediaQuery.disableAnimationsOf(context);
     if (_configuration != configuration) {
       _configuration = configuration;
       _pickEpoch++;
       _queueViewportCheck();
+      // Hidden or reduced-motion surfaces do not coast.
+      if (!visible || _reducedMotion) _stopInertia();
     }
     final failed =
         _status == CharacterBodyStatus.error ||
@@ -419,17 +574,17 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
                                     ),
                                     (recognizer) {
                                       recognizer
-                                        ..onDown = (() => _pickEpoch++)
+                                        ..onDown = _touchDown
                                         ..onStart = _manipulationStarted
                                         ..onOrbit = _orbit
                                         ..onTransformStart = _transformStarted
-                                        ..onTransform = (scale, focal) {
-                                          _transform(scale, focal, size);
-                                        }
+                                        ..onTransform = _queueTransform
                                         ..onTap = (position) {
+                                          _applyInput();
                                           _pick(position, size);
                                         }
-                                        ..onEnd = (() => _pickEpoch++);
+                                        ..onFling = _fling
+                                        ..onEnd = _gestureEnded;
                                     },
                                   ),
                             },
@@ -717,8 +872,10 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
 /// Adding or lifting a finger re-bases the focal point and span, so the next
 /// update continues from where the fingers are, without a jump. Movement before
 /// slop is not applied, and the finger left after a pinch or pan must pass slop
-/// again from where it was re-based before it orbits. After any manipulation the sequence ends with [onEnd];
-/// a release never becomes a tap. Pointers outside the canvas never reach it.
+/// again from where it was re-based before it orbits. After any manipulation
+/// the sequence ends with [onEnd], preceded by [onFling] when it ended in a
+/// one-finger orbit; a release never becomes a tap. Pointers outside the
+/// canvas never reach it.
 class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   BodyManipulationGestureRecognizer({super.debugOwner});
 
@@ -740,6 +897,10 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   /// A single pointer released below slop, at its local release position.
   ValueChanged<Offset>? onTap;
 
+  /// A sequence that ended in a one-finger orbit released at this velocity
+  /// (logical pixels per second), measured over that orbit segment only.
+  ValueChanged<Offset>? onFling;
+
   /// The sequence ended without a tap: after manipulation, or cancelled.
   VoidCallback? onEnd;
 
@@ -753,6 +914,9 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
   double _slop = kTouchSlop;
   Offset _last = Offset.zero;
   double _baseSpan = 0;
+  // The current one-finger orbit segment; null in any other phase.
+  VelocityTracker? _velocity;
+  PointerDeviceKind _kind = PointerDeviceKind.touch;
 
   @override
   void addAllowedPointer(PointerDownEvent event) {
@@ -763,6 +927,7 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
     _downs[event.pointer] = event.localPosition;
     if (_points.length == 1 && !_manipulating) {
       _tap = true;
+      _kind = event.kind;
       _slop = computeHitSlop(event.kind, gestureSettings);
       onDown?.call();
     } else {
@@ -801,6 +966,8 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
 
   void _rebase() {
     if (_points.isEmpty) return;
+    // Any change in the pointer set ends the orbit segment a fling measures.
+    _velocity = null;
     _last = _focal;
     _baseSpan = _spanAround(_last);
     if (_manipulating && _points.length > 1) onTransformStart?.call(_last);
@@ -818,6 +985,7 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
         _tap = false;
         _begin();
         _rebase();
+        _track(event);
         return;
       }
       final focal = _focal;
@@ -827,10 +995,12 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
           // Past slop: orbit from here, without applying the slop distance.
           _settling = false;
           _last = focal;
+          _track(event);
           return;
         }
         final delta = focal - _last;
         _last = focal;
+        _velocity?.addPosition(event.timeStamp, event.localPosition);
         if (delta != Offset.zero) onOrbit?.call(delta);
         return;
       }
@@ -843,21 +1013,38 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
       onTransform?.call(span / _baseSpan, focal);
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       if (event is PointerCancelEvent) _tap = false;
-      _release(event.pointer, event.localPosition);
+      _release(
+        event.pointer,
+        event.localPosition,
+        cancelled: event is PointerCancelEvent,
+      );
     }
   }
 
-  void _release(int pointer, Offset position) {
+  // Starts measuring a one-finger orbit segment at this event.
+  void _track(PointerEvent event) {
+    if (_points.length != 1) return;
+    _velocity = VelocityTracker.withKind(_kind)
+      ..addPosition(event.timeStamp, event.localPosition);
+  }
+
+  void _release(int pointer, Offset position, {bool cancelled = false}) {
+    final orbit = _points.length == 1 && !_settling && !cancelled
+        ? _velocity
+        : null;
     _points.remove(pointer);
     _downs.remove(pointer);
     if (_points.isEmpty) {
       final tap = _tap && !_manipulating;
+      final fling = _manipulating ? orbit?.getVelocity().pixelsPerSecond : null;
       _manipulating = false;
       _tap = false;
       _settling = false;
+      _velocity = null;
       if (tap) {
         onTap?.call(position);
       } else {
+        if (fling != null) onFling?.call(fling);
         onEnd?.call();
       }
     } else {
@@ -872,7 +1059,7 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
     // Another eager recognizer won first: never tap or move for this pointer.
     if (!_points.containsKey(pointer)) return;
     _tap = false;
-    _release(pointer, _points[pointer]!);
+    _release(pointer, _points[pointer]!, cancelled: true);
   }
 
   @override
@@ -882,6 +1069,7 @@ class BodyManipulationGestureRecognizer extends OneSequenceGestureRecognizer {
     _manipulating = false;
     _settling = false;
     _tap = false;
+    _velocity = null;
   }
 
   @override

@@ -11,6 +11,7 @@ class _Log {
   final starts = <Offset>[];
   final transforms = <(double, Offset)>[];
   final taps = <Offset>[];
+  final flings = <Offset>[];
 
   Offset get orbit => orbits.fold(Offset.zero, (sum, delta) => sum + delta);
 }
@@ -47,6 +48,7 @@ Future<(_Log, ScrollController)> _pump(WidgetTester tester) async {
                           log.transforms.add((scale, focal));
                         })
                         ..onTap = log.taps.add
+                        ..onFling = log.flings.add
                         ..onEnd = (() => log.events.add('end'));
                     }),
               },
@@ -202,6 +204,81 @@ void main() {
       await tester.tap(_canvas);
       expect(log.taps, hasLength(1), reason: 'Lifting all fingers resets');
       expect(scroll.offset, 0);
+    },
+  );
+
+  /// A one-finger orbit at [step] per 10 ms after crossing slop, released at
+  /// the last move's time stamp.
+  Future<TestGesture> orbit(
+    WidgetTester tester,
+    Offset start,
+    Offset step, {
+    int moves = 8,
+    bool release = true,
+  }) async {
+    final finger = await tester.createGesture();
+    await finger.down(start);
+    var ms = 10;
+    await finger.moveBy(step * 3, timeStamp: Duration(milliseconds: ms));
+    for (var i = 0; i < moves; i++) {
+      ms += 10;
+      await finger.moveBy(step, timeStamp: Duration(milliseconds: ms));
+    }
+    if (release) await finger.up(timeStamp: Duration(milliseconds: ms));
+    return finger;
+  }
+
+  testWidgets('a one-finger orbit release reports its velocity before ending', (
+    tester,
+  ) async {
+    final (log, _) = await _pump(tester);
+    await orbit(tester, tester.getCenter(_canvas), const Offset(10, -4));
+    expect(log.flings, hasLength(1));
+    expect(log.flings.single.dx, closeTo(1000, 50));
+    expect(log.flings.single.dy, closeTo(-400, 30));
+    expect(log.events, ['down', 'start', 'end']);
+    expect(log.taps, isEmpty);
+  });
+
+  testWidgets(
+    'pinch, cancel and a settling finger never fling; a held finger flings at rest',
+    (tester) async {
+      final (log, _) = await _pump(tester);
+      final centre = tester.getCenter(_canvas);
+      // Pinch released by both fingers.
+      final a = await tester.startGesture(centre - const Offset(30, 0));
+      final b = await tester.startGesture(centre + const Offset(30, 0));
+      await b.moveBy(
+        const Offset(40, 0),
+        timeStamp: const Duration(milliseconds: 10),
+      );
+      await b.up(timeStamp: const Duration(milliseconds: 10));
+      // The finger left after the pinch lifts within slop: no fling.
+      await a.moveBy(
+        const Offset(5, 0),
+        timeStamp: const Duration(milliseconds: 20),
+      );
+      await a.up(timeStamp: const Duration(milliseconds: 20));
+      expect(log.flings, isEmpty);
+      // A cancelled orbit never flings.
+      final cancelled = await orbit(
+        tester,
+        centre,
+        const Offset(10, 0),
+        release: false,
+      );
+      await cancelled.cancel();
+      expect(log.flings, isEmpty);
+      // Held still for longer than the tracker's stop window: zero velocity.
+      final held = await orbit(
+        tester,
+        centre,
+        const Offset(10, 0),
+        release: false,
+      );
+      await tester.pump(const Duration(milliseconds: 60));
+      await held.up(timeStamp: const Duration(milliseconds: 150));
+      expect(log.flings.single, Offset.zero);
     },
   );
 

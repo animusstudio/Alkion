@@ -57,6 +57,10 @@ class CharacterBodyController extends ChangeNotifier {
 
   double get yaw => _yaw;
 
+  /// Advances with every held view (front, back, side, reset). Callers that
+  /// animate the view, like orbit inertia, stop when it changes.
+  int get viewCommand => _command;
+
   /// Camera elevation in radians, within ±[maxPitch]. Positive looks down.
   double get pitch => _pitch;
   bool get paused => _paused;
