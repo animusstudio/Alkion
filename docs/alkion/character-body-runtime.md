@@ -100,19 +100,25 @@ CPU work per glyph:
    source-over as Canvas does. The result is copied to the visible canvas once.
 
 Without WebGL2 the renderer keeps the CPU reference path: synchronous readback
-and one Canvas `drawImage` per glyph. A host comparison of both paths (both
-styles and themes, selection, ±45° tilt, zoom and pan, heatmap, explorer and
-compact sizes; SwiftShader and a hardware Vulkan GPU) found identical sampler
-output in every cell and identical geometry bytes. The displayed images
-differ by at most 5/255 per channel, from hardware filtering precision.
+and one Canvas `drawImage` per glyph. In the default `auto` mode, a WebGL2
+composer that fails to compile, link or complete its framebuffers, at setup or
+at a later resize, releases that context and falls back once to the CPU path
+on a fresh surface; an explicit `gpu` mode still fails. A host comparison of
+both paths (both styles and themes, selection, ±45° tilt, zoom and pan,
+heatmap, explorer and compact sizes; SwiftShader and a hardware Vulkan GPU)
+found identical sampler output in every cell and identical geometry bytes.
+The displayed images differ by at most 5/255 per channel, from hardware
+filtering precision.
 
 Pick pixels are read back asynchronously: the geometry surface is copied into a
 pixel-pack buffer behind a fence and copied out once the GPU has finished, in a
 later task. A frame's pick identity is published only after its pixels land and
 only while it is still the latest drawn frame; any display, layout, lifecycle
 or lease change discards a pending copy. A copy still pending after about a
-second of polling completes synchronously. During continuous motion the next
-frame's readback reports; the settled frame always reports.
+second of polling completes synchronously. A frame left with no copy that can
+land (none queued, or the context lost) stops polling and requests one redraw.
+During continuous motion the next frame's readback reports; the settled frame
+always reports.
 
 The per-frame path allocates no keys or histograms and writes no DOM
 attributes: atlas, palette and display changes are compared field by field;

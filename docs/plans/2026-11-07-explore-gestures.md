@@ -174,5 +174,9 @@ ease to a stop at the zoom and pan bounds. All other T4 inertia rules apply.
   pass, except the 3 known failures. The A024 measurement is pending.
 - T6: implemented on host at `acec5f1` (two-finger pan/zoom coast; focused
   and full suites pass except the 3 known failures). Device feel check pending.
+- Review fixes: the independent review of `8d5f580..8b0dd3b` passed with four
+  findings, fixed on host at `e1ac797` (background stops the coast),
+  `4e07802` (loader digest test through the isolate), `68c2dd9` (CPU compose
+  fallback) and `e1d1a5c` (fence-less frame redraws once). Re-check pending.
 
 Next: device re-measure of T4, review, owner publish and the Animus pin.

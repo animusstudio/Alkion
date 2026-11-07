@@ -34,6 +34,11 @@ and an awaited acknowledgement per display.
   into 1×/3× and the pan bound; the lift leaving two-finger mode decides it and
   the last finger never flings. Real multi-pointer tests cover coast, bounds,
   touch-stop without selection, reduced motion, takeover, buttons and hiding.
+- Review fixes (host only, `e1ac797`–`e1d1a5c`): a GPU composer that fails to
+  compile, link or complete its framebuffers at setup or resize falls back once
+  to CPU compose on a fresh surface; a frame with no readback left to land
+  redraws once instead of polling forever; leaving the foreground stops a
+  coast in place; a tampered muscle bundle loads as unavailable via the isolate.
 
 Parity of the GPU and CPU compose, in a host Chromium proof with the staged
 private meshes over 20 cases: both styles and themes, selection, ±45° tilt,
