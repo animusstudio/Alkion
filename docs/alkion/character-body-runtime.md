@@ -205,7 +205,7 @@ slightly coarsens the material's depth input at a tilt.
 Explore muscles has one recognizer on the canvas,
 `BodyManipulationGestureRecognizer`. It accepts each pointer that lands on the
 canvas at pointer down, so neither the page scroll nor the sheet drag can claim
-it. Pointers outside the canvas never reach it; the list or page scrolls as before.
+it. Pointers outside the canvas never reach it; the strip or page scrolls as before.
 
 - One pointer released within touch slop is a tap and picks.
 - One pointer past slop orbits: dx turns, dy tilts. Movement before slop is
@@ -236,7 +236,7 @@ about 3τ, and the total coast is velocity × .009 rad/px × τ. A release slowe
 than 50 px/s does not coast; faster flicks are capped at 1,500 px/s (about two
 thirds of a turn). Pitch velocity is limited so its coast ends exactly at ±45°,
 arriving with no speed. A touch on the canvas stops the coast and does not
-select; the next tap picks. Front, Back, Side, Reset and a list choice that
+select; the next tap picks. Front, Back, Side, Reset and a chip choice that
 opens a held view cancel it. Picks are refused while it runs. Reduced motion,
 a hidden surface or closing the explorer stop it; under reduced motion it never
 starts. The ticker is created in `initState` and disposed with the explorer.
@@ -267,25 +267,39 @@ ready artwork. They are siblings above the recognizer, inside an opaque
 listener, so their taps (even on a disabled button) never reach the canvas.
 Front, Back, Reset and Retry stay in the row above.
 
-From a 360 dp sheet, while the list column holds about nine ems of its 14 pt
-labels (up to 1.3× text at 412 dp) and the canvas beside it gets at least
-300 dp of height, the canvas takes 55% of the width and the height above the
-pinned button, beside an always-visible list that scrolls on its own.
-Otherwise, landscape phones included, a canvas 55% of the sheet's height
-(300–420 dp) stacks above the list in one scrolling page: full width with
-64 dp of the page left in view beneath it, or square and up to the page's
-height where the page is at least 96 dp wider. Either way the canvas stays
-within 125,000 dp², about the old 380×300 canvas plus 10%, narrowing to 0.6
-of its height before it shortens, so the pick readback stays near the old
-85,680 px. The canvas keeps one element across the switch. The list is one
-48 dp row per group in the index's alphabetical order (the browse index has
-no body-area grouping), then Unclassified. A list choice of another group
-turns to the view it faces, from the same table as the opening view; choosing
-the selected row again keeps the view. A canvas pick never turns and scrolls
-the list column to its row. Stacked, the page holds still so the canvas stays
-under the finger. At 412×900 dp the two-column canvas is 202×613 dp, a
-189×489 pick surface (92,421 px) against 357×240 (85,680 px) for the old
-380×300 canvas.
+By default (T8) the view controls sit above a canvas that spans the sheet
+inside 16 dp insets and fills the height down to the selected-muscle label
+(a live region, reserving the height of its longest group name so a choice
+never resizes the canvas) and one horizontal strip of 48 dp pill chips, glyph
+and name, above the pinned button. Nothing but the strip scrolls. The chips
+follow the index's alphabetical order (the browse index has no body-area
+grouping), then Unclassified, which closes straight to its results. Chip
+widths are measured from their labels at both weights, so every chip's centre
+is known before layout and a selection never moves a chip; the strip's ends
+are padded so the first and last chip can centre, and fade over 24 dp. A
+release projects where a clamping fling would rest and springs, without
+bounce, to the nearest chip centre, so a chip always settles centred.
+Scrolling only browses. A chip choice of another group turns to the view it
+faces, from the same table as the opening view; choosing the selected chip
+again keeps the view. A canvas pick never turns. Either way, and for the
+opening selection, the selected chip moves to the centre. Each chip is one
+button node with its label and selected state. The info notes cover the
+canvas while open. When that canvas would be under 300 dp (short and
+landscape viewports, large text on small phones; estimated without the
+selection or artwork status, so neither switches layout), it stacks instead:
+a canvas 55% of the sheet's height (300–420 dp), then the label, the strip
+and the notes, in one scrolling page: full width with 64 dp of the page left
+in view beneath it, or square and up to the page's height where the page is
+at least 96 dp wider. The canvas and the strip each keep one element across
+the switch. On phones the canvas is uncapped, so the body is as large as its
+layout allows; from a 600 dp sheet it stays within 170,000 dp², narrowing to
+0.6 of its height before it shortens, a pick readback of at most about
+127,000 px. The readback is three samples per cell side, cells of 3.2 dp
+across and 3.765 dp down (`renderer.js` `resize()`): at 411×911 dp the canvas
+is 379×567 dp, a 354×453 pick surface (160,362 px), and at 412×900 dp
+380×557 dp, 357×444 (158,508 px), against 357×240 (85,680 px) for the old
+380×300 canvas. A frame-time measurement on the A024 decides whether phones
+need a cap.
 
 ## Visible-surface picking
 
