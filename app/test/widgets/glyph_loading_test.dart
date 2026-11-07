@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:typed_data';
 
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/motion.dart';
@@ -36,7 +37,10 @@ void main() {
   for (final (name, skeleton) in [
     ('box', const GlyphSkeleton.box()),
     ('lines', GlyphSkeleton.lines(widths: const [1, .6, 1.4])),
-    ('silhouette', const GlyphSkeleton.silhouette()),
+    (
+      'blocks',
+      const GlyphSkeleton.blocks([GlyphBlock(30), GlyphBlock(30, gap: 8)]),
+    ),
   ]) {
     testWidgets('$name skeleton paints glyphs only inside its rectangle', (
       tester,
@@ -100,7 +104,7 @@ void main() {
 
     await tester.pumpWidget(_app(_reveal(loading: false)));
     expect(GlyphSkeleton.debugSweepRunning, isFalse);
-    await tester.pump(Motion.slow);
+    await tester.pump(Motion.reveal);
     await tester.pump(const Duration(milliseconds: 16));
     expect(tester.binding.transientCallbackCount, 0);
     expect(tester.binding.hasScheduledFrame, isFalse);
@@ -120,7 +124,7 @@ void main() {
           children: [
             const GlyphSkeleton.box(width: 80, height: 40),
             GlyphSkeleton.lines(width: 80),
-            const GlyphSkeleton.silhouette(width: 80, height: 120),
+            const GlyphSkeleton.box(width: 80, height: 120),
           ],
         ),
       ),
@@ -274,6 +278,116 @@ void main() {
     }
   }
 
+  // Mean alpha (0–1) of [bytes] over columns [x0, x1) and rows [y0, y1).
+  double meanAlpha(ByteData bytes, int width, int x0, int x1, int y0, int y1) {
+    var sum = 0;
+    for (var y = y0; y < y1; y++) {
+      for (var x = x0; x < x1; x++) {
+        sum += bytes.getUint8((y * width + x) * 4 + 3);
+      }
+    }
+    return sum / ((x1 - x0) * (y1 - y0) * 255);
+  }
+
+  Future<ByteData> capture(WidgetTester tester, Key key) {
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(key),
+    );
+    return tester
+        .runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: 1);
+          final data = await image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          );
+          image.dispose();
+          return data!;
+        })
+        .then((data) => data!);
+  }
+
+  testWidgets('box ink fades out towards its edges', (tester) async {
+    const outer = Key('outer');
+    await tester.pumpWidget(
+      _app(
+        const RepaintBoundary(
+          key: outer,
+          child: GlyphSkeleton.box(width: 200, height: 400, active: false),
+        ),
+      ),
+    );
+    final bytes = await capture(tester, outer);
+    // Full-height strips: the outer 7 dp (one glyph column), the next one in,
+    // and the middle 60 dp.
+    final centre = meanAlpha(bytes, 200, 70, 130, 0, 400);
+    final left = meanAlpha(bytes, 200, 0, 7, 0, 400);
+    final right = meanAlpha(bytes, 200, 193, 200, 0, 400);
+    final inner = meanAlpha(bytes, 200, 14, 28, 0, 400);
+    expect(centre, greaterThan(.003), reason: 'the centre shows the field');
+    expect(left, lessThan(centre * .6), reason: 'left edge is feathered');
+    expect(right, lessThan(centre * .6), reason: 'right edge is feathered');
+    expect(inner, greaterThan(left), reason: 'ink rises away from the edge');
+    // Top and bottom rows fade too.
+    final top = meanAlpha(bytes, 200, 20, 180, 0, 14);
+    final middle = meanAlpha(bytes, 200, 20, 180, 150, 250);
+    expect(top, lessThan(middle * .85), reason: 'top edge is feathered');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a text line fades out at both ends', (tester) async {
+    const outer = Key('outer');
+    await tester.pumpWidget(
+      _app(
+        RepaintBoundary(
+          key: outer,
+          child: GlyphSkeleton.lines(
+            widths: const [1],
+            width: 200,
+            active: false,
+          ),
+        ),
+      ),
+    );
+    final bytes = await capture(tester, outer);
+    final middle = meanAlpha(bytes, 200, 70, 130, 0, 12);
+    expect(middle, greaterThan(.003));
+    expect(meanAlpha(bytes, 200, 0, 6, 0, 12), lessThan(middle * .4));
+    expect(meanAlpha(bytes, 200, 194, 200, 0, 12), lessThan(middle * .4));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the sweeping band is feathered at the edges too', (
+    tester,
+  ) async {
+    const outer = Key('outer');
+    await tester.pumpWidget(
+      _app(
+        const RepaintBoundary(
+          key: outer,
+          child: GlyphSkeleton.box(width: 200, height: 100),
+        ),
+      ),
+    );
+    var peak = 0.0, edge = 0.0;
+    // One full pass of the band, sampled every 100 ms.
+    for (var i = 0; i < 15; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      final bytes = await capture(tester, outer);
+      for (var y = 26; y < 74; y++) {
+        for (var x = 0; x < 200; x++) {
+          final a = bytes.getUint8((y * 200 + x) * 4 + 3) / 255;
+          if (x < 4 || x >= 196) {
+            if (a > edge) edge = a;
+          } else if (a > peak) {
+            peak = a;
+          }
+        }
+      }
+    }
+    expect(peak, greaterThan(.6), reason: 'the band passes at full strength');
+    expect(edge, lessThan(peak * .45), reason: 'it fades out at the edges');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('an inactive or muted skeleton is static', (tester) async {
     await tester.pumpWidget(
       _app(const GlyphSkeleton.box(width: 80, height: 40, active: false)),
@@ -294,18 +408,22 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the dissolve finishes within Motion.slow and leaves the child', (
+  testWidgets('the dissolve runs for Motion.reveal and leaves the child', (
     tester,
   ) async {
-    expect(Motion.slow, const Duration(milliseconds: 300));
+    expect(Motion.reveal, const Duration(milliseconds: 500));
     await tester.pumpWidget(_app(_reveal(loading: true)));
     expect(find.byType(GlyphSkeleton), findsOneWidget);
     await tester.pumpWidget(_app(_reveal(loading: false)));
-    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(const Duration(milliseconds: 250));
     // Mid-wave: the content is laid out and tappable under a passing overlay.
     expect(find.byType(GlyphSkeleton), findsOneWidget);
+    expect(find.byType(ClipPath), findsOneWidget);
     expect(find.text('Ready').hitTestable(), findsOneWidget);
+    // Still covering past the old 300 ms reveal.
     await tester.pump(const Duration(milliseconds: 150));
+    expect(find.byType(GlyphSkeleton), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(GlyphSkeleton), findsNothing);
     expect(find.byType(ClipPath), findsNothing);
     expect(find.text('Ready'), findsOneWidget);
@@ -343,7 +461,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(tester.getRect(find.byKey(const Key('content'))), content);
     expect(tester.getRect(find.byType(GlyphSkeleton)), content);
-    await tester.pump(Motion.slow);
+    await tester.pump(Motion.reveal);
     expect(tester.getRect(find.byType(GlyphReveal)), content);
 
     // Built-on-load content takes the skeleton's place at the same size.
@@ -364,7 +482,7 @@ void main() {
     expect(find.text('Built'), findsOneWidget);
     expect(tester.getRect(find.byType(GlyphReveal)), before);
     expect(tester.getRect(find.byKey(const Key('built'))), before);
-    await tester.pump(Motion.slow);
+    await tester.pump(Motion.reveal);
     expect(find.byType(GlyphSkeleton), findsNothing);
     expect(tester.getRect(find.byType(GlyphReveal)), before);
     await tester.pumpWidget(const SizedBox());
@@ -376,7 +494,7 @@ void main() {
     expect(find.bySemanticsLabel('Loading'), findsOneWidget);
     await tester.pumpWidget(_app(_reveal(loading: false, label: 'Loading')));
     expect(find.bySemanticsLabel('Loading'), findsNothing);
-    await tester.pump(Motion.slow);
+    await tester.pump(Motion.reveal);
     expect(find.bySemanticsLabel('Loading'), findsNothing);
     semantics.dispose();
     await tester.pumpWidget(const SizedBox());

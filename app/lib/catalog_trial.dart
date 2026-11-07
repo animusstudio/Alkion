@@ -220,7 +220,7 @@ class _CatalogTrialBootstrapState extends State<CatalogTrialBootstrap> {
                         ),
                         const SizedBox(height: 24),
                         if (!_failed && (_bundle == null || _starting))
-                          const CatalogGlyphSkeleton(),
+                          const CatalogButtonSkeleton(),
                         if (!_failed && _bundle != null && !_starting)
                           CatalogReadyReveal(
                             enabled: true,

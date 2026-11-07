@@ -467,6 +467,9 @@ Future<void> _launchAlkionRuntime(
       root,
       onCatalogLoading: (settings) {
         displayedCatalogLoad = true;
+        // The real root's first frame waits (briefly) for the arm artwork,
+        // so the native splash hands over to the same mark without a gap.
+        if (identical(present, runApp)) holdFirstFrameForStartupMark();
         present(
           CatalogLoadingApp(
             brightness: settings.brightness,
@@ -637,7 +640,7 @@ class AlkionApp extends StatelessWidget {
                     child: Stack(
                       children: [
                         if (child != null)
-                          CatalogReadyReveal(
+                          CatalogReadyReveal.startup(
                             enabled: revealCatalog,
                             child: child,
                           ),

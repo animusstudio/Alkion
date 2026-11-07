@@ -138,7 +138,7 @@ void main() {
           await tester.pumpWidget(presented.last);
           await tester.pump();
           expect(find.byType(FirstStartScreen), findsNothing);
-          expect(find.byType(CatalogGlyphSkeleton), findsOneWidget);
+          expect(find.byType(CatalogStartupMark), findsOneWidget);
 
           // Fail only after first-start is disposed: its mounted-guarded
           // catch cannot rescue a launcher that leaves the loading root up.
@@ -153,7 +153,7 @@ void main() {
           expect(presented.last, isA<AlkionPreflightApp>());
           await tester.pumpWidget(presented.last);
           await tester.pump();
-          expect(find.byType(CatalogGlyphSkeleton), findsNothing);
+          expect(find.byType(CatalogStartupMark), findsNothing);
           expect(
             find.textContaining('Your existing files are preserved'),
             findsOneWidget,

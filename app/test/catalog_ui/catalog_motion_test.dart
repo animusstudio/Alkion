@@ -56,7 +56,8 @@ void main() {
           theme.color!.resolve({WidgetState.selected}),
           isNot(context.tokens.accent),
         );
-        expect(find.byType(CatalogGlyphSkeleton), findsNothing);
+        expect(find.byType(CatalogStartupMark), findsNothing);
+        expect(find.byType(CatalogButtonSkeleton), findsNothing);
         await openChoice(tester, state, fixtureId(10));
         await tester.tap(
           find.descendant(
@@ -257,44 +258,46 @@ void main() {
     },
   );
 
-  testWidgets('decode preserves immediate input and completes within 300ms', (
-    tester,
-  ) async {
-    var taps = 0;
-    await tester.pumpWidget(
-      discoveryApp(
-        CatalogReadyReveal(
-          enabled: true,
-          child: GestureDetector(
-            onTap: () => taps++,
-            child: const Text('Ready'),
+  testWidgets(
+    'decode preserves immediate input and completes in Motion.reveal',
+    (tester) async {
+      expect(Motion.reveal, const Duration(milliseconds: 500));
+      var taps = 0;
+      await tester.pumpWidget(
+        discoveryApp(
+          CatalogReadyReveal(
+            enabled: true,
+            child: GestureDetector(
+              onTap: () => taps++,
+              child: const Text('Ready'),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.tap(find.text('Ready'));
-    expect(taps, 1);
-    await tester.pump(Motion.slow);
-    final motion =
-        tester
-                .widget<AnimatedBuilder>(
-                  find
-                      .descendant(
-                        of: find.byType(EventProgress),
-                        matching: find.byType(AnimatedBuilder),
-                      )
-                      .first,
-                )
-                .animation
-            as AnimationController;
-    expect(motion.value, 1);
-    await tester.pump(
-      const Duration(milliseconds: 16),
-    ); // Retire the final frame.
-    expect(motion.isAnimating, isFalse);
-    await tester.pumpWidget(const SizedBox());
-  });
+      );
+      await tester.pump();
+      await tester.tap(find.text('Ready'));
+      expect(taps, 1);
+      await tester.pump(Motion.reveal);
+      final motion =
+          tester
+                  .widget<AnimatedBuilder>(
+                    find
+                        .descendant(
+                          of: find.byType(EventProgress),
+                          matching: find.byType(AnimatedBuilder),
+                        )
+                        .first,
+                  )
+                  .animation
+              as AnimationController;
+      expect(motion.value, 1);
+      await tester.pump(
+        const Duration(milliseconds: 16),
+      ); // Retire the final frame.
+      expect(motion.isAnimating, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets(
     'trial actual pending load shows stable glyphs then ready, failure has no success decode',
@@ -306,14 +309,14 @@ void main() {
         CatalogTrialBootstrap(loader: () => pending.future),
       );
       await tester.pump();
-      expect(find.byType(CatalogGlyphSkeleton), findsOneWidget);
+      expect(find.byType(CatalogButtonSkeleton), findsOneWidget);
       // The band sweeps only while this real load is pending.
       await tester.pump(const Duration(milliseconds: 100));
       expect(GlyphSkeleton.debugSweepRunning, isTrue);
       pending.complete(state.bundle);
       await tester.pump();
       await tester.pump();
-      expect(find.byType(CatalogGlyphSkeleton), findsNothing);
+      expect(find.byType(CatalogButtonSkeleton), findsNothing);
       expect(GlyphSkeleton.debugSweepRunning, isFalse);
       expect(find.byType(CatalogReadyReveal), findsOneWidget);
       await tester.pumpAndSettle();
@@ -324,7 +327,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(CatalogGlyphSkeleton), findsNothing);
+      expect(find.byType(CatalogButtonSkeleton), findsNothing);
       expect(find.byType(CatalogReadyReveal), findsNothing);
       expect(find.byType(FilledButton), findsNothing);
       await tester.pumpWidget(const SizedBox());
@@ -390,7 +393,7 @@ void main() {
           locale: Locale('it'),
         ),
       );
-      final context = tester.element(find.byType(CatalogGlyphSkeleton));
+      final context = tester.element(find.byType(CatalogStartupMark));
       expect(Theme.of(context).brightness, Brightness.light);
       expect(Localizations.localeOf(context), const Locale('it'));
       expect(tester.binding.transientCallbackCount, 0);

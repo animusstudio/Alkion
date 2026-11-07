@@ -11,32 +11,16 @@ import '../theme/motion.dart';
 import '../theme/typography.dart';
 import 'state_motion.dart';
 
-/// The source-derived body silhouette, 14 columns by 13 rows. `#` is dense,
-/// `:` medium and `.` light; spaces are outside the figure.
-const kGlyphBodySilhouette = <String>[
-  '     .::.     ',
-  '     ::::     ',
-  '   .:####:.   ',
-  '  :##:##:##:  ',
-  ' .## :##: ##. ',
-  ' :#: :##: :#: ',
-  ' ::  :##:  :: ',
-  '     ####     ',
-  '    :#::#:    ',
-  '    ##  ##    ',
-  '    #:  :#    ',
-  '   :#:  :#:   ',
-  '   ::    ::   ',
-];
-
 /// Light to dense. Index 0 is blank.
 const _ramp = ' .:-=+*#%@';
 const _rampTop = 9;
 const _bandTop = 7;
 const _glyphSize = 10.0;
 const _glyphLine = 1.2;
-// Silhouette glyph cells are 0.6em wide and 1.05em tall in the source art.
-const _silhouetteAspect = (14 * .6) / (13 * 1.05);
+// Ink fades to transparent over this many dp from each rectangle edge, or a
+// quarter of the rectangle's side on that axis when that is smaller.
+const _feather = 14.0;
+const _featherShare = .25;
 // Width of the dissolve wavefront, as a share of the centre-to-corner radius.
 const _waveRamp = .4;
 // Half width of the loading band, as a share of the skeleton width.
@@ -74,12 +58,15 @@ class GlyphBlock {
   int get hashCode => Object.hash(height, widthFactor, width, gap, align);
 }
 
-enum _Shape { box, blocks, silhouette }
+enum _Shape { box, blocks }
 
 /// A faint, static mono glyph field filling exactly the rectangle its content
 /// will occupy. While [active] (a real load is pending) a denser band sweeps
 /// across it on one shared ~30 fps clock; reduced motion, a muted
 /// [TickerMode] or an inactive skeleton draw only the static pattern.
+///
+/// Every rectangle's ink, band included, fades out towards its edges (see
+/// [_edgeFade]), so a skeleton blends into the card it sits on.
 ///
 /// Decorative: it never takes pointers, and announces [semanticLabel] (when
 /// given) as one node. Callers that already speak a loading label leave it
@@ -132,18 +119,6 @@ class GlyphSkeleton extends StatefulWidget {
     this.highlight,
   }) : _shape = _Shape.blocks,
        height = null;
-
-  /// The body silhouette ([kGlyphBodySilhouette]) fitted inside the size.
-  const GlyphSkeleton.silhouette({
-    super.key,
-    this.width,
-    this.height,
-    this.active = true,
-    this.semanticLabel,
-    this.ink,
-    this.highlight,
-  }) : _shape = _Shape.silhouette,
-       blocks = const [];
 
   final _Shape _shape;
   final List<GlyphBlock> blocks;
@@ -256,13 +231,16 @@ class _GlyphSkeletonState extends State<GlyphSkeleton> {
 
 /// Dissolves a [GlyphSkeleton] into content once a load finishes: cells run
 /// through a glyph ramp and clear in a wave from the centre within
-/// [Motion.slow]. Reduced motion, hidden routes and off-screen reveals swap
+/// [Motion.reveal]. Reduced motion, hidden routes and off-screen reveals swap
 /// instantly. A reveal never adds a wait: content that is ready on mount is
 /// shown at once unless [revealOnMount] decodes a load that was displayed
 /// elsewhere.
 ///
 /// The default constructor keeps [child] mounted and laid out under an opaque
-/// [cover] (platform views, images that are decoding). [GlyphReveal.builder]
+/// [cover] (platform views, images that are decoding). The cover itself is
+/// never feathered: it must hide unready content completely until the wave
+/// opens it, so callers pass the colour of the surface around it and only the
+/// glyph ink on top fades into that surface. [GlyphReveal.builder]
 /// builds the content only once loaded and shows [skeleton] alone until then.
 /// The overlay owns neither pointers nor semantics during the dissolve.
 class GlyphReveal extends StatefulWidget {
@@ -338,7 +316,7 @@ class _GlyphRevealState extends State<GlyphReveal> {
     return EventProgress(
       event: _reveals,
       onMount: widget.revealOnMount && !loading,
-      duration: Motion.slow,
+      duration: Motion.reveal,
       builder: (context, t) {
         if (content == null) return speak(IgnorePointer(child: skeleton));
         final covering = loading || t < 1;
@@ -527,6 +505,9 @@ class _GlyphField {
   Uint8List base = Uint8List(0);
   Float32List weight = Float32List(0);
 
+  /// Per-cell edge feather (0 at a rectangle edge, 1 inside), fixed at layout.
+  Float32List edge = Float32List(0);
+
   /// Band position (x / width) for skeletons, wave distance for dissolves.
   Float32List position = Float32List(0);
 
@@ -550,6 +531,7 @@ class _GlyphField {
     List<double> weights,
     List<double> positions,
     List<double> scales,
+    List<double> edges,
   ) {
     count = xs.length;
     transforms = Float32List(count * 4);
@@ -558,6 +540,7 @@ class _GlyphField {
     base = Uint8List.fromList(glyphs);
     weight = Float32List.fromList(weights);
     position = Float32List.fromList(positions);
+    edge = Float32List.fromList(edges);
     final unit = atlas.cell.width / atlas.spriteWidth;
     for (var i = 0; i < count; i++) {
       transforms[i * 4] = unit * scales[i];
@@ -606,6 +589,20 @@ class _GlyphField {
   }
 }
 
+/// Alpha factor for a glyph centred [inset] dp inside the edge of a [side] dp
+/// span: a smoothstep from 0 at the edge to 1 at the feather width.
+double _edgeFade(double inset, double side) {
+  final f = math.min(_feather, side * _featherShare);
+  if (f <= 0) return 1;
+  final t = (inset / f).clamp(0.0, 1.0);
+  return t * t * (3 - 2 * t);
+}
+
+/// [_edgeFade] on both axes of [r] for a glyph cell centred at ([x], [y]).
+double _rectFade(Rect r, double x, double y) =>
+    _edgeFade(math.min(x - r.left, r.right - x), r.width) *
+    _edgeFade(math.min(y - r.top, r.bottom - y), r.height);
+
 int _hash(int x, int y) {
   var h = (x * 73856093) ^ (y * 19349663);
   h = (h ^ (h >> 13)) * 1274126177;
@@ -639,16 +636,9 @@ class _SkeletonPainter extends CustomPainter {
     final cw = atlas.cell.width, ch = atlas.cell.height;
     final xs = <double>[], ys = <double>[], weights = <double>[];
     final glyphs = <int>[], positions = <double>[], scales = <double>[];
+    final edges = <double>[];
     // The band leans slightly, so it reads as a sweep rather than a column.
     final span = size.width + _bandLean * size.height;
-    void add(double x, double y, int glyph, double w, [double scale = 1]) {
-      xs.add(x);
-      ys.add(y);
-      glyphs.add(glyph);
-      weights.add(w);
-      scales.add(scale);
-      positions.add(span <= 0 ? 0 : (x + cw / 2 + _bandLean * y) / span);
-    }
 
     void dither(Rect r, int seed, {bool centre = false}) {
       if (r.width <= 0 || r.height <= 0) return;
@@ -669,13 +659,14 @@ class _SkeletonPainter extends CustomPainter {
               : h % 3 == 0
               ? 2
               : 1;
-          add(
-            x0 + col * pw,
-            y0 + row * ph,
-            glyph,
-            glyph == 2 ? .36 : .28,
-            scale,
-          );
+          final x = x0 + col * pw, y = y0 + row * ph;
+          xs.add(x);
+          ys.add(y);
+          glyphs.add(glyph);
+          weights.add(glyph == 2 ? .36 : .28);
+          scales.add(scale);
+          positions.add(span <= 0 ? 0 : (x + cw / 2 + _bandLean * y) / span);
+          edges.add(_rectFade(r, x + pw / 2, y + ph / 2));
         }
       }
     }
@@ -697,38 +688,8 @@ class _SkeletonPainter extends CustomPainter {
           dither(rect.intersect(Offset.zero & size), i);
           y += b.height;
         }
-      case _Shape.silhouette:
-        // One cell per source glyph (subdivided on large canvases), so the
-        // figure keeps the source art's crisp outline at any size.
-        final sh = math.min(
-          size.height * .86,
-          size.width * .86 / _silhouetteAspect,
-        );
-        final sw = sh * _silhouetteAspect;
-        final sourceRows = kGlyphBodySilhouette.length;
-        final sourceCols = kGlyphBodySilhouette.first.length;
-        final k = math.max(1, (sh / sourceRows / ch).round());
-        final rows = sourceRows * k, cols = sourceCols * k;
-        final cellW = sw / cols, cellH = sh / rows;
-        final mult = math.min(cellW / cw, cellH / ch);
-        final left = (size.width - sw) / 2, top = (size.height - sh) / 2;
-        final dx = (cellW - cw * mult) / 2, dy = (cellH - ch * mult) / 2;
-        for (var row = 0; row < rows; row++) {
-          for (var col = 0; col < cols; col++) {
-            final x = left + col * cellW + dx, y = top + row * cellH + dy;
-            final h = _hash(col, row);
-            switch (kGlyphBodySilhouette[row ~/ k][col ~/ k]) {
-              case '#':
-                add(x, y, h % 3 == 0 ? 3 : 4, .5, mult);
-              case ':':
-                add(x, y, h % 4 == 0 ? 1 : 2, .4, mult);
-              case '.':
-                add(x, y, h % 2 == 0 ? 0 : 1, .32, mult);
-            }
-          }
-        }
     }
-    field.fill(atlas, xs, ys, glyphs, weights, positions, scales);
+    field.fill(atlas, xs, ys, glyphs, weights, positions, scales, edges);
   }
 
   @override
@@ -751,7 +712,8 @@ class _SkeletonPainter extends CustomPainter {
       final g = field.base[i];
       final glyph = g >= _bandTop ? g : g + ((_bandTop - g) * s).round();
       final w = field.weight[i];
-      field.setCell(i, glyph, w + (.85 - w) * s, ink, highlight, s);
+      final alpha = (w + (.85 - w) * s) * field.edge[i];
+      field.setCell(i, glyph, alpha, ink, highlight, s);
     }
     field.draw(canvas, size, atlas);
   }
@@ -817,14 +779,16 @@ class _DissolvePainter extends CustomPainter {
       final centre = size.center(Offset.zero);
       final reach = math.max(centre.distance, 1);
       final xs = <double>[], ys = <double>[], distances = <double>[];
+      final edges = <double>[];
+      final bounds = Offset.zero & size;
       for (var row = 0; row < rows; row++) {
         for (var col = 0; col < cols; col++) {
           final x = x0 + col * cw, y = y0 + row * ch;
+          final mid = Offset(x + cw / 2, y + ch / 2);
           xs.add(x);
           ys.add(y);
-          distances.add(
-            (Offset(x + cw / 2, y + ch / 2) - centre).distance / reach,
-          );
+          distances.add((mid - centre).distance / reach);
+          edges.add(_rectFade(bounds, mid.dx, mid.dy));
         }
       }
       field.fill(
@@ -835,6 +799,7 @@ class _DissolvePainter extends CustomPainter {
         List.filled(xs.length, 0),
         distances,
         List.filled(xs.length, 1),
+        edges,
       );
     }
     field.useAtlas(atlas);
@@ -847,7 +812,7 @@ class _DissolvePainter extends CustomPainter {
       }
       final e = p < .25 ? p / .25 : (1 - p) / .75;
       final glyph = (e * _rampTop).round().clamp(1, _rampTop);
-      field.setCell(i, glyph, e * .9, highlight, highlight, 0);
+      field.setCell(i, glyph, e * .9 * field.edge[i], highlight, highlight, 0);
     }
     field.draw(canvas, size, atlas);
   }

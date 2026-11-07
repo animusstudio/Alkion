@@ -1166,7 +1166,7 @@ class _SplitCardSkeleton extends StatelessWidget {
         GlyphBlock(12, widthFactor: .7, gap: 24),
         GlyphBlock(12, widthFactor: .5, gap: 8),
       ]);
-      final figure = GlyphSkeleton.silhouette(
+      final figure = GlyphSkeleton.box(
         width: figureWidth,
         height: BodyFigure.artHeightFor(figureWidth),
       );

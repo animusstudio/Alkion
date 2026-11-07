@@ -572,14 +572,16 @@ class _CharacterBodyState extends State<CharacterBody>
         fit: StackFit.expand,
         children: [
           if (_supported)
-            // The native view loads hidden under an opaque body skeleton,
-            // then the skeleton dissolves away; hybrid composition keeps this
+            // The native view loads hidden under an opaque cover in the
+            // canvas background with a feathered glyph box over the whole
+            // canvas, then both dissolve away; hybrid composition keeps this
             // Flutter overlay above the platform view.
             GlyphReveal(
               loading: _status == CharacterBodyStatus.loading,
               cover: widget.background,
               highlight: widget.neutral,
-              skeleton: GlyphSkeleton.silhouette(
+              // The key predates the plain box; other tests find it by name.
+              skeleton: GlyphSkeleton.box(
                 key: const Key('character-body-loading-silhouette'),
                 active: widget.visible && !widget.reducedMotion,
                 ink: widget.neutral.withValues(alpha: .7),
