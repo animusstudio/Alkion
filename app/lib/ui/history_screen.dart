@@ -473,7 +473,7 @@ class _SummaryRow extends StatelessWidget {
   }
 }
 
-const double _summarySectionPad = 8;
+const double _summarySectionPad = 6;
 
 /// Smallest effective value size (sp) a three-column band may shrink to.
 const double _summaryMinValueSp = 18;

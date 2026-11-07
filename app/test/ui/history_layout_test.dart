@@ -195,6 +195,14 @@ void main() {
 
               final rects = [for (final s in sections) tester.getRect(s)];
               final stacked = rects[1].top > rects[0].top + 1;
+              // The list pads 16 dp each side.
+              expect(tester.getSize(band).width, width - 32, reason: name);
+              // A normal phone keeps the row (numbers split by vertical rules)
+              // in every locale; narrow 1x en/de keeps it too.
+              if (scale == 1.0 &&
+                  (width == 412 || locale == 'en' || locale == 'de')) {
+                expect(stacked, isFalse, reason: 'row expected: $name');
+              }
               for (final r in rects.skip(1)) {
                 expect(r.width, closeTo(rects.first.width, 0.01), reason: name);
               }
