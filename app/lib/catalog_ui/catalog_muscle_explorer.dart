@@ -164,6 +164,10 @@ class _CatalogMuscleExplorerState extends State<CatalogMuscleExplorer>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _pickEpoch++;
+    // A coast's elapsed time keeps running while frames stop in the
+    // background, so on resume it would snap to its end. Leaving the
+    // foreground ends it where it has reached, as a touch does.
+    if (state != AppLifecycleState.resumed) _stopInertia();
   }
 
   void _controllerChanged() {

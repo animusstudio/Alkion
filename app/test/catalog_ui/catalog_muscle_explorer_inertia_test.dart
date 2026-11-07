@@ -523,6 +523,70 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets(
+    'leaving the foreground mid-coast stops orbit and two-finger coasts in place',
+    (tester) async {
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+      final controller = await pumpExplorer(tester);
+      Future<void> background() async {
+        for (final state in [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
+        await tester.pump();
+      }
+
+      Future<void> resume() async {
+        for (final state in [
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
+        // A long background: a running coast would jump to its end here.
+        await tester.pump(const Duration(seconds: 5));
+      }
+
+      // One-finger orbit coast.
+      await flick(tester, const Offset(10, -4));
+      await tester.pump(const Duration(milliseconds: 60));
+      final coasting = (controller.yaw, controller.pitch);
+      await tester.pump(const Duration(milliseconds: 20));
+      final held = (controller.yaw, controller.pitch);
+      expect(held, isNot(coasting), reason: 'The coast is running');
+      await background();
+      expect((controller.yaw, controller.pitch), held);
+      await tester.pump(const Duration(seconds: 2));
+      await resume();
+      expect((controller.yaw, controller.pitch), held);
+      expect(tester.binding.hasScheduledFrame, isFalse, reason: 'Ticker off');
+      expect(controller.requests, isEmpty);
+
+      // Two-finger pinch and pan coast.
+      await pinch(tester, growth: 1.02, step: const Offset(6, 0));
+      await tester.pump(const Duration(milliseconds: 60));
+      final pinched = (controller.zoom, controller.pan);
+      await tester.pump(const Duration(milliseconds: 20));
+      final viewport = (controller.zoom, controller.pan);
+      expect(viewport, isNot(pinched), reason: 'The coast is running');
+      await background();
+      expect((controller.zoom, controller.pan), viewport);
+      await resume();
+      expect((controller.zoom, controller.pan), viewport);
+      expect(tester.binding.hasScheduledFrame, isFalse, reason: 'Ticker off');
+      expect(controller.requests, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('closing the explorer mid-coast disposes the ticker cleanly', (
     tester,
   ) async {
