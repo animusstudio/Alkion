@@ -7,6 +7,8 @@ export const glyphAlphabet=Object.keys(glyphInk).join('');
 export const samplingPitch=Object.freeze({large:3.2,compact:1.6,aspect:.85});
 const roles=['.',':','+','x','*X','AH','N','M'];
 export const tonalGlyphs=roles.join('');
+/** Tonal role pools, lightest ink first; shared with the GPU compose tables. */
+export const glyphRoles=Object.freeze([...roles]);
 const coverage=roles.map(pool=>[...pool].reduce((sum,glyph)=>sum+glyphInk[glyph],0)/pool.length);
 const fraction=value=>value-Math.floor(value);
 // Three fixed subcell phases distribute rows without displacing their source
@@ -29,23 +31,29 @@ export function materialAlpha(shade,theme,coverage=1,compact=false){
  // Edge ink retains the source silhouette even when a grazing plane is dark.
  return Math.max(floor+(1-floor)*Math.pow(tone,.65),coverage<1?floor+.10:0);
 }
+// Adjacent measured roles mix without a periodic row/column threshold tile.
+// Only near-equal-coverage pairs vary, in quiet 2×2 patches; no full alphabet
+// scrambling. The fixed sampling phases break aligned cap-height scanlines.
+/** The two adjacent roles a shade mixes between, and the upper role's share. */
+export function glyphRoleMix(shade){
+ const target=.023+.284*Math.pow(materialTone(shade),1.12);
+ let lower=0;while(lower<roles.length-1&&coverage[lower+1]<target)lower++;
+ const upper=Math.min(lower+1,roles.length-1),span=coverage[upper]-coverage[lower];
+ return {lower,upper,mix:span?clamp((target-coverage[lower])/span):0};
+}
+/** A cell's fixed role threshold, compared against the shade's mix. */
+export const glyphThreshold=(column,row)=>fraction(.5+column*.754877666+row*.569840296);
+/** A cell's fixed member of a role pool, in quiet 2×2 patches. */
+export const glyphChoice=(column,row,length)=>Math.floor(fraction(Math.floor(column/2)*.754877666+Math.floor(row/2)*.569840296)*length);
 export function materialGlyph(shade,column,row,cell){
  if(cell.coverage===0)return ' ';
  if(cell.coverage<.9&&(cell.gx||cell.gy)){
   const tx=Math.abs(cell.gy),ty=Math.abs(cell.gx);
   return tx>ty*1.8?'-':ty>tx*1.8?'|':cell.gx*cell.gy>0?'/':'\\';
  }
- // Adjacent measured roles mix without a periodic row/column threshold tile.
- // Only near-equal-coverage pairs vary, in quiet 2×2 patches; no full alphabet
- // scrambling. The fixed sampling phases break aligned cap-height scanlines.
- const target=.023+.284*Math.pow(materialTone(shade),1.12);
- let lower=0;while(lower<roles.length-1&&coverage[lower+1]<target)lower++;
- const upper=Math.min(lower+1,roles.length-1),span=coverage[upper]-coverage[lower];
- const mix=span?clamp((target-coverage[lower])/span):0;
- const threshold=fraction(.5+column*.754877666+row*.569840296);
- const pool=roles[threshold<mix?upper:lower];
- const choice=Math.floor(fraction(Math.floor(column/2)*.754877666+Math.floor(row/2)*.569840296)*pool.length);
- return pool[choice];
+ const {lower,upper,mix}=glyphRoleMix(shade);
+ const pool=roles[glyphThreshold(column,row)<mix?upper:lower];
+ return pool[glyphChoice(column,row,pool.length)];
 }
 
 // RGB carries source-normal light, UV region ID and normalized view depth;

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {sampleSurfaceCell,materialGlyph,materialAlpha,columnPhase} from '../assets/character_body/material.js';
+import {sampleSurfaceCell,materialGlyph,materialAlpha,columnPhase,glyphRoles,glyphRoleMix,glyphThreshold,glyphChoice,glyphAlphabet} from '../assets/character_body/material.js';
+import {cellPassGLSL,glyphPassGLSL} from '../assets/character_body/renderer.js';
 import {surfaceRegions} from '../assets/character_body/regions.js';
 import {orbitFrame} from '../assets/character_body/renderer.js';
 import {maxPitch} from '../assets/character_body/protocol.js';
@@ -81,5 +82,23 @@ for(let id=0;id<surfaceRegions.length;id++){
    assert.ok(depth>=0&&depth<=1,`pitch ${pitch}: depth byte ${depth} outside the sampler range`);
   }
  }
+}
+// GPU compose decomposes materialGlyph into per-shade role tables and
+// per-cell threshold/choice tables built from these same functions. The
+// decomposition must equal materialGlyph for every shade at every cell.
+{
+ const roleGlyphs=glyphRoles.flatMap(pool=>[pool[0],pool[pool.length-1]]);
+ assert.ok(cellPassGLSL.includes(`ROLE_GLYPH[${roleGlyphs.length}]=int[${roleGlyphs.length}](${roleGlyphs.map(g=>glyphAlphabet.indexOf(g)).join(',')})`),'Shader role table matches material roles');
+ for(const g of ['-','|','/','\\'])assert.ok(cellPassGLSL.includes(String(glyphAlphabet.indexOf(g))),`edge glyph ${g}`);
+ assert.ok(glyphRoles.every(pool=>pool.length<=2),'Shader choice covers pools of one or two');
+ let checked=0;const full={coverage:1,gx:0,gy:0};
+ for(let shade=0;shade<256;shade++){const {lower,upper,mix}=glyphRoleMix(shade);
+  for(let row=0;row<160;row+=3)for(let col=0;col<200;col+=7){
+   const pool=glyphRoles[Math.fround(glyphThreshold(col,row))<Math.fround(mix)?upper:lower];
+   assert.equal(pool[pool.length>1?glyphChoice(col,row,2):0],materialGlyph(shade,col,row,full),`shade ${shade} cell ${col},${row}`);checked++;
+  }
+ }
+ assert.ok(glyphPassGLSL[0].includes('drawArraysInstanced')===false&&glyphPassGLSL[0].includes('gl_InstanceID'));
+ console.log(`PASS: GPU glyph tables equal materialGlyph in ${checked} shade×cell cases (float32 table precision included)`);
 }
 console.log(`PASS: ${samples} frozen-reference material cases, both themes/optical sizes, all occupancy masks, boundaries/depth cutoffs, reusable output and immutable pixels`);
