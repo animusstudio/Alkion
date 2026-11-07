@@ -196,7 +196,7 @@ slightly coarsens the material's depth input at a tilt.
 Explore muscles has one recognizer on the canvas,
 `BodyManipulationGestureRecognizer`. It accepts each pointer that lands on the
 canvas at pointer down, so neither the page scroll nor the sheet drag can claim
-it. Pointers outside the canvas never reach it; the page scrolls as before.
+it. Pointers outside the canvas never reach it; the list or page scrolls as before.
 
 - One pointer released within touch slop is a tap and picks.
 - One pointer past slop orbits: dx turns, dy tilts. Movement before slop is
@@ -257,6 +257,19 @@ The zoom −/+ buttons are an overlay at the canvas's bottom-right, shown with
 ready artwork. They are siblings above the recognizer, inside an opaque
 listener, so their taps (even on a disabled button) never reach the canvas.
 Front, Back, Reset and Retry stay in the row above.
+
+From a 360 dp sheet, while the list column holds about nine ems of its 14 pt
+labels (up to 1.3× text at 412 dp), the canvas takes 55% of the width and the
+full height above the pinned button, beside an always-visible list that
+scrolls on its own; otherwise a canvas 55% of the sheet's height (at least
+300 dp) stacks above the list in one scrolling page. The canvas keeps one
+element across the switch. The list is one 48 dp row per group in the
+index's alphabetical order (the browse index has no body-area grouping), then
+Unclassified. A list choice turns to the view the group faces, from the same
+table as the opening view; a canvas pick never turns and scrolls the list
+column to its row. Stacked, the page holds still so the canvas stays under
+the finger. At 412×900 dp the two-column canvas is about 202×613 dp, a
+189×489 retained pick surface against 357×240 for the old 380×300 canvas.
 
 ## Visible-surface picking
 
