@@ -131,6 +131,30 @@ the earlier "no fling inertia" decision.
 - **Target on A024:** median frame interval ≤ 18 ms, p90 ≤ 20 ms, no frame over
   50 ms during orbit, measured with the timing build before and after.
 
+## T5 — Startup time (amendment, 2026-11-07)
+
+The owner reports the app now sits on the launch logo for seconds. On A024 a
+cold start took 9.9 s, with 562 skipped main-thread frames before Home drew.
+The cause is the private Dev catalog: since muscle coverage, every launch
+verifies the 33.7 MB muscle bundle synchronously on the UI thread. On host,
+`CatalogBundle.fromBytes` took 3.9 s, 2.8 s of it re-hashing each of the 3
+trusted scopes (about 326 KB each) once per profile (760 times).
+
+- Memoize the per-scope digest and cell index by identity within one load.
+  The checks and their inputs are unchanged.
+- Run the digest checks and `CatalogBundle.fromBytes` in a background isolate,
+  so the existing catalog loading screen draws while it runs.
+- Non-goals: no change to what is verified, no deferred Home or cached trust.
+- Acceptance: the catalog tests pass unchanged. On A024 the cold start is
+  measured before and after, and no long main-thread stall remains.
+
+## T6 — Two-finger inertia (amendment, 2026-11-07)
+
+The owner asked for inertia on two-finger gestures as well, superseding "zoom
+and pan stay direct" in T4. A two-finger release keeps the pan velocity and
+the pinch's zoom rate. They decay with the same time constant as orbit and
+ease to a stop at the zoom and pan bounds. All other T4 inertia rules apply.
+
 ## Task state
 
 - T1: implemented 2026-11-07 (host checks and private WebGL proof pass; see
@@ -144,6 +168,10 @@ the earlier "no fling inertia" decision.
 - T3 owner check: gestures work (A3) but feel clanky. T4 added.
 - T4: implemented 2026-11-07 on host (pipelining, GPU compose, async readback,
   hitches, inertia, opt-in timing; see [acceptance](../alkion/acceptance.md)).
-  The A024 re-measure with the timing build is pending.
+  The A024 re-measure with the timing build is pending. Owner feel check:
+  definitely smoother.
+- T5: implemented at `b7ee0c8`; host load 3.9 s to 1.4 s; catalog tests
+  pass, except the 3 known failures. The A024 measurement is pending.
+- T6: in progress.
 
 Next: device re-measure of T4, review, owner publish and the Animus pin.
