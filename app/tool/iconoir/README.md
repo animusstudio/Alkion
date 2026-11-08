@@ -89,6 +89,7 @@ remain distinct enum values, even where a historical Material glyph was shared
 | `error` | `warning-circle` | No |
 | `undo` | `undo` | Yes |
 | `favorite` | `star` | No |
+| `favoriteFilled` | `star-solid` | No |
 | `info` | `info-circle` | No |
 | `list` | `list` | No |
 | `imageUnavailable` | `media-image-xmark` | No |
@@ -202,7 +203,7 @@ different shapes. All adapter sizes retain the same 16px minimum.
 
 ## Reviewed category extension (2026-11-05)
 
-The current bundle has **91 semantic roles, 48 Iconoir originals and 42 original
+That extension brought the bundle to **91 semantic roles, 48 Iconoir originals and 42 original
 Alkion drawings**, generating **180 runtime SVGs**. `usb` and `infinite` were
 retired as equipment substitutes. The older `rope` semantic alias now uses the
 original Alkion band drawing; category callers use the specific `band` role.
@@ -253,3 +254,14 @@ Family/collection previews use the separate explicit
 independently of locale and row sorting. They do not register the family as an
 exact execution or change `catalogArtworkForVariant` identity checks. The family
 thumbnail carries no equipment badge because its children can use different kit.
+
+## Filled favourite (2026-11-08)
+
+A saved favourite shows a filled star in the accent colour; an unsaved one keeps
+the outline `favorite` star. `favoriteFilled` uses the same pinned revision's
+**solid** `star` original (`icons/solid/star.svg`), kept in `sources/` as
+`star-solid.svg` with its upstream URL and digest. Its geometry matches the
+regular star; it adds a `currentColor` fill. It is covered by the same Iconoir
+MIT notice. The generator treats it like every other original and changes only
+its stroke width. The bundle now has **92 semantic roles, 49 Iconoir originals
+and 42 original Alkion drawings**, generating **182 runtime SVGs**.

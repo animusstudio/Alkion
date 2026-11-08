@@ -2,6 +2,8 @@
 """Reproduce Alkion's bundled Iconoir subset without network access.
 
 Inputs and source digests live in tool/iconoir/manifest.json. --check is read-only.
+Upstream originals are the regular outline set; `*-solid` names come from the
+same revision's solid set.
 Only stroke-width changes; geometry, fills, caps and joins are retained.
 """
 import argparse
@@ -69,7 +71,7 @@ def outputs():
         if 'name' in source:
             for stroke in TIERS:
                 result[f"stroke-{stroke}/{source['name']}.svg"] = normalize(data, stroke)
-    notice = ('Iconoir regular SVG subset\n'
+    notice = ('Iconoir regular SVG subset, plus the solid star (star-solid.svg)\n'
               f"Source: {manifest['repository']}\nRevision: {manifest['revision']}\n"
               'Derivative changes: stroke widths normalized to 1.25 / 1.0 viewBox units.\n\n')
     custom_notice = ('\nOriginal Alkion category outlines (alkion-*.svg)\n'

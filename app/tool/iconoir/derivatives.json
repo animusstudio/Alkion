@@ -1,5 +1,5 @@
 {
-  "NOTICE": "093e1fb3c9f4282b2a3ea348715cff56d11e370f2733e37d17b501cc9d74ec1b",
+  "NOTICE": "fd8f92b96c6dab23189daed550f4a3ed763d799b6c500a4554f60594f021d91e",
   "stroke-1.0/accessibility.svg": "c5a848a8167969ccd7ef1399387b45d2f7cffeedd994f09a60eb6a05943cc065",
   "stroke-1.0/alkion-ab-wheel.svg": "df68d3e07115367c41e98ca221b07208744a71276dec8b8716e2fa2cfffe4445",
   "stroke-1.0/alkion-atlas-stone.svg": "873bafc3266b33121c720a79530cbdb7fa074712934536bf0ef8f7e72f8f4b0a",
@@ -82,6 +82,7 @@
   "stroke-1.0/search.svg": "876efd8dbcd414872ce62e0819ea2a3f5b6d1cd432808d0881ee34c8e92709f5",
   "stroke-1.0/settings.svg": "ba77d6a273d7d99ada2351043ff77e6a2f8dd0c6204048420660c31acdf2d420",
   "stroke-1.0/share-android.svg": "75e62fc4d5eb31e8e70735109ad2de9f69e3f6ad2ec9a46c6435236921e1da0b",
+  "stroke-1.0/star-solid.svg": "f7642e3dc1df782cf10c0c50bcfb11b535a7f57de182f0c18712e6a9eaaf2693",
   "stroke-1.0/star.svg": "9ad25b41ab168eadb8d91dceea99517879239975ae2ddebbbb065faf08170ffe",
   "stroke-1.0/timer.svg": "b03ddfdadff6dfb57625b9451b2090435aecd207d6e95c5a309279a98f3e2656",
   "stroke-1.0/trash.svg": "1151c83e58c4530e531cb8ff313b7c0cd6d8ae0dc06312ff9b48eddaad70f962",
@@ -172,6 +173,7 @@
   "stroke-1.25/search.svg": "de1d85de2b77dcc5d5f4523db59dcb199b3e41d0da52452035f7c1e739a3d688",
   "stroke-1.25/settings.svg": "877e2d71251c7ee190e98414e90881c98d7109790e216bf541b34f2dd27f9b03",
   "stroke-1.25/share-android.svg": "183f20f19a48f57c679f64beddb8e08914e512adfd699d8fd833794c4ceb383f",
+  "stroke-1.25/star-solid.svg": "336214471e589c78e99d695ef1cd573c939e1c37a7245d06b4f74c8bc2843234",
   "stroke-1.25/star.svg": "57ddc1a8d0b83e23d8ac67bcc8c56bef23881636f0a8d8c5e2fed3315960054b",
   "stroke-1.25/timer.svg": "cdccfb59c26c1cb42523069f31bf773fd9c8c3e510ef1897515f78b5ba35f219",
   "stroke-1.25/trash.svg": "74e5dc0dbbadeb77af946bdd94b81f15b9229a4b93426027dae7d71076036518",
