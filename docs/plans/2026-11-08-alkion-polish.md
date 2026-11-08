@@ -1,6 +1,7 @@
 # Polish: text motion, live weekly volume, exercise details, catalog search
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-08,
+with live volume on the sheet and Today, and the narrower glitch scope.
 Parent: [development](../alkion/development.md).
 Baseline: `7e601bd`; branch `feat/alkion-polish-20261108`.
 
@@ -55,9 +56,11 @@ The owner asked for four kinds of change.
     - settle instantly under reduced motion, a muted `TickerMode`, or when the
       app is backgrounded;
     - run one ticker per widget, and only while animating.
-  - **Scope:** labels of buttons, chips, segmented controls and `Toggle` rows,
-    plus text revealed by a filter or toggle change (for example result titles
-    and revealed form sections).
+  - **Glitch scope (owner choice):** filled and outlined primary actions,
+    chips, segmented controls and `Toggle` rows. Plain text buttons, dialog
+    actions and sheet actions stay calm.
+  - **Reveal scope:** text revealed by a filter or toggle change, for example
+    result titles and revealed form sections.
   - **Never scrambled:** numbers, measured values, set entry (steppers, RIR,
     ruler), form input and statuses. This keeps the specimen's rule.
   - **Lists:** only rows visible in the first frame after a change reveal,
@@ -78,10 +81,12 @@ The owner asked for four kinds of change.
     applies as now, based on done plus live.
   - The bars update live from `ActiveSessionController` notifications: a
     set marked done, a set added or removed, a block added or removed.
-  - **Where it shows** (recommended): a new "Weekly volume" row in the live
-    workout menu next to "Body workload". It opens a sheet showing `VolumeBars`
-    in live mode. Today's card keeps its single fill. Muscles with no target
-    keep `target = total`.
+  - **Where it shows (owner choice):**
+    - a new "Weekly volume" row in the live workout menu, next to "Body
+      workload", opens a sheet with `VolumeBars` in live mode;
+    - while a workout is in progress, Today's weekly volume card shows the
+      same live segments. With no workout running it keeps its single fill.
+  - Muscles with no target keep `target = total`.
   - New strings ship in all four locales: en, it, de, es.
   - No change to the stats query, targets or the workload engine.
 - **Exercise details:**
@@ -124,8 +129,8 @@ this branch. T4 runs after T1 and T3 are merged.
 
 | Task | Owns | Acceptance |
 | --- | --- | --- |
-| T1 Text motion | new `lib/widgets/text_motion.dart` and its tests; adoption in `plan_form.dart` (`Toggle` rows), `plan_screen.dart` (`_SegmentedToggle`), `progress_widgets.dart`, `day_editor.dart`, `exercise_editor.dart`, `training_preferences_sheet.dart`, `w_action_sheet.dart`, `w_dialog.dart`; amend the component study's lines 47 and 115 | Widgets behave as decided. Tests cover settling, the semantics label staying constant, the layout width staying constant, reduced motion and restart on re-tap. Not used in `lib/catalog_ui/`, `lib/session/`, `volume_bars.dart` or `today_screen.dart` |
-| T2 Live weekly volume | `volume_bars.dart`; new live-volume model in `lib/data/` or `lib/session/`; the sheet and menu row in `active_session_screen.dart`; arb and l10n files | Three segments render as decided; the count format; clipping; updates when a set is done, a set or block is added or removed. Today unchanged. Tests extend `volume_bars_test.dart` and add a live-model test |
+| T1 Text motion | new `lib/widgets/text_motion.dart` and its tests; adoption in `plan_form.dart` (`Toggle` rows), `plan_screen.dart` (`_SegmentedToggle`), `progress_widgets.dart`, `day_editor.dart`, `exercise_editor.dart`, `training_preferences_sheet.dart`, other primary-action sites outside the excluded paths; amend the component study's lines 47 and 115 | Widgets behave as decided. Tests cover settling, the semantics label staying constant, the layout width staying constant, reduced motion and restart on re-tap. Not used in `lib/catalog_ui/`, `lib/session/`, `volume_bars.dart` or `today_screen.dart` |
+| T2 Live weekly volume | `volume_bars.dart`; new live-volume model in `lib/data/` or `lib/session/`; the sheet and menu row in `active_session_screen.dart`; live segments in `today_screen.dart`; arb and l10n files | Three segments render as decided; the count format; clipping; updates when a set is done, a set or block is added or removed. Today shows the live segments only while a workout runs. Tests extend `volume_bars_test.dart` and add a live-model test |
 | T3 Details and search | `catalog_choice_details.dart`, `catalog_media_widgets.dart`, `catalog_picker.dart` (the `_details` flow, row star, header sliver), `alkion_icon.dart` (filled star) | The details page matches the decisions. Star and "i" don't pop the page; the star toggles state and the list. The search header floats back on scroll up. Update `catalog_media_test.dart` (lines 369-412 and 678), plus the picker tests that find `catalog-search` |
 | T4 Catalog adoption | `catalog_picker.dart` (chips, filter sheet, result-title reveal after a filter, chip or search change) | Only visible rows reveal, within the cap. Filter chips glitch on tap. Picker tests stay green |
 
