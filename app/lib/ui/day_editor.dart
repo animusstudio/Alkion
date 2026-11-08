@@ -978,6 +978,7 @@ class _DayEditorState extends State<DayEditor> {
           isOwned ? l.dayEditorSaveChanges : l.dayEditorCreateDay,
           enabled: canSave && !_saving && !_deleting && _pendingDelete == null,
           onTap: _save,
+          glitch: true,
         ),
 
         // ── Delete button (owned days only) ───────────────────────────────
@@ -1494,6 +1495,7 @@ class _AddExerciseButton extends StatelessWidget {
       enabled: true,
       secondary: true,
       onTap: onTap,
+      glitch: true,
     );
   }
 }

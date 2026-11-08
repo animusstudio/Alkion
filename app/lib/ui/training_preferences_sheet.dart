@@ -119,6 +119,7 @@ class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
               ),
               Field(
                 label: l.trainingMuscleTargets,
+                glitch: true,
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: AbsorbPointer(

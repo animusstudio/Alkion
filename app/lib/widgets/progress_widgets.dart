@@ -6,6 +6,7 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../theme/alkion_icon.dart';
 import 'fit_label.dart';
+import 'text_motion.dart';
 
 // ── Metric model + const list ─────────────────────────────────────────────────
 
@@ -192,9 +193,12 @@ class ProgressSelectorRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    FitLabel(
+                    // Resolves when the selection changes, not on first show.
+                    RevealText(
                       title,
+                      fit: true,
                       maxLines: 2,
+                      onMount: false,
                       style: WorkoutType.body(
                         size: 16,
                         weight: FontWeight.w400,
@@ -278,32 +282,37 @@ class _MetricSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      selected: isSelected,
-      button: true,
-      child: Material(
-        color: isSelected ? tokens.surface2 : tokens.sunken,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.control),
-          side: BorderSide(color: isSelected ? tokens.lineStrong : tokens.line),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          focusColor: tokens.focus.withValues(alpha: .16),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Center(
-                child: FitLabel(
-                  metricShort(AppLocalizations.of(context), metric.id),
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  style: WorkoutType.body(
-                    size: 14,
-                    weight: FontWeight.w500,
-                    color: isSelected ? tokens.text : tokens.dim,
+    return GlitchTap(
+      child: Semantics(
+        selected: isSelected,
+        button: true,
+        child: Material(
+          color: isSelected ? tokens.surface2 : tokens.sunken,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            side: BorderSide(
+              color: isSelected ? tokens.lineStrong : tokens.line,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            focusColor: tokens.focus.withValues(alpha: .16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Center(
+                  child: GlitchLabel(
+                    metricShort(AppLocalizations.of(context), metric.id),
+                    fit: true,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    style: WorkoutType.body(
+                      size: 14,
+                      weight: FontWeight.w500,
+                      color: isSelected ? tokens.text : tokens.dim,
+                    ),
                   ),
                 ),
               ),

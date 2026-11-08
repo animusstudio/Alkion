@@ -22,6 +22,7 @@ import '../widgets/fit_label.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
 import '../widgets/glyph_loading.dart';
+import '../widgets/text_motion.dart';
 import 'editor_guard.dart';
 
 /// Editor for a single exercise (create or edit).
@@ -655,51 +656,54 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                   ),
                 ),
 
-                // Compound toggle row
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: 16,
-                    top: 4,
-                    left: 2,
-                    right: 2,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              l.exerciseEditorCompound,
-                              style: WorkoutType.body(
-                                size: 14.5,
-                                weight: FontWeight.w500,
-                                color: tokens.text,
+                // Compound toggle row: its title glitches when the Toggle is
+                // tapped.
+                GlitchTap.manual(
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: 16,
+                      top: 4,
+                      left: 2,
+                      right: 2,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              GlitchLabel(
+                                l.exerciseEditorCompound,
+                                style: WorkoutType.body(
+                                  size: 14.5,
+                                  weight: FontWeight.w500,
+                                  color: tokens.text,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            FitLabel(
-                              l.exerciseEditorCompoundHint,
-                              maxLines: 3,
-                              style: WorkoutType.body(
-                                size: 12,
-                                color: tokens.faint,
+                              const SizedBox(height: 2),
+                              FitLabel(
+                                l.exerciseEditorCompoundHint,
+                                maxLines: 3,
+                                style: WorkoutType.body(
+                                  size: 12,
+                                  color: tokens.faint,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      Toggle(
-                        value: _compound,
-                        semanticLabel: l.exerciseEditorCompound,
-                        onChanged: (v) {
-                          if (_controlsLocked) return;
-                          setState(() {
-                            _compound = v;
-                          });
-                        },
-                      ),
-                    ],
+                        Toggle(
+                          value: _compound,
+                          semanticLabel: l.exerciseEditorCompound,
+                          onChanged: (v) {
+                            if (_controlsLocked) return;
+                            setState(() {
+                              _compound = v;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -970,6 +974,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
           btnLabel,
           enabled: canSave && !_saving && !_deleting && _pendingDelete == null,
           onTap: _save,
+          glitch: true,
         ),
 
         if (_editId != null) ...[

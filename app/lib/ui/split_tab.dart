@@ -425,6 +425,7 @@ class _NewDayButton extends StatelessWidget {
       enabled: true,
       secondary: true,
       onTap: onTap,
+      glitch: true,
     );
   }
 }

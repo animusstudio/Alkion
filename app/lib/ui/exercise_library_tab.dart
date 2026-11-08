@@ -217,6 +217,7 @@ class _NewExerciseButton extends StatelessWidget {
           : l.catalogBrowse,
       enabled: true,
       onTap: onTap,
+      glitch: true,
     );
   }
 }
