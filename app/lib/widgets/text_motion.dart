@@ -120,8 +120,8 @@ class RevealText extends StatelessWidget {
       duration: total,
       curve: Curves.linear,
       builder: (context, t) {
-        // Opacity stays in the tree at rest (it paints no layer at 1), so a
-        // replay never rebuilds the label's subtree.
+        // Opacity stays in the tree at rest (it paints no layer at 1), so
+        // starting or ending a reveal keeps the label's elements.
         if (t >= 1) return Opacity(opacity: 1, child: _TextFrame(spec: spec));
         final elapsed = total * t;
         final local = elapsed <= delay
@@ -429,7 +429,13 @@ class _TextFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final clusters = this.clusters;
     if (clusters == null) {
-      return _label(TextSpan(text: spec.text), plain: true);
+      // The overlay stays in the tree with nothing to paint, so starting or
+      // ending a run updates the label in place.
+      return _Scramble(
+        glyphs: const [],
+        glyphStyle: null,
+        child: _label(TextSpan(text: spec.text), plain: true),
+      );
     }
     // One span per cluster for the whole run: only colours change between
     // frames, so the paragraph repaints without a new layout.
@@ -502,7 +508,7 @@ class _Scramble extends SingleChildRenderObjectWidget {
     required Widget super.child,
   });
   final List<_Glyph> glyphs;
-  final TextStyle glyphStyle;
+  final TextStyle? glyphStyle;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
@@ -528,8 +534,8 @@ class _RenderScramble extends RenderProxyBox {
     markNeedsPaint();
   }
 
-  TextStyle _glyphStyle;
-  set glyphStyle(TextStyle value) {
+  TextStyle? _glyphStyle;
+  set glyphStyle(TextStyle? value) {
     if (value == _glyphStyle) return;
     _glyphStyle = value;
     _clearPainters();
@@ -602,7 +608,9 @@ class _RenderScramble extends RenderProxyBox {
     final p = _paragraph;
     if (_glyphs.isEmpty || p == null || !p.hasSize) return;
     final root = p.text.style;
-    final style = _glyphStyle.copyWith(
+    final glyphStyle = _glyphStyle;
+    if (glyphStyle == null) return;
+    final style = glyphStyle.copyWith(
       fontSize: root?.fontSize,
       color: root?.color,
     );
