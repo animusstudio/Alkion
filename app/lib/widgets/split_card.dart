@@ -10,6 +10,7 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../util/dates.dart';
 import 'fit_label.dart';
+import 'text_motion.dart';
 
 // ── DaySlide ──────────────────────────────────────────────────────────────────
 
@@ -603,38 +604,41 @@ class _SplitCardState extends State<SplitCard> {
                       ),
                       const SizedBox(height: _startGap),
                       // ── Start button ─────────────────────────────────────────
-                      FilledButton(
-                        key: const Key('today-start'),
-                        onPressed: _onStart,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 56),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          backgroundColor: btnBg,
-                          foregroundColor: btnInk,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              AppRadius.control,
+                      GlitchTap(
+                        child: FilledButton(
+                          key: const Key('today-start'),
+                          onPressed: _onStart,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 56),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: FitLabel(
-                                btnLabel,
-                                maxLines: 2,
-                                style: WorkoutType.body(
-                                  size: 16,
-                                  weight: FontWeight.w500,
-                                  color: btnInk,
-                                ),
+                            backgroundColor: btnBg,
+                            foregroundColor: btnInk,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.control,
                               ),
                             ),
-                          ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: GlitchLabel(
+                                  btnLabel,
+                                  fit: true,
+                                  maxLines: 2,
+                                  style: WorkoutType.body(
+                                    size: 16,
+                                    weight: FontWeight.w500,
+                                    color: btnInk,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
