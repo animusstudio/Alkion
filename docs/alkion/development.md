@@ -108,9 +108,9 @@ explicit `ANIMUS_CONFIG` JSON, and run `build-apk-animus` with
 catalog APK verifier with `--development --build-mode debug` against that exact
 APK, staged mirror and current generated JNI directory. Keep the current private
 body-assets opt-in and verification when those assets are required. No extra
-build route or catalog redistribution grant is introduced. The isolated catalog
-trial and body-preview builds still cannot enable Animus; this combination is
-restricted to the ordinary Dev debug target.
+build route or catalog redistribution grant is introduced. The isolated
+body-preview build still cannot enable Animus; this combination is restricted to
+the ordinary Dev debug target.
 
 ## Current standalone development
 
@@ -129,6 +129,12 @@ Until the planned external migration tool exists, the host-side
 backup from an explicit history file and optional reviewed mapping
 ([transfer](transfer.md)). Profiles that already hold mapped history display it
 unchanged.
+
+The disposable catalog trial (its isolated APK, entry point and in-memory
+workout path) is removed since 2026-11-08. The exercise catalog runs only in the
+normal app, from the private Dev build: stage once with
+`make -C app stage-catalog`, then build with `make -C app build-catalog-dev`
+([catalog staging](exercise-catalog.md), [app README](../../app/README.md)).
 
 Capture evidence checkers remain available; old capture-production and release
 routes remain disabled. The bespoke Android campaign framework is retired;

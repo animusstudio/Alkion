@@ -6,6 +6,34 @@ observed: 2026-11-08
 
 # Alkion integrated acceptance
 
+## Legacy removal T2 — 2026-11-08
+
+Implements T2 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).
+This supersedes the isolated catalog trial described in the 2026-10-29 and later
+sections below, which stay as recorded.
+
+- The disposable catalog trial is gone: its `catalog_trial.dart` entry point and
+  sandbox storage, `make build-catalog-trial`, the `ALKION_ISOLATED_CATALOG_TRIAL`
+  Gradle path and `dev.animusstudio.alkion.catalogtrial` package, its strings,
+  its startup screen and button skeleton, and the in-memory branches in the live
+  workout (trial set form, in-memory log, blocked Finish), routine editor save and
+  picker.
+- The normal app's catalog behaves as before. `CatalogTrialState` folds into
+  `CatalogRuntimeState`, and `CatalogTrialScope` is now `CatalogScope`
+  (`catalog_scope.dart`). Picker and browser tests use a test-only in-memory
+  state (`test/support/memory_catalog_state.dart`).
+- The staging tools and their Make targets drop "trial": `stage-catalog`,
+  `verify-catalog`, `test-catalog-staging` and `test-catalog-apk`, with
+  `tool/stage_catalog.py` and `tool/verify_catalog_apk.py`. The private Dev
+  route keeps its targets, inputs and checks. The staged input keeps its
+  historical names (`assets/catalog_trial/`, `build/private-catalog-trial/`, the
+  `alkion-catalog-trial-manifest` format and `private_trial_only`), so existing
+  staging verifies unchanged and needs no restaging.
+- No schema change, migration or stored-data change.
+
+Host checks are listed in the plan's task state. The private Dev APK build (A6),
+the full suite and device checks follow T3.
+
 ## Legacy removal T1 — 2026-11-08
 
 Implements T1 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).
