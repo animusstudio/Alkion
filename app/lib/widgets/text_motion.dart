@@ -79,6 +79,7 @@ class RevealText extends StatefulWidget {
     this.onMount = true,
     this.delay = Duration.zero,
     this.replay,
+    this.onDone,
   });
 
   final String text;
@@ -100,12 +101,42 @@ class RevealText extends StatefulWidget {
   /// Changing this replays the reveal even when [text] is unchanged.
   final Object? replay;
 
+  /// Called after the frame in which the current run settles: it finished,
+  /// was settled early (reduced motion, off screen, hidden route), never
+  /// started, or the widget left the tree mid-run. Once per mount and per
+  /// replay; a host can then go back to a plain label.
+  final VoidCallback? onDone;
+
   @override
   State<RevealText> createState() => _RevealTextState();
 }
 
 class _RevealTextState extends State<RevealText> {
   final _clusters = _ClusterCache();
+  bool _reported = false;
+
+  @override
+  void didUpdateWidget(RevealText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text || oldWidget.replay != widget.replay) {
+      _reported = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _report();
+    super.dispose();
+  }
+
+  void _report() {
+    if (_reported) return;
+    _reported = true;
+    final done = widget.onDone;
+    if (done != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => done());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -131,7 +162,10 @@ class _RevealTextState extends State<RevealText> {
       builder: (context, t) {
         // Opacity stays in the tree at rest (it paints no layer at 1), so
         // starting or ending a reveal keeps the label's elements.
-        if (t >= 1) return Opacity(opacity: 1, child: _TextFrame(spec: spec));
+        if (t >= 1) {
+          _report();
+          return Opacity(opacity: 1, child: _TextFrame(spec: spec));
+        }
         final elapsed = total * t;
         final local = elapsed <= delay
             ? 0.0
