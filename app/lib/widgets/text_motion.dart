@@ -65,7 +65,7 @@ abstract final class RevealStagger {
 /// painted over their own transparent characters, so the width never moves.
 /// Reduced motion, a muted [TickerMode], a hidden route, scrolling out of view
 /// or a backgrounded app settle it at once. A ticker runs only while it plays.
-class RevealText extends StatelessWidget {
+class RevealText extends StatefulWidget {
   const RevealText(
     this.text, {
     super.key,
@@ -101,22 +101,31 @@ class RevealText extends StatelessWidget {
   final Object? replay;
 
   @override
+  State<RevealText> createState() => _RevealTextState();
+}
+
+class _RevealTextState extends State<RevealText> {
+  final _clusters = _ClusterCache();
+
+  @override
   Widget build(BuildContext context) {
+    final text = widget.text;
+    final delay = widget.delay;
     final spec = _TextSpec(
       text: text,
-      style: style,
-      textAlign: textAlign,
-      maxLines: maxLines,
-      overflow: overflow,
-      softWrap: softWrap,
-      fit: fit,
-      minScale: minScale,
+      style: widget.style,
+      textAlign: widget.textAlign,
+      maxLines: widget.maxLines,
+      overflow: widget.overflow,
+      softWrap: widget.softWrap,
+      fit: widget.fit,
+      minScale: widget.minScale,
     );
     final run = Motion.base < revealTextCap ? Motion.base : revealTextCap;
     final total = delay + run;
     return EventProgress(
-      event: (text, replay),
-      onMount: onMount,
+      event: (text, widget.replay),
+      onMount: widget.onMount,
       duration: total,
       curve: Curves.linear,
       builder: (context, t) {
@@ -130,7 +139,7 @@ class RevealText extends StatelessWidget {
                 0.0,
                 1.0,
               );
-        final clusters = _clusters(text);
+        final clusters = _clusters.of(text);
         final resolved = (local * clusters.length).floor();
         final tick = elapsed.inMicroseconds ~/ textMotionTick.inMicroseconds;
         return Opacity(
@@ -200,6 +209,7 @@ class GlitchLabel extends StatefulWidget {
 
 class _GlitchLabelState extends State<GlitchLabel> {
   final _random = math.Random();
+  final _clusters = _ClusterCache();
   _GlitchSignal? _signal;
   int _runs = 0;
   int _seed = 0;
@@ -224,7 +234,7 @@ class _GlitchLabelState extends State<GlitchLabel> {
 
   void _play() {
     if (!mounted) return;
-    final clusters = _clusters(widget.text);
+    final clusters = _clusters.of(widget.text);
     final letters = [
       for (var i = 0; i < clusters.length; i++)
         if (clusters[i].scrambles) i,
@@ -259,7 +269,7 @@ class _GlitchLabelState extends State<GlitchLabel> {
       curve: Curves.linear,
       builder: (context, t) {
         if (t >= 1 || _runs == 0) return _TextFrame(spec: spec);
-        final clusters = _clusters(widget.text);
+        final clusters = _clusters.of(widget.text);
         final elapsed = Motion.slow * t;
         final tick = elapsed.inMicroseconds ~/ textMotionTick.inMicroseconds;
         return _TextFrame(
@@ -371,7 +381,14 @@ class _TapWatcherState extends State<_TapWatcher> {
 
   @override
   Widget build(BuildContext context) => Listener(
-    onPointerDown: (event) => _downs[event.pointer] = event.position,
+    onPointerDown: (event) {
+      // A secondary or middle mouse click is not a press of the control.
+      if (event.kind == PointerDeviceKind.mouse &&
+          event.buttons != kPrimaryMouseButton) {
+        return;
+      }
+      _downs[event.pointer] = event.position;
+    },
     onPointerUp: _up,
     onPointerCancel: (event) => _downs.remove(event.pointer),
     child: widget.child,
@@ -383,15 +400,24 @@ String _rampAt(int index, int tick, int seed) =>
 
 typedef _Cluster = ({int start, int end, bool scrambles});
 
-List<_Cluster> _clusters(String text) {
-  final out = <_Cluster>[];
-  var start = 0;
-  for (final char in text.characters) {
-    final end = start + char.length;
-    out.add((start: start, end: end, scrambles: _letter.hasMatch(char)));
-    start = end;
+/// The grapheme clusters of one text, split once and reused by every frame
+/// until the text changes.
+class _ClusterCache {
+  String? _text;
+  List<_Cluster> _clusters = const [];
+
+  List<_Cluster> of(String text) {
+    if (text == _text) return _clusters;
+    final out = <_Cluster>[];
+    var start = 0;
+    for (final char in text.characters) {
+      final end = start + char.length;
+      out.add((start: start, end: end, scrambles: _letter.hasMatch(char)));
+      start = end;
+    }
+    _text = text;
+    return _clusters = List.unmodifiable(out);
   }
-  return out;
 }
 
 @immutable
