@@ -1,6 +1,6 @@
 # Polish: text motion, live weekly volume, exercise details, catalog search
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-08,
+Date: 2026-11-08. Lane: **Standard**. Status: **Done** (accepted on A024 2026-11-08); approved by the owner on 2026-11-08,
 with live volume on the sheet and Today, and the narrower glitch scope.
 Parent: [development](../alkion/development.md).
 Baseline: `7e601bd`; branch `feat/alkion-polish-20261108`.

@@ -6,6 +6,28 @@ observed: 2026-11-08
 
 # Alkion integrated acceptance
 
+## Polish: text motion, live weekly volume, details, search — 2026-11-08
+
+Implements the approved [polish plan](../plans/2026-11-08-alkion-polish.md):
+- a specimen-style text reveal and a press glitch on chips, toggles, segmented
+  controls and primary actions;
+- three-segment weekly volume (done, this workout, planned) on Today during a
+  workout and in a new live-workout sheet, with catalog exercises counted under
+  their reviewed target groups;
+- an exercise details page with the favourite star (filled in primary when
+  saved) and the muscle "i" in place, neither closing the page, and without
+  movement frames or the bottom prose;
+- a catalog search bar that floats back on scroll-up;
+- the Workout Guide frames no longer bundled (about 32 MiB of source images
+  leave the APK; the files and their notices stay in the repo).
+
+Device checks on A024 (`df33bfae`, then `f18073be`): the owner accepted the
+polish. The clipped `x+y/z → n` count
+was fixed (`8771b42`, `1d1a3ce`). A trial 1.25× motion pace (`e34d478`) was
+reverted at the owner's choice, keeping the original tokens. Host checks at
+`1b0a40e`: analyze clean, tests +2915 ~3 -3 (only the 3 inherited
+`catalog_metric_controls` failures).
+
 ## UX polish — 2026-11-07
 
 Implements the approved [UX polish plan](../plans/2026-11-07-ux-polish.md) with
