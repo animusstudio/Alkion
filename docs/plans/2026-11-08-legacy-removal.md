@@ -189,7 +189,21 @@ check.
   (from `app/`) → 6 OK; `make -C app verify-catalog` and `verify-catalog-dev`
   → fail closed, "Private catalog staging is absent or redirected" (no private
   input in this worktree; A6's private APK build is the coordinator's).
-- T3 — done; awaiting review. Code at `9f93741` (`ed7dec3` caption, `47c16ba`
+- T3 — done; review PASS-WITH-FINDINGS. Coordinator fix `52d0dc8`: stale
+  absorption wording in `app/AGENTS.md`, the durable test fails if owed writes
+  never drain, and the unused-key test ignores comments. Negative control: a
+  probe key → `unused ARB keys: [zzzUnusedProbe]`, 2 failures; reverted.
+  `make -C app test TEST='--concurrency=2 test/l10n
+  test/catalog_ui/catalog_durable_workout_menu_test.dart'` → +14 all pass.
+  Integrated (coordinator, `e7a402d`): `make -C app build-apk ALKION_FLAVOR=dev`
+  with private inputs staged, then `verify-no-catalog-apk` →
+  `private_catalog_assets: absent` (A6).
+  Open follow-ups, not blocking: no Profile test that export-all and sync
+  groups are absent; no Progress caption-absence test; no test of a freshly
+  picked non-default setup's in-day key; no test that exact alarms are used
+  when allowed; `domainBytes`/`transferBytes` are test-only until the
+  migration-tool plan.
+  Implementation: code at `9f93741` (`ed7dec3` caption, `47c16ba`
   notice, `a78c7f8` capture-hold strings, `b6b41da` unreachable files and
   export paths, `bd6bad7` day editor residue, `0847f70` unused strings and
   `unused_keys_test.dart`, `9f93741` durable-runtime widget tests); later
@@ -213,4 +227,5 @@ check.
   `catalog_durable_workout_menu_test.dart` with `test/l10n` and
   `profile_layout_test.dart` → +21 all pass, twice.
 
-Next: owner approval; start T1 once the 2026-11-08 polish is merged.
+Next: owner device check of a private APK from this branch, then the outgoing
+range review and owner publish after the 2026-11-08 polish is published.
