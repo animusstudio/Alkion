@@ -1,5 +1,7 @@
 # Alkion development and qualified driver handoff
 
+2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Approved; in progress.
+
 2026-11-05 · [Artwork, discovery and live-workout refinement](../plans/2026-11-05-ui-performance-refinement.md) · Implemented locally; see acceptance limits.
 
 2026-11-04 · [Iconoir glyph system](../plans/2026-11-04-iconoir-glyph-system.md) · Done.
@@ -22,8 +24,7 @@
 
 2026-11-01 · [Usability and history preservation design](../specs/2026-11-01-usability-and-history-test.md) · Approved.
 
-Usage: [Import Reps data](reps-import.md),
-[workout interaction brief](workout-usability-brief.md), and
+Usage: [workout interaction brief](workout-usability-brief.md), and
 [catalog gap review](catalog-gap-review.md).
 
 2026-11-01 · [Animus generation recovery](../plans/2026-10-30-animus-recovery.md) · Approved.
@@ -121,6 +122,13 @@ standalone SQLite with account-free local use and an optional explicitly configu
 debug `build-apk` through pinned FVM. Normal Android builds use an explicit
 isolated debug user directory, existing SDK and Java21; no inherited signing
 configuration is read. Builds do not install or launch a device.
+
+The app has no in-app Reps importer since 2026-11-08 ([retired guide](reps-import.md)).
+Until the planned external migration tool exists, the host-side
+`make -C app alkion-import-history` route builds a fresh profile and verified
+backup from an explicit history file and optional reviewed mapping
+([transfer](transfer.md)). Profiles that already hold mapped history display it
+unchanged.
 
 Capture evidence checkers remain available; old capture-production and release
 routes remain disabled. The bespoke Android campaign framework is retired;

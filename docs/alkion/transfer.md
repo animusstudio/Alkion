@@ -11,11 +11,10 @@ root, reads `workout-tracker.db`, credentials, PowerSync state or a server.
 
 Code: `app/lib/transfer/` (`json_span_reader.dart`, `full_v1.dart`,
 `transfer_service.dart`, `historical_measurements.dart`, `correspondence.dart`,
-`incoming_quarantine.dart`, `imported_settings.dart`) plus the ordinary
-`reps_import.dart` facade and `app/lib/ui/reps_import_screen.dart`, reached from
-**Profile → Data → Import Reps data**. The [import guide](reps-import.md) covers
-full/history preview, optional exported preferences and reviewed mappings in the
-current profile. See also [exports](exports.md) and
+`incoming_quarantine.dart`, `imported_settings.dart`). The app has no in-app
+Reps import since 2026-11-08: the [retired import guide](reps-import.md) points
+to the planned external migration tool. The host-side history route below
+remains. See also [exports](exports.md) and
 [correspondence](correspondence.md).
 
 ## Separate history-v1 adapter
@@ -65,8 +64,9 @@ history namespace, and history cannot replace a full namespace. This first
 slice provides no cross-file overlap reconciliation.
 
 `HistoryTransferService` requires an explicitly selected profile ID matching
-its database. The ordinary import facade supplies the currently open profile;
-the legacy `testProfileId` constructor alias remains qualification compatibility.
+its database. The host-side `alkion_history_recovery.dart` tool supplies the
+profile it creates; the legacy `testProfileId` constructor alias remains
+qualification compatibility.
 `previewArtifact`/`previewFile` commit exact staging and the `received` journal before decoding; valid preview selects
 nothing. Preview exposes counts, raw dates, occurrences and incompatibilities.
 `importPreview` checks profile/namespace and reloads the staged bytes, so
@@ -77,15 +77,16 @@ Interruption retries use the same artifact/occurrence identities. There are no
 native finish actions, outbox operations or send selections; the native sender
 rejects these source-backed workouts.
 
-Catalog mappings belong to a separate reviewed overlay. The adapter never
-renames source exercises, reinterprets recorded kg or writes catalog execution
-evidence. Mapping workflow, exceptions and History attribution are separate
-from this reader and durable import boundary.
+Catalog mappings belong to a separate reviewed overlay
+(`app/lib/history_mapping/`). The adapter never renames source exercises,
+reinterprets recorded kg or writes catalog execution evidence. Only the host
+tool's optional `--mapping` sidecar selects a mapping; the app reads stored
+mappings for History attribution and the catalog picker and never writes them.
 
 Focused synthetic verification:
 
 ```sh
-make -C app test TEST="--concurrency=2 test/alkion/transfer/history_import_test.dart"
+make -C app test TEST="--concurrency=2 test/alkion/transfer/history_import_test.dart test/history_mapping"
 make -C app alkion-history-recovery ALKION_OUTPUT=/tmp/transfer-proof-history-fresh
 ```
 
@@ -98,8 +99,10 @@ recovery evidence; Android and physical power loss remain unqualified.
 
 An explicitly supplied file can be imported to a fresh external test root with
 `make -C app alkion-import-history HISTORY_INPUT=<explicit-file>
-HISTORY_NAMESPACE=<explicit-namespace> ALKION_OUTPUT=<fresh-transfer-proof-path>`.
-It writes a counts-only receipt and a verified native backup into that output.
+HISTORY_NAMESPACE=<explicit-namespace> ALKION_OUTPUT=<fresh-transfer-proof-path>`,
+optionally with `HISTORY_MAPPING`, `HISTORY_CATALOG` and `HISTORY_CATALOG_SHA256`
+for a reviewed mapping sidecar. It writes a counts-only receipt and a verified
+native backup into that output.
 It never discovers profiles or prints source records. The source stays
 unchanged; populated stores, receipts, backups and any personal mapping report
 must remain outside the repository and APK assets.
