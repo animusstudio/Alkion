@@ -147,12 +147,12 @@ class _RenderFloatingHeader extends RenderSliverSingleBoxAdapter {
   void _scrollingChanged() {
     final position = _position;
     if (position == null) return;
+    // A programmatic scroll (restore, ensureVisible) reports idle here, so it
+    // never inherits the previous drag's direction.
+    _direction = position.userScrollDirection;
     if (position.isScrollingNotifier.value) {
       _snap.stop();
       return;
-    }
-    if (position.userScrollDirection != ScrollDirection.idle) {
-      _direction = position.userScrollDirection;
     }
     // Settle after the frame that lays out the scroll's last movement. This
     // listener can also fire inside a viewport relayout; never animate there.
