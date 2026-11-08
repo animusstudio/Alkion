@@ -204,11 +204,9 @@ class _CatalogPickerState extends State<CatalogPicker> {
   bool _allowPop = false, _confirming = false;
   // Result-title reveal after a filter, chip or search change: see
   // [_planReveal] and [_revealFor].
-  bool _revealNext = false, _revealWindow = false, _revealHold = false;
-  bool _queryReveal = false;
-  int _revealEpoch = 0, _revealOrdinal = 0, _revealSlots = 0;
+  bool _revealNext = false, _queryReveal = false;
   int? _rowSignature;
-  final _revealed = <Object, Duration>{};
+  final _reveal = CatalogRevealPlan();
   Duration? _lastKeystroke;
   String get _locale => Localizations.localeOf(context).languageCode;
 
@@ -395,7 +393,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
       }
       final target = offset.clamp(0.0, _scroll.position.maxScrollExtent);
       // Rows the jump brings into view still belong to this change's reveal.
-      if (_revealWindow && target != _scroll.offset) _revealHold = true;
+      if (target != _scroll.offset) _reveal.holdForJump();
       _scroll.jumpTo(target);
     });
   }
@@ -403,10 +401,14 @@ class _CatalogPickerState extends State<CatalogPicker> {
   static const _typingPause = Duration(milliseconds: 500);
   static const _rowExtent = 76.0;
 
+  /// How many leading rows can share the first screen, and so a reveal.
+  int _revealCap(BuildContext context) =>
+      (MediaQuery.sizeOf(context).height / _rowExtent).ceil() + 1;
+
   /// Opens a reveal for the rows built in the next layout when an explicit
-  /// change ([_update], a keystroke after a pause) altered the result rows.
-  /// Rows built later, by scrolling, never reveal.
-  void _planReveal(int signature, int rowCount) {
+  /// change ([_update], a keystroke after a pause) altered the first screen's
+  /// rows ([signature]). Rows built later, by scrolling, never reveal.
+  void _planReveal(int signature, int rowCount, int cap) {
     final requested = _revealNext;
     _revealNext = false;
     final changed = _rowSignature != null && signature != _rowSignature;
@@ -414,45 +416,38 @@ class _CatalogPickerState extends State<CatalogPicker> {
     if (!requested || !changed || MediaQuery.disableAnimationsOf(context)) {
       return;
     }
-    _revealEpoch++;
-    _revealed.clear();
-    _revealOrdinal = 0;
-    _revealSlots = math.min(
-      rowCount,
-      (MediaQuery.sizeOf(context).height / _rowExtent).ceil() + 1,
-    );
-    if (_revealWindow) return;
-    _revealWindow = true;
-    WidgetsBinding.instance.addPostFrameCallback(_closeRevealWindow);
+    if (_reveal.open(math.min(rowCount, cap))) {
+      WidgetsBinding.instance.addPostFrameCallback(_closeRevealWindow);
+    }
   }
 
   void _closeRevealWindow(Duration _) {
     if (!mounted) return;
-    if (_revealHold) {
-      // A scroll restore jumped after the first layout: reveal the rows it
-      // lands on instead, from the first stagger step.
-      _revealHold = false;
-      _revealed.clear();
-      _revealOrdinal = 0;
+    if (_reveal.close()) {
       WidgetsBinding.instance.addPostFrameCallback(_closeRevealWindow);
-      return;
     }
-    _revealWindow = false;
   }
 
-  /// The reveal of the row [key], claimed when it is built inside the open
-  /// window; null for every other row, which then builds no extra widget.
-  CatalogRowReveal? _revealFor(Object key) {
-    if (_revealWindow &&
-        _revealOrdinal < _revealSlots &&
-        !_revealed.containsKey(key)) {
-      _revealed[key] = RevealStagger.delay(_revealOrdinal++, _revealSlots);
-    }
-    if (_revealed.isEmpty) return null;
-    final delay = _revealed[key];
-    return delay == null
-        ? null
-        : (epoch: _revealEpoch, delay: delay, onMount: _revealWindow);
+  /// The reveal of the row [key] showing [label], claimed when it is built
+  /// inside the open window; null for every other row, which then builds no
+  /// extra widget. A row whose label changed since (a rename, a locale
+  /// switch) loses its reveal rather than replaying it.
+  CatalogRowReveal? _revealFor(Object key, String label) {
+    final entry = _reveal.claim(key, label);
+    if (entry == null) return null;
+    return (
+      epoch: entry.epoch,
+      delay: entry.delay,
+      onMount: _reveal.window,
+      slots: _reveal.slots,
+      onDone: () => _revealDone(key, entry.epoch),
+    );
+  }
+
+  /// A row's reveal settled. Once none remain, one rebuild returns those rows
+  /// to plain labels without their motion listeners.
+  void _revealDone(Object key, int epoch) {
+    if (mounted && _reveal.done(key, epoch)) setState(() {});
   }
 
   void _openNavigation(CatalogHit hit) {
@@ -1106,7 +1101,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
       ].join(' · ');
       return CatalogPickerRow(
         key: ValueKey(choice.key),
-        reveal: _revealFor(choice.key),
+        reveal: _revealFor(choice.key, state.label(choice, _locale)),
         label: state.label(choice, _locale),
         equipment: variant?.equipmentKind,
         equipmentLabel: variant == null
@@ -1150,7 +1145,10 @@ class _CatalogPickerState extends State<CatalogPicker> {
     Widget hitRow(CatalogHit hit) => hit.isNavigation
         ? CatalogPickerRow(
             key: ValueKey('catalog-navigation-${hit.kind}-${hit.id}'),
-            reveal: _revealFor('catalog-navigation-${hit.kind}-${hit.id}'),
+            reveal: _revealFor(
+              'catalog-navigation-${hit.kind}-${hit.id}',
+              hit.label,
+            ),
             label: hit.label,
             artwork: catalogArtworkForNavigation(hit.kind, hit.key),
             subtitle: l.catalogMatchingExecutions(
@@ -1213,10 +1211,12 @@ class _CatalogPickerState extends State<CatalogPicker> {
 
     final rows = <Widget Function()>[];
     // The leading rows' identities: enough to tell whether a change altered
-    // what the first screen shows, without hashing a whole long list.
+    // what the first screen shows. A change confined to rows below it does
+    // not reveal the unchanged first screen again.
+    final revealCap = _revealCap(context);
     final leading = <Object>[];
     void identify(Object key) {
-      if (leading.length < 40) leading.add(key);
+      if (leading.length < revealCap) leading.add(key);
     }
 
     void heading(String text) {
@@ -1325,7 +1325,15 @@ class _CatalogPickerState extends State<CatalogPicker> {
         rows.add(() => empty(l.catalogNoResults));
       }
     }
-    _planReveal(Object.hash(rows.length, Object.hashAll(leading)), rows.length);
+    _planReveal(
+      Object.hash(
+        Object.hashAll(leading),
+        // The count matters only while the first screen reaches the end.
+        rows.length <= revealCap ? rows.length : null,
+      ),
+      rows.length,
+      revealCap,
+    );
 
     final content = SizedBox(
       height: widget.embedded ? null : MediaQuery.sizeOf(context).height * .94,
@@ -1845,9 +1853,101 @@ class _CatalogPickerState extends State<CatalogPicker> {
   }
 }
 
-/// A result row's title reveal: [epoch] replays it, [delay] staggers it and
-/// [onMount] lets a row first built by the change itself play on mount.
-typedef CatalogRowReveal = ({int epoch, Duration delay, bool onMount});
+/// Bookkeeping for the picker's result-title reveal, kept apart from the
+/// widget so its rules can be checked directly.
+///
+/// [open] starts a reveal; while its [window] is open, each row built claims
+/// a stagger slot in build order, up to [slots]. [close] ends the window
+/// after the first layout, unless [holdForJump] asked for one more layout
+/// because a scroll restore jumped. A claimed row keeps its entry until it
+/// reports [done] or a new reveal opens; a row whose label changed loses it.
+class CatalogRevealPlan {
+  int _epoch = 0, _ordinal = 0, _slots = 0;
+  bool _window = false, _hold = false;
+  final _entries = <Object, ({Duration delay, int epoch, String label})>{};
+
+  /// Whether rows built now may claim a reveal.
+  bool get window => _window;
+
+  /// How many rows the current reveal staggers across.
+  int get slots => _slots;
+
+  /// Rows that still hold a reveal.
+  int get length => _entries.length;
+
+  /// Starts a new reveal over [slots] rows, dropping any older one. Returns
+  /// whether the caller must schedule [close] (the window was shut).
+  bool open(int slots) {
+    _epoch++;
+    _entries.clear();
+    _ordinal = 0;
+    _slots = slots;
+    if (_window) return false;
+    _window = true;
+    return true;
+  }
+
+  /// A scroll restore jumped while the window is open: keep it open for the
+  /// layout the jump causes.
+  void holdForJump() {
+    if (_window) _hold = true;
+  }
+
+  /// Ends the window, or keeps it one more layout after [holdForJump].
+  /// Returns whether the caller must schedule [close] again.
+  ///
+  /// On a hold, rows the jump lands on join from the first stagger step.
+  /// Rows already revealing keep their entries, so none of them drops back
+  /// to a plain label mid-run; those moved off screen settle and report done.
+  bool close() {
+    if (_hold) {
+      _hold = false;
+      _ordinal = 0;
+      return true;
+    }
+    _window = false;
+    return false;
+  }
+
+  /// The reveal of the row [key] showing [label]: claimed now if the window
+  /// is open and a slot is free, else its existing entry, else null.
+  ({Duration delay, int epoch})? claim(Object key, String label) {
+    if (_window && _ordinal < _slots && !_entries.containsKey(key)) {
+      _entries[key] = (
+        delay: RevealStagger.delay(_ordinal++, _slots),
+        epoch: _epoch,
+        label: label,
+      );
+    }
+    if (_entries.isEmpty) return null;
+    final entry = _entries[key];
+    if (entry == null) return null;
+    if (entry.label != label) {
+      _entries.remove(key);
+      return null;
+    }
+    return (delay: entry.delay, epoch: entry.epoch);
+  }
+
+  /// The row [key]'s reveal of [epoch] settled. Returns whether that emptied
+  /// the plan outside a window, so the rows can return to plain labels.
+  bool done(Object key, int epoch) {
+    if (_entries[key]?.epoch != epoch) return false;
+    _entries.remove(key);
+    return _entries.isEmpty && !_window;
+  }
+}
+
+/// A result row's title reveal: `epoch` replays it, `delay` staggers it among
+/// `slots` rows, `onMount` lets a row first built by the change itself play
+/// on mount, and `onDone` hands the row back to a plain label.
+typedef CatalogRowReveal = ({
+  int epoch,
+  Duration delay,
+  bool onMount,
+  int slots,
+  VoidCallback onDone,
+});
 
 class CatalogPickerRow extends StatelessWidget {
   const CatalogPickerRow({
@@ -2002,6 +2102,7 @@ class CatalogPickerRow extends StatelessWidget {
                                           onMount: reveal.onMount,
                                           delay: reveal.delay,
                                           replay: reveal.epoch,
+                                          onDone: reveal.onDone,
                                           style: WorkoutType.body(
                                             size: 16,
                                             color: t.text,
