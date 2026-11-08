@@ -11,7 +11,7 @@ root, reads `workout-tracker.db`, credentials, PowerSync state or a server.
 
 Code: `app/lib/transfer/` (`json_span_reader.dart`, `full_v1.dart`,
 `transfer_service.dart`, `historical_measurements.dart`, `correspondence.dart`,
-`incoming_quarantine.dart`, `imported_settings.dart`). The app has no in-app
+`incoming_quarantine.dart`). The app has no in-app
 Reps import since 2026-11-08: the [retired import guide](reps-import.md) points
 to the planned external migration tool. The host-side history route below
 remains. See also [exports](exports.md) and
@@ -255,11 +255,8 @@ separate; no absorption runs).
   marker (a full export cannot carry Animus-only corrections B), and successor C
   is the authored overlay; `TransferService.notes` returns all three with
   attribution.
-* Settings are evidence only until `applyImportedSettings` is explicitly
-  requested; it applies only valid values (`unit` kg/lb, `mode` dark/light,
-  palette `accent`, non-blank `profile_name`, rest 0–86400 s, `locale` null or a
-  supported language). Missing/invalid values are reported and never seed
-  defaults or overwrite current settings.
+* Imported settings are evidence only; nothing applies them to current
+  settings.
 
 ## Historical measurement seam
 

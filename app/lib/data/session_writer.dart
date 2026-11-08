@@ -614,7 +614,7 @@ class UnsavedEditors {
         await value.write();
         paid(key, value.write);
       } catch (_) {
-        // Still owed; still blocks capture.
+        // Still owed; the next flush retries it and fails until it is paid.
       }
     }
   }
