@@ -138,8 +138,10 @@ check.
 
 ## Task state
 
-- T1 — implemented at `a6cc0cb` (code unchanged since `171ac03`; later
-  commits are docs only), awaiting review. Evidence:
+- T1 — done. Implemented at `a6cc0cb` (code unchanged since `171ac03`; later
+  commits are docs only). Review PASS-WITH-FINDINGS. The coordinator fix
+  `c89d13e` drops the orphaned `imported_settings.dart` and a stale comment.
+  The six unused `capture*` ARB keys move to T3 (A4/A9). Evidence:
   `make -C app analyze` → no issues; `make -C app format` → 525 files,
   0 changed; `make -C app test TEST='--concurrency=2 test/history_mapping
   test/ui/profile_data_actions_test.dart test/main_routing_test.dart
