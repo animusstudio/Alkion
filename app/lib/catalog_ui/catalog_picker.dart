@@ -18,7 +18,8 @@ import '../widgets/text_motion.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import '../data/models.dart';
-import 'catalog_trial_scope.dart';
+import 'catalog_runtime_state.dart';
+import 'catalog_scope.dart';
 import 'catalog_muscle_explorer.dart';
 import 'catalog_equipment_icon.dart';
 import 'catalog_choice_details.dart';
@@ -29,7 +30,7 @@ import 'catalog_media_widgets.dart';
 /// barrier dismissal are disabled so neither can bypass the same decision.
 Future<List<CatalogChoice>?> showCatalogPicker(
   BuildContext context, {
-  required CatalogTrialState state,
+  required CatalogRuntimeState state,
   bool multiple = false,
   bool immediateSelection = false,
   String? familyId,
@@ -66,7 +67,7 @@ enum _CatalogView { all, recent, favorites, personal }
 /// A presentation snapshot only; each mounted browser owns its scroll controller.
 /// The runtime identity includes the admitted profile/generation and bundle.
 class CatalogBrowserController {
-  CatalogTrialState? _state;
+  CatalogRuntimeState? _state;
   String? _locale;
   String _query = '';
   String? _group, _equipment;
@@ -81,7 +82,7 @@ class CatalogBrowserController {
 
   /// Consumes keyboard/family/group Back before the Plan host leaves its tab.
   bool handleBack() => _handleBack?.call() ?? false;
-  void _scope(CatalogTrialState state, String locale) {
+  void _scope(CatalogRuntimeState state, String locale) {
     if (identical(state, _state) && locale == _locale) return;
     _state = state;
     _locale = locale;
@@ -106,7 +107,7 @@ class CatalogBrowser extends StatelessWidget {
     required this.onCreateChoice,
     this.controller,
   });
-  final CatalogTrialState state;
+  final CatalogRuntimeState state;
   final List<Exercise> ownedExercises;
   final void Function(String id) onEditOwned;
   final Future<void> Function(CatalogChoice choice) onCreateChoice;
@@ -141,7 +142,7 @@ class CatalogPicker extends StatefulWidget {
     this.onCreateChoice,
     this.controller,
   });
-  final CatalogTrialState state;
+  final CatalogRuntimeState state;
   final bool embedded;
   final List<Exercise>? ownedExercises;
   final void Function(String id)? onEditOwned;
@@ -2246,7 +2247,7 @@ class _CustomExerciseForm extends StatefulWidget {
   });
   final bool saving;
   final String query;
-  final CatalogTrialState state;
+  final CatalogRuntimeState state;
   @override
   State<_CustomExerciseForm> createState() => _CustomExerciseFormState();
 }

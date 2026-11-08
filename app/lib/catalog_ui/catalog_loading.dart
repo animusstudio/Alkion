@@ -131,22 +131,6 @@ void holdFirstFrameForStartupMark({
   }
 }
 
-/// The catalog trial's wait in place of its Start button: one feathered,
-/// button-sized glyph box that sweeps while the load is pending and speaks
-/// the catalog loading label once.
-class CatalogButtonSkeleton extends StatelessWidget {
-  const CatalogButtonSkeleton({super.key});
-  @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    label: CatalogLabels(Localizations.localeOf(context).languageCode).loading,
-    liveRegion: true,
-    child: const ExcludeSemantics(
-      child: GlyphSkeleton.box(width: double.infinity, height: 48),
-    ),
-  );
-}
-
 /// A single [Motion.reveal] glyph dissolve after a displayed await. Content
 /// and controls are available from frame one; the overlay owns neither focus,
 /// pointers nor semantics, and reduced motion shows the content at once.

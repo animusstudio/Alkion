@@ -7,7 +7,9 @@ import 'package:alkion/catalog/catalog_artwork.dart';
 import 'package:alkion/catalog_ui/catalog_media_widgets.dart';
 import 'package:alkion/catalog_ui/catalog_equipment_icon.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
+import 'package:alkion/catalog_ui/catalog_runtime_state.dart';
+import '../support/memory_catalog_state.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/theme/app_theme.dart';
@@ -30,8 +32,8 @@ import 'catalog_discovery_picker_test.dart'
 const _benchName = 'Synthetic bench recognition';
 final _benchId = fixtureId(501);
 
-/// A trial state whose runtime can be retired while a sheet is open.
-class _RetirableState extends CatalogTrialState {
+/// An in-memory state whose runtime can be retired while a sheet is open.
+class _RetirableState extends MemoryCatalogState {
   _RetirableState(super.bundle);
 
   bool live = true;
@@ -40,8 +42,9 @@ class _RetirableState extends CatalogTrialState {
   bool get active => live;
 }
 
-CatalogTrialState _mediaState([
-  CatalogTrialState Function(CatalogBundle bundle) make = CatalogTrialState.new,
+CatalogRuntimeState _mediaState([
+  CatalogRuntimeState Function(CatalogBundle bundle) make =
+      MemoryCatalogState.new,
 ]) {
   final source = syntheticCatalog();
   (source['facet_vocabulary']['support'] as List).add('flat_bench');
@@ -186,7 +189,7 @@ void main() {
     final family = (source['families'] as List).first as Map;
     family['key'] = 'biceps_curl';
     family['names'] = {'en': 'Synthetic curl family'};
-    final state = CatalogTrialState(
+    final state = MemoryCatalogState(
       CatalogBundle.fromJsonString(jsonEncode(source)),
     );
     addTearDown(state.dispose);

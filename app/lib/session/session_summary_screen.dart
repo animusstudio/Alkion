@@ -7,7 +7,7 @@ import '../data/models.dart';
 import '../data/body_workload.dart';
 import '../data/body_workload_projection.dart';
 import '../catalog/catalog.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../ui/body_figure.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
@@ -63,7 +63,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final bundle = CatalogTrialScope.maybeOf(context)?.bundle;
+    final bundle = CatalogScope.maybeOf(context)?.bundle;
     final database = Provider.of<LocalDatabase>(context);
     final token = database.token;
     if (!_started ||

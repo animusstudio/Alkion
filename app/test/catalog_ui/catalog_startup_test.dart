@@ -220,7 +220,6 @@ void main() {
         // One slim band, as wide as the arm's ink, under the arm or disc, in
         // ink legible on the splash background; no row or button skeleton.
         expect(find.byType(GlyphSkeleton), findsOneWidget);
-        expect(find.byType(CatalogButtonSkeleton), findsNothing);
         final band = tester.getRect(_band);
         final layer = splash.layer;
         expect(band.height, CatalogStartupMark.bandHeight);

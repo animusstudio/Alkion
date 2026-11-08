@@ -6,7 +6,9 @@ import 'dart:ui' show SemanticsAction;
 
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
+import 'package:alkion/catalog_ui/catalog_runtime_state.dart';
+import '../support/memory_catalog_state.dart';
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/main.dart';
@@ -46,7 +48,7 @@ Future<void> browserTop(WidgetTester tester) async {
 }
 
 Widget browser(
-  CatalogTrialState state, {
+  CatalogRuntimeState state, {
   CatalogBrowserController? controller,
   List<Exercise> owned = const [],
   void Function(String)? onEdit,
@@ -88,7 +90,7 @@ Future<({AlkionRuntime runtime, RealZoneDatabase database})> openDurableBrowser(
   return (runtime: runtime, database: database);
 }
 
-CatalogTrialState largeBrowserState() {
+CatalogRuntimeState largeBrowserState() {
   final source = syntheticCatalog();
   for (var i = 200; i < 700; i++) {
     source['families'].add({
@@ -114,10 +116,10 @@ CatalogTrialState largeBrowserState() {
       'relationships': <Map<String, String>>[],
     });
   }
-  return CatalogTrialState(CatalogBundle.fromJsonString(jsonEncode(source)));
+  return MemoryCatalogState(CatalogBundle.fromJsonString(jsonEncode(source)));
 }
 
-CatalogTrialState wideEquipmentState() {
+CatalogRuntimeState wideEquipmentState() {
   const kinds = [
     'barbell',
     'dumbbell',
@@ -220,7 +222,7 @@ CatalogTrialState wideEquipmentState() {
         },
     ],
   });
-  return CatalogTrialState(
+  return MemoryCatalogState(
     CatalogBundle.fromBytes(
       bytes,
       browseBytes: utf8.encode(browse),
@@ -248,7 +250,7 @@ void main() {
         greaterThanOrEqualTo(30),
       );
       await tester.pumpWidget(
-        CatalogTrialScope(
+        CatalogScope(
           state: state,
           child: h.wrap(const Scaffold(body: PlanScreen())),
         ),

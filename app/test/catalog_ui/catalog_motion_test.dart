@@ -1,13 +1,8 @@
-import 'dart:async';
-
-import 'package:alkion/catalog_trial.dart';
 import 'package:alkion/catalog_ui/catalog_loading.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/widgets/state_motion.dart';
-import 'package:alkion/widgets/glyph_loading.dart';
 import 'package:alkion/theme/motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -57,7 +52,6 @@ void main() {
           isNot(context.tokens.accent),
         );
         expect(find.byType(CatalogStartupMark), findsNothing);
-        expect(find.byType(CatalogButtonSkeleton), findsNothing);
         await openChoice(tester, state, fixtureId(10));
         await tester.tap(
           find.descendant(
@@ -300,41 +294,6 @@ void main() {
         const Duration(milliseconds: 16),
       ); // Retire the final frame.
       expect(motion.isAnimating, isFalse);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
-
-  testWidgets(
-    'trial actual pending load shows stable glyphs then ready, failure has no success decode',
-    (tester) async {
-      final state = discoveryState();
-      addTearDown(state.dispose);
-      final pending = Completer<CatalogBundle>();
-      await tester.pumpWidget(
-        CatalogTrialBootstrap(loader: () => pending.future),
-      );
-      await tester.pump();
-      expect(find.byType(CatalogButtonSkeleton), findsOneWidget);
-      // The band sweeps only while this real load is pending.
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(GlyphSkeleton.debugSweepRunning, isTrue);
-      pending.complete(state.bundle);
-      await tester.pump();
-      await tester.pump();
-      expect(find.byType(CatalogButtonSkeleton), findsNothing);
-      expect(GlyphSkeleton.debugSweepRunning, isFalse);
-      expect(find.byType(CatalogReadyReveal), findsOneWidget);
-      await tester.pumpAndSettle();
-      await tester.pumpWidget(const SizedBox());
-      await tester.pumpWidget(
-        CatalogTrialBootstrap(
-          loader: () async => throw const FormatException('synthetic failure'),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(CatalogButtonSkeleton), findsNothing);
-      expect(find.byType(CatalogReadyReveal), findsNothing);
-      expect(find.byType(FilledButton), findsNothing);
       await tester.pumpWidget(const SizedBox());
     },
   );

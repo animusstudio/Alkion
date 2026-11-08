@@ -10,7 +10,7 @@ import '../data/body_workload_adapters.dart';
 import '../data/body_workload_projection.dart';
 import '../data/catalog_execution_repository.dart';
 import '../catalog/catalog.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
@@ -162,7 +162,7 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final bundle = CatalogTrialScope.maybeOf(context)?.bundle;
+    final bundle = CatalogScope.maybeOf(context)?.bundle;
     final database = Provider.of<LocalDatabase>(context);
     if (!identical(database, _workloadDatabase) ||
         database.token.profileId != _workloadToken.profileId ||

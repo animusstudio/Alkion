@@ -1,7 +1,6 @@
 import '../catalog_ui/catalog_picker.dart';
 import '../catalog_ui/catalog_measurement_form.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
-import '../catalog_ui/catalog_runtime_state.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../catalog_ui/catalog_evidence_widgets.dart';
 import '../domain/catalog_execution.dart';
 import '../domain/local_action.dart';
@@ -108,11 +107,11 @@ class _DayEditorState extends State<DayEditor> {
   int? _weekday; // 0=Mon … 6=Sun
 
   final List<DaySlotState> _slots = [];
-  // Trial targets are editor-local snapshots. They are published only after
-  // the existing routine action commits, and vanish when this editor discards.
-  final Map<String, Map<String, String>> _trialMetrics = {};
-  final Map<String, Map<String, String>> _trialMetricsBaseline = {};
-  final Map<String, CatalogChoice> _trialChoices = {};
+  // Catalog targets for slots without selection evidence are editor-local
+  // snapshots; they vanish when this editor closes.
+  final Map<String, Map<String, String>> _catalogMetrics = {};
+  final Map<String, Map<String, String>> _catalogMetricsBaseline = {};
+  final Map<String, CatalogChoice> _catalogChoices = {};
   String? _expandedExId; // keyed by exerciseId (NOT index)
 
   List<Exercise> _catalog = [];
@@ -230,18 +229,17 @@ class _DayEditorState extends State<DayEditor> {
       _focusCtrl.text = day.focus ?? '';
       _weekday = day.scheduledWeekday;
       _slots.addAll(slots);
-      final trial = CatalogTrialScope.maybeOf(context);
-      if (trial != null) {
+      final scope = CatalogScope.maybeOf(context);
+      if (scope != null) {
         for (final slot in slots) {
           final key = slot.instanceKey;
-          final choice =
-              trial is CatalogRuntimeState && slot.draft.catalog != null
-              ? trial.choiceForSelection(slot.draft.catalog!)
-              : trial.routineContexts[key] ?? trial.exercises[slot.exerciseId];
-          if (choice != null) _trialChoices[key] = choice;
+          final choice = slot.draft.catalog != null
+              ? scope.choiceForSelection(slot.draft.catalog!)
+              : scope.routineContexts[key] ?? scope.exercises[slot.exerciseId];
+          if (choice != null) _catalogChoices[key] = choice;
           final metrics = Map<String, String>.of(
             slot.draft.catalog == null
-                ? trial.routineMetrics[key] ?? {}
+                ? const <String, String>{}
                 : catalogInputValues(
                     CatalogSetEvidence(
                       selection: slot.draft.catalog!,
@@ -249,8 +247,8 @@ class _DayEditorState extends State<DayEditor> {
                     ),
                   ),
           );
-          _trialMetrics[key] = metrics;
-          _trialMetricsBaseline[key] = Map.of(metrics);
+          _catalogMetrics[key] = metrics;
+          _catalogMetricsBaseline[key] = Map.of(metrics);
         }
       }
       _baseline = daySnapshot(_currentDraft());
@@ -313,8 +311,9 @@ class _DayEditorState extends State<DayEditor> {
         daySnapshot(_currentDraft()) != baseline ||
         _slots.any(
           (slot) => !mapEquals(
-            _trialMetrics[slot.instanceKey] ?? const <String, String>{},
-            _trialMetricsBaseline[slot.instanceKey] ?? const <String, String>{},
+            _catalogMetrics[slot.instanceKey] ?? const <String, String>{},
+            _catalogMetricsBaseline[slot.instanceKey] ??
+                const <String, String>{},
           ),
         );
   }
@@ -339,17 +338,17 @@ class _DayEditorState extends State<DayEditor> {
 
   Future<void> _addExercise() async {
     if (_controlsLocked) return;
-    final trial = CatalogTrialScope.maybeOf(context);
-    if (trial != null) {
+    final scope = CatalogScope.maybeOf(context);
+    if (scope != null) {
       final locale = Localizations.localeOf(context).languageCode;
       final choices = await showCatalogPicker(
         context,
-        state: trial,
+        state: scope,
         multiple: true,
         inDayChoiceKeys: {
           for (final slot in _slots)
-            if ((_trialChoices[slot.instanceKey] ??
-                    trial.exercises[slot.exerciseId])
+            if ((_catalogChoices[slot.instanceKey] ??
+                    scope.exercises[slot.exerciseId])
                 case final choice?)
               choice.key,
         },
@@ -357,12 +356,12 @@ class _DayEditorState extends State<DayEditor> {
       if (!mounted || _controlsLocked || choices == null) return;
       try {
         for (final choice in choices) {
-          final ex = await trial.materialize(choice, _exRepo, locale: locale);
+          final ex = await scope.materialize(choice, _exRepo, locale: locale);
           if (!mounted || _controlsLocked) return;
           setState(() {
             if (!_catalog.any((e) => e.id == ex.id)) _catalog.add(ex);
           });
-          _appendExercise(ex, trialChoice: choice);
+          _appendExercise(ex, catalogChoice: choice);
         }
       } catch (_) {
         if (mounted) {
@@ -419,7 +418,7 @@ class _DayEditorState extends State<DayEditor> {
 
   void _appendExercise(
     Exercise ex, {
-    CatalogChoice? trialChoice,
+    CatalogChoice? catalogChoice,
     CatalogSelectionEvidence? selection,
   }) {
     final r = ex.id;
@@ -460,11 +459,9 @@ class _DayEditorState extends State<DayEditor> {
       added.draft.rirLow = null;
       added.draft.rirHigh = null;
       _slots.add(added);
-      final runtime = CatalogTrialScope.maybeOf(context);
-      if (trialChoice != null &&
-          runtime is CatalogRuntimeState &&
-          !trialChoice.isOwned) {
-        selection = runtime.selectionFor(trialChoice);
+      final runtime = CatalogScope.maybeOf(context);
+      if (catalogChoice != null && runtime != null && !catalogChoice.isOwned) {
+        selection = runtime.selectionFor(catalogChoice);
       }
       if (selection != null) {
         added.draft.catalog = selection;
@@ -474,9 +471,9 @@ class _DayEditorState extends State<DayEditor> {
         added.draft.workSets = ex.defaultWorkingSets ?? 1;
         added.draft.warmupSets = ex.defaultWarmupSets ?? 0;
       }
-      if (trialChoice != null && !trialChoice.isOwned) {
-        _trialChoices[added.instanceKey] = trialChoice;
-        _trialMetrics[added.instanceKey] = {};
+      if (catalogChoice != null && !catalogChoice.isOwned) {
+        _catalogChoices[added.instanceKey] = catalogChoice;
+        _catalogMetrics[added.instanceKey] = {};
       }
     });
   }
@@ -503,7 +500,6 @@ class _DayEditorState extends State<DayEditor> {
     final draft = _currentDraft();
 
     final repository = _dayRepo;
-    final trial = CatalogTrialScope.maybeOf(context);
     final recovery = context.read<DomainRecovery?>();
     try {
       if (_pendingSave == null) {
@@ -528,18 +524,6 @@ class _DayEditorState extends State<DayEditor> {
       }
       await recovery?.recover();
       await repository.commitPrepared(_pendingSave!);
-      if (trial != null && !trial.durable) {
-        final actionSlots = (_pendingSave!.input['slots'] as List).cast<Map>();
-        for (var i = 0; i < _slots.length; i++) {
-          final key = _slots[i].instanceKey;
-          final actualId = actionSlots[i]['id'] as String;
-          final choice =
-              _trialChoices[key] ?? trial.exercises[_slots[i].exerciseId];
-          if (choice != null) trial.routineContexts[actualId] = choice;
-          final metrics = _trialMetrics[key];
-          if (metrics != null) trial.routineMetrics[actualId] = Map.of(metrics);
-        }
-      }
       if (mounted) widget.onBack();
     } catch (e, st) {
       // Surface the failure instead of silently leaving the button disabled.
@@ -751,14 +735,14 @@ class _DayEditorState extends State<DayEditor> {
                         isTemplate: true,
                       ),
                     );
-                    final trial = CatalogTrialScope.maybeOf(context);
+                    final scope = CatalogScope.maybeOf(context);
                     final choice =
-                        _trialChoices[slot.instanceKey] ??
-                        trial?.exercises[ex.id];
+                        _catalogChoices[slot.instanceKey] ??
+                        scope?.exercises[ex.id];
                     if (slot.draft.catalog != null ||
-                        (trial != null &&
+                        (scope != null &&
                             choice != null &&
-                            trial.measurement(choice).key != 'load_reps')) {
+                            scope.measurement(choice).key != 'load_reps')) {
                       return Padding(
                         key: ValueKey(slot.instanceKey),
                         padding: const EdgeInsets.only(bottom: 16),
@@ -780,7 +764,7 @@ class _DayEditorState extends State<DayEditor> {
                                   child: FitLabel(
                                     slot.draft.catalog != null
                                         ? slot.draft.catalog!.displayLabel
-                                        : trial!.identifyingLabel(
+                                        : scope!.identifyingLabel(
                                             choice!,
                                             Localizations.localeOf(
                                               context,
@@ -883,7 +867,7 @@ class _DayEditorState extends State<DayEditor> {
                               profile:
                                   slot.draft.catalog?.profile
                                       .toCatalogMeasurementProfile() ??
-                                  trial!.measurement(choice!),
+                                  scope!.measurement(choice!),
                               values: slot.draft.catalog != null
                                   ? catalogInputValues(
                                       CatalogSetEvidence(
@@ -891,13 +875,9 @@ class _DayEditorState extends State<DayEditor> {
                                         metrics: slot.draft.catalogTargets,
                                       ),
                                     )
-                                  : _trialMetrics.putIfAbsent(
+                                  : _catalogMetrics.putIfAbsent(
                                       slot.instanceKey,
-                                      () => Map.of(
-                                        trial!.routineMetrics[slot
-                                                .instanceKey] ??
-                                            {},
-                                      ),
+                                      () => {},
                                     ),
                               enabled: !_controlsLocked,
                               units: {
@@ -946,7 +926,7 @@ class _DayEditorState extends State<DayEditor> {
                           exercise: ex,
                           displayName: choice == null
                               ? null
-                              : trial!.identifyingLabel(
+                              : scope!.identifyingLabel(
                                   choice,
                                   Localizations.localeOf(context).languageCode,
                                 ),

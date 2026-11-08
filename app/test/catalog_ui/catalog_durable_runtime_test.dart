@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog/catalog_development.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
 import 'package:alkion/data/active_session_draft.dart';
 import 'package:alkion/data/catalog_execution_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
@@ -693,7 +693,7 @@ void main() {
   });
 
   test(
-    'normal development loader requires native admission and rejects trial scope or mismatched bytes',
+    'normal development loader requires native admission and rejects staged-input scope or mismatched bytes',
     () async {
       final bytes = utf8.encode(jsonEncode(syntheticCatalog())),
           bundle = _bundle();

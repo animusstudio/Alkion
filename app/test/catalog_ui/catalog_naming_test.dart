@@ -1,7 +1,8 @@
 import 'dart:convert';
 
 import 'package:alkion/catalog/catalog.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
+import '../support/memory_catalog_state.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
@@ -29,7 +30,7 @@ void main() {
         'locale': 'it',
         'target': {'kind': 'variant', 'id': seated['id']},
       });
-      final state = CatalogTrialState(
+      final state = MemoryCatalogState(
         CatalogBundle.fromJsonString(jsonEncode(source)),
       );
       addTearDown(state.dispose);
@@ -80,7 +81,7 @@ void main() {
       });
       for (final route in ['library', 'day']) {
         await tester.pumpWidget(
-          CatalogTrialScope(
+          CatalogScope(
             state: state,
             child: h.wrap(
               Scaffold(

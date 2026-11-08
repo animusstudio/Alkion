@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog/catalog_development.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
 import 'package:alkion/data/active_session_draft.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';

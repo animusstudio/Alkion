@@ -3,7 +3,9 @@ import 'dart:ui' show Tristate;
 
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
+import 'package:alkion/catalog_ui/catalog_runtime_state.dart';
+import '../support/memory_catalog_state.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
@@ -20,7 +22,7 @@ String fixtureId(int n) =>
 
 /// Authored navigation fixtures. These artificial memberships exercise role
 /// partitions; they are not imported candidate IDs or biomechanical evidence.
-CatalogTrialState discoveryState({
+CatalogRuntimeState discoveryState({
   bool browse = true,
   bool sharedFamiliar = false,
 }) {
@@ -64,7 +66,7 @@ CatalogTrialState discoveryState({
   add(93, 103, 'synthetic_triceps', 'Synthetic triceps press', 'cable');
   final bytes = utf8.encode(jsonEncode(source));
   final original = CatalogBundle.fromBytes(bytes);
-  if (!browse) return CatalogTrialState(original);
+  if (!browse) return MemoryCatalogState(original);
   final groupNames = <String, List<String>>{
     'chest': ['Chest', 'Petto', 'Brust', 'Pecho'],
     'back': ['Back', 'Schiena', 'Rücken', 'Espalda'],
@@ -142,7 +144,7 @@ CatalogTrialState discoveryState({
     ],
   };
   final text = jsonEncode(sidecar);
-  return CatalogTrialState(
+  return MemoryCatalogState(
     CatalogBundle.fromBytes(
       bytes,
       browseBytes: utf8.encode(text),
@@ -217,7 +219,7 @@ Future<void> selectMuscle(WidgetTester tester, String key) async {
 
 Future<void> openChoice(
   WidgetTester tester,
-  CatalogTrialState state,
+  CatalogRuntimeState state,
   String id,
 ) async {
   if (choice(id).evaluate().isEmpty) {

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:alkion/catalog/catalog.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/session_repository.dart';
 import 'package:alkion/data/session_writer.dart';

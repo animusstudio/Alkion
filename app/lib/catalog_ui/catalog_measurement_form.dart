@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../theme/alkion_icon.dart';
 import '../catalog/catalog.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/typography.dart';
-import '../widgets/fit_label.dart';
 import 'catalog_picker.dart';
-import 'catalog_trial_scope.dart';
 
 bool catalogMeasurementsValid(
   CatalogMeasurementProfile profile,
@@ -29,7 +26,7 @@ bool catalogMeasurementsValid(
       profile.optionalMetrics.every((m) => valid(m, required: false));
 }
 
-/// Production-reusable typed metric fields. The trial adapter owns exact text,
+/// Production-reusable typed metric fields. The caller owns exact text,
 /// so navigating, locale changes and setup menus never seed over an edit.
 class CatalogMeasurementForm extends StatefulWidget {
   const CatalogMeasurementForm({
@@ -119,84 +116,6 @@ class _CatalogMeasurementFormState extends State<CatalogMeasurementForm> {
             ),
           ),
       ],
-    );
-  }
-}
-
-class CatalogTrialBlock extends StatelessWidget {
-  const CatalogTrialBlock({
-    super.key,
-    required this.state,
-    required this.choice,
-    required this.setId,
-    required this.title,
-    required this.done,
-    required this.onChanged,
-    required this.onMenu,
-  });
-  final CatalogTrialState state;
-  final CatalogChoice choice;
-  final String setId, title;
-  final bool done;
-  final VoidCallback onChanged, onMenu;
-  @override
-  Widget build(BuildContext context) {
-    final locale = Localizations.localeOf(context).languageCode;
-    final profile = state.measurement(choice);
-    final values = done
-        ? state.loggedMetrics[setId] ?? {}
-        : state.metricDrafts.putIfAbsent(setId, () => {});
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: FitLabel(
-                  title,
-                  maxLines: 3,
-                  style: WorkoutType.display(
-                    size: 22,
-                    color: context.tokens.text,
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: onMenu,
-                tooltip: AppLocalizations.of(context).catalogChangeSetup,
-                icon: const AlkionIcon(AlkionGlyph.more),
-              ),
-            ],
-          ),
-          if (state.distinction(choice, locale).isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                state.distinction(choice, locale),
-                style: WorkoutType.body(size: 14, color: context.tokens.dim),
-              ),
-            ),
-          if (done)
-            Text(
-              values.entries
-                  .map(
-                    (e) =>
-                        '${catalogMetricLabel(AppLocalizations.of(context), e.key)}: ${e.value}',
-                  )
-                  .join(' · '),
-              style: WorkoutType.mono(size: 15, color: context.tokens.text),
-            )
-          else
-            CatalogMeasurementForm(
-              key: ValueKey(setId),
-              profile: profile,
-              values: values,
-              onChanged: onChanged,
-            ),
-        ],
-      ),
     );
   }
 }

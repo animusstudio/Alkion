@@ -6,7 +6,7 @@ import 'package:alkion/data/models.dart';
 import 'package:alkion/session/exercise_picker_sheet.dart';
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import '../support/memory_catalog_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,7 +17,7 @@ import '../catalog/catalog_fixture.dart';
 
 /// Stored mappings are display metadata only: they label the original
 /// exercise and steer new choices toward the mapped catalog variant.
-class OwnedTestCatalog extends CatalogTrialState {
+class OwnedTestCatalog extends MemoryCatalogState {
   OwnedTestCatalog(super.bundle, this.owned);
   final List<Exercise> owned;
   @override

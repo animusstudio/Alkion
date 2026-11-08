@@ -1,4 +1,8 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
+
 import '../catalog/catalog.dart';
 import '../data/catalog_execution_repository.dart';
 import '../data/exercise_repository.dart';
@@ -7,14 +11,15 @@ import '../data/catalog_personal_state.dart';
 import '../domain/catalog_execution.dart';
 import '../domain/local_action.dart';
 import '../store/local_store.dart';
-import 'catalog_trial_scope.dart';
+import 'catalog_scope.dart';
 
 /// Normal-app adapter. Its maps are presentation caches; set, routine and
 /// measurement truth lives in the admitted store and the versioned draft.
-class CatalogRuntimeState extends CatalogTrialState {
-  CatalogRuntimeState(super.bundle, this.database)
+class CatalogRuntimeState extends ChangeNotifier {
+  CatalogRuntimeState(this.bundle, this.database)
     : repository = CatalogExecutionRepository.local(database),
       _token = database.token;
+  final CatalogBundle bundle;
   final LocalDatabase database;
   final CatalogExecutionRepository repository;
   final StoreToken _token;
@@ -29,9 +34,17 @@ class CatalogRuntimeState extends CatalogTrialState {
   final _personalIntents = <String, PreparedCatalogPersonalState>{};
   String _locale = 'en';
   Future<void>? _savingPersonal;
-  @override
-  bool get durable => true;
-  @override
+  static const uuid = Uuid();
+
+  final List<CatalogChoice> recents = [];
+  final Set<String> favorites = {};
+  final Map<String, CatalogChoice> choices = {};
+  final Map<String, CatalogChoice> routineContexts = {};
+  final Map<String, CatalogChoice> exercises = {};
+  final Map<String, List<CatalogChoice>> setups = {};
+  final Map<String, CatalogChoice> setContexts = {};
+  final Map<Object, CatalogChoice> blockContexts = {};
+
   bool get active =>
       _active &&
       database.token.profileId == _token.profileId &&
@@ -40,9 +53,7 @@ class CatalogRuntimeState extends CatalogTrialState {
     if (!active) throw const StoreException('stale_catalog_runtime');
   }
 
-  @override
   String get indexProfileId => _token.profileId;
-  @override
   CatalogIndex index(String locale) {
     _requireActive();
     _activateLocale(locale);
@@ -57,8 +68,69 @@ class CatalogRuntimeState extends CatalogTrialState {
     );
   }
 
-  @override
   List<Exercise> get ownedExercises => List.unmodifiable(_owned.values);
+  CatalogChoice choiceForOwned(Exercise exercise) =>
+      exercises[exercise.id] ?? CatalogChoice.owned(exercise);
+
+  bool useInRoutine(
+    String originSlotId,
+    CatalogChoice choice, {
+    required Slot? actualSlot,
+    required String exerciseId,
+    required int? expectedRevision,
+  }) {
+    if (actualSlot == null ||
+        actualSlot.id != originSlotId ||
+        actualSlot.exerciseId != exerciseId ||
+        actualSlot.localRevision != expectedRevision) {
+      return false;
+    }
+    routineContexts[originSlotId] = choice;
+    notifyListeners();
+    return true;
+  }
+
+  CatalogMeasurementProfile measurement(CatalogChoice choice) =>
+      choice.variantId == null
+      ? bundle.measurementProfiles[choice.customProfile ?? 'load_reps']!
+      : bundle.measurementFor(bundle.variants[choice.variantId]!);
+  String label(CatalogChoice choice, String locale, {String? query}) =>
+      choice.customName ??
+      (choice.setupId == 'default'
+          ? index(locale).variantLabel(choice.variantId!)
+          : identifyingLabel(choice, locale));
+  String identifyingLabel(CatalogChoice choice, String locale) =>
+      choice.customName ??
+      index(locale).identifyingVariantLabel(choice.variantId!);
+
+  String distinction(CatalogChoice choice, String locale) {
+    if (choice.nickname?.isNotEmpty == true) return choice.nickname!;
+    final variant = bundle.variants[choice.variantId];
+    if (variant == null) return '';
+    if (choice.setupId != 'default') {
+      final ordinal =
+          (setups[choice.variantId]?.indexWhere(
+                (s) => s.setupId == choice.setupId,
+              ) ??
+              -1) +
+          1;
+      return '${CatalogLabels(locale).equipment(variant.equipmentKind)} · $ordinal';
+    }
+    return CatalogLabels(
+      locale,
+    ).distinction(variant, bundle.variantsForFamily(variant.familyId));
+  }
+
+  CatalogChoice newSetup(CatalogChoice current, String nickname) {
+    final choice = CatalogChoice.variant(
+      current.variantId!,
+      setupId: uuid.v4(),
+      nickname: nickname.trim().isEmpty ? null : nickname.trim(),
+    );
+    (setups[current.variantId!] ??= []).add(choice);
+    notifyListeners();
+    return choice;
+  }
 
   Future<void> initialize() async {
     for (final locale in ['shared']) {
@@ -147,7 +219,6 @@ class CatalogRuntimeState extends CatalogTrialState {
   List<OperationDependency> dependenciesFor(CatalogChoice choice) =>
       _results[choice.key]?.dependencies ?? const [];
 
-  @override
   void remember(CatalogChoice choice, {String? locale, String? query}) {
     _requireActive();
     _activateLocale(locale ?? _locale);
@@ -160,7 +231,6 @@ class CatalogRuntimeState extends CatalogTrialState {
     notifyListeners();
   }
 
-  @override
   void toggleFavorite(CatalogChoice choice) {
     _requireActive();
     // Legacy owned choices are not supported by the durable personal envelope.
@@ -259,7 +329,6 @@ class CatalogRuntimeState extends CatalogTrialState {
         _encodeChoice(choices[key]!, recent: false),
   ];
 
-  @override
   Future<Exercise> materialize(
     CatalogChoice choice,
     ExerciseRepository repo, {

@@ -80,6 +80,6 @@ flutter:
     - assets/exercise_artwork/images/
     - assets/icon/alkion-foreground-1024.png
     - assets/icon/entry/
-    # The private *.dev.json projection is included only by the guarded Android
-    # trial source set. A normal Flutter build must never glob this directory.
+    # The private *.dev.json projection is included only by the guarded private
+    # Dev catalog build. A normal Flutter build must never glob this directory.
     - assets/catalog_trial/README.md

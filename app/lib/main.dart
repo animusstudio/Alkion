@@ -42,7 +42,7 @@ import 'catalog/catalog.dart';
 import 'catalog/catalog_development.dart';
 import 'catalog_ui/catalog_runtime_state.dart';
 import 'catalog_ui/catalog_loading.dart';
-import 'catalog_ui/catalog_trial_scope.dart';
+import 'catalog_ui/catalog_scope.dart';
 import 'history_mapping/history_mapping.dart';
 import 'history_mapping/history_mapping_label.dart';
 
@@ -646,7 +646,7 @@ class AlkionApp extends StatelessWidget {
     );
     return runtime.catalog == null
         ? app
-        : CatalogTrialScope(state: runtime.catalog!, child: app);
+        : CatalogScope(state: runtime.catalog!, child: app);
   }
 }
 

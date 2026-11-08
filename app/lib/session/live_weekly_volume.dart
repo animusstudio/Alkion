@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../catalog/catalog_browse.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../data/stats_repository.dart';
 import '../data/volume_attribution.dart';
 import '../ui/today_labels.dart';
@@ -15,7 +15,7 @@ import 'active_session_controller.dart';
 ({CatalogBrowse? browse, VolumeTargets targets}) catalogVolumeAttribution(
   BuildContext context,
 ) {
-  final scope = CatalogTrialScope.maybeOf(context);
+  final scope = CatalogScope.maybeOf(context);
   final browse = scope?.bundle.browse;
   return (
     browse: browse,

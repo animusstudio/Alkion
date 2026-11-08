@@ -1,7 +1,7 @@
 import 'catalog_discovery_picker_test.dart' show selectMuscle;
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

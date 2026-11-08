@@ -1,6 +1,5 @@
 import '../catalog_ui/catalog_picker.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
-import '../catalog_ui/catalog_measurement_form.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../catalog_ui/catalog_runtime_state.dart';
 import '../catalog_ui/catalog_evidence_widgets.dart';
 import '../domain/catalog_execution.dart';
@@ -235,15 +234,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     BuildContext context,
     ActiveSessionController controller,
   ) async {
-    final catalog = CatalogTrialScope.maybeOf(context);
-    if (catalog != null && !catalog.durable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context).catalogTrialFinish),
-        ),
-      );
-      return;
-    }
     if (_finishing) return;
     setState(() => _finishing = true);
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -295,7 +285,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     // Settling may synchronously report the ruler's final value. Read the
     // immutable evidence only after the barrier, never from a stale snapshot.
     commitPendingInput();
-    final trial = CatalogTrialScope.maybeOf(context);
     final live = c.liveSet;
     if (live?.set.catalog case final evidence?) {
       if (!evidence.validForLogging) {
@@ -304,42 +293,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         );
         return;
       }
-    }
-    if (trial != null && live != null && _usesTrialForm(trial, live.block)) {
-      commitPendingInput();
-      final choice = _choiceFor(trial, live.block, live.set);
-      final values = trial.metricDrafts[live.set.id] ?? {};
-      final profile = trial.measurement(choice);
-      if (!catalogMeasurementsValid(profile, values)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).catalogRequired)),
-        );
-        return;
-      }
-      trial.loggedMetrics[live.set.id] = Map.of(values);
-      trial.setContexts[live.set.id] = choice;
-      if (profile.requiredMetrics.contains('repetitions') &&
-          profile.requiredMetrics.contains('reported_load')) {
-        live.set.weightKg = double.parse(values['reported_load']!);
-        live.set.reps = int.parse(values['repetitions']!);
-        c.logLiveSet(
-          showRir:
-              context.read<SettingsService>().rirControls == RirControls.show,
-        );
-      } else {
-        // Reuse the actual controller's set/focus lifecycle only. Typed
-        // measurements remain in the disposable adapter and never enter reps.
-        c.logLiveSet(
-          showRir:
-              context.read<SettingsService>().rirControls == RirControls.show,
-        );
-      }
-      c.startRest(_restSecondsFor(live.block));
-      setState(() {
-        _confirmedLogCandidate = live.set;
-        _logFeedbackEvent++;
-      });
-      return;
     }
     final r = c.logLiveSet(
       showRir: context.read<SettingsService>().rirControls == RirControls.show,
@@ -510,27 +463,26 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     commitPendingInput();
     final l = AppLocalizations.of(context);
     final blocks = c.draft.blocks;
-    final trial = CatalogTrialScope.maybeOf(context);
+    final catalog = CatalogScope.maybeOf(context);
     final typedSelection = contextSet?.catalog?.selection ?? b.catalogSelection;
     CatalogChoice? contextChoice;
-    if (trial is CatalogRuntimeState && typedSelection != null) {
-      contextChoice = trial.choiceForSelection(typedSelection);
-    } else if (trial != null && trial.exercises.containsKey(b.exercise.id)) {
+    if (catalog != null && typedSelection != null) {
+      contextChoice = catalog.choiceForSelection(typedSelection);
+    } else if (catalog != null &&
+        catalog.exercises.containsKey(b.exercise.id)) {
       contextChoice = contextSet == null
-          ? trial.upcomingContexts[b] ??
-                trial.blockContexts[b] ??
-                trial.exercises[b.exercise.id]!
-          : _choiceFor(trial, b, contextSet);
+          ? catalog.blockContexts[b] ?? catalog.exercises[b.exercise.id]!
+          : _choiceFor(catalog, b, contextSet);
     }
     final locale = Localizations.localeOf(context).languageCode;
     final picked = await showWActionSheet<String>(
       context,
       title: contextChoice == null
           ? typedSelection?.displayLabel ?? b.exercise.name
-          : _trialContextLabel(trial!, contextChoice, locale),
+          : _contextLabel(catalog!, contextChoice, locale),
       actions: [
         if (typedSelection != null ||
-            trial?.exercises[b.exercise.id] != null) ...[
+            catalog?.exercises[b.exercise.id] != null) ...[
           if (contextChoice?.variantId != null)
             WSheetAction(label: l.catalogChangeSetup, value: 'setup'),
           WSheetAction(label: l.catalogAddAgain, value: 'again'),
@@ -572,7 +524,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
     switch (picked) {
       case 'setup':
-        await _changeTrialSetup(c, b, trial!, currentChoice: contextChoice);
+        await _changeSetup(c, b, catalog!, currentChoice: contextChoice);
       case 'routine':
         final origin = c.originSlotIdFor(b);
         final templateId = c.draft.templateId;
@@ -627,7 +579,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           }
           final applied =
               typedSelection == null &&
-              trial!.useInRoutine(
+              catalog!.useInRoutine(
                 origin,
                 contextChoice!,
                 actualSlot: slot,
@@ -655,7 +607,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           return;
         }
         final choice = contextChoice!;
-        final ex = await trial!.materialize(
+        final ex = await catalog!.materialize(
           choice,
           ExerciseRepository.local(context.read<LocalDatabase>()),
           locale: Localizations.localeOf(context).languageCode,
@@ -666,7 +618,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           sessionRepo: SessionRepository.local(context.read<LocalDatabase>()),
           allowRepeat: true,
         );
-        trial.blockContexts[c.draft.blocks.last] = choice;
+        catalog.blockContexts[c.draft.blocks.last] = choice;
       case 'set':
         typedSelection == null
             ? c.addSet(b)
@@ -701,29 +653,24 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
   }
 
-  CatalogChoice _choiceFor(CatalogTrialState state, BlockState b, SetState s) {
-    if (state is CatalogRuntimeState && s.catalog != null) {
+  CatalogChoice _choiceFor(
+    CatalogRuntimeState state,
+    BlockState b,
+    SetState s,
+  ) {
+    if (s.catalog != null) {
       return state.choiceForSelection(s.catalog!.selection);
     }
     final origin = _controller?.originSlotIdFor(b);
-    if (!s.done) {
-      state.metricDrafts.putIfAbsent(
-        s.id,
-        () => Map.of(state.routineMetrics[origin] ?? {}),
-      );
-    }
     final blockChoice = state.blockContexts.putIfAbsent(
       b,
       () => state.routineContexts[origin] ?? state.exercises[b.exercise.id]!,
     );
-    return state.setContexts.putIfAbsent(
-      s.id,
-      () => state.upcomingContexts[b] ?? blockChoice,
-    );
+    return state.setContexts.putIfAbsent(s.id, () => blockChoice);
   }
 
-  Set<String> _trialInDayKeys(
-    CatalogTrialState state,
+  Set<String> _inDayChoiceKeys(
+    CatalogRuntimeState state,
     ActiveSessionController controller,
   ) => {
     for (final block in controller.draft.blocks)
@@ -731,8 +678,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         for (final set in block.allSets) _choiceFor(state, block, set).key,
   };
 
-  String _trialContextLabel(
-    CatalogTrialState state,
+  String _contextLabel(
+    CatalogRuntimeState state,
     CatalogChoice choice,
     String locale,
   ) => [
@@ -740,14 +687,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     if (choice.setupId != 'default') state.distinction(choice, locale),
   ].where((part) => part.isNotEmpty).join(' · ');
 
-  bool _usesTrialForm(CatalogTrialState state, BlockState b) =>
-      !state.durable && state.exercises.containsKey(b.exercise.id);
-
   String _typedSetLabel(
-    CatalogTrialState? state,
+    CatalogRuntimeState? state,
     CatalogSelectionEvidence selection,
   ) {
-    if (state is CatalogRuntimeState &&
+    if (state != null &&
         selection.bundleDigest == state.bundle.digest &&
         state.bundle.variants.containsKey(selection.variantId)) {
       return state.identifyingLabel(
@@ -756,6 +700,18 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       );
     }
     return selection.displayLabel;
+  }
+
+  /// A catalog-backed workout leaves the final rest without a Finish target.
+  String _restNextLabel(
+    CatalogRuntimeState? catalog,
+    ActiveSessionController controller,
+    AppLocalizations l,
+    UnitService unit,
+  ) {
+    final next = controller.nextPendingSet;
+    if (catalog != null && next == null) return '';
+    return restNextLabel(l, unit, next);
   }
 
   String _typedNextLabel(
@@ -776,68 +732,34 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     return '';
   }
 
-  String _trialNextLabel(
-    CatalogTrialState state,
-    ActiveSessionController controller,
-    AppLocalizations l,
-    UnitService unit,
-  ) {
-    final next = controller.nextPendingSet;
-    // Finish is unavailable in this disposable trial; keep the timer without
-    // advertising a completion route or fabricating measurement targets.
-    if (next == null) return '';
-    if (!_usesTrialForm(state, next.block)) return restNextLabel(l, unit, next);
-    final choice = _choiceFor(state, next.block, next.set);
-    final locale = Localizations.localeOf(context).languageCode;
-    final profile = state.measurement(choice);
-    final values = state.metricDrafts[next.set.id] ?? const <String, String>{};
-    final distinction = state.distinction(choice, locale);
-    return l.sessionRestNext(
-      [
-        state.label(choice, locale),
-        if (distinction.isNotEmpty) distinction,
-        next.set.isWarmup
-            ? l.sessionLiveWarmup
-            : l.sessionLiveSet(next.block.workingSets.indexOf(next.set) + 1),
-        for (final metric in [
-          ...profile.requiredMetrics,
-          ...profile.optionalMetrics,
-        ])
-          if (values[metric]?.trim().isNotEmpty ?? false)
-            '${catalogMetricLabel(l, metric)}: ${values[metric]}',
-      ].join(' · '),
-    );
-  }
-
-  Future<void> _changeTrialSetup(
+  Future<void> _changeSetup(
     ActiveSessionController c,
     BlockState b,
-    CatalogTrialState trial, {
+    CatalogRuntimeState catalog, {
     CatalogChoice? currentChoice,
   }) async {
     commitPendingInput();
     final current =
         currentChoice ??
-        trial.upcomingContexts[b] ??
-        trial.blockContexts[b] ??
-        trial.exercises[b.exercise.id]!;
+        catalog.blockContexts[b] ??
+        catalog.exercises[b.exercise.id]!;
     if (current.variantId == null) return;
     for (final s in b.allSets) {
-      _choiceFor(trial, b, s);
+      _choiceFor(catalog, b, s);
     }
     final l = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).languageCode;
     final choice = await showWActionSheet<String>(
       context,
       title:
-          '${l.catalogCurrentSetup(_trialContextLabel(trial, current, locale))}\n${l.catalogNewSetNotice}',
+          '${l.catalogCurrentSetup(_contextLabel(catalog, current, locale))}\n${l.catalogNewSetNotice}',
       scrollableTitle: true,
       actions: [
         WSheetAction(label: l.catalogChooseExecution, value: 'execution'),
         for (final known
-            in trial.setups[current.variantId] ?? <CatalogChoice>[])
+            in catalog.setups[current.variantId] ?? <CatalogChoice>[])
           WSheetAction(
-            label: trial.distinction(known, locale),
+            label: catalog.distinction(known, locale),
             value: known.setupId,
             selected: known.setupId == current.setupId,
           ),
@@ -847,74 +769,61 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     if (!mounted || choice == null) return;
     CatalogChoice? selected;
     if (choice == 'execution') {
-      final variant = trial.bundle.variants[current.variantId]!;
+      final variant = catalog.bundle.variants[current.variantId]!;
       final choices = await showCatalogPicker(
         context,
-        state: trial,
+        state: catalog,
         familyId: variant.familyId,
         currentChoice: current,
         setupIntent: true,
-        inDayChoiceKeys: _trialInDayKeys(trial, c),
+        inDayChoiceKeys: _inDayChoiceKeys(catalog, c),
       );
       selected = choices?.firstOrNull;
     } else if (choice == 'new') {
       final name = await showCatalogSetupNickname(context);
-      if (name != null) selected = trial.newSetup(current, name);
+      if (name != null) selected = catalog.newSetup(current, name);
     } else {
-      selected = trial.setups[current.variantId]!.firstWhere(
+      selected = catalog.setups[current.variantId]!.firstWhere(
         (s) => s.setupId == choice,
       );
     }
     if (!mounted || selected == null) return;
-    if (trial is CatalogRuntimeState) {
-      try {
-        await trial.materialize(
-          selected,
-          ExerciseRepository.local(context.read<LocalDatabase>()),
-          locale: locale,
-        );
-        if (!mounted || !trial.active || !c.hasSession) return;
-        final selection = trial.selectionFor(selected)!;
-        final reference = await SessionRepository.local(
-          context.read<LocalDatabase>(),
-        ).catalogLoadReference(selection, excludeSessionId: c.draft.sessionId);
-        if (!mounted || !trial.active || !c.hasSession) return;
-        final added = c.appendCatalogSet(
-          b,
-          selection,
-          dependencies: trial.dependenciesFor(selected),
-        );
-        if (reference.bestMetrics?['reported_load'] case final best?) {
-          b.catalogBaselines[selection.compatibilityKey] = best;
-        }
-        b.bestKg = reference.bestKg;
-        if (reference.lastMetrics case final metrics?) {
-          b.catalogLastMetrics[selection.compatibilityKey] = metrics;
-        }
-        final last = reference.last;
-        b.lastTop = last == null
-            ? null
-            : (weight: last.weightKg, reps: last.reps, date: last.date);
-        c.focusSet(added);
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(l.catalogSaveFailed)));
-        }
+    try {
+      await catalog.materialize(
+        selected,
+        ExerciseRepository.local(context.read<LocalDatabase>()),
+        locale: locale,
+      );
+      if (!mounted || !catalog.active || !c.hasSession) return;
+      final selection = catalog.selectionFor(selected)!;
+      final reference = await SessionRepository.local(
+        context.read<LocalDatabase>(),
+      ).catalogLoadReference(selection, excludeSessionId: c.draft.sessionId);
+      if (!mounted || !catalog.active || !c.hasSession) return;
+      final added = c.appendCatalogSet(
+        b,
+        selection,
+        dependencies: catalog.dependenciesFor(selected),
+      );
+      if (reference.bestMetrics?['reported_load'] case final best?) {
+        b.catalogBaselines[selection.compatibilityKey] = best;
       }
-      return;
+      b.bestKg = reference.bestKg;
+      if (reference.lastMetrics case final metrics?) {
+        b.catalogLastMetrics[selection.compatibilityKey] = metrics;
+      }
+      final last = reference.last;
+      b.lastTop = last == null
+          ? null
+          : (weight: last.weightKg, reps: last.reps, date: last.date);
+      c.focusSet(added);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l.catalogSaveFailed)));
+      }
     }
-    // Existing observations and entered drafts keep their exact setup. A fresh
-    // upcoming set owns the new context and starts without an inherited load.
-    trial.upcomingContexts[b] = selected;
-    trial.remember(selected);
-    c.addSet(b);
-    final added = b.workingSets.last;
-    trial.setContexts[added.id] = selected;
-    trial.metricDrafts[added.id] = {};
-    c.focusSet(added);
-    setState(() {});
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -922,7 +831,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ActiveSessionController>();
-    final trial = CatalogTrialScope.maybeOf(context);
+    final catalog = CatalogScope.maybeOf(context);
     final tokens = context.tokens;
     final unit = context.watch<UnitService>();
     final preferences = context.watch<SettingsService>();
@@ -969,19 +878,14 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     elapsed: controller.elapsed,
                     doneWork: controller.doneWork,
                     totalWork: controller.totalWork,
-                    // The trial has no qualified per-context PR contract.
-                    prCount: trial == null || trial.durable
-                        ? controller.prCount
-                        : 0,
+                    prCount: controller.prCount,
                     restStart: controller.restStart,
                     restTotal: controller.restTotal,
                     restEndedAt: controller.restEndedAt,
                     showRestRow: controller.hasLoggedSet,
                     nextLabel: controller.nextPendingSet?.set.catalog != null
                         ? _typedNextLabel(controller, l)
-                        : trial == null
-                        ? restNextLabel(l, unit, controller.nextPendingSet)
-                        : _trialNextLabel(trial, controller, l, unit),
+                        : _restNextLabel(catalog, controller, l, unit),
                     onMinimize: () {
                       commitPendingInput();
                       Navigator.of(context).pop();
@@ -1019,166 +923,125 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     for (final block in draft.blocks)
                       Reveal(
                         key: ObjectKey(block),
-                        child: trial != null && _usesTrialForm(trial, block)
-                            ? Column(
+                        child: ExerciseBlock(
+                          block: block,
+                          showRir: preferences.rirControls == RirControls.show,
+                          showRepRange: preferences.repEntry == RepEntry.range,
+                          unit: unit,
+                          liveSetId: live?.set.id,
+                          rirPromptSetId: controller.rirPromptSetId,
+                          liveCardKey: _liveCardKey,
+                          onLongPressHeader: draft.blocks.length < 2
+                              ? null
+                              : () {
+                                  HapticFeedback.mediumImpact();
+                                  showReorderExercisesSheet(
+                                    context,
+                                    controller: controller,
+                                  );
+                                },
+                          onFocusSet: (_, s) {
+                            // Settle in-flight edits first (same rule as the log
+                            // bar): a gliding ruler would otherwise keep writing
+                            // into the set being left.
+                            commitPendingInput();
+                            controller.focusSet(s);
+                          },
+                          valuesEditorBuilder: (set) => CatalogSetValuesEditor(
+                            evidence: set.catalog!,
+                            unit: unit,
+                            enabled: !controller.finishPending,
+                            onMetricChanged: (metric, text, quantityUnit) =>
+                                controller.updateCatalogMetric(
+                                  set,
+                                  metric,
+                                  text,
+                                  unit: quantityUnit,
+                                ),
+                          ),
+                          selectionLabel: (set) {
+                            final selection = set.catalog!.selection;
+                            final header =
+                                block.catalogSelection ??
+                                block.allSets
+                                    .firstWhere(
+                                      (candidate) => candidate.catalog != null,
+                                    )
+                                    .catalog!
+                                    .selection;
+                            final label = _typedSetLabel(catalog, selection);
+                            if (selection.compatibilityKey ==
+                                    header.compatibilityKey &&
+                                label == header.displayLabel &&
+                                selection.contextLabel == header.contextLabel) {
+                              return '';
+                            }
+                            return [
+                              label,
+                              selection.contextLabel,
+                            ].where((part) => part.isNotEmpty).join(' · ');
+                          },
+                          referenceBuilder: (set) {
+                            final selection = set.catalog!.selection;
+                            final metrics = block
+                                .catalogLastMetrics[selection.compatibilityKey];
+                            if (metrics == null) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  for (final s in block.allSets)
-                                    CatalogTrialBlock(
-                                      key: ValueKey(s.id),
-                                      state: trial,
-                                      choice: _choiceFor(trial, block, s),
-                                      setId: s.id,
-                                      title: trial.label(
-                                        _choiceFor(trial, block, s),
-                                        Localizations.localeOf(
-                                          context,
-                                        ).languageCode,
+                                  FitLabel(
+                                    catalogEvidenceSummary(
+                                      CatalogSetEvidence(
+                                        selection: selection,
+                                        metrics: metrics,
                                       ),
-                                      done: s.done,
-                                      onChanged: () {
-                                        controller.focusSet(s);
-                                        setState(() {});
-                                      },
-                                      onMenu: () => _openBlockMenu(
-                                        controller,
-                                        block,
-                                        contextSet: s,
-                                      ),
+                                      l,
                                     ),
-                                ],
-                              )
-                            : ExerciseBlock(
-                                block: block,
-                                showRir:
-                                    preferences.rirControls == RirControls.show,
-                                showRepRange:
-                                    preferences.repEntry == RepEntry.range,
-                                unit: unit,
-                                liveSetId: live?.set.id,
-                                rirPromptSetId: controller.rirPromptSetId,
-                                liveCardKey: _liveCardKey,
-                                onLongPressHeader: draft.blocks.length < 2
-                                    ? null
-                                    : () {
-                                        HapticFeedback.mediumImpact();
-                                        showReorderExercisesSheet(
-                                          context,
-                                          controller: controller,
+                                    maxLines: 3,
+                                    style: WorkoutType.body(
+                                      size: 12,
+                                      color: tokens.dim,
+                                    ),
+                                  ),
+                                  if (!set.done)
+                                    TextButton(
+                                      onPressed: () {
+                                        commitPendingInput();
+                                        controller.useCatalogValues(
+                                          set,
+                                          metrics,
                                         );
                                       },
-                                onFocusSet: (_, s) {
-                                  // Settle in-flight edits first (same rule as the log
-                                  // bar): a gliding ruler would otherwise keep writing
-                                  // into the set being left.
-                                  commitPendingInput();
-                                  controller.focusSet(s);
-                                },
-                                valuesEditorBuilder: (set) =>
-                                    CatalogSetValuesEditor(
-                                      evidence: set.catalog!,
-                                      unit: unit,
-                                      enabled: !controller.finishPending,
-                                      onMetricChanged:
-                                          (metric, text, quantityUnit) =>
-                                              controller.updateCatalogMetric(
-                                                set,
-                                                metric,
-                                                text,
-                                                unit: quantityUnit,
-                                              ),
+                                      style: TextButton.styleFrom(
+                                        minimumSize: const Size(48, 48),
+                                      ),
+                                      child: Text(l.catalogUseLast),
                                     ),
-                                selectionLabel: (set) {
-                                  final selection = set.catalog!.selection;
-                                  final header =
-                                      block.catalogSelection ??
-                                      block.allSets
-                                          .firstWhere(
-                                            (candidate) =>
-                                                candidate.catalog != null,
-                                          )
-                                          .catalog!
-                                          .selection;
-                                  final label = _typedSetLabel(
-                                    trial,
-                                    selection,
-                                  );
-                                  if (selection.compatibilityKey ==
-                                          header.compatibilityKey &&
-                                      label == header.displayLabel &&
-                                      selection.contextLabel ==
-                                          header.contextLabel) {
-                                    return '';
-                                  }
-                                  return [label, selection.contextLabel]
-                                      .where((part) => part.isNotEmpty)
-                                      .join(' · ');
-                                },
-                                referenceBuilder: (set) {
-                                  final selection = set.catalog!.selection;
-                                  final metrics =
-                                      block.catalogLastMetrics[selection
-                                          .compatibilityKey];
-                                  if (metrics == null) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        FitLabel(
-                                          catalogEvidenceSummary(
-                                            CatalogSetEvidence(
-                                              selection: selection,
-                                              metrics: metrics,
-                                            ),
-                                            l,
-                                          ),
-                                          maxLines: 3,
-                                          style: WorkoutType.body(
-                                            size: 12,
-                                            color: tokens.dim,
-                                          ),
-                                        ),
-                                        if (!set.done)
-                                          TextButton(
-                                            onPressed: () {
-                                              commitPendingInput();
-                                              controller.useCatalogValues(
-                                                set,
-                                                metrics,
-                                              );
-                                            },
-                                            style: TextButton.styleFrom(
-                                              minimumSize: const Size(48, 48),
-                                            ),
-                                            child: Text(l.catalogUseLast),
-                                          ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                                onSetMenu: (set) {
-                                  commitPendingInput();
-                                  _openSetMenu(controller, block, set);
-                                },
-                                onSetChanged: (_, __) =>
-                                    controller.markChanged(),
-                                onRir: (_, s, v) =>
-                                    controller.setRirFromPrompt(s, v),
-                                onClearRir: (_, s) =>
-                                    controller.setRirFromPrompt(s, null),
-                                onMarkNotDone: (_, s) {
-                                  commitPendingInput();
-                                  controller.markNotDone(s);
-                                },
-                                onRemoveSet: (b, s) =>
-                                    _removeSet(controller, b, s),
-                                onMenu: (b) => _openBlockMenu(controller, b),
+                                ],
                               ),
+                            );
+                          },
+                          onSetMenu: (set) {
+                            commitPendingInput();
+                            _openSetMenu(controller, block, set);
+                          },
+                          onSetChanged: (_, __) => controller.markChanged(),
+                          onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
+                          onClearRir: (_, s) =>
+                              controller.setRirFromPrompt(s, null),
+                          onMarkNotDone: (_, s) {
+                            commitPendingInput();
+                            controller.markNotDone(s);
+                          },
+                          onRemoveSet: (b, s) => _removeSet(controller, b, s),
+                          onMenu: (b) => _openBlockMenu(controller, b),
+                        ),
                       ),
                     const SizedBox(height: 10),
                     _AddExerciseButton(
@@ -1209,9 +1072,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                           onCatalogChoice: (choice) => catalogChoice = choice,
                           onExecutionSelection: (selection) =>
                               executionSelection = selection,
-                          inDayChoiceKeys: trial == null
+                          inDayChoiceKeys: catalog == null
                               ? const {}
-                              : _trialInDayKeys(trial, controller),
+                              : _inDayChoiceKeys(catalog, controller),
                         );
                         if (picked != null) {
                           try {
@@ -1219,24 +1082,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                               picked,
                               sessionRepo: sessionRepo,
                               allowRepeat:
-                                  trial != null &&
+                                  catalog != null &&
                                   catalogChoice != null &&
                                   !catalogChoice!.isOwned,
                               catalogSelection: executionSelection,
                             );
-                            if (trial != null &&
-                                !trial.durable &&
-                                catalogChoice != null &&
-                                controller.draft.blocks.isNotEmpty) {
-                              final added = controller.draft.blocks.last;
-                              if (added.exercise.id == picked.id) {
-                                trial.blockContexts.putIfAbsent(
-                                  added,
-                                  () => catalogChoice!,
-                                );
-                                setState(() {});
-                              }
-                            }
                           } on FreshPrescriptionUnavailableException catch (
                             error
                           ) {
@@ -1266,26 +1116,13 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         controller: controller,
         event: _logFeedbackEvent,
         loggedSet: _confirmedLogCandidate,
-        child:
-            live != null && trial != null && _usesTrialForm(trial, live.block)
-            ? SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: FilledButton(
-                    key: const Key('catalog-log-set'),
-                    onPressed: () => _logLive(controller),
-                    child: Text(l.catalogLogSet),
-                  ),
-                ),
-              )
-            : LogSetBar(
-                live: controller.finishPending ? null : live,
-                canFinish: controller.canFinish || controller.finishPending,
-                unit: unit,
-                onLog: () => _logLive(controller),
-                onFinish: () => _handleFinish(context, controller),
-              ),
+        child: LogSetBar(
+          live: controller.finishPending ? null : live,
+          canFinish: controller.canFinish || controller.finishPending,
+          unit: unit,
+          onLog: () => _logLive(controller),
+          onFinish: () => _handleFinish(context, controller),
+        ),
       ),
     );
   }

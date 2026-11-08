@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/active_session_draft.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
@@ -32,7 +32,7 @@ Future<void> startSession(
 }) async {
   final manager = context.read<SessionManager>();
   final database = context.read<LocalDatabase>();
-  final currentBundle = CatalogTrialScope.maybeOf(context)?.bundle;
+  final currentBundle = CatalogScope.maybeOf(context)?.bundle;
   // Read before any await so the context is still valid (used for the
   // localized custom-session name below).
   final customName = AppLocalizations.of(context).todayCustomSession;
