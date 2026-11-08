@@ -101,6 +101,11 @@ class _RenderFloatingHeader extends RenderSliverSingleBoxAdapter {
   double _from = 0, _to = 0;
   bool _revealQueued = false;
 
+  /// The latest user direction, kept from layout and from the moment a scroll
+  /// stops: the position resets its own to idle right after that, and a drag
+  /// can end before the frame that lays out its last movement.
+  ScrollDirection _direction = ScrollDirection.idle;
+
   set position(ScrollPosition? value) {
     if (identical(value, _position)) return;
     if (attached) {
@@ -139,35 +144,37 @@ class _RenderFloatingHeader extends RenderSliverSingleBoxAdapter {
     _snap.forward(from: 0);
   }
 
-  // A viewport relayout can change the scrolling state; never animate there.
-  void _outsideLayout(VoidCallback action) {
-    final scheduler = SchedulerBinding.instance;
-    if (scheduler.schedulerPhase == SchedulerPhase.persistentCallbacks) {
-      scheduler.addPostFrameCallback((_) => action());
-    } else {
-      action();
-    }
-  }
-
   void _scrollingChanged() {
     final position = _position;
     if (position == null) return;
     if (position.isScrollingNotifier.value) {
       _snap.stop();
-    } else {
-      _outsideLayout(_settle);
+      return;
     }
+    if (position.userScrollDirection != ScrollDirection.idle) {
+      _direction = position.userScrollDirection;
+    }
+    // Settle after the frame that lays out the scroll's last movement. This
+    // listener can also fire inside a viewport relayout; never animate there.
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) => _settle())
+      ..ensureVisualUpdate();
   }
 
   void _settle() {
     if (!attached || _snap.isAnimating || geometry == null) return;
     final limit = math.min(_extent, constraints.scrollOffset);
-    if (_hidden <= 0 || _hidden >= limit) return;
-    _animateTo(switch (_position?.userScrollDirection) {
-      ScrollDirection.forward => 0,
-      ScrollDirection.reverse => limit,
-      _ => _hidden < limit / 2 ? 0 : limit,
-    });
+    if (_hidden <= 0) return;
+    if (_direction == ScrollDirection.forward) {
+      // A scroll up shows the header wherever the list is.
+      _animateTo(0);
+    } else if (_hidden < limit) {
+      _animateTo(
+        _direction == ScrollDirection.reverse || _hidden >= limit / 2
+            ? limit
+            : 0,
+      );
+    }
   }
 
   @override
@@ -182,6 +189,9 @@ class _RenderFloatingHeader extends RenderSliverSingleBoxAdapter {
     _extent = child.size.height;
     final offset = constraints.scrollOffset;
     final last = _lastOffset;
+    if (constraints.userScrollDirection != ScrollDirection.idle) {
+      _direction = constraints.userScrollDirection;
+    }
     final up =
         last != null &&
         offset < last &&
