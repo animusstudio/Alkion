@@ -123,6 +123,9 @@ class TextInput extends StatelessWidget {
 ///
 /// Generic over [T] so the same widget handles weekday ints, muscle-group
 /// strings, or any other value.
+///
+/// Tapping an unselected chip glitches its label. A chip that is already
+/// selected, or any chip while [enabled] is false, stays calm.
 class ChipSelect<T> extends StatelessWidget {
   const ChipSelect({
     super.key,
@@ -130,12 +133,17 @@ class ChipSelect<T> extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.labelOf,
+    this.enabled = true,
   });
 
   final List<T> items;
   final T? selected;
   final ValueChanged<T> onSelect;
   final String Function(T) labelOf;
+
+  /// Whether the host accepts a selection now. While false a tap neither
+  /// selects nor glitches; the chips keep their look.
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -146,11 +154,14 @@ class ChipSelect<T> extends StatelessWidget {
       children: items.map((item) {
         final on = item == selected;
         return GlitchTap(
+          enabled: enabled && !on,
           child: Semantics(
             button: true,
             selected: on,
             child: GestureDetector(
-              onTap: () => onSelect(item),
+              onTap: () {
+                if (enabled) onSelect(item);
+              },
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 48),
                 // widthFactor keeps the chip its own width: a plain Center fills
@@ -204,10 +215,15 @@ class Toggle extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.semanticLabel,
+    this.enabled = true,
   });
 
   final bool value;
   final ValueChanged<bool> onChanged;
+
+  /// Whether the host accepts a change now. While false a tap neither
+  /// toggles nor glitches the row; the switch keeps its look.
+  final bool enabled;
 
   /// Spoken by screen readers alongside the toggled state. Left null omits
   /// the label (only the toggled state is announced).
@@ -220,9 +236,12 @@ class Toggle extends StatelessWidget {
       toggled: value,
       label: semanticLabel,
       excludeSemantics: true,
-      onTap: () => onChanged(!value),
+      onTap: () {
+        if (enabled) onChanged(!value);
+      },
       child: GestureDetector(
         onTap: () {
+          if (!enabled) return;
           GlitchTap.play(context);
           onChanged(!value);
         },

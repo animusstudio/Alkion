@@ -430,6 +430,7 @@ class _SegBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: GlitchTap(
+        enabled: !active,
         child: Semantics(
           button: true,
           selected: active,

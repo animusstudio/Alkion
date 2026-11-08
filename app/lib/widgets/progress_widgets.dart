@@ -283,6 +283,7 @@ class _MetricSegment extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlitchTap(
+      enabled: !isSelected,
       child: Semantics(
         selected: isSelected,
         button: true,

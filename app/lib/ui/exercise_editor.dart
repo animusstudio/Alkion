@@ -635,6 +635,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                 Field(
                   label: l.exerciseEditorMuscleGroup,
                   child: ChipSelect<String>(
+                    enabled: !_controlsLocked,
                     items: muscleItems,
                     selected: _muscleGroup,
                     onSelect: (v) {
@@ -693,6 +694,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                           ),
                         ),
                         Toggle(
+                          enabled: !_controlsLocked,
                           value: _compound,
                           semanticLabel: l.exerciseEditorCompound,
                           onChanged: (v) {
