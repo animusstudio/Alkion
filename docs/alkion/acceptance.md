@@ -428,6 +428,7 @@ at `7c7348c`. All **760 current catalog variants** resolve to one technically
 reviewed, locally bundled owner illustration, guarded by exact revision,
 equipment and facets. Original silver/coral colors and black backgrounds remain
 intact. Optional Workout Guide positions retain their separate credits/license.
+(Superseded 2026-11-08: Workout Guide positions are no longer shown or bundled.)
 Custom or incompatible identities keep the existing fallback.
 
 All 760 lossless WebPs decode at 640×640, totaling **137,208,116 bytes**.

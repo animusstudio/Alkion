@@ -85,18 +85,18 @@ total media entries or that every current exercise has guide frames. While
 shown, the frames retained explicit position selection and did not imply timing
 or prescribed technique.
 
-The bundled source is [Workout Guide](https://github.com/bryllim/workout-guide)
+The retained source is [Workout Guide](https://github.com/bryllim/workout-guide)
 by Bryl Lim at immutable commit
 [`aac599224bb9780305239607ef98540b7e0ce389`](https://github.com/bryllim/workout-guide/tree/aac599224bb9780305239607ef98540b7e0ce389).
-The original pose artwork includes Everkinetic-derived material. The bundled
+The original pose artwork includes Everkinetic-derived material. The retained
 artwork is licensed **CC BY-SA 4.0**; the app's software license does not replace
 that license. The registration preserves source repository/commit, full source
 manifest digest, exact semantic guards, exercise and frame attribution, source
-SVG/PNG locations and digests, and shipped frame/master digests. Source muscle
+SVG/PNG locations and digests, and frame/master digests. Source muscle
 metadata is omitted.
 
 - `masters/<slug>/frame-N.svg` retains unchanged upstream SVG masters.
-- `frames/<slug>/frame-N.webp` contains transparent lossless runtime frames.
+- `frames/<slug>/frame-N.webp` retains the transparent lossless frames the app once showed.
 - `LICENSE-ASSETS.txt` carries the offline CC BY-SA 4.0 notice and terms link.
 - `ATTRIBUTION.md` preserves upstream Everkinetic/Bryl Lim attribution and
   recorded first-pose adaptations.
