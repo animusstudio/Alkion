@@ -130,7 +130,7 @@ The owner asked for four kinds of change.
   - No migration and no change to stored rows; attribution is derived at read
     time.
 
-- **Device feedback (owner, 2026-11-08, APK `df33bfae` at `ec1364c` on A024):**
+- **Device feedback (owner, 2026-11-08, APK `df33bfae` at `11302e8` on A024):**
   - Animations feel smoother, but slightly too fast overall.
   - Owner choice: scale the shared interaction motion tokens about 1.25×:
     - `fast` 120→150 ms, `base` 200→250 ms, `slow` 300→375 ms;
@@ -140,7 +140,7 @@ The owner asked for four kinds of change.
     - glyph tick 30→~38 ms;
     - stagger 28→35 ms, with the cap 220→275 ms.
   - The startup intro and the ambient/sweep loops stay unchanged.
-  - Second device check (APK `f18073be` at `e34d478`): the owner preferred the
+  - Second device check (APK `f18073be` at `c161300`): the owner preferred the
     original pace, so the 1.25× scaling was reverted. T5's tests and the
     reveal-plan clean-up stay.
 

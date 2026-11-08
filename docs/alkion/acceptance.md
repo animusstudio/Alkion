@@ -23,9 +23,9 @@ Implements the approved [polish plan](../plans/2026-11-08-alkion-polish.md):
 
 Device checks on A024 (`df33bfae`, then `f18073be`): the owner accepted the
 polish. The clipped `x+y/z → n` count
-was fixed (`8771b42`, `1d1a3ce`). A trial 1.25× motion pace (`e34d478`) was
+was fixed (`2dc9acb`, `18b609d`). A trial 1.25× motion pace (`c161300`) was
 reverted at the owner's choice, keeping the original tokens. Host checks at
-`1b0a40e`: analyze clean, tests +2915 ~3 -3 (only the 3 inherited
+`2aba977`: analyze clean, tests +2915 ~3 -3 (only the 3 inherited
 `catalog_metric_controls` failures).
 
 ## UX polish — 2026-11-07
