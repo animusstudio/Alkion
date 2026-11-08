@@ -961,5 +961,9 @@
   "bodyCore": "Rumpf",
   "bodyForearms": "Unterarme",
   "bodyAdductors": "Adduktoren",
-  "bodyAbductors": "Abduktoren"
+  "bodyAbductors": "Abduktoren",
+  "volumeLegendDone": "Diese Woche erledigt",
+  "volumeLegendLive": "Dieses Training",
+  "volumeLegendPlanned": "Geplant",
+  "volumeLiveSemantics": "{muscle}: {done} Sätze diese Woche erledigt, {live} in diesem Training, {planned} geplant, Ziel {target}"
 }

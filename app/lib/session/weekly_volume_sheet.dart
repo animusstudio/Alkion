@@ -1,0 +1,200 @@
+import 'package:flutter/material.dart';
+
+import '../data/models.dart';
+import '../data/muscle_target_repository.dart';
+import '../data/muscles.dart';
+import '../data/stats_repository.dart';
+import '../l10n/app_localizations.dart';
+import '../store/local_store.dart';
+import '../theme/alkion_icon.dart';
+import '../theme/app_theme.dart';
+import '../theme/motion.dart';
+import '../theme/typography.dart';
+import '../util/calendar_keys.dart';
+import '../widgets/glyph_loading.dart';
+import '../widgets/volume_bars.dart';
+import 'active_session_controller.dart';
+import 'live_weekly_volume.dart';
+
+/// Opens the live workout's weekly volume: this week's finished sets plus
+/// the workout in progress, updating while the sheet is open.
+Future<void> showWeeklyVolumeSheet(
+  BuildContext context, {
+  required ActiveSessionController controller,
+  required LocalDatabase? database,
+}) {
+  final tokens = context.tokens;
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: tokens.surface,
+    barrierColor: tokens.overlay,
+    sheetAnimationStyle: AnimationStyle(
+      duration: Motion.of(context, Motion.base),
+      reverseDuration: Motion.of(context, Motion.fast),
+    ),
+    builder: (_) =>
+        WeeklyVolumeSheet(controller: controller, database: database),
+  );
+}
+
+class WeeklyVolumeSheet extends StatefulWidget {
+  const WeeklyVolumeSheet({
+    super.key,
+    required this.controller,
+    required this.database,
+  });
+
+  final ActiveSessionController controller;
+
+  /// Null when no store is open: the sheet then says volume is unavailable.
+  final LocalDatabase? database;
+
+  @override
+  State<WeeklyVolumeSheet> createState() => _WeeklyVolumeSheetState();
+}
+
+class _WeeklyVolumeSheetState extends State<WeeklyVolumeSheet> {
+  // Created once, never in build (re-listen rule).
+  late final DateTime _weekStart = weekStart(DateTime.now());
+  late final Stream<WeeklyMuscleVolume>? _volume = widget.database == null
+      ? null
+      : StatsRepository.local(
+          widget.database!,
+        ).watchWeeklyVolumeByMuscle(weekStart: _weekStart);
+  late final Stream<List<MuscleTarget>>? _targets = widget.database == null
+      ? null
+      : MuscleTargetRepository.local(widget.database!).watchTargets();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context), t = context.tokens;
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .9,
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          key: const Key('weekly-volume-sheet'),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      l.todayWeeklyVolume,
+                      style: WorkoutType.display(size: 22, color: t.text),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: l.commonDone,
+                    onPressed: () => Navigator.pop(context),
+                    icon: const AlkionIcon(AlkionGlyph.close),
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _volume == null
+                  ? _message(l.todayVolumeUnavailable)
+                  : StreamBuilder<WeeklyMuscleVolume>(
+                      stream: _volume,
+                      builder: (context, volume) =>
+                          StreamBuilder<List<MuscleTarget>>(
+                            stream: _targets,
+                            builder: (context, targets) =>
+                                _content(context, volume, targets),
+                          ),
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _content(
+    BuildContext context,
+    AsyncSnapshot<WeeklyMuscleVolume> volume,
+    AsyncSnapshot<List<MuscleTarget>> targets,
+  ) {
+    final l = AppLocalizations.of(context);
+    if (volume.hasError || targets.hasError) {
+      return _message(l.todayVolumeUnavailable);
+    }
+    if (!volume.hasData || !targets.hasData) {
+      return Semantics(
+        label: l.todayVolumeLoading,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: GlyphSkeleton.lines(
+            widths: const [.9, .72, .8, .5],
+            lineHeight: 10,
+            gap: 10,
+          ),
+        ),
+      );
+    }
+    final targetMap = {for (final t in targets.data!) t.muscle: t.targetSets};
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) {
+        final draft = widget.controller.draftOrNull;
+        final combined = LiveWeeklyVolume.combine(
+          volume: volume.data!.groups,
+          unknownSets: volume.data!.unknownSets,
+          targets: targetMap,
+          draft: draft == null
+              ? null
+              : DraftVolume.of(
+                  draft,
+                  weekStart: _weekStart,
+                  now: DateTime.now(),
+                ),
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (combined.unknownSets > 0) ...[
+              _message(l.todayVolumeUnknown(combined.unknownSets)),
+              const SizedBox(height: 10),
+            ],
+            if (combined.rows.isNotEmpty)
+              VolumeBars(
+                rows: [
+                  for (final r in combined.rows)
+                    (
+                      muscle: localizedMuscle(context, r.muscle),
+                      sets: r.sets,
+                      target: r.target,
+                    ),
+                ],
+                live: combined.live,
+              )
+            else if (combined.unknownSets == 0)
+              _message(l.todayNoSetsLogged),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _message(String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: WorkoutType.body(size: 12, color: context.tokens.dim),
+    ),
+  );
+}

@@ -961,5 +961,9 @@
   "bodyCore": "Tronco",
   "bodyForearms": "Antebrazos",
   "bodyAdductors": "Aductores",
-  "bodyAbductors": "Abductores"
+  "bodyAbductors": "Abductores",
+  "volumeLegendDone": "Hechas esta semana",
+  "volumeLegendLive": "Este entrenamiento",
+  "volumeLegendPlanned": "Planificadas",
+  "volumeLiveSemantics": "{muscle}: {done} series hechas esta semana, {live} en este entrenamiento, {planned} planificadas, objetivo {target}"
 }
