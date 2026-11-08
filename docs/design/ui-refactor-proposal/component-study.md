@@ -44,7 +44,7 @@ pictograms, Greek letters, columns, gold, neon, glow and decorative scores.
 
 | Priority / location | Material use | Limit |
 | --- | --- | --- |
-| P1 · Active set and Log | Precise typography, ruler ticks, flat fill and hairlines. | No decorative art, glyph substitution or animated labels near live entry. |
+| P1 · Active set and Log | Precise typography, ruler ticks, flat fill and hairlines. | No decorative art, glyph substitution or animated labels near live entry. The 2026-11-08 press glitch never applies here. |
 | P1 · Rest | A 2px coral line proportional to remaining time. | Exact readable time remains primary; no character texture or animation. |
 | P1 · Navigation and buttons | Consistent geometry, contrast and action hierarchy. | Keep every destination label; ordinary values and utility actions stay readable. |
 | P2 · Today | One sculptural glyph image, initially about 160–200dp high in a phone study. | Let the image breathe while retaining a readily reachable Start; do not compress all existing content into cards. |
@@ -112,7 +112,12 @@ restored values outside the current range. Preserve fixed rest and Log regions.
 | Icon action | A 20–24dp drawing centered within at least a 48×48dp target; accessible action name and visible focus. |
 
 All variants share type, corner logic and predictable pressed/focus/disabled
-states. Pressed feedback is a flat state change; no scale, glow or glyph scramble.
+states. Pressed feedback is a flat state change; no scale or glow. Owner
+amendment, 2026-11-08 ([polish plan](../../plans/2026-11-08-alkion-polish.md)):
+the labels of filled and outlined primary actions, chips, segmented controls
+and `Toggle` rows may play a short glyph scramble on tap (`GlitchLabel`). Plain
+text buttons, dialog and sheet actions stay calm, and nothing near live entry
+values (steppers, RIR, ruler, the live set and Log) scrambles.
 Loading reflects actual work, keeps its label context and prevents duplicate action.
 
 The owner rejected the bracketed treatment. Add exercise and Custom use the

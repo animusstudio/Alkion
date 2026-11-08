@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import 'fit_label.dart';
+import 'text_motion.dart';
 import '../theme/motion.dart';
 
 // ── Field ──────────────────────────────────────────────────────────────────
@@ -11,30 +12,44 @@ import '../theme/motion.dart';
 /// A labelled form row: uppercase interface label above [child], with an optional
 /// interface hint below.
 class Field extends StatelessWidget {
-  const Field({super.key, required this.label, required this.child, this.hint});
+  const Field({
+    super.key,
+    required this.label,
+    required this.child,
+    this.hint,
+    this.glitch = false,
+  });
 
   final String label;
   final Widget child;
   final String? hint;
 
+  /// A `Toggle` row: the label glitches when the [Toggle] inside is tapped.
+  final bool glitch;
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Padding(
+    final style = WorkoutType.body(
+      size: 12,
+      weight: FontWeight.w500,
+      color: tokens.faint,
+      letterSpacing: 0.06 * 12,
+    );
+    final field = Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FitLabel(
-            label.toUpperCase(),
-            maxLines: 2,
-            style: WorkoutType.body(
-              size: 12,
-              weight: FontWeight.w500,
-              color: tokens.faint,
-              letterSpacing: 0.06 * 12,
-            ),
-          ),
+          if (glitch)
+            GlitchLabel(
+              label.toUpperCase(),
+              fit: true,
+              maxLines: 2,
+              style: style,
+            )
+          else
+            FitLabel(label.toUpperCase(), maxLines: 2, style: style),
           const SizedBox(height: 8),
           child,
           if (hint != null) ...[
@@ -44,6 +59,7 @@ class Field extends StatelessWidget {
         ],
       ),
     );
+    return glitch ? GlitchTap.manual(child: field) : field;
   }
 }
 
@@ -107,6 +123,9 @@ class TextInput extends StatelessWidget {
 ///
 /// Generic over [T] so the same widget handles weekday ints, muscle-group
 /// strings, or any other value.
+///
+/// Tapping an unselected chip glitches its label. A chip that is already
+/// selected, or any chip while [enabled] is false, stays calm.
 class ChipSelect<T> extends StatelessWidget {
   const ChipSelect({
     super.key,
@@ -114,12 +133,17 @@ class ChipSelect<T> extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.labelOf,
+    this.enabled = true,
   });
 
   final List<T> items;
   final T? selected;
   final ValueChanged<T> onSelect;
   final String Function(T) labelOf;
+
+  /// Whether the host accepts a selection now. While false a tap neither
+  /// selects nor glitches; the chips keep their look.
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -129,37 +153,43 @@ class ChipSelect<T> extends StatelessWidget {
       runSpacing: 8,
       children: items.map((item) {
         final on = item == selected;
-        return Semantics(
-          button: true,
-          selected: on,
-          child: GestureDetector(
-            onTap: () => onSelect(item),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 48),
-              // widthFactor keeps the chip its own width: a plain Center fills
-              // the Wrap's full width and stacks every chip on its own row.
-              child: Center(
-                widthFactor: 1,
-                child: AnimatedContainer(
-                  duration: Motion.of(context, Motion.fast),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 13,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppRadius.control),
-                    color: on ? tokens.action : tokens.sunken,
-                    border: Border.all(
-                      color: on ? tokens.action : tokens.lineStrong,
+        return GlitchTap(
+          enabled: enabled && !on,
+          child: Semantics(
+            button: true,
+            selected: on,
+            child: GestureDetector(
+              onTap: () {
+                if (enabled) onSelect(item);
+              },
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                // widthFactor keeps the chip its own width: a plain Center fills
+                // the Wrap's full width and stacks every chip on its own row.
+                child: Center(
+                  widthFactor: 1,
+                  child: AnimatedContainer(
+                    duration: Motion.of(context, Motion.fast),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 8,
                     ),
-                  ),
-                  child: FitLabel(
-                    labelOf(item),
-                    maxLines: 2,
-                    style: WorkoutType.body(
-                      size: 13,
-                      weight: FontWeight.w500,
-                      color: on ? tokens.onAction : tokens.dim,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppRadius.control),
+                      color: on ? tokens.action : tokens.sunken,
+                      border: Border.all(
+                        color: on ? tokens.action : tokens.lineStrong,
+                      ),
+                    ),
+                    child: GlitchLabel(
+                      labelOf(item),
+                      fit: true,
+                      maxLines: 2,
+                      style: WorkoutType.body(
+                        size: 13,
+                        weight: FontWeight.w500,
+                        color: on ? tokens.onAction : tokens.dim,
+                      ),
                     ),
                   ),
                 ),
@@ -175,16 +205,25 @@ class ChipSelect<T> extends StatelessWidget {
 // ── Toggle ────────────────────────────────────────────────────────────────
 
 /// A 50×30 pill toggle switch styled to the design-system tokens.
+///
+/// A tap also glitches the labels of its row when the row is a
+/// [GlitchTap.manual] (`Field(glitch: true)` does this). Screen-reader
+/// activation stays calm.
 class Toggle extends StatelessWidget {
   const Toggle({
     super.key,
     required this.value,
     required this.onChanged,
     this.semanticLabel,
+    this.enabled = true,
   });
 
   final bool value;
   final ValueChanged<bool> onChanged;
+
+  /// Whether the host accepts a change now. While false a tap neither
+  /// toggles nor glitches the row; the switch keeps its look.
+  final bool enabled;
 
   /// Spoken by screen readers alongside the toggled state. Left null omits
   /// the label (only the toggled state is announced).
@@ -197,9 +236,15 @@ class Toggle extends StatelessWidget {
       toggled: value,
       label: semanticLabel,
       excludeSemantics: true,
-      onTap: () => onChanged(!value),
+      onTap: () {
+        if (enabled) onChanged(!value);
+      },
       child: GestureDetector(
-        onTap: () => onChanged(!value),
+        onTap: () {
+          if (!enabled) return;
+          GlitchTap.play(context);
+          onChanged(!value);
+        },
         child: SizedBox(
           width: 56,
           height: 48,
@@ -250,6 +295,7 @@ class PrimaryBtn extends StatelessWidget {
     required this.enabled,
     required this.onTap,
     this.secondary = false,
+    this.glitch = false,
   });
 
   final String label;
@@ -258,6 +304,10 @@ class PrimaryBtn extends StatelessWidget {
 
   /// A quieter look for an action that isn't the screen's main one.
   final bool secondary;
+
+  /// The label glitches on tap. Opt-in per site: the shared button also
+  /// serves surfaces that stay calm (the live workout and Today).
+  final bool glitch;
 
   @override
   Widget build(BuildContext context) {
@@ -293,27 +343,37 @@ class PrimaryBtn extends StatelessWidget {
         WorkoutType.body(size: 16, weight: FontWeight.w500),
       ),
     );
-    return SizedBox(
+    final labelStyle = WorkoutType.body(
+      size: 16,
+      weight: FontWeight.w500,
+      color: !enabled
+          ? tokens.dim
+          : secondary
+          ? tokens.text
+          : tokens.onAction,
+    );
+    final button = SizedBox(
       width: double.infinity,
       child: FilledButton(
         style: style,
         onPressed: enabled ? onTap : null,
-        child: FitLabel(
-          label,
-          maxLines: 2,
-          textAlign: TextAlign.center,
-          style: WorkoutType.body(
-            size: 16,
-            weight: FontWeight.w500,
-            color: !enabled
-                ? tokens.dim
-                : secondary
-                ? tokens.text
-                : tokens.onAction,
-          ),
-        ),
+        child: glitch
+            ? GlitchLabel(
+                label,
+                fit: true,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                style: labelStyle,
+              )
+            : FitLabel(
+                label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                style: labelStyle,
+              ),
       ),
     );
+    return glitch ? GlitchTap(enabled: enabled, child: button) : button;
   }
 }
 

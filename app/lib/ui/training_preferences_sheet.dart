@@ -89,6 +89,7 @@ class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
               Field(
                 label: l.trainingRepEntry,
                 child: ChipSelect<RepEntry>(
+                  enabled: !_saving && _error == null,
                   items: RepEntry.values,
                   selected: widget.settings.repEntry,
                   labelOf: (v) => v == RepEntry.fixed
@@ -105,6 +106,7 @@ class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
               Field(
                 label: l.trainingRirControls,
                 child: ChipSelect<RirControls>(
+                  enabled: !_saving && _error == null,
                   items: RirControls.values,
                   selected: widget.settings.rirControls,
                   labelOf: (v) =>
@@ -119,11 +121,13 @@ class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
               ),
               Field(
                 label: l.trainingMuscleTargets,
+                glitch: true,
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: AbsorbPointer(
                     absorbing: _saving || _error != null,
                     child: Toggle(
+                      enabled: !_saving && _error == null,
                       value: widget.settings.muscleTargetsEnabled,
                       semanticLabel: l.trainingMuscleTargets,
                       onChanged: (value) {

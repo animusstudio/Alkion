@@ -27,6 +27,7 @@ import '../widgets/line_chart.dart';
 import '../widgets/pr_badge.dart';
 import '../widgets/progress_widgets.dart';
 import '../widgets/section_label.dart';
+import '../widgets/text_motion.dart';
 import '../widgets/glyph_loading.dart';
 import 'bodyweight_view.dart';
 import 'exercise_sheet.dart';
@@ -910,9 +911,11 @@ class _EmptyState extends StatelessWidget {
               style: WorkoutType.body(size: 16, color: tokens.dim),
             ),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onOpenPicker,
-              child: Text(l.progressChooseExercise),
+            GlitchTap(
+              child: FilledButton(
+                onPressed: onOpenPicker,
+                child: GlitchLabel(l.progressChooseExercise),
+              ),
             ),
           ],
         ),
