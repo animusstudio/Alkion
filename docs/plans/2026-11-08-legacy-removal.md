@@ -228,5 +228,13 @@ check.
   `catalog_durable_workout_menu_test.dart` with `test/l10n` and
   `profile_layout_test.dart` → +21 all pass, twice.
 
-Next: owner device check of a private APK from this branch, then the outgoing
-range review and owner publish after the 2026-11-08 polish is published.
+Integrated on the published base: the 26 commits were replayed onto public
+main `853e1dd` as `feat/legacy-removal-main-20261108` (one acceptance-record
+conflict resolved by keeping both sections); the app tree equals the tested
+one apart from the polish text-motion test fix. At `22578a7`:
+`make -C app analyze` → no issues; `make -C app test TEST=--concurrency=2` →
++2873 ~3 -3, the three known `catalog_metric_controls_test.dart` cases.
+Owner device APK `2b78875c` (this tree plus the Impeller test flag) installed
+on the owner's phone 2026-11-08.
+
+Next: owner device check, then the outgoing range review and owner publish.
