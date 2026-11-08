@@ -1,6 +1,6 @@
 # Remove the in-app Reps importer, the catalog trial and legacy leftovers
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-08,
+Date: 2026-11-08. Lane: **Standard**. Status: **Done** (accepted on the owner's phone 2026-11-08); approved by the owner on 2026-11-08,
 including deferring the `reps-compat/1` derivation.
 Parent: [development](../alkion/development.md).
 Baseline: `853e1dd`, the published
@@ -234,7 +234,9 @@ the app tree equals the tested one apart from the published polish
 text-motion test fix. At `22578a7`:
 `make -C app analyze` → no issues; `make -C app test TEST=--concurrency=2` →
 +2873 ~3 -3, the three known `catalog_metric_controls_test.dart` cases.
-A private Dev APK of this tree, with the separate Impeller test flag, is on
-the owner's phone for the device check.
+Owner device check 2026-11-08 on a private Dev APK of this tree, with the
+separate Impeller flag: no Import Reps entry, no compatibility caption, and
+the ordinary workout, History and Profile flows work.
 
-Next: owner device check, then the outgoing range review and owner publish.
+Next: none in this plan. The one-shot Reps migration and the deferred
+`reps-compat/1` derivation are separate future work.

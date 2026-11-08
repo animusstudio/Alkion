@@ -1,6 +1,6 @@
 # Alkion development and qualified driver handoff
 
-2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Approved; in progress.
+2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Done.
 
 2026-11-05 · [Artwork, discovery and live-workout refinement](../plans/2026-11-05-ui-performance-refinement.md) · Implemented locally; see acceptance limits.
 
