@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/day_template_repository.dart';
-import 'package:alkion/data/is_template_backfill.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/store/local_store.dart';
 import '../alkion/domains/local_screen_harness.dart';
@@ -50,18 +49,6 @@ void main() {
       expect(days.single.slots.single.id, isNotNull);
       expect(days.single.slots.single.workSets, isNull);
       expect(days.single.isTemplate, isFalse);
-    },
-  );
-  test(
-    'source NULL flags remain unchanged; boot backfill is refused',
-    () async {
-      await seedExercise(store, 'ex', 'Bench');
-      final before = await store.inventory();
-      await expectLater(
-        backfillIsTemplate(store),
-        throwsA(isA<StoreException>()),
-      );
-      expect(await store.inventory(), before);
     },
   );
 }

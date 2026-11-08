@@ -125,8 +125,7 @@ void main() {
           day = (await DayTemplateRepository.local(h.store).allDays()).single;
       expect(day.active, isTrue);
       expect(day.slots.single.rirPolicy, isNull);
-      final delivery = RecordingDelivery(),
-          exports = ExportService(h.store, delivery: RecordingDelivery());
+      final delivery = RecordingDelivery(), exports = ExportService(h.store);
       expect(await exports.transferBytes(), isNotEmpty);
       final slot = day.slots.single;
       Future<void> policy(String? value, {int? low, int? high}) async {
@@ -161,9 +160,10 @@ void main() {
 
       for (final value in [RirPolicy.off, 'future-policy', RirPolicy.target]) {
         await policy(value);
-        final service = ExportService(h.store, delivery: delivery);
         await expectLater(
-          service.exportTransfer(),
+          exports.transferBytes().then(
+            (bytes) => delivery.deliver(bytes, 'transfer.json'),
+          ),
           category('compat_export_rir_policy_requires_native_backup'),
         );
         expect(delivery.calls, 0);

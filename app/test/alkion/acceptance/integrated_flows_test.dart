@@ -456,13 +456,11 @@ void main() {
         );
         await tester.runAsync(() async {
           await runtime!.flushPersistence();
-          final service = ExportService(
-            runtime!.store,
-            delivery: DirectoryExportDelivery(exports),
-          );
-          final full = await service.exportFull(
-            settings: runtime!.settings,
-            units: runtime!.units,
+          final delivery = DirectoryExportDelivery(exports);
+          final service = ExportService(runtime!.store, delivery: delivery);
+          final full = await delivery.deliver(
+            await service.domainBytes(),
+            'alkion-domain.json',
           );
           final domain = await _decodeExport(full.path!);
           expect(domain['format'], 'alkion-domain-export');
@@ -485,11 +483,17 @@ void main() {
           ]) {
             expect(sharedText, isNot(contains(privateMarker)));
           }
-          final compat = await service.exportTransfer();
+          final compat = await delivery.deliver(
+            await service.transferBytes(),
+            'alkion-transfer-reps-compat.json',
+          );
           final compatDoc = await _decodeExport(compat.path!);
           expect(compatDoc['format'], 'reps-export');
           expect(compatDoc['kind'], 'full');
-          final original = await service.exportOriginal(artifactId);
+          final original = await delivery.deliver(
+            await TransferService(runtime!.store).originalBytes(artifactId),
+            'alkion-original.bin',
+          );
           expect(
             await File(original.path!).readAsBytes(),
             fixture(_fixtureName),
