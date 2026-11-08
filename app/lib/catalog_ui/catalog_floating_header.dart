@@ -30,19 +30,11 @@ class CatalogFloatingHeader extends StatefulWidget {
 class _CatalogFloatingHeaderState extends State<CatalogFloatingHeader>
     with SingleTickerProviderStateMixin {
   late final AnimationController _snap;
-  ScrollPosition? _position;
 
   @override
   void initState() {
     super.initState();
     _snap = AnimationController(vsync: this);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _snap.duration = Motion.of(context, Motion.base);
-    _position = Scrollable.maybeOf(context)?.position;
   }
 
   @override
@@ -52,11 +44,17 @@ class _CatalogFloatingHeaderState extends State<CatalogFloatingHeader>
   }
 
   @override
-  Widget build(BuildContext context) => _FloatingHeaderSliver(
-    snap: _snap,
-    position: _position,
-    child: widget.child,
-  );
+  Widget build(BuildContext context) {
+    _snap.duration = Motion.of(context, Motion.base);
+    // Resolved on every build. `Scrollable.maybeOf` depends on the scope,
+    // which notifies when the Scrollable swaps its position (a new
+    // controller), so the render object moves its listener to the new one.
+    return _FloatingHeaderSliver(
+      snap: _snap,
+      position: Scrollable.maybeOf(context)?.position,
+      child: widget.child,
+    );
+  }
 }
 
 class _FloatingHeaderSliver extends SingleChildRenderObjectWidget {
@@ -113,6 +111,9 @@ class _RenderFloatingHeader extends RenderSliverSingleBoxAdapter {
       value?.isScrollingNotifier.addListener(_scrollingChanged);
     }
     _position = value;
+    // A new position starts its own history; its offset is not a delta.
+    _lastOffset = null;
+    markNeedsLayout();
   }
 
   @override
