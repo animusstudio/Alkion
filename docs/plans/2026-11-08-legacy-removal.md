@@ -1,6 +1,7 @@
 # Remove the in-app Reps importer, the catalog trial and legacy leftovers
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-08,
+including deferring the `reps-compat/1` derivation.
 Parent: [development](../alkion/development.md).
 Baseline: `ec1364c` (the 2026-11-08 polish branch head); branch
 `feat/legacy-removal-20261108`. Implementation starts after the
