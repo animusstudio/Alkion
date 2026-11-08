@@ -147,9 +147,10 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   FinishedSession? get lastFinished => _lastFinished;
   Timer? _expiry;
   int _callbackEpoch = 0;
-  int? _frozenGeneration;
-  bool get callbacksFrozen =>
-      _frozenGeneration != null || (_active?.finishPending ?? false);
+
+  /// While a prepared Finish has not committed, notification responses,
+  /// rest reconciliation and the resumable-expiry timer wait.
+  bool get callbacksFrozen => _active?.finishPending ?? false;
   bool _launching = false;
   bool get launching => _launching;
   bool tryBeginLaunch() {
@@ -220,24 +221,6 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     await flushPersistence();
   }
 
-  void freezeCallbacks(int generation) {
-    _frozenGeneration = generation;
-    _callbackEpoch++;
-    _expiry?.cancel();
-    _active?.freezeCallbacks(generation);
-  }
-
-  bool resumeCallbacks(DateTime now, {required int generation}) {
-    if (_frozenGeneration != null && _frozenGeneration != generation) {
-      return false;
-    }
-    _frozenGeneration = null;
-    _callbackEpoch++;
-    _active?.resumeCallbacks(now);
-    _recheckFinished(now);
-    return true;
-  }
-
   void register(ActiveSessionController c) {
     if (_active != null && !identical(_active, c)) {
       throw StateError('A workout is already active');
@@ -245,10 +228,6 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     _active?.removeListener(_onControllerChange);
     _active = c;
     c.addListener(_onControllerChange);
-    final generation = _frozenGeneration;
-    if (generation != null) {
-      c.freezeCallbacks(generation);
-    }
     _onControllerChange();
   }
 

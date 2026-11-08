@@ -377,23 +377,3 @@ Future<String?> chooseHistoryOrder(
     ],
   );
 }
-
-/// While a data capture holds the source (its callbacks are frozen) a new
-/// workout would live in memory only: refuse it with the hold's copy and
-/// return true. Otherwise false.
-Future<bool> refusedDuringCaptureHold(
-  BuildContext context,
-  SessionManager manager,
-) async {
-  if (!manager.callbacksFrozen) {
-    return false;
-  }
-  final l = AppLocalizations.of(context);
-  await showWDialog<void>(
-    context,
-    title: l.captureWritesPausedTitle,
-    message: l.captureNewWorkoutRefused,
-    actions: [WDialogAction(label: l.commonOk, value: null)],
-  );
-  return true;
-}

@@ -69,8 +69,8 @@ class _TargetsTabState extends State<TargetsTab> {
     );
   }
 
-  /// Persists a stepped target; a failed or refused write (e.g. while a
-  /// data capture holds the source) is shown, never dropped silently.
+  /// Persists a stepped target; a failed or refused write (e.g. while the
+  /// store needs recovery) is shown, never dropped silently.
   Future<void> _setTarget(
     String muscle,
     int sets,

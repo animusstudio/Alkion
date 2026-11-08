@@ -418,7 +418,7 @@ void main() {
 
   for (final refuseCommit in [false, true]) {
     testWidgets(
-      'held Finish hides recovery notice and ${refuseCommit ? 'failed retry' : 'success'} stays truthful',
+      'held Finish hides the not-saved notice and ${refuseCommit ? 'failed retry' : 'success'} stays truthful',
       (tester) async {
         final harness = real.ScreenHarness();
         ActiveSessionController? controller;
@@ -497,19 +497,8 @@ void main() {
           final l = AppLocalizations.of(
             tester.element(find.byType(ActiveSessionScreen)),
           );
-          final warning = find.text(l.alkionStoreRecoveryBody);
-          if (!refuseCommit) {
-            manager!.freezeCallbacks(7);
-            await tester.pump();
-            expect(
-              warning,
-              findsOneWidget,
-              reason: 'a genuine non-Finish hold stays visible',
-            );
-            manager!.resumeCallbacks(DateTime.now(), generation: 7);
-            await tester.pump();
-            expect(warning, findsNothing);
-          }
+          final warning = find.text(l.finishNotSavedBanner);
+          expect(warning, findsNothing);
           await tester.tap(find.byKey(const Key('log-set-bar')));
           await real.settleReal(tester, ticks: 2);
           final intent = controller!.pendingFinish!;
@@ -519,7 +508,7 @@ void main() {
             reason: 'real Finish is waiting at the gate',
           );
           expect(
-            controller!.captureFrozen.value,
+            controller!.callbacksFrozenListenable.value,
             isTrue,
             reason: 'the write fence remains active',
           );
@@ -584,10 +573,9 @@ void main() {
             expect(
               warning,
               findsNothing,
-              reason:
-                  'retrying must rebuild even though captureFrozen stays true',
+              reason: 'retrying must rebuild even though callbacks stay frozen',
             );
-            expect(controller!.captureFrozen.value, isTrue);
+            expect(controller!.callbacksFrozenListenable.value, isTrue);
             expect(find.byType(SessionSummaryScreen), findsNothing);
             expect(find.byType(SuccessMark), findsNothing);
             expect(first.actions.single.hash, database.actions.single.hash);

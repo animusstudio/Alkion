@@ -972,15 +972,13 @@ class ActiveSessionController extends ChangeNotifier {
 
   SessionDraft? _draft;
 
-  /// Fences autosaves: each scheduling, finish, discard and freeze moves it
-  /// on, and an autosave whose epoch is no longer current never writes —
+  /// Fences autosaves: each scheduling, flush, finish, discard and
+  /// notification action moves it on, and an autosave whose epoch is no longer current never writes —
   /// not even one whose timer already fired and is waiting for admission.
   int _saveEpoch = 0;
 
-  /// Generation of the capture that froze this controller's callbacks.
-  int? _frozenGeneration;
-
-  /// A mutation happened while frozen, so its autosave is still owed.
+  /// A mutation happened while callbacks were frozen (or an autosave
+  /// failed), so its save is still owed.
   bool _savePending = false;
   bool _notificationActionPending = false;
   _RestState? _notificationRestBefore;
@@ -988,17 +986,17 @@ class ActiveSessionController extends ChangeNotifier {
   bool get notificationActionUncertain =>
       _draftStore?.pendingNotificationAction != null;
 
-  /// Whether a capture froze autosave and rest auto-stop.
+  /// Whether autosave and rest changes wait: a prepared Finish has not
+  /// committed yet (in flight, or failed and awaiting retry), or a
+  /// notification's rest action is being saved.
   bool get callbacksFrozen =>
-      _frozenGeneration != null ||
-      _pendingFinish != null ||
-      _notificationActionPending;
+      _pendingFinish != null || _notificationActionPending;
 
   /// [callbacksFrozen] as a listenable, for what the screen shows as
-  /// unavailable while a capture holds the source (the +30s rest chip).
+  /// unavailable meanwhile (the +30s and Skip rest chips).
   /// Kept apart from [notifyListeners], which schedules an autosave.
-  ValueListenable<bool> get captureFrozen => _captureFrozen;
-  final _captureFrozen = ValueNotifier<bool>(false);
+  ValueListenable<bool> get callbacksFrozenListenable => _callbacksFrozen;
+  final _callbacksFrozen = ValueNotifier<bool>(false);
 
   @override
   void notifyListeners() {
@@ -1186,7 +1184,7 @@ class ActiveSessionController extends ChangeNotifier {
       return Future.value(false);
     }
     _notificationActionPending = true;
-    _captureFrozen.value = true;
+    _callbacksFrozen.value = true;
     _saveDebounce?.cancel();
     final epoch = ++_saveEpoch;
     final previousAction = store.pendingNotificationAction;
@@ -1200,7 +1198,7 @@ class ActiveSessionController extends ChangeNotifier {
           await store.save(snapshot());
           if (epoch == _saveEpoch) _savePending = false;
         }
-        if (_frozenGeneration != null || finishPending || _draft == null) {
+        if (finishPending || _draft == null) {
           return false;
         }
         if (previousAction?.encode() == action.encode()) return adopted;
@@ -1217,7 +1215,7 @@ class ActiveSessionController extends ChangeNotifier {
         rethrow;
       } finally {
         _notificationActionPending = false;
-        _captureFrozen.value = callbacksFrozen;
+        _callbacksFrozen.value = callbacksFrozen;
         if (_savePending) _scheduleSave();
         if (!notificationActionUncertain) {
           _notificationRestBefore = null;
@@ -1230,74 +1228,11 @@ class ActiveSessionController extends ChangeNotifier {
     return work;
   }
 
-  /// Moves on whenever the draft's persisted state may become stale; the
-  /// capture compares it to know whether its flush covered every change.
-  int get saveEpoch => _saveEpoch;
-
-  /// Stops autosave and rest auto-stop for capture [generation]: the pending
-  /// debounce is cancelled and already scheduled callbacks are fenced. Later
-  /// mutations stay in memory until [resumeCallbacks].
-  void freezeCallbacks(int generation) {
-    if (_saveDebounce?.isActive ?? false) {
-      _savePending = true;
-    }
-    _saveDebounce?.cancel();
-    _saveDebounce = null;
-    _saveEpoch++;
-    _frozenGeneration = generation;
-    _captureFrozen.value = true;
-  }
-
-  /// The capture's flush of the draft as it was at [epoch] landed: nothing
-  /// is owed unless the draft was scheduled for saving again since.
-  void markFlushed(int epoch) {
-    if (epoch == _saveEpoch) {
-      _savePending = false;
-    }
-  }
-
-  /// Ends a freeze (or, unfrozen, settles what a refused autosave still
-  /// owes): a rest whose countdown ran out meanwhile ends at its due time
-  /// (no silent extension, no timer continuity), and an owed save or a
-  /// mutation made while frozen is autosaved.
-  void resumeCallbacks(DateTime now) {
-    _frozenGeneration = null;
-    _captureFrozen.value = _pendingFinish != null;
-    if (_pendingFinish != null) {
-      return;
-    }
-    if (notificationActionUncertain) {
-      unawaited(
-        flushPersistence().then((_) => resumeCallbacks(now)).catchError((
-          Object error,
-        ) {
-          persistenceError = error;
-        }),
-      );
-      return;
-    }
-    final start = restStart;
-    var changed = false;
-    if (start != null) {
-      final due = start.add(Duration(seconds: restTotal));
-      if (!now.isBefore(due)) {
-        restEndedAt = due;
-        restStart = null;
-        restTotal = 0;
-        changed = true;
-      }
-    }
-    if (changed || _savePending) {
-      _savePending = false;
-      notifyListeners();
-    }
-  }
-
   @override
   void dispose() {
     _saveDebounce?.cancel();
     _saveEpoch++;
-    _captureFrozen.dispose();
+    _callbacksFrozen.dispose();
     super.dispose();
   }
 
@@ -1534,8 +1469,8 @@ class ActiveSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Extends the running rest. Refused while a capture froze the callbacks:
-  /// the extension is shown as unavailable then, never applied silently.
+  /// Extends the running rest. Refused while [callbacksFrozen]: the
+  /// extension is shown as unavailable then, never applied silently.
   void addRestTime(int seconds) {
     if (finishPending) {
       throw const StoreException('finish_retry_required');
@@ -2326,7 +2261,7 @@ class ActiveSessionController extends ChangeNotifier {
     );
     _saveDebounce?.cancel();
     _saveEpoch++;
-    _captureFrozen.value = true;
+    _callbacksFrozen.value = true;
     super.notifyListeners();
     return _pendingFinish!;
   }
@@ -2369,7 +2304,7 @@ class ActiveSessionController extends ChangeNotifier {
     _draftStore?.completed();
     _pendingFinish = null;
     _pendingRecovery = null;
-    _captureFrozen.value = _frozenGeneration != null;
+    _callbacksFrozen.value = false;
     _saveDebounce?.cancel();
     _saveEpoch++;
     _savePending = false;

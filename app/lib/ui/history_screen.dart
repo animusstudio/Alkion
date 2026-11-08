@@ -746,13 +746,14 @@ class _WeekHeader extends StatelessWidget {
 
 // ── SessionCard ───────────────────────────────────────────────────────────────
 
-/// Follow-up of a History delete, run under the delete's ticket (History
-/// forgets the session's finished snapshot here).
+/// Follow-up of a History delete, run as part of the same owed write
+/// (History forgets the session's finished snapshot here).
 typedef HistoryDeleted = Future<void> Function();
 
-/// Deletes [sessionId] and runs [onDeleted] as ONE source operation: the
-/// ticket lives until the snapshot forget (and its file clear) finished, so a
-/// capture cannot take its boundary between the delete and the forget.
+/// Deletes [sessionId] and runs [onDeleted] as ONE owed write: it stays owed
+/// in [UnsavedEditors] until the snapshot forget (and its file clear)
+/// finished, so a persistence flush cannot complete between the delete and
+/// the forget.
 Future<void> deleteHistorySession(
   SessionRepository repo,
   String sessionId, {
@@ -818,8 +819,8 @@ class SessionCard extends StatefulWidget {
   final SessionResumeState resumeState;
   final VoidCallback? onResume;
 
-  /// Called after the session was deleted from this card, under the
-  /// delete's [SourceTicket] (see [deleteHistorySession]).
+  /// Called after the session was deleted from this card, as part of the
+  /// same owed write (see [deleteHistorySession]).
   final HistoryDeleted? onDeleted;
 
   @override
@@ -1302,7 +1303,7 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
         isWarmup: false,
       );
     } catch (e) {
-      // E.g. refused while a data capture holds the source.
+      // E.g. refused while the store needs recovery.
       if (mounted) {
         await showWriteFailed(context, e);
       }
@@ -1341,7 +1342,7 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
         observedRevision: revision,
       );
     } catch (e) {
-      // E.g. refused while a data capture holds the source: nothing deleted.
+      // E.g. refused while the store needs recovery: nothing deleted.
       if (mounted) {
         await showWriteFailed(context, e);
       }

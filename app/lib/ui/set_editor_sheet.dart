@@ -113,16 +113,17 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   final Map<String, Timer> _timers = {};
 
   /// While a set's editing card is open, or an edit is not yet persisted,
-  /// a data capture waits for the sheet to be closed normally.
+  /// a persistence flush (backup, restore, close) waits for the sheet to be
+  /// closed normally.
   late final Object _unsavedForm = UnsavedEditors.instance.register(
     'history_sets',
     () => _openId != null || _timers.isNotEmpty,
   );
 
-  /// Sets whose latest write was refused (a data capture held the source)
-  /// or failed. Their edit stays owed — and keeps blocking capture through
+  /// Sets whose latest write was refused (the store needed recovery) or
+  /// failed. Their edit stays owed — and keeps blocking a flush through
   /// [UnsavedEditors.owe], even after the sheet closes — and is written
-  /// again on the next collapse, switch, close or capture release.
+  /// again on the next collapse, switch, close or flush.
   final Set<String> _owed = {};
 
   Set<String> get _unpersisted => {..._timers.keys, ..._owed};
@@ -158,8 +159,8 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     _disposing = true;
     UnsavedEditors.instance.unregister(_unsavedForm);
     // Fire-and-forget: the sheet is going away, nothing left to await into.
-    // A write refused now stays owed (see [_owed]) and is retried when the
-    // capture releases the source.
+    // A write refused now stays owed (see [_owed]) and is retried on the
+    // next persistence flush.
     for (final id in _unpersisted) {
       _timers.remove(id)?.cancel();
       final idx = _sets.indexWhere((e) => e.id == id);
@@ -395,7 +396,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
         }
       });
     } catch (e) {
-      // E.g. refused while a data capture holds the source: nothing deleted.
+      // E.g. refused while the store needs recovery: nothing deleted.
       if (mounted) {
         await showWriteFailed(context, e);
       }
@@ -500,7 +501,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
       });
       newId = intent.input['set']['id'] as String;
     } catch (e) {
-      // E.g. refused while a data capture holds the source: nothing added.
+      // E.g. refused while the store needs recovery: nothing added.
       if (mounted) {
         await showWriteFailed(context, e);
       }

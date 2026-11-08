@@ -69,28 +69,28 @@ Future<bool?> showWConfirm(
 }
 
 /// The editors' write-failure feedback: a "Couldn't save" dialog naming
-/// [error]. A write refused because a data capture holds the source says
-/// so in words instead (saving is unavailable during the hold, nothing
-/// changed). Does nothing if [context] is no longer mounted.
+/// [error]. A write the store refused because it needs recovery says so in
+/// words instead (nothing changed; recover, then retry). Does nothing if
+/// [context] is no longer mounted.
 Future<void> showWriteFailed(BuildContext context, Object error) async {
   debugPrint('write failed: $error');
   if (!context.mounted) {
     return;
   }
   final l = AppLocalizations.of(context);
-  final held = isCaptureHoldRefusal(error);
+  final recovery = isStoreRecoveryRefusal(error);
   await showWDialog<void>(
     context,
-    title: held ? l.alkionStoreRecoveryTitle : l.editorSaveFailed,
-    message: held ? l.alkionStoreRecoveryBody : '$error',
+    title: recovery ? l.alkionStoreRecoveryTitle : l.editorSaveFailed,
+    message: recovery ? l.alkionStoreRecoveryBody : '$error',
     actions: [WDialogAction(label: l.commonOk, value: null)],
   );
 }
 
-/// Whether [error] is a write refused because a data capture holds the
-/// source (its admission is closed while it prepares, holds or keeps a
-/// local hold).
-bool isCaptureHoldRefusal(Object error) =>
+/// Whether [error] is a write the store refused before applying it because
+/// its admission is closed: it needs recovery, or its generation or profile
+/// was fenced.
+bool isStoreRecoveryRefusal(Object error) =>
     error is StoreException &&
     {
       'recovery_required',
@@ -99,8 +99,8 @@ bool isCaptureHoldRefusal(Object error) =>
     }.contains(error.category);
 
 /// For a write a tap starts without awaiting it (a settings chip, stepper
-/// or toggle): its failure, for example a write refused while a data capture
-/// holds the source, is shown with [showWriteFailed] instead of being lost
+/// or toggle): its failure, for example a write refused while the store
+/// needs recovery, is shown with [showWriteFailed] instead of being lost
 /// as an unhandled error.
 void showWriteFailures(BuildContext context, Future<void> write) {
   write.then(

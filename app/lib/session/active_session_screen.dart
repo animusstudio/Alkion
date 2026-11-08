@@ -97,8 +97,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       // open, stop the rest here (the OS alarm covers the backgrounded case;
       // the deleted SessionManager Dart timer used to cover this one).
       // stopRest is a guarded no-op if already stopped.
-      // While a capture holds the source the rest is not stopped here; it is
-      // reconciled to its due time when the capture releases.
+      // While a Finish or notification action is pending the rest is not
+      // stopped here; the controller refuses rest changes until it settles.
       final c = _controller;
       final start = c?.restStart;
       if (c != null && start != null && !c.callbacksFrozen) {
@@ -207,7 +207,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
   /// Discards the workout, including its draft file. False (with the error
   /// shown, the workout left running when nothing was discarded) if that
-  /// failed — e.g. while a capture holds the source.
+  /// failed — e.g. while the store needs recovery.
   Future<bool> _discard(
     BuildContext context,
     ActiveSessionController controller,
@@ -957,9 +957,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       body: WorkoutCanvas(
         child: Column(
           children: [
-            // +30s is unavailable while a data capture holds the source.
+            // +30s and Skip are unavailable until a pending save settles.
             ValueListenableBuilder<bool>(
-              valueListenable: controller.captureFrozen,
+              valueListenable: controller.callbacksFrozenListenable,
               builder: (context, frozen, _) => Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -998,9 +998,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     onSkip: controller.stopRest,
                     restExtensionAvailable: !frozen,
                   ),
-                  // Persistent while a data capture holds the source: what is
-                  // changed now lives in memory only until the hold ends.
-                  if (frozen && !_finishing) const CaptureHoldBanner(),
+                  // Persistent while a Finish failed and awaits a retry: the
+                  // workout is kept unchanged until Finish commits.
+                  if (controller.finishPending && !_finishing)
+                    const FinishNotSavedBanner(),
                 ],
               ),
             ),
@@ -1382,17 +1383,17 @@ class _AddExerciseButton extends StatelessWidget {
   }
 }
 
-/// The live workout's notice while a data capture holds the source: its
-/// changes are not being saved, and are lost if the app is closed before
-/// the hold ends.
-class CaptureHoldBanner extends StatelessWidget {
-  const CaptureHoldBanner({super.key});
+/// The live workout's notice after a Finish failed: the workout is not saved
+/// yet, is kept as it is (editing stays blocked) and Finish retries the same
+/// prepared workout.
+class FinishNotSavedBanner extends StatelessWidget {
+  const FinishNotSavedBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Container(
-      key: const Key('capture-hold-banner'),
+      key: const Key('finish-not-saved-banner'),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       decoration: BoxDecoration(
         color: tokens.surface2,
@@ -1401,7 +1402,7 @@ class CaptureHoldBanner extends StatelessWidget {
       child: Semantics(
         liveRegion: true,
         child: Text(
-          AppLocalizations.of(context).alkionStoreRecoveryBody,
+          AppLocalizations.of(context).finishNotSavedBanner,
           style: WorkoutType.body(size: 13, color: tokens.text),
         ),
       ),
