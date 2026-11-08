@@ -189,6 +189,28 @@ check.
   (from `app/`) → 6 OK; `make -C app verify-catalog` and `verify-catalog-dev`
   → fail closed, "Private catalog staging is absent or redirected" (no private
   input in this worktree; A6's private APK build is the coordinator's).
-- T3 — not started.
+- T3 — done; awaiting review. Code at `9f93741` (`ed7dec3` caption, `47c16ba`
+  notice, `a78c7f8` capture-hold strings, `b6b41da` unreachable files and
+  export paths, `bd6bad7` day editor residue, `0847f70` unused strings and
+  `unused_keys_test.dart`, `9f93741` durable-runtime widget tests); later
+  commits are docs only. Removed: `body_contours.dart`, `dashed_border.dart`,
+  `export_builder.dart` (+ test), `template_absorb.dart` (+ test),
+  `is_template_backfill.dart` (+ its one test case), `CatalogEvidenceCard`,
+  `test/support/zip_writer.dart`, `exportFull`/`exportTransfer`/`exportOriginal`.
+  Kept with a reason recorded in the acceptance record: `correspondence.dart`
+  (AC-14, `alkion-correspondence/1`), `incoming_quarantine.dart` (AC-15 owner
+  gate), `historical_measurements.dart` (AC-10). The trial-named staging
+  `--verify` mode is not trivially orphaned (Make targets use it) and stays.
+  184 ARB keys removed per locale (all four). Evidence:
+  `make -C app analyze` → no issues; `make -C app format` → 516 files,
+  0 changed; `make -C app test TEST=--concurrency=2` → +2863 ~3 -3, only the
+  inherited `catalog_metric_controls` cases (`duration_distance_optional`,
+  `reps_distance_optional`, `reps_duration_optional_load` "mounts all
+  required and optional controls unset"); `make -C app test-catalog-staging
+  test-catalog-apk` → 14 + 24 tests OK; `make -C app alkion-history-recovery
+  ALKION_OUTPUT=<fresh transfer-proof* dir>` → PASS: 4 history SIGKILL
+  boundaries, split negative control detected; the new
+  `catalog_durable_workout_menu_test.dart` with `test/l10n` and
+  `profile_layout_test.dart` → +21 all pass, twice.
 
 Next: owner approval; start T1 once the 2026-11-08 polish is merged.
