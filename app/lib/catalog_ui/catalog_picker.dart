@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../history_test/history_mapping_label.dart';
 
 import '../theme/alkion_icon.dart';
@@ -11,6 +14,7 @@ import '../theme/typography.dart';
 import '../theme/tokens.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/state_motion.dart';
+import '../widgets/text_motion.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
 import '../data/models.dart';
@@ -198,6 +202,14 @@ class _CatalogPickerState extends State<CatalogPicker> {
   late _CatalogView _view;
   bool _secondary = false, _basketExpanded = false;
   bool _allowPop = false, _confirming = false;
+  // Result-title reveal after a filter, chip or search change: see
+  // [_planReveal] and [_revealFor].
+  bool _revealNext = false, _revealWindow = false, _revealHold = false;
+  bool _queryReveal = false;
+  int _revealEpoch = 0, _revealOrdinal = 0, _revealSlots = 0;
+  int? _rowSignature;
+  final _revealed = <Object, Duration>{};
+  Duration? _lastKeystroke;
   String get _locale => Localizations.localeOf(context).languageCode;
 
   @override
@@ -280,6 +292,12 @@ class _CatalogPickerState extends State<CatalogPicker> {
   // A queued callback always reads current inputs, and never blanks old results.
   void _queryChanged(String _) {
     _scrollRestoreSerial++;
+    // Only the first keystroke after a pause reveals its results, so fast
+    // typing never restarts the reveal on every character.
+    final now = SchedulerBinding.instance.currentSystemFrameTimeStamp;
+    final last = _lastKeystroke;
+    _lastKeystroke = now;
+    if (last == null || now - last >= _typingPause) _queryReveal = true;
     setState(() {});
     if (_refreshQueued) return;
     _refreshQueued = true;
@@ -288,12 +306,15 @@ class _CatalogPickerState extends State<CatalogPicker> {
       if (!mounted || !widget.state.active) return;
       _results = _derive();
       _savePresentation();
+      _revealNext = _queryReveal;
+      _queryReveal = false;
       setState(() {});
     });
   }
 
   void _update(VoidCallback change) {
     _scrollRestoreSerial++;
+    _revealNext = true;
     change();
     _results = _derive();
     _savePresentation();
@@ -372,8 +393,66 @@ class _CatalogPickerState extends State<CatalogPicker> {
       if (!mounted || serial != _scrollRestoreSerial || !_scroll.hasClients) {
         return;
       }
-      _scroll.jumpTo(offset.clamp(0.0, _scroll.position.maxScrollExtent));
+      final target = offset.clamp(0.0, _scroll.position.maxScrollExtent);
+      // Rows the jump brings into view still belong to this change's reveal.
+      if (_revealWindow && target != _scroll.offset) _revealHold = true;
+      _scroll.jumpTo(target);
     });
+  }
+
+  static const _typingPause = Duration(milliseconds: 500);
+  static const _rowExtent = 76.0;
+
+  /// Opens a reveal for the rows built in the next layout when an explicit
+  /// change ([_update], a keystroke after a pause) altered the result rows.
+  /// Rows built later, by scrolling, never reveal.
+  void _planReveal(int signature, int rowCount) {
+    final requested = _revealNext;
+    _revealNext = false;
+    final changed = _rowSignature != null && signature != _rowSignature;
+    _rowSignature = signature;
+    if (!requested || !changed || MediaQuery.disableAnimationsOf(context)) {
+      return;
+    }
+    _revealEpoch++;
+    _revealed.clear();
+    _revealOrdinal = 0;
+    _revealSlots = math.min(
+      rowCount,
+      (MediaQuery.sizeOf(context).height / _rowExtent).ceil() + 1,
+    );
+    if (_revealWindow) return;
+    _revealWindow = true;
+    WidgetsBinding.instance.addPostFrameCallback(_closeRevealWindow);
+  }
+
+  void _closeRevealWindow(Duration _) {
+    if (!mounted) return;
+    if (_revealHold) {
+      // A scroll restore jumped after the first layout: reveal the rows it
+      // lands on instead, from the first stagger step.
+      _revealHold = false;
+      _revealed.clear();
+      _revealOrdinal = 0;
+      WidgetsBinding.instance.addPostFrameCallback(_closeRevealWindow);
+      return;
+    }
+    _revealWindow = false;
+  }
+
+  /// The reveal of the row [key], claimed when it is built inside the open
+  /// window; null for every other row, which then builds no extra widget.
+  CatalogRowReveal? _revealFor(Object key) {
+    if (_revealWindow &&
+        _revealOrdinal < _revealSlots &&
+        !_revealed.containsKey(key)) {
+      _revealed[key] = RevealStagger.delay(_revealOrdinal++, _revealSlots);
+    }
+    if (_revealed.isEmpty) return null;
+    final delay = _revealed[key];
+    return delay == null
+        ? null
+        : (epoch: _revealEpoch, delay: delay, onMount: _revealWindow);
   }
 
   void _openNavigation(CatalogHit hit) {
@@ -641,20 +720,26 @@ class _CatalogPickerState extends State<CatalogPicker> {
                       runSpacing: 8,
                       children: [
                         for (final kind in _results.equipment)
-                          FilterChip(
-                            chipAnimationStyle: Motion.chip(context),
-                            key: ValueKey('catalog-equipment-$kind'),
-                            avatar: CatalogEquipmentIcon(
-                              kind: kind,
-                              size: 18,
-                              color: _equipment == kind
-                                  ? context.tokens.bg
-                                  : null,
+                          GlitchTap(
+                            // Keyed like its chip, so a reordered list keeps
+                            // each running glitch with its own label.
+                            key: ValueKey(('catalog-equipment-glitch', kind)),
+                            enabled: _equipment != kind,
+                            child: FilterChip(
+                              chipAnimationStyle: Motion.chip(context),
+                              key: ValueKey('catalog-equipment-$kind'),
+                              avatar: CatalogEquipmentIcon(
+                                kind: kind,
+                                size: 18,
+                                color: _equipment == kind
+                                    ? context.tokens.bg
+                                    : null,
+                              ),
+                              label: GlitchLabel(labels.equipment(kind)),
+                              selected: _equipment == kind,
+                              onSelected: (v) =>
+                                  change(() => _equipment = v ? kind : null),
                             ),
-                            label: Text(labels.equipment(kind)),
-                            selected: _equipment == kind,
-                            onSelected: (v) =>
-                                change(() => _equipment = v ? kind : null),
                           ),
                       ],
                     ),
@@ -674,43 +759,52 @@ class _CatalogPickerState extends State<CatalogPicker> {
                         for (final g in _results.index.browseGroups.where(
                           (g) => g.kind == 'activity',
                         ))
-                          FilterChip(
-                            chipAnimationStyle: Motion.chip(context),
-                            key: ValueKey('catalog-group-${g.key}'),
-                            avatar: CatalogGroupIcon(
-                              group: g.key,
-                              color: _group == g.key ? context.tokens.bg : null,
+                          GlitchTap(
+                            key: ValueKey(('catalog-group-glitch', g.key)),
+                            enabled: _group != g.key,
+                            child: FilterChip(
+                              chipAnimationStyle: Motion.chip(context),
+                              key: ValueKey('catalog-group-${g.key}'),
+                              avatar: CatalogGroupIcon(
+                                group: g.key,
+                                color: _group == g.key
+                                    ? context.tokens.bg
+                                    : null,
+                              ),
+                              label: GlitchLabel(_results.index.groupLabel(g)),
+                              selected: _group == g.key,
+                              onSelected: (v) {
+                                if (v) {
+                                  _openGroup(g.key);
+                                } else {
+                                  _leaveGroup();
+                                }
+                                refresh(() {});
+                              },
                             ),
-                            label: Text(_results.index.groupLabel(g)),
-                            selected: _group == g.key,
+                          ),
+                        GlitchTap(
+                          enabled: _group != CatalogFilter.unclassified,
+                          child: FilterChip(
+                            chipAnimationStyle: Motion.chip(context),
+                            key: const Key('catalog-group-unclassified'),
+                            avatar: CatalogGroupIcon(
+                              group: null,
+                              color: _group == CatalogFilter.unclassified
+                                  ? context.tokens.bg
+                                  : null,
+                            ),
+                            label: GlitchLabel(l.catalogUnclassified),
+                            selected: _group == CatalogFilter.unclassified,
                             onSelected: (v) {
                               if (v) {
-                                _openGroup(g.key);
+                                _openGroup(CatalogFilter.unclassified);
                               } else {
                                 _leaveGroup();
                               }
                               refresh(() {});
                             },
                           ),
-                        FilterChip(
-                          chipAnimationStyle: Motion.chip(context),
-                          key: const Key('catalog-group-unclassified'),
-                          avatar: CatalogGroupIcon(
-                            group: null,
-                            color: _group == CatalogFilter.unclassified
-                                ? context.tokens.bg
-                                : null,
-                          ),
-                          label: Text(l.catalogUnclassified),
-                          selected: _group == CatalogFilter.unclassified,
-                          onSelected: (v) {
-                            if (v) {
-                              _openGroup(CatalogFilter.unclassified);
-                            } else {
-                              _leaveGroup();
-                            }
-                            refresh(() {});
-                          },
                         ),
                       ],
                     ),
@@ -1012,6 +1106,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
       ].join(' · ');
       return CatalogPickerRow(
         key: ValueKey(choice.key),
+        reveal: _revealFor(choice.key),
         label: state.label(choice, _locale),
         equipment: variant?.equipmentKind,
         equipmentLabel: variant == null
@@ -1055,6 +1150,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
     Widget hitRow(CatalogHit hit) => hit.isNavigation
         ? CatalogPickerRow(
             key: ValueKey('catalog-navigation-${hit.kind}-${hit.id}'),
+            reveal: _revealFor('catalog-navigation-${hit.kind}-${hit.id}'),
             label: hit.label,
             artwork: catalogArtworkForNavigation(hit.kind, hit.key),
             subtitle: l.catalogMatchingExecutions(
@@ -1116,18 +1212,31 @@ class _CatalogPickerState extends State<CatalogPicker> {
     );
 
     final rows = <Widget Function()>[];
-    void heading(String text) => rows.add(() => _heading(text));
+    // The leading rows' identities: enough to tell whether a change altered
+    // what the first screen shows, without hashing a whole long list.
+    final leading = <Object>[];
+    void identify(Object key) {
+      if (leading.length < 40) leading.add(key);
+    }
+
+    void heading(String text) {
+      identify('heading:$text');
+      rows.add(() => _heading(text));
+    }
+
     void choices(
       Iterable<CatalogChoice> values, {
       List<CatalogVariant>? siblings,
     }) {
       for (final choice in values) {
+        identify(choice.key);
         rows.add(() => choiceRow(choice, siblings: siblings));
       }
     }
 
     void hits(Iterable<CatalogHit> values) {
       for (final hit in values) {
+        identify('${hit.kind}:${hit.id}');
         rows.add(() => hitRow(hit));
       }
     }
@@ -1216,6 +1325,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
         rows.add(() => empty(l.catalogNoResults));
       }
     }
+    _planReveal(Object.hash(rows.length, Object.hashAll(leading)), rows.length);
 
     final content = SizedBox(
       height: widget.embedded ? null : MediaQuery.sizeOf(context).height * .94,
@@ -1414,32 +1524,42 @@ class _CatalogPickerState extends State<CatalogPicker> {
                             runSpacing: 4,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              ChoiceChip(
-                                chipAnimationStyle: Motion.chip(context),
-                                key: const Key('catalog-all'),
-                                label: Text(l.catalogAllAZ),
-                                selected: _view == _CatalogView.all,
-                                onSelected: (_) =>
-                                    _update(() => _view = _CatalogView.all),
-                              ),
-                              ChoiceChip(
-                                chipAnimationStyle: Motion.chip(context),
-                                label: Text(labels.recent),
-                                selected: _view == _CatalogView.recent,
-                                onSelected: (v) => _update(
-                                  () => _view = v
-                                      ? _CatalogView.recent
-                                      : _CatalogView.all,
+                              // A chip that is already selected stays calm.
+                              GlitchTap(
+                                enabled: _view != _CatalogView.all,
+                                child: ChoiceChip(
+                                  chipAnimationStyle: Motion.chip(context),
+                                  key: const Key('catalog-all'),
+                                  label: GlitchLabel(l.catalogAllAZ),
+                                  selected: _view == _CatalogView.all,
+                                  onSelected: (_) =>
+                                      _update(() => _view = _CatalogView.all),
                                 ),
                               ),
-                              ChoiceChip(
-                                chipAnimationStyle: Motion.chip(context),
-                                label: Text(l.catalogFavorites),
-                                selected: _view == _CatalogView.favorites,
-                                onSelected: (v) => _update(
-                                  () => _view = v
-                                      ? _CatalogView.favorites
-                                      : _CatalogView.all,
+                              GlitchTap(
+                                enabled: _view != _CatalogView.recent,
+                                child: ChoiceChip(
+                                  chipAnimationStyle: Motion.chip(context),
+                                  label: GlitchLabel(labels.recent),
+                                  selected: _view == _CatalogView.recent,
+                                  onSelected: (v) => _update(
+                                    () => _view = v
+                                        ? _CatalogView.recent
+                                        : _CatalogView.all,
+                                  ),
+                                ),
+                              ),
+                              GlitchTap(
+                                enabled: _view != _CatalogView.favorites,
+                                child: ChoiceChip(
+                                  chipAnimationStyle: Motion.chip(context),
+                                  label: GlitchLabel(l.catalogFavorites),
+                                  selected: _view == _CatalogView.favorites,
+                                  onSelected: (v) => _update(
+                                    () => _view = v
+                                        ? _CatalogView.favorites
+                                        : _CatalogView.all,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1725,9 +1845,14 @@ class _CatalogPickerState extends State<CatalogPicker> {
   }
 }
 
+/// A result row's title reveal: [epoch] replays it, [delay] staggers it and
+/// [onMount] lets a row first built by the change itself play on mount.
+typedef CatalogRowReveal = ({int epoch, Duration delay, bool onMount});
+
 class CatalogPickerRow extends StatelessWidget {
   const CatalogPickerRow({
     super.key,
+    this.reveal,
     required this.label,
     required this.subtitle,
     required this.onTap,
@@ -1745,6 +1870,9 @@ class CatalogPickerRow extends StatelessWidget {
     this.artwork,
   });
   final CatalogExerciseArtwork? artwork;
+
+  /// Null for a row that does not reveal: it then builds a plain label.
+  final CatalogRowReveal? reveal;
   final String label, subtitle;
   final VoidCallback onTap;
   final VoidCallback? onMenu, onRepeat;
@@ -1866,14 +1994,28 @@ class CatalogPickerRow extends StatelessWidget {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      FitLabel(
-                                        label,
-                                        maxLines: 6,
-                                        style: WorkoutType.body(
-                                          size: 16,
-                                          color: t.text,
+                                      if (reveal case final reveal?)
+                                        RevealText(
+                                          label,
+                                          fit: true,
+                                          maxLines: 6,
+                                          onMount: reveal.onMount,
+                                          delay: reveal.delay,
+                                          replay: reveal.epoch,
+                                          style: WorkoutType.body(
+                                            size: 16,
+                                            color: t.text,
+                                          ),
+                                        )
+                                      else
+                                        FitLabel(
+                                          label,
+                                          maxLines: 6,
+                                          style: WorkoutType.body(
+                                            size: 16,
+                                            color: t.text,
+                                          ),
                                         ),
-                                      ),
                                       if (subtitle.isNotEmpty) ...[
                                         const SizedBox(height: 4),
                                         FitLabel(
