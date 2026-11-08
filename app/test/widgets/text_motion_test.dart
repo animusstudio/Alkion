@@ -1,4 +1,5 @@
 import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/motion.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/theme/typography.dart';
 import 'package:alkion/widgets/plan_form.dart';
@@ -58,7 +59,9 @@ void main() {
     expect(midway.length, lessThan(10));
     expect(midway.last, 's', reason: 'the tail resolves last');
 
-    await tester.pump(const Duration(milliseconds: 150));
+    // The run is Motion.base long (under revealTextCap); pump past its end.
+    expect(Motion.base, lessThanOrEqualTo(revealTextCap));
+    await tester.pump(Motion.base);
     expect(_plain('Bench press'), findsOneWidget);
     expect(_animating, findsNothing);
     expect(tester.widget<Opacity>(find.byType(Opacity)).opacity, 1);
@@ -140,9 +143,10 @@ void main() {
     expect(_scrambled(tester)..sort(), ['S', 'e', 'g', 'o', 't']);
     expect(tester.binding.transientCallbackCount, greaterThan(0));
 
-    await tester.pump(const Duration(milliseconds: 200));
+    // Past the 25% hold the first letters settle, well inside the run.
+    await tester.pump(Motion.slow * .6);
     expect(_scrambled(tester).length, lessThan(5));
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(Motion.slow * .4);
     expect(_plain('Set 3, go'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 16));
     expect(
@@ -169,17 +173,18 @@ void main() {
     expect(presses, 1, reason: 'the button keeps its gesture');
     expect(_scrambled(tester), hasLength(5));
 
-    await tester.pump(const Duration(milliseconds: 250));
+    const lead = Duration(milliseconds: 50);
+    await tester.pump(Motion.slow - lead);
     expect(_scrambled(tester).length, lessThan(5));
     await tester.tap(find.byType(FilledButton));
     await tester.pump();
     expect(presses, 2);
     expect(_scrambled(tester), hasLength(5), reason: 'restarted from the top');
 
-    // The first run would have ended 50 ms after the second tap.
-    await tester.pump(const Duration(milliseconds: 150));
+    // The first run would have ended [lead] after the second tap.
+    await tester.pump(lead * 3);
     expect(_animating, findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(Motion.slow);
     expect(_plain('Start'), findsOneWidget);
     // Let the button's own ink splash finish too.
     await tester.pump(const Duration(seconds: 1));
@@ -238,7 +243,7 @@ void main() {
     await tester.tap(find.byType(IconButton));
     await tester.pump();
     expect(_animating, findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(Motion.slow);
     expect(_plain('Compound'), findsOneWidget);
   });
 
@@ -301,11 +306,14 @@ void main() {
     expect(tester.binding.transientCallbackCount, 0);
   });
 
-  test('RevealStagger steps by 28 ms and caps the total at 220 ms', () {
+  test('RevealStagger steps by 35 ms and caps the total at 275 ms', () {
+    // The specimen's 28/220 ms at the app's 1.25× pace.
+    expect(RevealStagger.step, const Duration(milliseconds: 35));
+    expect(RevealStagger.cap, const Duration(milliseconds: 275));
     expect(RevealStagger.delay(0, 4), Duration.zero);
-    expect(RevealStagger.delay(3, 4), const Duration(milliseconds: 84));
-    expect(RevealStagger.delay(20, 21), const Duration(milliseconds: 220));
-    expect(RevealStagger.delay(10, 21), const Duration(milliseconds: 110));
+    expect(RevealStagger.delay(3, 4), RevealStagger.step * 3);
+    expect(RevealStagger.delay(20, 21), RevealStagger.cap);
+    expect(RevealStagger.delay(10, 21), RevealStagger.cap * .5);
     expect(RevealStagger.delay(0, 1), Duration.zero);
   });
 
@@ -535,5 +543,102 @@ void main() {
         });
       }
     }
+  });
+
+  group('RevealText.onDone', () {
+    Widget reveal(
+      VoidCallback onDone, {
+      bool onMount = true,
+      Object? replay,
+      Offset offset = Offset.zero,
+    }) => _host(
+      Transform.translate(
+        offset: offset,
+        child: RevealText(
+          'Bench press',
+          key: const Key('r'),
+          onMount: onMount,
+          replay: replay,
+          onDone: onDone,
+        ),
+      ),
+    );
+
+    testWidgets('a full run reports once, after it settles', (tester) async {
+      var done = 0;
+      await tester.pumpWidget(reveal(() => done++));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(done, 0, reason: 'still revealing');
+      await tester.pumpAndSettle();
+      expect(done, 1);
+      await tester.pump(const Duration(seconds: 1));
+      expect(done, 1, reason: 'never twice for one run');
+    });
+
+    testWidgets('a replay reports once more', (tester) async {
+      var done = 0;
+      await tester.pumpWidget(reveal(() => done++));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(reveal(() => done++, replay: 1));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(done, 1);
+      await tester.pumpAndSettle();
+      expect(done, 2);
+    });
+
+    testWidgets('reduced motion settles at once and reports once', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          FakeAccessibilityFeatures.allOn;
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      var done = 0;
+      await tester.pumpWidget(reveal(() => done++));
+      expect(_plain('Bench press'), findsOneWidget);
+      await tester.pump();
+      expect(done, 1);
+      await tester.pump(const Duration(seconds: 1));
+      expect(done, 1);
+    });
+
+    testWidgets('an off-screen reveal settles early and reports once', (
+      tester,
+    ) async {
+      var done = 0;
+      await tester.pumpWidget(
+        reveal(() => done++, offset: const Offset(0, 5000)),
+      );
+      // The first frame's viewport check settles it; the next frame reports.
+      await tester.pump();
+      await tester.pump();
+      expect(done, 1);
+      expect(tester.binding.transientCallbackCount, 0);
+      await tester.pump(const Duration(seconds: 1));
+      expect(done, 1);
+    });
+
+    testWidgets('onMount false reports at once, having nothing to play', (
+      tester,
+    ) async {
+      var done = 0;
+      await tester.pumpWidget(reveal(() => done++, onMount: false));
+      expect(_plain('Bench press'), findsOneWidget);
+      await tester.pump();
+      expect(done, 1);
+    });
+
+    testWidgets('leaving the tree mid-run reports once', (tester) async {
+      var done = 0;
+      await tester.pumpWidget(reveal(() => done++));
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(_animating, findsOneWidget);
+      await tester.pumpWidget(_host(const SizedBox()));
+      await tester.pump();
+      expect(done, 1);
+      await tester.pump(const Duration(seconds: 1));
+      expect(done, 1);
+    });
   });
 }
