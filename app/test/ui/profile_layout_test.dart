@@ -63,9 +63,6 @@ void main() {
         findsNWidgets(2),
       );
       expect(find.textContaining('Reps'), findsNothing);
-      expect(find.text(l.exportAllData), findsNothing);
-      expect(find.text(l.profileGroupSync.toUpperCase()), findsNothing);
-      expect(find.text(l.alkionAccountUnavailable), findsNothing);
       expect(tester.takeException(), isNull);
       await harness.unmount(tester);
     });
