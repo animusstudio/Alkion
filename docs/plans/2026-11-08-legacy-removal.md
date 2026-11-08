@@ -193,6 +193,7 @@ check.
   absorption wording in `app/AGENTS.md`, the durable test fails if owed writes
   never drain, and the unused-key test ignores comments. Negative control: a
   probe key → `unused ARB keys: [zzzUnusedProbe]`, 2 failures; reverted.
+  Fix re-check PASS.
   `make -C app test TEST='--concurrency=2 test/l10n
   test/catalog_ui/catalog_durable_workout_menu_test.dart'` → +14 all pass.
   Integrated (coordinator, `e7a402d`): `make -C app build-apk ALKION_FLAVOR=dev`
