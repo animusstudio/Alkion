@@ -16,7 +16,7 @@ const _qualifiedStatsDay =
 ///
 /// [groups] holds sets whose exercise has a legacy `muscle_group`. Sets with
 /// an empty or missing one are [unlabeled], per exercise and with the catalog
-/// variant its saved tracking context links to, and count in [unknownSets]
+/// variant its catalog binding links to, and count in [unknownSets]
 /// until [attribute] gives them their catalog target groups.
 final class WeeklyMuscleVolume {
   WeeklyMuscleVolume({
@@ -302,12 +302,13 @@ class StatsRepository {
     );
   }
 
-  /// The variant of a blank-labelled exercise's live catalog binding.
+  /// The variant of the exercise's live catalog binding: one indexed lookup,
+  /// fetched for every exercise so that only Dart's [hasLegacyGroup] decides
+  /// whether a label counts (SQL `trim` would only strip spaces).
   static const _bindingVariantSql =
-      "CASE WHEN trim(COALESCE(ex.muscle_group,''))='' THEN "
       '(SELECT b.variant_id FROM exercise_catalog_bindings b '
       'WHERE b.profile_id=? AND b.exercise_id=ex.id AND b.deleted=0 '
-      "AND b.catalog_namespace='$volumeCatalogNamespace') END";
+      "AND b.catalog_namespace='$volumeCatalogNamespace')";
 
   Future<bool> _hasCatalogBindings() async =>
       await db.getOptional(

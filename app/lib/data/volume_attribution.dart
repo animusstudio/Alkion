@@ -4,7 +4,7 @@ import '../catalog/catalog_browse.dart';
 /// the reviewed target groups of its linked catalog variant, or none.
 ///
 /// [variantId] is the variant the caller already knows (a live block's
-/// catalog selection, or a saved tracking context); otherwise the lookup
+/// catalog selection, or a finished exercise's catalog binding); otherwise the lookup
 /// resolves the exercise's link itself.
 typedef VolumeTargets =
     Set<String> Function(String exerciseId, String? variantId);

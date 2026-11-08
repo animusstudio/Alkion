@@ -196,6 +196,16 @@ void main() {
     });
 
     test('blank, missing and legacy labels; no blank row', () async {
+      // This fixture schema predates catalog execution: there is no binding
+      // table, and the stat falls back to no variant instead of failing.
+      expect(
+        await db.getOptional(
+          "SELECT 1 FROM sqlite_master WHERE type='table' "
+          "AND name='exercise_catalog_bindings'",
+        ),
+        isNull,
+      );
+      await seedExercise(db, 'tab', 'Tab label', muscle: '\t');
       await seedExercise(db, 'legacy', 'Legacy press', muscle: 'chest');
       await seedExercise(db, 'blank', 'Blank label', muscle: '');
       await seedExercise(db, 'spaces', 'Spaces label', muscle: '  ');
@@ -210,16 +220,19 @@ void main() {
           ('blank', 20, 8, 1, false),
           ('blank', 20, 8, 1, false),
           ('spaces', 20, 8, 1, false),
+          ('tab', 20, 8, 1, false),
         ],
       );
       final raw = await StatsRepository.local(
         db,
       ).watchWeeklyVolumeByMuscle(weekStart: weekStart(DateTime.now())).first;
       expect(raw.groups, [(muscle: 'chest', sets: 1)]);
-      expect(raw.unknownSets, 3);
+      // Any whitespace-only label (a tab too) is blank, decided in Dart.
+      expect(raw.unknownSets, 4);
       expect(raw.unlabeled.toSet(), {
         (exerciseId: 'blank', variantId: null, sets: 2),
         (exerciseId: 'spaces', variantId: null, sets: 1),
+        (exerciseId: 'tab', variantId: null, sets: 1),
       });
       // The exercise's catalog link (here from the catalog state's map).
       final linked = raw.attribute(
@@ -233,7 +246,7 @@ void main() {
         (muscle: 'shoulders', sets: 2),
         (muscle: 'triceps', sets: 2),
       });
-      expect(linked.unknownSets, 1);
+      expect(linked.unknownSets, 2);
     });
   });
 
@@ -304,7 +317,7 @@ void main() {
       );
       final stats = StatsRepository.local(store);
       final raw = await stats.watchWeeklyVolumeByMuscle(weekStart: week).first;
-      // The saved tracking contexts carry each exercise's variant, so the
+      // The catalog bindings carry each exercise's variant, so the
       // finished stat needs no in-memory link.
       for (final source in [
         targets,
@@ -314,6 +327,49 @@ void main() {
         expect({for (final g in finished.groups) g.muscle: g.sets}, expected);
         expect(finished.unknownSets, 1);
       }
+
+      // A binding-only change re-fires the stream; a deleted binding no
+      // longer attributes (nothing else changes).
+      final twoTargets =
+          (await store.get(
+                'SELECT exercise_id FROM exercise_catalog_bindings '
+                'WHERE profile_id=? AND variant_id=?',
+                [store.profileId, variants[1].id],
+              ))['exercise_id']
+              as String;
+      final emissions = <WeeklyMuscleVolume>[];
+      final subscription = stats
+          .watchWeeklyVolumeByMuscle(weekStart: week)
+          .listen(emissions.add);
+      addTearDown(subscription.cancel);
+      Future<void> until(bool Function() done) async {
+        for (var i = 0; i < 200 && !done(); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(done(), isTrue);
+      }
+
+      await until(() => emissions.isNotEmpty);
+      await store.writeTransaction(
+        (tx) => tx.execute(
+          'UPDATE exercise_catalog_bindings SET deleted=1 '
+          'WHERE profile_id=? AND exercise_id=?',
+          [store.profileId, twoTargets],
+        ),
+      );
+      await until(() => emissions.length >= 2);
+      final unbound = emissions.last;
+      expect(unbound.unlabeled.singleWhere((r) => r.exerciseId == twoTargets), (
+        exerciseId: twoTargets,
+        variantId: null,
+        sets: 1,
+      ));
+      final after = unbound.attribute(
+        catalogVolumeTargets(state.bundle.browse),
+      );
+      expect({for (final g in after.groups) g.muscle: g.sets}, {'biceps': 1});
+      expect(after.unknownSets, 2);
+      await subscription.cancel();
     });
   });
 }
