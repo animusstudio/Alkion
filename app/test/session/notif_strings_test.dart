@@ -13,16 +13,14 @@ void main() {
   test(
     'notification limitations are localized for all four supported languages',
     () async {
-      final denied = <String>{}, inexact = <String>{}, unavailable = <String>{};
+      final denied = <String>{}, unavailable = <String>{};
       for (final language in ['en', 'de', 'es', 'it']) {
         final l = await AppLocalizations.delegate.load(Locale(language));
         denied.add(l.alkionNotificationsDenied);
-        inexact.add(l.alkionNotificationsInexact);
         unavailable.add(l.alkionNotificationsUnavailable);
         expect(notifString(language, 'channel'), isNotEmpty);
       }
       expect(denied.length, 4);
-      expect(inexact.length, 4);
       expect(unavailable.length, 4);
     },
   );

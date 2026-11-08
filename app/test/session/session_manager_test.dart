@@ -424,19 +424,14 @@ void main() {
         await mountReal(tester, AlkionApp(runtime: runtime!));
         await realSettle(tester, ticks: 5);
         final l = AppLocalizations.of(appNavigatorKey.currentContext!);
-        expect(find.text(l.alkionNotificationsInexact), findsNothing);
-        if (problem == NotificationLimitation.inexact) {
-          expect(find.byType(SnackBar), findsNothing);
-        } else {
-          expect(
-            find.text(
-              problem == NotificationLimitation.denied
-                  ? l.alkionNotificationsDenied
-                  : l.alkionNotificationsUnavailable,
-            ),
-            findsOneWidget,
-          );
-        }
+        expect(
+          find.text(
+            problem == NotificationLimitation.denied
+                ? l.alkionNotificationsDenied
+                : l.alkionNotificationsUnavailable,
+          ),
+          findsOneWidget,
+        );
         expect(runtime!.sessions.notificationLimitation, problem);
       } finally {
         await mountReal(tester, const SizedBox());

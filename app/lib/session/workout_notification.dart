@@ -116,7 +116,7 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
   );
 }
 
-enum NotificationLimitation { denied, inexact, unavailable }
+enum NotificationLimitation { denied, unavailable }
 
 /// Android OS mirrors only. No callback opens a profile or writes SQL.
 class WorkoutNotification extends ChangeNotifier {
@@ -218,9 +218,7 @@ class WorkoutNotification extends ChangeNotifier {
       final key =
           '$name|${payload.countdown}|${payload.when.toIso8601String()}|${action?.encode()}|$exact|$locale';
       if (key == _lastShown) return;
-      _status(
-        payload.countdown && !exact ? NotificationLimitation.inexact : null,
-      );
+      _status(null);
       // Remove a prior alarm as well as its displayed mirror before replacing it.
       await _plugin.cancel(id: _kNotifId);
       await _show(name, startedAt, payload.countdown, payload.when, action);
@@ -250,7 +248,6 @@ class WorkoutNotification extends ChangeNotifier {
           );
         } catch (_) {
           if (!exact) rethrow;
-          _status(NotificationLimitation.inexact);
           await schedule(AndroidScheduleMode.inexactAllowWhileIdle);
         }
       }

@@ -701,19 +701,16 @@ class _RuntimeNotificationNavigationState
         final l = AppLocalizations.of(navigation);
         final message = switch (limitation) {
           NotificationLimitation.denied => l.alkionNotificationsDenied,
-          NotificationLimitation.inexact => null,
           NotificationLimitation.unavailable =>
             l.alkionNotificationsUnavailable,
         };
-        if (message != null) {
-          appScaffoldMessengerKey.currentState?.showSnackBar(
-            SnackBar(
-              content: Text(message),
-              duration: const Duration(seconds: 8),
-              action: SnackBarAction(label: l.commonOk, onPressed: () {}),
-            ),
-          );
-        }
+        appScaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(label: l.commonOk, onPressed: () {}),
+          ),
+        );
       } else if (limitation == null) {
         _shown = null;
       }

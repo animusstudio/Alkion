@@ -185,12 +185,12 @@ void main() {
     );
 
     test(
-      'unavailable exact capability uses inexact schedule and reports delay',
+      'unavailable exact capability uses inexact schedule without a limitation',
       () async {
         exact = false;
         await notifier.init(onResponse: (_) {});
         await show();
-        expect(notifier.limitation, NotificationLimitation.inexact);
+        expect(notifier.limitation, isNull);
         final scheduled =
             calls.singleWhere((c) => c.method == 'zonedSchedule').arguments
                 as Map;
@@ -207,10 +207,17 @@ void main() {
         await notifier.init(onResponse: (_) {});
         failExact = true;
         await show();
-        expect(notifier.limitation, NotificationLimitation.inexact);
+        expect(notifier.limitation, isNull);
         expect(calls.where((c) => c.method == 'zonedSchedule').length, 2);
+        final fallback =
+            calls.lastWhere((c) => c.method == 'zonedSchedule').arguments
+                as Map;
+        expect(
+          fallback['platformSpecifics']['scheduleMode'],
+          AndroidScheduleMode.inexactAllowWhileIdle.name,
+        );
         await show();
-        expect(notifier.limitation, NotificationLimitation.inexact);
+        expect(notifier.limitation, isNull);
         expect(calls.where((c) => c.method == 'zonedSchedule').length, 2);
         failAll = true;
         await notifier.cancel();
