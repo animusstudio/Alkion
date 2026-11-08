@@ -35,8 +35,8 @@ pipeline in one Android system WebView. No new package is required.
 - Optional `onStatus` receives `loading`, `ready`, `unavailable`, `error`;
   `fallback` is native Flutter UI shown whenever artwork is not ready. Localize
   that content in the caller. Unsupported platforms return `unavailable`.
-- Caller supplies bounded dimensions: compact 128×212; enlarged retains the
-  same aspect ratio. `compact` selects the approved optical sampling pitch.
+- Caller supplies bounded dimensions at the artwork's 4:7 aspect: the Today
+  figure is 176×308 (128×224 at its narrowest); enlarged keeps the aspect. `compact` selects the approved optical sampling pitch.
 - Artwork ignores pointer input and is excluded from semantics. Native outer
   controls/gestures own input: horizontal delta × .009 radians matches the
   study. Explore never changes pitch from a gesture; vertical delta pans.

@@ -1,10 +1,23 @@
 ---
 app: alkion
 stage: development
-observed: 2026-11-07
+observed: 2026-11-08
 ---
 
 # Alkion integrated acceptance
+
+## UX polish — 2026-11-07
+
+Implements the approved [UX polish plan](../plans/2026-11-07-ux-polish.md) with
+its owner device amendments: a larger Today body with a 48 dp Workload entry; a
+workload sheet trimmed to the body, legend and region counts; feathered glyph
+loaders with a 500 ms reveal; a logo startup mark; Explore as a full-width body
+over a snapping muscle chip strip, with no tilt (drag turns and pans, pinch
+zooms); and a flat, equal-height History band. Host checks at `1403800`:
+analyze clean, tests +2820 ~3 -3 (only the 3 inherited `catalog_metric_controls`
+failures). The owner approved the workload sheet, loaders and reveal on A024.
+Open: the owner check of the `5d59379` build, Explore frame time on A024 and
+whether the Android splash stays up during the first-frame hold.
 
 ## Explore smooth motion and inertia — 2026-11-07 (T4)
 
