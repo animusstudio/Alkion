@@ -158,7 +158,14 @@ check.
   dir>` → PASS: 4 history SIGKILL boundaries, split negative control
   detected; `make -C app alkion-import-history` on the synthetic history
   fixture → selected, 3 sessions / 3 blocks / 4 sets, verified backup.
-- T2 — implemented at `088f0a1` (code `9846e3d`, `08b38ce`; later commits
+- T2 — done; review PASS-WITH-FINDINGS. Coordinator A6 check at `74d8fcc`:
+  `make -C app build-catalog-dev-local-test-release` (private inputs staged,
+  private body assets) → build and APK verifier PASS, same catalog asset
+  hashes as before. The public no-catalog check runs in the integrated run.
+  Moved to T3: the `day_editor.dart` editor-local catalog metrics residue,
+  and live-workout widget tests over a durable runtime (block menu again and
+  setup, setup sheet at 320dp and 2x, cancel keeping draft and timer, day
+  editor save and reopen with catalog slots). Implemented at `088f0a1` (code `9846e3d`, `08b38ce`; later commits
   are docs only); awaiting review. The trial entry point, storage, Make
   target, Gradle path, package, strings, startup skeleton and `!durable`
   branches are gone; `CatalogTrialState` folds into `CatalogRuntimeState`,
