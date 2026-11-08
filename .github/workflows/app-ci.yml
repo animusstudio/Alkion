@@ -29,7 +29,7 @@ jobs:
         run: flutter analyze
 
       - name: Test catalog build guards
-        run: make -C app test-catalog-trial-staging test-catalog-trial-apk
+        run: make -C app test-catalog-staging test-catalog-apk
 
       - name: Test
         working-directory: app

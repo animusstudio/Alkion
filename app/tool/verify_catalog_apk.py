@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the selected native ABI and fresh SQLite payloads of a trial APK.
+"""Verify the selected native ABI and fresh SQLite payloads of a catalog APK.
 
 This reads explicitly supplied build artifacts only, without extracting the APK
 or invoking Android tools. Other ABI plugin libraries may legitimately coexist.
@@ -86,7 +86,7 @@ def _elf_hash(stream, machine, label):
 def _verify_catalog_assets(archive, entries, assets_dir, *, development=False):
     """Bind the packaged private inventory to explicitly selected staged bytes."""
     spec = importlib.util.spec_from_file_location(
-        'catalog_trial_stager', Path(__file__).with_name('stage_catalog_trial.py'))
+        'catalog_stager', Path(__file__).with_name('stage_catalog.py'))
     stager = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(stager)
     root = Path(assets_dir)
@@ -326,7 +326,7 @@ def main(argv=None):
                           development=args.development, build_mode=args.build_mode,
                           intermediates_dir=args.intermediates_dir, ndk_dir=args.ndk_dir))
     except (OSError, ValueError, BadZipFile, RuntimeError, subprocess.CalledProcessError) as error:
-        print(f'Catalog trial APK verification failed: {error}', file=sys.stderr)
+        print(f'Catalog APK verification failed: {error}', file=sys.stderr)
         return 1
     print(json.dumps(receipt, sort_keys=True))
     return 0

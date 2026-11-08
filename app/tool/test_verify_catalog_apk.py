@@ -14,7 +14,7 @@ import warnings
 from zipfile import ZipFile
 
 spec = importlib.util.spec_from_file_location(
-    'catalog_apk_verifier', Path(__file__).with_name('verify_catalog_trial_apk.py'))
+    'catalog_apk_verifier', Path(__file__).with_name('verify_catalog_apk.py'))
 verifier = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(verifier)
 
@@ -35,7 +35,7 @@ def synthetic_manifest(target):
                  for key, library in verifier.SQLITE_LOADERS.items()}}}
 
 
-class CatalogTrialApkTest(unittest.TestCase):
+class CatalogApkTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='catalog-apk-synthetic-')
         self.root = Path(self.temp.name)
@@ -200,7 +200,7 @@ class CatalogTrialApkTest(unittest.TestCase):
         self.assertEqual(error.exception.code, 2)
 
     def catalog_fixture(self, browse=True, development=False):
-        from test_stage_catalog_trial import stager, synthetic_catalog, synthetic_browse
+        from test_stage_catalog import stager, synthetic_catalog, synthetic_browse
         catalog = synthetic_catalog()
         source_digest = stager.sha256(stager.encode(catalog))
         projected = stager.encode(stager.project(catalog))

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location(
-    'catalog_stager', Path(__file__).with_name('stage_catalog_trial.py'))
+    'catalog_stager', Path(__file__).with_name('stage_catalog.py'))
 stager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stager)
 
@@ -97,7 +97,7 @@ class CatalogStagerTest(unittest.TestCase):
         self.source.write_bytes(data)
         return stager.sha256(data)
 
-    def test_development_admission_preserves_trial_and_exact_catalog_browse_bytes(self):
+    def test_development_admission_preserves_staged_and_exact_catalog_browse_bytes(self):
         digest = self.write_source()
         browse = self.root / 'browse.json'
         browse.write_bytes(stager.encode(synthetic_browse(synthetic_catalog(), digest)))
@@ -119,7 +119,7 @@ class CatalogStagerTest(unittest.TestCase):
         self.assertEqual(stager.verify(development=True), manifest)
         self.assertTrue(stager.verify()['private_trial_only'])
 
-    def test_development_admission_refuses_corrupt_trial_or_changed_existing_mirror(self):
+    def test_development_admission_refuses_corrupt_staging_or_changed_existing_mirror(self):
         stager.stage(self.source, self.write_source())
         stager.stage_development()
         mirror = stager.DEV_ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
@@ -131,7 +131,7 @@ class CatalogStagerTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             stager.stage_development()
 
-    def test_development_verifier_rejects_trial_scope_extra_files_and_redirected_paths(self):
+    def test_development_verifier_rejects_staged_scope_extra_files_and_redirected_paths(self):
         stager.stage(self.source, self.write_source())
         stager.stage_development()
         mirror = stager.DEV_ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'

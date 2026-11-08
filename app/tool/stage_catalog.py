@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Project explicit, hash-pinned catalog input for a private offline trial.
+"""Project explicit, hash-pinned catalog input for the private Dev catalog.
 
-The projection is not cleared for redistribution. Only the isolated Android
-target includes it; ordinary Flutter assets declare the public README alone.
+The projection is not cleared for redistribution. Only the guarded private Dev
+build includes it; ordinary Flutter assets declare the public README alone.
+
+The staged input keeps its historical names: the `assets/catalog_trial`
+directory, its `build/private-catalog-trial` mirror, the
+`alkion-catalog-trial-manifest` format and its `private_trial_only` flag and
+notice. Already staged private inputs verify byte-for-byte against them.
 """
 import argparse
 import hashlib
@@ -119,7 +124,7 @@ def project(source):
         # The referenced muscle bundle is staged byte-for-byte, never projected.
         return source
     if _array(source.get('equipment_models')):
-        raise ValueError('Equipment models are not admitted for this trial')
+        raise ValueError('Equipment models are not admitted for this catalog')
     result = {key: source[key] for key in
               ('format', 'schema_version', 'catalog_revision', 'search_revision')}
     for key in ('catalog_revision', 'search_revision'):
@@ -383,7 +388,7 @@ def verify(*, development=False):
     manifest = decode(files[MANIFEST_NAME])
     source_digest = manifest.get('source_sha256', '')
     if not isinstance(source_digest, str) or not re.fullmatch(r'[0-9a-f]{64}', source_digest):
-        raise ValueError('Invalid source digest in trial manifest')
+        raise ValueError('Invalid source digest in staged manifest')
     browse_metadata = manifest.get('browse')
     if browse_metadata is not None:
         if (not isinstance(browse_metadata, dict) or
@@ -417,7 +422,7 @@ def verify(*, development=False):
     expected = manifest_for(catalog, source_digest, sha256(files[CATALOG_NAME]),
                             browse_metadata, development=development, muscle=muscle_metadata, scopes=scope_metadata)
     if manifest != expected:
-        raise ValueError('Private trial manifest does not match the projection')
+        raise ValueError('Private staged manifest does not match the projection')
     _safe_output(mirror)
     allowed_paths = {mirror / name for name in files}
     for path in android_assets.rglob('*'):
@@ -433,15 +438,15 @@ def verify(*, development=False):
 
 
 def stage_development():
-    """Admit the retained reviewed projection without rewriting either trial copy."""
-    trial = verify()
+    """Admit the retained reviewed projection without rewriting either staged copy."""
+    staged = verify()
     files = {name: (ASSETS / name).read_bytes()
              for name in (CATALOG_NAME, BROWSE_NAME, MUSCLE_NAME, SCOPE_NAME)
-             if name == CATALOG_NAME or (name == BROWSE_NAME and trial.get('browse') is not None) or (name in (MUSCLE_NAME, SCOPE_NAME) and trial.get('muscle_bundle') is not None)}
+             if name == CATALOG_NAME or (name == BROWSE_NAME and staged.get('browse') is not None) or (name in (MUSCLE_NAME, SCOPE_NAME) and staged.get('muscle_bundle') is not None)}
     catalog = project(decode(files[CATALOG_NAME]))
     files[MANIFEST_NAME] = encode(manifest_for(
-        catalog, trial['source_sha256'], trial['projection_sha256'],
-        trial.get('browse'), development=True, muscle=trial.get('muscle_bundle'), scopes=trial.get('scope_registry')))
+        catalog, staged['source_sha256'], staged['projection_sha256'],
+        staged.get('browse'), development=True, muscle=staged.get('muscle_bundle'), scopes=staged.get('scope_registry')))
     directory = DEV_ANDROID_ASSETS / 'flutter_assets/assets/catalog_trial'
     _safe_output(DEV_ANDROID_ASSETS)
     if DEV_ANDROID_ASSETS.exists():

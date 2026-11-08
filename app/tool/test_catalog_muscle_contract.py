@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 import catalog_muscle_contract as contract
-import stage_catalog_trial as stager
+import stage_catalog as stager
 
 
 class MuscleStageTest(unittest.TestCase):
@@ -106,7 +106,7 @@ class MuscleStageTest(unittest.TestCase):
             paths = [root / name for name in ['catalog.json', 'muscles.json', 'scopes.json']]
             for path, data in zip(paths, [source, muscle, scopes]):
                 path.write_bytes(data)
-            with patch.object(stager, 'APP', root), patch.object(stager, 'ASSETS', root/'assets'), patch.object(stager, 'ANDROID_ASSETS', root/'trial'), patch.object(stager, 'DEV_ANDROID_ASSETS', root/'dev'):
+            with patch.object(stager, 'APP', root), patch.object(stager, 'ASSETS', root/'assets'), patch.object(stager, 'ANDROID_ASSETS', root/'mirror'), patch.object(stager, 'DEV_ANDROID_ASSETS', root/'dev'):
                 m = stager.stage(paths[0], stager.sha256(source), muscle_path=paths[1], muscle_sha256=stager.sha256(muscle), scopes_path=paths[2], scopes_sha256=stager.sha256(scopes))
                 self.assertEqual(m['schema_version'], 4)
                 self.assertEqual((stager.ASSETS/stager.MUSCLE_NAME).read_bytes(), muscle)
