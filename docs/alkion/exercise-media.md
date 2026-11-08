@@ -67,37 +67,44 @@ digests, lossless WebP format, dimensions, opaque still-image properties, exact
 asset inventory and generated registrations. These checks do not grant artwork
 rights or qualify visual appearance on a device.
 
-## Optional Workout Guide movement frames
+## Workout Guide movement frames (source only)
 
-The app also retains an optional, separately credited Workout Guide movement
-subset: 196 exact variant registrations and 579 selected frames, from the
-initial 2026-11-01 catalog projection. This is historical subset coverage, not
-a statement that the current catalog has 196 total media entries or that every
-current exercise has guide frames. Owner artwork remains the primary image;
-guide frames appear only when their optional details control is expanded.
-They retain explicit position selection and do not imply timing or prescribed
-technique.
+Since 2026-11-08 (owner decision, [polish plan](../plans/2026-11-08-alkion-polish.md)
+T3b) the app no longer shows Workout Guide frames: the exercise details page
+dropped its movement-frames disclosure, and owner artwork is the only exercise
+image. The app bundle no longer declares or ships them, and the generated
+resolver (`lib/catalog/catalog_media.dart`) and its strings are removed. The
+reviewed subset stays in `app/assets/workout_guide/` as source only, with its
+[notice](../../app/assets/workout_guide/NOTICE.md). The rest of this section
+describes that retained source.
 
-The bundled source is [Workout Guide](https://github.com/bryllim/workout-guide)
+The retained subset is separately credited: 196 exact variant registrations and
+579 selected frames, from the initial 2026-11-01 catalog projection. This is
+historical subset coverage, not a statement that the current catalog has 196
+total media entries or that every current exercise has guide frames. While
+shown, the frames retained explicit position selection and did not imply timing
+or prescribed technique.
+
+The retained source is [Workout Guide](https://github.com/bryllim/workout-guide)
 by Bryl Lim at immutable commit
 [`aac599224bb9780305239607ef98540b7e0ce389`](https://github.com/bryllim/workout-guide/tree/aac599224bb9780305239607ef98540b7e0ce389).
-The original pose artwork includes Everkinetic-derived material. The bundled
+The original pose artwork includes Everkinetic-derived material. The retained
 artwork is licensed **CC BY-SA 4.0**; the app's software license does not replace
 that license. The registration preserves source repository/commit, full source
 manifest digest, exact semantic guards, exercise and frame attribution, source
-SVG/PNG locations and digests, and shipped frame/master digests. Source muscle
+SVG/PNG locations and digests, and frame/master digests. Source muscle
 metadata is omitted.
 
 - `masters/<slug>/frame-N.svg` retains unchanged upstream SVG masters.
-- `frames/<slug>/frame-N.webp` contains transparent lossless runtime frames.
+- `frames/<slug>/frame-N.webp` retains the transparent lossless frames the app once showed.
 - `LICENSE-ASSETS.txt` carries the offline CC BY-SA 4.0 notice and terms link.
 - `ATTRIBUTION.md` preserves upstream Everkinetic/Bryl Lim attribution and
   recorded first-pose adaptations.
 - `LICENSE-CODE.txt` and `LICENSES.md` preserve the upstream software and
   documentation license notices separately from the artwork license.
 
-The app displays creator/source/license credit for guide frames, including on
-image failure. Any redistribution or later adaptation must retain applicable
+While the frames were shown, the app displayed creator/source/license credit
+for them, including on image failure. Any redistribution or later adaptation must retain applicable
 credit, indicate changes, and follow the CC BY-SA terms. This guide-specific
 notice covers only the guide assets; owner artwork has its own CC BY-SA grant.
 
@@ -120,9 +127,9 @@ retained pose counts differ where a source sequence changes exercise identity:
 | `parallel_bar_l_sit` | 1 | Later poses bend the knees. |
 | `hollow_body_rock` | 1, 3 | Frame 2 changes to a bent-knee tuck. |
 
-The registry records original source frame indexes. App controls number only the
-retained frames in display order, so app position numbers may differ from
-source indexes. Neither numbering establishes timing, force, breathing or a
+The registry records original source frame indexes. While shown, app controls
+numbered only the retained frames in display order, so app position numbers
+could differ from source indexes. Neither numbering establishes timing, force, breathing or a
 complete instruction.
 
 Examples excluded from the guide subset after inspecting source art include a
@@ -152,8 +159,7 @@ no resize, crop, color edit or geometry change. Decoded WebP pixels are compared
 byte-for-byte with source PNG RGBA pixels, including transparency. Encoder
 versions are guarded; SVG masters and source notices are copied verbatim. The
 default verification uses Python's standard library and checks hashes,
-dimensions, SVG structure, lossless WebP headers, notices, asset inventory,
-Flutter declarations and registry/resolver agreement. Flutter tests additionally
-load every runtime frame from the asset bundle, compare recorded hashes, check
-incompatible guards and decode representative frames. Host verification does
-not establish Android visual or device qualification.
+dimensions, SVG structure, lossless WebP headers, notices and asset inventory.
+It fails if `app/pubspec.yaml` declares any Workout Guide path, because the
+media is source only. Preparation no longer writes a Dart resolver. Host
+verification does not establish Android visual or device qualification.

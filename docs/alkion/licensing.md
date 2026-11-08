@@ -69,7 +69,7 @@ evidence.
 
 | Material | Terms and boundary |
 | --- | --- |
-| `app/assets/workout_guide/` | Existing CC BY-SA 4.0 artwork with Everkinetic/Bryl Lim attribution; upstream software/documentation MIT terms remain separate. Retain all [upstream notices](../../app/assets/workout_guide/ATTRIBUTION.md) and recorded changes. This is not owner exercise artwork. |
+| `app/assets/workout_guide/` | Existing CC BY-SA 4.0 artwork with Everkinetic/Bryl Lim attribution; upstream software/documentation MIT terms remain separate. Retain all [upstream notices](../../app/assets/workout_guide/ATTRIBUTION.md) and recorded changes. This is not owner exercise artwork. Since 2026-11-08 it is kept in source only and is not bundled in the app ([notice](../../app/assets/workout_guide/NOTICE.md)). |
 | Glyphs in `app/assets/icons/` | The 49 pinned Iconoir originals (48 regular outlines and the solid star) retain their separate MIT grant. The 42 original Alkion category outlines (`alkion-*.svg`) follow the owner software AGPL-3.0-only grant. The bundled [NOTICE](../../app/assets/icons/NOTICE) and [source/provenance record](../../app/tool/iconoir/README.md) distinguish both scopes. |
 | Fonts in `app/assets/google_fonts/`, `docs/assets/brand/fonts/` and study folders | Their accompanying OFL notices remain in force, including for font material used in brand assets. |
 | Dependencies and third-party study material | Their own licenses/notices remain in force, including the [retained MakeHuman notice](../design/body-3d-study/assets/MakeHuman-LICENSE.md). The root grant does not relicense them. |

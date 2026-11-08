@@ -1617,26 +1617,7 @@
     }
   },
   "catalogArtworkDescription": "Exercise illustration",
-  "catalogMovementFrames": "Movement frames (Workout Guide)",
-  "catalogMediaPosition": "Position {number}",
-  "catalogMediaCredit": "Artwork: {attribution} · CC BY-SA 4.0",
-  "catalogMediaLicense": "Artwork license",
-  "catalogMediaLicenseSummary": "CC BY-SA 4.0: you may share and adapt this artwork with attribution and under the same license. The artwork license is separate from the app license. Illustration colors follow the app theme; original assets are unchanged.",
   "catalogMediaUnavailable": "Image unavailable",
-  "@catalogMediaPosition": {
-    "placeholders": {
-      "number": {
-        "type": "int"
-      }
-    }
-  },
-  "@catalogMediaCredit": {
-    "placeholders": {
-      "attribution": {
-        "type": "String"
-      }
-    }
-  },
   "animusRecoveryTitle": "Server history needs review",
   "animusRecoveryOpen": "Review connection",
   "animusRecoveryHide": "Hide review",

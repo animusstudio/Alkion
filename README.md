@@ -78,8 +78,9 @@ migration, READY, deployment or a release.
 New owner-controlled software is licensed under [AGPL-3.0-only](LICENSE), with
 prior public MIT permissions preserved in [the legacy notice](LICENSES/MIT-legacy.txt).
 The 760 owner exercise illustrations are separately licensed
-[CC BY-SA 4.0](app/assets/exercise_artwork/NOTICE.md). Workout Guide assets,
-bundled fonts and other third-party material retain their own terms and notices.
+[CC BY-SA 4.0](app/assets/exercise_artwork/NOTICE.md). Workout Guide assets
+(kept in source, not bundled in the app), bundled fonts and other third-party
+material retain their own terms and notices.
 
 Both licenses permit compliant commercial reuse without payment or mandatory
 project affiliation. Separate terms may be discussed only for rights the owner
