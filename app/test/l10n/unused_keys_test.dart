@@ -17,12 +17,15 @@ Set<String> _keys(String locale) {
 Set<String> _accessedMembers() {
   final generated = RegExp(r'^app_localizations.*\.dart$');
   final access = RegExp(r'\.\s*([A-Za-z_][A-Za-z0-9_]*)');
+  // A name mentioned only in a comment doesn't count as a use.
+  final comment = RegExp(r'^\s*//.*$', multiLine: true);
   final names = <String>{};
   for (final entity in Directory('lib').listSync(recursive: true)) {
     if (entity is! File || !entity.path.endsWith('.dart')) continue;
     final name = entity.uri.pathSegments.last;
     if (entity.parent.path == _dir && generated.hasMatch(name)) continue;
-    for (final match in access.allMatches(entity.readAsStringSync())) {
+    final source = entity.readAsStringSync().replaceAll(comment, '');
+    for (final match in access.allMatches(source)) {
       names.add(match.group(1)!);
     }
   }

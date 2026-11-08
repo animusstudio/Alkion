@@ -113,6 +113,7 @@ class _DurableWorkout {
       for (var i = 0; i < 100 && !flushed; i++) {
         await settleReal(tester, ticks: 1);
       }
+      expect(flushed, isTrue, reason: 'owed writes never drained');
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(() async {
         await workout.runtime.close();

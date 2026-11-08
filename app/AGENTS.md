@@ -64,7 +64,7 @@ visual contract is `docs/superpowers/specs/2026-09-24-live-set-focus-design.md`.
 **Data:**
 - Imported numeric text may be empty, invalid or unknown: parse display values with `double.tryParse`, preserve exact source evidence, and never replace unknown data with zero. Compatibility booleans are 0/1. Calendar days and timestamps have separate validation/timezone contracts; never normalize an invalid calendar rollover.
 - Domain writes use the local revision/action contracts and commit an immutable outbox entry atomically. Only an explicit selected-native-workout send is enabled; source writer authority stays closed. Preserve exact imported evidence; do not invent a server base or normalize unknown values.
-- `is_template=1` compatibility rows stay out of owned catalog/day views. Keep deterministic template IDs and existing absorption/import behavior.
+- `is_template=1` compatibility rows stay out of owned catalog/day views. Keep deterministic template IDs.
 - Import `package:uuid/uuid.dart` directly for UUIDs; `sqlite_async`, `crypto` and `uuid` have active local-store/backup/transfer callers.
 - Custom-exercise slugs: `uniqueSlug(name, id)` = slugify + `-id8` suffix (local dedup can't see other users' slugs).
 - **Resumed workouts:** preserve their session ID, original date, exact untouched evidence and set order. Prepare the domain action before awaiting, reconcile uncertain outcomes with the same intent, and adopt the finished snapshot only after the durable workflow commits (`shell/session_launcher.dart`).
