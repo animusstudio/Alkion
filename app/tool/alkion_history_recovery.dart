@@ -5,7 +5,7 @@ import 'dart:typed_data';
 
 import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/catalog/catalog.dart';
-import 'package:alkion/history_test/history_mapping.dart';
+import 'package:alkion/history_mapping/history_mapping.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/identity/alkion_profile.dart';
 import 'package:alkion/recovery/backup.dart';

@@ -93,7 +93,6 @@ class _Group extends StatelessWidget {
 
 class _Row extends StatelessWidget {
   const _Row({
-    super.key,
     required this.icon,
     required this.title,
     this.sub,
@@ -422,14 +421,12 @@ class ProfileScreen extends StatefulWidget {
     this.embedded = false,
     this.onLogout,
     this.auth,
-    this.onImportReps,
   });
 
   final VoidCallback onClose;
   final bool embedded;
   final Future<void> Function()? onLogout;
   final Object? auth;
-  final VoidCallback? onImportReps;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -928,14 +925,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     key: const Key('profile-data-actions'),
                     label: l.profileGroupData,
                     children: [
-                      if (widget.onImportReps != null)
-                        _Row(
-                          key: const Key('profile-history-test'),
-                          icon: AlkionGlyph.history,
-                          title: l.importRepsData,
-                          sub: l.importRepsDataSub,
-                          onTap: widget.onImportReps,
-                        ),
                       _Row(
                         icon: AlkionGlyph.refresh,
                         title: l.alkionBackupRestore,

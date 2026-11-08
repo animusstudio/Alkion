@@ -5,8 +5,7 @@ import 'dart:typed_data';
 import 'package:alkion/animus/workout_send_models.dart';
 import 'package:alkion/animus/workout_upload_repository.dart';
 import 'package:alkion/catalog/catalog.dart';
-import 'package:alkion/history_test/history_mapping.dart';
-import '../support/retired_history_workspace_fixture.dart';
+import 'package:alkion/history_mapping/history_mapping.dart';
 import 'package:alkion/main.dart';
 import 'package:alkion/identity/alkion_profile.dart';
 import 'package:alkion/recovery/backup.dart';
@@ -56,17 +55,6 @@ Map<String, Object?> mappingJson(
 
 Uint8List jsonBytes(Object value) =>
     Uint8List.fromList(utf8.encode(jsonEncode(value)));
-Future<Map<String, String>> treeBytes(Directory root) async => {
-  for (final file
-      in await root
-          .list(recursive: true, followLinks: false)
-          .where((e) => e is File)
-          .toList())
-    file.path.substring(root.path.length): sha256
-        .convert(await File(file.path).readAsBytes())
-        .toString(),
-};
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
@@ -235,41 +223,32 @@ void main() {
   }
 
   test(
-    'mapping changes preserve source evidence, sessions and native-send exclusion; cleanup preserves parent bytes',
+    'mapping changes preserve source evidence, sessions and native-send exclusion',
     () async {
       final temporary = await Directory.systemTemp.createTemp(
-        'alkion-workspace-proof-',
+        'alkion-mapping-proof-',
       );
       addTearDown(() => temporary.delete(recursive: true));
-      final parent = await AlkionProfile.open(
-        supportRoot: Directory('${temporary.path}/dev.animusstudio.alkion.dev'),
-      );
-      final parentStore = await LocalStore.open(
-        profile: parent,
-        expectedProfileId: parent.profileId,
-        schema: catalogExecutionSchemaRegistry(),
-      );
-      await parentStore.close();
-      final before = await treeBytes(parent.root);
       final input = File('${temporary.path}/source.json');
       await input.writeAsBytes(sourceBytes(), flush: true);
       final sourceBefore = await input.readAsBytes();
-      final workspace = await HistoryTestWorkspace.open(parent);
-      expect(workspace.profile.profileId, isNot(parent.profileId));
-      expect(workspace.profile.installationId, isNot(parent.installationId));
-      expect(
-        workspace.profile.root.parent.path,
-        '${temporary.path}/test-history',
+      final profile = await AlkionProfile.open(
+        supportRoot: Directory('${temporary.path}/dev.animusstudio.alkion.dev'),
+      );
+      final store = await LocalStore.open(
+        profile: profile,
+        expectedProfileId: profile.profileId,
+        schema: catalogExecutionSchemaRegistry(),
       );
       final service = HistoryTransferService(
-        workspace.store,
-        testProfileId: workspace.profile.profileId,
+        store,
+        testProfileId: profile.profileId,
       );
       final preview = await service.previewFile(
         input.path,
         namespace: 'test:history',
       );
-      expect(await workspace.store.getAll('SELECT * FROM sessions'), isEmpty);
+      expect(await store.getAll('SELECT * FROM sessions'), isEmpty);
       expect(
         (await service.importPreview(
           preview,
@@ -277,9 +256,9 @@ void main() {
         )).status,
         ImportStatus.selected,
       );
-      final sourceInventory = await workspace.store.inventory();
+      final sourceInventory = await store.inventory();
       final bundle = syntheticBundle();
-      final mappingStore = HistoryMappingStore(workspace.store);
+      final mappingStore = HistoryMappingStore(store);
       final first = readHistoryMappings(
         jsonBytes(mappingJson(preview.document!, bundle)),
         preview.document!,
@@ -301,7 +280,7 @@ void main() {
       expect(labels.values.map((e) => e.variantId).toSet(), {
         next.entries.single.variantId,
       });
-      final after = await workspace.store.inventory();
+      final after = await store.inventory();
       for (final table in [
         'source_artifacts',
         'source_revisions',
@@ -327,16 +306,12 @@ void main() {
         hasLength(2),
       );
       final session =
-          (await workspace.store.getAll('SELECT id FROM sessions')).first['id']
-              as String;
+          (await store.getAll('SELECT id FROM sessions')).first['id'] as String;
       await expectLater(
-        WorkoutUploadRepository(
-          workspace.store,
-          workspace.profile.installationId,
-        ).select(session, {
-          'profile_id': workspace.profile.profileId,
-          'installation_id': workspace.profile.installationId,
-          'generation': workspace.store.token.generation,
+        WorkoutUploadRepository(store, profile.installationId).select(session, {
+          'profile_id': profile.profileId,
+          'installation_id': profile.installationId,
+          'generation': store.token.generation,
         }, () {}),
         throwsA(
           isA<WorkoutUploadBlocked>().having(
@@ -346,54 +321,19 @@ void main() {
           ),
         ),
       );
-      final backup = await createBackup(workspace.store, temporary);
-      expect(backup.verified.profileId, workspace.profile.profileId);
-      await expectLater(
-        HistoryTestWorkspace.remove(parent),
-        throwsA(anything),
-      ); // Open owner is fenced.
-      await workspace.close();
-      final reopened = await HistoryTestWorkspace.open(parent);
-      expect(reopened.profile.profileId, workspace.profile.profileId);
-      expect(
-        (await HistoryMappingStore(reopened.store).byExerciseId()).length,
-        3,
+      final backup = await createBackup(store, temporary);
+      expect(backup.verified.profileId, profile.profileId);
+      await store.close();
+      final reopened = await LocalStore.open(
+        profile: profile,
+        expectedProfileId: profile.profileId,
+        schema: catalogExecutionSchemaRegistry(),
       );
+      expect((await HistoryMappingStore(reopened).byExerciseId()).length, 3);
       await reopened.close();
-      await HistoryTestWorkspace.remove(parent);
-      expect(await HistoryTestWorkspace.rootFor(parent).exists(), isFalse);
-      expect(await treeBytes(parent.root), before);
       expect(await input.readAsBytes(), sourceBefore);
     },
   );
-
-  test('unmarked bytes and symlinks cannot be adopted or removed', () async {
-    final temporary = await Directory.systemTemp.createTemp(
-      'alkion-workspace-guard-',
-    );
-    addTearDown(() => temporary.delete(recursive: true));
-    final parent = await AlkionProfile.open(
-      supportRoot: Directory('${temporary.path}/dev.animusstudio.alkion.dev'),
-    );
-    final container = HistoryTestWorkspace.containerFor(parent);
-    await container.create();
-    final unknown = File('${container.path}/keep.txt');
-    await unknown.writeAsString('preserved');
-    await expectLater(HistoryTestWorkspace.open(parent), throwsA(anything));
-    await expectLater(HistoryTestWorkspace.remove(parent), throwsA(anything));
-    expect(await unknown.readAsString(), 'preserved');
-    await unknown.delete();
-    final workspace = await HistoryTestWorkspace.open(parent);
-    await workspace.close();
-    final outside = File('${temporary.path}/outside.txt');
-    await outside.writeAsString('outside');
-    final link = Link('${workspace.profile.root.path}/link');
-    await link.create(outside.path);
-    await expectLater(HistoryTestWorkspace.remove(parent), throwsA(anything));
-    expect(await outside.readAsString(), 'outside');
-    await link.delete();
-    await HistoryTestWorkspace.remove(parent);
-  });
 
   test(
     'explicit CLI mapping route produces counts and a verified native backup outside the tree',
@@ -470,6 +410,25 @@ void main() {
         expect(await store.getAll('SELECT * FROM operations'), isEmpty);
       } finally {
         await store.close();
+      }
+      // A profile that already holds mapped history still opens in the app
+      // and exposes its stored mappings for display.
+      final runtime = await AlkionRuntime.open(
+        Directory('${output.path}/dev.animusstudio.alkion.dev'),
+        catalogBundle: bundle,
+      );
+      try {
+        expect(runtime.store.profileId, receipt['profile_id']);
+        expect(runtime.historyMappings, hasLength(3));
+        expect(runtime.historyMappings.values.map((e) => e.status).toSet(), {
+          'approximate',
+        });
+        expect(
+          await runtime.store.getAll('SELECT * FROM sessions'),
+          hasLength(3),
+        );
+      } finally {
+        await runtime.close();
       }
       expect(await input.readAsBytes(), sourceBytes());
     },

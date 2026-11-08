@@ -4,9 +4,9 @@ import '../theme/app_theme.dart';
 import '../theme/typography.dart';
 import '../data/models.dart';
 import '../catalog/catalog.dart';
+import '../l10n/app_localizations.dart';
 import '../widgets/fit_label.dart';
 import 'history_mapping.dart';
-import '../transfer/reps_import_strings.dart';
 
 class HistoryMappingScope extends InheritedWidget {
   const HistoryMappingScope({
@@ -49,8 +49,9 @@ class HistoryMappingScope extends InheritedWidget {
       !identical(mappings, oldWidget.mappings);
 }
 
-/// Review details shown when opening an imported exercise. Original names and
-/// measurements remain unchanged; mapping is separate presentation metadata.
+/// Mapping details shown when opening an imported exercise whose profile
+/// already holds a stored mapping. Original names and measurements remain
+/// unchanged; mapping is separate presentation metadata.
 class HistoryMappingLabel extends StatelessWidget {
   const HistoryMappingLabel({super.key, required this.exerciseId});
   final String exerciseId;
@@ -58,14 +59,14 @@ class HistoryMappingLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final mapping = HistoryMappingScope.forExercise(context, exerciseId);
     if (mapping == null) return const SizedBox.shrink();
-    final copy = RepsImportStrings.of(context);
+    final copy = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: FitLabel(
         '${mapping.displayName == null ? '' : '${mapping.displayName} · '}${switch (mapping.status) {
-          'exact' => copy.exact,
-          'approximate' => copy.approximate,
-          _ => copy.unresolved,
+          'exact' => copy.historyMappingExact,
+          'approximate' => copy.historyMappingApproximate,
+          _ => copy.historyMappingUnresolved,
         }}\n${mapping.rationale}',
         maxLines: 12,
         style: WorkoutType.body(size: 12, color: context.tokens.dim),

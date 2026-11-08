@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import '../history_test/history_mapping_label.dart';
+import '../history_mapping/history_mapping_label.dart';
 
 import '../theme/alkion_icon.dart';
 import '../catalog/catalog.dart';

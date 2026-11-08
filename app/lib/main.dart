@@ -43,12 +43,8 @@ import 'catalog/catalog_development.dart';
 import 'catalog_ui/catalog_runtime_state.dart';
 import 'catalog_ui/catalog_loading.dart';
 import 'catalog_ui/catalog_trial_scope.dart';
-import 'history_test/history_mapping.dart';
-import 'history_test/history_mapping_label.dart';
-import 'ui/reps_import_screen.dart';
-import 'transfer/reps_import.dart';
-import 'transfer/transfer_service.dart' show ImportStatus;
-import 'history_test/retired_history_workspace.dart';
+import 'history_mapping/history_mapping.dart';
+import 'history_mapping/history_mapping_label.dart';
 
 Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
   profile: profile,
@@ -176,9 +172,7 @@ class AlkionRuntime with WidgetsBindingObserver {
         catalog,
         catalogUnavailable,
       );
-      runtime.historyMappings.value = await HistoryMappingStore(
-        store,
-      ).byExerciseId();
+      runtime.historyMappings = await HistoryMappingStore(store).byExerciseId();
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
       await sessions.initializeNotifications(notifier);
@@ -191,44 +185,9 @@ class AlkionRuntime with WidgetsBindingObserver {
   }
 
   final persistenceFailure = ValueNotifier<Object?>(null);
-  final historyMappings = ValueNotifier<Map<String, HistoryMapping>>(const {});
-  final contentRevision = ValueNotifier<int>(0);
 
-  /// Import into the open profile. Fence workout launches before flushing owed
-  /// edits, then refresh caches and one-shot screen reads without changing roots.
-  Future<void> importReps(
-    RepsImportPreview preview,
-    HistoryMappingReview review, {
-    bool applySettings = false,
-  }) async {
-    if (sessions.active != null || !sessions.tryBeginLaunch()) {
-      throw StateError('reps_import_active_workout');
-    }
-    try {
-      await flushPersistence();
-      final service = RepsImportService(store, profileId: store.profileId);
-      final result = await service.importPreview(preview);
-      if (result.status != ImportStatus.selected &&
-          result.status != ImportStatus.alreadySelected) {
-        throw StateError(result.category ?? result.status.name);
-      }
-      await service.selectMappings(preview, review);
-      if (applySettings && preview.hasImportedSettings) {
-        await service.applySettings(preview);
-      }
-      await settings.load();
-      await units.load();
-      await identity.load();
-      await catalog?.initialize();
-      historyMappings.value = await HistoryMappingStore(store).byExerciseId();
-      contentRevision.value++;
-      if (preview.kind == 'full') {
-        await RetiredHistoryWorkspace.backupAndRemove(store.profile);
-      }
-    } finally {
-      sessions.endLaunch();
-    }
-  }
+  /// Mapping rows already stored in the profile; display only.
+  Map<String, HistoryMapping> historyMappings = const {};
 
   Future<void> _flushTail = Future.value();
   bool _closing = false;
@@ -309,8 +268,6 @@ class AlkionRuntime with WidgetsBindingObserver {
     units.dispose();
     identity.dispose();
     persistenceFailure.dispose();
-    historyMappings.dispose();
-    contentRevision.dispose();
     workoutSender.dispose();
     recoveryReview.dispose();
     animus.dispose();
@@ -494,17 +451,6 @@ Future<void> _launchAlkionRuntime(
     AlkionApp(
       runtime: runtime,
       revealCatalog: displayedCatalogLoad && runtime.catalog != null,
-      onImportReps: () {
-        appNavigatorKey.currentState?.push<void>(
-          MaterialPageRoute(
-            builder: (_) => RepsImportScreen(
-              database: runtime.store,
-              catalog: runtime.catalog?.bundle,
-              onImport: runtime.importReps,
-            ),
-          ),
-        );
-      },
       recovery: RuntimeRecoveryHost(
         runtime,
         relaunch: relaunch,
@@ -581,13 +527,11 @@ class AlkionApp extends StatelessWidget {
     required this.runtime,
     this.revealCatalog = false,
     this.recovery,
-    this.onImportReps,
     @visibleForTesting this.databaseOverride,
   });
   final AlkionRuntime runtime;
   final bool revealCatalog;
   final RecoveryHost? recovery;
-  final VoidCallback? onImportReps;
   final LocalDatabase? databaseOverride;
   @override
   Widget build(BuildContext context) {
@@ -629,62 +573,59 @@ class AlkionApp extends StatelessWidget {
               valueListenable: runtime.persistenceFailure,
               builder: (context, error, _) => _RuntimeNotificationNavigation(
                 runtime: runtime,
-                child: ValueListenableBuilder<Map<String, HistoryMapping>>(
-                  valueListenable: runtime.historyMappings,
-                  builder: (context, mappings, _) => HistoryMappingScope(
-                    mappings: mappings,
-                    child: Stack(
-                      children: [
-                        if (child != null)
-                          CatalogReadyReveal.startup(
-                            enabled: revealCatalog,
-                            child: child,
-                          ),
-                        if (error != null)
-                          Positioned(
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            child: SafeArea(
-                              child: Material(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.errorContainer,
-                                elevation: 4,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
+                child: HistoryMappingScope(
+                  mappings: runtime.historyMappings,
+                  child: Stack(
+                    children: [
+                      if (child != null)
+                        CatalogReadyReveal.startup(
+                          enabled: revealCatalog,
+                          child: child,
+                        ),
+                      if (error != null)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: SafeArea(
+                            child: Material(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.errorContainer,
+                              elevation: 4,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      AppLocalizations.of(
+                                        context,
+                                      ).alkionStoreRecoveryTitle,
+                                    ),
+                                    Text(
+                                      AppLocalizations.of(
+                                        context,
+                                      ).alkionStoreRecoveryBody,
+                                    ),
+                                    TextButton(
+                                      style: TextButton.styleFrom(
+                                        minimumSize: const Size(48, 48),
+                                      ),
+                                      onPressed: runtime.retryPersistence,
+                                      child: Text(
                                         AppLocalizations.of(
                                           context,
-                                        ).alkionStoreRecoveryTitle,
+                                        ).alkionRetry,
                                       ),
-                                      Text(
-                                        AppLocalizations.of(
-                                          context,
-                                        ).alkionStoreRecoveryBody,
-                                      ),
-                                      TextButton(
-                                        style: TextButton.styleFrom(
-                                          minimumSize: const Size(48, 48),
-                                        ),
-                                        onPressed: runtime.retryPersistence,
-                                        child: Text(
-                                          AppLocalizations.of(
-                                            context,
-                                          ).alkionRetry,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -698,11 +639,7 @@ class AlkionApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: AppLocalizations.supportedLocales,
-            home: ValueListenableBuilder<int>(
-              valueListenable: runtime.contentRevision,
-              builder: (context, revision, _) =>
-                  AppShell(key: ValueKey(revision), onImportReps: onImportReps),
-            ),
+            home: const AppShell(),
           );
         },
       ),

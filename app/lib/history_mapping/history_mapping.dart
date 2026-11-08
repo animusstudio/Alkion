@@ -14,24 +14,6 @@ const historyMappingFormat = 'alkion-history-test-mappings';
 const historyTestNamespace = 'history-test';
 const maxHistoryMappingBytes = 2 * 1024 * 1024;
 
-/// Only the source digest and exact exercise names are needed for a mapping
-/// review. A full-export adapter never manufactures history occurrences.
-final class RepsMappingSource {
-  RepsMappingSource({required this.digest, required Iterable<String> names})
-    : names = List.unmodifiable(names.toSet().toList()..sort());
-  final String digest;
-  final List<String> names;
-}
-
-RepsMappingSource _mappingSource(Object source) => switch (source) {
-  final RepsMappingSource source => source,
-  final HistoryV1Document document => RepsMappingSource(
-    digest: document.digest,
-    names: document.blocks.map((b) => b.values['name'] as String),
-  ),
-  _ => throw ArgumentError.value(source, 'source', 'mapping source required'),
-};
-
 /// Review metadata only. A mapping never changes a source row or supplies
 /// typed/native measurement evidence, a finish intent, or a server identity.
 final class HistoryMapping {
@@ -90,9 +72,9 @@ final class HistoryMappingReview {
   };
 
   factory HistoryMappingReview.unresolved(
-    Object source,
+    HistoryV1Document source,
   ) => HistoryMappingReview(
-    sourceDigest: _mappingSource(source).digest,
+    sourceDigest: source.digest,
     entries: [
       for (final name in sourceNames(source))
         HistoryMapping(
@@ -105,17 +87,19 @@ final class HistoryMappingReview {
   );
 }
 
-List<String> sourceNames(Object source) => _mappingSource(source).names;
+/// Distinct exact exercise names, sorted; a mapping never fuzzy-matches.
+List<String> sourceNames(HistoryV1Document source) => List.unmodifiable(
+  source.blocks.map((b) => b.values['name'] as String).toSet().toList()..sort(),
+);
 
 /// A supplied sidecar is explicit human review, never fuzzy matching. Missing
 /// names remain unresolved. Extra names, duplicate keys and stale catalog
 /// identities are refused before any overlay can be selected.
 HistoryMappingReview readHistoryMappings(
   Uint8List bytes,
-  Object source, {
+  HistoryV1Document document, {
   CatalogBundle? catalog,
 }) {
-  final document = _mappingSource(source);
   if (bytes.length > maxHistoryMappingBytes) {
     throw const FormatException('mapping_resource_limit');
   }
@@ -191,7 +175,7 @@ HistoryMappingReview readHistoryMappings(
     catalogDigest: root['catalog_sha256'] as String?,
     catalogRevision: root['catalog_revision'] as String?,
     entries: [
-      for (final fallback in HistoryMappingReview.unresolved(source).entries)
+      for (final fallback in HistoryMappingReview.unresolved(document).entries)
         mapped[fallback.sourceName] ?? fallback,
     ],
   );

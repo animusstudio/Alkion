@@ -1,5 +1,5 @@
 import '../catalog_ui/catalog_picker.dart';
-import '../history_test/history_mapping_label.dart';
+import '../history_mapping/history_mapping_label.dart';
 import '../catalog/catalog.dart';
 import '../catalog/catalog_development.dart';
 import '../catalog_ui/catalog_trial_scope.dart';
