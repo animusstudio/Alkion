@@ -3,8 +3,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/widgets/volume_bars.dart';
+import '../support/app_fonts.dart';
+import '../support/l10n_harness.dart';
+import '../support/layout_expect.dart';
+
+Future<void> _pumpLive(
+  WidgetTester tester,
+  List<({String muscle, int sets, int target})> rows,
+  List<({int live, int pending})> live,
+) async {
+  await tester.pumpWidget(wrapL10n(VolumeBars(rows: rows, live: live)));
+  await tester.pumpAndSettle();
+}
+
+LiveSegmentsPainter _segments(WidgetTester tester, [int row = 0]) =>
+    tester
+            .widget<CustomPaint>(
+              find
+                  .descendant(
+                    of: find.byKey(const Key('volume-live-segments')).at(row),
+                    matching: find.byType(CustomPaint),
+                  )
+                  .first,
+            )
+            .painter!
+        as LiveSegmentsPainter;
+
+double _doneFill(WidgetTester tester, [int row = 0]) => tester
+    .widget<FractionallySizedBox>(find.byType(FractionallySizedBox).at(row))
+    .widthFactor!;
+
+String _count(WidgetTester tester, [int row = 0]) => tester
+    .widget<Text>(find.byKey(const Key('volume-count')).at(row))
+    .textSpan!
+    .toPlainText();
 
 void main() {
+  setUpAll(preloadAppFonts);
   testWidgets('each bar fills against its OWN target, not the global max', (
     tester,
   ) async {
@@ -81,5 +116,225 @@ void main() {
     final tick = tester.getRect(find.byKey(const Key('volume-target-tick')));
     expect(tick.center.dx, closeTo(track.right, 1.0));
     expect(tick.height, greaterThan(track.height)); // overhangs the track
+  });
+
+  group('live mode', () {
+    testWidgets('draws done, this-workout and planned segments in order', (
+      tester,
+    ) async {
+      await _pumpLive(
+        tester,
+        [(muscle: 'chest', sets: 6, target: 12)],
+        [(live: 3, pending: 3)],
+      );
+      expect(_doneFill(tester), closeTo(0.5, 0.001));
+      final p = _segments(tester);
+      expect(p.liveEnd, closeTo(0.75, 0.001));
+      expect(p.plannedEnd, closeTo(1.0, 0.001));
+      expect(find.byKey(const Key('volume-live-legend')), findsOneWidget);
+      // Under target: the muted fill, its translucent tail the same colour.
+      final tokens = Theme.of(
+        tester.element(find.byType(VolumeBars)),
+      ).extension<WorkoutTokens>()!;
+      expect(p.color, tokens.lineStrong);
+    });
+
+    testWidgets('the legend is neutral, not one row\'s target colour', (
+      tester,
+    ) async {
+      await _pumpLive(
+        tester,
+        [
+          (muscle: 'chest', sets: 12, target: 12),
+          (muscle: 'back', sets: 2, target: 12),
+        ],
+        [(live: 1, pending: 1), (live: 1, pending: 1)],
+      );
+      final tokens = Theme.of(
+        tester.element(find.byType(VolumeBars)),
+      ).extension<WorkoutTokens>()!;
+      final swatches = find.byKey(const Key('volume-legend-swatch'));
+      expect(swatches, findsNWidgets(3));
+      final painted = [
+        for (final e in swatches.evaluate())
+          ...find
+              .descendant(
+                of: find.byWidget(e.widget),
+                matching: find.byType(CustomPaint),
+              )
+              .evaluate()
+              .map((p) => (p.widget as CustomPaint).painter)
+              .whereType<LiveSegmentsPainter>()
+              .map((p) => p.color),
+      ];
+      expect(painted, [legendColor(tokens), legendColor(tokens)]);
+      expect(legendColor(tokens), isNot(tokens.lineStrong));
+      expect(legendColor(tokens), isNot(tokens.accentText));
+      // Rows still colour by their own target.
+      expect(_segments(tester, 0).color, tokens.accentText);
+      expect(_segments(tester, 1).color, tokens.lineStrong);
+    });
+
+    testWidgets('count reads done+live/target → planned', (tester) async {
+      await _pumpLive(
+        tester,
+        [
+          (muscle: 'chest', sets: 8, target: 12),
+          (muscle: 'back', sets: 4, target: 10),
+          (muscle: 'quads', sets: 5, target: 9),
+          (muscle: 'calves', sets: 2, target: 6),
+        ],
+        [
+          (live: 3, pending: 3),
+          (live: 0, pending: 0),
+          (live: 0, pending: 2),
+          (live: 4, pending: 0),
+        ],
+      );
+      expect(_count(tester, 0), '8+3/12 \u2192 14');
+      // No live part keeps today's format.
+      expect(_count(tester, 1), '4/10');
+      expect(_count(tester, 2), '5/9 \u2192 7');
+      expect(_count(tester, 3), '2+4/6');
+      expect(VolumeBars.countParts(8, 12, live: 3, pending: 3), (
+        count: '8+3/12',
+        planned: '14',
+      ));
+      expect(VolumeBars.countParts(8, 12), (count: '8/12', planned: null));
+    });
+
+    testWidgets('segments clip at the track end', (tester) async {
+      await _pumpLive(
+        tester,
+        [(muscle: 'chest', sets: 10, target: 12)],
+        [(live: 4, pending: 5)],
+      );
+      expect(_doneFill(tester), closeTo(10 / 12, 0.001));
+      final p = _segments(tester);
+      expect(p.liveEnd, 1.0);
+      expect(p.plannedEnd, 1.0);
+      final track = tester.getRect(find.byKey(const Key('volume-track')));
+      final paint = tester.getRect(
+        find
+            .descendant(
+              of: find.byKey(const Key('volume-live-segments')),
+              matching: find.byType(CustomPaint),
+            )
+            .first,
+      );
+      expect(paint.right, lessThanOrEqualTo(track.right));
+    });
+
+    testWidgets('over target follows done + live, not planned', (tester) async {
+      await _pumpLive(
+        tester,
+        [
+          (muscle: 'chest', sets: 9, target: 12),
+          (muscle: 'back', sets: 9, target: 12),
+        ],
+        [(live: 3, pending: 0), (live: 2, pending: 5)],
+      );
+      final tokens = Theme.of(
+        tester.element(find.byType(VolumeBars)),
+      ).extension<WorkoutTokens>()!;
+      expect(_segments(tester, 0).color, tokens.accentText);
+      expect(_segments(tester, 1).color, tokens.lineStrong);
+    });
+
+    testWidgets('each row speaks done, this workout and planned counts', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await _pumpLive(
+        tester,
+        [(muscle: 'Chest', sets: 8, target: 12)],
+        [(live: 3, pending: 3)],
+      );
+      expect(
+        find.bySemanticsLabel(
+          'Chest: 8 sets done this week, 3 this workout, 14 planned, '
+          'target 12',
+        ),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('reduced motion lands the segments at once', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          FakeAccessibilityFeatures.allOn;
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await tester.pumpWidget(
+        wrapL10n(
+          const VolumeBars(
+            rows: [(muscle: 'chest', sets: 6, target: 12)],
+            live: [(live: 3, pending: 3)],
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(_segments(tester).liveEnd, closeTo(0.75, 0.001));
+    });
+
+    testWidgets('the done fill keeps its state when live mode starts', (
+      tester,
+    ) async {
+      const rows = [(muscle: 'chest', sets: 6, target: 12)];
+      await tester.pumpWidget(wrapL10n(const VolumeBars(rows: rows)));
+      await tester.pumpAndSettle();
+      final fill = tester.state(find.byKey(const Key('volume-done-fill')));
+      await tester.pumpWidget(
+        wrapL10n(const VolumeBars(rows: rows, live: [(live: 1, pending: 2)])),
+      );
+      await tester.pump();
+      expect(tester.state(find.byKey(const Key('volume-done-fill'))), fill);
+      await tester.pumpAndSettle();
+      expect(_segments(tester).plannedEnd, closeTo(0.75, 0.001));
+    });
+
+    for (final code in ['en', 'de', 'it', 'es']) {
+      testWidgets('live legend and counts fit 320dp at 2.0x ($code)', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(320, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 900),
+              textScaler: TextScaler.linear(2.0),
+            ),
+            child: wrapL10n(
+              const SingleChildScrollView(
+                child: VolumeBars(
+                  rows: [
+                    (muscle: 'Shoulders', sets: 12, target: 10),
+                    (muscle: 'Hamstrings', sets: 8, target: 12),
+                  ],
+                  live: [(live: 3, pending: 4), (live: 10, pending: 10)],
+                ),
+              ),
+              locale: Locale(code),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        expect(tester.takeException(), isNull);
+        expectNoSplitWords(tester, within: find.byType(VolumeBars));
+        for (final count
+            in find.byKey(const Key('volume-count')).evaluate().toList()) {
+          expectOneLine(
+            tester,
+            find.descendant(
+              of: find.byWidget(count.widget),
+              matching: find.byType(RichText),
+            ),
+          );
+        }
+      });
+    }
   });
 }

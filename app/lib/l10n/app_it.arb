@@ -961,5 +961,9 @@
   "bodyCore": "Addominali",
   "bodyForearms": "Avambracci",
   "bodyAdductors": "Adduttori",
-  "bodyAbductors": "Abduttori"
+  "bodyAbductors": "Abduttori",
+  "volumeLegendDone": "Fatte questa settimana",
+  "volumeLegendLive": "Questa sessione",
+  "volumeLegendPlanned": "Pianificate",
+  "volumeLiveSemantics": "{muscle}: {done} serie fatte questa settimana, {live} in questa sessione, {planned} pianificate, obiettivo {target}"
 }

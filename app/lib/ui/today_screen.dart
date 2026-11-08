@@ -15,11 +15,11 @@ import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../data/muscle_target_repository.dart';
-import '../data/muscles.dart';
 import '../data/session_repository.dart';
 import '../data/stats_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../session/active_session_controller.dart';
+import '../session/live_weekly_volume.dart';
 import '../session/session_manager.dart';
 import '../settings/settings_service.dart';
 import '../store/local_store.dart';
@@ -527,7 +527,7 @@ class _TodayScreenState extends State<TodayScreen> {
           index: 5,
           child: ColoredBox(
             color: tokens.bg,
-            child: _buildWeeklyVolume(tokens),
+            child: _buildWeeklyVolume(tokens, manager.active),
           ),
         ),
       ],
@@ -861,70 +861,110 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  Widget _buildWeeklyVolume(WorkoutTokens tokens) {
+  /// Weekly volume vs targets. While a workout is in progress ([active]),
+  /// its sets show as live segments and the bars follow its changes; with
+  /// none running the card keeps its single fill.
+  Widget _buildWeeklyVolume(
+    WorkoutTokens tokens,
+    ActiveSessionController? active,
+  ) {
     return StreamBuilder<WeeklyMuscleVolume>(
       stream: _volumeStream,
       builder: (context, volSnap) {
         return StreamBuilder<List<MuscleTarget>>(
           stream: _targetsStream,
-          builder: (context, targetSnap) {
-            final l = AppLocalizations.of(context);
-            final unavailable = volSnap.hasError || targetSnap.hasError;
-            final loading = !volSnap.hasData || !targetSnap.hasData;
-            final volume = volSnap.data;
-            final volRows = volume?.groups ?? [];
-            final targetList = targetSnap.data ?? [];
-
-            final targetMap = {
-              for (final t in targetList) t.muscle: t.targetSets,
-            };
-            final rows = [
-              for (final r in weeklyVolumeRows(volRows, targetMap))
-                (
-                  muscle: localizedMuscle(context, r.muscle),
-                  sets: r.sets,
-                  target: r.target,
-                ),
-            ];
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SectionLabel(label: l.todayWeeklyVolume),
-                const SizedBox(height: 10),
-                if (unavailable)
-                  _EmptyState(tokens: tokens, message: l.todayVolumeUnavailable)
-                else if (loading)
-                  Semantics(
-                    key: const Key('today-volume-loading'),
-                    label: l.todayVolumeLoading,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: GlyphSkeleton.lines(
-                        widths: const [.9, .72, .8, .5],
-                        lineHeight: 10,
-                        gap: 10,
-                      ),
-                    ),
-                  )
-                else ...[
-                  if (volume!.unknownSets > 0) ...[
-                    _EmptyState(
-                      tokens: tokens,
-                      message: l.todayVolumeUnknown(volume.unknownSets),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  if (rows.isNotEmpty)
-                    VolumeBars(rows: rows)
-                  else if (volume.unknownSets == 0)
-                    _EmptyState(tokens: tokens, message: l.todayNoSetsLogged),
-                ],
-              ],
-            );
-          },
+          // Always a ListenableBuilder (empty merge with no workout), so the
+          // bars keep their state when a workout starts or ends.
+          builder: (context, targetSnap) => ListenableBuilder(
+            listenable: Listenable.merge([?active]),
+            builder: (context, _) => _weeklyVolumeContent(
+              context,
+              tokens,
+              volSnap,
+              targetSnap,
+              active,
+            ),
+          ),
         );
       },
+    );
+  }
+
+  Widget _weeklyVolumeContent(
+    BuildContext context,
+    WorkoutTokens tokens,
+    AsyncSnapshot<WeeklyMuscleVolume> volSnap,
+    AsyncSnapshot<List<MuscleTarget>> targetSnap,
+    ActiveSessionController? active,
+  ) {
+    final l = AppLocalizations.of(context);
+    final unavailable = volSnap.hasError || targetSnap.hasError;
+    final loading = !volSnap.hasData || !targetSnap.hasData;
+    final volume = volSnap.data;
+    final catalog = catalogVolumeAttribution(context);
+    final attributed = volume?.attribute(catalog.targets);
+    final volRows = attributed?.groups ?? [];
+    final targetList = targetSnap.data ?? [];
+
+    final targetMap = {for (final t in targetList) t.muscle: t.targetSets};
+    final draft = active?.draftOrNull;
+    final combined = LiveWeeklyVolume.combine(
+      volume: volRows,
+      unknownSets: attributed?.unknownSets ?? 0,
+      targets: targetMap,
+      draft: draft == null
+          ? null
+          : DraftVolume.of(
+              draft,
+              weekStart: _weekStart,
+              now: DateTime.now(),
+              targets: catalog.targets,
+            ),
+    );
+    final unknownSets = combined.unknownSets;
+    final rows = [
+      for (final r in combined.rows)
+        (
+          muscle: volumeGroupLabel(context, r.muscle, catalog.browse),
+          sets: r.sets,
+          target: r.target,
+        ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionLabel(label: l.todayWeeklyVolume),
+        const SizedBox(height: 10),
+        if (unavailable)
+          _EmptyState(tokens: tokens, message: l.todayVolumeUnavailable)
+        else if (loading)
+          Semantics(
+            key: const Key('today-volume-loading'),
+            label: l.todayVolumeLoading,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: GlyphSkeleton.lines(
+                widths: const [.9, .72, .8, .5],
+                lineHeight: 10,
+                gap: 10,
+              ),
+            ),
+          )
+        else ...[
+          if (unknownSets > 0) ...[
+            _EmptyState(
+              tokens: tokens,
+              message: l.todayVolumeUnknown(unknownSets),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (rows.isNotEmpty)
+            VolumeBars(rows: rows, live: combined.live)
+          else if (unknownSets == 0)
+            _EmptyState(tokens: tokens, message: l.todayNoSetsLogged),
+        ],
+      ],
     );
   }
 }

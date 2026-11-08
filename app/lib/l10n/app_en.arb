@@ -1692,5 +1692,28 @@
   "bodyCore": "Core",
   "bodyForearms": "Forearms",
   "bodyAdductors": "Adductors",
-  "bodyAbductors": "Abductors"
+  "bodyAbductors": "Abductors",
+  "volumeLegendDone": "Done this week",
+  "volumeLegendLive": "This workout",
+  "volumeLegendPlanned": "Planned",
+  "volumeLiveSemantics": "{muscle}: {done} sets done this week, {live} this workout, {planned} planned, target {target}",
+  "@volumeLiveSemantics": {
+    "placeholders": {
+      "muscle": {
+        "type": "String"
+      },
+      "done": {
+        "type": "int"
+      },
+      "live": {
+        "type": "int"
+      },
+      "planned": {
+        "type": "int"
+      },
+      "target": {
+        "type": "int"
+      }
+    }
+  }
 }

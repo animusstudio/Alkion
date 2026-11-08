@@ -44,6 +44,7 @@ import '../widgets/glyph_loading.dart';
 import 'session_header.dart';
 import 'session_manager.dart';
 import 'session_summary_screen.dart';
+import 'weekly_volume_sheet.dart';
 
 /// Full-bleed overlay for an active workout session.
 ///
@@ -405,6 +406,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           icon: AlkionGlyph.accessibility,
         ),
         WSheetAction(
+          label: l.todayWeeklyVolume,
+          value: 'volume',
+          icon: AlkionGlyph.progress,
+        ),
+        WSheetAction(
           label: l.sessionFinishWorkout,
           value: 'finish',
           icon: AlkionGlyph.check,
@@ -436,6 +442,15 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       } finally {
         projection.dispose();
       }
+      return;
+    }
+    if (picked == 'volume') {
+      commitPendingInput();
+      await showWeeklyVolumeSheet(
+        context,
+        controller: c,
+        database: context.read<LocalDatabase?>(),
+      );
       return;
     }
     if (picked == 'finish') {
