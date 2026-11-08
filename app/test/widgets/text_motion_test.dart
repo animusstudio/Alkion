@@ -1,5 +1,6 @@
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/widgets/plan_form.dart';
 import 'package:alkion/widgets/text_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -302,4 +303,57 @@ void main() {
     expect(RevealStagger.delay(10, 21), const Duration(milliseconds: 110));
     expect(RevealStagger.delay(0, 1), Duration.zero);
   });
+
+  testWidgets(
+    'adopted controls: chips and Toggle rows glitch, PrimaryBtn opts in',
+    (tester) async {
+      var chosen = 'a';
+      var on = false;
+      await tester.pumpWidget(
+        _host(
+          StatefulBuilder(
+            builder: (context, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ChipSelect<String>(
+                  items: const ['a', 'b'],
+                  selected: chosen,
+                  labelOf: (v) => v == 'a' ? 'Chest' : 'Back',
+                  onSelect: (v) => setState(() => chosen = v),
+                ),
+                Field(
+                  label: 'Targets',
+                  glitch: true,
+                  child: Toggle(
+                    value: on,
+                    onChanged: (v) => setState(() => on = v),
+                  ),
+                ),
+                PrimaryBtn('Calm', enabled: true, onTap: () {}),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Back'));
+      await tester.pump();
+      expect(chosen, 'b');
+      expect(_scrambled(tester), ['B', 'a', 'c', 'k']..sort());
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await tester.tap(find.text('TARGETS'));
+      await tester.pump();
+      expect(_animating, findsNothing, reason: 'only the switch plays the row');
+      await tester.tap(find.byType(Toggle));
+      await tester.pump();
+      expect(on, isTrue);
+      expect(_scrambled(tester), hasLength(7));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await tester.tap(find.text('Calm'));
+      await tester.pump();
+      expect(_animating, findsNothing, reason: 'shared PrimaryBtn stays calm');
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
 }
