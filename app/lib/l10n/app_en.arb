@@ -1030,7 +1030,6 @@
   },
   "alkionStoreRecoveryTitle": "Local storage needs recovery",
   "alkionStoreRecoveryBody": "This change has not been saved. Recover local storage, then retry the same change. Your draft and prior recovery are preserved.",
-  "alkionCompatibility": "Legacy compatibility · reps-compat/1",
   "alkionKnownSubtotal": "Known subtotal · {known}/{total} working sets",
   "@alkionKnownSubtotal": {
     "placeholders": {

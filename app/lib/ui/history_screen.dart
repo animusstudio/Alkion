@@ -221,10 +221,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
           tokens: tokens,
         ),
         const SizedBox(height: 8),
-        Text(
-          l.alkionCompatibility,
-          style: WorkoutType.body(size: 12, color: tokens.faint),
-        ),
         if (volume != null && volume.known != volume.total)
           Text(
             l.alkionKnownSubtotal(volume.known, volume.total),

@@ -510,7 +510,6 @@
   },
   "alkionStoreRecoveryTitle": "L’archivio locale richiede un ripristino",
   "alkionStoreRecoveryBody": "La modifica non è stata salvata. Ripristina l’archivio locale e riprova la stessa modifica. La bozza e il recupero precedente sono conservati.",
-  "alkionCompatibility": "Compatibilità legacy · reps-compat/1",
   "alkionKnownSubtotal": "Subtotale noto · {known}/{total} serie",
   "@alkionKnownSubtotal": {
     "placeholders": {

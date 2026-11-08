@@ -510,7 +510,6 @@
   },
   "alkionStoreRecoveryTitle": "Lokalen Speicher reparieren",
   "alkionStoreRecoveryBody": "Die Änderung ist noch offen. Repariere den lokalen Speicher und versuche sie erneut. Entwurf und letzter Stand bleiben erhalten.",
-  "alkionCompatibility": "Legacy-Kompatibilität · reps-compat/1",
   "alkionKnownSubtotal": "Bekannte Teilsumme · {known}/{total} Arbeitssätze",
   "@alkionKnownSubtotal": {
     "placeholders": {

@@ -510,7 +510,6 @@
   },
   "alkionStoreRecoveryTitle": "El almacenamiento local necesita recuperación",
   "alkionStoreRecoveryBody": "El cambio no se ha guardado. Recupera el almacenamiento local y vuelve a intentar el mismo cambio. Se conservan el borrador y la recuperación anterior.",
-  "alkionCompatibility": "Compatibilidad heredada · reps-compat/1",
   "alkionKnownSubtotal": "Subtotal conocido · {known}/{total} series",
   "@alkionKnownSubtotal": {
     "placeholders": {

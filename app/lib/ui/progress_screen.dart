@@ -553,11 +553,6 @@ class _LiftView extends StatelessWidget {
                 ),
         ),
         const SizedBox(height: 16),
-
-        Text(
-          l.alkionCompatibility,
-          style: WorkoutType.body(size: 12, color: tokens.faint),
-        ),
         if (rawSeries.any(
           (p) => p.coverage?.complete == false || !p.topAvailable,
         ))
