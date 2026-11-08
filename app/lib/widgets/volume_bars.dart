@@ -73,6 +73,9 @@ class VolumeBars extends StatelessWidget {
     final tokens = context.tokens;
     final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
+    // Measure with the inherited style the rendered Text merges in (its
+    // letter spacing), or the widest count is clipped by a few pixels.
+    final inherited = DefaultTextStyle.of(context).style;
 
     // The count column fits the widest '{sets}/{target}' at the current text
     // size (38 dp at 1.0×), so a count never wraps digit by digit.
@@ -90,7 +93,7 @@ class VolumeBars extends StatelessWidget {
               pending: extra?.pending ?? 0,
             ),
           ),
-          style: _countStyle(tokens.text),
+          style: inherited.merge(_countStyle(tokens.text)),
         ),
         textDirection: direction,
         textScaler: scaler,
@@ -101,7 +104,7 @@ class VolumeBars extends StatelessWidget {
       final namePainter = TextPainter(
         text: TextSpan(
           text: row.muscle,
-          style: WorkoutType.body(size: 14, color: tokens.dim),
+          style: inherited.merge(WorkoutType.body(size: 14, color: tokens.dim)),
         ),
         textDirection: direction,
         textScaler: scaler,

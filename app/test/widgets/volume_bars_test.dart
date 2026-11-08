@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
@@ -40,6 +41,34 @@ String _count(WidgetTester tester, [int row = 0]) => tester
 
 void main() {
   setUpAll(preloadAppFonts);
+  testWidgets('the widest live count fits under inherited letter spacing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapL10n(
+        const DefaultTextStyle(
+          style: TextStyle(letterSpacing: 0.25),
+          child: VolumeBars(
+            rows: [(muscle: 'chest', sets: 8, target: 12)],
+            live: [(live: 3, pending: 3)],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.byKey(const Key('volume-count')),
+        matching: find.byType(RichText),
+      ),
+    );
+    expect(_count(tester), '8+3/12 \u2192 14');
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(
+      paragraph.getMaxIntrinsicWidth(double.infinity),
+      lessThanOrEqualTo(paragraph.size.width),
+    );
+  });
   testWidgets('each bar fills against its OWN target, not the global max', (
     tester,
   ) async {
