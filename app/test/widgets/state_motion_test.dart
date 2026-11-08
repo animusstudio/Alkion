@@ -140,4 +140,42 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     scroll.dispose();
   });
+
+  testWidgets('a box first laid out off screen plays once it is in view', (
+    tester,
+  ) async {
+    var event = 0;
+    var offset = 5000.0;
+    var progress = 0.0;
+    late StateSetter update;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, set) {
+            update = set;
+            // Like a sheet still sliding in when its content mounts.
+            return Transform.translate(
+              offset: Offset(0, offset),
+              child: EventProgress(
+                event: event,
+                builder: (_, value) {
+                  progress = value;
+                  return const SizedBox(width: 40, height: 40);
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    update(() => offset = 0);
+    await tester.pump();
+    update(() => event++);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(progress, inExclusiveRange(0, 1));
+    await tester.pumpAndSettle();
+    expect(progress, 1);
+  });
 }
