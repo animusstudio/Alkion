@@ -1,9 +1,14 @@
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/theme/typography.dart';
 import 'package:alkion/widgets/plan_form.dart';
 import 'package:alkion/widgets/text_motion.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 final _theme = buildTheme(Brightness.dark, accents[0]);
 
@@ -356,4 +361,179 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     },
   );
+
+  testWidgets('a disabled ChipSelect neither selects nor glitches', (
+    tester,
+  ) async {
+    var chosen = 'a';
+    await tester.pumpWidget(
+      _host(
+        ChipSelect<String>(
+          enabled: false,
+          items: const ['a', 'b'],
+          selected: chosen,
+          labelOf: (v) => v == 'a' ? 'Chest' : 'Back',
+          onSelect: (v) => chosen = v,
+        ),
+      ),
+    );
+    await tester.tap(find.text('Back'));
+    await tester.pump();
+    expect(chosen, 'a');
+    expect(_animating, findsNothing);
+  });
+
+  testWidgets('the already selected chip stays calm', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _host(
+        ChipSelect<String>(
+          items: const ['a', 'b'],
+          selected: 'a',
+          labelOf: (v) => v == 'a' ? 'Chest' : 'Back',
+          onSelect: (_) => taps++,
+        ),
+      ),
+    );
+    await tester.tap(find.text('Chest'));
+    await tester.pump();
+    expect(taps, 1, reason: 'the host still hears the tap');
+    expect(_animating, findsNothing);
+  });
+
+  testWidgets('a locked Toggle row neither toggles nor glitches', (
+    tester,
+  ) async {
+    var on = false;
+    await tester.pumpWidget(
+      _host(
+        Field(
+          label: 'Compound',
+          glitch: true,
+          child: Toggle(enabled: false, value: on, onChanged: (v) => on = v),
+        ),
+      ),
+    );
+    await tester.tap(find.byType(Toggle));
+    await tester.pump();
+    expect(on, isFalse);
+    expect(_animating, findsNothing);
+  });
+
+  testWidgets('a drag in a real scrollable scrolls and does not glitch', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _theme,
+        home: Scaffold(
+          body: ListView(
+            controller: controller,
+            children: [
+              for (var i = 0; i < 30; i++)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: GlitchTap(
+                    child: FilledButton(
+                      onPressed: () {},
+                      child: GlitchLabel('Action $i'),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.drag(find.text('Action 3'), const Offset(0, -200));
+    await tester.pump();
+    expect(controller.offset, greaterThan(100));
+    expect(_animating, findsNothing);
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('a secondary mouse button does not glitch', (tester) async {
+    await tester.pumpWidget(_host(const GlitchLabel('Save')));
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(GlitchLabel)),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pump();
+    expect(_animating, findsNothing);
+    await gesture.removePointer();
+  });
+
+  group('with the real label font', () {
+    setUpAll(() async {
+      GoogleFonts.config.allowRuntimeFetching = false;
+      for (final face in [
+        (WorkoutType.body().fontFamily!, 'SpaceGrotesk-Regular.ttf'),
+        (
+          WorkoutType.body(weight: FontWeight.w500).fontFamily!,
+          'SpaceGrotesk-Medium.ttf',
+        ),
+        (WorkoutType.mono().fontFamily!, 'SpaceMono-Regular.ttf'),
+      ]) {
+        await (FontLoader(
+          face.$1,
+        )..addFont(rootBundle.load('assets/google_fonts/${face.$2}'))).load();
+      }
+      await GoogleFonts.pendingFonts();
+    });
+    tearDownAll(() => GoogleFonts.config.allowRuntimeFetching = true);
+
+    double width(String text, TextStyle style) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final result = painter.width;
+      painter.dispose();
+      return result;
+    }
+
+    testWidgets('the face kerns, so the width check below is meaningful', (
+      tester,
+    ) async {
+      final style = WorkoutType.body(size: 16, weight: FontWeight.w500);
+      expect(
+        width('AV', style),
+        lessThan(width('A', style) + width('V', style) - .5),
+      );
+    });
+
+    for (final label in ['AV', 'Ty', 'Toggle', 'Favourites']) {
+      for (final weight in [FontWeight.w400, FontWeight.w500]) {
+        testWidgets('"$label" w${weight.value} keeps its exact width', (
+          tester,
+        ) async {
+          final style = WorkoutType.body(size: 16, weight: weight);
+          await tester.pumpWidget(
+            _host(GlitchLabel(label, style: style, key: const Key('g'))),
+          );
+          RenderParagraph paragraph() => tester.renderObject<RenderParagraph>(
+            find.descendant(
+              of: find.byKey(const Key('g')),
+              matching: find.byType(RichText),
+            ),
+          );
+          final rest = paragraph().size;
+          await tester.tap(find.byKey(const Key('g')));
+          await tester.pump();
+          expect(_animating, findsOneWidget);
+          for (var i = 0; i < 12; i++) {
+            expect(paragraph().size, rest);
+            await tester.pump(const Duration(milliseconds: 30));
+          }
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(_plain(label), findsOneWidget);
+          expect(paragraph().size, rest);
+        });
+      }
+    }
+  });
 }
