@@ -6,6 +6,53 @@ observed: 2026-11-08
 
 # Alkion integrated acceptance
 
+## Legacy removal T3 — 2026-11-08
+
+Implements T3 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).
+Earlier sections that mention the removed caption, notice, files or strings stay
+as recorded.
+
+- History and Progress no longer show the "Legacy compatibility ·
+  reps-compat/1" caption. Their numbers, the `reps-compat/1` derivation and the
+  export formats are unchanged.
+- The unused "rest notifications may be delayed" notice and the
+  `NotificationLimitation.inexact` status are gone. When exact alarms are not
+  allowed, or an exact schedule fails, rest notifications still fall back to
+  `inexactAllowWhileIdle` (`workout_notification_test.dart`).
+- Unreachable code is gone: `ui/body_contours.dart`,
+  `widgets/dashed_border.dart`, `export/export_builder.dart` and its test,
+  `data/template_absorb.dart` and its test, `data/is_template_backfill.dart`,
+  `CatalogEvidenceCard`, `test/support/zip_writer.dart`, and the undelivered
+  `exportFull`/`exportTransfer`/`exportOriginal` paths. Export tests now deliver
+  the same bytes through `DirectoryExportDelivery`, so the AC-16 evidence is
+  unchanged.
+- The synthetic transfer seams stay, each with a recorded use:
+  `transfer/correspondence.dart` is the documented
+  [`alkion-correspondence/1`](correspondence.md) contract and AC-14 evidence,
+  and the input for the [Animus follow-on](animus-follow-on.md);
+  `transfer/incoming_quarantine.dart` is the gate that any future legacy draft or
+  queue loader must call ([owner gates](owner-gates.md#incoming-quarantine-wiring-t5t6-carry), AC-15);
+  `transfer/historical_measurements.dart` is the selected-ID seam for
+  measurements without a qualified date ([transfer](transfer.md#historical-measurement-seam), AC-10).
+  The external migration tool's plan decides whether they stay.
+- The day editor no longer keeps editor-local catalog targets for slots without
+  selection evidence. Those targets were never saved; such a slot now shows its
+  measurement fields read-only. Slots with selection evidence save and reopen as
+  before.
+- 184 unused ARB keys are gone from all four locales, including the six
+  capture-hold keys left by T1 (capture 95, profile 25, updates 15, sync 12,
+  alkion 9, login 7, catalog 5, today 3, session 3, export 2, exercise 2, and
+  one each of body, notif, onboarding, progress, targets and training).
+  `test/l10n/unused_keys_test.dart` fails on any key that app code does not
+  use and on a locale key-set mismatch.
+- New durable-runtime widget tests (`catalog_durable_workout_menu_test.dart`)
+  cover the block menu "again" and "setup", the setup sheet at 320 dp and 2×
+  text, cancelling the execution choice with the draft and rest timer intact,
+  and day-editor save and reopen with catalog slots.
+- No schema change, migration or stored-data change.
+
+Host checks are listed in the plan's task state.
+
 ## Legacy removal T2 — 2026-11-08
 
 Implements T2 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).

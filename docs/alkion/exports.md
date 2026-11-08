@@ -25,11 +25,12 @@ removes only its own temporary file. Linux uses the documents directory;
 other platforms write to the temporary directory and open the share sheet, and
 share success is not backup proof.
 
-The retained legacy builders in `export_builder.dart` (`buildFullExport`,
-`buildHistoryExport`) and their regression tests are unchanged and unused by
-Alkion: the legacy “lossless full-backup” comment is contradicted by stripped
-identity columns and omitted state, and the legacy history builder turns an
-unknown load into `0.0`.
+Only History sharing has an app action (Profile → Data). The full domain and
+compatibility transfer documents are built by `ExportService.domainBytes` and
+`transferBytes`, and original bytes by `TransferService.originalBytes`; no app
+action delivers them. The unused legacy builders (`export_builder.dart`) and the
+undelivered `exportFull`/`exportTransfer`/`exportOriginal` paths were removed on
+2026-11-08 ([legacy removal](../plans/2026-11-08-legacy-removal.md)).
 
 The frozen `reps-export/1` import remains unchanged and creates unclassified
 legacy rows. Backup version 2 is the native exact-round-trip recovery path for
@@ -40,5 +41,4 @@ inventories for schemas 1–4 and 5. See the [durable catalog integration contra
 Verification: `test/alkion/transfer/export_test.dart` (domain exactness and
 coverage, history exclusions/non-importability, compatibility round trip into
 another profile, original bytes for selected and rejected artifacts, atomic
-non-overwriting delivery, coherence under 12 concurrent writes) plus
-`test/export/export_builder_test.dart` for the retained legacy builders.
+non-overwriting delivery, coherence under 12 concurrent writes).

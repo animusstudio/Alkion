@@ -136,6 +136,12 @@ normal app, from the private Dev build: stage once with
 `make -C app stage-catalog`, then build with `make -C app build-catalog-dev`
 ([catalog staging](exercise-catalog.md), [app README](../../app/README.md)).
 
+Since 2026-11-08, History and Progress show no `reps-compat/1` compatibility
+caption; the derivation, its numbers and its exports are unchanged. When exact
+alarms are not allowed, rest notifications fall back to inexact scheduling
+without a separate "may be delayed" notice. Every ARB key must be used by app
+code in all four locales (`test/l10n/unused_keys_test.dart`).
+
 Capture evidence checkers remain available; old capture-production and release
 routes remain disabled. The bespoke Android campaign framework is retired;
 ordinary tests, local recovery proofs and native-boundary tests remain. Use the
