@@ -390,7 +390,7 @@ void main() {
     await tester.pumpAndSettle();
     await _details(tester, l);
     expect(find.byType(CatalogArtworkDetails), findsOneWidget);
-    expect(find.text(l.catalogMovementFrames), findsNothing);
+    expect(find.textContaining('Workout Guide'), findsNothing);
     // Favourite and muscle evidence act from the sheet; they are not rows.
     for (final label in [l.catalogFavorite, l.catalogMuscleEvidence]) {
       expect(find.widgetWithText(TextButton, label), findsNothing);
