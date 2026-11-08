@@ -30,8 +30,7 @@ import 'fit_label.dart';
 ///
 /// Visual spec: `screen-today.jsx` → `VolumeBars`.
 class VolumeBars extends StatelessWidget {
-  const VolumeBars({super.key, required this.rows, this.live})
-    : assert(live == null || live.length == rows.length);
+  const VolumeBars({super.key, required this.rows, this.live});
 
   /// Each entry describes one muscle row.
   ///
@@ -70,6 +69,7 @@ class VolumeBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    assert(live == null || live!.length == rows.length);
     final tokens = context.tokens;
     final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
@@ -131,6 +131,9 @@ class VolumeBars extends StatelessWidget {
               ],
               for (final (index, row) in rows.indexed)
                 Padding(
+                  // Keyed by position so the legend appearing above doesn't
+                  // remount the rows.
+                  key: ValueKey(index),
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _VolumeRow(
                     row: row,
@@ -314,18 +317,21 @@ class _VolumeRow extends StatelessWidget {
             children: [label, const SizedBox(height: 8), valueRow],
           )
         : valueRow;
-    if (live == null) return content;
-    // The live count is symbols; speak the counts as words instead.
+    // The live count is symbols; speak the counts as words instead. The
+    // wrapper stays outside live mode (adding no node), so the done fill
+    // keeps its state when a workout starts or ends.
     return Semantics(
-      container: true,
-      excludeSemantics: true,
-      label: AppLocalizations.of(context).volumeLiveSemantics(
-        row.muscle,
-        row.sets,
-        liveSets,
-        row.sets + liveSets + pendingSets,
-        row.target,
-      ),
+      container: live != null,
+      excludeSemantics: live != null,
+      label: live == null
+          ? null
+          : AppLocalizations.of(context).volumeLiveSemantics(
+              row.muscle,
+              row.sets,
+              liveSets,
+              row.sets + liveSets + pendingSets,
+              row.target,
+            ),
       child: content,
     );
   }

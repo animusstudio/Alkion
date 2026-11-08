@@ -24,6 +24,17 @@ Future<void> showWeeklyVolumeSheet(
   required LocalDatabase? database,
 }) {
   final tokens = context.tokens;
+  // One week boundary and one subscription per open sheet, made here and
+  // never in build (re-listen rule).
+  final week = weekStart(DateTime.now());
+  final volume = database == null
+      ? null
+      : StatsRepository.local(
+          database,
+        ).watchWeeklyVolumeByMuscle(weekStart: week);
+  final targets = database == null
+      ? null
+      : MuscleTargetRepository.local(database).watchTargets();
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -34,8 +45,12 @@ Future<void> showWeeklyVolumeSheet(
       duration: Motion.of(context, Motion.base),
       reverseDuration: Motion.of(context, Motion.fast),
     ),
-    builder: (_) =>
-        WeeklyVolumeSheet(controller: controller, database: database),
+    builder: (_) => WeeklyVolumeSheet(
+      controller: controller,
+      weekStart: week,
+      volume: volume,
+      targets: targets,
+    ),
   );
 }
 
@@ -43,30 +58,26 @@ class WeeklyVolumeSheet extends StatefulWidget {
   const WeeklyVolumeSheet({
     super.key,
     required this.controller,
-    required this.database,
+    required this.weekStart,
+    required this.volume,
+    required this.targets,
   });
 
   final ActiveSessionController controller;
 
-  /// Null when no store is open: the sheet then says volume is unavailable.
-  final LocalDatabase? database;
+  /// The Monday the [volume] stream counts from; the draft counts against it.
+  final DateTime weekStart;
+
+  /// The weekly stat and the targets. Null when no store is open: the sheet
+  /// then says volume is unavailable.
+  final Stream<WeeklyMuscleVolume>? volume;
+  final Stream<List<MuscleTarget>>? targets;
 
   @override
   State<WeeklyVolumeSheet> createState() => _WeeklyVolumeSheetState();
 }
 
 class _WeeklyVolumeSheetState extends State<WeeklyVolumeSheet> {
-  // Created once, never in build (re-listen rule).
-  late final DateTime _weekStart = weekStart(DateTime.now());
-  late final Stream<WeeklyMuscleVolume>? _volume = widget.database == null
-      ? null
-      : StatsRepository.local(
-          widget.database!,
-        ).watchWeeklyVolumeByMuscle(weekStart: _weekStart);
-  late final Stream<List<MuscleTarget>>? _targets = widget.database == null
-      ? null
-      : MuscleTargetRepository.local(widget.database!).watchTargets();
-
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context), t = context.tokens;
@@ -104,13 +115,13 @@ class _WeeklyVolumeSheetState extends State<WeeklyVolumeSheet> {
                 ],
               ),
               const SizedBox(height: 12),
-              _volume == null
+              widget.volume == null || widget.targets == null
                   ? _message(l.todayVolumeUnavailable)
                   : StreamBuilder<WeeklyMuscleVolume>(
-                      stream: _volume,
+                      stream: widget.volume,
                       builder: (context, volume) =>
                           StreamBuilder<List<MuscleTarget>>(
-                            stream: _targets,
+                            stream: widget.targets,
                             builder: (context, targets) =>
                                 _content(context, volume, targets),
                           ),
@@ -157,7 +168,7 @@ class _WeeklyVolumeSheetState extends State<WeeklyVolumeSheet> {
               ? null
               : DraftVolume.of(
                   draft,
-                  weekStart: _weekStart,
+                  weekStart: widget.weekStart,
                   now: DateTime.now(),
                 ),
         );
