@@ -139,6 +139,42 @@ void main() {
       expect(p.color, tokens.lineStrong);
     });
 
+    testWidgets('the legend is neutral, not one row\'s target colour', (
+      tester,
+    ) async {
+      await _pumpLive(
+        tester,
+        [
+          (muscle: 'chest', sets: 12, target: 12),
+          (muscle: 'back', sets: 2, target: 12),
+        ],
+        [(live: 1, pending: 1), (live: 1, pending: 1)],
+      );
+      final tokens = Theme.of(
+        tester.element(find.byType(VolumeBars)),
+      ).extension<WorkoutTokens>()!;
+      final swatches = find.byKey(const Key('volume-legend-swatch'));
+      expect(swatches, findsNWidgets(3));
+      final painted = [
+        for (final e in swatches.evaluate())
+          ...find
+              .descendant(
+                of: find.byWidget(e.widget),
+                matching: find.byType(CustomPaint),
+              )
+              .evaluate()
+              .map((p) => (p.widget as CustomPaint).painter)
+              .whereType<LiveSegmentsPainter>()
+              .map((p) => p.color),
+      ];
+      expect(painted, [legendColor(tokens), legendColor(tokens)]);
+      expect(legendColor(tokens), isNot(tokens.lineStrong));
+      expect(legendColor(tokens), isNot(tokens.accentText));
+      // Rows still colour by their own target.
+      expect(_segments(tester, 0).color, tokens.accentText);
+      expect(_segments(tester, 1).color, tokens.lineStrong);
+    });
+
     testWidgets('count reads done+live/target → planned', (tester) async {
       await _pumpLive(
         tester,

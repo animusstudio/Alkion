@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/data/session_repository.dart';
+import 'package:alkion/data/volume_attribution.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/live_weekly_volume.dart';
 import 'package:alkion/ui/today_labels.dart';
@@ -86,8 +87,8 @@ SessionDraft _draft(
 final _week = DateTime(2026, 11, 2); // Monday
 final _now = DateTime(2026, 11, 4, 10);
 
-DraftVolume _of(SessionDraft d) =>
-    DraftVolume.of(d, weekStart: _week, now: _now);
+DraftVolume _of(SessionDraft d, {VolumeTargets? targets}) =>
+    DraftVolume.of(d, weekStart: _week, now: _now, targets: targets);
 
 void main() {
   group('DraftVolume', () {
@@ -112,19 +113,47 @@ void main() {
       expect(v.live, {'chest': 2});
       expect(v.pending, {'chest': 2, 'quads': 1});
       expect(v.unknownLive, 0);
-      expect(v.unknownPending, 0);
     });
 
-    test('a block with no muscle group counts as unknown', () {
+    test('a block with no muscle group counts as unknown once done', () {
+      for (final blank in ['', '  ']) {
+        final v = _of(
+          _draft([
+            _block('mystery', blank, work: [_set('a', done: true), _set('b')]),
+          ]),
+          targets: (_, _) => const {},
+        );
+        // Never a blank-named group; the not-done set stays out of the note.
+        expect(v.live, isEmpty, reason: '"$blank"');
+        expect(v.pending, isEmpty, reason: '"$blank"');
+        expect(v.unknownLive, 1, reason: '"$blank"');
+      }
+    });
+
+    test('a blank group takes its catalog targets; legacy groups win', () {
+      final asked = <String>[];
+      Set<String> targets(String exerciseId, String? variantId) {
+        asked.add(exerciseId);
+        return switch (exerciseId) {
+          'one' => {'biceps'},
+          'two' => {'shoulders', 'triceps'},
+          _ => {'glutes'},
+        };
+      }
+
       final v = _of(
         _draft([
-          _block('mystery', '', work: [_set('a', done: true), _set('b')]),
+          _block('one', '', work: [_set('a', done: true), _set('b')]),
+          _block('two', '', work: [_set('c', done: true)]),
+          _block('legacy', 'chest', work: [_set('d', done: true)]),
         ]),
+        targets: targets,
       );
-      expect(v.live, isEmpty);
-      expect(v.pending, isEmpty);
-      expect(v.unknownLive, 1);
-      expect(v.unknownPending, 1);
+      expect(v.live, {'biceps': 1, 'shoulders': 1, 'triceps': 1, 'chest': 1});
+      expect(v.pending, {'biceps': 1});
+      expect(v.unknownLive, 0);
+      // A legacy group is never overridden by the catalog.
+      expect(asked, ['one', 'two']);
     });
 
     test('a resumed workout skips rows the stat already holds', () {
@@ -181,7 +210,6 @@ void main() {
           live: {'chest': 3, 'biceps': 1},
           pending: {'chest': 3, 'biceps': 2, 'calves': 4},
           unknownLive: 1,
-          unknownPending: 5,
         ),
       );
       // Ordered by planned total (chest 14, back 10, calves 4, biceps 3),
