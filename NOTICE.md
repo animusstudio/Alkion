@@ -28,7 +28,7 @@ rights in every file in this repository:
   their own licenses and attribution, including Everkinetic/Bryl Lim credits.
   They are kept in source only and are not bundled in the app
   ([notice](app/assets/workout_guide/NOTICE.md)).
-- Bundled Iconoir regular icons retain their separate [MIT notice](app/assets/icons/NOTICE)
+- Bundled Iconoir icons (regular, plus the solid star) retain their separate [MIT notice](app/assets/icons/NOTICE)
   and [source/provenance record](app/tool/iconoir/README.md). The root software
   grant does not replace those permissions.
 - Bundled fonts retain their accompanying OFL notices. Other third-party
