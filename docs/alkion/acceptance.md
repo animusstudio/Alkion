@@ -6,6 +6,32 @@ observed: 2026-11-08
 
 # Alkion integrated acceptance
 
+## Legacy removal T1 — 2026-11-08
+
+Implements T1 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).
+This supersedes the in-app import described in the 2026-11-01 sections below,
+which stay as recorded.
+
+- Profile → Data has no Import Reps data entry. The import screen, the
+  `reps_import` facade, its strings and the in-app mapping review/apply path
+  are gone, as is the one-time retirement of the former separate history
+  profile. The [import guide](reps-import.md) is retired with a pointer to the
+  planned external migration tool.
+- The host-side `alkion-import-history` and `alkion-history-recovery` routes
+  stay, with the mapping model moved to `app/lib/history_mapping/`. Profiles
+  that already hold mapped history open and show it unchanged: the app still
+  reads stored mappings for History attribution and the catalog picker.
+- The unused data-capture hold (`freezeCallbacks`/`resumeCallbacks`,
+  `markFlushed`, `saveEpoch`) is gone. A pending Finish or a notification rest
+  action still blocks double actions. A failed Finish now shows a "not saved
+  yet, tap Finish workout to try again" notice, and the disabled +30s/Skip
+  chips say rest changes wait until the workout is saved, instead of storage
+  recovery or data capture copy.
+- No schema change, migration or stored-data deletion.
+
+Host checks are listed in the plan's task state. The full suite and device
+checks follow T3.
+
 ## Polish: text motion, live weekly volume, details, search — 2026-11-08
 
 Implements the approved [polish plan](../plans/2026-11-08-alkion-polish.md):
