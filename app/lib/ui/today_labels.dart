@@ -1,3 +1,7 @@
+import 'package:flutter/widgets.dart';
+
+import '../catalog/catalog_browse.dart';
+import '../data/muscles.dart';
 import '../l10n/app_localizations.dart';
 
 /// Today's header line: the date, then either the workout in progress or the
@@ -51,4 +55,22 @@ List<({String muscle, int sets, int target})> weeklyVolumeRows(
       (muscle: v.muscle, sets: v.sets, target: targets[v.muscle] ?? v.sets),
     for (final t in untrained) (muscle: t.key, sets: 0, target: t.value),
   ];
+}
+
+/// The weekly volume label for a group [key]: the app's own name for the
+/// eight legacy groups, the catalog's name for other catalog groups (in the
+/// UI language, else English), and the title-cased custom label otherwise.
+String volumeGroupLabel(
+  BuildContext context,
+  String key,
+  CatalogBrowse? browse,
+) {
+  if (kMuscleLabels.containsKey(key)) return localizedMuscle(context, key);
+  final names = browse?.groups[key]?.names;
+  if (names != null) {
+    return names[Localizations.localeOf(context).languageCode] ??
+        names['en'] ??
+        localizedMuscle(context, key);
+  }
+  return localizedMuscle(context, key);
 }

@@ -15,7 +15,6 @@ import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../data/muscle_target_repository.dart';
-import '../data/muscles.dart';
 import '../data/session_repository.dart';
 import '../data/stats_repository.dart';
 import '../l10n/app_localizations.dart';
@@ -878,8 +877,13 @@ class _TodayScreenState extends State<TodayScreen> {
           // bars keep their state when a workout starts or ends.
           builder: (context, targetSnap) => ListenableBuilder(
             listenable: Listenable.merge([?active]),
-            builder: (context, _) =>
-                _weeklyVolumeContent(tokens, volSnap, targetSnap, active),
+            builder: (context, _) => _weeklyVolumeContent(
+              context,
+              tokens,
+              volSnap,
+              targetSnap,
+              active,
+            ),
           ),
         );
       },
@@ -887,6 +891,7 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Widget _weeklyVolumeContent(
+    BuildContext context,
     WorkoutTokens tokens,
     AsyncSnapshot<WeeklyMuscleVolume> volSnap,
     AsyncSnapshot<List<MuscleTarget>> targetSnap,
@@ -896,24 +901,31 @@ class _TodayScreenState extends State<TodayScreen> {
     final unavailable = volSnap.hasError || targetSnap.hasError;
     final loading = !volSnap.hasData || !targetSnap.hasData;
     final volume = volSnap.data;
-    final volRows = volume?.groups ?? [];
+    final catalog = catalogVolumeAttribution(context);
+    final attributed = volume?.attribute(catalog.targets);
+    final volRows = attributed?.groups ?? [];
     final targetList = targetSnap.data ?? [];
 
     final targetMap = {for (final t in targetList) t.muscle: t.targetSets};
     final draft = active?.draftOrNull;
     final combined = LiveWeeklyVolume.combine(
       volume: volRows,
-      unknownSets: volume?.unknownSets ?? 0,
+      unknownSets: attributed?.unknownSets ?? 0,
       targets: targetMap,
       draft: draft == null
           ? null
-          : DraftVolume.of(draft, weekStart: _weekStart, now: DateTime.now()),
+          : DraftVolume.of(
+              draft,
+              weekStart: _weekStart,
+              now: DateTime.now(),
+              targets: catalog.targets,
+            ),
     );
     final unknownSets = combined.unknownSets;
     final rows = [
       for (final r in combined.rows)
         (
-          muscle: localizedMuscle(context, r.muscle),
+          muscle: volumeGroupLabel(context, r.muscle, catalog.browse),
           sets: r.sets,
           target: r.target,
         ),

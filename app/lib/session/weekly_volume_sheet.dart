@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/models.dart';
 import '../data/muscle_target_repository.dart';
-import '../data/muscles.dart';
+import '../ui/today_labels.dart';
 import '../data/stats_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
@@ -160,9 +160,11 @@ class _WeeklyVolumeSheetState extends State<WeeklyVolumeSheet> {
       listenable: widget.controller,
       builder: (context, _) {
         final draft = widget.controller.draftOrNull;
+        final catalog = catalogVolumeAttribution(context);
+        final attributed = volume.data!.attribute(catalog.targets);
         final combined = LiveWeeklyVolume.combine(
-          volume: volume.data!.groups,
-          unknownSets: volume.data!.unknownSets,
+          volume: attributed.groups,
+          unknownSets: attributed.unknownSets,
           targets: targetMap,
           draft: draft == null
               ? null
@@ -170,6 +172,7 @@ class _WeeklyVolumeSheetState extends State<WeeklyVolumeSheet> {
                   draft,
                   weekStart: widget.weekStart,
                   now: DateTime.now(),
+                  targets: catalog.targets,
                 ),
         );
         return Column(
@@ -185,7 +188,11 @@ class _WeeklyVolumeSheetState extends State<WeeklyVolumeSheet> {
                 rows: [
                   for (final r in combined.rows)
                     (
-                      muscle: localizedMuscle(context, r.muscle),
+                      muscle: volumeGroupLabel(
+                        context,
+                        r.muscle,
+                        catalog.browse,
+                      ),
                       sets: r.sets,
                       target: r.target,
                     ),

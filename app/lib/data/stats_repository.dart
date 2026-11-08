@@ -2,6 +2,7 @@ import '../store/local_store.dart';
 
 import '../util/calendar_keys.dart';
 import 're_listenable.dart';
+import 'volume_attribution.dart';
 import '../domain/evidence.dart';
 import 'catalog_load_history.dart';
 
@@ -12,13 +13,47 @@ const _qualifiedStatsDay =
 
 /// Labeled weekly working sets and the sets whose muscle is unavailable.
 /// Unknown evidence is deliberately separate from canonical/custom labels.
+///
+/// [groups] holds sets whose exercise has a legacy `muscle_group`. Sets with
+/// an empty or missing one are [unlabeled], per exercise and with the catalog
+/// variant its saved tracking context links to, and count in [unknownSets]
+/// until [attribute] gives them their catalog target groups.
 final class WeeklyMuscleVolume {
   WeeklyMuscleVolume({
     required List<({String muscle, int sets})> groups,
     required this.unknownSets,
-  }) : groups = List.unmodifiable(groups);
+    List<({String exerciseId, String? variantId, int sets})> unlabeled =
+        const [],
+  }) : groups = List.unmodifiable(groups),
+       unlabeled = List.unmodifiable(unlabeled);
   final List<({String muscle, int sets})> groups;
   final int unknownSets;
+  final List<({String exerciseId, String? variantId, int sets})> unlabeled;
+
+  /// Counts each [unlabeled] exercise's sets once for each group [targets]
+  /// gives it; groups matching a legacy label merge with it. Sets with no
+  /// target group stay unknown. Derived at read time: nothing is stored.
+  WeeklyMuscleVolume attribute(VolumeTargets targets) {
+    final totals = <String, int>{for (final g in groups) g.muscle: g.sets};
+    final unknown = <({String exerciseId, String? variantId, int sets})>[];
+    var unknownSets = 0;
+    for (final row in unlabeled) {
+      final groups = targets(row.exerciseId, row.variantId);
+      if (groups.isEmpty) {
+        unknown.add(row);
+        unknownSets += row.sets;
+        continue;
+      }
+      for (final group in groups) {
+        totals[group] = (totals[group] ?? 0) + row.sets;
+      }
+    }
+    return WeeklyMuscleVolume(
+      groups: [for (final e in totals.entries) (muscle: e.key, sets: e.value)],
+      unknownSets: unknownSets,
+      unlabeled: unknown,
+    );
+  }
 }
 
 /// Repository for aggregate stats derived from sets + sessions.
@@ -210,36 +245,74 @@ class StatsRepository {
   }
 
   /// Live stream of working-set volume by muscle group since [weekStart].
+  ///
+  /// Grouped per exercise so that exercises without a legacy group keep
+  /// their identity and catalog link for [WeeklyMuscleVolume.attribute]. The
+  /// link is the exercise's catalog binding (one per exercise, read-only
+  /// here); a store from before catalog execution has none, so it reports no
+  /// variants instead of failing.
   Stream<WeeklyMuscleVolume> watchWeeklyVolumeByMuscle({
     required DateTime weekStart,
   }) {
     return reListenable(
-      () => db
-          .watch(
-            'SELECT ex.muscle_group AS muscle, COUNT(*) AS sets '
-            'FROM reps_compat1_legacy_local s '
-            'JOIN sessions se ON se.id = s.session_id '
-            'JOIN exercises ex ON ex.id = s.exercise_id '
-            'WHERE s.deleted=0 AND se.deleted=0 AND s.is_warmup = 0 AND $_qualifiedStatsDay AND se.date >= ? '
-            'GROUP BY ex.muscle_group '
-            'ORDER BY sets DESC',
-            parameters: [isoDate(weekStart)],
-          )
-          .map((rows) {
-            final groups = <({String muscle, int sets})>[];
-            var unknownSets = 0;
-            for (final row in rows) {
-              final muscle = row['muscle'];
-              final sets = row['sets'] as int;
-              if (muscle == null) {
-                unknownSets += sets;
-              } else {
-                // The accepted text projection includes custom and empty labels.
-                groups.add((muscle: muscle as String, sets: sets));
+      () => Stream.fromFuture(_hasCatalogBindings()).asyncExpand(
+        (linked) => db
+            .watch(
+              'SELECT ex.muscle_group AS muscle, ex.id AS exercise_id, '
+              'COUNT(*) AS sets, '
+              '${linked ? _bindingVariantSql : 'NULL'} AS variant_id '
+              'FROM reps_compat1_legacy_local s '
+              'JOIN sessions se ON se.id = s.session_id '
+              'JOIN exercises ex ON ex.id = s.exercise_id '
+              'WHERE s.deleted=0 AND se.deleted=0 AND s.is_warmup = 0 AND $_qualifiedStatsDay AND se.date >= ? '
+              'GROUP BY ex.id '
+              'ORDER BY sets DESC',
+              parameters: [if (linked) db.profileId, isoDate(weekStart)],
+            )
+            .map((rows) {
+              final totals = <String, int>{};
+              final unlabeled =
+                  <({String exerciseId, String? variantId, int sets})>[];
+              var unknownSets = 0;
+              for (final row in rows) {
+                final muscle = row['muscle'] as String?;
+                final sets = row['sets'] as int;
+                if (hasLegacyGroup(muscle)) {
+                  // The accepted text projection includes custom labels.
+                  totals[muscle!] = (totals[muscle] ?? 0) + sets;
+                } else {
+                  unknownSets += sets;
+                  unlabeled.add((
+                    exerciseId: row['exercise_id'] as String,
+                    variantId: row['variant_id'] as String?,
+                    sets: sets,
+                  ));
+                }
               }
-            }
-            return WeeklyMuscleVolume(groups: groups, unknownSets: unknownSets);
-          }),
+              return WeeklyMuscleVolume(
+                groups: [
+                  for (final e in totals.entries)
+                    (muscle: e.key, sets: e.value),
+                ],
+                unknownSets: unknownSets,
+                unlabeled: unlabeled,
+              );
+            }),
+      ),
     );
   }
+
+  /// The variant of a blank-labelled exercise's live catalog binding.
+  static const _bindingVariantSql =
+      "CASE WHEN trim(COALESCE(ex.muscle_group,''))='' THEN "
+      '(SELECT b.variant_id FROM exercise_catalog_bindings b '
+      'WHERE b.profile_id=? AND b.exercise_id=ex.id AND b.deleted=0 '
+      "AND b.catalog_namespace='$volumeCatalogNamespace') END";
+
+  Future<bool> _hasCatalogBindings() async =>
+      await db.getOptional(
+        "SELECT 1 AS present FROM sqlite_master WHERE type='table' "
+        "AND name='exercise_catalog_bindings'",
+      ) !=
+      null;
 }

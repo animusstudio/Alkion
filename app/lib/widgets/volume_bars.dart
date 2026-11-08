@@ -410,6 +410,10 @@ class LiveSegmentsPainter extends CustomPainter {
 }
 
 /// Names the three segments once, above the rows.
+///
+/// Rows colour their segments by target (muted under it, accent at or over
+/// it), so the legend explains the pattern only: solid, faded and dashed in
+/// the neutral text colour, which no bar uses, rather than one row's colour.
 class _LiveLegend extends StatelessWidget {
   const _LiveLegend({required this.tokens});
   final WorkoutTokens tokens;
@@ -418,16 +422,18 @@ class _LiveLegend extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final style = WorkoutType.body(size: 12, color: tokens.dim);
+    final swatch = legendColor(tokens);
     Widget item(String text, LiveSegmentsPainter? painter) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
+          key: const Key('volume-legend-swatch'),
           width: 16,
           height: 7,
           child: painter == null
               ? DecoratedBox(
                   decoration: BoxDecoration(
-                    color: tokens.lineStrong,
+                    color: swatch,
                     borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                 )
@@ -445,21 +451,17 @@ class _LiveLegend extends StatelessWidget {
         item(l.volumeLegendDone, null),
         item(
           l.volumeLegendLive,
-          LiveSegmentsPainter(
-            liveEnd: 1,
-            plannedEnd: 1,
-            color: tokens.lineStrong,
-          ),
+          LiveSegmentsPainter(liveEnd: 1, plannedEnd: 1, color: swatch),
         ),
         item(
           l.volumeLegendPlanned,
-          LiveSegmentsPainter(
-            liveEnd: 0,
-            plannedEnd: 1,
-            color: tokens.lineStrong,
-          ),
+          LiveSegmentsPainter(liveEnd: 0, plannedEnd: 1, color: swatch),
         ),
       ],
     );
   }
 }
+
+/// The legend's neutral swatch colour (see [_LiveLegend]).
+@visibleForTesting
+Color legendColor(WorkoutTokens tokens) => tokens.text;
