@@ -855,9 +855,6 @@
   "captureStartConfirmTitle": "Capture your data now?",
   "captureStartConfirmBody": "Reps briefly pauses saving and sync, copies what it stores on this device into a private folder (except sign-in credentials; anything unreadable is listed) and checks the copy. Nothing is deleted or sent. Then Reps carries on as before.",
   "captureStartConfirm": "Capture",
-  "captureHoldConfirmTitle": "Capture and keep holding?",
-  "captureHoldConfirmBody": "Reps captures your data, then keeps saving and sync paused, even after a restart, until you release the hold here. While held, changes can't be saved and rest can't be extended.",
-  "captureHoldConfirm": "Capture and hold",
   "captureRunning": "Capturing… Saving and sync are paused until it finishes.",
   "captureResuming": "Resuming…",
   "captureSavedTitle": "Capture saved on this device",
@@ -984,7 +981,6 @@
     }
   },
   "captureExportUnavailable": "Copying a capture out isn't available on this device.",
-  "captureWritesPausedBody": "A data capture is holding your data, so this change wasn't saved. Nothing else changed. Release or resume it in Profile → Data capture.",
   "restUnavailableUntilSaved": "Unavailable until the workout is saved",
   "restChangesWaitForSave": "Rest changes wait until the workout is saved",
   "finishNotSavedBanner": "This workout isn't saved yet and is kept as it is. Tap Finish workout to try again.",
@@ -1001,8 +997,6 @@
     }
   },
   "captureExportExists": "That folder already exists there. Nothing was copied or replaced, and the capture on this device was only read.",
-  "captureHoldWorkoutBanner": "Data capture is holding your data: changes to this workout aren't being saved. They are lost if the app closes before the hold ends.",
-  "captureHoldWorkoutWarning": "A workout is open. While the hold lasts, its changes aren't saved and are lost if the app closes. Finish or discard it first if you want to keep them.",
   "bodyweightChooseEntry": "Choose the measurement to edit",
   "targetsKeepEmpty": "Keep goals empty",
   "bodyweightUnavailable": "Measurement unavailable",
