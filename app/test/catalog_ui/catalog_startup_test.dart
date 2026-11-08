@@ -318,9 +318,9 @@ void main() {
         expect(find.text('Home').hitTestable(), findsOneWidget);
         expect(GlyphSkeleton.debugSweepRunning, isFalse);
 
-        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pump(Motion.reveal * .5);
         expect(find.byType(CatalogStartupMark), findsOneWidget);
-        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pump(Motion.reveal * .5);
         expect(find.byType(CatalogStartupMark), findsNothing);
         final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
         expect(
@@ -387,8 +387,9 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  test('Motion.reveal is the owner-slowed 500 ms dissolve', () {
-    expect(Motion.reveal, const Duration(milliseconds: 500));
+  test('Motion.reveal is the owner-slowed dissolve at the 1.25× pace', () {
+    // 500 ms on 2026-11-07, then the owner's 1.25× pace on 2026-11-08.
+    expect(Motion.reveal, const Duration(milliseconds: 625));
     expect(Motion.reveal, greaterThan(Motion.slow));
   });
 }

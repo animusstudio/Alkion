@@ -433,35 +433,37 @@ void main() {
   testWidgets('the dissolve wave travels across all of Motion.reveal', (
     tester,
   ) async {
-    expect(Motion.reveal, const Duration(milliseconds: 500));
+    // 500 ms owner-slowed on 2026-11-07, then paced 1.25× on 2026-11-08.
+    expect(Motion.reveal, const Duration(milliseconds: 625));
     // Owner-directed: the dissolve keeps its own gentler curve.
     expect(Motion.revealCurve, isNot(Motion.curve));
-    double expected(int ms) =>
-        (Motion.revealCurve.transform(ms / 500) * 1.4 - .2).clamp(0, 1);
+    // Checkpoints are shares of the run, so they hold at any pace.
+    double expected(double share) =>
+        (Motion.revealCurve.transform(share) * 1.4 - .2).clamp(0, 1);
     await tester.pumpWidget(_app(_reveal(loading: true)));
     expect(find.byType(GlyphSkeleton), findsOneWidget);
     await tester.pumpWidget(_app(_reveal(loading: false)));
 
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(Motion.reveal * .2);
     final early = waveFront(tester);
     // Open at once, but only a small hole: the travel is not front-loaded.
     expect(early, inExclusiveRange(.03, .3));
-    expect(early, closeTo(expected(100), .02));
+    expect(early, closeTo(expected(.2), .02));
 
-    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(Motion.reveal * .3);
     final middle = waveFront(tester);
     expect(middle, inInclusiveRange(.4, .9));
-    expect(middle, closeTo(expected(250), .02));
+    expect(middle, closeTo(expected(.5), .02));
     // Mid-wave: the content is laid out and tappable under a passing overlay.
     expect(find.byType(GlyphSkeleton), findsOneWidget);
     expect(find.text('Ready').hitTestable(), findsOneWidget);
 
-    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump(Motion.reveal * .3);
     // Open to the corners while the last glyphs still clear at the edges.
     expect(waveFront(tester), 1);
     expect(find.byType(GlyphSkeleton), findsOneWidget);
 
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(Motion.reveal * .2);
     expect(find.byType(GlyphSkeleton), findsNothing);
     expect(find.byType(ClipPath), findsNothing);
     expect(find.text('Ready'), findsOneWidget);

@@ -14,11 +14,13 @@ import 'state_motion.dart';
 /// The specimen's resolve ramp (`design/specimen/ascii-study.js`).
 const textMotionRamp = '@#S08Xx+=-;:.';
 
-/// Unresolved characters step through [textMotionRamp] on this clock.
-const textMotionTick = Duration(milliseconds: 30);
+/// Unresolved characters step through [textMotionRamp] on this clock. Like
+/// the cap and the stagger below, it runs about 1.25× the specimen's value
+/// (30 ms), following the owner's 2026-11-08 pace for the motion tokens.
+const textMotionTick = Duration(milliseconds: 38);
 
 /// [RevealText] runs for [Motion.base], never longer than this.
-const revealTextCap = Duration(milliseconds: 250);
+const revealTextCap = Duration(milliseconds: 310);
 
 /// [RevealText] fades in from this opacity while it resolves.
 const revealTextFrom = .72;
@@ -31,13 +33,14 @@ const _glitchHold = .25;
 final _letter = RegExp(r'^\p{L}', unicode: true);
 
 /// Delays for a list that reveals as a list: siblings stagger by [step], and
-/// the whole stagger never exceeds [cap] (`design/specimen/motion.js`).
+/// the whole stagger never exceeds [cap] (`design/specimen/motion.js`, at
+/// the app's 1.25× pace: 28→35 ms and 220→275 ms).
 ///
 /// Pass the index among the rows that are actually visible in the first frame
 /// after the change, and their count; rows outside it show at once.
 abstract final class RevealStagger {
-  static const step = Duration(milliseconds: 28);
-  static const cap = Duration(milliseconds: 220);
+  static const step = Duration(milliseconds: 35);
+  static const cap = Duration(milliseconds: 275);
 
   /// The delay of row [index] of [count] revealing rows.
   static Duration delay(int index, int count) {
