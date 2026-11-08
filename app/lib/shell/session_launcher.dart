@@ -221,9 +221,8 @@ Future<void> openActiveSession(
 
   await Navigator.of(context, rootNavigator: true).push<void>(
     PageRouteBuilder<void>(
-      // Paced with the motion tokens, about 1.25× (was 250/200 ms).
-      transitionDuration: const Duration(milliseconds: 310),
-      reverseTransitionDuration: const Duration(milliseconds: 250),
+      transitionDuration: const Duration(milliseconds: 250),
+      reverseTransitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (_, __, ___) =>
           ChangeNotifierProvider<ActiveSessionController>.value(
             value: controller,

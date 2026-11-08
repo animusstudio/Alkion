@@ -1,4 +1,3 @@
-import 'package:alkion/theme/motion.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/confirmed_set_feedback.dart';
@@ -86,8 +85,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 120));
       expect(cue(), 1);
       await tester.pump();
-      // The success line resolves over Motion.base.
-      await tester.pump(Motion.base);
+      await tester.pump(const Duration(milliseconds: 200));
       final motion =
           tester
                   .widget<AnimatedBuilder>(

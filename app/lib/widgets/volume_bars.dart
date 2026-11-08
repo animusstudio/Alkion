@@ -182,7 +182,7 @@ class _VolumeRow extends StatelessWidget {
   final ({int live, int pending})? live;
   final WorkoutTokens tokens;
 
-  /// Row position, used to stagger the bar grow-in (~25ms per row).
+  /// Row position, used to stagger the bar grow-in (~20ms per row).
   final int index;
   final double labelWidth;
   final double countWidth;
@@ -249,7 +249,7 @@ class _VolumeRow extends StatelessWidget {
                     ),
                     duration: Motion.of(
                       context,
-                      Motion.base + Duration(milliseconds: 25 * index),
+                      Motion.base + Duration(milliseconds: 20 * index),
                     ),
                     curve: Motion.curve,
                     builder: (_, segments, __) => CustomPaint(
@@ -262,7 +262,7 @@ class _VolumeRow extends StatelessWidget {
                     ),
                   ),
                 // Fill bar — grows 0→fraction on mount, staggered by row index
-                // (~25ms per row via a slightly longer per-row duration). On a
+                // (~20ms per row via a slightly longer per-row duration). On a
                 // data rebuild the tween retargets old→new, which animates the
                 // bar to its new width rather than re-growing from zero.
                 TweenAnimationBuilder<double>(
@@ -270,7 +270,7 @@ class _VolumeRow extends StatelessWidget {
                   tween: Tween(begin: 0, end: fillFraction.clamp(0.0, 1.0)),
                   duration: Motion.of(
                     context,
-                    Motion.base + Duration(milliseconds: 25 * index),
+                    Motion.base + Duration(milliseconds: 20 * index),
                   ),
                   curve: Motion.curve,
                   builder: (_, factor, __) => FractionallySizedBox(

@@ -140,6 +140,9 @@ The owner asked for four kinds of change.
     - glyph tick 30→~38 ms;
     - stagger 28→35 ms, with the cap 220→275 ms.
   - The startup intro and the ambient/sweep loops stay unchanged.
+  - Second device check (APK `f18073be` at `e34d478`): the owner preferred the
+    original pace, so the 1.25× scaling was reverted. T5's tests and the
+    reveal-plan clean-up stay.
 
 ## Non-goals
 

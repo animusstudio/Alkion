@@ -1,4 +1,3 @@
-import 'package:alkion/theme/motion.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/widgets/alkion_brand.dart';
@@ -55,8 +54,7 @@ void main() {
           await tester.tap(find.byKey(const Key('first-entry-opening')));
           await tester.pump();
         } else {
-          // Past the intro and its Motion.base handoff fade.
-          await tester.pump(Motion.base);
+          await tester.pump(const Duration(milliseconds: 100));
         }
         expect(find.byKey(const Key('first-entry-opening')), findsNothing);
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
@@ -85,8 +83,7 @@ void main() {
     expect(tester.widget<AlkionArm>(find.byType(AlkionArm)).frame, 2);
     await tester.pump(const Duration(milliseconds: 400));
     expect(tester.widget<AlkionArm>(find.byType(AlkionArm)).frame, 3);
-    // The intro ends here; the choices fade in over Motion.base.
-    await tester.pump(Motion.base);
+    await tester.pump(const Duration(milliseconds: 200));
     expect(find.byKey(const Key('first-entry-opening')), findsNothing);
     expect(find.bySemanticsLabel('Functional choices'), findsOneWidget);
     await tester.pumpWidget(_app());

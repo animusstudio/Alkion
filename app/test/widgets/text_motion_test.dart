@@ -306,10 +306,10 @@ void main() {
     expect(tester.binding.transientCallbackCount, 0);
   });
 
-  test('RevealStagger steps by 35 ms and caps the total at 275 ms', () {
-    // The specimen's 28/220 ms at the app's 1.25× pace.
-    expect(RevealStagger.step, const Duration(milliseconds: 35));
-    expect(RevealStagger.cap, const Duration(milliseconds: 275));
+  test('RevealStagger steps by 28 ms and caps the total at 220 ms', () {
+    // The specimen's values (`design/specimen/motion.js`).
+    expect(RevealStagger.step, const Duration(milliseconds: 28));
+    expect(RevealStagger.cap, const Duration(milliseconds: 220));
     expect(RevealStagger.delay(0, 4), Duration.zero);
     expect(RevealStagger.delay(3, 4), RevealStagger.step * 3);
     expect(RevealStagger.delay(20, 21), RevealStagger.cap);

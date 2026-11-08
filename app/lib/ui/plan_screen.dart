@@ -286,7 +286,7 @@ class PlanScreenState extends State<PlanScreen> {
     }
 
     return AnimatedSwitcher(
-      duration: Motion.of(context, const Duration(milliseconds: 275)),
+      duration: Motion.of(context, const Duration(milliseconds: 220)),
       switchInCurve: Motion.curve,
       switchOutCurve: Motion.curve,
       transitionBuilder: (child, anim) => FadeTransition(

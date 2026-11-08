@@ -145,11 +145,10 @@ void main() {
           );
           await tester.tap(findGlyph(AlkionGlyph.more));
           await tester.pump();
-          // Through the mark's whole Motion.fast resolve, in halves.
           for (final elapsed in [
             Duration.zero,
-            Motion.fast * .5,
-            Motion.fast * .5,
+            const Duration(milliseconds: 60),
+            const Duration(milliseconds: 60),
           ]) {
             await tester.pump(elapsed);
             final bounds = tester.getRect(
@@ -267,8 +266,7 @@ void main() {
   testWidgets(
     'decode preserves immediate input and completes in Motion.reveal',
     (tester) async {
-      // 500 ms on 2026-11-07, then the owner's 1.25× pace on 2026-11-08.
-      expect(Motion.reveal, const Duration(milliseconds: 625));
+      expect(Motion.reveal, const Duration(milliseconds: 500));
       var taps = 0;
       await tester.pumpWidget(
         discoveryApp(

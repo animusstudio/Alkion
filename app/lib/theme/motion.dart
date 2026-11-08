@@ -3,17 +3,15 @@ import 'package:flutter/physics.dart';
 
 /// Shared motion; live gesture settling and expansion use a restrained spring.
 class Motion {
-  // Owner-paced 2026-11-08: the interaction tokens run about 1.25× their
-  // first values (120/200/300 ms), which read slightly too fast on device.
-  static const fast = Duration(milliseconds: 150);
-  static const base = Duration(milliseconds: 250);
-  static const slow = Duration(milliseconds: 375);
+  static const fast = Duration(milliseconds: 120);
+  static const base = Duration(milliseconds: 200);
+  static const slow = Duration(milliseconds: 300);
 
   /// Rare first-use character material, followed by the normal base fade.
   static const entryIntro = Duration(milliseconds: 1200);
 
   /// Owner-requested exception for live rulers and exercise expansion only.
-  static const springSettle = Duration(milliseconds: 625);
+  static const springSettle = Duration(milliseconds: 500);
   static SpringDescription spring([Duration duration = springSettle]) =>
       SpringDescription.withDurationAndBounce(duration: duration, bounce: .2);
 
@@ -29,13 +27,12 @@ class Motion {
 
   /// The glyph dissolve from a finished load into its content, owner-slowed
   /// from [slow] so the reveal reads as one unhurried wave.
-  static const reveal = Duration(milliseconds: 625);
+  static const reveal = Duration(milliseconds: 500);
 
   /// The [reveal] dissolve's own curve, owner-directed 2026-11-07: [curve]
-  /// front-loads the wave so it looked finished two fifths of the way in
-  /// (200 of the then 500 ms). This one starts at once but keeps about half
-  /// the travel for after that point, so the wave visibly crosses the whole
-  /// run. [curve] is unchanged elsewhere.
+  /// front-loads the wave so it looked finished by about 200 ms. This one
+  /// starts at once but keeps about half the travel for after 200 ms, so the
+  /// wave visibly crosses the whole 500 ms. [curve] is unchanged elsewhere.
   static const revealCurve = Cubic(0.3, 0.2, 0.5, 1);
 
   static AnimationStyle sheet(BuildContext context) => AnimationStyle(
@@ -168,7 +165,7 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
     // first touch in dispose() would create the ticker on a deactivated
     // element and throw.
     _c.stop();
-    Future.delayed(Duration(milliseconds: 38 * widget.index), () {
+    Future.delayed(Duration(milliseconds: 30 * widget.index), () {
       if (mounted) _c.forward();
     });
   }
