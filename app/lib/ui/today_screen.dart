@@ -1365,6 +1365,7 @@ class _ResumeHeroState extends State<_ResumeHero> {
                 l.todayResumeWorkout,
                 enabled: true,
                 onTap: widget.onResume,
+                glitch: true,
               ),
             ],
           ),

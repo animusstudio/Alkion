@@ -305,8 +305,9 @@ class PrimaryBtn extends StatelessWidget {
   /// A quieter look for an action that isn't the screen's main one.
   final bool secondary;
 
-  /// The label glitches on tap. Opt-in per site: the shared button also
-  /// serves surfaces that stay calm (the live workout and Today).
+  /// The label glitches on tap. Opt-in per site: plan editors, Today's
+  /// Resume workout and the session summary's Done opt in; anything on the
+  /// live workout stays calm.
   final bool glitch;
 
   @override

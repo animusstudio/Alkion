@@ -392,7 +392,12 @@ class _SummaryBody extends StatelessWidget {
               // ── Done button ──────────────────────────────────────────
               StaggeredEntrance(
                 index: 3,
-                child: PrimaryBtn(l.commonDone, enabled: true, onTap: onDone),
+                child: PrimaryBtn(
+                  l.commonDone,
+                  enabled: true,
+                  onTap: onDone,
+                  glitch: true,
+                ),
               ),
             ]),
           ),
@@ -671,7 +676,7 @@ class _ErrorState extends StatelessWidget {
               onPressed: onWorkload,
             ),
             const SizedBox(height: 16),
-            PrimaryBtn(doneLabel, enabled: true, onTap: onDone),
+            PrimaryBtn(doneLabel, enabled: true, onTap: onDone, glitch: true),
           ],
         ),
       ),
