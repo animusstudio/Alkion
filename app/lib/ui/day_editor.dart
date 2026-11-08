@@ -1,12 +1,12 @@
 import '../catalog_ui/catalog_picker.dart';
 import '../catalog_ui/catalog_measurement_form.dart';
 import '../catalog_ui/catalog_scope.dart';
+import '../catalog_ui/catalog_runtime_state.dart';
 import '../catalog_ui/catalog_evidence_widgets.dart';
 import '../domain/catalog_execution.dart';
 import '../domain/local_action.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/services.dart' hide TextInput;
 
 import '../data/day_template_repository.dart';
@@ -107,11 +107,6 @@ class _DayEditorState extends State<DayEditor> {
   int? _weekday; // 0=Mon … 6=Sun
 
   final List<DaySlotState> _slots = [];
-  // Catalog targets for slots without selection evidence are editor-local
-  // snapshots; they vanish when this editor closes.
-  final Map<String, Map<String, String>> _catalogMetrics = {};
-  final Map<String, Map<String, String>> _catalogMetricsBaseline = {};
-  final Map<String, CatalogChoice> _catalogChoices = {};
   String? _expandedExId; // keyed by exerciseId (NOT index)
 
   List<Exercise> _catalog = [];
@@ -229,28 +224,6 @@ class _DayEditorState extends State<DayEditor> {
       _focusCtrl.text = day.focus ?? '';
       _weekday = day.scheduledWeekday;
       _slots.addAll(slots);
-      final scope = CatalogScope.maybeOf(context);
-      if (scope != null) {
-        for (final slot in slots) {
-          final key = slot.instanceKey;
-          final choice = slot.draft.catalog != null
-              ? scope.choiceForSelection(slot.draft.catalog!)
-              : scope.routineContexts[key] ?? scope.exercises[slot.exerciseId];
-          if (choice != null) _catalogChoices[key] = choice;
-          final metrics = Map<String, String>.of(
-            slot.draft.catalog == null
-                ? const <String, String>{}
-                : catalogInputValues(
-                    CatalogSetEvidence(
-                      selection: slot.draft.catalog!,
-                      metrics: slot.draft.catalogTargets,
-                    ),
-                  ),
-          );
-          _catalogMetrics[key] = metrics;
-          _catalogMetricsBaseline[key] = Map.of(metrics);
-        }
-      }
       _baseline = daySnapshot(_currentDraft());
       _loaded = true;
     });
@@ -308,14 +281,17 @@ class _DayEditorState extends State<DayEditor> {
     if (baseline == null || _saving || _deleting) return false;
     return _pendingSave != null ||
         _pendingDelete != null ||
-        daySnapshot(_currentDraft()) != baseline ||
-        _slots.any(
-          (slot) => !mapEquals(
-            _catalogMetrics[slot.instanceKey] ?? const <String, String>{},
-            _catalogMetricsBaseline[slot.instanceKey] ??
-                const <String, String>{},
-          ),
-        );
+        daySnapshot(_currentDraft()) != baseline;
+  }
+
+  /// The catalog choice a slot shows: its persisted selection, else the
+  /// routine context or the exercise's own choice.
+  CatalogChoice? _choiceFor(DaySlotState slot, CatalogRuntimeState? scope) {
+    if (scope == null) return null;
+    final selection = slot.draft.catalog;
+    if (selection != null) return scope.choiceForSelection(selection);
+    return scope.routineContexts[slot.instanceKey] ??
+        scope.exercises[slot.exerciseId];
   }
 
   // ── slot actions ──────────────────────────────────────────────────────────
@@ -347,10 +323,7 @@ class _DayEditorState extends State<DayEditor> {
         multiple: true,
         inDayChoiceKeys: {
           for (final slot in _slots)
-            if ((_catalogChoices[slot.instanceKey] ??
-                    scope.exercises[slot.exerciseId])
-                case final choice?)
-              choice.key,
+            if (_choiceFor(slot, scope) case final choice?) choice.key,
         },
       );
       if (!mounted || _controlsLocked || choices == null) return;
@@ -470,10 +443,6 @@ class _DayEditorState extends State<DayEditor> {
         added.draft.repHigh = null;
         added.draft.workSets = ex.defaultWorkingSets ?? 1;
         added.draft.warmupSets = ex.defaultWarmupSets ?? 0;
-      }
-      if (catalogChoice != null && !catalogChoice.isOwned) {
-        _catalogChoices[added.instanceKey] = catalogChoice;
-        _catalogMetrics[added.instanceKey] = {};
       }
     });
   }
@@ -736,9 +705,7 @@ class _DayEditorState extends State<DayEditor> {
                       ),
                     );
                     final scope = CatalogScope.maybeOf(context);
-                    final choice =
-                        _catalogChoices[slot.instanceKey] ??
-                        scope?.exercises[ex.id];
+                    final choice = _choiceFor(slot, scope);
                     if (slot.draft.catalog != null ||
                         (scope != null &&
                             choice != null &&
@@ -868,6 +835,8 @@ class _DayEditorState extends State<DayEditor> {
                                   slot.draft.catalog?.profile
                                       .toCatalogMeasurementProfile() ??
                                   scope!.measurement(choice!),
+                              // Targets are editable only with selection
+                              // evidence, which Save persists.
                               values: slot.draft.catalog != null
                                   ? catalogInputValues(
                                       CatalogSetEvidence(
@@ -875,11 +844,10 @@ class _DayEditorState extends State<DayEditor> {
                                         metrics: slot.draft.catalogTargets,
                                       ),
                                     )
-                                  : _catalogMetrics.putIfAbsent(
-                                      slot.instanceKey,
-                                      () => {},
-                                    ),
-                              enabled: !_controlsLocked,
+                                  : <String, String>{},
+                              enabled:
+                                  !_controlsLocked &&
+                                  slot.draft.catalog != null,
                               units: {
                                 for (final entry
                                     in slot.draft.catalogTargets.entries)
