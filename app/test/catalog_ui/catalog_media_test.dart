@@ -3,13 +3,13 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:alkion/catalog/catalog.dart';
-import 'package:alkion/catalog/catalog_media.dart';
 import 'package:alkion/catalog/catalog_artwork.dart';
 import 'package:alkion/catalog_ui/catalog_media_widgets.dart';
 import 'package:alkion/catalog_ui/catalog_equipment_icon.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
 import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
 import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/theme/motion.dart';
@@ -22,13 +22,27 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../catalog/catalog_fixture.dart';
 import '../support/app_fonts.dart';
+import '../support/icon_finders.dart';
 import '../support/layout_expect.dart';
-import 'catalog_discovery_picker_test.dart' show fixtureId;
+import 'catalog_discovery_picker_test.dart'
+    show choice, discoveryApp, discoveryState, fixtureId, openChoice;
 
 const _benchName = 'Synthetic bench recognition';
 final _benchId = fixtureId(501);
 
-CatalogTrialState _mediaState() {
+/// A trial state whose runtime can be retired while a sheet is open.
+class _RetirableState extends CatalogTrialState {
+  _RetirableState(super.bundle);
+
+  bool live = true;
+
+  @override
+  bool get active => live;
+}
+
+CatalogTrialState _mediaState([
+  CatalogTrialState Function(CatalogBundle bundle) make = CatalogTrialState.new,
+]) {
   final source = syntheticCatalog();
   (source['facet_vocabulary']['support'] as List).add('flat_bench');
   (source['families'] as List).add({
@@ -55,7 +69,7 @@ CatalogTrialState _mediaState() {
     'coverage': 'unknown',
     'relationships': <Map<String, String>>[],
   });
-  return CatalogTrialState(CatalogBundle.fromJsonString(jsonEncode(source)));
+  return make(CatalogBundle.fromJsonString(jsonEncode(source)));
 }
 
 Widget _app(
@@ -366,9 +380,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('details preserve favorite and basket actions plus query', (
-    tester,
-  ) async {
+  testWidgets('details preserve basket actions plus query', (tester) async {
     final state = _mediaState();
     addTearDown(state.dispose);
     await tester.pumpWidget(_app(CatalogPicker(state: state, multiple: true)));
@@ -378,17 +390,16 @@ void main() {
     await tester.pumpAndSettle();
     await _details(tester, l);
     expect(find.byType(CatalogArtworkDetails), findsOneWidget);
-    expect(find.byType(CatalogMediaDetails), findsNothing);
+    expect(find.text(l.catalogMovementFrames), findsNothing);
+    // Favourite and muscle evidence act from the sheet; they are not rows.
+    for (final label in [l.catalogFavorite, l.catalogMuscleEvidence]) {
+      expect(find.widgetWithText(TextButton, label), findsNothing);
+    }
+    expect(find.text(l.catalogBrowseOnlyNotice), findsNothing);
     await tester.ensureVisible(find.text(l.catalogAddAgain));
     await tester.tap(find.text(l.catalogAddAgain));
     await tester.pumpAndSettle();
     expect(find.text('${l.catalogAddSelected} · 2'), findsOneWidget);
-    await tester.ensureVisible(_row());
-    await _details(tester, l);
-    await tester.ensureVisible(find.text(l.catalogFavorite));
-    await tester.tap(find.text(l.catalogFavorite));
-    await tester.pumpAndSettle();
-    expect(state.favorites, contains(CatalogChoice.variant(_benchId).key));
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('catalog-search')))
@@ -402,61 +413,233 @@ void main() {
     await tester.tap(find.text(l.commonRemove));
     await tester.pumpAndSettle();
     expect(find.text('${l.catalogAddSelected} · 1'), findsOneWidget);
-    await tester.ensureVisible(_row());
-    await _details(tester, l);
-    await tester.ensureVisible(find.text(l.catalogMuscleEvidence));
-    await tester.tap(find.text(l.catalogMuscleEvidence));
-    await tester.pumpAndSettle();
-    expect(find.textContaining(l.catalogBrowseOnlyNotice), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets(
-    'broken artwork leaves row selection, details and credit usable',
-    (tester) async {
-      final state = _mediaState();
-      addTearDown(state.dispose);
-      final media = catalogMediaForVariant(state.bundle.variants[_benchId])!;
-      final artwork = catalogArtworkForVariant(
-        state.bundle.variants[_benchId],
-      )!;
-      var selected = false;
-      await tester.pumpWidget(
-        _app(
-          DefaultAssetBundle(
-            bundle: _BrokenMediaBundle(),
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  CatalogPickerRow(
-                    label: _benchName,
-                    subtitle: '',
-                    artwork: artwork,
-                    onTap: () => selected = true,
-                  ),
-                  CatalogArtworkDetails(artwork: artwork),
-                  CatalogMediaDetails(media: media),
-                ],
-              ),
+  testWidgets('header star toggles in place and the list follows', (
+    tester,
+  ) async {
+    final state = _mediaState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(_app(CatalogPicker(state: state, multiple: true)));
+    await _query(tester);
+    final l = AppLocalizations.of(tester.element(_row()));
+    final tokens = tester.element(_row()).tokens;
+    await _details(tester, l);
+    final star = find.byKey(const Key('catalog-details-favorite'));
+    final close = find.byTooltip(l.commonDone);
+    // Top right: the star sits directly left of the close button.
+    expect(tester.getCenter(star).dy, closeTo(tester.getCenter(close).dy, 1));
+    expect(
+      tester.getTopRight(star).dx,
+      lessThanOrEqualTo(tester.getTopLeft(close).dx),
+    );
+    expect(find.byTooltip(l.catalogFavorite), findsOneWidget);
+    expect(tester.widget<IconButton>(star).isSelected, isFalse);
+    expect(
+      find.descendant(of: star, matching: findGlyph(AlkionGlyph.favorite)),
+      findsOneWidget,
+    );
+    await tester.tap(star);
+    await tester.pumpAndSettle();
+    expect(state.favorites, contains(CatalogChoice.variant(_benchId).key));
+    expect(find.byType(CatalogArtworkDetails), findsOneWidget);
+    expect(tester.widget<IconButton>(star).isSelected, isTrue);
+    final filled = find.descendant(
+      of: star,
+      matching: findGlyph(AlkionGlyph.favoriteFilled),
+    );
+    expect(filled, findsOneWidget);
+    expect(tester.widget<AlkionIcon>(filled).color, tokens.accentText);
+    // The row beneath the open sheet already shows the filled accent star.
+    expect(tester.widget<CatalogPickerRow>(_row()).favorite, isTrue);
+    final rowStar = find.descendant(
+      of: _row(),
+      matching: findGlyph(AlkionGlyph.favoriteFilled),
+    );
+    expect(rowStar, findsOneWidget);
+    expect(tester.widget<AlkionIcon>(rowStar).color, tokens.accentText);
+    final semantics = tester.ensureSemantics();
+    final node = tester.getSemantics(star).getSemanticsData();
+    expect(node.flagsCollection.isSelected, ui.Tristate.isTrue);
+    expect(node.tooltip, l.catalogFavorite);
+    semantics.dispose();
+    await tester.tap(star);
+    await tester.pumpAndSettle();
+    expect(state.favorites, isEmpty);
+    expect(tester.widget<IconButton>(star).isSelected, isFalse);
+    expect(tester.widget<CatalogPickerRow>(_row()).favorite, isFalse);
+    expect(find.byType(CatalogArtworkDetails), findsOneWidget);
+    await tester.tap(close);
+    await tester.pumpAndSettle();
+    expect(find.byType(CatalogArtworkDetails), findsNothing);
+    expect(state.exercises, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the star does nothing once the catalog runtime is retired', (
+    tester,
+  ) async {
+    final state = _mediaState(_RetirableState.new) as _RetirableState;
+    addTearDown(state.dispose);
+    await tester.pumpWidget(_app(CatalogPicker(state: state, multiple: true)));
+    await _query(tester);
+    final l = AppLocalizations.of(tester.element(_row()));
+    await _details(tester, l);
+    state.live = false;
+    await tester.tap(find.byKey(const Key('catalog-details-favorite')));
+    await tester.pumpAndSettle();
+    expect(state.favorites, isEmpty);
+    expect(state.choices, isEmpty);
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CatalogArtworkDetails), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the star does nothing after its picker is unmounted', (
+    tester,
+  ) async {
+    final state = _mediaState();
+    addTearDown(state.dispose);
+    final showPicker = ValueNotifier(true);
+    addTearDown(showPicker.dispose);
+    await tester.pumpWidget(
+      _app(
+        ValueListenableBuilder<bool>(
+          valueListenable: showPicker,
+          builder: (context, show, _) => show
+              ? CatalogPicker(state: state, multiple: true)
+              : const SizedBox(),
+        ),
+      ),
+    );
+    await _query(tester);
+    final l = AppLocalizations.of(tester.element(_row()));
+    await _details(tester, l);
+    // The details sheet is its own route; it outlives the picker beneath it.
+    showPicker.value = false;
+    await tester.pumpAndSettle();
+    expect(find.byType(CatalogPicker), findsNothing);
+    await tester.tap(find.byKey(const Key('catalog-details-favorite')));
+    await tester.pumpAndSettle();
+    expect(state.favorites, isEmpty);
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CatalogArtworkDetails), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('muscle info opens evidence over the open details sheet', (
+    tester,
+  ) async {
+    final state = _mediaState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(_app(CatalogPicker(state: state, multiple: true)));
+    await _query(tester);
+    final l = AppLocalizations.of(tester.element(_row()));
+    await _details(tester, l);
+    final labels = CatalogLabels('en');
+    // The synthetic bench has no reviewed target line, so the button stands
+    // under its own muscle evidence heading.
+    expect(find.text(l.catalogTargetMatches), findsNothing);
+    final info = find.byKey(const Key('catalog-details-muscle-info'));
+    expect(tester.getSize(info).shortestSide, greaterThanOrEqualTo(48));
+    expect(
+      tester.getCenter(info).dy,
+      closeTo(tester.getCenter(find.text(l.catalogMuscleEvidence)).dy, 1),
+    );
+    await tester.tap(info);
+    await tester.pumpAndSettle();
+    expect(find.textContaining(labels.unknownMuscles), findsOneWidget);
+    expect(find.textContaining(l.catalogBrowseOnlyNotice), findsOneWidget);
+    expect(find.textContaining(labels.targetExplanation), findsNothing);
+    expect(find.byType(CatalogArtworkDetails), findsOneWidget);
+    await tester.tap(find.text(l.commonOk));
+    await tester.pumpAndSettle();
+    expect(find.textContaining(l.catalogBrowseOnlyNotice), findsNothing);
+    expect(find.byType(CatalogArtworkDetails), findsOneWidget);
+    expect(state.favorites, isEmpty);
+    expect(find.text('${l.catalogAddSelected} · 1'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('muscle info sits directly right of the reviewed target line', (
+    tester,
+  ) async {
+    final state = discoveryState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(
+      discoveryApp(CatalogPicker(state: state, multiple: true)),
+    );
+    await openChoice(tester, state, fixtureId(10));
+    await tester.tap(
+      find.descendant(
+        of: choice(fixtureId(10)),
+        matching: find.byTooltip('Details'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Target muscles'), findsOneWidget);
+    final info = find.byKey(const Key('catalog-details-muscle-info'));
+    final line = find.descendant(
+      of: find.ancestor(of: info, matching: find.byType(Row)).first,
+      matching: find.byType(Text),
+    );
+    expect(line, findsOneWidget);
+    expect(tester.getCenter(info).dy, closeTo(tester.getCenter(line).dy, 1));
+    expect(tester.getTopLeft(info).dx, closeTo(tester.getTopRight(line).dx, 1));
+    await tester.tap(info);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(CatalogLabels('en').targetExplanation),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Detailed muscle evidence may be incomplete'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.text('Target muscles'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('broken artwork leaves row selection and details usable', (
+    tester,
+  ) async {
+    final state = _mediaState();
+    addTearDown(state.dispose);
+    final artwork = catalogArtworkForVariant(state.bundle.variants[_benchId])!;
+    var selected = false;
+    await tester.pumpWidget(
+      _app(
+        DefaultAssetBundle(
+          bundle: _BrokenMediaBundle(),
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                CatalogPickerRow(
+                  label: _benchName,
+                  subtitle: '',
+                  artwork: artwork,
+                  onTap: () => selected = true,
+                ),
+                CatalogArtworkDetails(artwork: artwork),
+              ],
             ),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
-      final l = AppLocalizations.of(
-        tester.element(find.byType(CatalogMediaDetails)),
-      );
-      expect(find.text(l.catalogMediaUnavailable), findsNWidgets(2));
-      expect(
-        find.text(l.catalogMediaCredit(media.attribution)),
-        findsOneWidget,
-      );
-      await tester.tap(find.text(_benchName));
-      expect(selected, isTrue);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    final l = AppLocalizations.of(
+      tester.element(find.byType(CatalogArtworkDetails)),
+    );
+    expect(find.text(l.catalogMediaUnavailable), findsOneWidget);
+    await tester.tap(find.text(_benchName));
+    expect(selected, isTrue);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets(
     'selected media row retains words equipment and actions at 320dp 2x',
@@ -538,7 +721,7 @@ void main() {
       for (final scale in locale == 'en' ? [1.0, 2.0] : [2.0]) {
         final width = scale == 1 ? 412.0 : 320.0;
         testWidgets(
-          'host $brightness $locale ${width.toInt()}dp ${scale}x positions credits and license',
+          'host $brightness $locale ${width.toInt()}dp ${scale}x details header and artwork',
           (tester) async {
             tester.view.physicalSize = Size(width, 900);
             tester.view.devicePixelRatio = 1;
@@ -546,9 +729,6 @@ void main() {
             addTearDown(tester.view.resetDevicePixelRatio);
             final state = _mediaState();
             addTearDown(state.dispose);
-            final media = catalogMediaForVariant(
-              state.bundle.variants[_benchId],
-            )!;
             final artwork = catalogArtworkForVariant(
               state.bundle.variants[_benchId],
             )!;
@@ -570,11 +750,7 @@ void main() {
             // Asset decoding and platform bundle I/O need real async progress in
             // widget tests; ensure the captures contain the actual offline art.
             await tester.runAsync(() async {
-              await rootBundle.loadString(workoutGuideLicenseAsset);
               await precacheImage(AssetImage(artwork.asset), rowContext);
-              for (final asset in media.frameAssets) {
-                await precacheImage(AssetImage(asset), rowContext);
-              }
               await precacheImage(
                 ResizeImage(
                   AssetImage(artwork.asset),
@@ -669,58 +845,28 @@ void main() {
               captureKey,
               '${brightness.name}-$locale-detail-${width.toInt()}-${scale}x',
             );
+            // The movement frames and the bottom prose are gone; the star
+            // and the evidence button are full-size targets in the header row
+            // and beside the muscle line.
             expect(
-              find.byKey(const Key('catalog-media-position-1')),
+              find.byKey(const Key('catalog-movement-frames-toggle')),
               findsNothing,
             );
-            expect(find.byType(CatalogMediaDetails), findsNothing);
-            final toggle = find.byKey(
-              const Key('catalog-movement-frames-toggle'),
-            );
-            await tester.ensureVisible(toggle);
-            await tester.tap(toggle);
-            await tester.pumpAndSettle();
-            await tester.ensureVisible(
-              find.byKey(const Key('catalog-media-position-3')),
-            );
-            await tester.tap(find.byKey(const Key('catalog-media-position-3')));
-            await tester.pumpAndSettle();
-            final frame = tester.widget<Image>(
-              find.descendant(
-                of: find.byKey(const Key('catalog-media-frame-2')),
-                matching: find.byType(Image),
+            expect(find.text(l.catalogBrowseOnlyNotice), findsNothing);
+            final star = find.byKey(const Key('catalog-details-favorite'));
+            final info = find.byKey(const Key('catalog-details-muscle-info'));
+            expect(tester.widget<IconButton>(star).isSelected, isTrue);
+            for (final button in [star, info]) {
+              expect(tester.getSize(button).width, greaterThanOrEqualTo(48));
+              expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+            }
+            expectNoSplitWords(
+              tester,
+              within: find.ancestor(
+                of: find.byType(CatalogArtworkDetails),
+                matching: find.byType(SingleChildScrollView),
               ),
             );
-            expect((frame.image as AssetImage).assetName, media.frameAssets[2]);
-            await tester.pump(const Duration(seconds: 3));
-            expect(
-              find.byKey(const Key('catalog-media-frame-2')),
-              findsOneWidget,
-            );
-            for (var i = 1; i <= 3; i++) {
-              final button = find.byKey(ValueKey('catalog-media-position-$i'));
-              expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
-              expect(tester.getSize(button).width, greaterThanOrEqualTo(48));
-            }
-            final credit = find.text(l.catalogMediaCredit(media.attribution));
-            await tester.ensureVisible(credit);
-            expect(credit, findsOneWidget);
-            await tester.ensureVisible(
-              find.byKey(const Key('catalog-media-license')),
-            );
-            await tester.pumpAndSettle();
-            final licenseButton = find.byKey(
-              const Key('catalog-media-license'),
-            );
-            // The asset read resumes in the real async zone before the route
-            // can be rendered under the widget test's fake frame clock.
-            await tester.runAsync(() async {
-              await tester.tap(licenseButton);
-            });
-            await tester.pumpAndSettle();
-            expect(find.textContaining('Creative Commons'), findsOneWidget);
-            expect(find.textContaining(media.sourceUrl), findsOneWidget);
-            expect(find.textContaining(media.licenseUrl), findsOneWidget);
             expect(tester.takeException(), isNull);
             semantics.dispose();
             await tester.pumpWidget(const SizedBox());

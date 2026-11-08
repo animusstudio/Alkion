@@ -660,7 +660,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Muscle evidence'));
+      await tester.tap(find.byTooltip('Muscle evidence'));
       await tester.pumpAndSettle();
       expect(
         find.textContaining('Detailed muscle evidence may be incomplete'),

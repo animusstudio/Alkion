@@ -78,10 +78,12 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('Favorite / unfavorite'));
-        await tester.tap(find.text('Favorite / unfavorite'));
+        // The header star toggles in place; Done closes the open sheet.
+        await tester.tap(find.byTooltip('Favorite / unfavorite'));
         await tester.pumpAndSettle();
         expect(state.favorites, contains('variant:${fixtureId(10)}@default'));
+        await tester.tap(find.byTooltip('Done'));
+        await tester.pumpAndSettle();
         expect(
           tester.widget<CatalogPickerRow>(choice(fixtureId(10))).favorite,
           isTrue,
@@ -89,15 +91,19 @@ void main() {
         expect(
           find.descendant(
             of: choice(fixtureId(10)),
-            matching: findGlyph(AlkionGlyph.favorite),
+            matching: findGlyph(AlkionGlyph.favoriteFilled),
           ),
           findsOneWidget,
         );
         final favorite = find.descendant(
           of: choice(fixtureId(10)),
-          matching: findGlyph(AlkionGlyph.favorite),
+          matching: findGlyph(AlkionGlyph.favoriteFilled),
         );
         expect(tester.getRect(favorite).size, const Size(18, 18));
+        expect(
+          tester.widget<AlkionIcon>(favorite).color,
+          tester.element(favorite).tokens.accentText,
+        );
         await captureCatalog(tester, 'catalog-neutral-${brightness.name}');
         await tester.pumpWidget(const SizedBox());
       },
@@ -145,12 +151,14 @@ void main() {
             const Duration(milliseconds: 60),
           ]) {
             await tester.pump(elapsed);
-            final bounds = tester.getRect(findGlyph(AlkionGlyph.favorite));
+            final bounds = tester.getRect(
+              findGlyph(AlkionGlyph.favoriteFilled),
+            );
             expect(bounds.width, greaterThanOrEqualTo(16));
             expect(bounds.height, greaterThanOrEqualTo(16));
           }
           expect(
-            tester.getRect(findGlyph(AlkionGlyph.favorite)).size,
+            tester.getRect(findGlyph(AlkionGlyph.favoriteFilled)).size,
             const Size(18, 18),
           );
           for (final glyph in [AlkionGlyph.current, AlkionGlyph.inDay]) {

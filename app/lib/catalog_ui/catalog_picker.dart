@@ -18,6 +18,7 @@ import 'catalog_trial_scope.dart';
 import 'catalog_muscle_explorer.dart';
 import 'catalog_equipment_icon.dart';
 import 'catalog_choice_details.dart';
+import 'catalog_floating_header.dart';
 import 'catalog_media_widgets.dart';
 
 /// The explicit Close/Back paths protect pending occurrences. Modal drag and
@@ -442,26 +443,29 @@ class _CatalogPickerState extends State<CatalogPicker> {
       actions: [
         if (widget.embedded && _ownedId(choice) != null)
           WSheetAction(label: l.planEditExercise, value: 'edit'),
-        if (!choice.isOwned)
-          WSheetAction(
-            label: l.catalogFavorite,
-            value: 'favorite',
-            selected: widget.state.favorites.contains(choice.key),
-          ),
         if (widget.multiple && !widget.immediateSelection) ...[
           WSheetAction(label: l.catalogAddAgain, value: 'again'),
           if (_selected.any((c) => c.key == choice.key))
             WSheetAction(label: l.commonRemove, value: 'remove'),
         ],
-        WSheetAction(label: l.catalogMuscleEvidence, value: 'muscles'),
       ],
+      // Toggles while the sheet stays open; the list beneath follows the
+      // state notification through _personalChanged.
+      favorite: choice.isOwned
+          ? null
+          : CatalogDetailsFavorite(
+              listenable: widget.state,
+              isSaved: () => widget.state.favorites.contains(choice.key),
+              onToggle: () {
+                if (!mounted || !widget.state.active) return;
+                _update(() => widget.state.toggleFavorite(choice));
+              },
+            ),
     );
     if (!mounted) return;
     if (result == 'edit') {
       final id = _ownedId(choice);
       if (id != null) widget.onEditOwned?.call(id);
-    } else if (result == 'favorite' && !choice.isOwned) {
-      _update(() => widget.state.toggleFavorite(choice));
     } else if (result == 'again') {
       _choose(choice, again: true);
     } else if (result == 'remove') {
@@ -470,19 +474,6 @@ class _CatalogPickerState extends State<CatalogPicker> {
           _selected.lastIndexWhere((c) => c.key == choice.key),
         );
       });
-    } else if (result == 'muscles') {
-      final labels = CatalogLabels(_locale);
-      final coverage =
-          widget.state.bundle.variants[choice.variantId]?.muscleCoverage ==
-              'partial'
-          ? labels.partialMuscles
-          : labels.unknownMuscles;
-      await showWDialog<void>(
-        context,
-        title: l.catalogMuscleEvidence,
-        message: '$coverage\n\n${l.catalogBrowseOnlyNotice}',
-        actions: [WDialogAction(label: l.commonOk, value: null)],
-      );
     }
   }
 
@@ -1290,14 +1281,13 @@ class _CatalogPickerState extends State<CatalogPicker> {
               child: CustomScrollView(
                 controller: _scroll,
                 slivers: [
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    sliver: SliverToBoxAdapter(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (widget.setupIntent &&
-                              widget.currentChoice != null) ...[
+                  if (widget.setupIntent && widget.currentChoice != null)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      sliver: SliverToBoxAdapter(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                             Text(
                               l.catalogCurrentSetup(
                                 state.identifyingLabel(
@@ -1327,26 +1317,86 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                 color: context.tokens.dim,
                               ),
                             ),
-                            const SizedBox(height: 12),
                           ],
-                          TextField(
-                            key: const Key('catalog-search'),
-                            controller: _search,
-                            focusNode: _searchFocus,
-                            decoration: InputDecoration(
-                              hintText: l.exerciseSheetSearchHint,
-                              prefixIcon: const AlkionIcon(AlkionGlyph.search),
-                              suffixIcon: _search.text.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      tooltip: l.catalogClearSearch,
-                                      onPressed: () => _update(_search.clear),
-                                      icon: const AlkionIcon(AlkionGlyph.close),
-                                    ),
+                        ),
+                      ),
+                    ),
+                  // Search and filters hide while scrolling down and float
+                  // back as soon as the list scrolls up, wherever it is.
+                  CatalogFloatingHeader(
+                    key: const Key('catalog-search-header'),
+                    child: ColoredBox(
+                      color: widget.embedded
+                          ? context.tokens.bg
+                          : context.tokens.surface,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                key: const Key('catalog-search'),
+                                controller: _search,
+                                focusNode: _searchFocus,
+                                decoration: InputDecoration(
+                                  hintText: l.exerciseSheetSearchHint,
+                                  prefixIcon: const AlkionIcon(
+                                    AlkionGlyph.search,
+                                  ),
+                                  suffixIcon: _search.text.isEmpty
+                                      ? null
+                                      : IconButton(
+                                          tooltip: l.catalogClearSearch,
+                                          onPressed: () =>
+                                              _update(_search.clear),
+                                          icon: const AlkionIcon(
+                                            AlkionGlyph.close,
+                                          ),
+                                        ),
+                                ),
+                                onChanged: _queryChanged,
+                              ),
                             ),
-                            onChanged: _queryChanged,
-                          ),
-                          const SizedBox(height: 12),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              key: const Key('catalog-filters'),
+                              onPressed: _filters,
+                              tooltip: labels.filterCount(
+                                [
+                                  _equipment != null,
+                                  _group != null,
+                                  _secondary,
+                                  _view == _CatalogView.personal,
+                                ].where((active) => active).length,
+                              ),
+                              icon: Badge(
+                                isLabelVisible:
+                                    _equipment != null ||
+                                    _group != null ||
+                                    _secondary ||
+                                    _view == _CatalogView.personal,
+                                label: Text(
+                                  '${[_equipment != null, _group != null, _secondary, _view == _CatalogView.personal].where((active) => active).length}',
+                                ),
+                                backgroundColor: context.tokens.text,
+                                textColor: context.tokens.bg,
+                                child: const AlkionIcon(
+                                  AlkionGlyph.settings,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                           if (!browseUnavailable)
                             OutlinedButton.icon(
                               key: const Key('catalog-browse-muscles'),
@@ -1390,34 +1440,6 @@ class _CatalogPickerState extends State<CatalogPicker> {
                                   () => _view = v
                                       ? _CatalogView.favorites
                                       : _CatalogView.all,
-                                ),
-                              ),
-                              IconButton(
-                                key: const Key('catalog-filters'),
-                                onPressed: _filters,
-                                tooltip: labels.filterCount(
-                                  [
-                                    _equipment != null,
-                                    _group != null,
-                                    _secondary,
-                                    _view == _CatalogView.personal,
-                                  ].where((active) => active).length,
-                                ),
-                                icon: Badge(
-                                  isLabelVisible:
-                                      _equipment != null ||
-                                      _group != null ||
-                                      _secondary ||
-                                      _view == _CatalogView.personal,
-                                  label: Text(
-                                    '${[_equipment != null, _group != null, _secondary, _view == _CatalogView.personal].where((active) => active).length}',
-                                  ),
-                                  backgroundColor: context.tokens.text,
-                                  textColor: context.tokens.bg,
-                                  child: const AlkionIcon(
-                                    AlkionGlyph.settings,
-                                    size: 20,
-                                  ),
                                 ),
                               ),
                             ],
@@ -1829,9 +1851,9 @@ class CatalogPickerRow extends StatelessWidget {
                                             right: -3,
                                             bottom: -5,
                                             child: AlkionIcon(
-                                              AlkionGlyph.favorite,
+                                              AlkionGlyph.favoriteFilled,
                                               size: 18,
-                                              color: t.text,
+                                              color: t.accentText,
                                             ),
                                           ),
                                       ],

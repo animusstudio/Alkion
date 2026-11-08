@@ -333,7 +333,15 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Target muscles'), findsNothing);
-    expect(find.text('Muscle information unavailable'), findsOneWidget);
+    // Without a target line the evidence button stands under its own heading.
+    expect(find.text('Muscle evidence'), findsOneWidget);
+    await tester.tap(find.byTooltip('Muscle evidence'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Muscle information unavailable'),
+      findsOneWidget,
+    );
+    expect(find.text('Details'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
