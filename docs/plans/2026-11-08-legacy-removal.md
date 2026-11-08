@@ -138,6 +138,24 @@ check.
 
 ## Task state
 
-- T1 — not started. T2 — not started. T3 — not started.
+- T1 — implemented at `a6cc0cb` (code unchanged since `171ac03`; later
+  commits are docs only), awaiting review. Evidence:
+  `make -C app analyze` → no issues; `make -C app format` → 525 files,
+  0 changed; `make -C app test TEST='--concurrency=2 test/history_mapping
+  test/ui/profile_data_actions_test.dart test/main_routing_test.dart
+  test/shell'` → +84 all pass; `… test/session test/shell test/widgets
+  test/layout/live_layout_test.dart test/l10n test/ui/history_session_card_test.dart
+  test/ui/profile_data_actions_test.dart test/history_mapping test/alkion/transfer
+  test/main_routing_test.dart` → +993 all pass; `… test/ui test/layout
+  test/alkion` → +1022 pass (the one failure was a mistyped nonexistent
+  path in the command, not a test); `… test/catalog_ui` → +347 -3, only the
+  inherited `catalog_metric_controls` cases (`duration_distance_optional`,
+  `reps_distance_optional`, `reps_duration_optional_load` "mounts all
+  required and optional controls unset");
+  `make -C app alkion-history-recovery ALKION_OUTPUT=<fresh transfer-proof*
+  dir>` → PASS: 4 history SIGKILL boundaries, split negative control
+  detected; `make -C app alkion-import-history` on the synthetic history
+  fixture → selected, 3 sessions / 3 blocks / 4 sets, verified backup.
+  T2 — not started. T3 — not started.
 
 Next: owner approval; start T1 once the 2026-11-08 polish is merged.
