@@ -41,15 +41,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Use the Skia renderer instead of Impeller. Impeller (Flutter 3.44
-             Android default) mis-composites a cached layer as a persistent gray
-             box over the Profile list when the accent selector (a BoxShadow'd
-             swatch) scrolls into view — a compositor bug, not app logic. Skia
-             renders all of Reps's effects fine. Remove this flag to re-enable
-             Impeller once the upstream artifact is resolved. -->
-        <meta-data
-            android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="false" />
         <!-- Posts the scheduled rest-end notification (reverts countdown → elapsed). -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
         <!-- Visible actions use the existing singleTop activity; no headless writer. -->

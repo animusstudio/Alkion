@@ -6,6 +6,17 @@ observed: 2026-11-08
 
 # Alkion integrated acceptance
 
+## Impeller renderer — 2026-11-08
+
+Android uses Flutter's default Impeller renderer again: the manifest no longer
+opts out to Skia. The opt-out was added for a stale gray box over the Profile
+list; the Profile card already avoids the offscreen clip layer behind it
+(`profile_screen.dart`). Owner device check 2026-11-08 on a private Dev APK
+with this change and the legacy removal: no gray box when scrolling Profile past
+the accent selector, and Explore and the ordinary flows behave normally. The
+release build logs no renderer line, so the evidence is the APK manifest
+carrying no `EnableImpeller` entry.
+
 ## Legacy removal T3 — 2026-11-08
 
 Implements T3 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).
