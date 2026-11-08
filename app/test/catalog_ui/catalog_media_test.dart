@@ -30,7 +30,19 @@ import 'catalog_discovery_picker_test.dart'
 const _benchName = 'Synthetic bench recognition';
 final _benchId = fixtureId(501);
 
-CatalogTrialState _mediaState() {
+/// A trial state whose runtime can be retired while a sheet is open.
+class _RetirableState extends CatalogTrialState {
+  _RetirableState(super.bundle);
+
+  bool live = true;
+
+  @override
+  bool get active => live;
+}
+
+CatalogTrialState _mediaState([
+  CatalogTrialState Function(CatalogBundle bundle) make = CatalogTrialState.new,
+]) {
   final source = syntheticCatalog();
   (source['facet_vocabulary']['support'] as List).add('flat_bench');
   (source['families'] as List).add({
@@ -57,7 +69,7 @@ CatalogTrialState _mediaState() {
     'coverage': 'unknown',
     'relationships': <Map<String, String>>[],
   });
-  return CatalogTrialState(CatalogBundle.fromJsonString(jsonEncode(source)));
+  return make(CatalogBundle.fromJsonString(jsonEncode(source)));
 }
 
 Widget _app(
@@ -462,6 +474,57 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(CatalogArtworkDetails), findsNothing);
     expect(state.exercises, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the star does nothing once the catalog runtime is retired', (
+    tester,
+  ) async {
+    final state = _mediaState(_RetirableState.new) as _RetirableState;
+    addTearDown(state.dispose);
+    await tester.pumpWidget(_app(CatalogPicker(state: state, multiple: true)));
+    await _query(tester);
+    final l = AppLocalizations.of(tester.element(_row()));
+    await _details(tester, l);
+    state.live = false;
+    await tester.tap(find.byKey(const Key('catalog-details-favorite')));
+    await tester.pumpAndSettle();
+    expect(state.favorites, isEmpty);
+    expect(state.choices, isEmpty);
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CatalogArtworkDetails), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the star does nothing after its picker is unmounted', (
+    tester,
+  ) async {
+    final state = _mediaState();
+    addTearDown(state.dispose);
+    final showPicker = ValueNotifier(true);
+    addTearDown(showPicker.dispose);
+    await tester.pumpWidget(
+      _app(
+        ValueListenableBuilder<bool>(
+          valueListenable: showPicker,
+          builder: (context, show, _) => show
+              ? CatalogPicker(state: state, multiple: true)
+              : const SizedBox(),
+        ),
+      ),
+    );
+    await _query(tester);
+    final l = AppLocalizations.of(tester.element(_row()));
+    await _details(tester, l);
+    // The details sheet is its own route; it outlives the picker beneath it.
+    showPicker.value = false;
+    await tester.pumpAndSettle();
+    expect(find.byType(CatalogPicker), findsNothing);
+    await tester.tap(find.byKey(const Key('catalog-details-favorite')));
+    await tester.pumpAndSettle();
+    expect(state.favorites, isEmpty);
+    expect(tester.takeException(), isNull);
+    expect(find.byType(CatalogArtworkDetails), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
