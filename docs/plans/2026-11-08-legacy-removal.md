@@ -3,10 +3,11 @@
 Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-08,
 including deferring the `reps-compat/1` derivation.
 Parent: [development](../alkion/development.md).
-Baseline: `ec1364c` (the 2026-11-08 polish branch head); branch
-`feat/legacy-removal-20261108`. Implementation starts after the
-[2026-11-08 polish](2026-11-08-alkion-polish.md) is merged, so the two don't
-edit the same files at the same time.
+Baseline: `853e1dd`, the published
+[2026-11-08 polish](2026-11-08-alkion-polish.md); branch
+`feat/legacy-removal-main-20261108`. The work was built on the unpublished
+polish branch and replayed onto the published polish; the commit ids below
+are the replayed ones.
 
 ## Outcome and evidence
 
@@ -72,7 +73,7 @@ users can see or that keep dead code alive. The owner decided:
 - The external migration tool itself, which gets its own plan.
 - The audit's other batches (launch safety, error copy, honest numbers,
   bodyweight editing, backup, live workout).
-- The Impeller re-test, which runs separately on `test/impeller-20261108`.
+- The Impeller re-test, which runs as a separate change.
 
 ## Acceptance
 
@@ -132,15 +133,14 @@ check.
 - Tools: `make -C app alkion-history-recovery` (A2), the renamed staging and
   APK verifier unit tests (A6).
 - Integrated: `make -C app test` → full suite, known failures listed by name.
-- Delivery: one Alkion range review, owner approval, owner-run publish, then
-  the Animus pin ([hub-deliver](../../../animus/.agents/skills/hub-deliver/SKILL.md)
-  runs from the Animus side).
+- Delivery: one Alkion range review, owner approval, then the owner-run
+  publish.
 
 ## Task state
 
-- T1 — done. Implemented at `a6cc0cb` (code unchanged since `171ac03`; later
+- T1 — done. Implemented at `c9238e2` (code unchanged since `a2335e5`; later
   commits are docs only). Review PASS-WITH-FINDINGS. The coordinator fix
-  `c89d13e` drops the orphaned `imported_settings.dart` and a stale comment.
+  `c31d508` drops the orphaned `imported_settings.dart` and a stale comment.
   The six unused `capture*` ARB keys move to T3 (A4/A9). Evidence:
   `make -C app analyze` → no issues; `make -C app format` → 525 files,
   0 changed; `make -C app test TEST='--concurrency=2 test/history_mapping
@@ -158,14 +158,14 @@ check.
   dir>` → PASS: 4 history SIGKILL boundaries, split negative control
   detected; `make -C app alkion-import-history` on the synthetic history
   fixture → selected, 3 sessions / 3 blocks / 4 sets, verified backup.
-- T2 — done; review PASS-WITH-FINDINGS. Coordinator A6 check at `74d8fcc`:
+- T2 — done; review PASS-WITH-FINDINGS. Coordinator A6 check at `ae91fd4`:
   `make -C app build-catalog-dev-local-test-release` (private inputs staged,
   private body assets) → build and APK verifier PASS, same catalog asset
   hashes as before. The public no-catalog check runs in the integrated run.
   Moved to T3: the `day_editor.dart` editor-local catalog metrics residue,
   and live-workout widget tests over a durable runtime (block menu again and
   setup, setup sheet at 320dp and 2x, cancel keeping draft and timer, day
-  editor save and reopen with catalog slots). Implemented at `088f0a1` (code `9846e3d`, `08b38ce`; later commits
+  editor save and reopen with catalog slots). Implemented at `f51b92c` (code `7855c5b`, `927449d`; later commits
   are docs only); awaiting review. The trial entry point, storage, Make
   target, Gradle path, package, strings, startup skeleton and `!durable`
   branches are gone; `CatalogTrialState` folds into `CatalogRuntimeState`,
@@ -189,14 +189,14 @@ check.
   (from `app/`) → 6 OK; `make -C app verify-catalog` and `verify-catalog-dev`
   → fail closed, "Private catalog staging is absent or redirected" (no private
   input in this worktree; A6's private APK build is the coordinator's).
-- T3 — done; review PASS-WITH-FINDINGS. Coordinator fix `52d0dc8`: stale
+- T3 — done; review PASS-WITH-FINDINGS. Coordinator fix `669be54`: stale
   absorption wording in `app/AGENTS.md`, the durable test fails if owed writes
   never drain, and the unused-key test ignores comments. Negative control: a
   probe key → `unused ARB keys: [zzzUnusedProbe]`, 2 failures; reverted.
   Fix re-check PASS.
   `make -C app test TEST='--concurrency=2 test/l10n
   test/catalog_ui/catalog_durable_workout_menu_test.dart'` → +14 all pass.
-  Integrated (coordinator, `e7a402d`): `make -C app build-apk ALKION_FLAVOR=dev`
+  Integrated (coordinator, `6233ab4`): `make -C app build-apk ALKION_FLAVOR=dev`
   with private inputs staged, then `verify-no-catalog-apk` →
   `private_catalog_assets: absent` (A6).
   Open follow-ups, not blocking: no Profile test that export-all and sync
@@ -204,10 +204,10 @@ check.
   picked non-default setup's in-day key; no test that exact alarms are used
   when allowed; `domainBytes`/`transferBytes` are test-only until the
   migration-tool plan.
-  Implementation: code at `9f93741` (`ed7dec3` caption, `47c16ba`
-  notice, `a78c7f8` capture-hold strings, `b6b41da` unreachable files and
-  export paths, `bd6bad7` day editor residue, `0847f70` unused strings and
-  `unused_keys_test.dart`, `9f93741` durable-runtime widget tests); later
+  Implementation: code at `a01d857` (`33a7240` caption, `8df47ab`
+  notice, `bd601d4` capture-hold strings, `a9e65ee` unreachable files and
+  export paths, `fb348aa` day editor residue, `8393bdb` unused strings and
+  `unused_keys_test.dart`, `a01d857` durable-runtime widget tests); later
   commits are docs only. Removed: `body_contours.dart`, `dashed_border.dart`,
   `export_builder.dart` (+ test), `template_absorb.dart` (+ test),
   `is_template_backfill.dart` (+ its one test case), `CatalogEvidenceCard`,
@@ -228,13 +228,13 @@ check.
   `catalog_durable_workout_menu_test.dart` with `test/l10n` and
   `profile_layout_test.dart` → +21 all pass, twice.
 
-Integrated on the published base: the 26 commits were replayed onto public
-main `853e1dd` as `feat/legacy-removal-main-20261108` (one acceptance-record
-conflict resolved by keeping both sections); the app tree equals the tested
-one apart from the polish text-motion test fix. At `22578a7`:
+Integrated on the published base: the 26 commits were replayed onto
+`853e1dd` (one acceptance-record conflict resolved by keeping both sections);
+the app tree equals the tested one apart from the published polish
+text-motion test fix. At `22578a7`:
 `make -C app analyze` → no issues; `make -C app test TEST=--concurrency=2` →
 +2873 ~3 -3, the three known `catalog_metric_controls_test.dart` cases.
-Owner device APK `2b78875c` (this tree plus the Impeller test flag) installed
-on the owner's phone 2026-11-08.
+A private Dev APK of this tree, with the separate Impeller test flag, is on
+the owner's phone for the device check.
 
 Next: owner device check, then the outgoing range review and owner publish.

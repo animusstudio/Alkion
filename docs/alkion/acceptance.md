@@ -79,7 +79,7 @@ sections below, which stay as recorded.
 - No schema change, migration or stored-data change.
 
 Host checks are listed in the plan's task state. The private Dev APK build (A6),
-the full suite and device checks follow T3.
+the full suite and device checks are recorded with T3.
 
 ## Legacy removal T1 — 2026-11-08
 
@@ -105,7 +105,7 @@ which stay as recorded.
 - No schema change, migration or stored-data deletion.
 
 Host checks are listed in the plan's task state. The full suite and device
-checks follow T3.
+checks are recorded with T3.
 
 ## Polish: text motion, live weekly volume, details, search — 2026-11-08
 
