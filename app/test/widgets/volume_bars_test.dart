@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/widgets/volume_bars.dart';
+import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
+import '../support/layout_expect.dart';
 
 Future<void> _pumpLive(
   WidgetTester tester,
@@ -37,6 +39,7 @@ String _count(WidgetTester tester, [int row = 0]) => tester
     .toPlainText();
 
 void main() {
+  setUpAll(preloadAppFonts);
   testWidgets('each bar fills against its OWN target, not the global max', (
     tester,
   ) async {
@@ -254,5 +257,48 @@ void main() {
       await tester.pumpAndSettle();
       expect(_segments(tester).plannedEnd, closeTo(0.75, 0.001));
     });
+
+    for (final code in ['en', 'de', 'it', 'es']) {
+      testWidgets('live legend and counts fit 320dp at 2.0x ($code)', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(320, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 900),
+              textScaler: TextScaler.linear(2.0),
+            ),
+            child: wrapL10n(
+              const SingleChildScrollView(
+                child: VolumeBars(
+                  rows: [
+                    (muscle: 'Shoulders', sets: 12, target: 10),
+                    (muscle: 'Hamstrings', sets: 8, target: 12),
+                  ],
+                  live: [(live: 3, pending: 4), (live: 10, pending: 10)],
+                ),
+              ),
+              locale: Locale(code),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        expect(tester.takeException(), isNull);
+        expectNoSplitWords(tester, within: find.byType(VolumeBars));
+        for (final count
+            in find.byKey(const Key('volume-count')).evaluate().toList()) {
+          expectOneLine(
+            tester,
+            find.descendant(
+              of: find.byWidget(count.widget),
+              matching: find.byType(RichText),
+            ),
+          );
+        }
+      });
+    }
   });
 }
