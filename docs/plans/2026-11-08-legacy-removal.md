@@ -158,6 +158,30 @@ check.
   dir>` → PASS: 4 history SIGKILL boundaries, split negative control
   detected; `make -C app alkion-import-history` on the synthetic history
   fixture → selected, 3 sessions / 3 blocks / 4 sets, verified backup.
-  T2 — not started. T3 — not started.
+- T2 — implemented at `088f0a1` (code `9846e3d`, `08b38ce`; later commits
+  are docs only); awaiting review. The trial entry point, storage, Make
+  target, Gradle path, package, strings, startup skeleton and `!durable`
+  branches are gone; `CatalogTrialState` folds into `CatalogRuntimeState`,
+  `CatalogTrialScope` → `CatalogScope`. Picker tests use the test-only
+  `test/support/memory_catalog_state.dart`. The staged-input names stay
+  (`assets/catalog_trial/`, `build/private-catalog-trial/`,
+  `alkion-catalog-trial-manifest`, `private_trial_only`): existing staging
+  verifies byte-for-byte and needs no restaging. Only the five
+  `catalogTrial*` keys became unused; they are gone from all four locales.
+  Evidence: `make -C app analyze` → no issues;
+  `make -C app format` → 522 files, 0 changed; `make -C app test
+  TEST='--concurrency=2 test/catalog_ui test/catalog test/session test/ui
+  test/shell test/main_routing_test.dart test/history_mapping test/l10n'` →
+  +1312 -3, only the inherited `catalog_metric_controls` cases
+  (`duration_distance_optional`, `reps_distance_optional`,
+  `reps_duration_optional_load` "mounts all required and optional controls
+  unset"); `… test/data/volume_attribution_test.dart` (with test/catalog_ui,
+  test/history_mapping) → +383 -3, same three; `make -C app
+  test-catalog-staging test-catalog-apk` → 14 + 24 tests OK;
+  `python3 -m unittest discover -s tool -p test_catalog_muscle_contract.py`
+  (from `app/`) → 6 OK; `make -C app verify-catalog` and `verify-catalog-dev`
+  → fail closed, "Private catalog staging is absent or redirected" (no private
+  input in this worktree; A6's private APK build is the coordinator's).
+- T3 — not started.
 
 Next: owner approval; start T1 once the 2026-11-08 polish is merged.
