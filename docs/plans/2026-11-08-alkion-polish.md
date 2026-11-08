@@ -113,6 +113,23 @@ The owner asked for four kinds of change.
     muscles, the All/Recent/Favourites chips, active filters and groups.
   - Scroll-offset restore and the embedded and sheet modes are unchanged.
 
+- **Catalog attribution (owner amendment, 2026-11-08, after the T2 review):**
+  - Exercises added from the catalog are saved with an empty `muscle_group`
+    (`catalog_trial_scope.dart:190`). The weekly stat therefore puts their
+    sets in a blank-labelled row, and the live bars would do the same.
+  - New rule for the weekly stat on Today and for the live bars alike:
+    - a set counts for the exercise's legacy `muscle_group` when that is not
+      empty;
+    - otherwise it counts once for each **reviewed target** group of the
+      exercise's linked catalog choice. Secondary and activity groups are not
+      counted;
+    - sets with neither go to the unknown-sets note, never to a blank row.
+  - Catalog group keys that match the eight legacy keys merge with them. The
+    others get their own rows with catalog labels, and their target is
+    `target = total` until one is set.
+  - No migration and no change to stored rows; attribution is derived at read
+    time.
+
 ## Non-goals
 
 - Fractional or primary/secondary weighting of weekly volume.
@@ -132,6 +149,7 @@ this branch. T4 runs after T1 and T3 are merged.
 | T1 Text motion | new `lib/widgets/text_motion.dart` and its tests; adoption in `plan_form.dart` (`Toggle` rows), `plan_screen.dart` (`_SegmentedToggle`), `progress_widgets.dart`, `day_editor.dart`, `exercise_editor.dart`, `training_preferences_sheet.dart`, other primary-action sites outside the excluded paths; amend the component study's lines 47 and 115 | Widgets behave as decided. Tests cover settling, the semantics label staying constant, the layout width staying constant, reduced motion and restart on re-tap. Not used in `lib/catalog_ui/`, `lib/session/`, `volume_bars.dart` or `today_screen.dart` |
 | T2 Live weekly volume | `volume_bars.dart`; new live-volume model in `lib/data/` or `lib/session/`; the sheet and menu row in `active_session_screen.dart`; live segments in `today_screen.dart`; arb and l10n files | Three segments render as decided; the count format; clipping; updates when a set is done, a set or block is added or removed. Today shows the live segments only while a workout runs. Tests extend `volume_bars_test.dart` and add a live-model test |
 | T3 Details and search | `catalog_choice_details.dart`, `catalog_media_widgets.dart`, `catalog_picker.dart` (the `_details` flow, row star, header sliver), `alkion_icon.dart` (filled star) | The details page matches the decisions. Star and "i" don't pop the page; the star toggles state and the list. The search header floats back on scroll up. Update `catalog_media_test.dart` (lines 369-412 and 678), plus the picker tests that find `catalog-search` |
+| T2b Catalog attribution | `stats_repository.dart` weekly query or its Dart-side resolution, `live_weekly_volume.dart`, `today_labels.dart`, label lookup for catalog groups; T2 review fixes (unused `unknownPending`, legend colour for over-target rows) | The rule above holds for finished and live sets alike. A catalog workout's sets show under their target groups before and after finish. Tests cover a legacy group, a catalog choice with one target and with two, an unreviewed choice going to unknown, and an empty group never producing a blank row |
 | T4 Catalog adoption | `catalog_picker.dart` (chips, filter sheet, result-title reveal after a filter, chip or search change) | Only visible rows reveal, within the cap. Filter chips glitch on tap. Picker tests stay green |
 
 ## Checks
