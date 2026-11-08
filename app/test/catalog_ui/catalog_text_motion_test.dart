@@ -105,18 +105,19 @@ void main() {
     await _backToAll(tester);
     final revealing = _rows(tester).where((r) => r.reveal != null).toList();
     expect(revealing, isNotEmpty);
-    // One reveal shares one slot count: the first screen's capacity at this
-    // height (420 / 76 rounded up, plus one), never more rows than exist.
-    final slots = revealing.first.reveal!.slots;
-    expect(revealing.map((r) => r.reveal!.slots).toSet(), {slots});
-    expect(slots, lessThanOrEqualTo((420 / 76).ceil() + 1));
-    expect(revealing.length, lessThanOrEqualTo(slots));
+    // At this height the first screen holds at most 420 / 76 rounded up,
+    // plus one, rows. With that few slots the full step always fits under
+    // the cap, so build order steps by exactly [RevealStagger.step].
+    const capacity = 7;
+    expect((420 / 76).ceil() + 1, capacity);
+    expect(revealing.length, lessThanOrEqualTo(capacity));
+    expect(
+      RevealStagger.step * (capacity - 1),
+      lessThanOrEqualTo(RevealStagger.cap),
+    );
     expect(
       revealing.map((r) => r.reveal!.delay).toList(),
-      [
-        for (var i = 0; i < revealing.length; i++)
-          RevealStagger.delay(i, slots),
-      ],
+      [for (var i = 0; i < revealing.length; i++) RevealStagger.step * i],
       reason: 'build order is the stagger order',
     );
 
@@ -342,6 +343,29 @@ void main() {
       plan.close();
       expect(plan.claim('a', 'Flessione'), isNull);
       expect(plan.claim('a', 'Curl'), isNull, reason: 'it stays dropped');
+    });
+
+    test('the last row settling inside the window still cleans up', () {
+      final plan = CatalogRevealPlan();
+      plan.open(2);
+      final a = plan.claim('a', 'A')!;
+      final b = plan.claim('b', 'B')!;
+      expect(plan.done('a', a.epoch), isFalse);
+      expect(plan.done('b', b.epoch), isFalse, reason: 'window still open');
+      expect(plan.takeCleanup(), isFalse, reason: 'not before the close');
+      expect(plan.close(), isFalse);
+      expect(plan.takeCleanup(), isTrue, reason: 'the close owes a rebuild');
+      expect(plan.takeCleanup(), isFalse, reason: 'only once');
+    });
+
+    test('a new reveal cancels an owed cleanup', () {
+      final plan = CatalogRevealPlan();
+      plan.open(1);
+      final a = plan.claim('a', 'A')!;
+      plan.done('a', a.epoch);
+      plan.open(1);
+      plan.close();
+      expect(plan.takeCleanup(), isFalse);
     });
 
     test('done empties the plan once every row settled', () {
