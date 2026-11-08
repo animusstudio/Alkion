@@ -130,6 +130,17 @@ The owner asked for four kinds of change.
   - No migration and no change to stored rows; attribution is derived at read
     time.
 
+- **Device feedback (owner, 2026-11-08, APK `df33bfae` at `ec1364c` on A024):**
+  - Animations feel smoother, but slightly too fast overall.
+  - Owner choice: scale the shared interaction motion tokens about 1.25×:
+    - `fast` 120→150 ms, `base` 200→250 ms, `slow` 300→375 ms;
+    - `springSettle` and `reveal` scaled by the same factor.
+  - The text motion constants follow the same factor:
+    - reveal cap 250→~310 ms;
+    - glyph tick 30→~38 ms;
+    - stagger 28→35 ms, with the cap 220→275 ms.
+  - The startup intro and the ambient/sweep loops stay unchanged.
+
 ## Non-goals
 
 - Fractional or primary/secondary weighting of weekly volume.
@@ -152,6 +163,8 @@ this branch. T4 runs after T1 and T3 are merged.
 | T2b Catalog attribution | `stats_repository.dart` weekly query or its Dart-side resolution, `live_weekly_volume.dart`, `today_labels.dart`, label lookup for catalog groups; T2 review fixes (unused `unknownPending`, legend colour for over-target rows) | The rule above holds for finished and live sets alike. A catalog workout's sets show under their target groups before and after finish. Tests cover a legacy group, a catalog choice with one target and with two, an unreviewed choice going to unknown, and an empty group never producing a blank row |
 | T3b Unbundle Workout Guide frames (owner decision, 2026-11-08, after the T3 review) | `app/pubspec.yaml` asset entries, now-unused `lib/catalog/catalog_media.dart` code and its tests, orphaned ARB keys, `docs/alkion/licensing.md` and asset notices | With nothing showing the CC BY-SA frames, the APK stops shipping them. The source files stay in the repo, and their notices say they are not bundled. No orphaned code or strings remain. The APK size drop is recorded |
 | T4 Catalog adoption | `catalog_picker.dart` (chips, filter sheet, result-title reveal after a filter, chip or search change). Added by the coordinator: the primary-action glitch on Today Resume, `split_card.dart` Start and the session summary Done; and an `EventProgress` re-measure fix in `state_motion.dart`, so labels mounted in sliding sheets can play | Only visible rows reveal, within the cap. Filter chips glitch on tap. Picker tests stay green |
+
+| T5 Motion pace and leftovers | `lib/theme/motion.dart`, `lib/widgets/text_motion.dart`, tests pinning durations; `catalog_picker.dart` reveal-plan leftovers | Tokens and text constants are scaled as recorded under device feedback. Direct `RevealText.onDone` tests cover a full run, an early settle, `onMount: false` and dispose mid-run. `CatalogRevealPlan` cleans up when the last row settles while the window is open. The unused `CatalogRowReveal.slots` is removed. Full suite shows only the inherited failures |
 
 ## Checks
 
