@@ -425,6 +425,8 @@ class _CatalogPickerState extends State<CatalogPicker> {
     if (!mounted) return;
     if (_reveal.close()) {
       WidgetsBinding.instance.addPostFrameCallback(_closeRevealWindow);
+    } else if (_reveal.takeCleanup()) {
+      setState(() {});
     }
   }
 
@@ -439,7 +441,6 @@ class _CatalogPickerState extends State<CatalogPicker> {
       epoch: entry.epoch,
       delay: entry.delay,
       onMount: _reveal.window,
-      slots: _reveal.slots,
       onDone: () => _revealDone(key, entry.epoch),
     );
   }
@@ -1863,7 +1864,7 @@ class _CatalogPickerState extends State<CatalogPicker> {
 /// reports [done] or a new reveal opens; a row whose label changed loses it.
 class CatalogRevealPlan {
   int _epoch = 0, _ordinal = 0, _slots = 0;
-  bool _window = false, _hold = false;
+  bool _window = false, _hold = false, _cleanupDue = false;
   final _entries = <Object, ({Duration delay, int epoch, String label})>{};
 
   /// Whether rows built now may claim a reveal.
@@ -1882,6 +1883,7 @@ class CatalogRevealPlan {
     _entries.clear();
     _ordinal = 0;
     _slots = slots;
+    _cleanupDue = false;
     if (_window) return false;
     _window = true;
     return true;
@@ -1930,22 +1932,36 @@ class CatalogRevealPlan {
   }
 
   /// The row [key]'s reveal of [epoch] settled. Returns whether that emptied
-  /// the plan outside a window, so the rows can return to plain labels.
+  /// the plan outside a window, so the rows can return to plain labels. If
+  /// the last row settles while the window is still open, the cleanup waits
+  /// for [takeCleanup] after the final [close].
   bool done(Object key, int epoch) {
     if (_entries[key]?.epoch != epoch) return false;
     _entries.remove(key);
-    return _entries.isEmpty && !_window;
+    if (_entries.isNotEmpty) return false;
+    if (_window) {
+      _cleanupDue = true;
+      return false;
+    }
+    return true;
+  }
+
+  /// Whether the window just closed on a plan that emptied while it was
+  /// open, so the rows still need their rebuild back to plain labels.
+  bool takeCleanup() {
+    if (_window || !_cleanupDue) return false;
+    _cleanupDue = false;
+    return _entries.isEmpty;
   }
 }
 
-/// A result row's title reveal: `epoch` replays it, `delay` staggers it among
-/// `slots` rows, `onMount` lets a row first built by the change itself play
-/// on mount, and `onDone` hands the row back to a plain label.
+/// A result row's title reveal: `epoch` replays it, `delay` staggers it,
+/// `onMount` lets a row first built by the change itself play on mount, and
+/// `onDone` hands the row back to a plain label.
 typedef CatalogRowReveal = ({
   int epoch,
   Duration delay,
   bool onMount,
-  int slots,
   VoidCallback onDone,
 });
 

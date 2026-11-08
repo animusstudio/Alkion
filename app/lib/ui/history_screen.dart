@@ -1044,7 +1044,7 @@ class _SessionCardState extends State<SessionCard> {
                                   : 0,
                               duration: Motion.of(
                                 context,
-                                const Duration(milliseconds: 150),
+                                const Duration(milliseconds: 190),
                               ),
                               child: AlkionIcon(
                                 AlkionGlyph.chevronRight,
