@@ -211,6 +211,10 @@ local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:`
   fails without the fix.
   - Checks: `test/widgets test/theme test/shell` → +525 pass; analyze clean.
 
+- **Word-split fix re-check:** style and test PASS. Minor: `maxLines: 4` could collapse a
+  long message to one ellipsized line. Coordinator fix `4ec8b0d3` raises it to 6;
+  `w_toast_test.dart` → +35 pass.
+
 ## Next
 
 T1 and T2 done; T2 independent review, then the integrated full suite and device check.
