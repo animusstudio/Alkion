@@ -123,7 +123,16 @@ device measurement and needs the coordinator's phone access, so the coordinator 
 
 ## Task state
 
-None started.
+- **T2 Field label: done, review PASS** (Sonnet `high`). Code `e511b82`, tests `dc9b80b`, merged.
+  - `SetFieldGuide({label, unit?, hint?})`: a dim uppercase name with the unit in the accent on
+    the right, no painters. New key `sessionRepsUnit`.
+  - Focused tests `test/session test/catalog_ui test/layout test/l10n` → +1072 −3 (the three
+    inherited failures); analyze clean.
+  - PR follow-ups:
+    - `es` in the caption layout loops
+    - a unit-free `catalogMetricName` instead of stripping "(unit)" with a regex, which is correct
+      for every shipped label today
+    - the ruler's own reps label still uses `sessionReps`
 
 ## Next
 
