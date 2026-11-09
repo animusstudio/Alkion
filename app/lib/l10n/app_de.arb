@@ -841,5 +841,9 @@
   "dayViewWorkingSets": "{count, plural, =1{1 Arbeitssatz} other{{count} Arbeitssätze}}",
   "dayViewInactive": "Inaktiv. Aktiviere diesen Tag, um ihn zu starten.",
   "slotSetCount": "{count, plural, =1{1 Satz} other{{count} Sätze}}",
-  "dayViewExerciseUnavailable": "Übung nicht verfügbar"
+  "dayViewExerciseUnavailable": "Übung nicht verfügbar",
+  "splitVolumeTitle": "Split-Volumen",
+  "splitVolumePerRotation": "Geplante Sätze pro Durchlauf",
+  "splitVolumePerWeek": "Geplante Sätze pro Woche",
+  "splitVolumeDays": "{count, plural, =1{1 Tag} other{{count} Tage}}"
 }

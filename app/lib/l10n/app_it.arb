@@ -841,5 +841,9 @@
   "dayViewWorkingSets": "{count, plural, =1{1 serie allenante} other{{count} serie allenanti}}",
   "dayViewInactive": "Inattivo. Attiva questo giorno per iniziarlo.",
   "slotSetCount": "{count, plural, =1{1 serie} other{{count} serie}}",
-  "dayViewExerciseUnavailable": "Esercizio non disponibile"
+  "dayViewExerciseUnavailable": "Esercizio non disponibile",
+  "splitVolumeTitle": "Volume dello split",
+  "splitVolumePerRotation": "Serie pianificate per rotazione",
+  "splitVolumePerWeek": "Serie pianificate a settimana",
+  "splitVolumeDays": "{count, plural, =1{1 giorno} other{{count} giorni}}"
 }
