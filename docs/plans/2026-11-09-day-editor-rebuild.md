@@ -1,0 +1,144 @@
+# Day editor rebuild
+
+Date: 2026-11-09. Lane: **Standard**. Status: **Proposed**.
+Parent: [development](../alkion/development.md).
+Baseline: `458aac6`; branch `feat/day-editor-rebuild-20261109`.
+Ordering: after the approved audit-batch plans P1 to P8 have merged, and after
+[U2 live workout declutter](2026-11-09-live-workout-declutter.md) (the Load row's "Last" is only
+true once U2 prefills sets from the last session) and [U3 training day
+view](2026-11-09-training-day-view.md) (reuses its `SlotThumbnail`, `SlotSummaryChips`,
+`slotSummary`). It builds on the P-plans rather than overlapping them:
+[P1](2026-11-08-error-messages-and-toasts.md) owns the save-failure dialog call and `showWToast`,
+[P5](2026-11-08-failed-saves-and-history-editing.md) T2 owns the `_save`/`_pendingSave` retry state
+and button label, and P5 T1 adds `RirPicker.allowClear`. This plan edits the build region and slot
+widgets of `day_editor.dart` only and rebases on those. Parallel with
+[U5](2026-11-09-split-volume-overview.md) (disjoint files). Not `exercise_editor.dart` (P4 chips,
+P5 retry, P7 lb stepper).
+
+## Outcome and evidence
+
+The day editor is the app's densest form and its two slot types disagree. At `458aac6`:
+
+- Catalog slots (`ui/day_editor.dart:709-882`) are flat and cannot collapse; legacy slots use
+  `DaySlotRow` (`:948-1428`), collapsible, one open at a time (`:110,299-304`).
+- "Remove Working sets" and "Remove Warmups" only null the field (`:779-791,819-829`) and draw a
+  **+** because `TrainingAction` defaults to `AlkionGlyph.add` (`widgets/prescription_controls.dart:84`).
+- The catalog row shows `?? 1` working sets (`:444,762-764`) while the workout builds the same
+  slot with `resolveSlot`'s default of 3 (`data/day_template_repository.dart:232`,
+  `session/active_session_controller.dart:1290-1292`): the editor shows a number the workout will
+  not use.
+- Load and reps for catalog slots are raw text fields (`catalog_ui/catalog_measurement_form.dart:81-117`,
+  `day_editor.dart:832-879`). A new catalog slot nulls reps and ignores `RepEntry` (`:420-422,439-441`).
+- The legacy panel stacks a RIR low/high pair, Add/Remove RIR, a "More options" disclosure holding
+  warm-ups, "Use exercise default", a status line and a RIR essay (`:1340-1423`).
+- No exercise art anywhere in the editor. Day fields spend three actions on the weekday
+  (`:612-664`) and a hint line (`:667-670`).
+
+## Decisions
+
+- **One card.** New `ui/day_slot_card.dart` replaces both branches and `DaySlotRow`. Collapsed
+  header: `SlotThumbnail`, name, `SlotSummaryChips`, drag handle (hidden while expanded, as now)
+  and a 48 dp remove. Below 350 dp or 1.3x text the chips drop under the name row. One card open
+  at a time (`_expandedExId` by `instanceKey`); the last exercise added opens; reordering collapses
+  (`:681`); a loaded day starts collapsed.
+- **Expanded body, in order:** Working sets | Warm-ups side by side (stacked below 350 dp or 1.3x,
+  the `RepControls` rule, `prescription_controls.dart:187-190`); Reps (`RepControls` as is:
+  Fixed | Range); Load (catalog slots whose profile has `reported_load`); other metrics; RIR.
+  "More options", "Use exercise default", the status line and the explanation go.
+- **Explicit values.** New slots always store working sets (exercise default, else 3), warm-ups
+  (default, else 0) and reps. Loaded slots with a null field display the resolved value
+  (`slotSummary`) and stay null until that field is touched, so an untouched save is
+  byte-identical and the dirty check (`editor_guard.dart`) stays clean. The Remove actions are gone.
+- **Reps storage.** Mode is derived: fixed means low == high. Legacy slot: `target_rep_low/high`
+  only. Catalog slot whose profile has `repetitions`: **Fixed N** writes low = high = N **and**
+  `catalogTargets['repetitions']` = valid N (unit `count`); **Range L-H** writes the columns and
+  removes the `repetitions` target. A catalog slot with only a `repetitions` target (every slot
+  saved today) opens as Fixed N, unchanged until touched. The workout already consumes both:
+  `buildCatalogBlock` seeds every set from `catalogTargets` (`active_session_controller.dart:235-243`)
+  and the target range from the columns (`:1315`). A profile without `repetitions` has no Reps row.
+- **Load storage.** `Last` = no valid `catalogTargets['reported_load']` (an empty or invalid one reads
+  as Last and is removed on touch). `Fixed` = a valid one, so U2's order (slot-fixed value > last
+  same-numbered set > last top set > empty) needs no change. Fixed shows one `WStepper` holding
+  **display units**, the documented start-weight exception (so no `parseDisplay`), step 2.5 kg / 5 lb,
+  max 500 kg / 1100 lb (P7's limits), `formatForEdit` set. It saves the exact text (`fmtLoad` form) with
+  unit `kg` or `lb` (both valid, `domain/catalog_execution.dart:366-369`). Evidence in the other unit
+  displays converted (`loadKg`) and is untouched until the stepper moves. Last -> Fixed seeds from the
+  last logged load (`SessionRepository.catalogLoadReference`, read only), else 20 kg / 45 lb. Legacy
+  slots get no Load row: nothing stores one, the start weight stays on the exercise.
+- **Other metrics.** Duration and distance keep exact text entry, because the digits are evidence
+  (tests enter `25.000000000000000001`). `CatalogMeasurementForm` gains an optional `exclude` set; the
+  default is unchanged.
+- **New exercises follow preferences**, catalog included. `RepEntry.fixed`: low = high = the
+  exercise's qualified default low, else 8. `range`: its qualified pair, else 8-12. `RirControls.off`:
+  policy `off`. `show`: an explicit target copied from the exercise's qualified default RIR, else `off`;
+  unavailable exercise evidence keeps `inherit` as today (`:423-433`). `DaySlotState.showRirAdd` goes.
+- **RIR.** One value per exercise through `RirPicker` with P5's `allowClear`: pick N -> policy `target`,
+  low = high = N; tap again -> policy `off`, nulls. The row shows when `RirControls.show` or the slot
+  already has RIR evidence (never hide data). A stored range (low < high) shows as "RIR 1-2" with no chip
+  selected and survives until a chip is touched. Ranges are not authored here.
+- **Day fields.** Name and focus stay. Weekday is a 7-chip `ChipSelect` (short names, wraps when
+  narrow; tapping the selected chip clears); an out-of-range stored weekday shows
+  `trainingWeekdayUnavailable` and is kept until touched. The slot hint is removed. Strings only this
+  screen used go: `dayEditorSlotHint`, `trainingAddRir`, `trainingRemoveRir`, `trainingMoreOptions`,
+  `trainingUseExerciseDefault`, `trainingAddWeekday`, `trainingChangeWeekday`, `trainingRemoveWeekday`.
+
+## Non-goals
+
+- Save, delete, retry and error-dialog code (P1, P5); the exercise editor; rest times.
+- Authoring RIR ranges, load for legacy slots, warm-up-specific reps or load, new columns, any
+  migration. Every field above already persists in `day_template_items` (`data/models.dart:184-199`).
+- Fixing the three inherited `catalog_metric_controls_test.dart` failures.
+
+## Acceptance
+
+- **A1.** Every exercise (catalog, owned, legacy) is the same card with thumbnail or neutral tile,
+  name, chips, handle and remove; one open at a time; a new one opens; a loaded day is collapsed.
+- **A2.** No Remove-sets or Remove-warm-ups action. A slot with null fields shows the numbers the
+  workout will build (3 sets by default); an untouched save writes the same bytes and the editor
+  stays clean.
+- **A3.** Sets and warm-ups sit side by side, stacked at 320 dp or 1.3x text.
+- **A4.** Reps Fixed | Range store as decided and both reach the workout (fixed prefills N, range shows
+  the target); slots saved before this change open unchanged.
+- **A5.** Load Last | Fixed on catalog slots with a load metric: Fixed stores exact display-unit text,
+  lb steps 5, Last removes it, a unit switch rewrites nothing untouched.
+- **A6.** Duration and distance entry keeps full precision.
+- **A7.** A new exercise follows RepEntry and RirControls, catalog slots included.
+- **A8.** RIR chips appear per the rule, set and clear, and keep a stored range.
+- **A9.** Weekday chips replace the three actions; no hint text.
+- **A10.** 320 dp at 2x text in en, de and it, 48 dp targets, light and dark, reduced motion, TalkBack:
+  expanded state on the header, labelled remove and reorder.
+
+## Tasks
+
+Implementers Opus `high`, reviewers Sonnet `high`. T1 and T2 run in parallel on agreed signatures;
+T3 after both; T4 (ARBs) last.
+
+| Task | Owns | Acceptance | Class |
+| --- | --- | --- | --- |
+| T1 Slot modes | new `ui/slot_modes.dart`: pure `repsMode`/`applyRepsFixed`/`applyRepsRange`, `loadMode`/`applyLoadFixed`/`applyLoadLast`, `newSlotDefaults`, `rirOf`/`applyRir`. Tests: new `test/ui/slot_modes_test.dart` (every mapping, legacy rows, unit cases, no `changedFields` for untouched) | A2, A4, A5, A7, A8 | logic |
+| T2 Card | new `ui/day_slot_card.dart`; `catalog_ui/catalog_measurement_form.dart` (`exclude` only). Tests: new `test/ui/day_slot_card_test.dart`; retarget `test/ui/day_editor_slot_row_test.dart` (handle and trash 48 dp, labels, reorder, toggle) | A1, A3, A6, A8, A10 | UI |
+| T3 Editor | `ui/day_editor.dart` build region, `_appendExercise`, weekday chips, `DaySlotState`, removal of `DaySlotRow`. Tests: update `test/ui/prescription_pending_input_test.dart`, `presentation_focus_test.dart`, `training_prescriptions_review_test.dart:144`, `training_prescriptions_test.dart`, `plan_editor_dirty_test.dart`, `editor_guard_test.dart`, `plan_layout_test.dart`, `test/shell/plan_discard_test.dart:269`, `test/shell/workout_canvas_scope_test.dart:38`, `test/alkion/domains/editor_pending_retry_test.dart:332,345`, `test/data/rir_range_test.dart:58`, `test/catalog_ui/catalog_durable_workout_menu_test.dart` and `catalog_normal_app_journey_test.dart` (expand the card before `metric-duration`) | A1-A3, A7, A9, A10 | UI |
+| T4 Strings | the four ARB files: add Load/Last/Fixed, RIR row, weekday semantics; delete the eight keys above | all | text |
+
+## Checks
+
+- Focused: `make -C app test TEST='--concurrency=2 test/ui test/shell test/catalog_ui
+  test/alkion/domains/editor_pending_retry_test.dart test/data/rir_range_test.dart test/layout test/l10n'`;
+  `make -C app analyze`.
+- Real SQLite round trip (A4, A5): save a day with Fixed reps and Fixed load on a catalog slot and a Range
+  legacy slot through `DayTemplateRepository`, reload, then `buildFromTemplate` and assert set seeds and
+  `targetRepRange`; load a slot written by `458aac6` (only a `repetitions` target) and assert it opens
+  Fixed and saves unchanged. Reviewer checks: no schema change, untouched fields not in `changedFields`,
+  the P5 retry path intact, and exactly one write per Save.
+- Integrated: full `make -C app test` (three known inherited `catalog_metric_controls_test.dart`
+  failures named, no others); device check on the owner's phone with a private Dev APK (open, add a
+  catalog and a legacy exercise, Fixed and Range, Last and Fixed load in kg and lb, RIR on and off in
+  Training preferences, Save, start the day and read the prefills).
+
+## Task state
+
+None started.
+
+## Next
+
+Owner approval, then implementation after P1 to P8, U2 and U3 merge.
