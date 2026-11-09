@@ -165,9 +165,13 @@ deleted.
   (sessions, timers, watches, store) before staging; the next runtime opens the
   selected generation.
 * If that close fails, nothing is restored. *Reopen* shows the same runtime
-  again when the flush barrier refused before any owner was disposed (the
-  optional Animus connection stays closed until the next launch); otherwise it
-  retries the close and relaunches. A retry that fails again stays on the
+  again only when the flush barrier itself refused, before any teardown
+  (`AlkionRuntime.teardownBegan` is false). The close fence has already closed
+  the optional Animus connection, the workout sender and the recovery review,
+  so they stay closed in that runtime until the next launch; local use, the
+  pause flush and the storage banner keep working. Once teardown began (the
+  lifecycle observer and persistence callbacks are removed, notifications may
+  be closed), *Reopen* retries the close and relaunches. A retry that fails again stays on the
   screen as a retryable error, so Reopen never meets the still-held store as
   `profile_in_use`. `AlkionRuntime.close` clears its closing flag on every
   failure path.

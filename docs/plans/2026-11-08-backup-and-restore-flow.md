@@ -153,6 +153,24 @@ touch `recovery_screen.dart` or `main.dart`.
 Code at `55eea157` (later commits are docs only). Commits: `c0238823` (T1),
 `b60357c6` (T2), `d8e48739` (T3), `55eea157` (T4).
 
+Review PASS-WITH-FINDINGS; fixes in `b9f2315a`:
+same-runtime Reopen is gated on the new `AlkionRuntime.teardownBegan` (set
+right after the flush barrier), so a throw after the barrier (sender, review,
+API drain or notification close) takes retry-close-then-relaunch; the
+`fresh_restore_interrupted` category reads as the retryable interrupted-restore
+sentence; new tests cover a throw after the barrier, a chosen file changed
+between Check and Restore, and every specific `recoveryErrorMessage` sentence
+in four locales; recovery.md and acceptance.md record that the Animus
+connection, workout sender and recovery review stay closed after a
+same-runtime Reopen, and that P1's details line is an explicit exception to
+A8's "no raw code". At `b9f2315a`:
+`make -C app analyze` → No issues found; `make -C app format` → 542 files,
+0 changed; `make -C app test TEST='--concurrency=2 test/alkion/recovery
+test/alkion/files test/alkion/acceptance test/ui/profile_data_actions_test.dart
+test/ui/profile_last_backup_test.dart test/ui/recovery_error_message_test.dart
+test/main_routing_test.dart test/l10n test/layout test/util'` → +376, all pass.
+The full suite was not rerun after the fix.
+
 - T1 — done, awaiting review. `RecoveryHost.workoutActive`
   (`hasActive || launching`); the screen refuses Restore before any picker,
   flush or close. `RuntimeRecoveryHost.restoreBackup` throws
@@ -192,8 +210,9 @@ Code at `55eea157` (later commits are docs only). Commits: `c0238823` (T1),
   the last backup and refreshes when the Backup screen closes.
 - T4 — done, awaiting review. `AlkionRuntime.ownersDisposed`; `close()` wraps
   its body and clears `_closing` on every throw. The failed-close screen's
-  Reopen re-presents `AlkionApp` for the same runtime when no owner was
-  disposed, otherwise retries `close()` then relaunches; a failed retry stays
+  Reopen re-presents `AlkionApp` for the same runtime when the flush
+  barrier itself refused (`teardownBegan` false, after review), otherwise
+  retries `close()` then relaunches; a failed retry stays
   on the screen as a retryable error. `RuntimeRecoveryHost` gained a
   `@visibleForTesting closeStore` seam.
 

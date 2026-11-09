@@ -40,14 +40,23 @@ them).
   the Profile row, comes from the newest backup file name of this profile; no
   database write (A6).
 - If the runtime fails to close for a restore, Reopen shows the same working
-  runtime when nothing was disposed, or retries the close and relaunches; a
-  failed retry stays a retryable error, never `profile_in_use` (A7).
+  runtime only when the flush barrier itself refused (its Animus connection,
+  workout sender and recovery review stay closed until the next launch). Once
+  teardown began it retries the close and relaunches; a failed retry stays a
+  retryable error, never `profile_in_use` (A7).
 - Backup, restore and first-start errors use the shared mapper: a sentence and
   at most a small category line, never exception text. An open editor gets
   "close the editor" guidance; an interrupted restore, a profile that already
-  has data and a changed staging copy get their own sentences. New strings
-  exist in en, it, de and es; parity and unused-key tests pass, and the Backup
-  screen holds at 320 dp and 2x text in all four (A8).
+  has data and a changed staging copy get their own sentences; an interrupted
+  fresh restore at first start reads as the retryable interrupted restore, not
+  a foreign backup. New strings exist in en, it, de and es; parity and
+  unused-key tests pass, and the Backup screen holds at 320 dp and 2x text in
+  all four (A8). Explicit exception to A8's "no raw code": by the P1 decision
+  the stable category stays visible as a small mono details line under the
+  sentence; it is never the message and never exception text.
+- Restore re-verifies the chosen file at every step, so a copy that changed
+  after Check is checked again; damaged bytes are refused with a mapped
+  sentence before the confirmation.
 - No backup, evidence, schema or restore-semantics change; restore still
   re-verifies the backup.
 
