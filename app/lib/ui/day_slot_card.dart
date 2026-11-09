@@ -113,6 +113,21 @@ class _DaySlotCardState extends State<DaySlotCard> {
   /// clearing RIR under `RirControls.off` does not take the row away.
   bool _rirLatched = false;
 
+  /// The header toggle's focus. A toggle activated from the keyboard keeps
+  /// it; only another focused field is committed and unfocused.
+  final _toggleFocus = FocusNode(debugLabel: 'day-slot-toggle');
+
+  @override
+  void dispose() {
+    _toggleFocus.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    if (!_toggleFocus.hasPrimaryFocus) commitPendingInput();
+    widget.onToggle();
+  }
+
   SlotDraft get _draft => widget.draft;
   String get _name => widget.displayName ?? widget.exercise.name;
 
@@ -205,7 +220,9 @@ class _DaySlotCardState extends State<DaySlotCard> {
                 tween: Tween(end: widget.expanded ? 1 : 0),
                 duration: Motion.of(context, Motion.base),
                 curve: Motion.curve,
-                builder: (context, open, _) => open == 0
+                // Built from the first frame of an expand; dropped once a
+                // collapse has finished.
+                builder: (context, open, _) => open == 0 && !widget.expanded
                     ? const SizedBox(width: double.infinity)
                     : ClipRect(
                         child: Align(
@@ -243,10 +260,8 @@ class _DaySlotCardState extends State<DaySlotCard> {
     );
     final toggle = TextButton(
       key: ValueKey('day-slot-expand-${widget.instanceKey}'),
-      onPressed: () {
-        commitPendingInput();
-        widget.onToggle();
-      },
+      focusNode: _toggleFocus,
+      onPressed: _toggle,
       style: TextButton.styleFrom(
         minimumSize: const Size(48, 48),
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -357,10 +372,7 @@ class _DaySlotCardState extends State<DaySlotCard> {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               excludeFromSemantics: true,
-              onTap: () {
-                commitPendingInput();
-                widget.onToggle();
-              },
+              onTap: _toggle,
               child: ExcludeSemantics(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(0, 6, 8, 6),

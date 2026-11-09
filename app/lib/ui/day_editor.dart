@@ -49,6 +49,28 @@ class DaySlotState {
   String get exerciseId => draft.exerciseId;
 }
 
+/// A stored [slot] as the editor opens it: every field as stored, nothing
+/// changed yet. A null field shows the value the workout resolves and stays
+/// null until touched, so an untouched Save writes the same values.
+DaySlotState daySlotStateFromSlot(Slot slot) => DaySlotState(
+  draft: SlotDraft(
+    itemId: slot.id,
+    exerciseId: slot.exerciseId,
+    workSets: slot.workSets,
+    warmupSets: slot.warmupSets,
+    repLow: slot.repLow,
+    repHigh: slot.repHigh,
+    rirLow: slot.rirLow,
+    rirHigh: slot.rirHigh,
+    rirPolicy: slot.rirPolicy,
+    localRevision: slot.localRevision,
+    rawFields: slot.rawFields,
+    changedFields: {},
+    catalog: slot.catalog,
+    catalogTargets: slot.catalogTargets,
+  ),
+);
+
 // ── DayEditor ─────────────────────────────────────────────────────────────────
 
 /// Editor for a single training day (create or edit).
@@ -175,34 +197,14 @@ class _DayEditorState extends State<DayEditor> {
     // Build exercise lookup.
     final exById = {for (final e in catalog) e.id: e};
 
-    // Resolve slots. Fields stay as stored: a null one shows the value the
-    // workout resolves and stays null until touched.
+    // Resolve slots.
     final slots = <DaySlotState>[];
     for (final slot in day.slots) {
-      final ex = exById[slot.exerciseId];
-      if (ex == null) throw const StoreException('unavailable_definition');
-      slots.add(
-        DaySlotState(
-          draft: SlotDraft(
-            itemId: slot.id,
-            exerciseId: slot.exerciseId,
-            workSets: slot.workSets,
-            warmupSets: slot.warmupSets,
-            repLow: slot.repLow,
-            repHigh: slot.repHigh,
-            rirLow: slot.rirLow,
-            rirHigh: slot.rirHigh,
-            rirPolicy: slot.rirPolicy,
-            localRevision: slot.localRevision,
-            rawFields: slot.rawFields,
-            changedFields: {},
-            catalog: slot.catalog,
-            catalogTargets: slot.catalogTargets,
-          ),
-        ),
-      );
+      if (exById[slot.exerciseId] == null) {
+        throw const StoreException('unavailable_definition');
+      }
+      slots.add(daySlotStateFromSlot(slot));
     }
-
     for (final slot in slots) {
       await _readLoadReference(slot.draft);
     }
@@ -682,6 +684,11 @@ class _DayEditorState extends State<DayEditor> {
                     final scope = CatalogScope.maybeOf(context);
                     final choice = _choiceFor(slot, scope);
                     final selection = slot.draft.catalog;
+                    // Without selection evidence, the catalog choice's
+                    // profile decides whether the slot measures reps.
+                    final profile = selection == null && choice != null
+                        ? scope!.measurement(choice)
+                        : null;
                     return Reveal(
                       key: ValueKey(slot.instanceKey),
                       child: Padding(
@@ -701,6 +708,10 @@ class _DayEditorState extends State<DayEditor> {
                                       ).languageCode,
                                     )),
                           reorderIndex: i,
+                          measuresReps:
+                              profile == null ||
+                              profile.requiredMetrics.contains('repetitions') ||
+                              profile.optionalMetrics.contains('repetitions'),
                           unit: unit,
                           rirControls: _rirControls,
                           loadReference: selection == null
