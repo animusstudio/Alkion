@@ -119,7 +119,30 @@ local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:`
 
 ## Task state
 
-None started.
+- **T1 partial, blocked on Motion** (2026-11-09). Code `f1b9355`: card look on
+  `surface3` with a 1 dp `lineStrong` border and `AppRadius.panel`, error as a
+  `danger` border and glyph (no fill), the inverse palette removed,
+  `dismissDirection: horizontal` in the theme, tap-to-hide content at least 48 dp tall
+  (no semantics tap), the 20 dp decorative glyph with an additive `glyph:`
+  (`WToastGlyph`), an action toast at least 10 s under accessible navigation, and the
+  contrast test. `toast_clearance_test.dart` passes unchanged.
+- **Blocker: `snackBarAnimationStyle: Motion.sheet(context)` is wrong against
+  Flutter 3.44.** `ScaffoldMessengerState.showSnackBar` disposes and replaces its
+  shared controller whenever the passed style differs from the current one, even while
+  a SnackBar is on screen (`_didUpdateAnimationStyle`, `scaffold.dart:386-394`). A raw
+  `showSnackBar` (default 250 ms controller) followed by `showWToast` with the style
+  trips `assert(_snackBarController!.isForwardOrCompleted)` (`scaffold.dart:620`) and
+  leaves the raw SnackBar on screen with the toast queued behind it; swipe and timeout
+  cannot clear it. A reduced-motion toggle while a toast is up does the same. Raw sites
+  stay after P5 and P7 (`active_session_screen.dart` 291, 534, 575, 592, 824), so the
+  style is not committed; the reduced-motion part of A5 is open and needs an owner or
+  coordinator decision. The regression test "a raw SnackBar followed by a toast shows
+  and ends both" in `w_toast_test.dart` pins the queue.
+- Checks: `make -C app get` → Got dependencies; `make -C app test
+  TEST='--concurrency=2 test/widgets test/theme test/shell'` → All tests passed (+503);
+  `make -C app analyze` → No issues found; `make -C app fmt FORMAT_FILES=<4 owned files>`
+  → 0 changed. With the style in place the raw-then-toast test fails; without it a
+  reduced-motion show/hide test fails (kept out of the commit).
 
 ## Next
 
