@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../store/local_store.dart';
 
 import '../util/calendar_keys.dart';
@@ -11,17 +13,6 @@ import 'catalog_load_history.dart';
 // SQLite rollover normalization; the original date text stays in its record.
 const _qualifiedStatsDay =
     "length(se.date)=10 AND se.date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND se.date>='0001-01-01' AND date(se.date)=se.date";
-
-/// The stored catalog PR flag of set `s` in its session `se`'s current
-/// revision, read from that set's existing `catalog-workout:` derived result
-/// (`catalog-load/1`), or NULL for a set with none (every legacy set). Read
-/// only: nothing here writes or recomputes a derived result.
-const catalogPrSql =
-    "(SELECT json_extract(CAST(d.result_bytes AS TEXT),'\$.is_pr') FROM derived_results d WHERE d.profile_id=s.profile_id AND d.result_id='catalog-workout:'||s.session_id||':'||se.revision||':set:'||s.id||':'||s.revision)";
-
-/// Whether set `s` (in session `se`) is a stored PR: its catalog PR flag when
-/// it has one, else its legacy local flag. Each set counts once either way.
-const setPrSql = 'COALESCE($catalogPrSql, s.legacy_local_pr)';
 
 /// Labeled weekly working sets and the sets whose muscle is unavailable.
 /// Unknown evidence is deliberately separate from canonical/custom labels.
@@ -218,29 +209,36 @@ class StatsRepository {
             'LIMIT ?',
             parameters: [limit],
           )
-          .map((rs) => rs.map(_recentPr).toList()),
+          .map((rs) => rs.map(recentPrFromRow).toList()),
     );
   }
 
+  /// One Recent PRs row. A catalog set's load and reps come from its stored
+  /// set bytes; bytes that cannot be decoded make that row's values
+  /// unavailable (null, never 0) without failing the other rows.
+  @visibleForTesting
   static ({String exerciseId, double? weight, int? reps, String date})
-  _recentPr(Map<String, dynamic> row) {
+  recentPrFromRow(Map<String, dynamic> row) {
     final date = row['date']?.toString() ?? '';
     final exerciseId = row['exercise_id'] as String;
     if (row['catalog_set_bytes'] != null) {
-      final metrics = CatalogSetEvidence.fromJson(
-        decodeCatalogBytes(row['catalog_set_bytes']!),
-      ).metrics;
-      final load = metrics['reported_load']?.loadKg?.displayDouble;
-      final repetition = metrics['repetitions'];
-      final reps = repetition?.state == ValueState.valid
-          ? int.tryParse(repetition!.raw.toString())
-          : null;
-      return (
-        exerciseId: exerciseId,
-        weight: load != null && load.isFinite ? load : null,
-        reps: reps,
-        date: date,
-      );
+      double? weight;
+      int? reps;
+      try {
+        final metrics = CatalogSetEvidence.fromJson(
+          decodeCatalogBytes(row['catalog_set_bytes']!),
+        ).metrics;
+        final load = metrics['reported_load']?.loadKg?.displayDouble;
+        weight = load != null && load.isFinite ? load : null;
+        final repetition = metrics['repetitions'];
+        reps = repetition?.state == ValueState.valid
+            ? int.tryParse(repetition!.raw.toString())
+            : null;
+      } catch (_) {
+        weight = null;
+        reps = null;
+      }
+      return (exerciseId: exerciseId, weight: weight, reps: reps, date: date);
     }
     final weight = DecimalEvidence.fromRow(row, 'weight_kg');
     final display = weight.state == ValueState.valid
