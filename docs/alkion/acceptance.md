@@ -24,8 +24,15 @@ backup or draft format change.
   (the quiet mirror is used) and the screen's own haptics mark the end: one
   buzz. Opening or closing the screen and leaving or returning to the app
   reschedule the matching variant. In the background the open screen neither
-  buzzes nor stops the rest; the resume reconciliation stops it, without a
-  late second buzz (A1).
+  buzzes nor stops the rest; the resume reconciliation stops it. A rest that
+  ended more than 2 s before the screen's first foreground tick (timers frozen
+  while locked, or the screen opened late) gets no buzz or "Rest over"
+  announcement, since the notification already marked it. A screen visible
+  but not resumed (shade, split screen) keeps rebuilding its timers (A1).
+- Ghost cleanup (owner decision 2026-11-09): at runtime open, after the draft
+  is loaded, when no workout is active and no start or resume is running,
+  Alkion cancels its workout notification id 4101, which also cancels any
+  scheduled rest-end alert. An active or resuming workout is never cancelled.
 - The rest countdown and the rest-end post name the next exercise, "Next ·
   name" (catalog display label or exercise name, no weights), in en, it, de
   and es. With nothing pending the countdown says "Rest" and the rest-end post

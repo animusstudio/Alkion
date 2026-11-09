@@ -215,6 +215,32 @@ Checks at `87ddb9a`:
   through a rest, toggle the channel, status-bar glyph, first-start explainer
   on a fresh install, merged manifest permissions).
 
+Review 2026-11-09: PASS-WITH-FINDINGS. Fixes in `be7bdc2`:
+
+- Late buzz on resume: `_handleRestHaptics` consumes the guard without
+  buzzing or announcing when the rest ended more than 2 s before the tick
+  (`_lateRestEndSeconds`), so timers frozen while locked cannot buzz on
+  unlock. Test: no tick while paused, resume 10 s past the end → no haptic,
+  no announcement, rest stopped; verified to fail without the guard.
+- The background branch of the ticker still calls `setState`, so a screen
+  visible but not resumed (shade, split screen) keeps its timers moving; it
+  only skips haptics and `stopRest`. Reasoned, not tested: host widget tests
+  cannot advance the wall clock the timers read.
+- `assets/icon/README.md` records `@drawable/ic_stat_alkion` and its
+  derivation.
+- Ghost cleanup (owner decision 2026-11-09): `initializeNotifications` cancels
+  id 4101 (and with it the scheduled rest-end alarm) when, after the draft
+  load and any launch response, no workout is active and no launch is
+  running. Tests: none active → one cancel; active or resuming → none; real
+  runtime with and without a stored draft.
+
+Checks at `be7bdc2`: `make -C app analyze` → No issues found;
+`make -C app format` → 530 files, 0 changed;
+`make -C app test TEST='--concurrency=2 test/session test/shell test/settings
+test/l10n test/main_routing_test.dart'` → +555, all passed. The full suite
+was not rerun; no test outside `test/session` and `test/shell` injects a
+notifier.
+
 ## Next
 
 Independent review, then the device check. The background-actions plan
