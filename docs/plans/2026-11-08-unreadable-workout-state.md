@@ -203,7 +203,25 @@ after T1 passes review.
   `clearForSession` and History delete guards. The crash child runs under the
   Flutter tester, because the classifiers import Flutter code.
 - T2 — not started.
-- T3 — not started.
+- T3 — done, awaiting review. `47f8e44` adds
+  `test/alkion/recovery/workflow_quarantine_backup_test.dart` (6 real-SQLite
+  cases: a backup after a quarantine carries and a restore reproduces the
+  reviews, `notice` decisions and retired rows; older clean and older damaged
+  backups keep them as exact `restore_newer_work` evidence, and restored
+  damaged active rows are quarantined again under new IDs; `keepAll` never
+  decides a `workflow_state_unreadable` review; a second profile and other
+  generation directories stay byte-identical; no gate blocks and no export
+  carries the review). `4dbcb7b` records the behaviour in `recovery.md`,
+  `storage.md` and a dated `acceptance.md` entry. Checks: focused T3 set 128
+  passed, `analyze` and `format` clean. The "next open" is the quarantine
+  function on a reopened store, since T2 wires `AlkionRuntime.open`.
+  `alkion-backup-recovery` didn't compile at first: `d8e4873` (P3) had
+  made `recovery_host.dart` import Flutter through `stored_copies.dart`. The
+  coordinator fixed this on the F1 branch: `6862fac` splits `stored_copies`
+  so `recovery_host` is Flutter-free, and `c422d62` updates the stale
+  `unsupported_version` case. The target now passes 26/26. Review findings
+  (vacuous export check, no `replayCompleteness` blocking control, no
+  post-backup newer-work assertion) were fixed in a follow-up commit.
 
 ## Next
 
