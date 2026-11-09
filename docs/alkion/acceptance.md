@@ -50,6 +50,11 @@ Implements the approved [failed saves and History editing plan](../plans/2026-11
   the mapped message and an explicit, confirmed "Discard set changes" that
   drops only those owed History writes; transient failures keep "will
   retry". A set with no observed base fails alone; the others are written.
+  Only owed History editor writes block opening another editor (an owed
+  delete blocks only its own session); a permanently failing owed delete
+  gets the same confirmed discard. The catalog editor shows the mapped
+  message for a permanent failure. Add exercise reads the session revision
+  fresh, and a double tap opens one editor.
 - No schema change, migration or new write path. Nothing owed is abandoned
   except by an explicit, confirmed Discard (Plan editors; permanently
   failed History set changes).

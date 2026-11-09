@@ -137,6 +137,36 @@ the retry patterns); T2 to T4 own disjoint files and run in parallel; T5 (ARBs) 
 
 ## Task state
 
+Re-check PASS-WITH-FINDINGS; fixes in `12e1706`:
+
+- N1: only owed History editor writes (`history_sets`, `catalog_history`)
+  block opening an editor anywhere, and an owed delete only blocks its own
+  session; other owed work is retried on the way in and never blocks. A
+  permanently failing owed delete gets the same confirmed discard ("Discard
+  unsaved changes"); one elsewhere is offered once, then editing opens.
+- N2: `_addExercise` reads `sessionById(...).localRevision` after the picker,
+  for both the classic and catalog paths.
+- N3: `_opening` refuses a second editor open (row or Add exercise) while one
+  is being opened, the owed retry included.
+- N4: the catalog editor shows the mapped message instead of "will retry"
+  for a permanent failure (its owed write is discardable from History once
+  closed).
+- N5: tests for an uncertain head that reconciles once followed by a
+  permanent conflict behind it, Add exercise right after a sheet write,
+  owed deletes (here, elsewhere, permanent), a double tap, and the catalog
+  permanent message.
+
+Re-check evidence at `12e1706`: `make -C app test TEST='--concurrency=2
+test/ui/set_editor_sheet_test.dart test/ui/history_session_card_test.dart
+test/ui/history_layout_test.dart test/ui/targets_tab_test.dart
+test/ui/plan_layout_test.dart test/l10n test/ui/catalog_history_editor_test.dart
+test/alkion/workflows/account_free_screens_test.dart
+test/alkion/domains/history_sets_retry_test.dart
+test/alkion/domains/prepared_ui_retry_test.dart
+test/catalog_ui/catalog_normal_app_journey_test.dart'` → +188, all pass;
+`make -C app analyze` → No issues found; `make -C app test
+TEST=--concurrency=2` → +2997 ~3 -3 (the three inherited `catalog_metric_controls_test.dart` cases only).
+
 Review PASS-WITH-FINDINGS (F1 blocking). Review fixes in `198806a`:
 
 - F1: `HistoryScreen` (`_landOwedEdits`) retries owed History writes before
