@@ -188,6 +188,11 @@ device measurement and needs the coordinator's phone access, so the coordinator 
   The only failures are the three inherited `catalog_metric_controls_test.dart` ones. Analyze is
   clean, and `format` reports 0 changed.
 
+- **Private Dev APK `917e9ee8…`** built at `4814231` (T1–T5) with private body assets.
+  Catalog hashes match the reviewed inputs (`4ff35c33…`, `3a3d197d…`). Installed in place on
+  the A024 with `adb install -r` → Success at 21:47:52. The owner's device check of T1–T5
+  is pending, and T6 waits on the owner's choice of auto-rotation behaviour.
+
 ## Next
 
 T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
