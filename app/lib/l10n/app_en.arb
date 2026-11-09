@@ -673,6 +673,44 @@
   "finishNotSavedBanner": "This workout isn't saved yet and is kept as it is. Tap Finish workout to try again.",
   "bodyweightChooseEntry": "Choose the measurement to edit",
   "bodyweightUnavailable": "Measurement unavailable",
+  "bodyweightEditTitle": "Edit entry",
+  "bodyweightDeleteEntry": "Delete entry",
+  "bodyweightDeleteTitle": "Delete this entry?",
+  "bodyweightDeleteMessage": "It's removed from your history, chart and stats.",
+  "bodyweightDiscardMessage": "The weight you entered won't be saved.",
+  "bodyweightRangeHint": "Enter a weight from {min} to {max} {unit}",
+  "@bodyweightRangeHint": {
+    "placeholders": {
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "bodyweightEntryPosition": "Entry {position} of {count}",
+  "@bodyweightEntryPosition": {
+    "placeholders": {
+      "position": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bodyweightShowAll": "Show all {count}",
+  "@bodyweightShowAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "alkionOrderChoiceTitle": "Choose a baseline",
   "alkionOrderChoiceBody": "History has an uncertain order. Choose which workout to use for this action. This records a preference, not a historical fact.",
   "alkionUnavailableOn": "Unavailable · {date}",
