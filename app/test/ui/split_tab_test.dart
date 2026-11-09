@@ -31,8 +31,13 @@ void main() {
     final card = find.byWidgetPredicate(
       (w) => w is SplitDayCard && w.name == 'Pull',
     );
-    await settleUntilFound(tester, card, where: 'split');
-
+    await settleUntilFound(
+      tester,
+      find.byType(SplitDayCard),
+      where: 'split',
+    );
+    // The overview sits above the day cards.
+    await scrollIntoView(tester, find.byType(SplitTab), card);
     await tester.tap(card);
     expect(opened, ['d2']);
     expect(edited, isEmpty);

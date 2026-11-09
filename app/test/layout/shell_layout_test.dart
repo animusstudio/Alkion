@@ -6,6 +6,7 @@ import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/shell/session_indicator.dart';
 import 'package:alkion/session/active_session_controller.dart';
+import 'package:alkion/ui/body_figure.dart';
 import 'package:alkion/ui/day_view.dart';
 import 'package:alkion/ui/history_screen.dart';
 import 'package:alkion/ui/exercise_library_tab.dart';
@@ -13,6 +14,7 @@ import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/progress_screen.dart';
 import 'package:alkion/ui/profile_screen.dart';
 import 'package:alkion/ui/split_tab.dart';
+import 'package:alkion/ui/split_volume_card.dart';
 import 'package:alkion/ui/targets_tab.dart';
 import 'package:alkion/ui/today_screen.dart';
 import 'package:alkion/theme/alkion_icon.dart';
@@ -131,6 +133,14 @@ void main() {
         find.byType(TodayScreen),
         'Today $name',
       );
+      // One body renderer in the whole shell: Today's. The Split overview
+      // behind it (kept mounted by the IndexedStack) holds none.
+      final figures = find.byType(BodyFigure, skipOffstage: false);
+      expect(figures, findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(TodayScreen), matching: figures),
+        findsOneWidget,
+      );
 
       await openTab(tester, AlkionGlyph.progress);
       await settleUntilFound(
@@ -177,18 +187,29 @@ void main() {
       await openTab(tester, AlkionGlyph.plan);
       await settleUntilFound(
         tester,
-        textWithAnyOf(find.byType(PlanScreen), [longDay]),
-        where: 'Plan split $name',
+        find.descendant(
+          of: find.byType(SplitVolumeCard),
+          matching: find.byKey(const Key('workload-top-muscles')),
+        ),
+        where: 'Plan split overview $name',
       );
+      // The overview's figure is now the only one: Today's is unmounted.
+      expect(
+        find.descendant(of: find.byType(PlanScreen), matching: figures),
+        findsOneWidget,
+      );
+      expect(figures, findsOneWidget);
       await expectLayoutHoldsWhileScrolling(
         tester,
         find.byType(PlanScreen),
         'Plan split $name',
       );
       // A day card opens the day's view inside Plan; Back returns.
-      await tester.tap(
-        find.byWidgetPredicate((w) => w is SplitDayCard && w.name == longDay),
+      final longDayCard = find.byWidgetPredicate(
+        (w) => w is SplitDayCard && w.name == longDay,
       );
+      await scrollIntoView(tester, find.byType(SplitTab), longDayCard);
+      await tester.tap(longDayCard);
       await settleUntilFound(
         tester,
         find.byType(DayView),
@@ -197,6 +218,8 @@ void main() {
       await settleReal(tester, ticks: 6);
       // The view's own body is swept by its own tests.
       expectLayoutHolds(tester, 'Plan day view $name');
+      expect(find.byType(SplitVolumeCard, skipOffstage: false), findsNothing);
+      expect(figures, findsOneWidget);
       await tester.tap(find.byKey(const Key('plan-editor-back')));
       await settleUntilFound(
         tester,
@@ -237,6 +260,7 @@ void main() {
           find.byType(PlanScreen),
           '$where $name',
         );
+        expect(figures, findsNothing);
       }
 
       await harness.unmount(tester);

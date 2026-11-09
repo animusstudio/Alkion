@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/ui/body_figure.dart';
 import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/split_tab.dart';
+import 'package:alkion/ui/split_volume_card.dart';
 import 'package:alkion/ui/targets_tab.dart';
 import 'package:alkion/widgets/stepper.dart';
 import 'package:alkion/widgets/plan_form.dart';
@@ -40,7 +42,14 @@ void main() {
         await tester.pumpWidget(
           harness.wrap(const Scaffold(body: PlanScreen()), locale: locale),
         );
-        await settleReal(tester);
+        // The overview above the day cards, with its counts read.
+        await settleUntilFound(
+          tester,
+          find.byKey(const Key('workload-top-muscles')),
+          where: 'Plan split overview $code',
+        );
+        expect(find.byType(SplitVolumeCard), findsOneWidget);
+        expect(find.byType(BodyFigure), findsOneWidget);
         await expectLayoutHoldsWhileScrolling(
           tester,
           find.byType(PlanScreen),
@@ -57,6 +66,7 @@ void main() {
               .first,
         );
         await settleReal(tester, ticks: 15);
+        expect(find.byType(BodyFigure), findsNothing);
         await expectLayoutHoldsWhileScrolling(
           tester,
           find.byType(PlanScreen),
@@ -82,7 +92,13 @@ void main() {
         final card = find.byWidgetPredicate(
           (w) => w is SplitDayCard && w.name == longDay,
         );
-        await settleUntilFound(tester, card, where: 'Plan split $code');
+        await settleUntilFound(
+          tester,
+          find.byType(SplitVolumeCard),
+          where: 'Plan split $code',
+        );
+        // At 2x the overview pushes the day cards below the first screen.
+        await scrollIntoView(tester, find.byType(SplitTab), card);
         await tester.tap(card);
         await settleUntilFound(
           tester,
@@ -91,6 +107,9 @@ void main() {
         );
         await settleReal(tester, ticks: 6);
         expect(find.byType(DayEditor), findsNothing);
+        // The view's own figure; the list and its overview are gone.
+        expect(find.byType(SplitVolumeCard), findsNothing);
+        expect(find.byType(BodyFigure), findsOneWidget);
         expect(find.text(l.planTabSplit), findsOneWidget);
         final back = find.byKey(const Key('plan-editor-back'));
         expect(tester.getSize(back).width, greaterThanOrEqualTo(48));
@@ -105,6 +124,7 @@ void main() {
         );
         await settleReal(tester, ticks: 6);
         expect(find.byType(DayView), findsNothing);
+        expect(find.byType(BodyFigure), findsNothing);
         expect(find.text(l.planEditDay), findsOneWidget);
         await expectLayoutHoldsWhileScrolling(
           tester,
