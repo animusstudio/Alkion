@@ -1342,5 +1342,8 @@
         "type": "int"
       }
     }
-  }
+  },
+  "planEditorRetrySave": "Retry save",
+  "planEditorNotSaved": "Not saved. The fields stay locked so Retry save saves exactly these values once. Discard to leave without saving.",
+  "planEditorDiscardChanges": "Discard changes"
 }

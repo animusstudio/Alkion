@@ -24,6 +24,7 @@ import '../widgets/w_dialog.dart';
 import '../widgets/glyph_loading.dart';
 import '../widgets/text_motion.dart';
 import 'editor_guard.dart';
+import 'plan_save_failed.dart';
 
 /// Editor for a single exercise (create or edit).
 ///
@@ -335,6 +336,20 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       if (mounted) await showWriteFailed(context, e);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// A Save failed and its prepared write is still owed: the fields stay
+  /// locked so Retry save commits exactly that write, once.
+  bool get _saveFailed => _pendingSave != null && !_saving;
+
+  /// Leaves after a failed Save without writing. The prepared write was
+  /// never registered as owed, so it is dropped; if its COMMIT did land, a
+  /// later edit of this exercise conflicts instead of overwriting it.
+  Future<void> _discardFailedSave() async {
+    if (!_saveFailed) return;
+    if (await confirmPlanDiscard(context, day: false) && mounted) {
+      widget.onBack();
     }
   }
 
@@ -964,12 +979,22 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
           ),
         ),
         // ── Primary action ─────────────────────────────────────────────────
+        if (_saveFailed) const PlanSaveFailedNote(),
         PrimaryBtn(
-          btnLabel,
+          _saveFailed ? l.planEditorRetrySave : btnLabel,
           enabled: canSave && !_saving && !_deleting && _pendingDelete == null,
           onTap: _save,
           glitch: true,
         ),
+        if (_saveFailed) ...[
+          const SizedBox(height: 10),
+          PrimaryBtn(
+            l.planEditorDiscardChanges,
+            enabled: true,
+            secondary: true,
+            onTap: _discardFailedSave,
+          ),
+        ],
 
         if (_editId != null) ...[
           const SizedBox(height: 10),

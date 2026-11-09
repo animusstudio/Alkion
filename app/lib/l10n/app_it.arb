@@ -779,5 +779,8 @@
   "volumeLegendDone": "Fatte questa settimana",
   "volumeLegendLive": "Questa sessione",
   "volumeLegendPlanned": "Pianificate",
-  "volumeLiveSemantics": "{muscle}: {done} serie fatte questa settimana, {live} in questa sessione, {planned} pianificate, obiettivo {target}"
+  "volumeLiveSemantics": "{muscle}: {done} serie fatte questa settimana, {live} in questa sessione, {planned} pianificate, obiettivo {target}",
+  "planEditorRetrySave": "Riprova a salvare",
+  "planEditorNotSaved": "Non salvato. I campi restano bloccati perché Riprova a salvare salvi una sola volta esattamente questi valori. Scarta per uscire senza salvare.",
+  "planEditorDiscardChanges": "Scarta modifiche"
 }

@@ -152,19 +152,88 @@ void main() {
       await harness.unmount(tester);
     },
   );
-  for (final deferred in [false, true]) {
+  Future<List<Map<String, dynamic>>> targets(
+    WidgetTester tester,
+    ScreenHarness harness,
+  ) async => (await tester.runAsync(
+    () => harness.database.getAll('SELECT * FROM muscle_targets'),
+  ))!;
+
+  testWidgets(
+    'a target tap during a delayed write is queued, not dropped, and stored in order',
+    (tester) async {
+      final harness = ScreenHarness();
+      addTearDown(harness.close);
+      addTearDown(() => harness.unmount(tester));
+      await harness.open(tester, seed: (_) async {});
+      final gate = (await tester.runAsync(() async => Completer<void>()))!;
+      final fault = FaultDatabase(harness.database, gate: gate);
+      harness.overrideDatabase = fault;
+      await tester.pumpWidget(harness.wrap(const Scaffold(body: TargetsTab())));
+      await settleUntilFound(tester, find.text('Chest'), where: 'target row');
+      final row = find
+          .ancestor(of: find.text('Chest'), matching: find.byType(Padding))
+          .first;
+      final increment = find.descendant(
+        of: row,
+        matching: find.byKey(const Key('stepper-inc')),
+      );
+      await tester.tap(increment);
+      await tester.pump();
+      for (var i = 0; i < 100 && fault.actions.isEmpty; i++) {
+        await settleReal(tester, ticks: 1);
+      }
+      await tester.tap(increment);
+      await tester.pump();
+      expect(fault.actions, hasLength(1));
+      expect(
+        find.descendant(of: row, matching: find.text('2')),
+        findsOneWidget,
+      );
+      // Another muscle stays editable while Chest writes: the lock is per muscle.
+      final back = find
+          .ancestor(of: find.text('Back'), matching: find.byType(Padding))
+          .first;
+      await tester.tap(
+        find.descendant(
+          of: back,
+          matching: find.byKey(const Key('stepper-inc')),
+        ),
+      );
+      await tester.pump();
+      await tester.runAsync(() async => gate.complete());
+      for (var i = 0; i < 100; i++) {
+        final rows = await targets(tester, harness);
+        if (rows.length == 2 && rows.any((r) => r['target_sets'] == 2)) break;
+        await settleReal(tester, ticks: 1);
+      }
+      final rows = await targets(tester, harness);
+      final chest = rows.singleWhere((r) => r['muscle'] == 'chest');
+      expect(chest['target_sets'], 2);
+      expect(chest['revision'], 2);
+      expect(rows.singleWhere((r) => r['muscle'] == 'back')['target_sets'], 1);
+      expect(
+        await tester.runAsync(
+          () => harness.database.getAll('SELECT * FROM operations'),
+        ),
+        hasLength(3),
+      );
+      expect(find.text('OK'), findsNothing);
+    },
+  );
+
+  for (final uncertain in [false, true]) {
     testWidgets(
-      'actual target retains prepared requested value through ${deferred ? 'COMMIT refusal' : 'rapid delayed repeat'}',
+      'a new target tap after a ${uncertain ? 'COMMIT that landed unacknowledged' : 'refused COMMIT'} commits the new value once',
       (tester) async {
         final harness = ScreenHarness();
         addTearDown(harness.close);
         addTearDown(() => harness.unmount(tester));
         await harness.open(tester, seed: (_) async {});
-        final gate = (await tester.runAsync(() async => Completer<void>()))!;
         final fault = FaultDatabase(
           harness.database,
-          gate: gate,
-          beforeCommit: deferred,
+          beforeCommit: !uncertain,
+          afterCommit: uncertain,
         );
         harness.overrideDatabase = fault;
         await tester.pumpWidget(
@@ -180,51 +249,40 @@ void main() {
         );
         await tester.tap(increment);
         await tester.pump();
-        await tester.tap(increment);
-        await tester.pump();
-        for (var i = 0; i < 100 && fault.actions.isEmpty; i++) {
-          await settleReal(tester, ticks: 1);
-        }
+        await observeDialog(tester, harness.database);
         expect(fault.actions, hasLength(1));
         final original = fault.actions.single;
         expect(
           find.descendant(of: row, matching: find.text('1')),
           findsOneWidget,
+          reason: 'the unsaved value stays shown',
         );
-        await tester.runAsync(() async {
-          gate.complete();
-        });
-        if (deferred) {
-          await observeDialog(tester, harness.database);
-          expect(
-            find.descendant(of: row, matching: find.text('1')),
-            findsOneWidget,
-          );
-          await tester.tap(find.text('OK'));
-          await settleReal(tester, ticks: 2);
-          await tester.tap(increment);
-        }
+        await tester.tap(find.text('OK'));
+        await settleReal(tester, ticks: 2);
+        await tester.tap(increment);
+        await tester.pump();
         for (var i = 0; i < 100; i++) {
-          final rows = await tester.runAsync(
-            () => harness.database.getAll(
-              'SELECT * FROM muscle_targets WHERE deleted=0',
-            ),
-          );
-          if (rows!.isNotEmpty) break;
+          final rows = await targets(tester, harness);
+          if (rows.isNotEmpty && rows.single['target_sets'] == 2) break;
           await settleReal(tester, ticks: 1);
         }
-        final rows = await tester.runAsync(
-          () => harness.database.getAll('SELECT * FROM muscle_targets'),
-        );
-        expect(rows, hasLength(1));
-        expect(rows!.single['target_sets'], 1);
-        expect(rows.single['revision'], 1);
-        expect(fault.actions.map((a) => a.hash).toSet(), {original.hash});
+        final rows = await targets(tester, harness);
+        expect(rows, hasLength(1), reason: 'no duplicate row');
+        expect(rows.single['target_sets'], 2);
+        // A landed earlier write is built on (revision 2), a refused one is
+        // replaced (revision 1): no gap either way.
+        expect(rows.single['revision'], uncertain ? 2 : 1);
+        expect(fault.actions, hasLength(2));
+        expect(fault.actions.last.operationId, isNot(original.operationId));
+        final operations = (await tester.runAsync(
+          () => harness.database.getAll('SELECT * FROM operations'),
+        ))!;
+        expect(operations, hasLength(uncertain ? 2 : 1));
+        expect(operations.last['operation_id'], fault.actions.last.operationId);
+        expect(find.text('OK'), findsNothing);
         expect(
-          await tester.runAsync(
-            () => harness.database.getAll('SELECT * FROM operations'),
-          ),
-          hasLength(1),
+          find.descendant(of: row, matching: find.text('2')),
+          findsOneWidget,
         );
       },
     );
