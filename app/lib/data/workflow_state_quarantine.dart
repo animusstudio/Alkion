@@ -64,10 +64,17 @@ String _sqlType(Object? value) => switch (value) {
   _ => value.runtimeType.toString(),
 };
 
-String _message(Object error) {
+/// The first 512 characters (code points) of an error, so a surrogate pair
+/// is never split.
+@visibleForTesting
+String workflowErrorMessage(Object error) {
   final text = '$error';
-  return text.length <= 512 ? text : text.substring(0, 512);
+  return text.runes.length <= 512
+      ? text
+      : String.fromCharCodes(text.runes.take(512));
 }
+
+String _message(Object error) => workflowErrorMessage(error);
 
 /// Steps 1–3 of every classifier: a BLOB holding UTF-8 JSON. Only values
 /// already read are inspected here, so no storage failure is ever classified.

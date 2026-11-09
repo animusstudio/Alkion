@@ -725,6 +725,159 @@ void main() {
     },
   );
 
+  test(
+    'A6 every shape the decoders reject is quarantined with exact bytes',
+    () async {
+      // The non-accepting fixtures of test/session/draft_json_test.dart.
+      Map<String, dynamic> withMetadata(Map<String, Object?> metadata) {
+        final json = _json(_draft(sessionId: 'S'));
+        ((json['blocks'] as List).single as Map)
+          ..remove('resolvedRirState')
+          ..remove('resolvedRirPolicy')
+          ..addAll(metadata);
+        return json;
+      }
+
+      final rejectedMetadata = <String, Map<String, Object?>>{
+        'unknown policy with available state': {
+          'resolvedRirPolicy': 'future-policy',
+          'resolvedRirState': 'available',
+        },
+        'unknown policy with missing state': {
+          'resolvedRirPolicy': 'future-policy',
+        },
+        'unknown state literal': {
+          'resolvedRirPolicy': null,
+          'resolvedRirState': 'future-state',
+        },
+        'known policy with missing state': {
+          'resolvedRirPolicy': RirPolicy.inherit,
+        },
+        'available target missing low': {
+          'resolvedRirPolicy': RirPolicy.target,
+          'resolvedRirState': 'available',
+          'resolvedRirLow': null,
+        },
+        'available target missing high': {
+          'resolvedRirPolicy': RirPolicy.target,
+          'resolvedRirState': 'available',
+          'resolvedRirHigh': null,
+        },
+        'available target inverted': {
+          'resolvedRirPolicy': RirPolicy.target,
+          'resolvedRirState': 'available',
+          'resolvedRirLow': 3,
+          'resolvedRirHigh': 1,
+        },
+        'available target below range': {
+          'resolvedRirPolicy': RirPolicy.target,
+          'resolvedRirState': 'available',
+          'resolvedRirLow': -1,
+        },
+        'available target above range': {
+          'resolvedRirPolicy': RirPolicy.target,
+          'resolvedRirState': 'available',
+          'resolvedRirHigh': 6,
+        },
+        'Off with available target': {
+          'resolvedRirPolicy': RirPolicy.off,
+          'resolvedRirState': 'available',
+        },
+      };
+      final timer = localBytes(_draft(sessionId: 'S').timerJson);
+      final drafts = <String, (Uint8List, String, String)>{
+        for (final MapEntry(key: name, value: metadata)
+            in rejectedMetadata.entries)
+          name: (
+            // The draft test's padded raw bytes, not a canonical re-encoding.
+            _bytes('  ${jsonEncode(withMetadata(metadata))} \n'),
+            'draft_unreadable',
+            'shape',
+          ),
+        'mistyped name': (
+          _bytes('{"name": null}'),
+          'draft_unreadable',
+          'shape',
+        ),
+        'not JSON': (_bytes('not json'), 'draft_unreadable', 'json'),
+        'a JSON array': (_bytes('[]'), 'draft_unreadable', 'shape'),
+        'a newer draft version': (
+          localBytes({..._json(_draft()), 'version': 3}),
+          'draft_unsupported_format',
+          'format',
+        ),
+        'a catalog draft without a version': (
+          localBytes(
+            _json(_draft())
+              ..remove('format')
+              ..remove('version'),
+          ),
+          'draft_unreadable',
+          'shape',
+        ),
+      };
+      final snapshots = <String, (Uint8List, String)>{
+        'an empty object': (_bytes('{}'), 'shape'),
+        'a JSON array': (_bytes('[]'), 'shape'),
+        'not JSON': (_bytes('x'), 'json'),
+        'a non-object draft': (localBytes(_finished(draft: 3)), 'shape'),
+      };
+
+      Future<void> expectKept(
+        LocalStateKind kind,
+        String name,
+        String reason,
+        String step,
+      ) async {
+        final rows = [
+          (await row(store, kind))!,
+          if (kind == LocalStateKind.draft)
+            (await row(store, LocalStateKind.timer))!,
+        ];
+        final count = (await reviews(store)).length;
+        final id = expectedId(kind.name, rows);
+        expect(await quarantineUnreadableWorkflowState(store), [
+          id,
+        ], reason: name);
+        final all = await reviews(store);
+        expect(all, hasLength(count + 1), reason: name);
+        final kept = evidence(all.firstWhere((r) => r['review_id'] == id));
+        expect(kept['reason'], reason, reason: name);
+        expect((kept['decoder'] as Map)['failed_step'], step, reason: name);
+        expect(kept['rows'], canonicalRows(rows), reason: name);
+        final retired = (await row(store, kind))!;
+        expect(retired['status'], 'quarantined', reason: name);
+        expect(retired['payload_bytes'], rows.first['payload_bytes']);
+      }
+
+      for (final MapEntry(key: name, value: (bytes, reason, step))
+          in drafts.entries) {
+        await seedDraft(store, bytes, timer: timer);
+        await expectLater(
+          DraftStore.local(store).load(),
+          category('malformed_draft_preserved'),
+          reason: name,
+        );
+        await expectKept(LocalStateKind.draft, name, reason, step);
+      }
+      for (final MapEntry(key: name, value: (bytes, step))
+          in snapshots.entries) {
+        await seed(store, LocalStateKind.finishedRecovery, 'last', bytes);
+        await expectLater(
+          FinishedSessionStore.local(store).load(),
+          category('malformed_recovery_preserved'),
+          reason: name,
+        );
+        await expectKept(
+          LocalStateKind.finishedRecovery,
+          name,
+          'finished_recovery_unreadable',
+          step,
+        );
+      }
+    },
+  );
+
   test('A7 rows that are not active are never inspected or changed', () async {
     for (final status in [
       'completed',
@@ -983,6 +1136,9 @@ void main() {
               '-C',
               Directory.current.path,
               'test',
+              if (Platform.environment['ALKION_TEST_FLUTTER']
+                  case final flutter?)
+                'FLUTTER=$flutter',
               'TEST=test/support/workflow_quarantine_crash.dart',
             ],
             environment: {'ALKION_WQ_ROOT': root.path, 'ALKION_WQ_CUT': cut},
@@ -1030,7 +1186,22 @@ void main() {
         final fault = WorkflowFaultDatabase(store, mode);
         await expectLater(
           quarantineUnreadableWorkflowState(fault),
-          throwsA(anything),
+          mode == WorkflowFault.beforeCommit
+              // The real COMMIT fails on the deferred foreign key.
+              ? throwsA(
+                  isA<sqlite.SqliteException>().having(
+                    (e) => '$e',
+                    'error',
+                    contains('FOREIGN KEY constraint failed'),
+                  ),
+                )
+              : throwsA(
+                  isA<StateError>().having(
+                    (e) => e.message,
+                    'message',
+                    'test consumer lost COMMIT result',
+                  ),
+                ),
         );
         expect(fault.writes, 1);
         if (mode == WorkflowFault.beforeCommit) {
@@ -1163,6 +1334,40 @@ void main() {
       expect(after['revision'], (expired['revision'] as int) + 1);
       expect(after['payload_bytes'], payload);
     });
+  });
+
+  test('retireLocalState never touches a row of another generation', () async {
+    await seed(store, LocalStateKind.draft, 'active', _bytes('{}'));
+    await store.writeTransaction(
+      (tx) => tx.execute(
+        'UPDATE local_state SET generation=generation+1 WHERE state_kind=?',
+        ['draft'],
+      ),
+    );
+    final before = (await row(store, LocalStateKind.draft))!;
+    expect(before['generation'], isNot(store.token.generation));
+    // The failure is caught inside the transaction, which then commits: only
+    // the SQL generation guard, not the rollback, keeps the row unchanged.
+    await store.writeTransaction((tx) async {
+      await expectLater(
+        tx.retireLocalState(
+          LocalStateKind.draft,
+          'active',
+          expectedRevision: before['revision'] as int,
+        ),
+        category('stale_local_state'),
+      );
+      expect(await tx.localState(LocalStateKind.draft, 'active'), before);
+    });
+    expect(await row(store, LocalStateKind.draft), before);
+  });
+
+  test('error messages keep at most 512 whole characters', () {
+    final long = '${'a' * 511}\u{1F600}tail';
+    final kept = workflowErrorMessage(long);
+    expect(kept.runes.length, 512);
+    expect(kept, '${'a' * 511}\u{1F600}');
+    expect(workflowErrorMessage('short'), 'short');
   });
 
   test('retireLocalState is status-only and revision-guarded', () async {
