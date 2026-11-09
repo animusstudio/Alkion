@@ -195,7 +195,13 @@ after T1 passes review.
 
 ## Task state
 
-- T1 — not started.
+- T1 — done, awaiting review. `555e7ea` adds
+  `lib/data/workflow_state_quarantine.dart` (shared classifiers, the
+  quarantine with its checkpoints, `DecoderInfo` and
+  `WorkflowStateQuarantine` for notices and kept reviews),
+  `LocalTransaction.retireLocalState`, uniform loader categories, and the
+  `clearForSession` and History delete guards. The crash child runs under the
+  Flutter tester, because the classifiers import Flutter code.
 - T2 — not started.
 - T3 — not started.
 
