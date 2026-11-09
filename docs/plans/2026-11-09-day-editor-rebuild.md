@@ -198,6 +198,46 @@ T3 after both; T4 (ARBs) last.
   - Placeholders for the strings task: `dayEditorLoadLast`, `dayEditorLoadFixed`.
   - Implementer's focused run: +435 −3, the known failures; analyze clean.
 - **Coordinator decision:** T3 absorbs T4 (strings) and owns the four ARB files.
+- **T2 review PASS**; its three minors were handed to T3 (below).
+- **T3 Editor + T4 Strings: done**, pending review. Code `71a6ea5` (editor, ARBs, card
+  string swap) and `4ad1ece` (card fixes); tests `b999476` and `5520824`.
+  - `DayEditor` renders every slot as a `DaySlotCard`: one open (`_expandedExId` by
+    `instanceKey`), a new one opens, reorder collapses, a loaded day is collapsed.
+    `DaySlotRow`, `DaySlotState.showRirAdd` and `daySlotStateFromResolved` are gone;
+    `daySlotStateFromSlot` is the shared loaded draft.
+  - The card's unit is the Provider `UnitService`'s, the one its chips read.
+  - The Fixed load seed is a `CatalogLoadReference` per catalog context: awaited
+    in `_loadData`, read once in the background for an added slot, never in build.
+  - `_appendExercise` uses `newSlotDefaults` for every slot.
+  - Weekday is a 7-chip `ChipSelect`; tapping the selected chip clears it. An
+    out-of-range day shows `trainingWeekdayUnavailable`. The slot hint is gone.
+  - Card changes, as the T2 review asked:
+    - `measuresReps`: a slot with no selection whose choice measures no
+      repetitions has no Reps row and no reps chip.
+    - The body stays mounted while it folds (`TweenAnimationBuilder`, `ClipRect`,
+      `Align.heightFactor`, `Motion.of`).
+    - Found by `presentation_focus_test`: a keyboard-activated toggle keeps its
+      focus, so it no longer runs `commitPendingInput` on itself.
+  - ARBs: added `dayEditorLoadLast` and `dayEditorLoadFixed` (en Last/Fixed, it
+    Ultimo/Fisso, de Zuletzt/Fest, es Último/Fijo). Deleted the eight listed keys.
+    No weekday semantics strings were needed (the chips speak their day and the
+    selected state).
+  - Tests: `day_editor_slot_row_test.dart` deleted. New
+    `test/data/day_editor_round_trip_test.dart` covers real SQLite (A4, A5, one
+    operation per Save, an untouched old-style slot's item row unchanged). Editor lb
+    chip and Load row agreement are in `catalog_durable_workout_menu_test.dart`.
+  - Test-only waits: `editor_pending_retry_test` lets the focused field's
+    show-caret scroll finish before tapping Save (the day editor is now taller than
+    the phone), and catalog tests let a card finish opening.
+  - Checks:
+    - `make -C app get` → Got dependencies.
+    - `make -C app test TEST='--concurrency=2 test/ui test/shell test/catalog_ui
+      test/alkion/domains test/data test/layout test/l10n'` → +1525 −3: the three
+      inherited `catalog_metric_controls_test.dart` failures (`duration_distance_optional`,
+      `reps_distance_optional` and `reps_duration_optional_load` mount all required and
+      optional controls unset).
+    - `make -C app analyze` → No issues found.
+    - `make -C app fmt FORMAT_FILES=<owned files>`, then `make -C app format` → 0 changed.
 
 ## Next
 
