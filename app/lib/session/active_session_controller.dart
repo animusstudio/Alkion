@@ -1725,7 +1725,8 @@ class ActiveSessionController extends ChangeNotifier {
 
   /// Undo of a log: [set] is not done again and becomes the live set, and
   /// the rest stops only if this set's log started it ([restStartedBy]),
-  /// with the header's previous "rested" mark back. False, with nothing
+  /// with the header's previous "rested" mark back — also when a
+  /// notification rest action is still saving. False, with nothing
   /// changed, when [set] is no longer a logged set of this workout or a
   /// Finish is pending (a late toast action after the workout moved on).
   bool undoLog(SetState set) {
@@ -1739,15 +1740,22 @@ class ActiveSessionController extends ChangeNotifier {
     final owner = _logRest;
     final stop = restStartedBy(set);
     if (owner?.setId == set.id) _logRest = null;
-    markNotDone(set);
     if (stop) {
-      stopRest();
-      // Queued notification rest edits own restEndedAt until they replay.
-      if (_notificationRestEdits == null) {
-        restEndedAt = owner!.endedBefore;
-        notifyListeners();
-      }
+      final start = owner!.start;
+      final endedBefore = owner.endedBefore;
+      // A notification rest action in flight replays its queued edits on its
+      // committed rest: stop that rest the same way, if it is still this one
+      // (+30s keeps the start; a skip or a new rest does not).
+      _notificationRestEdits?.add(
+        (state) => state.start == start
+            ? (start: null, total: 0, endedAt: endedBefore)
+            : state,
+      );
+      restStart = null;
+      restTotal = 0;
+      restEndedAt = endedBefore;
     }
+    markNotDone(set);
     return true;
   }
 

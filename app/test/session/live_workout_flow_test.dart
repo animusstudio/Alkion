@@ -372,6 +372,14 @@ void main() {
         await _open(tester, c);
         await _pickFromWorkoutMenu(tester, _l.sessionDiscardWorkout);
         expect(find.text(_l.sessionDiscardTitle), findsOneWidget);
+        expect(
+          find.text(
+            edit == 'done'
+                ? _l.sessionDiscardMessage
+                : _l.sessionDiscardChangesOnlyMessage,
+          ),
+          findsOneWidget,
+        );
         await tester.tap(find.text(_l.sessionKeepGoing));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
@@ -425,6 +433,33 @@ void main() {
       expect(a.done, isFalse);
       expect(c.liveSet!.set, same(a));
       expect(c.restStart, isNull);
+      await _teardown(tester);
+    });
+
+    testWidgets('minimizing takes the Undo toast down with the screen', (
+      tester,
+    ) async {
+      final a = _set('a');
+      final c = ActiveSessionController()
+        ..seedForTest(
+          _draft([
+            _block([], [a, _set('b')]),
+          ]),
+        );
+      addTearDown(c.dispose);
+      await _open(tester, c);
+      await tester.tap(find.byKey(const Key('log-set-bar')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text(_l.commonUndo), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel(_l.sessionMinimize));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(ActiveSessionScreen), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+      expect(find.text(_l.sessionSetLogged(1)), findsNothing);
+      expect(find.text(_l.commonUndo), findsNothing);
+      expect(a.done, isTrue, reason: 'leaving is not an undo');
       await _teardown(tester);
     });
 

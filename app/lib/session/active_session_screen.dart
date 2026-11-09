@@ -75,6 +75,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   // controller without a BuildContext.
   SessionManager? _manager;
   ActiveSessionController? _controller;
+
+  /// The app-level messenger the live workout's Undo toasts go to; they act
+  /// on this screen, so they leave with it ([_leaving]).
+  ScaffoldMessengerState? _messenger;
+  bool _undoToastShowing = false;
   int _logFeedbackEvent = 0;
   SetState? _confirmedLogCandidate;
 
@@ -124,6 +129,25 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     super.didChangeDependencies();
     _manager = context.read<SessionManager>();
     _controller = context.read<ActiveSessionController>();
+    _messenger = ScaffoldMessenger.maybeOf(context);
+  }
+
+  /// Back or minimize: an Undo left up (set logged or set removed) would
+  /// show over Today and act on a workout no longer on screen. Called as the
+  /// route pops, never from dispose (the messenger may be going away too).
+  void _leaving() {
+    if (_undoToastShowing) _messenger?.clearSnackBars();
+  }
+
+  /// Tracks an Undo toast until it closes, so [_leaving] can take it down.
+  void _trackUndoToast(
+    ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? toast,
+  ) {
+    if (toast == null) return;
+    _undoToastShowing = true;
+    toast.closed.then((_) {
+      if (mounted) _undoToastShowing = false;
+    });
   }
 
   /// Fires countdown haptics at the 3s and 0s thresholds, once each, and
@@ -378,11 +402,16 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   void _offerUndo(ActiveSessionController c, BlockState block, SetState set) {
     final l = AppLocalizations.of(context);
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    showWToast(
-      context,
-      l.sessionSetLogged(block.workingSets.indexOf(set) + 1),
-      duration: const Duration(seconds: 5),
-      action: WToastAction(label: l.commonUndo, onPressed: () => _undo(c, set)),
+    _trackUndoToast(
+      showWToast(
+        context,
+        l.sessionSetLogged(block.workingSets.indexOf(set) + 1),
+        duration: const Duration(seconds: 5),
+        action: WToastAction(
+          label: l.commonUndo,
+          onPressed: () => _undo(c, set),
+        ),
+      ),
     );
   }
 
@@ -399,9 +428,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   void _removeSet(ActiveSessionController c, BlockState b, SetState s) {
     final index = c.removeSet(b, s);
     final l = AppLocalizations.of(context);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
+    _trackUndoToast(
+      (ScaffoldMessenger.of(context)..hideCurrentSnackBar()).showSnackBar(
         SnackBar(
           content: Text(l.sessionSetRemoved),
           action: SnackBarAction(
@@ -409,7 +437,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
             onPressed: () => c.restoreSet(b, s, index),
           ),
         ),
-      );
+      ),
+    );
   }
 
   Future<void> _openWorkoutMenu(ActiveSessionController c) async {
@@ -939,6 +968,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     // can still be left; the workout is kept until Finish commits.
     return PopScope(
       canPop: !_finishing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _leaving();
+      },
       child: _buildScaffold(
         context,
         controller,

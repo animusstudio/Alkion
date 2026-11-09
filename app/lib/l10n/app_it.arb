@@ -795,5 +795,6 @@
   "sessionSetNoValue": "nessun valore",
   "numberEntryInvalid": "Inserisci un numero",
   "numberEntryMax": "Inserisci {max} o meno",
-  "numberEntryMin": "Inserisci {min} o più"
+  "numberEntryMin": "Inserisci {min} o più",
+  "sessionDiscardChangesOnlyMessage": "Questo allenamento e le tue modifiche andranno persi."
 }

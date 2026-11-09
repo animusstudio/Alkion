@@ -1393,5 +1393,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "sessionDiscardChangesOnlyMessage": "This workout and your changes will be lost."
 }
