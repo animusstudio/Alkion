@@ -195,7 +195,7 @@ proves both. The main isolate remains the only SQL owner.
   - A legacy tap never sets the open request. A foreground response carrying
     an unknown action ID is ignored.
   - Legacy receipts recorded no basis. A legacy `issued` receipt takes its
-    basis as the receipt's `rest_start` plus the current SQL `restTotal` at
+    basis as the stored action's `restStart` (`action.restStart`) plus the current SQL `restTotal` at
     first sight; a legacy `consumed` receipt (only `rest_total`) is judged by
     `restTotal` alone. A legacy tap that meets a `consumed` receipt or a fresh
     token ends as `refused(conflict)` or `refused(token_superseded)`; that is
