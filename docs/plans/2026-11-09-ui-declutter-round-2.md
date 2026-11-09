@@ -156,6 +156,19 @@ device measurement and needs the coordinator's phone access, so the coordinator 
     - a wrapped tag sits closer to the next set at 2x (`runSpacing`)
     - classic badges now wrap rather than shrink values
 
+- **T5 Day view: done, review PASS** (Sonnet `high`). Code `dfd27e8`, `47deb12` and `77dd9d2` are merged.
+  - `BodyFigure.background` defaults to `surface`, and the day view passes `bg`. A theme change
+    re-sends the native background.
+  - Rows open read-only `showCatalogChoiceDetails`: catalog rows use the thumbnail's resolution,
+    owned and legacy rows use `choiceForOwned`. The coordinator chose this because
+    `showExerciseSheet` is a picker with no view mode. Unresolvable rows are inert.
+  - Checks: focused `test/ui test/layout test/catalog_ui test/l10n` → +1151 −3 (inherited).
+    `day_view_test` → 20 pass. Analyze clean.
+  - PR follow-ups:
+    - test that a changed background reaches the display channel
+    - a double tap can stack two sheets, as in the catalog picker
+    - the sheet title uses the display name
+
 ## Next
 
 T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
