@@ -777,6 +777,11 @@ void main() {
       expect(controller.resting, isTrue);
       expect(controller.restTotal, settings.restCompoundSeconds);
       expect(settings.restCompoundSeconds, 180);
+      // The logged-set Undo toast stays up for three seconds.
+      expect(
+        tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+        const Duration(seconds: 3),
+      );
 
       await _teardown(tester);
     },
@@ -820,6 +825,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(block.workingSets, [s1]);
+      // Removal, the more destructive action, offers Undo for five seconds.
+      expect(
+        tester.widget<SnackBar>(find.byType(SnackBar)).duration,
+        const Duration(seconds: 5),
+      );
 
       // A real tap on the SnackBarAction is geometrically unreliable in a
       // narrow test surface (the bar sits right above the pinned LogSetBar and
