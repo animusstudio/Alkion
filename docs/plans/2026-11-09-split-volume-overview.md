@@ -168,6 +168,18 @@ Implementers Opus `high`, reviewers Sonnet `high`. T1 first, then T2; T3 (ARBs) 
     - The catalog-backed split counts stay covered by T1's real-SQLite test. The widget store
       test uses legacy exercises.
 
+- **T2+T3 review PASS** (Sonnet `high`).
+  - The card, loading and one figure per visible tab are correct (`Visibility.of` under
+    `IndexedStack`).
+  - The hidden day view's figure is now gated in U3 (`2161c0a`) and merged here.
+  - Known low: during PlanScreen's ~220 ms list↔view fade, two figures coexist. A
+    zero-reverse switcher broke `plan_discard_test` fade cases, so it is a device-check
+    follow-up.
+  - Further PR follow-ups:
+    - tests for a days-stream error, a bundle-change reload and a stale-epoch drop
+    - an exercise's own muscle change does not reload the card until the tab remounts
+    - de "pro Durchlauf" vs "ROTATION" wording
+
 ## Next
 
-Owner approval, then implementation after P1 to P8 and U3 merge.
+Code-complete. The integrated full suite and device check run at delivery.
