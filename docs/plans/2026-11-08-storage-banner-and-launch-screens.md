@@ -1,6 +1,6 @@
 # Honest storage banner, launch failure screen and themed restore screens
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented 2026-11-09, awaiting review.
+Date: 2026-11-08. Lane: **Standard**. Status: **Done** (accepted on A024 2026-11-09); approved by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/storage-banner-and-launch-screens-20261108`.
 Audit items 1.2, 1.3, 1.4, 1.5, 1.6, 5.8 and the `main()` retry gap.

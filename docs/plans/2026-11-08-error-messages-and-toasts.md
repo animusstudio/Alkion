@@ -1,6 +1,6 @@
 # One error-message mapper and a themed toast
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented, awaiting review.
+Date: 2026-11-08. Lane: **Standard**. Status: **Done** (accepted on A024 2026-11-09); approved by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/error-messages-and-toasts-20261108`.
 Audit items 2.1 and 2.3. This plan is **first in the audit-batch merge order**:

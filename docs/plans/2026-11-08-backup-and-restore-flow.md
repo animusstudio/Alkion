@@ -1,6 +1,6 @@
 # Backup and restore flow
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented, awaiting review.
+Date: 2026-11-08. Lane: **Standard**. Status: **Done** (accepted on A024 2026-11-09); approved by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/backup-and-restore-flow-20261108`.
 Audit items 5.1 to 5.7, 1.7 and the backup-dialog issues found alongside them
