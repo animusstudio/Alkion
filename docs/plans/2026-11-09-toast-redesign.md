@@ -54,8 +54,8 @@ with Android one-handed mode. It **stays at the bottom**; the look and the dismi
   `dismissDirection: horizontal`, so raw SnackBars get it too. The helper wraps its content
   in a tap target that hides the toast (at least 48 dp tall). No close icon. TalkBack keeps
   the SnackBar's own dismiss action.
-- **Undo stays inline** at the card's trailing edge; when text wraps at 2x the framework
-  stacks the action under the text inside the card.
+- **Undo stays inline** at the card's trailing edge (the framework stacks it only for a
+  label wider than a quarter of the card, independent of text scale).
 - **Motion and TalkBack.** `showSnackBar(snackBarAnimationStyle: Motion.sheet(context))`,
   so reduced motion shows and hides it instantly. With accessible navigation a toast with
   an action lasts at least 10 s.
@@ -151,6 +151,14 @@ local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:`
   showing one with a changed style (a reduced-motion toggle). T1 is otherwise complete,
   pending review.
 
+- **T1 review PASS** (Sonnet `high`, `f1b9355`). Three minors, all owned by T2:
+  - Danger-filled raw sites (`active_session_screen.dart:222,264`, `history_screen.dart:154`)
+    now read 2.4:1 in dark. The sweep converts them, and nothing merges or ships before it.
+  - The SnackBar stacks its action only when the label is wider than 25% of the card. Text
+    scale does not count toward that, so "Undo" stays inline at 2x. In the stacked case the
+    tap target covers only the text column.
+  - Missing test: a tap on an action toast's text hides it without running Undo. T2 adds it.
+
 ## Next
 
-T1 review; T2 on top of the integrated audit branch (P5 and P7 merged).
+T1 done; T2 on top of the integrated audit branch (P5 and P7 merged).
