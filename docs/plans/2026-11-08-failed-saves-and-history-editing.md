@@ -1,6 +1,6 @@
 # Failed saves and History editing
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented, awaiting review.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented, review fixes applied.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/failed-saves-and-history-editing-20261108`.
 Ordering: after [P1 error messages and toasts](2026-11-08-error-messages-and-toasts.md)
@@ -137,7 +137,57 @@ the retry patterns); T2 to T4 own disjoint files and run in parallel; T5 (ARBs) 
 
 ## Task state
 
-Implemented 2026-11-09, awaiting review. Code at `e1bd65b` (later commits are
+Review PASS-WITH-FINDINGS (F1 blocking). Review fixes in `198806a`:
+
+- F1: `HistoryScreen` (`_landOwedEdits`) retries owed History writes before
+  opening an editor; when one landed it re-reads the sets (block re-resolved
+  by first set id, then exercise id) or the session revision
+  (`sessionById`); while anything stays owed it opens nothing and shows the
+  mapped failure ("Earlier set changes in History are not saved yet.").
+- F2 (coordinator decision): `historyWriteIsPermanent` (conflict bucket,
+  `not_found`, `deleted_target`, `missing_reference`, …; recovery refusals
+  are transient). A permanent failure at the head of the legacy sheet's
+  queue stops all retries (`_blocked`, no store access) and shows the
+  mapped message with a confirmed "Discard set changes" that drops only
+  that sheet's owed writes and unwritten edits, then closes. For a closed
+  sheet, History offers the same confirmed discard for permanently failed
+  `history_sets` / `catalog_history` entries (`UnsavedEditors.retryOwed`
+  now returns failures by key; `kindOf` and `discard` added). A set with no
+  observed base fails alone; the other sets are written.
+- F3: Add set and a confirmed Delete are queued (`_planned`) and prepared
+  only once everything before them has landed; the unreachable
+  retry-same-delete branch is now a guard (the card is locked).
+- F4: the failure dialog shows once per failed state; then the inline note.
+- F5: `TargetsList.writing` and the new `unsaved` are per-muscle sets, so
+  only the written row's stepper is rebuilt; a failed value reads "Not
+  saved" after the dialog.
+- F6 and nit: tests below; Italian `historyNoSetupToLog` now says
+  "esecuzione o attrezzatura", as the catalog strings do.
+
+Review-fix evidence at `198806a` (logs under the coordinator's scratchpad
+`p5/`):
+
+- `make -C app analyze` → No issues found; `make -C app format` → 0 changed.
+- `make -C app test TEST='--concurrency=2 test/alkion/domains/preferences_retry_test.dart
+  test/alkion/domains/editor_pending_retry_test.dart
+  test/alkion/domains/prepared_ui_retry_test.dart
+  test/alkion/domains/history_sets_retry_test.dart
+  test/alkion/domains/prescriptions_test.dart
+  test/catalog_ui/catalog_normal_app_journey_test.dart'` → +72, all pass.
+  New: reopen after an owed write (blocked while failing, fresh revisions
+  once landed, each write once), permanent conflict with History discard,
+  in-sheet discard (another owed entry untouched), unobserved set fails
+  alone, Add and Delete queued behind a failing write, Targets same value
+  retries the same intent, Plan Discard after a landed uncertain COMMIT.
+- `make -C app test TEST='--concurrency=2 test/ui/set_editor_sheet_test.dart
+  test/ui/history_session_card_test.dart test/ui/history_layout_test.dart
+  test/ui/targets_tab_test.dart test/ui/plan_layout_test.dart test/l10n
+  test/ui/catalog_history_editor_test.dart
+  test/alkion/workflows/account_free_screens_test.dart'` → +166, all pass.
+- `make -C app test TEST=--concurrency=2` → +2992 ~3 -3, the three known
+  inherited `catalog_metric_controls_test.dart` cases only.
+
+Implemented 2026-11-09. Code at `e1bd65b` before review (later commits are
 docs only). Commits: `5bf6eb5` (T1), `2b73b6b` (T2), `f73e73b` (T3),
 `62665f9` (T4), `e1bd65b` (T2 fix: a landed Save keeps its label while the
 editor fades out). T5 strings went in with each task.
@@ -186,7 +236,8 @@ editor fades out). T5 strings went in with each task.
   after a failed save lands its owed write before a new editor prepares at
   the same workout revision.
 - T5 — done: 12 keys in en, it, de, es (`planEditor*`, `history*`,
-  `commonSave`).
+  `commonSave`); four more with the review fixes (`historyDiscardSetChanges`,
+  `historyDiscardOwedMessage`, `historyEarlierNotSaved`, `targetsNotSaved`).
 
 Evidence at `e1bd65b`:
 

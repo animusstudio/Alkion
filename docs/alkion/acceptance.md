@@ -37,8 +37,22 @@ Implements the approved [failed saves and History editing plan](../plans/2026-11
   the write-failed dialog (A4). Rest steppers queue every tap, read
   "{count}s" from the ARBs, stop at 900 s and are disabled after an error
   (A5).
+- Review fixes: History lands an earlier editor's owed write before opening
+  another editor, re-reads the block and session revision when it landed,
+  and opens nothing while a write stays owed (the mapped failure is shown).
+  In the set editor, Add set and a confirmed Delete behind a failing write
+  are queued and land in order; the failure dialog shows once per failed
+  state, then the inline note carries it. Targets rebuild only the row being
+  written and mark a value whose write failed "Not saved".
+- Coordinator decision, permanent History failures: a write that can never
+  land (a conflict, a missing set or workout, a base never observed) stops
+  retrying. The set editor, or History when the editor was closed, shows
+  the mapped message and an explicit, confirmed "Discard set changes" that
+  drops only those owed History writes; transient failures keep "will
+  retry". A set with no observed base fails alone; the others are written.
 - No schema change, migration or new write path. Nothing owed is abandoned
-  except by the Plan editors' explicit Discard.
+  except by an explicit, confirmed Discard (Plan editors; permanently
+  failed History set changes).
 
 Host checks are listed in the plan's task state. The device check is open.
 
