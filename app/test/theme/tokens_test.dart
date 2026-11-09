@@ -91,10 +91,16 @@ void main() {
         expect(contrastRatio(pair.$1, pair.$2), greaterThanOrEqualTo(4.5));
       }
       expect(t.action, isNot(t.accentText));
-      expect(t.focus, isNot(t.accentText));
-      expect({t.caution, t.danger, t.success, t.info}.length, 4);
+      // No blue: focus and info are the accent text, one colour family.
+      expect(t.focus, t.accentText);
+      expect(t.info, t.accentText);
+      expect(scheme.tertiary, t.accentText);
+      expect({t.caution, t.danger, t.success, t.accentText}.length, 4);
       expect(theme.useMaterial3, isTrue);
-      expect(theme.textSelectionTheme.cursorColor, t.focus);
+      final selection = theme.textSelectionTheme;
+      expect(selection.cursorColor, t.accentText);
+      expect(selection.selectionHandleColor, t.accentText);
+      expect(selection.selectionColor, t.accentText.withValues(alpha: 0.35));
     });
 
     test('${b.name} theme text keeps the token colour and the Space scale', () {
