@@ -463,6 +463,37 @@ void main() {
       await _teardown(tester);
     });
 
+    testWidgets('a replaced Undo toast still leaves with the screen', (
+      tester,
+    ) async {
+      final a = _set('a');
+      final b = _set('b');
+      final c = ActiveSessionController()
+        ..seedForTest(
+          _draft([
+            _block([], [a, b, _set('c')]),
+          ]),
+        );
+      addTearDown(c.dispose);
+      await _open(tester, c);
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.byKey(const Key('log-set-bar')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+      // Let the first toast's reverse animation finish, so its `closed`
+      // future completes while the second toast is still showing.
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text(_l.commonUndo), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel(_l.sessionMinimize));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byType(ActiveSessionScreen), findsNothing);
+      expect(find.text(_l.commonUndo), findsNothing);
+      expect(a.done && b.done, isTrue, reason: 'leaving is not an undo');
+      await _teardown(tester);
+    });
+
     testWidgets('Mark as not done keeps a newer rest running', (tester) async {
       final a = _set('a');
       final b = _set('b');

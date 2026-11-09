@@ -79,7 +79,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   /// The app-level messenger the live workout's Undo toasts go to; they act
   /// on this screen, so they leave with it ([_leaving]).
   ScaffoldMessengerState? _messenger;
-  bool _undoToastShowing = false;
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _undoToast;
   int _logFeedbackEvent = 0;
   SetState? _confirmedLogCandidate;
 
@@ -136,7 +136,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   /// show over Today and act on a workout no longer on screen. Called as the
   /// route pops, never from dispose (the messenger may be going away too).
   void _leaving() {
-    if (_undoToastShowing) _messenger?.clearSnackBars();
+    if (_undoToast != null) _messenger?.clearSnackBars();
   }
 
   /// Tracks an Undo toast until it closes, so [_leaving] can take it down.
@@ -144,9 +144,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? toast,
   ) {
     if (toast == null) return;
-    _undoToastShowing = true;
+    _undoToast = toast;
     toast.closed.then((_) {
-      if (mounted) _undoToastShowing = false;
+      // A replaced toast closes after its successor is shown; only the
+      // latest tracked toast clears the marker.
+      if (mounted && identical(_undoToast, toast)) _undoToast = null;
     });
   }
 
