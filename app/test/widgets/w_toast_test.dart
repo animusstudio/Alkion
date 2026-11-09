@@ -7,6 +7,7 @@ import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/widgets/w_toast.dart';
 
 import '../support/app_fonts.dart';
+import '../support/layout_expect.dart';
 
 void main() {
   setUpAll(preloadAppFonts);
@@ -288,6 +289,26 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
     });
   }
+
+  testWidgets('at 320dp and 2x text a German Undo toast splits no word', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(640, 1600);
+    tester.view.devicePixelRatio = 2;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final context = await host(tester, Brightness.dark);
+    showWToast(
+      context,
+      'Satz 1 gespeichert',
+      action: WToastAction(label: 'Rückgängig', onPressed: () {}),
+    );
+    await settle(tester);
+    expect(tester.takeException(), isNull);
+    expectNoSplitWords(tester, within: card(), where: 'de Undo toast');
+    await tester.pump(const Duration(seconds: 11));
+  });
 
   testWidgets('a toast with an action ends after its duration', (tester) async {
     final context = await host(tester, Brightness.dark);
