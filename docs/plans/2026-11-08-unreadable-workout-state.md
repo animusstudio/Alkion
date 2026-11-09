@@ -50,6 +50,16 @@ decisions D1–D11 and the acceptance A1–A17.
     planned, because that would need a synthetic damaged-backup fixture that
     no task owns.
 
+## Coordinator decisions
+
+- **2026-11-09, `KeptWorkflowKind.unknown`.** A kept review whose evidence
+  names a kind this build doesn't recognise has no approved notice copy. It
+  produces no notice on its own; pending beside known kinds, it is ignored
+  when choosing the variant, and OK does not acknowledge it. The Backup
+  "Kept workout data" section lists it with the generic kind label "Workout
+  data" (a new string in all four ARB files), the review date and the same
+  "Kept as evidence and included in backups." line.
+
 ## Tasks
 
 Routing: Claude. Implementers run on Opus `high`, reviewers on Sonnet `high`.
@@ -202,7 +212,16 @@ after T1 passes review.
   `LocalTransaction.retireLocalState`, uniform loader categories, and the
   `clearForSession` and History delete guards. The crash child runs under the
   Flutter tester, because the classifiers import Flutter code.
-- T2 — not started.
+- T2 — done, awaiting review. `b77c6f3` calls the quarantine in
+  `AlkionRuntime.open` before `resumeFromDraft`, adds the `workflowNotices`
+  notifier with `acknowledgeWorkflowNotices`, the `KeptDataNotice` overlay
+  (built only while no storage error holds the top slot), the read-only
+  "Kept workout data" Backup section and the D7/D8 strings in en, it, de and
+  es. Deviation: a read-only pre-check with the shared classifiers runs first,
+  so `PackageInfo` is read only when there is damage; a clean launch still
+  calls no plugin channel (`test/animus/runtime_test.dart` and the acceptance
+  `PluginTrap` checks). Tests: `unreadable_state_launch_test.dart` (real
+  `AlkionRuntime.open` and the real app) and `test/layout/kept_data_layout_test.dart`.
 - T3 — not started.
 
 ## Next
