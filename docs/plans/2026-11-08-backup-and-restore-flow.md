@@ -56,7 +56,8 @@ rebase on it).
   with a localized count ("12 sets newer than this backup"). "Keep all" sits
   behind `showWConfirm` and calls a new `RestoreReviews.keepAll()`. It writes the
   **existing** `alkion-restore-decision/1` / `kept_as_evidence` rows, in one
-  write transaction, over every undecided review (not only the first 200),
+  write transaction, over every undecided `restore_newer_work` review (not
+  only the first 200; never other categories such as kept workout data),
   skips ones already decided, and never touches evidence rows. Nothing is
   replayed or deleted. History dates are formatted; ids and hashes move under
   "Technical details". If a task needs a new evidence field or changes what a

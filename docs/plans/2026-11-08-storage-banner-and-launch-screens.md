@@ -8,7 +8,7 @@ Order: after [error messages and toasts](2026-11-08-error-messages-and-toasts.md
 (the failure screen shows its mapped message); **before**
 [backup and restore flow](2026-11-08-backup-and-restore-flow.md) (both edit
 `main.dart`) and before the unreadable-workout-state full-lane plan, whose
-one-time notice reuses the banner/notice surface built here.
+one-time notice is its own widget placed next to the banner built here.
 
 ## Outcome and evidence
 
