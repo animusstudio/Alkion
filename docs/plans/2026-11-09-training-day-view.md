@@ -169,6 +169,29 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
   T2 and T3 need. T3 reuses existing keys only, so T2 and T3 stay disjoint. The branch
   merges the integrated audit plans P2 and P4–P7 before T2 and T3.
 
+- **T2 View screen (+T4 Strings): done, review pending** (Opus `high`). Code and strings
+  `ecb78748`, tests `085d343d`.
+  - `make -C app get` → resolved offline; localizations regenerated.
+  - `make -C app test TEST='--concurrency=2 test/ui/day_view_test.dart
+    test/ui/slot_summary_test.dart test/data/planned_workload_test.dart test/layout test/l10n'`
+    → 186 passed.
+  - `make -C app analyze` → no issues.
+  - `make -C app fmt FORMAT_FILES='<day_view, slot_summary and the 3 test files>'` → 2 test
+    files reformatted, then committed.
+  - New ARB keys (en/it/de/es): `dayViewTitle` (eyebrow above the name), `dayViewEdit`,
+    `dayViewWorkingSets` (plural), `dayViewInactive` (inactive-day state, no Start),
+    `dayViewExerciseUnavailable` (row whose exercise is missing), `slotSetCount` (plural; T1
+    minor 2: replaces the bare `3×` chip in `SlotSummary.labels`). Reused `splitStartWorkout`,
+    `todayResumeWorkout`, `todayExerciseCount`, `bodyPlanned`, `splitExercises`,
+    `bodyReadUnavailable`, `trainingDayUnavailable` (unqualified active flag),
+    `trainingWeekdayUnavailable`.
+  - Behaviour notes for review: the view watches `watchDays()` (cached subscription) and closes
+    via `onClose` when the id is absent; workload inputs reload per emission and on a catalog
+    bundle change, keeping covering inputs during a reload; a token change while reading re-runs
+    (up to 3 attempts), stale epochs are dropped. Resume shows only on an active day; an
+    inactive or unqualified day shows its state and Edit only. Layout sweep lives in
+    `test/layout/day_view_layout_test.dart` (12 conditions + 320 dp 2x es).
+
 ## Next
 
-T2 and T3 in parallel.
+T3 (parallel), then integration and review of T2.
