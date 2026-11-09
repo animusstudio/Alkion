@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:alkion/data/active_session_draft.dart';
 import 'package:alkion/data/session_writer.dart';
+import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/main.dart';
@@ -269,4 +270,150 @@ void main() {
     expect(identical(first, third), isFalse);
     await third;
   });
+
+  test(
+    'a failing owed editor write still lets the draft and settings flush',
+    () async {
+      final r = runtime!;
+      final faulty = _BlockingDatabase(r.store)..blocked = true;
+      final controller = ActiveSessionController(
+        draftStore: DraftStore.local(faulty),
+      );
+      addTearDown(controller.dispose);
+      controller.seedEmpty(name: 'Owed draft', focus: '');
+      r.sessions.register(controller);
+      await _until(
+        () => controller.persistenceOwed && r.persistenceFailure.value != null,
+        'the draft save is owed',
+      );
+      // A competing revision makes the settings write owed too.
+      await r.store.writeTransaction(
+        (tx) => tx.putLocalState(
+          LocalStateKind.semanticSetting,
+          'settings',
+          localBytes({'synthetic': 'conflict'}),
+          expectedRevision: 0,
+        ),
+      );
+      await expectLater(
+        r.settings.setProfileName('Owed athlete'),
+        throwsA(isA<StoreException>()),
+      );
+      await r.store.writeTransaction(
+        (tx) => tx.execute(
+          "DELETE FROM local_state WHERE state_kind='semanticSetting' AND state_key=?",
+          ['settings'],
+        ),
+      );
+      faulty.blocked = false;
+      Future<void> owed() async =>
+          throw const StoreException('synthetic_owed_input');
+      UnsavedEditors.instance.owe('synthetic-owed', 'history_sets', owed);
+
+      await expectLater(
+        r.flushPersistence(includeOpenForms: false),
+        throwsA(
+          isA<StoreException>().having(
+            (e) => e.category,
+            'category',
+            'unsaved_editor_input',
+          ),
+        ),
+      );
+      expect(r.persistenceFailure.value, isA<StoreException>());
+      expect(UnsavedEditors.instance.isOwed('synthetic-owed'), isTrue);
+      // The other owners flushed anyway.
+      expect(controller.persistenceOwed, isFalse);
+      expect((await DraftStore.local(r.store).load())?.name, 'Owed draft');
+      final row = await r.store.get(
+        "SELECT * FROM local_state WHERE state_kind='semanticSetting' AND state_key=?",
+        ['settings'],
+      );
+      expect(row['status'], 'active');
+      expect(
+        String.fromCharCodes(row['payload_bytes'] as List<int>),
+        contains('Owed athlete'),
+      );
+      UnsavedEditors.instance.resetForTesting();
+      await controller.discard();
+    },
+  );
+
+  test('a later successful autosave withdraws its own failure', () async {
+    final faulty = _BlockingDatabase(runtime!.store)..blocked = true;
+    final controller = ActiveSessionController(
+      draftStore: DraftStore.local(faulty),
+    );
+    addTearDown(controller.dispose);
+    final failed = <Object>[];
+    var saved = 0;
+    controller
+      ..onAutosaveError = failed.add
+      ..onAutosaveSaved = () => saved++;
+    controller.seedEmpty(name: 'Synthetic workout', focus: '');
+    await _until(() => failed.isNotEmpty, 'the first autosave fails');
+    expect(saved, 0);
+    faulty.blocked = false;
+    controller.startRest(60);
+    await _until(() => saved > 0, 'the next autosave lands');
+    expect(controller.persistenceError, isNull);
+  });
+
+  test(
+    'the runtime clears only the banner an autosave failure raised',
+    () async {
+      final r = runtime!;
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      controller.seedEmpty(name: 'Synthetic workout', focus: '');
+      r.sessions.register(controller);
+      const autosave = StoreException('synthetic_autosave');
+      controller.onAutosaveError!(autosave);
+      expect(r.persistenceFailure.value, same(autosave));
+      controller.onAutosaveSaved!();
+      expect(r.persistenceFailure.value, isNull);
+      expect(r.sessions.persistenceError, isNull);
+
+      // A failure from another source raised after it stays visible.
+      const other = StoreException('synthetic_other_owner');
+      controller.onAutosaveError!(autosave);
+      r.persistenceFailure.value = other;
+      controller.onAutosaveSaved!();
+      expect(r.persistenceFailure.value, same(other));
+      // A success with no failed autosave before it changes nothing.
+      controller.onAutosaveSaved!();
+      expect(r.persistenceFailure.value, same(other));
+      r.sessions.clear();
+    },
+  );
+
+  for (final retryFirst in [true, false]) {
+    test(
+      'Retry racing close (${retryFirst ? 'retry first' : 'close first'}) neither throws nor writes after close',
+      () async {
+        final r = runtime!;
+        runtime = null;
+        r.persistenceFailure.value = const StoreException('synthetic');
+        final writes = <Object?>[];
+        var closed = false;
+        r.persistenceFailure.addListener(() {
+          if (closed) writes.add(r.persistenceFailure.value);
+        });
+        late Future<void> retry, closing;
+        if (retryFirst) {
+          retry = r.retryPersistence();
+          closing = r.close();
+        } else {
+          closing = r.close();
+          retry = r.retryPersistence();
+        }
+        await closing;
+        closed = true;
+        await retry;
+        // The disposed notifier would assert on any later write.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(writes, isEmpty);
+      },
+    );
+  }
 }

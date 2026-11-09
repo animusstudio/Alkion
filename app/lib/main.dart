@@ -178,7 +178,9 @@ class AlkionRuntime with WidgetsBindingObserver {
         catalog,
         catalogUnavailable,
       );
-      sessions.onPersistenceError = runtime._reportPersistenceFailure;
+      sessions
+        ..onPersistenceError = runtime._reportPersistenceFailure
+        ..onPersistenceCleared = runtime._clearPersistenceFailure;
       runtime.historyMappings = await HistoryMappingStore(store).byExerciseId();
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
@@ -228,28 +230,43 @@ class AlkionRuntime with WidgetsBindingObserver {
   }
 
   Future<void> _flushNow(bool includeOpenForms) async {
+    // An owed editor write that keeps failing must not hold back the other
+    // owners: record its failure, flush them anyway, then report the first.
+    (Object, StackTrace)? failure;
     try {
       await UnsavedEditors.instance.drainOrThrow(includeOpenForms: false);
-    } catch (error) {
-      _reportPersistenceFailure(error);
-      rethrow;
+    } catch (error, stack) {
+      failure = (error, stack);
     }
-    if (includeOpenForms) await UnsavedEditors.instance.drainOrThrow();
     try {
       await sessions.flushPersistence();
       await settings.flushPersistence();
       await units.flushPersistence();
       await identity.flushPersistence();
       await catalog?.flushPersistence();
-      if (!_closed) persistenceFailure.value = null;
-    } catch (error) {
-      _reportPersistenceFailure(error);
-      rethrow;
+    } catch (error, stack) {
+      failure ??= (error, stack);
     }
+    if (failure != null) {
+      _reportPersistenceFailure(failure.$1);
+      Error.throwWithStackTrace(failure.$1, failure.$2);
+    }
+    if (!_closed) persistenceFailure.value = null;
+    // Strict barriers also refuse while a form holds unsaved input. Nothing
+    // is owed, so this refusal leaves the (now clear) banner alone.
+    if (includeOpenForms) await UnsavedEditors.instance.drainOrThrow();
   }
 
   void _reportPersistenceFailure(Object error) {
     if (!_closed) persistenceFailure.value = error;
+  }
+
+  /// A later successful autosave clears the banner only while it still shows
+  /// the autosave failure it replaces; any other failure stays visible.
+  void _clearPersistenceFailure(Object error) {
+    if (!_closed && identical(persistenceFailure.value, error)) {
+      persistenceFailure.value = null;
+    }
   }
 
   /// The banner's Retry: recovers the store, then re-runs the lenient flush.
@@ -258,8 +275,11 @@ class AlkionRuntime with WidgetsBindingObserver {
       _retry ??= _retryNow().whenComplete(() => _retry = null);
 
   Future<void> _retryNow() async {
+    // Once close() has begun, its own barrier owns the final flush.
+    if (_closing) return;
     try {
       await store.recover();
+      if (_closing) return;
       await flushPersistence(includeOpenForms: false);
     } catch (error) {
       _reportPersistenceFailure(error);
@@ -284,7 +304,9 @@ class AlkionRuntime with WidgetsBindingObserver {
       rethrow;
     }
     WidgetsBinding.instance.removeObserver(this);
-    sessions.onPersistenceError = null;
+    sessions
+      ..onPersistenceError = null
+      ..onPersistenceCleared = null;
     await senderClose;
     await reviewClose;
     await apiDrain;
@@ -310,6 +332,8 @@ Future<void> main() async {
   // First, so even a failure while starting never shows the bare gray box.
   installReleaseErrorSurface();
   WidgetsFlutterBinding.ensureInitialized();
+  // Before anything renders, including the launch failure screen.
+  GoogleFonts.config.allowRuntimeFetching = false;
   await startAlkion();
 }
 
@@ -555,11 +579,17 @@ final class RuntimeRecoveryHost implements RecoveryHost {
       throw const StoreException('foreign_profile');
     }
     await runtime.flushPersistence();
+    // Read before close() disposes the settings owner.
+    final (locale, brightness, accent) = (
+      runtime.settings.locale,
+      runtime.settings.brightness,
+      runtime.settings.accent,
+    );
     present(
       AlkionRestoringApp(
-        locale: runtime.settings.locale,
-        brightness: runtime.settings.brightness,
-        accent: runtime.settings.accent,
+        locale: locale,
+        brightness: brightness,
+        accent: accent,
       ),
     );
     try {
@@ -569,9 +599,9 @@ final class RuntimeRecoveryHost implements RecoveryHost {
         AlkionRecoveryApp.failed(
           relaunch: relaunch,
           error: error,
-          locale: runtime.settings.locale,
-          brightness: runtime.settings.brightness,
-          accent: runtime.settings.accent,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
         ),
       );
       return;
@@ -584,9 +614,9 @@ final class RuntimeRecoveryHost implements RecoveryHost {
       present(
         AlkionRecoveryApp.restored(
           relaunch: relaunch,
-          locale: runtime.settings.locale,
-          brightness: runtime.settings.brightness,
-          accent: runtime.settings.accent,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
         ),
       );
     } catch (error) {
@@ -594,9 +624,9 @@ final class RuntimeRecoveryHost implements RecoveryHost {
         AlkionRecoveryApp.failed(
           relaunch: relaunch,
           error: error,
-          locale: runtime.settings.locale,
-          brightness: runtime.settings.brightness,
-          accent: runtime.settings.accent,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
         ),
       );
     }

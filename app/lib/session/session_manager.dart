@@ -172,9 +172,31 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   /// [flushPersistence] rethrows to its caller instead.
   void Function(Object error)? onPersistenceError;
 
+  /// Hears that a failure this owner reported has been resolved without an
+  /// explicit flush: today, a later debounced autosave landing after a failed
+  /// one. It names the failure it clears, so the listener can leave any
+  /// newer failure from another source in place.
+  void Function(Object error)? onPersistenceCleared;
+
+  /// The failed autosave still waiting for a successful one, if any.
+  Object? _autosaveFailure;
+
   void _reportPersistence(Object error) {
     persistenceError = error;
     if (!_disposed) onPersistenceError?.call(error);
+  }
+
+  void _autosaveFailed(Object error) {
+    _autosaveFailure = error;
+    _reportPersistence(error);
+  }
+
+  void _autosaveSaved() {
+    final failure = _autosaveFailure;
+    if (failure == null) return;
+    _autosaveFailure = null;
+    if (identical(persistenceError, failure)) persistenceError = null;
+    if (!_disposed) onPersistenceCleared?.call(failure);
   }
 
   void init() {
@@ -241,9 +263,12 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     }
     _active?.removeListener(_onControllerChange);
     _active?.onAutosaveError = null;
+    _active?.onAutosaveSaved = null;
     _active = c;
     c.addListener(_onControllerChange);
-    c.onAutosaveError = _reportPersistence;
+    c
+      ..onAutosaveError = _autosaveFailed
+      ..onAutosaveSaved = _autosaveSaved;
     _onControllerChange();
   }
 
@@ -285,6 +310,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     _callbackEpoch++;
     _active?.removeListener(_onControllerChange);
     _active?.onAutosaveError = null;
+    _active?.onAutosaveSaved = null;
     _active = null;
     final n = notifier;
     if (n != null) {
@@ -391,7 +417,9 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _active?.removeListener(_onControllerChange);
     _active?.onAutosaveError = null;
+    _active?.onAutosaveSaved = null;
     onPersistenceError = null;
+    onPersistenceCleared = null;
     notifier?.removeListener(_notificationStatusChanged);
     unawaited(notifier?.close() ?? Future.value());
     super.dispose();
