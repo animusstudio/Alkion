@@ -20,6 +20,21 @@ void main() {
         unavailable.add(l.alkionNotificationsUnavailable);
         expect(notifString(language, 'channel'), isNotEmpty);
       }
+      for (final key in [
+        'next',
+        'restEnd',
+        'restEndChannel',
+        'restEndChannelDescription',
+      ]) {
+        final values = {
+          for (final language in ['en', 'de', 'es', 'it'])
+            notifString(language, key),
+        };
+        expect(values.length, 4, reason: '$key is translated in each language');
+      }
+      for (final language in ['en', 'de', 'es', 'it']) {
+        expect(notifString(language, 'next'), contains('{name}'));
+      }
       expect(denied.length, 4);
       expect(unavailable.length, 4);
     },
