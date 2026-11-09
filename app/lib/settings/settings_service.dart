@@ -136,6 +136,11 @@ class SettingsService extends ChangeNotifier {
   RirControls _rirControls = RirControls.off;
   bool _muscleTargetsEnabled = false;
   bool get muscleTargetsEnabled => _muscleTargetsEnabled;
+  bool _notificationsExplained = false;
+
+  /// Whether the first-start notification explainer was shown. An absent key
+  /// reads as not yet explained.
+  bool get notificationsExplained => _notificationsExplained;
   Map<String, dynamic> _loaded = {};
   RepEntry get repEntry => _repEntry;
   RirControls get rirControls => _rirControls;
@@ -170,6 +175,7 @@ class SettingsService extends ChangeNotifier {
         ? RirControls.show
         : RirControls.off;
     _muscleTargetsEnabled = data['training_muscle_targets'] == true;
+    _notificationsExplained = data['notifications_explained'] == true;
     _bodyStyle = data['body_style'] == 'female' ? 'female' : 'male';
     _mode = data['mode'] as String? ?? 'dark';
     _profileName = data['profile_name'] as String? ?? 'Athlete';
@@ -201,6 +207,7 @@ class SettingsService extends ChangeNotifier {
     'rest_isolation_seconds': _restIsolationSeconds,
     'locale': _localeOverride,
     'bodyweight_goal': _bodyweightGoal.name,
+    if (_notificationsExplained) 'notifications_explained': true,
   };
   bool _unboundOwed = false;
   Future<void> _save() {
@@ -274,6 +281,12 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> setLocaleOverride(String? v) {
     _localeOverride = v;
+    return _save();
+  }
+
+  /// Remembers that the notification explainer was shown (never unset).
+  Future<void> setNotificationsExplained() {
+    _notificationsExplained = true;
     return _save();
   }
 

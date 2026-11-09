@@ -15,10 +15,12 @@ import '../session/active_session_controller.dart';
 import '../session/active_session_screen.dart';
 import '../session/resume.dart';
 import '../session/session_manager.dart';
+import '../settings/settings_service.dart';
 import '../store/local_store.dart';
 import '../theme/motion.dart';
 import '../units/unit_service.dart';
 import '../widgets/w_dialog.dart';
+import 'notification_explainer.dart';
 
 /// Starts an active session, optionally pre-loaded from a [DayTemplate].
 ///
@@ -39,6 +41,7 @@ Future<void> startSession(
   final customName = AppLocalizations.of(context).todayCustomSession;
   // Suggested weights round on the grid the user sees (5 lb in lb).
   final unit = context.read<UnitService?>()?.unit ?? Unit.kg;
+  final settings = context.read<SettingsService?>();
 
   // A workout is already running → resume it instead of starting a new one.
   if (manager.hasActive) {
@@ -113,6 +116,15 @@ Future<void> startSession(
       return;
     }
     if (!context.mounted) return;
+    // Admitted and built, not yet registered: the one-time notification
+    // explainer (and any permission prompt) comes before the workout opens,
+    // never in the middle of it.
+    await explainNotificationsOnce(
+      context,
+      notifier: manager.notifier,
+      settings: settings,
+    );
+    if (manager.hasActive || !context.mounted) return;
     await controller.flushPersistence();
     manager.register(controller);
     unregisteredController = null; // SessionManager now owns the controller.

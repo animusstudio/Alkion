@@ -910,6 +910,22 @@
   "alkionFirstReselectBody": "This restore needs the same backup again. Choose it to retry; earlier staging is kept. Starting an unrelated profile is unavailable.",
   "alkionNotificationsDenied": "Notifications are off. Workout logging and your saved rest deadline still work. You can enable notifications in Android settings.",
   "alkionNotificationsUnavailable": "Workout notifications are unavailable. Logging and your saved rest deadline still work; reopen Alkion to check your rest.",
+  "alkionNotificationsExplainTitle": "Rest timer notifications",
+  "@alkionNotificationsExplainTitle": {
+    "description": "Title of the one-time dialog shown before the first notification permission prompt."
+  },
+  "alkionNotificationsExplainBody": "Alkion shows your rest timer in a notification and vibrates when rest ends.",
+  "@alkionNotificationsExplainBody": {
+    "description": "One-line reason shown before the notification permission prompt."
+  },
+  "alkionNotificationsExplainLater": "Not now",
+  "@alkionNotificationsExplainLater": {
+    "description": "Declines the notification explainer without asking for permission."
+  },
+  "alkionNotificationsExplainContinue": "Continue",
+  "@alkionNotificationsExplainContinue": {
+    "description": "Continues to the Android notification permission prompt."
+  },
   "sessionSaveFailedMessage": "Could not save your workout. Please try again.",
   "bodyViewFront": "Front",
   "bodyViewBack": "Back",
