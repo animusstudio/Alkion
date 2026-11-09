@@ -166,7 +166,9 @@ evidence is `localBytes` of:
         BLOB as {blob_base64})],
  decoder: {app_version, build_number, flavor,
            supported_formats: ['alkion-session-draft/2', 'unversioned-legacy']
-                              or ['finished-session/unversioned'],
+                              or ['finished-session/unversioned',
+                                  'alkion-session-draft/2', 'unversioned-legacy']
+                              (finished snapshots embed a draft),
            failed_step: 'blob'|'utf8'|'json'|'shape'|'format'|'timer_*',
            error_type, error_message (first 512 characters)}}
 ```
@@ -266,7 +268,8 @@ not retired" state exists.
   and Backup stays unreachable. So the quarantine uses a **deterministic
   fallback ID** instead:
   - `wq-` plus the first 40 hex digits of SHA-256 over
-    `"conflict:" + existing_id + localBytes({format, kind, rows})`;
+    the UTF-8 bytes of `"conflict:" + existing_id` followed by
+    `localBytes({format, kind, rows})`;
   - its evidence adds `conflicts_with: existing_id`;
   - the existing review is never changed;
   - the row is retired as usual.
