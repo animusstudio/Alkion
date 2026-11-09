@@ -95,7 +95,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     _responseTail = work.then<void>(
       (_) {},
       onError: (Object error) {
-        persistenceError = error;
+        _reportPersistence(error);
       },
     );
     return _responseTail;
@@ -162,7 +162,43 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void endLaunch() => _launching = false;
+
+  /// The last background persistence failure, or null after a clean flush.
   Object? persistenceError;
+
+  /// Hears every background failure this owner swallows: the active
+  /// workout's autosave, a notification action and the post-resume refresh.
+  /// The runtime raises its shared storage banner from it; an explicit
+  /// [flushPersistence] rethrows to its caller instead.
+  void Function(Object error)? onPersistenceError;
+
+  /// Hears that a failure this owner reported has been resolved without an
+  /// explicit flush: today, a later debounced autosave landing after a failed
+  /// one. It names the failure it clears, so the listener can leave any
+  /// newer failure from another source in place.
+  void Function(Object error)? onPersistenceCleared;
+
+  /// The failed autosave still waiting for a successful one, if any.
+  Object? _autosaveFailure;
+
+  void _reportPersistence(Object error) {
+    persistenceError = error;
+    if (!_disposed) onPersistenceError?.call(error);
+  }
+
+  void _autosaveFailed(Object error) {
+    _autosaveFailure = error;
+    _reportPersistence(error);
+  }
+
+  void _autosaveSaved() {
+    final failure = _autosaveFailure;
+    if (failure == null) return;
+    _autosaveFailure = null;
+    if (identical(persistenceError, failure)) persistenceError = null;
+    if (!_disposed) onPersistenceCleared?.call(failure);
+  }
+
   void init() {
     WidgetsBinding.instance.addObserver(this);
     _reconcileRest();
@@ -187,13 +223,13 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
         _reconcileCommittedRest()
             .then((_) => refreshNotifications())
             .catchError((Object error) {
-              persistenceError = error;
+              _reportPersistence(error);
             }),
       );
     } else {
       unawaited(
         flushPersistence().catchError((Object e) {
-          persistenceError = e;
+          _reportPersistence(e);
         }),
       );
     }
@@ -226,8 +262,13 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       throw StateError('A workout is already active');
     }
     _active?.removeListener(_onControllerChange);
+    _active?.onAutosaveError = null;
+    _active?.onAutosaveSaved = null;
     _active = c;
     c.addListener(_onControllerChange);
+    c
+      ..onAutosaveError = _autosaveFailed
+      ..onAutosaveSaved = _autosaveSaved;
     _onControllerChange();
   }
 
@@ -255,11 +296,11 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
               await refreshNotifications();
             },
             onError: (Object e) {
-              persistenceError = e;
+              _reportPersistence(e);
             },
           )
           .catchError((Object error) {
-            persistenceError = error;
+            _reportPersistence(error);
           }),
     );
     notifyListeners();
@@ -268,12 +309,14 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   void clear() {
     _callbackEpoch++;
     _active?.removeListener(_onControllerChange);
+    _active?.onAutosaveError = null;
+    _active?.onAutosaveSaved = null;
     _active = null;
     final n = notifier;
     if (n != null) {
       unawaited(
         n.cancel().catchError((Object e) {
-          persistenceError = e;
+          _reportPersistence(e);
         }),
       );
     }
@@ -373,6 +416,10 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     _expiry?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _active?.removeListener(_onControllerChange);
+    _active?.onAutosaveError = null;
+    _active?.onAutosaveSaved = null;
+    onPersistenceError = null;
+    onPersistenceCleared = null;
     notifier?.removeListener(_notificationStatusChanged);
     unawaited(notifier?.close() ?? Future.value());
     super.dispose();

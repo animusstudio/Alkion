@@ -6,6 +6,45 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## P2 storage banner and launch screens — 2026-11-09
+
+Implements the approved [storage banner and launch screens plan](../plans/2026-11-08-storage-banner-and-launch-screens.md)
+(audit items 1.2 to 1.6, 5.8 and the `main()` retry gap).
+
+- Backgrounding or resuming with an editor merely open (a History set card
+  under the pulled-down shade) no longer shows "Local storage needs recovery".
+  The lifecycle flush and Retry ignore open forms but still fail, and show the
+  banner, when a write is genuinely owed. Backup, restore and close still
+  refuse while a form holds unsaved input; that refusal no longer raises the
+  banner (A1).
+- A failed workout autosave, notification action or post-resume refresh now
+  raises the same banner; Retry recovers and flushes, and clears it once the
+  fault is gone (A4).
+- The banner is one self-contained overlay child with Alkion tokens and type.
+  It fits 320 dp at 2x text in all four languages, and Retry is disabled while
+  its run is in flight, so a double tap recovers once (A5).
+- A launch failure, from `main()` or the launcher, shows a themed, localized
+  screen in the system theme with "Try again", which re-runs the launch. The
+  message comes from the shared error mapper; a non-storage error is not called
+  a storage failure, and the stable category (or only the error type) sits
+  behind a collapsed "Technical details" line. "Your existing files are
+  preserved" is kept (A2).
+- Release builds install the error card first in `main()`. It shows a generic,
+  localized title; the raw error and stack are copied on tap, with a "Copied"
+  confirmation and a button role (A3).
+- The restoring and restore result screens use the user's language, theme and
+  accent; the interrupted-restore screen found at launch follows the system
+  (A6). New strings exist in en, it, de and es; parity and unused-key tests
+  pass (A7).
+- After review: a failing owed editor write no longer holds back the other
+  owners' flushes; a later successful autosave withdraws only its own banner;
+  the restore screens read the settings before the runtime closes; fonts are
+  never fetched at launch; Retry after close begins does nothing.
+- No stored data, backup format or recovery semantics change; owed writes are
+  never dropped.
+
+Host checks are listed in the plan's task state. The device check is open.
+
 ## P1 error messages and toasts — 2026-11-09
 
 Implements the approved [error-messages and toasts plan](../plans/2026-11-08-error-messages-and-toasts.md)

@@ -1022,6 +1022,14 @@ class ActiveSessionController extends ChangeNotifier {
   }
 
   Object? persistenceError;
+
+  /// Hears a failed debounced autosave, which has no caller to rethrow to.
+  /// The owning `SessionManager` sets it while this controller is active.
+  void Function(Object error)? onAutosaveError;
+
+  /// Hears a debounced autosave that landed, so a failure reported through
+  /// [onAutosaveError] can be withdrawn.
+  void Function()? onAutosaveSaved;
   Future<void> _persistenceTail = Future.value();
   bool get persistenceOwed =>
       _savePending ||
@@ -1108,9 +1116,11 @@ class ActiveSessionController extends ChangeNotifier {
             _savePending = false;
           }
           persistenceError = null;
+          onAutosaveSaved?.call();
         } catch (e) {
           persistenceError = e;
           _savePending = true;
+          onAutosaveError?.call(e);
         } finally {
           if (reconciled) super.notifyListeners();
         }

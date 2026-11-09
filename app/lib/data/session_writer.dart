@@ -624,9 +624,14 @@ class UnsavedEditors {
     _owed.clear();
   }
 
-  Future<void> drainOrThrow() async {
+  /// Retries every owed write once, then throws `unsaved_editor_input` while
+  /// a write is still owed or, with [includeOpenForms], while an open form
+  /// holds unsaved input. Backup, export and close keep the strict default.
+  /// The lifecycle flush passes false: a form that is merely open owes
+  /// nothing yet, so only a write that failed to land makes it fail.
+  Future<void> drainOrThrow({bool includeOpenForms = true}) async {
     await retryOwed();
-    if (unsaved().isNotEmpty) {
+    if (includeOpenForms ? unsaved().isNotEmpty : _owed.isNotEmpty) {
       throw const StoreException('unsaved_editor_input');
     }
   }

@@ -158,10 +158,18 @@ void main() {
             find.textContaining('Your existing files are preserved'),
             findsOneWidget,
           );
+          // A non-storage error is not described as a storage failure, and
+          // its raw text stays off screen; only its type sits behind the
+          // collapsed technical details.
+          expect(find.textContaining('Local storage'), findsNothing);
           expect(
             find.textContaining('synthetic catalog failure'),
-            findsOneWidget,
+            findsNothing,
           );
+          expect(find.byKey(const Key('launch-failure-retry')), findsOneWidget);
+          await tester.tap(find.byKey(const Key('launch-failure-details')));
+          await tester.pump();
+          expect(find.text('FormatException'), findsOneWidget);
           expect(tester.takeException(), isNull);
           // The failure also releases its store; the same admitted profile can
           // be reopened without a destructive recovery or profile replacement.
