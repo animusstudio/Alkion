@@ -129,8 +129,13 @@ The backup plan owns the rest of `RuntimeRecoveryHost` and rebases onto T3.
 
 ## Task state
 
-Review PASS-WITH-FINDINGS (no blocking); fixes in the "review fixes" commit
-after `a96de97`:
+Review PASS-WITH-FINDINGS (no blocking); fixes in `e9aa001`.
+`make -C app analyze` → No issues found; `make -C app format` → 0 changed;
+`make -C app test TEST='--concurrency=2 test/session test/util
+test/alkion/recovery test/alkion/acceptance test/main_routing_test.dart
+test/layout test/l10n test/widgets/storage_recovery_banner_test.dart
+test/ui/launch_failure_app_test.dart
+test/alkion/workflows/account_free_screens_test.dart'` → +783, all pass.
 
 - `_flushNow` records a failing owed-write drain, still flushes sessions,
   settings, units, identity and catalog, then reports and rethrows the first
