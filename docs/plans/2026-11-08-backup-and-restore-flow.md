@@ -1,6 +1,6 @@
 # Backup and restore flow
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented, awaiting review.
+Date: 2026-11-08. Lane: **Standard**. Status: **Done** (accepted on A024 2026-11-09); approved by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/backup-and-restore-flow-20261108`.
 Audit items 5.1 to 5.7, 1.7 and the backup-dialog issues found alongside them
@@ -56,7 +56,8 @@ rebase on it).
   with a localized count ("12 sets newer than this backup"). "Keep all" sits
   behind `showWConfirm` and calls a new `RestoreReviews.keepAll()`. It writes the
   **existing** `alkion-restore-decision/1` / `kept_as_evidence` rows, in one
-  write transaction, over every undecided review (not only the first 200),
+  write transaction, over every undecided `restore_newer_work` review (not
+  only the first 200; never other categories such as kept workout data),
   skips ones already decided, and never touches evidence rows. Nothing is
   replayed or deleted. History dates are formatted; ids and hashes move under
   "Technical details". If a task needs a new evidence field or changes what a
@@ -171,7 +172,7 @@ test/ui/profile_last_backup_test.dart test/ui/recovery_error_message_test.dart
 test/main_routing_test.dart test/l10n test/layout test/util'` → +376, all pass.
 The full suite was not rerun after the fix.
 
-- T1 — done, awaiting review. `RecoveryHost.workoutActive`
+- T1 — done, reviewed. `RecoveryHost.workoutActive`
   (`hasActive || launching`); the screen refuses Restore before any picker,
   flush or close. `RuntimeRecoveryHost.restoreBackup` throws
   `StoreException('workout_active')` when `hasActive` or `tryBeginLaunch()`
@@ -187,7 +188,7 @@ The full suite was not rerun after the fix.
   failures use it, with the category as a small details line.
   `recoveryCategory` is removed; the stale first-start Start-new path throws
   `StoreException('fresh_restore_interrupted')` instead of a `StateError`.
-- T2 — done, awaiting review. `RestoreReviews.pendingSummary()` (SQL
+- T2 — done, reviewed. `RestoreReviews.pendingSummary()` (SQL
   `json_extract` group counts over every undecided review) and
   `RestoreReviews.keepAll()` (count, then one `INSERT … SELECT` of the existing
   decision bytes in one write transaction; `keep` shares the same bytes).
@@ -195,7 +196,7 @@ The full suite was not rerun after the fix.
   "Restored <date>"; IDs, generations, table names and dispositions sit behind
   *Show technical details*. Per-row *Keep as evidence* is replaced by the
   confirmed *Keep all as evidence* (`alkionRestoreKeep` removed).
-- T3 — done, awaiting review. `widgets/busy_row.dart` (indeterminate bar,
+- T3 — done, reviewed. `widgets/busy_row.dart` (indeterminate bar,
   still line under reduced motion, live-region label) in the Backup screen
   (create, check/restore, keep all), `AlkionRestoringApp` and the first-start
   restore and Complete restore. `recovery/stored_copies.dart`:
@@ -208,7 +209,7 @@ The full suite was not rerun after the fix.
   `lastBackupCreated()` and `storedCopies()`. The Backup screen shows the last
   backup line and a "Stored copies" section; the Profile row subtitle shows
   the last backup and refreshes when the Backup screen closes.
-- T4 — done, awaiting review. `AlkionRuntime.ownersDisposed`; `close()` wraps
+- T4 — done, reviewed. `AlkionRuntime.ownersDisposed`; `close()` wraps
   its body and clears `_closing` on every throw. The failed-close screen's
   Reopen re-presents `AlkionApp` for the same runtime when the flush
   barrier itself refused (`teardownBegan` false, after review), otherwise

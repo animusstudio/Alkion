@@ -1,6 +1,6 @@
 # Honest storage banner, launch failure screen and themed restore screens
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented 2026-11-09, awaiting review.
+Date: 2026-11-08. Lane: **Standard**. Status: **Done** (accepted on A024 2026-11-09); approved by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/storage-banner-and-launch-screens-20261108`.
 Audit items 1.2, 1.3, 1.4, 1.5, 1.6, 5.8 and the `main()` retry gap.
@@ -8,7 +8,7 @@ Order: after [error messages and toasts](2026-11-08-error-messages-and-toasts.md
 (the failure screen shows its mapped message); **before**
 [backup and restore flow](2026-11-08-backup-and-restore-flow.md) (both edit
 `main.dart`) and before the unreadable-workout-state full-lane plan, whose
-one-time notice reuses the banner/notice surface built here.
+one-time notice is its own widget placed next to the banner built here.
 
 ## Outcome and evidence
 
@@ -161,7 +161,7 @@ test/alkion/workflows/account_free_screens_test.dart'` → +783, all pass.
 Code at `4e6a2bc` before review. Commits: `9be3b7a` (T1), `3ef82b8` (T2),
 `4e6a2bc` (T3).
 
-- T1 — done, awaiting review. `UnsavedEditors.drainOrThrow({includeOpenForms
+- T1 — done, reviewed. `UnsavedEditors.drainOrThrow({includeOpenForms
   = true})`; with `false` only a still-owed write throws.
   `AlkionRuntime.flushPersistence({includeOpenForms = true})`: the lifecycle
   flush and Retry pass `false`; backup, restore and `close()` keep the strict
@@ -180,7 +180,7 @@ Code at `4e6a2bc` before review. Commits: `9be3b7a` (T1), `3ef82b8` (T2),
   `tokens.danger` tint over `tokens.surface` with a danger rule, `WorkoutType`
   body text, `FitLabel` title and Retry, Retry disabled while its run is in
   flight, height capped at half the screen with the text scrolling.
-- T2 — done, awaiting review. `ui/launch_failure_app.dart` holds
+- T2 — done, reviewed. `ui/launch_failure_app.dart` holds
   `AlkionPreflightApp` (re-exported from `main.dart`) and
   `LaunchFailureScreen`: system theme, device locale, title "{app} couldn't
   start", the mapped `userMessage` (a recovery refusal reads as "Local storage
@@ -196,7 +196,7 @@ Code at `4e6a2bc` before review. Commits: `9be3b7a` (T1), `3ef82b8` (T2),
   The pinned `first_start_restore_test.dart` assertion that the raw
   `FormatException` text is on screen now asserts it is not, and that the type
   sits behind the details toggle.
-- T3 — done, awaiting review. `AlkionRestoringApp` and the three
+- T3 — done, reviewed. `AlkionRestoringApp` and the three
   `AlkionRecoveryApp` constructors take optional `locale`, `brightness`,
   `accent`; null follows the system theme and device locale.
   `RuntimeRecoveryHost.restoreBackup` passes them from `runtime.settings` in its
