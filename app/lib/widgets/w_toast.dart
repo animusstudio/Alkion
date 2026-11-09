@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../theme/alkion_icon.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
-import '../theme/typography.dart';
 
 /// The bottom inset that keeps a floating toast fully above `AppShell`'s tab
 /// bar. The Scaffold already lifts floating SnackBars over the system
@@ -45,10 +45,28 @@ class WToastAction {
   final VoidCallback onPressed;
 }
 
-/// Shows an Alkion toast: a floating SnackBar under the app's
-/// `SnackBarThemeData`. [error] uses the `tokens.danger` style. [action] adds
-/// one button that runs its callback once; the toast still ends after
-/// [duration] (default four seconds). Raised from a tab page it clears the
+/// A leading glyph that replaces a toast's default one, for example
+/// `WToastGlyph(AlkionGlyph.check, color: context.tokens.success)`. Without a
+/// [color] it takes the default glyph's colour.
+class WToastGlyph {
+  const WToastGlyph(this.glyph, {this.color});
+
+  final AlkionGlyph glyph;
+  final Color? color;
+}
+
+/// The shortest time a toast with an action stays up under accessible
+/// navigation, so a screen-reader user can reach the action.
+const Duration kToastAccessibleActionDuration = Duration(seconds: 10);
+
+/// Shows an Alkion toast: a floating SnackBar card under the app's
+/// `SnackBarThemeData`, led by a decorative glyph ([AlkionGlyph.info] in
+/// `tokens.info`, or [glyph]). [error] draws a `tokens.danger` border and an
+/// [AlkionGlyph.error] glyph, never a fill, so the text stays `tokens.text`.
+/// A tap on the card or a sideways swipe hides it. [action] adds one button
+/// that runs its callback once; the toast still ends after [duration]
+/// (default four seconds, at least [kToastAccessibleActionDuration] for an
+/// action under accessible navigation). Raised from a tab page it clears the
 /// tab bar ([ToastTabBarClearance]). Returns null when no messenger is
 /// available.
 ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showWToast(
@@ -57,34 +75,89 @@ ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showWToast(
   bool error = false,
   WToastAction? action,
   Duration? duration,
+  WToastGlyph? glyph,
 }) {
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return null;
   final tokens = context.tokens;
-  final onError = Theme.of(context).colorScheme.onError;
+  final defaultColor = error ? tokens.danger : tokens.info;
+  var shownFor = duration ?? const Duration(seconds: 4);
+  if (action != null &&
+      (MediaQuery.maybeAccessibleNavigationOf(context) ?? false) &&
+      shownFor < kToastAccessibleActionDuration) {
+    shownFor = kToastAccessibleActionDuration;
+  }
   return messenger.showSnackBar(
     SnackBar(
-      content: Text(
-        text,
-        style: error ? WorkoutType.body(size: 14, color: onError) : null,
+      // The content sets its own padding so its whole height is the tap
+      // target; the action's button keeps its own padding to the edge.
+      padding: EdgeInsets.zero,
+      content: _ToastContent(
+        text: text,
+        glyph: glyph?.glyph ?? (error ? AlkionGlyph.error : AlkionGlyph.info),
+        glyphColor: glyph?.color ?? defaultColor,
+        hasAction: action != null,
+        onTap: () =>
+            messenger.hideCurrentSnackBar(reason: SnackBarClosedReason.dismiss),
       ),
-      duration: duration ?? const Duration(seconds: 4),
+      duration: shownFor,
       // An action alone would otherwise keep the toast up until tapped.
       persist: false,
-      backgroundColor: error ? tokens.danger : null,
       shape: error
           ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.control),
+              borderRadius: BorderRadius.circular(AppRadius.panel),
               side: BorderSide(color: tokens.danger),
             )
           : null,
       action: action == null
           ? null
-          : SnackBarAction(
-              label: action.label,
-              textColor: error ? onError : null,
-              onPressed: action.onPressed,
-            ),
+          : SnackBarAction(label: action.label, onPressed: action.onPressed),
     ),
   );
+}
+
+/// The toast's glyph and text inside one tap target at least 48dp tall.
+class _ToastContent extends StatelessWidget {
+  const _ToastContent({
+    required this.text,
+    required this.glyph,
+    required this.glyphColor,
+    required this.hasAction,
+    required this.onTap,
+  });
+
+  final String text;
+  final AlkionGlyph glyph;
+  final Color glyphColor;
+  final bool hasAction;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // The SnackBar's live region announces the text and its own semantics
+    // carry the dismiss action, so the tap adds no semantics of its own.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      excludeFromSemantics: true,
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(
+            16,
+            14,
+            hasAction ? 0 : 16,
+            14,
+          ),
+          child: Row(
+            children: [
+              AlkionIcon(glyph, size: 20, color: glyphColor),
+              const SizedBox(width: 12),
+              Expanded(child: Text(text)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
