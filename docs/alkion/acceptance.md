@@ -17,7 +17,9 @@ Implements the approved [bodyweight editing plan](../plans/2026-11-08-bodyweight
   stays in the store, hidden from the history, chart and stats). Both reuse
   `prepareMeasurement` with one outbox entry per action; no schema change.
   Undated rows stay read-only; an unreadable weight can be corrected, and an
-  untouched save keeps the original evidence (A1 to A3).
+  untouched save keeps the original evidence (A1 to A3). An edit shows its
+  weight from the first frame. While a failed Save waits for its retry, Delete
+  is off, and the other way round; a retry reuses the same prepared action.
 - The sheet accepts 20–500 kg or 44–1100 lb; Save is disabled with a hint when
   the value is empty or out of range, and a minus sign cannot be typed. A first
   entry starts empty: no 70 kg default and no write before a value exists.
@@ -25,6 +27,8 @@ Implements the approved [bodyweight editing plan](../plans/2026-11-08-bodyweight
 - History shows 24 rows, then "Show all N"; header and selector count the same
   entries, unreadable ones included as ordinary rows (A6).
 - A changed sheet asks "Discard changes?" on back, scrim or drag (A7). The
+  sheet's drag is hidden from screen readers, which dismiss it with back or the
+  barrier. The
   chooser for several entries on one day is labelled by position, and the
   title and date follow the mode (A8).
 - The 30-day change starts from the earliest entry in the last 30 days other

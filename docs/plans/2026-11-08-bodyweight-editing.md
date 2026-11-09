@@ -1,6 +1,6 @@
 # Bodyweight editing
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented 2026-11-09, awaiting review.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented 2026-11-09; review findings fixed.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/bodyweight-editing-20261108`.
 Ordering: after [P1 error messages and toasts](2026-11-08-error-messages-and-toasts.md)
@@ -120,9 +120,31 @@ they run **serially** in this order; T4 (ARBs) last.
 
 ## Task state
 
-T1 to T4 done, awaiting review. Code at `dead40b` on `c171880` (later
-commits are docs only). Commits: `be39ac5` (T4 strings, first so every later
-commit builds), `e9766ce` (T1 and T2, sheet), `dead40b` (T1 and T3, screen).
+Review PASS-WITH-FINDINGS; findings fixed in `8f9e222`, code now at
+`8f9e222`:
+
+- The sheet's own drag `GestureDetector` is `excludeFromSemantics: true`, as
+  Flutter's sheet drag is, so a screen reader gets no scroll actions that would
+  slide it away with no end; back and the barrier still dismiss it.
+- An edit seeds its weight synchronously from `selected` in `initState`; only a
+  new entry reads the last-entry seed. Before, an edit showed "—" until the read
+  returned, and ± opened an empty field. The two late-seed tests in
+  `measurement_null_evidence_test.dart` now cover a new entry; the NULL-retry
+  test asserts that an edit issues no seed read.
+- Delete is disabled while a Save retry is pending, and Save while a Delete
+  retry is pending; the sheet rebuilds after every commit attempt.
+- New UI tests: a failed delete retries the same prepared intent (same hash
+  and operation id, one `operations` row, `deleted=1`); a failed save keeps
+  Delete off until retried; an untouched Save of a stored 600 kg row keeps
+  `600.00`; the first frame of an edit shows its weight.
+
+Fix evidence at `8f9e222`: `make -C app analyze` → No issues found;
+`make -C app format` → 527 files, 0 changed; the focused command below → +216,
+all pass. The full suite was not rerun for the fix.
+
+T1 to T4 done. First implementation at `dead40b` on `c171880`. Commits:
+`be39ac5` (T4 strings, first so every later commit builds), `e9766ce` (T1 and
+T2, sheet), `dead40b` (T1 and T3, screen), `8f9e222` (review fixes).
 
 - T1 — `showAddWeightSheet(selected:)` opens "Edit entry" with the entry's
   formatted date, pre-filled, and a destructive "Delete entry" behind
@@ -171,8 +193,9 @@ Evidence at `dead40b`:
   test/alkion/domains/exact_editor_ui_test.dart
   test/alkion/domains/measurements_targets_test.dart
   test/alkion/domains/prepared_intent_retry_test.dart test/layout'` → +211, all
-  pass (includes `arb_parity_test` and `unused_keys_test`).
-- `make -C app test TEST=--concurrency=2` → +2988 ~3 -3. The three failures
+  pass at `dead40b`, +216 at `8f9e222` (includes `arb_parity_test` and
+  `unused_keys_test`).
+- `make -C app test TEST=--concurrency=2` (at `dead40b`) → +2988 ~3 -3. The three failures
   are the inherited `catalog_metric_controls_test.dart` cases
   `duration_distance_optional`, `reps_distance_optional` and
   `reps_duration_optional_load mounts all required and optional controls
