@@ -182,7 +182,7 @@ void main() {
   }) async {
     final ids = await quarantineUnreadableWorkflowState(
       store,
-      decoder: DecoderInfo(appVersion: '9.8.7', buildNumber: '42'),
+      decoder: () async => DecoderInfo(appVersion: '9.8.7', buildNumber: '42'),
     );
     expect(ids, hasLength(2));
     if (acknowledge) await WorkflowStateQuarantine(store).acknowledge(ids);
