@@ -147,6 +147,15 @@ device measurement and needs the coordinator's phone access, so the coordinator 
     1.1:1, per the plan's "like other cards"). If it is too hard to see, give the toast alone a
     `lineStrong` border.
 
+- **T4 Summary RIR: done, review PASS** (Sonnet `high`). Code `4d61d70`, merged.
+  - Catalog working sets show the mute RIR tag. Classic rows show the top set's RIR, because the
+    summary lists only the top set for those (PR note).
+  - Checks: `test/session test/layout test/l10n` → 733 pass; the reviewer reran
+    `session_summary_layout_test` → +23. Analyze clean.
+  - PR follow-ups:
+    - a wrapped tag sits closer to the next set at 2x (`runSpacing`)
+    - classic badges now wrap rather than shrink values
+
 ## Next
 
 T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
