@@ -215,6 +215,136 @@ scope and the independent R1-public final review PASS (2026-10-17, reviewer
 `public_final_compliance`, no findings) explicit. This accepts the scoped recovery
 implementation; owner and publication gates remain unchanged.
 
+## Unreadable workout state at launch
+
+Implements the [unreadable workout state spec](../specs/2026-11-08-unreadable-workout-state.md)
+(2026-11-09, Approved). Code: `app/lib/data/workflow_state_quarantine.dart`,
+`LocalTransaction.retireLocalState` in `app/lib/store/local_store.dart`, and the
+launch call, notice and Backup section in `app/lib/main.dart`,
+`app/lib/widgets/kept_data_notice.dart` and the Backup screen.
+
+When the saved in-progress workout (`draft/active` with its `timer/active`) or
+the saved "undo finish" snapshot (`finishedRecovery/last`) can't be read by
+the running build, the app no longer fails at every launch. Once per runtime
+open, after the store, settings and catalog are open and before
+`resumeFromDraft` and `loadLastFinished`, `quarantineUnreadableWorkflowState`
+runs:
+
+1. A read transaction classifies only `active` rows, with the same pure
+   classifiers `DraftStore.load` and `FinishedSessionStore.load` use. No damage
+   means nothing is written.
+2. On damage, one write transaction (`expected: store.token`) re-reads and
+   re-classifies, copies each damaged group into one `reviews` row and retires
+   the group's active rows, then commits. Nothing is copied without being
+   retired, or retired without being copied.
+
+| Reason | Condition |
+| --- | --- |
+| `draft_unreadable` | Draft payload isn't a BLOB, UTF-8, JSON or a valid draft |
+| `draft_unsupported_format` | Draft JSON names a `format`/`version` this build doesn't support |
+| `timer_evidence_unavailable` | Decodable draft; `timer/active` missing or not `active` |
+| `timer_evidence_unreadable` | Decodable draft; timer payload isn't a BLOB holding a JSON object |
+| `timer_draft_mismatch` | Decodable draft; timer `draftId` names another draft |
+| `finished_recovery_unreadable` | Snapshot payload isn't a BLOB, UTF-8, JSON or a valid snapshot |
+| `finished_recovery_unsupported_format` | Snapshot whose embedded draft has an unsupported `format`/`version` |
+
+Timer evidence is quarantined, never repaired. Newer-format drafts are retired
+too: this build can't resume them, and the evidence records why it refused.
+Storage failures (SQLite or I/O errors, `recovery_required`,
+`stale_generation`, `foreign_profile`) are rethrown unchanged and keep the
+launch failure screen; rows that aren't `active` and valid snapshots that are
+merely no longer resumable are never inspected as damage. Damage that appears
+while a runtime runs is not quarantined: the loaders keep throwing their
+uniform categories (`malformed_draft_preserved`, `malformed_recovery_preserved`,
+the new `malformed_timer_preserved`), nothing is overwritten, and the next
+launch quarantines it.
+
+**Evidence.** The review has category `workflow_state_unreadable` (not a
+`restore_` category, so restore never treats it as lineage) and evidence
+`localBytes` of `{format: 'alkion-workflow-quarantine/1', kind, reason, rows,
+decoder}`:
+
+- `kind` is `draft` or `finishedRecovery`;
+- `rows` holds every column of each inspected row, ordered by
+  (`state_kind`, `state_key`), encoded as backups encode covered state (TEXT
+  and INTEGER as stored, BLOB as `{blob_base64}`): `[draft/active,
+  timer/active]` (the timer left out when absent) or
+  `[finishedRecovery/last]`. The notification-action receipt is neither copied
+  nor changed;
+- `decoder` records `app_version`, `build_number` (`unknown` when the platform
+  can't say), `flavor`, `supported_formats`, `failed_step` (`blob`, `utf8`,
+  `json`, `shape`, `format` or a `timer_*` step), `error_type` and the first 512
+  characters of `error_message`. The message may quote stored bytes; the review
+  stays local and goes only into backups.
+
+The review ID is `wq-` plus the first 40 hex digits of SHA-256 over
+`localBytes({format, kind, rows})`; the decoder record is outside the hash, so
+a build that words its error differently finds the same review. An existing
+review with that ID and the same `{format, kind, rows}` is reused. One with
+different content (a prefix collision or tampering) is never changed: the new
+review takes a deterministic fallback ID, SHA-256 over `"conflict:" +
+existing_id` followed by the same core bytes, and adds `conflicts_with`. Only if
+that fallback ID is also taken with different content does the quarantine
+refuse with `quarantine_conflict_preserved` and write nothing.
+
+**Retire.** Each inspected `active` row goes through
+`retireLocalState(kind, key, expectedRevision)`: a status-only `UPDATE` to
+`quarantined` with `revision+1` and a new `updated_at`, guarded by revision and
+generation and confirmed by a re-read (`stale_local_state` otherwise).
+`payload_bytes` keeps its value and its SQLite type, TEXT included, so the
+bytes are kept twice: in the review and in place. Both loaders then return
+`null`, and a later workout's first save replaces the retired row normally.
+`FinishedSessionStore.clearForSession` and History delete skip a
+`quarantined` snapshot without decoding it; an `expired` one is still
+rewritten as `review` as before.
+
+**Notice.** After open, the runtime exposes the `workflow_state_unreadable`
+reviews without a `notice` decision as a one-time informational notice (draft,
+finished or combined copy). It is shown only while no storage error banner is
+up, so the two never overlap. OK writes one `review_decisions` row per review
+shown, `decision_id = 'notice'`, bytes
+`{format: 'alkion-workflow-quarantine-decision/1', decision:
+'notice_acknowledged'}`, in one transaction; existing rows are skipped. A
+failed write hides the notice for this run only. `notice` acknowledges that the
+notice was seen; it is not a disposition, and no gate reads it.
+
+**Backup screen.** A read-only "Kept workout data" section lists each review
+with its kind (unfinished workout or finish undo data), the review date and
+"Kept as evidence and included in backups." It has no delete, export or revive
+action and is separate from the restore-review list: `RestoreReviews.keep` and
+`keepAll` decide only `restore_newer_work` reviews and never write a decision
+for a `workflow_state_unreadable` review.
+
+**Backups and restores.** The backup format is unchanged; `reviews`,
+`review_decisions` and `local_state` were already covered.
+
+- A backup taken after a quarantine holds the review, its `notice` decision and
+  the retired rows. Restoring it reproduces them exactly, apart from the
+  local-state generation stamp every restore adopts. The next open finds
+  nothing active to quarantine.
+- Restoring an **older** backup that lacks them keeps them as
+  `restore_newer_work` reviews with the exact previous rows: the review and its
+  decision as `newer_than_backup`; the retired rows as `newer_than_backup`, or
+  as `changed_since_backup` beside the backup's row when the backup holds the
+  same key. "Kept workout data" is then empty for that generation; the data
+  survives in the restore-review list instead.
+- A restored backup whose damaged rows are still `active` is quarantined at the
+  next open, under new IDs, because the restore changed the generation stamp.
+
+The review blocks nothing: not `transportGate`, not the manual send's
+recovery gate (a closed category list), not `replayCompleteness`. Exports
+exclude reviews and draft, timer and finished-recovery state. No schema
+migration: the status, category, evidence and decision formats are content
+(see [storage](storage.md#quarantined-workflow-state)). Only the selected
+generation's store is opened; a second profile and other generation
+directories stay byte-identical.
+
+Evidence is host and real SQLite only (`test/data/workflow_state_quarantine_test.dart`,
+`test/alkion/recovery/workflow_quarantine_backup_test.dart` and the runtime
+launch tests). **The damaged-launch path is host-proven only**: damaged state
+can't be seeded on a release-mode APK, and the device check is a regression
+check on a clean profile.
+
 ## Limits
 
 **Mutation versus transport after selection (T7 handoff).** The restored
