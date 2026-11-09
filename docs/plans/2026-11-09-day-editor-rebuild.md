@@ -171,6 +171,21 @@ T3 after both; T4 (ARBs) last.
     - `make -C app analyze` → No issues found.
     - `make -C app format` → 0 changed.
 
+- **Base:** the audit integration `b664c7c` (P1–P8) is merged as `f2135e1`. The only conflict
+  was in `active_session_screen_test.dart`, where both sides added tests; both are kept, and that
+  file passes (+73).
+- **T1 review PASS** (Sonnet `high`).
+  - The 8 / 8–12 fallback for a new slot whose exercise defaults don't qualify is accepted:
+    the slot is newly authored, the value is visible, and the plan says so.
+  - **Notes for T2/T3:**
+    - (M1) Latch the RIR row as visible for the open card. Otherwise clearing it with
+      `RirControls.off` hides the row at once.
+    - Re-read `loadDisplay` after `applyLoadFixed`, because `fixedLoadSeed` is unrounded.
+    - A Range edit with low == high becomes Fixed (the mode is derived).
+    - Gate on `hasRepsRow` and `hasLoadRow`, and bound the steppers to avoid
+      `RangeError`/`StateError`.
+  - **PR follow-up:** a `fixedLoadSeed` lb/lb test.
+
 ## Next
 
 Owner approval, then implementation after P1 to P8, U2 and U3 merge.
