@@ -159,6 +159,45 @@ local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:`
     tap target covers only the text column.
   - Missing test: a tap on an action toast's text hides it without running Undo. T2 adds it.
 
+- **T2 done, pending review** (2026-11-09). Code `bd110ef`, test fix `f4dfeb7`, on
+  `36aab04`.
+  - **Sweep.** The six raw sites left in `active_session_screen.dart` (catalog
+    required, set removed with Undo, routine notice twice, save failed twice) now call
+    `showWToast`. The two save failures pass `error: true`; the other four are neutral.
+    `_removeSet` keeps its `hideCurrentSnackBar` before the show. No `lib` file but
+    `w_toast.dart` calls `showSnackBar` or builds a `SnackBar`.
+  - **Behaviour change at "Set removed · Undo".** That raw SnackBar had an action, so
+    Flutter 3.44 defaulted it to `persist: true` and it stayed up until replaced. Through
+    `showWToast` it ends after 4 s, or 10 s under accessible navigation.
+  - **Motion.** `showWToast` passes `snackBarAnimationStyle: Motion.sheet(context)`:
+    200 ms in and out, and zero under reduced motion.
+  - **Style changes.** An `Expando` records the style each messenger last showed a toast
+    with. When the durations differ, `showWToast` first calls `clearSnackBars()` and then
+    `removeCurrentSnackBar()`, so nothing is left on the controller the messenger is
+    about to dispose (`_didUpdateAnimationStyle`, `scaffold.dart:386-394`). The
+    durations differ on a reduced-motion toggle, or on the first toast after a raw
+    SnackBar. A queued toast is dropped in that case. A same-speed toast still queues.
+  - **Tests.** In `w_toast_test.dart`:
+    - reduced motion: the toast neither slides nor fades, and the tap and the timeout
+      hide it in the next frame;
+    - a toggle while a toast is up;
+    - a same-speed toast waits its turn;
+    - T1's raw-then-toast test, adapted: the raw SnackBar now closes with `remove`;
+    - a tap on an action toast's text hides it without running Undo.
+
+    With the removal disabled, the toggle and raw tests fail.
+
+    New `w_toast_log_bar_test.dart` puts a real `LogSetBar` in `bottomNavigationBar`
+    and checks plain and Undo toasts in both themes, at 320 dp and 1x and 2x text. New
+    `raw_snackbar_source_test.dart` covers the source scan. No ARB change.
+- Checks:
+  - `make -C app get` → Got dependencies.
+  - `make -C app test TEST='--concurrency=2 test/widgets test/theme test/shell
+    test/session test/l10n'` → All tests passed (+987).
+  - `make -C app analyze` → No issues found.
+  - `make -C app fmt FORMAT_FILES=<5 owned files>` → 0 changed.
+  - Full suite not run (shared machine).
+
 ## Next
 
-T1 done; T2 on top of the integrated audit branch (P5 and P7 merged).
+T1 and T2 done; T2 independent review, then the integrated full suite and device check.
