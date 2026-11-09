@@ -85,6 +85,12 @@ rebase on it).
 - **Dialog text.** Backup errors go through the mapper from the error-messages
   plan; "close the editor" guidance for `unsaved_editor_input`; no `'$e'`.
 
+- **Restore error wording (from the P1 review).** When these screens adopt
+  P1's mapper, give `restore_interrupted` (retryable; the backup is fine),
+  `restore_target_not_empty` (this profile already has data) and
+  `restore_staging_*` (the staging copy changed) their own accurate sentences
+  instead of the foreign-backup bucket, in all four locales.
+
 ## Non-goals
 
 Replace-profile or restore-as-new-profile; deleting any copy; skipping

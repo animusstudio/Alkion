@@ -115,6 +115,14 @@ only; the failed-saves plan owns their retry state.
 
 ## Task state
 
+Review PASS-WITH-FINDINGS. Coordinator fix `608ca9f`: a store-side
+`export_verification_failed` keeps the incomplete-copy caveat, and the
+`userMessage` doc states that an unknown store category keeps its details.
+`make -C app test TEST='--concurrency=2 test/util test/ui/editor_save_failure_test.dart'`
+→ +77 all pass. Follow-ups: `restore_*` wording goes to the backup and restore
+plan; the fixed tab-bar clearance is shared with page padding
+(`kBottomNavInset`), so 3x text is a separate task if wanted.
+
 Code at `b47682b` (later commits are docs only). Commits: `e363d4f` (T1),
 `9ffdeeb` (T2), `b47682b` (T2 fix: inverse toast colours).
 
