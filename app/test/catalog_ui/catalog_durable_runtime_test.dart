@@ -510,6 +510,7 @@ void main() {
           'catalogBaselines',
           'catalogDependencies',
           'catalogLastMetrics',
+          'catalogLastSets',
         ]) {
           b.remove(key);
         }
@@ -529,6 +530,7 @@ void main() {
         'catalogBaselines',
         'catalogDependencies',
         'catalogLastMetrics',
+        'catalogLastSets',
       ]) {
         final json = legacy();
         (json['blocks'][0] as Map)[key] = (original['blocks'] as List)[0][key];
@@ -652,6 +654,153 @@ void main() {
         repository: WorkoutRepository.local(store),
       );
       expect((await repo.setsForSession(id)).map((row) => row.id), expected);
+    },
+  );
+
+  test(
+    'sets prefill from the last session, survive restart, and log the bytes typing would',
+    () async {
+      runtime = await AlkionRuntime.open(root, catalogBundle: _bundle());
+      final state = runtime!.catalog!, store = runtime!.store;
+      final choice = CatalogChoice.variant(
+        state.bundle.variants.values
+            .firstWhere((v) => v.measurementProfileKey == 'load_reps')
+            .id,
+      );
+      final exercise = await state.materialize(
+        choice,
+        ExerciseRepository.local(store),
+        locale: 'en',
+      );
+      final selection = state.selectionFor(choice)!;
+      Map<String, String> raw(SetState s) => {
+        for (final e in s.catalog!.metrics.entries)
+          e.key: '${e.value.raw} ${e.value.unit}',
+      };
+      Future<ActiveSessionController> start() async {
+        final c = ActiveSessionController(
+          draftStore: runtime!.sessions.draftStore,
+        )..seedEmpty(name: 'Prefill', focus: '');
+        runtime!.sessions.register(c);
+        await c.addCatalogBlock(
+          exercise,
+          selection,
+          sessionRepo: SessionRepository.local(store),
+        );
+        return c;
+      }
+
+      void log(ActiveSessionController c, SetState s) {
+        c.focusSet(s);
+        c.logLiveSet();
+      }
+
+      // First workout: typed values, no history yet so nothing prefills.
+      final first = await start();
+      final b1 = first.draft.blocks.single;
+      first.addSet(b1);
+      first.addWarmupSet(b1);
+      expect(b1.allSets.every((s) => s.catalog!.metrics.isEmpty), isTrue);
+      final typed = {
+        b1.warmupSets.single: ('45', '10'),
+        b1.workingSets[0]: ('88.5', '007'),
+        b1.workingSets[1]: ('90', '5'),
+      };
+      for (final MapEntry(key: set, value: (load, reps)) in typed.entries) {
+        first.updateCatalogMetric(set, 'reported_load', load, unit: 'lb');
+        first.updateCatalogMetric(set, 'repetitions', reps);
+        log(first, set);
+      }
+      final firstId = await finishWorkout(
+        first,
+        runtime!.sessions,
+        repository: WorkoutRepository.local(store),
+      );
+
+      // Second workout opens with the same-numbered sets, untouched.
+      final second = await start();
+      final b2 = second.draft.blocks.single;
+      second.addSet(b2);
+      second.addWarmupSet(b2);
+      second.addSet(b2);
+      expect(raw(b2.warmupSets.single), {
+        'reported_load': '45 lb',
+        'repetitions': '10 count',
+      });
+      expect(b2.workingSets.map(raw), [
+        {'reported_load': '88.5 lb', 'repetitions': '007 count'},
+        {'reported_load': '90 lb', 'repetitions': '5 count'},
+        // No same-numbered set: the last session's top set.
+        {'reported_load': '90 lb', 'repetitions': '5 count'},
+      ]);
+      expect(selection.supportsLoadProgression, isTrue);
+      expect(b2.allSets.any((s) => s.catalogTouched), isFalse);
+
+      // Restart: values and the last-session reference stay in the draft.
+      await runtime!.flushPersistence();
+      await runtime!.close();
+      runtime = null;
+      runtime = await AlkionRuntime.open(root, catalogBundle: _bundle());
+      final resumed = runtime!.sessions.active!;
+      final b3 = resumed.draft.blocks.single;
+      expect(b3.workingSets.map(raw), b2.workingSets.map(raw));
+      expect(b3.allSets.any((s) => s.catalogTouched), isFalse);
+      resumed.removeSet(b3, b3.workingSets.last);
+      resumed.removeSet(b3, b3.workingSets.last);
+      resumed.addSet(b3);
+      expect(raw(b3.workingSets.last), {
+        'reported_load': '90 lb',
+        'repetitions': '5 count',
+      });
+      final pairs = <String, String>{
+        b3.warmupSets.single.id: b1.warmupSets.single.id,
+        b3.workingSets[0].id: b1.workingSets[0].id,
+        b3.workingSets[1].id: b1.workingSets[1].id,
+      };
+      for (final set in b3.allSets) {
+        log(resumed, set);
+      }
+      final secondId = await finishWorkout(
+        resumed,
+        runtime!.sessions,
+        repository: WorkoutRepository.local(runtime!.store),
+      );
+      Future<Object?> bytes(String id) async => (await runtime!.store.get(
+        'SELECT catalog_set_bytes FROM sets WHERE id=?',
+        [id],
+      ))['catalog_set_bytes'];
+      for (final MapEntry(key: logged, value: original) in pairs.entries) {
+        expect(await bytes(logged), await bytes(original));
+      }
+
+      // Resume of the second workout: an old snapshot without the reference
+      // gets it filled from the first workout (this one excluded), and no
+      // stored set is rewritten.
+      final repo = SessionRepository.local(runtime!.store);
+      final snapshot = runtime!.sessions.lastFinished!;
+      expect(snapshot.sessionId, secondId);
+      expect(secondId, isNot(firstId));
+      snapshot.draft.blocks.single.catalogLastSets.clear();
+      final rows = await repo.setsForSession(secondId);
+      final recovered = await restoreFinishedDraft(
+        snapshot,
+        rows,
+        durationMin: 1,
+        exerciseRepo: ExerciseRepository.local(runtime!.store),
+        sessionRepo: repo,
+        now: DateTime.now(),
+      );
+      final block = recovered.blocks.single;
+      expect(
+        block.catalogLastSets[selection.compatibilityKey]!.map(
+          (s) => (s.isWarmup, s.metrics['reported_load']!.raw),
+        ),
+        [(true, '45'), (false, '88.5'), (false, '90')],
+      );
+      for (final row in rows) {
+        final set = block.allSets.firstWhere((s) => s.id == row.id);
+        expect(set.catalog!.toJson(), row.catalog!.toJson());
+      }
     },
   );
 

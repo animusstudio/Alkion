@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/data/session_writer.dart';
 import 'package:alkion/session/active_session_controller.dart';
+import 'package:alkion/data/session_repository.dart'
+    show CatalogLastSet, CatalogLoadReference;
+import 'package:alkion/domain/catalog_execution.dart';
 
 Future<ActiveSessionController> _persistedController(
   ActiveSessionController source,
@@ -245,6 +248,113 @@ void main() {
         'a',
         'b',
       ]);
+    });
+  });
+
+  group('catalog prefill', () {
+    final selection = CatalogSelectionEvidence(
+      exerciseId: 'cat',
+      contextId: 'cat-context',
+      contextRevision: 1,
+      displayLabel: 'Synthetic curl',
+      profile: CatalogMeasurementProfileEvidence.forKey('load_reps'),
+    );
+    CatalogMetricEvidence v(String metric, String text, [String? unit]) =>
+        CatalogMetricEvidence.fromInput(
+          text,
+          metric: metric,
+          unit: unit ?? CatalogMetricEvidence.defaultUnit(metric),
+        );
+    CatalogLastSet last(bool warmup, String load, String reps) =>
+        CatalogLastSet(
+          isWarmup: warmup,
+          metrics: {
+            'reported_load': v('reported_load', load, 'lb'),
+            'repetitions': v('repetitions', reps),
+          },
+        );
+    final reference = CatalogLoadReference(
+      lastSets: [
+        last(true, '45', '10'),
+        last(false, '88.5', '007'),
+        last(false, '90', '5'),
+      ],
+      lastMetrics: {
+        'reported_load': v('reported_load', '90', 'lb'),
+        'repetitions': v('repetitions', '5'),
+      },
+    );
+    BlockState block({bool prefill = true}) {
+      final e = _ex('cat');
+      return buildCatalogBlock(
+        resolved: ResolvedSlot(
+          exercise: e,
+          workSets: 3,
+          warmupSets: 2,
+          repLow: 5,
+          repHigh: 8,
+          rirLow: null,
+          rirHigh: null,
+        ),
+        selection: selection,
+        reference: prefill ? reference : const CatalogLoadReference(),
+      );
+    }
+
+    Map<String, Object?> raw(SetState s) => {
+      for (final e in s.catalog!.metrics.entries)
+        e.key: '${e.value.raw} ${e.value.unit}',
+    };
+
+    test('a fresh prefilled draft is pristine and discards silently', () {
+      final b = block();
+      final c = _seeded([b]);
+      expect(b.warmupSets.map(raw), [
+        {'reported_load': '45 lb', 'repetitions': '10 count'},
+        <String, Object?>{},
+      ]);
+      expect(b.workingSets.map(raw), [
+        {'reported_load': '88.5 lb', 'repetitions': '007 count'},
+        {'reported_load': '90 lb', 'repetitions': '5 count'},
+        {'reported_load': '90 lb', 'repetitions': '5 count'},
+      ]);
+      expect(b.allSets.any((s) => s.catalogTouched), isFalse);
+      expect(b.catalogLastSets[selection.compatibilityKey], hasLength(3));
+      expect(c.hasEdits, isFalse);
+      c.updateCatalogMetric(b.workingSets.first, 'repetitions', '8');
+      expect(c.hasEdits, isTrue, reason: 'an edited prefilled set asks');
+      c.dispose();
+    });
+
+    test('appended sets prefill from the block reference, untouched', () {
+      final b = block();
+      final c = _seeded([b]);
+      c.addSet(b);
+      c.addWarmupSet(b);
+      expect(raw(b.workingSets.last), {
+        'reported_load': '90 lb',
+        'repetitions': '5 count',
+      });
+      expect(b.workingSets.last.catalogTouched, isFalse);
+      // The third warm-up has no same-numbered set and never takes the top.
+      expect(b.warmupSets.last.catalog!.metrics, isEmpty);
+      c.dispose();
+    });
+
+    test('logging a prefilled set stores the evidence typing would', () {
+      final prefilled = block(), typed = block(prefill: false);
+      final typedSet = typed.workingSets.first;
+      final c = _seeded([prefilled, typed]);
+      expect(typedSet.catalog!.metrics, isEmpty);
+      c.updateCatalogMetric(typedSet, 'reported_load', '88.5', unit: 'lb');
+      c.updateCatalogMetric(typedSet, 'repetitions', '007');
+      c.focusSet(prefilled.workingSets.first);
+      expect(c.logLiveSet()?.set, same(prefilled.workingSets.first));
+      expect(
+        prefilled.workingSets.first.catalog!.bytes,
+        typedSet.catalog!.bytes,
+      );
+      c.dispose();
     });
   });
 }
