@@ -375,7 +375,7 @@ class _SummaryBody extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       for (final block in blocks)
-                        _TopSetRow(
+                        SummaryExerciseRow(
                           block: block,
                           name:
                               exerciseNames[block.exerciseId] ??
@@ -526,8 +526,13 @@ class _TileInner extends StatelessWidget {
 
 // ── Top set row ───────────────────────────────────────────────────────────────
 
-class _TopSetRow extends StatelessWidget {
-  const _TopSetRow({
+/// One exercise on the summary: its name and either every set (catalog
+/// blocks) or the top set (classic blocks), each with its RIR tag when one was
+/// logged.
+@visibleForTesting
+class SummaryExerciseRow extends StatelessWidget {
+  const SummaryExerciseRow({
+    super.key,
     required this.block,
     required this.name,
     required this.unit,
@@ -559,7 +564,10 @@ class _TopSetRow extends StatelessWidget {
               ),
             const SizedBox(height: 8),
             for (final set in block.sets)
-              CatalogSetText(set.catalog!, size: 14),
+              _SummarySetLine(
+                values: CatalogSetText(set.catalog!, size: 14),
+                rir: _shownRir(set),
+              ),
           ],
         ),
       );
@@ -584,50 +592,104 @@ class _TopSetRow extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text.rich(
+          _SummarySetLine(
+            values: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerStart,
+              child: Text.rich(
+                TextSpan(
+                  children: [
                     TextSpan(
-                      children: [
-                        TextSpan(
-                          text: block.coverage.complete
-                              ? unit.fmtWt(block.topWeight)
-                              : '—',
-                          style: WorkoutType.mono(
-                            size: 16,
-                            weight: FontWeight.w500,
-                            color: tokens.text,
-                          ),
-                        ),
-                        TextSpan(
-                          text: unit.uLabel,
-                          style: WorkoutType.mono(size: 12, color: tokens.dim),
-                        ),
-                        TextSpan(
-                          text: block.coverage.complete
-                              ? ' × ${block.topReps}'
-                              : ' × —',
-                          style: WorkoutType.mono(size: 14, color: tokens.dim),
-                        ),
-                      ],
+                      text: block.coverage.complete
+                          ? unit.fmtWt(block.topWeight)
+                          : '—',
+                      style: WorkoutType.mono(
+                        size: 16,
+                        weight: FontWeight.w500,
+                        color: tokens.text,
+                      ),
                     ),
-                    maxLines: 1,
-                    softWrap: false,
-                  ),
+                    TextSpan(
+                      text: unit.uLabel,
+                      style: WorkoutType.mono(size: 12, color: tokens.dim),
+                    ),
+                    TextSpan(
+                      text: block.coverage.complete
+                          ? ' × ${block.topReps}'
+                          : ' × —',
+                      style: WorkoutType.mono(size: 14, color: tokens.dim),
+                    ),
+                  ],
                 ),
+                maxLines: 1,
+                softWrap: false,
               ),
-              const SizedBox(width: 8),
-              if (block.isPr)
-                const PRBadge(small: true)
-              else
-                Tag(
-                  label: AppLocalizations.of(context).sessionTagTop,
-                  tone: TagTone.solid,
-                ),
+            ),
+            rir: _topSetRir(block),
+            badge: block.isPr
+                ? const PRBadge(small: true)
+                : Tag(
+                    label: AppLocalizations.of(context).sessionTagTop,
+                    tone: TagTone.solid,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The RIR a finished set shows: a logged working set's own value, as stored
+/// (even outside `rirMin..rirMax`, like the live set line). A warm-up and a
+/// set without one show none.
+int? _shownRir(LoggedSet set) => set.isWarmup ? null : set.rir;
+
+/// The RIR of [block]'s top set, found the way `groupSetsIntoBlocks` chose it:
+/// the flagged working set, else the one carrying the top weight and reps.
+int? _topSetRir(ExerciseBlockData block) {
+  final working = block.sets.where((s) => !s.isWarmup);
+  final top =
+      working.where((s) => s.isTopSet).firstOrNull ??
+      working
+          .where(
+            (s) => s.weightKg == block.topWeight && s.reps == block.topReps,
+          )
+          .firstOrNull;
+  return top == null ? null : _shownRir(top);
+}
+
+/// One set's line: the [values] on the left, the RIR tag (when [rir] is set)
+/// and any [badge] on the right. The values keep their size and the tags drop
+/// under them when the row is too narrow for both, so nothing overflows. The
+/// line reads as one piece ("140 kg × 6, RIR 1").
+class _SummarySetLine extends StatelessWidget {
+  const _SummarySetLine({required this.values, this.rir, this.badge});
+
+  final Widget values;
+  final int? rir;
+  final Widget? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final rirTag = rir == null
+        ? null
+        : Tag(key: const Key('summary-set-rir'), label: l.sessionRir(rir!));
+    if (rirTag == null && badge == null) return values;
+    return MergeSemantics(
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          values,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ?rirTag,
+              if (rirTag != null && badge != null) const SizedBox(width: 8),
+              ?badge,
             ],
           ),
         ],
