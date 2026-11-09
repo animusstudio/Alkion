@@ -561,7 +561,9 @@ void main() {
     await harness.unmount(tester);
   });
 
-  testWidgets('a row the catalog does not know opens nothing', (tester) async {
+  testWidgets('an owned row opens its owned details, read-only', (
+    tester,
+  ) async {
     final semantics = tester.ensureSemantics();
     final catalog = _catalog();
     addTearDown(catalog.dispose);
@@ -569,15 +571,76 @@ void main() {
     await mount(tester, catalog: catalog);
     await settleUntilFound(tester, workingSets, where: 'catalog day view');
     final row = find.byKey(const ValueKey('day-view-row-d1-i1'));
+    expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+    final node = tester.getSemantics(row);
+    expect(node.label, 'Barbell Row, 3×6–10, RIR 1–2, 1wu');
+    expect(node.flagsCollection.isButton, isTrue);
+    expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+
+    await tester.tap(row);
+    await settleReal(tester, ticks: 8);
+    final sheet = find.byType(BottomSheet);
+    expect(sheet, findsOneWidget);
     expect(
-      find.descendant(of: row, matching: find.text('Barbell Row')),
+      find.descendant(of: sheet, matching: find.text(en.catalogDetails)),
       findsOneWidget,
     );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Barbell Row')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.byType(CatalogArtworkDetails)),
+      findsNothing,
+    );
+    expect(find.byType(CharacterBody), findsOneWidget);
+    expect(find.byKey(const Key('catalog-details-favorite')), findsNothing);
+    expect(find.text(en.planEditExercise), findsNothing);
+    expect(catalog.favorites, isEmpty);
+    expect(catalog.recents, isEmpty);
+
+    await tester.tap(find.byTooltip(en.commonDone));
+    await settleReal(tester, ticks: 8);
+    expect(find.byType(BottomSheet), findsNothing);
+    semantics.dispose();
+    await harness.unmount(tester);
+  });
+
+  testWidgets('a row whose choice cannot be resolved opens nothing', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final catalog = _catalog();
+    addTearDown(catalog.dispose);
+    // A measurement profile the bundle does not have.
+    catalog.exercises['ex2'] = CatalogChoice.custom(
+      'Synthetic unknown',
+      'synthetic_missing_profile',
+    );
+    await harness.open(tester, seed: _seed);
+    await mount(tester, catalog: catalog);
+    await settleUntilFound(tester, workingSets, where: 'catalog day view');
+    final row = find.byKey(const ValueKey('day-view-row-d1-i1'));
+    expect(row, findsOneWidget);
     expect(tester.getSemantics(row).flagsCollection.isButton, isFalse);
     expect(
       find.descendant(of: row, matching: find.byType(InkWell)),
       findsNothing,
     );
+    await tester.tap(row);
+    await settleReal(tester, ticks: 8);
+    expect(find.byType(BottomSheet), findsNothing);
+    semantics.dispose();
+    await harness.unmount(tester);
+  });
+
+  testWidgets('without a catalog the rows are inert', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await harness.open(tester, seed: _seed);
+    await mount(tester);
+    await settleUntilFound(tester, workingSets, where: 'day view');
+    final row = find.byKey(const ValueKey('day-view-row-d1-i0'));
+    expect(tester.getSemantics(row).flagsCollection.isButton, isFalse);
     await tester.tap(row);
     await settleReal(tester, ticks: 8);
     expect(find.byType(BottomSheet), findsNothing);

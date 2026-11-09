@@ -583,8 +583,9 @@ class _Overview extends StatelessWidget {
 // ── Exercise rows ───────────────────────────────────────────────────────────
 
 /// One exercise: art (or the neutral tile), name and summary chips, read as
-/// one accessibility node. A catalog-backed row is a button that opens the
-/// read-only catalog details; a missing exercise is not interactive.
+/// one accessibility node. A row is a button that opens the read-only catalog
+/// details (an owned or legacy exercise gets its owned choice, as Plan's
+/// library shows it); a missing or unresolvable exercise is not interactive.
 class _ExerciseRow extends StatelessWidget {
   const _ExerciseRow({super.key, required this.slot, required this.exercise});
 
@@ -604,7 +605,7 @@ class _ExerciseRow extends StatelessWidget {
         : _displayName(context, exercise);
     final labels = summary?.labels(l, units) ?? const <String>[];
     final scope = CatalogScope.maybeOf(context);
-    final choice = exercise == null ? null : _choice(scope);
+    final choice = _detailsChoice(scope, exercise);
     final VoidCallback? onTap = scope == null || choice == null
         ? null
         : () => _openDetails(context, scope, choice, name);
@@ -662,6 +663,24 @@ class _ExerciseRow extends StatelessWidget {
     return selection != null
         ? scope.choiceForSelection(selection)
         : scope.exercises[slot.exerciseId];
+  }
+
+  /// The choice the details sheet shows: the catalog choice, else the
+  /// exercise's owned choice. Null for a missing exercise, without a catalog,
+  /// or when the bundle cannot describe the choice's measurement.
+  CatalogChoice? _detailsChoice(
+    CatalogRuntimeState? scope,
+    Exercise? exercise,
+  ) {
+    if (scope == null || exercise == null) return null;
+    final choice = _choice(scope) ?? scope.choiceForOwned(exercise);
+    final bundle = scope.bundle;
+    final known = choice.variantId != null
+        ? bundle.variants.containsKey(choice.variantId)
+        : bundle.measurementProfiles.containsKey(
+            choice.customProfile ?? 'load_reps',
+          );
+    return known ? choice : null;
   }
 
   /// The existing catalog details sheet, read-only: no actions and no
