@@ -767,6 +767,31 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
     }
 
+    /// Over the limit: Done keeps the sheet open and says why, then the
+    /// sheet is dismissed without an edit.
+    Future<void> typeRefusedWeight(
+      WidgetTester tester,
+      String text,
+      String message,
+    ) async {
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('live-weight')),
+          matching: find.byKey(const Key('ruler-centre')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final field = find.byKey(const Key('number-entry-field'));
+      await tester.enterText(field, text);
+      await tester.tap(find.byKey(const Key('number-entry-done')));
+      await tester.pumpAndSettle();
+      expect(field, findsOneWidget, reason: 'the sheet stays open');
+      expect(find.text(message), findsOneWidget);
+      Navigator.of(tester.element(field)).pop();
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    }
+
     testWidgets('a typed weight the kg display cannot show is refused', (
       tester,
     ) async {
@@ -775,7 +800,11 @@ void main() {
       await tester.tap(find.byKey(const Key('set-line-s1')));
       await tester.pumpAndSettle();
 
-      await typeWeight(tester, '99999999999999999999999');
+      await typeRefusedWeight(
+        tester,
+        '99999999999999999999999',
+        'Enter 500 kg or less',
+      );
       // The shared parser saturates it; the sheet refuses the result.
       expect(
         parseNumberInput('99999999999999999999999', min: 0),
@@ -822,7 +851,11 @@ void main() {
       await tester.tap(find.byKey(const Key('set-line-s1')));
       await tester.pumpAndSettle();
 
-      await typeWeight(tester, '10000000000000000');
+      await typeRefusedWeight(
+        tester,
+        '10000000000000000',
+        'Enter 1100 lb or less',
+      );
       expect(repo.updateCalls, isEmpty);
       expect(repo.prepared, isEmpty);
       expect(find.textContaining('220lb', findRichText: true), findsOneWidget);

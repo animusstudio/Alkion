@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/alkion_icon.dart';
 import '../data/models.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -80,6 +81,8 @@ class RirPicker extends StatelessWidget {
               children: [
                 Text(
                   '$r',
+                  // "RIR 2" to a screen reader, not a bare digit.
+                  semanticsLabel: AppLocalizations.of(context).sessionRir(r),
                   style: WorkoutType.mono(
                     size: 12,
                     weight: FontWeight.w400,
