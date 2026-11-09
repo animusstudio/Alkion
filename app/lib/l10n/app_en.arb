@@ -1342,5 +1342,12 @@
         "type": "int"
       }
     }
-  }
+  },
+  "exerciseEditorCatalogGroups": "Muscle groups for this exercise come from the catalog.",
+  "todayStatLoading": "Loading",
+  "todayStatUnavailable": "Unavailable",
+  "todayRecentPrsLoading": "Loading recent PRs…",
+  "todayRecentPrsUnavailable": "Recent PRs unavailable. They could not be loaded.",
+  "catalogProgressNeverLogged": "Log this exercise to see progress.",
+  "catalogProgressLoadFailed": "Progress couldn’t be loaded."
 }
