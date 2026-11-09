@@ -81,10 +81,11 @@ SlotDraft loaded({
 );
 
 class _Entry {
-  _Entry(this.key, this.draft, {this.name});
+  _Entry(this.key, this.draft, {this.name, this.measuresReps = true});
   final String key;
   final SlotDraft draft;
   final String? name;
+  final bool measuresReps;
 }
 
 class _Host extends StatefulWidget {
@@ -129,6 +130,7 @@ class _HostState extends State<_Host> {
           draft: e.draft,
           exercise: bench,
           displayName: e.name,
+          measuresReps: e.measuresReps,
           reorderIndex: i,
           unit: widget.unit,
           rirControls: widget.rirControls,
@@ -311,6 +313,50 @@ void main() {
       expect(find.text(en.trainingRepEntry.toUpperCase()), findsNothing);
       expect(find.byKey(const Key('day-slot-load-mode')), findsOneWidget);
       expect(find.byKey(const Key('metric-duration')), findsOneWidget);
+    });
+
+    testWidgets('a slot without selection whose choice measures no reps '
+        'has no reps row or reps chip', (tester) async {
+      final draft = loaded(repLow: null, repHigh: null);
+      await _pumpHost(
+        tester,
+        _Host(
+          expanded: 'a',
+          entries: [_Entry('a', draft, measuresReps: false)],
+        ),
+      );
+      expect(find.text(en.trainingRepEntry.toUpperCase()), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(SlotSummaryChips),
+          matching: find.text(en.slotSetCount(3)),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('×'), findsNothing);
+      expect(draft.changedFields, isEmpty);
+    });
+
+    testWidgets('a collapsing body folds away before it unmounts', (
+      tester,
+    ) async {
+      final state = await _pumpHost(
+        tester,
+        _Host(expanded: 'a', entries: [_Entry('a', loaded())]),
+      );
+      final body = find.byKey(const ValueKey('day-slot-body'));
+      final open = tester.getSize(body).height;
+      await tester.tap(toggleOf('a'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(state.expanded, isNull);
+      expect(body, findsOneWidget);
+      final card = find.byType(DaySlotCard);
+      final folding = tester.getSize(card).height;
+      await tester.pumpAndSettle();
+      expect(body, findsNothing);
+      expect(tester.getSize(card).height, lessThan(folding));
+      expect(folding, lessThan(open + 200));
     });
 
     testWidgets('null fields show what the workout builds, untouched', (
@@ -538,6 +584,14 @@ void main() {
       await tapAndSettle(tester, stepperButton('day-slot-load', 'stepper-inc'));
       expect(draft.catalogTargets['reported_load']!.raw, '143');
       expect(loadText('143lb'), findsOneWidget);
+      // The header chip reads the same unit as the Load row.
+      expect(
+        find.descendant(
+          of: find.byType(SlotSummaryChips),
+          matching: find.text('143lb'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('without a last load Fixed starts at 45 lb', (tester) async {

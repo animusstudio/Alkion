@@ -21,10 +21,13 @@ import 'package:alkion/shell/session_launcher.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/ui/day_editor.dart';
 import 'package:alkion/ui/day_slot_card.dart';
+import 'package:alkion/ui/slot_summary.dart' show SlotSummaryChips;
+import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/widgets/plan_form.dart';
 import 'package:alkion/widgets/stepper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import '../catalog/catalog_fixture.dart';
@@ -611,6 +614,38 @@ void main() {
       );
       expect(day.slots.last.catalog!.contextLabel, 'Hotel pulley');
     });
+
+    // The editor hands the card the unit of the app's one UnitService, so
+    // the header chip and the Load row agree in lb.
+    final units = Provider.of<UnitService>(
+      tester.element(find.byType(DayEditor)),
+      listen: false,
+    );
+    await tester.runAsync(() => units.setUnit(Unit.lb));
+    await tester.pump();
+    String textIn(Finder of) => tester
+        .widget<Text>(
+          find.descendant(of: of, matching: find.textContaining('lb')),
+        )
+        .data!;
+    final chips = find.byType(SlotSummaryChips).at(1);
+    final load = find.byKey(const Key('day-slot-load'));
+    await tester.ensureVisible(
+      find.text(lookupAppLocalizations(const Locale('en')).dayEditorLoadFixed),
+    );
+    await tester.tap(
+      find.text(lookupAppLocalizations(const Locale('en')).dayEditorLoadFixed),
+    );
+    await tester.pump();
+    expect(textIn(load), endsWith('lb'));
+    expect(textIn(chips), textIn(load));
+    final before = tester.widget<WStepper>(load).value;
+    await tester.tap(
+      find.descendant(of: load, matching: find.byKey(const Key('stepper-inc'))),
+    );
+    await tester.pump();
+    expect(tester.widget<WStepper>(load).value, before + 5);
+    expect(textIn(chips), textIn(load));
     expect(tester.takeException(), isNull);
   });
 }

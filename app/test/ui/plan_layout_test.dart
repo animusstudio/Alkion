@@ -111,6 +111,29 @@ void main() {
           find.byType(PlanScreen),
           'Plan day editor $code',
         );
+        // An open card: sets and warm-ups stacked, reps and RIR.
+        final toggle = find
+            .byWidgetPredicate(
+              (w) =>
+                  w.key is ValueKey<String> &&
+                  (w.key! as ValueKey<String>).value.startsWith(
+                    'day-slot-expand-',
+                  ),
+            )
+            .first;
+        await scrollIntoView(tester, find.byType(DayEditor), toggle);
+        await tester.tap(toggle);
+        await settleReal(tester, ticks: 6);
+        await tester.pump(const Duration(seconds: 1));
+        expect(
+          find.byKey(const Key('day-slot-counts-stacked')),
+          findsOneWidget,
+        );
+        await expectLayoutHoldsWhileScrolling(
+          tester,
+          find.byType(PlanScreen),
+          'Plan day editor open card $code',
+        );
         await harness.unmount(tester);
       });
     }
