@@ -8,6 +8,10 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
   final tokens = brightness == Brightness.dark
       ? WorkoutTokens.dark(accent)
       : WorkoutTokens.light(accent);
+  // The opposite palette, for surfaces drawn inverse (toasts).
+  final inverse = brightness == Brightness.dark
+      ? WorkoutTokens.light(accent)
+      : WorkoutTokens.dark(accent);
 
   return ThemeData(
     useMaterial3: true,
@@ -100,20 +104,22 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
         ),
       ),
     ),
-    // Every SnackBar floats as a flat Alkion toast; `showWToast` adds the
-    // danger style, actions and the tab-bar clearance.
+    // Every SnackBar floats as a flat, inverse Alkion toast; `showWToast`
+    // adds the danger style, actions and the tab-bar clearance. The action
+    // takes the opposite palette's accent text, which is legible on the
+    // inverse surface. A site that still sets a danger background keeps
+    // legible `tokens.bg` content.
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: tokens.surface3,
-      contentTextStyle: WorkoutType.body(size: 14, color: tokens.text),
-      actionTextColor: tokens.accentText,
-      disabledActionTextColor: tokens.dim,
-      closeIconColor: tokens.dim,
+      backgroundColor: tokens.text,
+      contentTextStyle: WorkoutType.body(size: 14, color: tokens.bg),
+      actionTextColor: inverse.accentText,
+      disabledActionTextColor: inverse.dim,
+      closeIconColor: tokens.bg,
       elevation: 0,
       insetPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.control),
-        side: BorderSide(color: tokens.lineStrong),
       ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.text),

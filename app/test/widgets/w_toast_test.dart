@@ -46,14 +46,12 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       final material = surface(tester);
-      expect(material.color, tokens.surface3);
+      expect(material.color, tokens.text);
       expect(material.elevation, 0);
-      final shape = material.shape! as RoundedRectangleBorder;
-      expect(shape.side.color, tokens.lineStrong);
       final style = DefaultTextStyle.of(
         tester.element(find.text('Day enabled')),
       ).style;
-      expect(style.color, tokens.text);
+      expect(style.color, tokens.bg);
       expect(style.fontFamily, contains('SpaceGrotesk'));
       expect(
         Theme.of(context).snackBarTheme.behavior,
