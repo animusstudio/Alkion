@@ -36,6 +36,10 @@ Implements the approved [storage banner and launch screens plan](../plans/2026-1
   accent; the interrupted-restore screen found at launch follows the system
   (A6). New strings exist in en, it, de and es; parity and unused-key tests
   pass (A7).
+- After review: a failing owed editor write no longer holds back the other
+  owners' flushes; a later successful autosave withdraws only its own banner;
+  the restore screens read the settings before the runtime closes; fonts are
+  never fetched at launch; Retry after close begins does nothing.
 - No stored data, backup format or recovery semantics change; owed writes are
   never dropped.
 

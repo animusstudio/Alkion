@@ -129,8 +129,32 @@ The backup plan owns the rest of `RuntimeRecoveryHost` and rebases onto T3.
 
 ## Task state
 
-Code at `4e6a2bc` (later commits are docs only). Commits: `9be3b7a` (T1),
-`3ef82b8` (T2), `4e6a2bc` (T3).
+Review PASS-WITH-FINDINGS (no blocking); fixes in the "review fixes" commit
+after `a96de97`:
+
+- `_flushNow` records a failing owed-write drain, still flushes sessions,
+  settings, units, identity and catalog, then reports and rethrows the first
+  failure. The strict open-form refusal now runs last, after a clean flush.
+- A later successful debounced autosave (`onAutosaveSaved`, via
+  `SessionManager.onPersistenceCleared`) clears the banner only while it still
+  shows the failed autosave's own error; failures from other sources stay.
+- `restoreBackup` reads locale, brightness and accent into locals before
+  `runtime.close()` disposes the settings owner.
+- `main()` sets `GoogleFonts.config.allowRuntimeFetching = false` before
+  `startAlkion()`, so the launch failure screen never fetches fonts; the
+  launcher and runtime keep their own guard for direct callers.
+- Retry returns at once once `close()` has begun (also after its `recover()`).
+  Tests: an owed editor write fails yet the draft and settings land; autosave
+  success clears only its own failure; Retry racing `close()` in both orders
+  throws nothing and writes nothing after close.
+- Follow-up for the notifications plan: a notification cancel or show failure
+  that reaches the manager raises this storage banner (decision 1.5), whose
+  wording blames local storage. Today the plugin wrapper catches its own
+  failures, so only storage errors arrive, but a wording or routing split
+  belongs there.
+
+Code at `4e6a2bc` before review. Commits: `9be3b7a` (T1), `3ef82b8` (T2),
+`4e6a2bc` (T3).
 
 - T1 — done, awaiting review. `UnsavedEditors.drainOrThrow({includeOpenForms
   = true})`; with `false` only a still-owed write throws.
