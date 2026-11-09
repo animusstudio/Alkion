@@ -190,6 +190,15 @@ T3 after both; T4 (ARBs) last.
   TEST=--concurrency=2` → +3434 ~3 −3. The three failures are the inherited
   `catalog_metric_controls_test.dart` ones.
 
+- **T2 Card: done** in a separate worktree branch, pending review. Code `159e44c`, tests
+  `a0de2e6`, merged as the commit after `96fbf11`.
+  - `DaySlotCard` writes set counts and free-text metrics itself. It records them in
+    `changedFields` with the old editor's field names.
+  - `CatalogMeasurementForm` gains `exclude`.
+  - Placeholders for the strings task: `dayEditorLoadLast`, `dayEditorLoadFixed`.
+  - Implementer's focused run: +435 −3, the known failures; analyze clean.
+- **Coordinator decision:** T3 absorbs T4 (strings) and owns the four ARB files.
+
 ## Next
 
 Owner approval, then implementation after P1 to P8, U2 and U3 merge.
