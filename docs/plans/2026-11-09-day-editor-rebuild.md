@@ -249,6 +249,19 @@ T3 after both; T4 (ARBs) last.
     - a width near 350 dp, where the header and body can stack differently
     - a disabled `RirPicker`
 
+- **T3+T4 review PASS** (Sonnet `high`). P1/P5 save and retry code untouched; untouched saves
+  byte-identical; Load-seed reads race-safe; deleted keys unused; round trip covers A4/A5.
+  - PR follow-ups:
+    - `newSlotDefaults` is not told `measuresReps`, so a no-selection choice without
+      repetitions keeps hidden reps of 8. This matches the old editor.
+    - Weekday chips read the abbreviation only to TalkBack. The fix is a full-name
+      `Semantics` label.
+    - Missing tests:
+      - an out-of-range weekday that is kept
+      - starting a reorder collapses the open card
+      - the editor's Load seed
+    - The fold animation keeps the body reachable for ~200 ms.
+
 ## Next
 
-Owner approval, then implementation after P1 to P8, U2 and U3 merge.
+Code-complete. Integrated in `feat/ui-declutter-20261109`; full suite, Dev APK and owner device check follow.
