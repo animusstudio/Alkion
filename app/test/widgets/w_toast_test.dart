@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/widgets/fit_label.dart';
 import 'package:alkion/widgets/w_toast.dart';
 
 import '../support/app_fonts.dart';
@@ -67,9 +68,9 @@ void main() {
         showWToast(context, 'Day enabled');
         await settle(tester);
         final material = surface(tester);
-        expect(material.color, tokens.surface3);
+        expect(material.color, tokens.surface2);
         expect(material.elevation, 0);
-        expect(shape(tester).side.color, tokens.lineStrong);
+        expect(shape(tester).side.color, tokens.line);
         expect(shape(tester).side.width, 1);
         expect(
           shape(tester).borderRadius,
@@ -82,11 +83,12 @@ void main() {
         expect(style.fontFamily, contains('SpaceGrotesk'));
         expect(glyph(tester).glyph, AlkionGlyph.info);
         expect(glyph(tester).color, tokens.info);
+        expect(tokens.info, tokens.accentText, reason: 'no blue: the accent');
         expect(glyph(tester).size, 20);
         expect(glyph(tester).semanticLabel, isNull);
-        expect(contrastRatio(style.color!, tokens.surface3), greaterThan(4.5));
+        expect(contrastRatio(style.color!, tokens.surface2), greaterThan(4.5));
         expect(
-          contrastRatio(tokens.info, tokens.surface3),
+          contrastRatio(tokens.info, tokens.surface2),
           greaterThanOrEqualTo(3),
         );
         expect(
@@ -103,7 +105,7 @@ void main() {
       showWToast(context, 'Could not add exercise', error: true);
       await settle(tester);
       final material = surface(tester);
-      expect(material.color, tokens.surface3);
+      expect(material.color, tokens.surface2);
       expect(shape(tester).side.color, tokens.danger);
       expect(
         shape(tester).borderRadius,
@@ -116,11 +118,70 @@ void main() {
       expect(glyph(tester).glyph, AlkionGlyph.error);
       expect(glyph(tester).color, tokens.danger);
       expect(
-        contrastRatio(tokens.danger, tokens.surface3),
+        contrastRatio(tokens.danger, tokens.surface2),
         greaterThanOrEqualTo(3),
       );
     });
   }
+
+  for (final withAction in [false, true]) {
+    testWidgets('a one-line ${withAction ? 'Undo ' : ''}toast is one compact '
+        '48dp row', (tester) async {
+      final context = await host(tester, Brightness.dark);
+      showWToast(
+        context,
+        'Set 2 logged',
+        action: withAction
+            ? WToastAction(label: 'Undo', onPressed: () {})
+            : null,
+      );
+      await settle(tester);
+      final cardRect = tester.getRect(card());
+      expect(cardRect.height, 48);
+      final glyphRect = tester.getRect(find.byType(AlkionIcon));
+      expect(glyphRect.left - cardRect.left, 12);
+      expect(glyphRect.center.dy, cardRect.center.dy);
+      expect(
+        tester.getRect(find.text('Set 2 logged')).left - glyphRect.right,
+        10,
+      );
+      if (withAction) {
+        // Undo sits inline on the same row and keeps its 48dp target.
+        final button = tester.getRect(
+          find.descendant(
+            of: find.byType(SnackBarAction),
+            matching: find.byType(TextButton),
+          ),
+        );
+        expect(button.height, greaterThanOrEqualTo(48));
+        expect(button.center.dy, cardRect.center.dy);
+        expect(button.right, cardRect.right);
+      }
+      await tester.pump(const Duration(seconds: 11));
+    });
+  }
+
+  testWidgets('a long message wraps before it shrinks', (tester) async {
+    tester.view.physicalSize = const Size(640, 1600);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final context = await host(tester, Brightness.dark);
+    const message =
+        'Set 2 logged for Barbell bench press. Undo removes it again.';
+    showWToast(
+      context,
+      message,
+      action: WToastAction(label: 'Undo', onPressed: () {}),
+    );
+    await settle(tester);
+    final label = tester.widget<FitLabel>(find.byType(FitLabel));
+    expect(label.maxLines, 6);
+    // Two lines at full size, not one shrunken line.
+    final text = tester.getRect(find.text(message));
+    expect(text.height, greaterThan(30));
+    expect(tester.getRect(card()).height, greaterThan(48));
+    await tester.pump(const Duration(seconds: 11));
+  });
 
   testWidgets('a glyph override replaces the default glyph and colour', (
     tester,
@@ -361,7 +422,8 @@ void main() {
     // A toast without an action keeps its own duration.
     showWToast(context, 'Day enabled');
     await settle(tester);
-    expect(shown(tester).duration, const Duration(seconds: 4));
+    expect(shown(tester).duration, kToastDefaultDuration);
+    expect(kToastDefaultDuration, const Duration(seconds: 3));
   });
 
   testWidgets('with reduced motion the toast neither slides nor fades', (
@@ -383,7 +445,7 @@ void main() {
     showWToast(context, 'Exported nothing');
     await tester.pump();
     expect(shown(tester).animation!.value, 1);
-    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump();
     expect(find.byType(SnackBar), findsNothing);
     expect(tester.takeException(), isNull);
@@ -407,7 +469,7 @@ void main() {
     expect(firstClosed, SnackBarClosedReason.remove);
     expect(find.text('Day enabled'), findsNothing);
     expect(shown(tester).animation!.value, 1);
-    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump();
     expect(find.byType(SnackBar), findsNothing);
 
@@ -419,7 +481,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(shown(tester).animation!.value, lessThan(1));
     await settle(tester);
-    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(SnackBar), findsNothing);
     expect(tester.takeException(), isNull);
@@ -435,7 +497,7 @@ void main() {
     await tester.pump();
     expect(find.text('Day enabled'), findsOneWidget);
     expect(find.text('Exported nothing'), findsNothing);
-    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump(const Duration(milliseconds: 500));
     await settle(tester);
     expect(find.text('Day enabled'), findsNothing);
@@ -462,7 +524,7 @@ void main() {
     expect(find.text('Raw notice'), findsNothing);
     await settle(tester);
     expect(find.text('Day enabled'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(SnackBar), findsNothing);
     expect(tester.takeException(), isNull);
