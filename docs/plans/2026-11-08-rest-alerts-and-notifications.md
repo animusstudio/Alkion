@@ -1,6 +1,7 @@
 # Rest-end alert, notification body, glyph and permission explainer
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09;
+implemented 2026-11-09, awaiting review.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/rest-alerts-and-notifications-20261108`.
 Audit items 6.3, 6.5, 6.6, the next-set notification body, and the dead English
@@ -129,8 +130,92 @@ motion); the hunks are disjoint.
 
 ## Task state
 
-None started.
+Implemented 2026-11-09 on `63bda90` (main `458aac6` plus approved plans, P1
+and P7), awaiting independent review. Code at `87ddb9a`; commits `1557cee`
+(T1, plus the `showFor` permission removal and init icon string), `e90dd4e`
+(T2), `816b9b3` (T3), `87ddb9a` (string test).
+
+Stable identifiers, documented in `workout_notification.dart` for the
+background-actions plan: notification id 4101 (mirror, countdown and rest-end
+post), quiet channel `AlkionIdentity.notificationChannel`
+(`<prefix>workout_session`, unchanged), alert channel
+`AlkionIdentity.restEndChannel` (`<prefix>rest_end`, new), action
+`AlkionIdentity.addRestAction` (`<prefix>add_30s`, unchanged).
+
+- T1 — done. `init` creates the `rest_end` channel (`Importance.high`,
+  `playSound: false`, `enableVibration: true`, localized name and description).
+  `buildRestEndAndroidDetails` (high importance and priority, vibration, no
+  sound, not `onlyAlertOnce`, ongoing, elapsed chronometer, no actions).
+  `showFor(nextName:, alertAtRestEnd:)` schedules title "Rest finished" and
+  body "Next · name" (workout name when nothing is pending) on that channel
+  only when `alertAtRestEnd`; otherwise the previous quiet revert. The
+  countdown body is "Next · name" (or "Rest"). The refresh key includes the
+  alert flag and the next name. `SessionManager.restEndAlertWanted` is
+  `!(screenOpen && appForeground)`; the `screenOpen` setter and lifecycle
+  changes refresh. `notificationNextName` uses the set's catalog display
+  label, then the block's, then the exercise name. `notificationPayloadFor`
+  drops `body`. The +30s action chip, payload and response handling are
+  untouched.
+- T2 — done. `drawable/ic_stat_alkion.xml`: 24 dp white-on-transparent
+  vector, the outer silhouette of `assets/icon/alkion-icon-1024.png` (glyphs
+  merged, contour traced and simplified, 1 dp margin).
+  `AndroidInitializationSettings('@drawable/ic_stat_alkion')`. `raw/keep.xml`
+  keeps it, because the name is only referenced from Dart.
+- T3 — done. `showFor` never requests permission; `notificationsEnabled()`
+  and `requestPermission()` are on-demand. `shell/notification_explainer.dart`
+  `explainNotificationsOnce` is called in `startSession` after admission and
+  build, before `register` and the push (the P7 route animation is unchanged).
+  `SettingsService.notificationsExplained` / `setNotificationsExplained()`
+  with optional key `notifications_explained`, written only once true.
+  4 ARB keys in en, it, de, es.
+
+Deviations:
+
+- "Screen open" means open **and** the app in the foreground. A phone locked
+  on the workout screen keeps `screenOpen` true, so the screen check alone
+  would never alert in the most common case. For the same reason the
+  screen's 1 s ticker (`active_session_screen.dart`, outside the owned files)
+  skips haptics and `stopRest` while the app is not resumed: a background
+  buzz would double the alert, and a background `stopRest` refresh would
+  replace (or pre-empt) it. The resume reconciliation stops the rest.
+- During a rest with nothing pending the countdown body is "Rest", not the
+  workout name, which is already the title; the rest-end post uses the
+  workout name as planned.
+- A failed write of the explained flag is ignored (the explainer may show
+  once more); it never blocks the start.
+
+Checks at `87ddb9a`:
+
+- `make -C app analyze` → No issues found.
+- `make -C app format` → 530 files, 0 changed.
+- `make -C app test TEST='--concurrency=2 test/session test/shell
+  test/settings test/l10n test/main_routing_test.dart'` → +550, all passed
+  (includes `arb_parity_test` and `unused_keys_test`).
+- New or changed tests: `workout_notification_test.dart` (pure rest-end
+  builder; channel creation and glyph; alert channel scheduled only with
+  `alertAtRestEnd`, quiet otherwise; next-name bodies; no
+  `requestNotificationsPermission` from `showFor`; on-demand permission),
+  `session_manager_test.dart` (alert flag follows `screenOpen` and lifecycle,
+  next name, finished plan), `active_session_screen_test.dart` (backgrounded
+  screen neither buzzes nor stops the rest; foreground still buzzes),
+  `notification_explainer_test.dart` (continue, decline, already granted,
+  unsupported), `session_launcher_explainer_test.dart` (explainer before
+  register and push, decline starts normally, persisted, not asked again),
+  `settings_test.dart` (real SQLite: absent key reads unexplained, round-trip,
+  kept across later writes), `notif_strings_test.dart`, identity tests.
+- `make -C app test TEST=--concurrency=2` → +3007 ~3 -3; the three failures
+  are the known inherited `catalog_metric_controls_test.dart` cases
+  (`duration_distance_optional`, `reps_distance_optional`,
+  `reps_duration_optional_load` "mounts all required and optional controls
+  unset").
+- `aapt2 compile` and `aapt2 link` (build-tools 36.0.0, android-36) of the
+  new drawable and keep rule in a scratch project → link OK.
+- Not provable on the host: heads-up and vibration on the device, channel
+  settings, the glyph's look, release shrinking. Device check open (lock
+  through a rest, toggle the channel, status-bar glyph, first-start explainer
+  on a fresh install, merged manifest permissions).
 
 ## Next
 
-Owner approval, then T1 to T3 after the live-workout plan merges.
+Independent review, then the device check. The background-actions plan
+builds on the identifiers above.
