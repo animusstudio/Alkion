@@ -259,6 +259,12 @@ void main() {
         );
         await tester.tap(find.text('OK'));
         await settleReal(tester, ticks: 2);
+        // The unsaved value stays marked once the dialog is gone.
+        expect(
+          find.byKey(const ValueKey('target-unsaved-chest')),
+          findsOneWidget,
+        );
+        expect(find.text('Not saved'), findsOneWidget);
         await tester.tap(increment);
         await tester.pump();
         for (var i = 0; i < 100; i++) {
@@ -284,7 +290,65 @@ void main() {
           find.descendant(of: row, matching: find.text('2')),
           findsOneWidget,
         );
+        expect(find.text('Not saved'), findsNothing);
       },
     );
   }
+
+  testWidgets(
+    'the same target value after a refused COMMIT retries the same prepared write',
+    (tester) async {
+      final harness = ScreenHarness();
+      addTearDown(harness.close);
+      addTearDown(() => harness.unmount(tester));
+      await harness.open(tester, seed: (_) async {});
+      final gate = (await tester.runAsync(() async => Completer<void>()))!;
+      final fault = FaultDatabase(
+        harness.database,
+        gate: gate,
+        beforeCommit: true,
+      );
+      harness.overrideDatabase = fault;
+      await tester.pumpWidget(harness.wrap(const Scaffold(body: TargetsTab())));
+      await settleUntilFound(tester, find.text('Chest'), where: 'target row');
+      Finder row() => find
+          .ancestor(of: find.text('Chest'), matching: find.byType(Padding))
+          .first;
+      Finder step(String key) =>
+          find.descendant(of: row(), matching: find.byKey(Key(key))).first;
+      await tester.tap(step('stepper-inc'));
+      await tester.pump();
+      for (var i = 0; i < 100 && fault.actions.isEmpty; i++) {
+        await settleReal(tester, ticks: 1);
+      }
+      // While the write for 1 waits: up to 2, back to 1 (queued, latest wins).
+      await tester.tap(step('stepper-inc'));
+      await tester.pump();
+      await tester.tap(step('stepper-dec'));
+      await tester.pump();
+      await tester.runAsync(() async => gate.complete());
+      await observeDialog(tester, harness.database);
+      await tester.tap(find.text('OK'));
+      for (var i = 0; i < 100; i++) {
+        final rows = await targets(tester, harness);
+        if (rows.isNotEmpty) break;
+        await settleReal(tester, ticks: 1);
+      }
+      await settleReal(tester, ticks: 3);
+      expect(fault.actions, hasLength(2));
+      expect(fault.actions.map((a) => a.operationId).toSet(), hasLength(1));
+      expect(fault.actions.map((a) => a.hash).toSet(), hasLength(1));
+      final rows = await targets(tester, harness);
+      expect(rows, hasLength(1));
+      expect(rows.single['target_sets'], 1);
+      expect(rows.single['revision'], 1);
+      expect(
+        await tester.runAsync(
+          () => harness.database.getAll('SELECT * FROM operations'),
+        ),
+        hasLength(1),
+      );
+      expect(find.text('Not saved'), findsNothing);
+    },
+  );
 }

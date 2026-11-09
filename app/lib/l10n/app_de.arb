@@ -791,5 +791,9 @@
   "historyDiscardSetsMessage": "Deine nicht gespeicherten Änderungen an diesen Sätzen gehen verloren.",
   "historySetRemoved": "Satz entfernt",
   "historyDeletedExercise": "Gelöschte Übung",
-  "historyNoSetupToLog": "Für diese Übung gibt es noch kein Gerät zum Erfassen."
+  "historyNoSetupToLog": "Für diese Übung gibt es noch kein Gerät zum Erfassen.",
+  "historyDiscardSetChanges": "Änderungen an den Sätzen verwerfen",
+  "historyDiscardOwedMessage": "Diese Änderungen an den Sätzen können nicht gespeichert werden. Verwerfen entfernt nur sie; die gespeicherten Sätze bleiben unverändert.",
+  "historyEarlierNotSaved": "Frühere Änderungen an Sätzen im Verlauf sind noch nicht gespeichert.",
+  "targetsNotSaved": "Nicht gespeichert"
 }

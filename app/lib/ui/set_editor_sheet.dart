@@ -21,6 +21,7 @@ import '../units/unit_service.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
 import '../widgets/rir_picker.dart';
+import '../util/error_message.dart';
 import '../widgets/w_dialog.dart';
 import '../history_mapping/history_mapping_label.dart';
 
@@ -79,9 +80,28 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// uncertain COMMIT is reconciled, never rewritten under a new identity.
   final _prepared = <String, _PreparedWrite>{};
 
-  /// A write failed and something is still unwritten: the sheet says so,
-  /// and the owed work retries on the next change, close or flush.
+  /// Adds and deletes the user confirmed, in order, not yet prepared: each
+  /// is prepared only once everything before it has landed, so one tapped
+  /// behind a failing write is queued, never dropped.
+  final _planned = <_PlannedWrite>[];
+
+  /// A write failed and something is still unwritten: the sheet says so.
+  /// A transient failure retries on the next change, close or flush.
   bool _failed = false;
+
+  /// The failure is permanent ([historyWriteIsPermanent]): the sheet shows
+  /// its mapped message and the explicit Discard set changes.
+  bool _permanent = false;
+  Object? _failure;
+
+  /// A prepared or queued write at the head failed for good: every later
+  /// write waits behind it, so nothing retries silently any more; only an
+  /// explicit Discard set changes clears it.
+  Object? _blocked;
+
+  /// Sets whose edit cannot be prepared (no observed base). They fail
+  /// alone: the other sets are still written.
+  final _unpreparable = <String, Object>{};
 
   /// Serialises every write this sheet issues. Idle, a write starts
   /// synchronously, so the call reaches the store before whatever the
@@ -112,7 +132,18 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   );
 
   bool get _unwritten =>
-      _prepared.isNotEmpty || _sets.any((s) => s.changed.isNotEmpty);
+      _prepared.isNotEmpty ||
+      _planned.isNotEmpty ||
+      _sets.any((s) => s.changed.isNotEmpty);
+
+  /// Whether [id] has a delete prepared or queued: its card is locked.
+  bool _deleting(String id) =>
+      _prepared.containsKey('delete:$id') ||
+      _planned.any((p) => p.key == 'delete:$id');
+
+  bool get _adding =>
+      _prepared.keys.any((k) => k.startsWith('add:')) ||
+      _planned.any((p) => p.key.startsWith('add:'));
 
   @override
   void initState() {
@@ -190,12 +221,13 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     }
   }
 
-  /// Runs [body] after every earlier write. Owed until the sheet has
-  /// nothing unwritten. Completes with whether it landed; never throws (a
-  /// failure is shown while open and keeps the work owed).
-  Future<bool> _run(Future<void> Function() body) {
+  /// Writes everything unwritten after every earlier write. Owed until the
+  /// sheet has nothing unwritten. Completes with whether it landed; never
+  /// throws. A failure is shown once per failed state (then the inline
+  /// note carries it) and keeps the work owed.
+  Future<bool> _run() {
     UnsavedEditors.instance.owe(_owedKey, 'history_sets', _retryAll);
-    return _serial(body).then(
+    return _serial(_writeAll).then(
       (_) {
         if (!_unwritten) {
           UnsavedEditors.instance.paid(_owedKey, _retryAll);
@@ -203,39 +235,109 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
         return true;
       },
       onError: (Object e) {
+        final permanent = historyWriteIsPermanent(e);
+        final changed = !_failed || permanent != _permanent;
         _failed = true;
+        _permanent = permanent;
+        _failure = e;
         _refresh();
-        _showFailure(e);
+        if (changed) _showFailure(e);
         return false;
       },
     );
   }
 
-  /// Lands everything already prepared, then what [prepare] prepares. With
-  /// nothing prepared before, [prepare]'s write is issued synchronously.
-  Future<void> _writeOne(void Function() prepare) async {
-    if (_prepared.isNotEmpty) await _drain();
-    prepare();
-    if (_prepared.isNotEmpty) await _drain();
-    _settled();
-  }
-
-  /// The owed retry: everything prepared, then every set's latest edit.
+  /// Everything prepared, then each queued add or delete, then every set's
+  /// latest edit. With nothing prepared before, the first write is issued
+  /// synchronously. A set whose edit cannot be prepared fails alone; the
+  /// other sets are still written.
   Future<void> _writeAll() async {
-    if (_prepared.isNotEmpty) await _drain();
-    for (final s in _sets.toList()) {
-      if (s.changed.isEmpty) continue;
-      _prepareEdit(s);
-      if (_prepared.isNotEmpty) await _drain();
+    final blocked = _blocked;
+    if (blocked != null) {
+      // No silent retries: only an explicit Discard set changes clears it.
+      throw blocked;
     }
+    try {
+      if (_prepared.isNotEmpty) await _drain();
+      while (_planned.isNotEmpty) {
+        // Prepared against the bases the earlier writes left; kept queued
+        // if it cannot be prepared.
+        _planned.first.prepare();
+        _planned.removeAt(0);
+        await _drain();
+      }
+    } catch (e) {
+      if (historyWriteIsPermanent(e)) _blocked = e;
+      rethrow;
+    }
+    for (final s in _sets.toList()) {
+      if (s.changed.isEmpty ||
+          _deleting(s.id) ||
+          _unpreparable.containsKey(s.id)) {
+        continue;
+      }
+      try {
+        _prepareEdit(s);
+      } on StoreException catch (e) {
+        if (!historyWriteIsPermanent(e)) rethrow;
+        _unpreparable[s.id] = e;
+        continue;
+      }
+      try {
+        if (_prepared.isNotEmpty) await _drain();
+      } catch (e) {
+        if (historyWriteIsPermanent(e)) _blocked = e;
+        rethrow;
+      }
+    }
+    final stuck = _unpreparable.entries
+        .where((e) => _sets.any((s) => s.id == e.key && s.changed.isNotEmpty))
+        .map((e) => e.value);
+    if (stuck.isNotEmpty) throw stuck.first;
     _settled();
   }
 
   void _settled() {
     if (_failed && !_unwritten) {
-      _failed = false;
+      _failed = _permanent = false;
+      _failure = null;
       _refresh();
     }
+  }
+
+  /// After a permanent failure: drops only this sheet's owed writes and
+  /// unwritten edits, after a destructive confirm, then closes so History
+  /// shows the stored sets again.
+  Future<void> _discardOwed() async {
+    if (!_permanent) return;
+    final l = AppLocalizations.of(context);
+    final discard = await showWConfirm(
+      context,
+      title: l.historyDiscardSetsTitle,
+      message: l.historyDiscardOwedMessage,
+      cancelLabel: l.commonKeepEditing,
+      confirmLabel: l.commonDiscard,
+      destructive: true,
+    );
+    if (discard != true || !mounted || !_permanent) return;
+    for (final timer in _timers.values) {
+      timer.cancel();
+    }
+    _timers.clear();
+    _prepared.clear();
+    _planned.clear();
+    _blocked = null;
+    _unpreparable.clear();
+    for (final s in _sets) {
+      s.changed.clear();
+    }
+    UnsavedEditors.instance.discard(_owedKey);
+    setState(() {
+      _failed = _permanent = false;
+      _failure = null;
+      _openId = null;
+    });
+    Navigator.of(context).pop();
   }
 
   void _adoptResult(Map result) {
@@ -252,9 +354,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// keeps the fields it names; untouched fields keep their raw evidence,
   /// and a cleared RIR is written as null.
   void _prepareEdit(_EditableSet s) {
-    if (s.changed.isEmpty ||
-        !_sets.contains(s) ||
-        _prepared.containsKey('delete:${s.id}')) {
+    if (s.changed.isEmpty || !_sets.contains(s) || _deleting(s.id)) {
       return;
     }
     if (_workoutRevision == null || s.revision == null) {
@@ -286,9 +386,9 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     });
   }
 
-  /// Writes [s]'s current values. Completes with whether they landed.
-  Future<bool> _persist(_EditableSet s) =>
-      _run(() => _writeOne(() => _prepareEdit(s)));
+  /// Writes [s]'s current values (and anything else unwritten). Completes
+  /// with whether they landed.
+  Future<bool> _persist(_EditableSet s) => _run();
 
   bool _showingFailure = false;
 
@@ -319,7 +419,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     int? rir,
     bool clearRir = false,
   }) {
-    if (_prepared.containsKey('delete:${s.id}')) {
+    if (_deleting(s.id)) {
       return;
     }
     // A typed weight the sheet could not show in the selected unit (a
@@ -382,7 +482,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
     }
     _timers.clear();
     if (_unwritten) {
-      unawaited(_run(_writeAll));
+      unawaited(_run());
     }
   }
 
@@ -390,7 +490,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// whichever card was open before (itself, if collapsing) without waiting
   /// on the write to land.
   void _toggle(String id) {
-    if (_prepared.containsKey('delete:$id')) {
+    if (_deleting(id)) {
       return;
     }
     commitPendingInput();
@@ -402,9 +502,9 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   }
 
   Future<void> _deleteSet(_EditableSet s) async {
-    if (_prepared.containsKey('delete:${s.id}')) {
-      // The delete is owed: retry that same delete.
-      await _run(_writeAll);
+    // A set with a delete prepared or queued has its card locked, so this
+    // is only a guard; the owed delete retries with everything else.
+    if (_deleting(s.id)) {
       return;
     }
     commitPendingInput();
@@ -420,29 +520,33 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
       return;
     }
     // The set's unwritten edit is moot once it is deleted; an edit already
-    // prepared for it is owed and lands first.
+    // prepared for it is owed and lands first. Behind a failing write the
+    // delete stays queued and is prepared once that write has landed.
     _timers.remove(s.id)?.cancel();
-    await _run(
-      () => _writeOne(() {
-        if (_workoutRevision == null || s.revision == null) {
-          throw const StoreException('observed_revision_required');
-        }
-        final intent = widget.sessionRepo.prepareHistoryEdit(
-          widget.sessionId,
-          _workoutRevision!,
-          {
-            'mode': 'delete',
-            'set': {'id': s.id, 'base': s.revision},
-          },
-        );
-        _prepared['delete:${s.id}'] = _PreparedWrite(intent, (_) {
-          _sets.remove(s);
-          if (_openId == s.id) {
-            _openId = null;
+    setState(
+      () => _planned.add(
+        _PlannedWrite('delete:${s.id}', () {
+          if (_workoutRevision == null || s.revision == null) {
+            throw const StoreException('observed_revision_required');
           }
-        });
-      }),
+          final intent = widget.sessionRepo.prepareHistoryEdit(
+            widget.sessionId,
+            _workoutRevision!,
+            {
+              'mode': 'delete',
+              'set': {'id': s.id, 'base': s.revision},
+            },
+          );
+          _prepared['delete:${s.id}'] = _PreparedWrite(intent, (_) {
+            _sets.remove(s);
+            if (_openId == s.id) {
+              _openId = null;
+            }
+          });
+        }),
+      ),
     );
+    await _run();
   }
 
   /// Appends a new working set, seeded from the last working set (or the
@@ -450,9 +554,9 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
   /// block) with no RIR, so the user usually only needs minor tweaks, then
   /// opens its card.
   Future<void> _addSet() async {
-    if (_prepared.keys.any((k) => k.startsWith('add:'))) {
-      // The add is owed: retry that same add, never a second one.
-      await _run(_writeAll);
+    if (_adding) {
+      // An add is owed or queued: retry it, never add a second one.
+      await _run();
       return;
     }
     // The seed only needs the LOCAL `_sets` values (already current —
@@ -478,8 +582,8 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
         repsKnown = last?.repsKnown ?? true;
     final id = domainUuid.v4();
 
-    await _run(
-      () => _writeOne(() {
+    _planned.add(
+      _PlannedWrite('add:$id', () {
         if (_workoutRevision == null) {
           throw const StoreException('observed_revision_required');
         }
@@ -527,6 +631,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
         });
       }),
     );
+    await _run();
   }
 
   /// The 1-based working-set index for the set at [i], or -1 for warm-ups.
@@ -612,7 +717,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
                 l.historyEditSets,
                 style: WorkoutType.body(size: 12, color: tokens.faint),
               ),
-              if (_failed && _unwritten) ...[
+              if (_failed && _unwritten && !_permanent) ...[
                 const SizedBox(height: 8),
                 Semantics(
                   liveRegion: true,
@@ -621,6 +726,32 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
                     key: const Key('history-not-saved'),
                     maxLines: 3,
                     style: WorkoutType.body(size: 12, color: tokens.danger),
+                  ),
+                ),
+              ],
+              // A permanent failure does not retry: its mapped message and
+              // the one way out, an explicit Discard set changes.
+              if (_failed && _unwritten && _permanent) ...[
+                const SizedBox(height: 8),
+                Semantics(
+                  liveRegion: true,
+                  child: FitLabel(
+                    userMessage(l, _failure!).message,
+                    key: const Key('history-not-saved-permanent'),
+                    maxLines: 6,
+                    style: WorkoutType.body(size: 12, color: tokens.danger),
+                  ),
+                ),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton(
+                    key: const Key('history-discard-owed'),
+                    onPressed: _discardOwed,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      foregroundColor: tokens.danger,
+                    ),
+                    child: Text(l.historyDiscardSetChanges),
                   ),
                 ),
               ],
@@ -639,9 +770,7 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
                             workIndex: _workIndexOf(i),
                             units: widget.units,
                             open: _openId == _sets[i].id,
-                            locked: _prepared.containsKey(
-                              'delete:${_sets[i].id}',
-                            ),
+                            locked: _deleting(_sets[i].id),
                             onTap: () => _toggle(_sets[i].id),
                             onWeight: (v) => _edit(_sets[i], weight: v),
                             onReps: (v) => _edit(_sets[i], reps: v),
@@ -692,6 +821,31 @@ class _SetEditorSheetState extends State<SetEditorSheet> {
       ),
     );
   }
+}
+
+/// Whether a History write failed for good: retrying the same prepared
+/// write cannot succeed (the set or workout changed or is gone, or a base
+/// was never observed). Store recovery refusals and other errors are
+/// transient and keep retrying.
+bool historyWriteIsPermanent(Object error) {
+  if (isStoreRecoveryRefusal(error)) return false;
+  if (errorBucket(error) == ErrorBucket.conflict) return true;
+  return const {
+    'not_found',
+    'deleted_target',
+    'missing_reference',
+    'set_order_review_required',
+    'invalid_projection_field',
+    'operation_id_reuse',
+    'prepared_action_mismatch',
+  }.contains(errorCategory(error));
+}
+
+/// An add or delete the user confirmed, prepared when its turn comes.
+class _PlannedWrite {
+  _PlannedWrite(this.key, this.prepare);
+  final String key;
+  final void Function() prepare;
 }
 
 /// A prepared History write and what to apply locally once it lands.

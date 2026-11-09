@@ -460,9 +460,14 @@ void main() {
       );
     }
   }
-  for (final day in [false, true]) {
+  for (final (day, uncertain) in [
+    (false, false),
+    (true, false),
+    (false, true),
+    (true, true),
+  ]) {
     testWidgets(
-      '${day ? 'Day' : 'Exercise'} editor Discard after a failed save leaves without a write',
+      '${day ? 'Day' : 'Exercise'} editor Discard after a ${uncertain ? 'COMMIT that landed unacknowledged' : 'refused save'} leaves without a further write',
       (tester) async {
         final harness = ScreenHarness();
         addTearDown(harness.close);
@@ -470,7 +475,11 @@ void main() {
         await harness.open(tester, withWorkoutHistory: !day, seed: seedEditors);
         setPhone(tester, width: 412);
         final before = await inventory(tester, harness);
-        final fault = EditorFaultDatabase(harness.database, beforeCommit: true);
+        final fault = EditorFaultDatabase(
+          harness.database,
+          beforeCommit: !uncertain,
+          afterCommit: uncertain,
+        );
         harness.overrideDatabase = fault;
         var closed = 0;
         final guard = EditorGuard();
@@ -531,7 +540,29 @@ void main() {
         await tester.tap(find.text('Discard'));
         await until(tester, () => closed == 1, 'Discard closes the editor');
         expect(fault.actions, hasLength(1));
-        expect(await inventory(tester, harness), before);
+        final after = await inventory(tester, harness);
+        if (!uncertain) {
+          expect(after, before);
+        } else {
+          // The landed COMMIT stays exactly as committed: one operation with
+          // the prepared bytes, the requested name at the next revision, and
+          // nothing written after it.
+          final operations = after['operations'] as List;
+          expect(
+            operations,
+            hasLength((before['operations'] as List).length + 1),
+          );
+          final operation = operations.last as Map;
+          expect(operation['operation_id'], fault.actions.single.operationId);
+          expect(operation['input_bytes'], fault.actions.single.bytes);
+          final saved =
+              ((day ? after['day_templates'] : after['exercises']) as List)
+                  .cast<Map>()
+                  .firstWhere((r) => r['id'] == (day ? 'day' : 'ex'));
+          expect(saved['name'], 'Requested');
+          expect(saved['revision'], 2);
+          expect(await inventory(tester, harness), after);
+        }
         expect(tester.takeException(), isNull);
       },
     );

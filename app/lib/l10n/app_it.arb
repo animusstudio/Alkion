@@ -791,5 +791,9 @@
   "historyDiscardSetsMessage": "Le modifiche non salvate a queste serie andranno perse.",
   "historySetRemoved": "Serie rimossa",
   "historyDeletedExercise": "Esercizio eliminato",
-  "historyNoSetupToLog": "Questo esercizio non ha ancora un’attrezzatura da registrare."
+  "historyNoSetupToLog": "Questo esercizio non ha ancora un’esecuzione o un’attrezzatura da registrare.",
+  "historyDiscardSetChanges": "Scarta le modifiche alle serie",
+  "historyDiscardOwedMessage": "Queste modifiche alle serie non possono essere salvate. Scartandole si eliminano solo loro; le serie salvate restano invariate.",
+  "historyEarlierNotSaved": "Le modifiche precedenti alle serie nella cronologia non sono ancora salvate.",
+  "targetsNotSaved": "Non salvato"
 }

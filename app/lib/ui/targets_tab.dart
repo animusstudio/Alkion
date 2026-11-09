@@ -71,7 +71,13 @@ class _TargetsTabState extends State<TargetsTab> {
           children: [
             Expanded(
               child: TargetsList(
-                writing: _writing.isNotEmpty,
+                writing: _writing,
+                // A failed write's value stays shown until it lands or a
+                // new change replaces it: mark it.
+                unsaved: {
+                  for (final muscle in _pending.keys)
+                    if (!_writing.contains(muscle)) muscle,
+                },
                 targets: byMuscle,
                 onChanged: _setTarget,
               ),
@@ -148,11 +154,18 @@ class TargetsList extends StatelessWidget {
     super.key,
     required this.targets,
     required this.onChanged,
-    this.writing = false,
+    this.writing = const {},
+    this.unsaved = const {},
   });
 
   final Map<String, MuscleTarget> targets;
-  final bool writing;
+
+  /// Muscles whose write is running. Only those rows' steppers are rebuilt
+  /// when it starts or ends, so another row keeps focus and typed text.
+  final Set<String> writing;
+
+  /// Muscles showing a value whose write failed.
+  final Set<String> unsaved;
   final void Function(String muscle, int sets) onChanged;
 
   @override
@@ -168,7 +181,8 @@ class TargetsList extends StatelessWidget {
         }.entries)
           _TargetRow(
             muscle: entry.key,
-            writing: writing,
+            writing: writing.contains(entry.key),
+            unsaved: unsaved.contains(entry.key),
             sets: targets[entry.key]?.targetSets ?? 0,
             tokens: tokens,
             onChanged: onChanged,
@@ -182,13 +196,14 @@ class _TargetRow extends StatelessWidget {
   const _TargetRow({
     required this.muscle,
     required this.writing,
+    required this.unsaved,
     required this.sets,
     required this.tokens,
     required this.onChanged,
   });
 
   final String muscle;
-  final bool writing;
+  final bool writing, unsaved;
   final int sets;
   final WorkoutTokens tokens;
   final void Function(String muscle, int sets) onChanged;
@@ -223,9 +238,17 @@ class _TargetRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 FitLabel(
-                  hasGoal ? l.targetsSetsPerWeek : l.targetsNoGoal,
+                  unsaved
+                      ? l.targetsNotSaved
+                      : hasGoal
+                      ? l.targetsSetsPerWeek
+                      : l.targetsNoGoal,
+                  key: unsaved ? ValueKey('target-unsaved-$muscle') : null,
                   maxLines: 2,
-                  style: WorkoutType.body(size: 12, color: tokens.faint),
+                  style: WorkoutType.body(
+                    size: 12,
+                    color: unsaved ? tokens.danger : tokens.faint,
+                  ),
                 ),
               ],
             );

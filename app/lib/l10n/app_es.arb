@@ -791,5 +791,9 @@
   "historyDiscardSetsMessage": "Se perderán los cambios sin guardar en estas series.",
   "historySetRemoved": "Serie eliminada",
   "historyDeletedExercise": "Ejercicio eliminado",
-  "historyNoSetupToLog": "Este ejercicio aún no tiene un equipo para registrar."
+  "historyNoSetupToLog": "Este ejercicio aún no tiene un equipo para registrar.",
+  "historyDiscardSetChanges": "Descartar los cambios en las series",
+  "historyDiscardOwedMessage": "Estos cambios en las series no se pueden guardar. Al descartarlos solo se eliminan ellos; las series guardadas no cambian.",
+  "historyEarlierNotSaved": "Los cambios anteriores en las series del historial aún no se han guardado.",
+  "targetsNotSaved": "No guardado"
 }

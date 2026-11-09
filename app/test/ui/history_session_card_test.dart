@@ -9,6 +9,7 @@ import 'package:alkion/data/session_repository.dart';
 import 'package:alkion/session/resume.dart';
 import 'package:alkion/ui/history_screen.dart';
 import 'package:alkion/ui/set_editor_sheet.dart';
+import 'package:alkion/data/session_writer.dart' show UnsavedEditors;
 import 'package:alkion/domain/catalog_execution.dart';
 import 'package:provider/provider.dart';
 import 'package:alkion/units/unit_service.dart';
@@ -169,6 +170,9 @@ Future<void> expand(WidgetTester tester) async {
 
 void main() {
   setUpAll(() => initializeDateFormatting());
+  // A refused delete stays owed in the app-wide registry; keep tests apart.
+  setUp(UnsavedEditors.instance.resetForTesting);
+  tearDown(UnsavedEditors.instance.resetForTesting);
 
   for (final direction in TextDirection.values) {
     testWidgets('history disclosure opens down in $direction', (tester) async {
