@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,7 @@ import 'package:alkion/session/active_session_screen.dart';
 import 'package:alkion/session/confirmed_set_feedback.dart';
 import 'package:alkion/widgets/state_motion.dart';
 import 'package:alkion/session/session_manager.dart';
+import 'package:alkion/session/session_header.dart';
 import 'package:alkion/session/set_line.dart';
 import 'package:alkion/session/exercise_picker_sheet.dart';
 import 'package:alkion/settings/settings_service.dart';
@@ -1280,4 +1282,128 @@ void main() {
       await _teardown(tester);
     },
   );
+
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'catalog card: one dim last line, no use-last button, short log bar at 320dp $scale×',
+      (tester) async {
+        real.setPhone(tester, width: 320, textScale: scale);
+        final controller = ActiveSessionController();
+        addTearDown(controller.dispose);
+        final a = _typedSet('typed-a', _typedEvidence(load: '18', unit: 'kg'));
+        final block = _block(warm: [], work: [a])
+          ..catalogSelection = a.catalog!.selection;
+        final ago = DateTime.now().subtract(const Duration(days: 3));
+        block.catalogLastMetrics[a.catalog!.selection.compatibilityKey] =
+            _typedEvidence(load: '18', unit: 'kg').metrics;
+        block.lastTop = (
+          weight: 18,
+          reps: 8,
+          date:
+              '${ago.year}-${ago.month.toString().padLeft(2, '0')}-${ago.day.toString().padLeft(2, '0')}',
+        );
+        controller.seedForTest(_draftWith([block]));
+        final before = a.catalog!.toJson();
+        await tester.pumpWidget(_harness(controller));
+        await tester.pump(const Duration(milliseconds: 400));
+        final reference = find.byKey(const Key('catalog-last-reference'));
+        expect(reference, findsOneWidget);
+        expect(
+          tester.widget<FitLabel>(reference).text,
+          'last 18 kg × 08 · 3d ago',
+        );
+        expect(find.text('Use last values'), findsNothing);
+        expect(find.textContaining('Load (kg):'), findsNothing);
+        expect(find.text('Log set 1'), findsOneWidget);
+        expect(
+          tester.getSemantics(find.byKey(const Key('log-set-bar'))).label,
+          'Log set 1',
+        );
+        expect(a.catalog!.toJson(), before);
+        expectNoSplitWords(tester);
+        expect(tester.takeException(), isNull);
+        await _teardown(tester);
+      },
+    );
+  }
+
+  testWidgets('a catalog set without history has no last line', (tester) async {
+    real.setPhone(tester, width: 412);
+    final controller = ActiveSessionController();
+    addTearDown(controller.dispose);
+    final a = _typedSet('typed-a', _typedEvidence(load: '18', unit: 'kg'));
+    final block = _block(warm: [], work: [a])
+      ..catalogSelection = a.catalog!.selection;
+    controller.seedForTest(_draftWith([block]));
+    await tester.pumpWidget(_harness(controller));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(LiveSetCard), findsOneWidget);
+    expect(find.byKey(const Key('catalog-last-reference')), findsNothing);
+    expect(find.textContaining('last '), findsNothing);
+    await _teardown(tester);
+  });
+
+  testWidgets(
+    'logging a catalog set without its required values toasts and changes nothing',
+    (tester) async {
+      real.setPhone(tester, width: 412);
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final a = _typedSet('typed-a', _typedEvidence(load: ''));
+      final block = _block(warm: [], work: [a])
+        ..catalogSelection = a.catalog!.selection;
+      controller.seedForTest(_draftWith([block]));
+      final before = jsonEncode(controller.draft.toJson());
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Log set 1'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('log-set-bar')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final l = lookupAppLocalizations(const Locale('en'));
+      expect(find.text(l.catalogRequired), findsOneWidget);
+      expect(a.done, isFalse);
+      expect(controller.resting, isFalse);
+      expect(jsonEncode(controller.draft.toJson()), before);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    },
+  );
+
+  for (final code in ['en', 'de', 'es', 'it']) {
+    testWidgets(
+      'after a catalog log, Next names the set and values at 320dp 2× $code',
+      (tester) async {
+        real.setPhone(tester, width: 320, textScale: 2);
+        final controller = ActiveSessionController();
+        addTearDown(controller.dispose);
+        final a = _typedSet('typed-a', _typedEvidence(load: '60', unit: 'kg'));
+        final b = _typedSet('typed-b', _typedEvidence(context: 'Machine B'));
+        final block = _block(warm: [], work: [a, b])
+          ..catalogSelection = a.catalog!.selection;
+        controller.seedForTest(_draftWith([block]));
+        await tester.pumpWidget(_harness(controller, locale: Locale(code)));
+        await tester.pump(const Duration(milliseconds: 400));
+        final l = lookupAppLocalizations(Locale(code));
+        expect(find.text(l.sessionLogSet(1)), findsOneWidget);
+        await tester.tap(find.byKey(const Key('log-set-bar')));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(a.done, isTrue);
+        final next = l.sessionRestNext(
+          '${l.sessionNextSet(2)} · 020.500 lb × 08',
+        );
+        expect(find.text(next), findsOneWidget);
+        expect(find.text(l.sessionLogSet(2)), findsOneWidget);
+        expectNoSplitWords(tester, within: find.byType(SessionHeader));
+        expectNoSplitWords(
+          tester,
+          within: find.byKey(const Key('log-set-bar')),
+        );
+        expect(tester.takeException(), isNull);
+        await _teardown(tester);
+      },
+    );
+  }
 }
