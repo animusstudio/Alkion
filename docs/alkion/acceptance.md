@@ -44,8 +44,8 @@ Contract: [recovery](recovery.md#unreadable-workout-state-at-launch) and
 
 All of this is host and real SQLite evidence on synthetic disposable stores.
 **The damaged-launch path is host-proven only**: damaged state can't be seeded
-on a release-mode APK. The device check (OG3) is a regression check on a clean
-profile and is open. Host checks are listed in the plan's task state.
+on a release-mode APK. The device check (OG3), a regression check on a clean
+profile, passed on the A024 on 2026-11-09. Host checks are listed in the plan's task state.
 
 ## P3 backup and restore flow — 2026-11-09
 

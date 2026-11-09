@@ -1,7 +1,8 @@
 # Unreadable workout state at launch
 
 Date: 2026-11-08, revised 2026-11-09 after design review. Lane: **Full**.
-Status: **Approved** by the owner on 2026-11-09, with the D7/D8 copy (OG2).
+Status: **Done** (OG3 accepted on A024 2026-11-09); approved by the owner on
+2026-11-09, with the D7/D8 copy (OG2).
 Parent: [development](../alkion/development.md).
 Specification: [unreadable workout state](../specs/2026-11-08-unreadable-workout-state.md).
 Baseline: `458aac6`. Branch: `feat/unreadable-workout-state-20261108`.
@@ -41,7 +42,7 @@ decisions D1–D11 and the acceptance A1–A17.
   mismatched timer evidence. Set aside an unreadable draft and record why.
 - **OG2:** approved 2026-11-09: the notice copy (three variants) and the
   Backup-section copy (spec D7, D8) in English. The translations follow.
-- **OG3 (device):** a regression check only, on the owner's phone with the
+- **OG3 (device):** passed on the A024 on 2026-11-09. A regression check only, on the owner's phone with the
   private Dev APK: a normal resume, a finish and History undo, and no notice
   on a clean profile.
   - Damaged state can't be seeded on a release-mode APK, which isn't
@@ -252,4 +253,4 @@ after T1 passes review.
 
 ## Next
 
-T1 starts now. T2 and T3 run in parallel after T1 passes review.
+Done. The background notification actions plan starts after this merge.
