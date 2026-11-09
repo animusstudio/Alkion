@@ -450,12 +450,12 @@ void main() {
         await tester.tap(find.byKey(const Key('rir-0')));
         await tester.pumpWidget(host());
         expect(s.rir, 0);
-        await tester.ensureVisible(find.byKey(const Key('live-clear-rir')));
-        await tester.tap(find.byKey(const Key('live-clear-rir')));
+        // Tapping the selected chip clears it; there is no Clear RIR button.
+        await tester.ensureVisible(find.byKey(const Key('rir-0')));
+        await tester.tap(find.byKey(const Key('rir-0')));
         await tester.pumpWidget(host());
         expect(s.rir, isNull);
         expect(changes, 2);
-        expect(find.byKey(const Key('live-clear-rir')), findsNothing);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
       },

@@ -1098,7 +1098,6 @@
     }
   },
   "trainingWeekdayUnavailable": "Weekday unavailable",
-  "sessionClearRir": "Clear RIR",
   "trainingOpenPlan": "Open Plan",
   "trainingEnableDayInPlan": "Enable a day in Plan",
   "trainingNoActiveDays": "Your saved days are not active. Review them in Plan or start a custom workout.",
@@ -1141,6 +1140,17 @@
   "catalogDistance": "Distance (metres)",
   "catalogOptional": "Optional",
   "catalogRequired": "Enter the required measurements",
+  "catalogRepsCompact": "{count, plural, =1{{reps} rep} other{{reps} reps}}",
+  "@catalogRepsCompact": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "reps": {
+        "type": "String"
+      }
+    }
+  },
   "catalogAddAgain": "Add again",
   "catalogAddSelected": "Add selected",
   "catalogChangeSetup": "Change execution/equipment",
