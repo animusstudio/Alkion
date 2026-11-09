@@ -258,8 +258,9 @@ BlockState buildCatalogBlock({
 typedef LiveSet = ({BlockState block, SetState set});
 
 /// The heaviest done working set in [block] and whether it beats the
-/// block's all-time best (no history counts as a PR). The same rule the
-/// block header and the finish-time PR flag use.
+/// block's all-time best. A PR needs a previous best: a first-ever lift is
+/// not one. The same rule the block header, the finish-time PR flag and the
+/// catalog derivation use.
 ({double topKg, bool isPr}) liveTopOf(BlockState block) {
   if (block.catalogSelection != null) {
     final selection = block.catalogSelection!;
@@ -291,7 +292,7 @@ typedef LiveSet = ({BlockState block, SetState set});
       .where((s) => s.done)
       .fold<double>(0, (m, s) => s.weightKg > m ? s.weightKg : m);
   final best = block.bestKg;
-  return (topKg: top, isPr: top > 0 && (best == null || top > best));
+  return (topKg: top, isPr: best != null && top > best);
 }
 
 /// A fresh workout opens with only its first exercise expanded; the live set
@@ -1693,7 +1694,8 @@ class ActiveSessionController extends ChangeNotifier {
           );
 
   /// Number of exercise blocks that have beaten their all-time best in this
-  /// session, using the current local best evidence.
+  /// session, using the current local best evidence. As in [liveTopOf], a
+  /// block with no previous best has no PR.
   int get prCount {
     var count = 0;
     for (final block in draft.blocks) {
@@ -1721,11 +1723,7 @@ class ActiveSessionController extends ChangeNotifier {
           .where((s) => s.done)
           .fold<double>(0, (m, s) => s.weightKg > m ? s.weightKg : m);
       final best = block.bestKg;
-      if (best == null || (maxDoneWorking > 0 && maxDoneWorking > best)) {
-        if (maxDoneWorking > 0) {
-          count++;
-        }
-      }
+      if (best != null && maxDoneWorking > best) count++;
     }
     return count;
   }
