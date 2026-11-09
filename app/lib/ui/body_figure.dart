@@ -98,9 +98,15 @@ class BodyFigure extends StatefulWidget {
     required this.workload,
     this.visible = true,
     this.width = largeWidth,
+    this.background,
   });
   final WorkoutWorkload workload;
   final bool visible;
+
+  /// The colour of the surface the figure sits on, sent to the native view
+  /// and its loading cover so the artwork box blends in. Null keeps the
+  /// card colour, `tokens.surface`.
+  final Color? background;
 
   /// Figure width; the artwork height follows [artHeightFor].
   final double width;
@@ -185,6 +191,7 @@ class _BodyFigureState extends State<BodyFigure> {
                         visible: widget.visible,
                         compact: true,
                         size: Size(width, artHeight),
+                        background: widget.background ?? context.tokens.surface,
                       ),
                     ),
                   ),
@@ -311,6 +318,8 @@ class _WorkloadSheet extends StatelessWidget {
                 visible: true,
                 compact: false,
                 size: Size(double.infinity, math.max(420, height * .5)),
+                // The sheet itself is a surface.
+                background: t.surface,
               ),
               const SizedBox(height: 16),
               const _WorkloadLegend(key: Key('body-legend')),
@@ -485,11 +494,13 @@ class _BodyArtwork extends StatefulWidget {
     required this.visible,
     required this.compact,
     required this.size,
+    required this.background,
   });
   final WorkoutWorkload workload;
   final bool visible;
   final bool compact;
   final Size size;
+  final Color background;
 
   @override
   State<_BodyArtwork> createState() => _BodyArtworkState();
@@ -626,7 +637,7 @@ class _BodyArtworkState extends State<_BodyArtwork> {
         },
         neutral: t.text,
         accent: t.accentText,
-        background: t.surface,
+        background: widget.background,
         brightness: Theme.of(context).brightness,
         visible: visible,
         reducedMotion: reduced,
