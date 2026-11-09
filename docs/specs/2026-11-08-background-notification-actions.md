@@ -6,6 +6,15 @@ Parent: [development](../alkion/development.md).
 Implementation: [plan](../plans/2026-11-08-background-notification-actions.md).
 Baseline: `458aac6`. Audit item 6.4. App paths are relative to `app/`.
 
+Sibling plans, all dated 2026-11-08, are named by topic here:
+
+- the rest alerts plan, [rest alerts and notifications](../plans/2026-11-08-rest-alerts-and-notifications.md);
+- the storage banner plan, [storage banner and launch screens](../plans/2026-11-08-storage-banner-and-launch-screens.md);
+- the unreadable-workout-state quarantine, in [unreadable workout state](2026-11-08-unreadable-workout-state.md).
+
+OG3 and OG4 are the device gates in this spec's
+[plan](../plans/2026-11-08-background-notification-actions.md#owner-gates).
+
 ## Outcome
 
 During a rest, the workout notification offers **+30s** and **Skip rest**.
@@ -120,160 +129,229 @@ specified only if the OG3 device bar fails.
 
 The secondary isolate is a **messenger with a durable intent journal**. It
 never opens the profile and never touches SQLite, and an import-closure guard
-proves it. The main isolate remains the only SQL owner.
+proves both. The main isolate remains the only SQL owner.
 
 ### D1. Pure modules (no store imports)
 
-- **`lib/session/notification_envelope.dart`** holds the
-  `NotificationAction` value type, its `encode`/`decode`, the payload envelope
-  and the intent record. It imports only `dart:convert` and
+- **`lib/session/notification_envelope.dart`**:
+  - the `NotificationAction` value type, its `encode`/`decode`, the payload
+    envelope and the intent record;
+  - the **only** journal-path function,
+    `notificationJournalDirectory(Directory supportRoot)`, used by both
+    engines (D4);
+  - the port name constant `notificationPortName`
+    (`'<applicationId>.notification-intents'`) and the wake-up message
+    constant.
+
+  It imports only `dart:convert`, `dart:io`, `package:path` and
   `identity/alkion_identity.dart`. `owns(LocalDatabase, …)` moves to
   `notification_action.dart` as a function.
-- **`lib/session/workout_notification_render.dart`** holds:
-  - the Android details builders (P8's channels and alert variant);
+- **`lib/session/workout_notification_render.dart`**:
+  - the Android details builders, with the rest-end channel and alert variant
+    from the rest alerts plan;
   - `_notifStrings`;
-  - a `renderRestMirror(plugin, state)` function that posts the mirror,
-    reschedules or cancels the rest-end alert, and posts nothing else.
+  - a `renderRestMirror(plugin, state)` function that posts the mirror and
+    reschedules or cancels the rest-end alert, and does nothing else.
 
-  It imports the plugin, timezone, `alkion_identity.dart` and the envelope
-  module only. `workout_notification.dart` (the owner) delegates to it.
-- The guard test walks the **transitive** `package:alkion/` import closure of
-  `notification_background.dart`. It fails on any `store/`, `data/`,
-  `recovery/`, `domain/local_action.dart`, `identity/alkion_profile.dart`,
-  sqlite or `sqlite_async` import.
+  It imports only the plugin, timezone, `alkion_identity.dart` and the
+  envelope module. The owner's `workout_notification.dart` delegates to it.
+- **`lib/session/notification_journal.dart`**: the journal reader and
+  writer. It imports the envelope module and `identity/directory_durability.dart`,
+  which has no store imports.
+- **Guard test.** It walks the **transitive** `package:alkion/` import closure
+  of `notification_background.dart`, and fails on any import of `store/`,
+  `data/`, `recovery/`, `domain/local_action.dart`,
+  `identity/alkion_profile.dart`, sqlite or `sqlite_async`.
 
 ### D2. Payload and actions
 
-- The payload is `{format: 'alkion-notification-payload/1', action, step, view}`,
-  at most 4096 bytes. The fields:
-  - `action` is the unchanged `alkion-notification-action/1` object.
-  - `step` (≥ 1) is the ordinal of the next action on that token.
-  - `view` is presentation state: the title, the rest and elapsed bodies
-    (P8's next-set line), `started_at`, `rest_start`, `rest_total`, the locale
-    and the labels. It is never authority.
-- If the payload is too long, the title is shortened. If it still doesn't fit,
-  `view` is omitted: the tap then journals but doesn't render.
-- Legacy payloads, meaning the bare `/1` token from notifications posted by an
-  older build, decode as step 1 with no `view`. Body taps accept both forms.
-- Action order is fixed in every render: **+30s at index 0** (the existing
-  `<prefix>add_30s`) and **Skip rest at index 1** (new `<prefix>skip_rest`).
-  Both use `showsUserInterface: false` and `cancelNotification: false`.
-- Labels come from `_notifStrings` in en, it, de and es: "Skip rest",
-  "Salta recupero", "Pause überspringen", "Saltar descanso".
-- A body tap still opens the workout through the foreground path. **F2 stops
-  the route push for actions.** P8 leaves the action wiring as it is, and F2
-  replaces it.
-- `initialize` registers the background handler. The manifest declares the
-  plugin `ActionBroadcastReceiver` with `exported="false"`. Its comment becomes
-  "headless messenger; no headless SQL writer".
+- **Payload.** The payload is
+  `{format: 'alkion-notification-payload/1', action, step, view}`. Its size is
+  measured in **UTF-8 bytes**: `utf8.encode(payload).length ≤ 4096`. Today's
+  check counts UTF-16 code units (`payload.length > 4096`,
+  `notification_action.dart:39`), and the envelope decoder switches to bytes.
+  The fields:
+  - `action`: the unchanged `alkion-notification-action/1` object.
+  - `step` (≥ 1): the ordinal of the next action on that token.
+  - `view`: presentation state, never authority. It holds the title, the rest
+    and elapsed bodies (with the next-set line from the rest alerts plan),
+    `started_at`, `rest_start`, `rest_total` and the locale. There are no
+    labels, because the renderer derives them from the locale through
+    `_notifStrings`.
+- **Size limit.** If the payload is too long, the title is shortened on a
+  Unicode code point boundary (never splitting a UTF-16 surrogate pair). If it still doesn't fit, `view` is omitted, and the tap
+  then journals but doesn't render.
+- **Legacy payloads.** The bare `/1` token from notifications posted by an
+  older build decodes as step 1 with no `view`.
+  - **Body taps** accept both forms.
+  - **Legacy +30s taps.** An older build's +30s used `showsUserInterface: true`.
+    If that action is tapped after an update and before the first refresh, it
+    reaches the main isolate's foreground callback (or the launch details) with
+    `actionId == <prefix>add_30s` and a bare payload.
+  - The owner **applies a legacy tap directly, without journaling it**,
+    because the owner is already running. It becomes an in-memory intent, with
+    step 1, `tapped_at = now`, a fresh `intent_id` and kind `add`. It goes
+    through the same serialised consumption as a drained intent.
+  - A legacy tap never sets the open request. A foreground response carrying
+    an unknown action ID is ignored.
+  - Legacy receipts recorded no basis. A legacy `issued` receipt takes its
+    basis as the stored action's `restStart` (`action.restStart`) plus the current SQL `restTotal` at
+    first sight; a legacy `consumed` receipt (only `rest_total`) is judged by
+    `restTotal` alone. A legacy tap that meets a `consumed` receipt or a fresh
+    token ends as `refused(conflict)` or `refused(token_superseded)`; that is
+    the intended outcome, and the mirror re-renders from SQL.
+- **Action order** is fixed in every render:
+  - index 0: **+30s**, the existing `<prefix>add_30s`;
+  - index 1: **Skip rest**, the new `<prefix>skip_rest`.
+
+  Both use `showsUserInterface: false` and `cancelNotification: false`. Skip's
+  labels are "Skip rest", "Salta recupero", "Pause überspringen" and
+  "Saltar descanso".
+- **Body tap and route push.** A body tap still opens the workout through the
+  foreground path. **This plan stops the route push for actions.** The rest
+  alerts plan leaves the action wiring as it is, and this plan replaces it.
+- **Registration.** `initialize` registers the background handler. The
+  manifest declares the plugin's `ActionBroadcastReceiver` with
+  `exported="false"`. Its comment becomes "headless messenger; no headless SQL
+  writer".
 
 ### D3. Background handler
 
 `lib/session/notification_background.dart` holds a top-level
 `@pragma('vm:entry-point')` handler.
 
-- It calls `DartPluginRegistrant.ensureInitialized()` first. It **never calls
-  `initialize`** and never requests permission.
+- It calls `DartPluginRegistrant.ensureInitialized()` first. It **never
+  calls `initialize`**, and never requests permission.
 - All work runs on **one module-level future tail**, so concurrent deliveries
-  are serialised in arrival order.
+  are serialised in the order they arrive.
 
-For each event:
+For each event, the handler:
 
-1. If the action ID is not one of the two, or the payload doesn't decode
-   within bounds, it does nothing.
-2. It appends a journal entry (D4). If that fails, it stops without rendering.
-3. It looks up the port `<applicationId>.notification-intents`. If the port
-   exists, it sends a wake-up and stops. The owner renders.
-4. If there is no port, it builds the provisional state by **folding** the
-   journal entries for this token:
-   - the base is the `view` of the lowest-step entry;
+1. Does nothing if the action ID is not one of the two, or the payload doesn't
+   decode within its bounds.
+2. Appends a journal entry (D4). If the append fails, it stops without
+   rendering.
+3. Looks up the port `notificationPortName`. If the port exists, it sends a
+   wake-up and stops; the owner then renders.
+4. If there is no port, builds the provisional state by **folding** the journal
+   entries for this token:
+   - the base is the `view` and step of the lowest-step entry;
    - it takes the first arrival per step, in step order, and stops at a gap;
    - +30s adds 30 to `rest_total`;
    - Skip, or a tap time at or past the folded rest end, gives elapsed mode;
    - the tapped payload's own `view` is never used.
-5. It renders with `renderRestMirror`. The render always uses P8's alert
-   variant, because no screen is open. The new payload carries the folded
-   `view` and `step = last applied step + 1`.
-6. It **looks up the port again after rendering**. If an owner appeared
-   meanwhile, it sends a wake-up, and the owner corrects the mirror with a
-   forced re-render.
 
-The handler writes trace markers through `print`, without names:
-`alkion-notif received|journaled|rendered|woke <intent-id-prefix> <step> <kind>`.
-They are compiled in only with `ALKION_NOTIFICATION_TRACE`, which the private
-Dev APK used for OG3 enables.
+   This matches the owner's token rule (D5): same token, `step` = last folded
+   step + 1.
+5. Renders with `renderRestMirror`, always with the rest-end alert variant,
+   because no screen is open. The new payload carries the folded `view`.
+6. **Looks up the port again after rendering.** If an owner has appeared in
+   the meantime, it sends a wake-up, and the owner corrects the mirror with a
+   forced re-render.
 
 ### D4. Intent journal
 
-- **Location.** A sibling of the support root:
-  `<parent of support root>/.<applicationId>-notification-intents/`. This
-  follows the `EntryJournal` precedent (`lib/identity/entry_journal.dart:47-50`).
-  The root inventories in `AlkionProfile` (`lib/identity/alkion_profile.dart:107-116,182-191,276-290`)
-  and `RestoreService` (`lib/recovery/restore.dart:359-394,438-460`) never see
-  it. Fresh start, first-start restore and "bytes without identity" detection
-  are therefore unchanged. A test asserts this with a populated journal.
-- **Paths.** The background derives the directory from path_provider's files
-  directory, whose path starts `/data/user/0`. The owner derives it from its
-  checked, canonical root, which may differ in spelling. Both must name the
-  same directory. The owner compares with `FileSystemEntity.identical` when
-  both paths exist. A host test uses a symlinked alias, and OG4 checks it on
-  the device.
-- **Entry.** `<tapped_at µs>-<intent_id>.json`, written as `.partial`, flushed,
-  renamed, then the directory is flushed with `flushDirectory`
-  (`identity/directory_durability.dart:7`, no store imports). Content:
+- **Location.** `notificationJournalDirectory(supportRoot)` returns a
+  sibling of the support root:
+  `<parent of supportRoot>/.<applicationId>-notification-intents/`. Both
+  engines pass the **support root**: the owner its checked root, the
+  background `join(filesDirectory, applicationId)`, mirroring
+  `checkedAlkionSupportRoot` including its basename-equals-applicationId case.
+  A test feeds the owner's checked root and the background's derivation from
+  one simulated files directory and asserts the results are identical.
+  - This follows the `EntryJournal` precedent
+    (`lib/identity/entry_journal.dart:47-50`).
+  - The root inventories in `AlkionProfile`
+    (`lib/identity/alkion_profile.dart:107-116,182-191,276-290`) and in
+    `RestoreService` (`lib/recovery/restore.dart:359-394,438-460`) never see
+    this directory. Fresh start, first-start restore and "bytes without
+    identity" detection are therefore unchanged, and a test proves this with a
+    populated journal.
+- **Paths.** The background derives the support root from path_provider's
+  files directory, which starts `/data/user/0`. The owner passes its checked,
+  canonical root. The two
+  strings can differ but name the same directory, so the owner compares with
+  `FileSystemEntity.identical`. A host test covers a symlinked alias, and OG4
+  checks it on the device.
+- **Entry.** Named `<tapped_at µs>-<intent_id>.json`. It is written as
+  `.partial`, flushed, renamed, and then the directory is flushed with
+  `flushDirectory`. Content:
   `{format: 'alkion-notification-intent/1', intent_id, action_id, kind, tapped_at, payload}`.
-- **`tapped_at` is the time the background handler ran**, not the physical
-  tap. It is used for the "rest still running" check and as the tie-breaker
-  between arrivals within one step.
-- **Bounds.** At most 64 committed entries, 8 KiB each. Beyond that, the
+- **`tapped_at`** is the time the background handler ran, not the physical
+  tap. It is used for the "rest still running" check, and to break ties
+  between arrivals in one step.
+- **Bounds.** At most 64 committed entries of 8 KiB each. Beyond that, the
   background refuses and doesn't render.
-- **Undecodable entries.** The owner copies the exact bytes into `reviews`
-  (category `notification_intent_unreadable`, an `rv-`-style deterministic
-  ID), then deletes the file. If that write fails, the file stays and counts
-  toward the cap. No permanent `retained/` directory exists.
+- **Undecodable entries.** The owner copies their exact bytes into `reviews`
+  (category `notification_intent_unreadable`, with an `rv-`-style
+  deterministic ID), then deletes the file. If that write fails, the file stays
+  and counts toward the cap.
 - `.partial` files older than 60 s are removed.
 - The journal is excluded from backups, like OS notifications
   ([backup](../alkion/backup.md)).
 
-### D5. Owner consumption
+### D5. Owner consumption and the token rule
 
-Tokens are keyed by **rest fields, not timer revision** (m3).
-`issueNotificationAction` reuses the issued token while `draftId`,
-`restStart` and `restTotal` are unchanged. At issue, the receipt records the
-rest basis `{rest_start, rest_total}`.
+**One token rule.** A refresh reads the receipt and the current SQL rest
+(`draftId`, `restStart`, `restTotal`):
+
+- If the receipt is `issued` and the current rest equals its issued basis,
+  reuse the token with `step = 1`.
+- If the receipt is `consumed` and the current rest equals its post-step rest,
+  reuse the token with `step = consumed_step + 1`.
+- Otherwise, issue a fresh token: receipt `issued`, basis = the current rest,
+  `step = 1`.
+
+Timer revisions play no part. Every draft save rewrites the timer row
+(`session_writer.dart:566-576`), so unrelated autosaves would otherwise stale
+the visible token. **The plan's storage task removes the existing revision
+checks** in `notification_action.dart`:
+
+- the reuse test at `:113`;
+- the consumed-branch `timer['revision'] == action.timerRevision + 1` at `:182`;
+- the issued-branch `timer['revision'] != action.timerRevision` at `:190`;
+- `expectedRevision: action.timerRevision` at `:209`, which now reads the
+  current timer revision inside the transaction.
+
+The token's `timer_revision` field stays as issue-time evidence. It is still
+decoded, but never compared.
 
 Each intent gets one write transaction with `expected: token`. It checks, as
-today, the application, profile, generation, draft ID, that the token equals
-the issued receipt, and that the draft and timer are both active with agreeing
-rests. Then:
+today, the application, profile and generation, the draft ID, that the token
+equals the receipt's token, and that the draft and timer are both active with
+agreeing rests. Then:
 
-- **Basis.** The current SQL rest must equal the basis of the step: the
-  issued basis for step 1, or the receipt's post-step rest for later steps.
-  Unrelated saves don't refuse a tap. An in-app rest change does.
+- **Basis.** The current SQL rest must equal the step's basis: the issued
+  basis for step 1, or the receipt's post-step rest for a later step. Any
+  in-app rest change wins, and the tap is refused `basis_changed`.
+
+  With the workout screen open, the screen's ticker stops the rest at zero
+  (`session/active_session_screen.dart:106-107`). So a +30s still in the
+  journal about 1 s before expiry is refused `basis_changed`.
 - **Step.**
-  - `step == consumed_step + 1` → apply.
-  - `step ≤ consumed_step` with `intent_id == last_intent_id` → `duplicate`
-    (the same entry delivered again).
-  - `step ≤ consumed_step` with another intent → `refused(conflict)`. This is
-    a second tap before the notification visibly updated, which counts once.
-  - `step > consumed_step + 1` → `refused(gap)`.
+  - `step == consumed_step + 1`: apply.
+  - `step ≤ consumed_step` and `intent_id == last_intent_id`: `duplicate`.
+  - `step ≤ consumed_step` with another intent: `refused(conflict)`. This is
+    a second tap before the visible update.
+  - `step > consumed_step + 1`: `refused(gap)`.
   - A legacy `consumed` receipt counts as step 1.
-- **Time.** `tapped_at` must be ≥ `rest_start` and ≤ now + 2 min. The rest
-  must still be running at `tapped_at`.
+- **Time.** `tapped_at` must be at or after `rest_start`, and no later than
+  now + 2 min. The rest must still be running at `tapped_at`.
 - **+30s.** `restTotal += 30` in both the draft and the timer.
 - **Skip.** `restStart = null`, `restTotal = 0` and
-  `restEndedAt = min(tapped_at, due)` in both. This is `stopRest`
-  (`active_session_controller.dart:1494`) at the tap time.
-  `CommittedRestChange` gains a nullable `restStart` and a nullable
-  `restEndedAt`, and `_adoptNotificationRest` takes `endedAt` from the commit.
+  `restEndedAt = min(tapped_at, due)` in both. That is `stopRest`
+  (`active_session_controller.dart:1494`) evaluated at the tap time.
+  `CommittedRestChange` gains a nullable `restStart` and `restEndedAt`, and
+  `_adoptNotificationRest` takes `endedAt` from the commit.
 - **Receipt.** It becomes `consumed` with
   `{action, basis, consumed_step, last_intent_id, kind, rest_start, rest_total, rest_ended_at, draft_revision}`.
-- **Outcomes.** `applied`, `duplicate` or `refused(reason)`. The reasons are
-  `stale_generation`, `foreign`, `draft_not_active` (including an F1-retired
-  draft), `token_superseded`, `basis_changed`, `conflict`, `gap`, `late` and
-  `clock`. Only `applied` writes.
+- **Outcomes.** `applied`, `duplicate`, or `refused(reason)`, where the reason
+  is one of `stale_generation`, `foreign`, `draft_not_active` (including a
+  draft just retired by the unreadable-workout-state quarantine),
+  `token_superseded`, `basis_changed`, `conflict`, `gap`, `late` or `clock`.
+  Only `applied` writes.
 - **No outbox.** No domain row, operation or outbox entry is written. The
-  receipt stays one `local_state` row, so no schema change is needed.
+  receipt stays one `local_state` row, and the schema doesn't change.
 
 **Drain order** is by token, then step, then (`tapped_at`, `intent_id`). An
 entry is deleted only after its outcome is durable. A delete that fails with
@@ -281,72 +359,98 @@ ENOENT counts as success.
 
 ### D6. Owner drains, open order, ghosts and close
 
-- **Serialised.** One drain tail in `SessionManager` runs the wake-up,
-  resume, flush and open drains in sequence.
+- **Serialised.** One drain tail in `SessionManager` runs every drain in
+  turn: wake-up, resume, flush and open.
 - **Open sequence:**
   1. Open the store, settings and catalog.
-  2. Run F1's quarantine.
+  2. Run the unreadable-workout-state quarantine.
   3. Construct `SessionManager`.
-  4. **Register the port** after removing any stale mapping. A wake-up now
-     only marks a drain as owed.
+  4. **Register the port**, after removing any stale mapping. The port is in
+     *opening* mode: a wake-up only sets `drainOwed = true`.
   5. Drain #1, SQL only.
-  6. Run `resumeFromDraft` and `loadLastFinished`, then `init`. The init-time
-     `_reconcileRest` is skipped while the journal is non-empty.
+  6. Run `resumeFromDraft`, `loadLastFinished` and `init`.
   7. Build the history mappings, then run `initializeNotifications`.
   8. Drain #2, through the controller if one exists.
   9. If **no workout is active**, cancel mirror ID 4101 and its scheduled
-     rest-end alert: P8's alert reuses that ID, and the plugin's `cancel(id)`
-     also cancels the alarm. Otherwise, refresh with `force` (`_lastShown`
-     cleared).
-- **Drain before issue.** `refreshNotifications` drains before it issues.
-  While the journal still holds entries for the current token after a drain,
-  for example while a Finish is pending, it issues no replacement token.
-- **With a live controller.**
-  1. Settle owed saves; these no longer refuse an intent, because consumption
+     rest-end alert. The rest alerts plan's alert reuses ID 4101, and the
+     plugin's `cancel(id)` also cancels the alarm. Otherwise, refresh with
+     `force`, which clears `_lastShown`.
+  10. **Release the owed drain.** While `drainOwed` is set, clear it, run one
+      more drain and repeat step 9. Then switch the port to *immediate* mode,
+      where every later wake-up queues a drain on the tail directly. The final
+      `drainOwed` check and the switch run synchronously, with no `await`
+      between them, so a wake-up can't fall into the gap.
+- **Failed open.** If `AlkionRuntime.open` throws after step 4, its catch
+  **unregisters the port** before `store.close()` (`lib/main.dart:181-184`).
+  This leaves no owner port behind a launch-failure screen, so the background
+  keeps rendering provisionally.
+- **Refresh drains first.** A refresh then applies the token rule (D5). A
+  fresh token is issued only when the SQL rest differs from the receipt's
+  basis or post-step rest. Any entries still journaled for the old token
+  then end as `refused(token_superseded)`.
+- **With a live controller:**
+  1. Settle owed saves. They don't refuse an intent, because consumption
      judges by rest fields.
   2. Consume.
   3. Adopt the committed rest with the queued edits.
   4. Keep an uncertain COMMIT in `DraftStore.pendingNotificationAction` until
      the receipt answers it.
 
-  While `callbacksFrozen` is set, entries wait. Every decided intent ends with
-  a forced refresh.
-- **Resume.** On `resumed`, drain first. `_reconcileCommittedRest` runs only
-  after the drain, and skips the stop while the journal is non-empty (M1).
-- **Robustness.** Drain errors never fail launch or crash the app:
+  While `callbacksFrozen` is set, entries wait. Every decided intent ends
+  with a forced refresh.
+- **Rest reconciliation is bounded.** On `resumed`, and in `init`, a drain
+  runs first. `_reconcileCommittedRest` and `_reconcileRest` skip stopping an
+  elapsed rest **only while that drain is in flight**. Once the drain has
+  finished, whether it succeeded or failed and whatever entries remain,
+  reconciliation runs normally. A permanently stuck entry therefore can't
+  keep an elapsed rest running.
+- **Robustness.** Drain errors never fail launch or crash the app. This
+  covers:
   - I/O errors and a missing directory;
-  - non-file or symlink entries, which are ignored and not followed;
+  - non-file or symlink entries, which are ignored and never followed;
   - a failed copy of an undecodable entry;
-  - a store error, such as a malformed draft before F1.
+  - store errors.
 
-  In each case the entry stays, and the error goes to P2's persistence banner.
-- **Close and restore.** `close()` marks the port handler `closing`, so
-  wake-ups are ignored. The port stays registered **until
-  `closeNotifications` has cancelled the mirror** and the store has closed.
+  The entry stays, and the error goes to the storage banner from the storage
+  banner plan.
+- **Close and restore.** `close()` first puts the port into *closing* mode,
+  in which wake-ups are ignored. The port stays registered until
+  `closeNotifications` has cancelled the mirror and the store has closed.
   While the port exists, the background never renders. After the port is
   unregistered, the background may render provisionally. The next open's
-  drain refuses old-generation entries, and the ghost rule then cancels or
-  refreshes the mirror.
+  drain then refuses old-generation entries, and step 9 cancels or refreshes
+  the mirror.
+
+**Markers.** With `ALKION_NOTIFICATION_TRACE` compiled in (private Dev APK
+only), `print` writes markers without names:
+
+- background: `alkion-notif received|journaled|rendered|woke <intent-id-prefix> <step> <kind>`;
+- owner: `alkion-notif applied|refused <reason>|duplicate <intent-id-prefix> <step>`,
+  `alkion-notif re-rendered <token-prefix> <step>` after every owner render,
+  and `alkion-notif ghost-cancelled`.
 
 ### D7. "Count each visible tap" in practice
 
-Constraint 1 means a tap always carries the latest posted payload.
+Constraint 1 means a tap always carries the latest posted payload. Under the
+token rule, the notification carries the same token and the next step once a
+step is applied, whether the owner or the background re-renders it.
 
-- Taps made before the notification visibly updates share one step: the
-  first applies, and the others are `conflict` or `duplicate`.
-- A tap after the update carries the next step, or a fresh token, and applies
-  again.
+- Taps made before the notification visibly updates share one step. The
+  first applies, and the others are `conflict` (or a `duplicate` on
+  redelivery).
+- A tap after the update carries the next step, so it counts again. A fresh
+  token appears only after an in-app rest change.
 
 ## Boundaries
 
 - **Single owner.** Only the main isolate's `LocalStore` reads or writes the
   profile. The background touches only the sibling journal and the plugin.
-- **Outbox and data separation** ([AGENTS.md](../../AGENTS.md)): no domain
+- **Outbox and data separation** ([AGENTS.md](../../AGENTS.md)). No domain
   action is written. Uncertain intent is kept until SQL decides it.
   Undecodable intent is copied into `reviews` before it is removed.
-- **Offline.** No connection I/O, no new permission, no foreground service.
-- **Tests and claims** ([app/AGENTS.md](../../app/AGENTS.md)): consumption is
-  tested on real SQLite, and host results never claim device qualification.
+- **Offline.** No connection I/O, no new permission and no foreground service.
+- **Tests and claims** ([app/AGENTS.md](../../app/AGENTS.md)). Consumption is
+  tested on real SQLite. Host results never claim device qualification.
 
 ## Non-goals
 
@@ -356,83 +460,108 @@ as reviews.
 
 ## Acceptance
 
-- **A1 (foreground).** +30s and Skip from the shade change the live rest at
-  once. No route is pushed.
-- **A2 (backgrounded).** The owner applies and re-renders without the app
-  coming forward. The screen shows the same rest on return.
+- **A1 (foreground).** With the shade pulled down, +30s and Skip change the
+  live rest at once, and no route is pushed.
+- **A2 (backgrounded).** The owner applies the tap and re-renders without the
+  app coming forward. On return, the screen shows the same rest.
 - **A3 (killed).** The provisional mirror shows the change, and the rest-end
-  alert moves or is cancelled. The next launch applies the taps before resume,
-  empties the journal and issues a fresh token.
-- **A4 (killed chain, end to end).** +30s, +30s, Skip through the real
-  handler with captured payloads, then a real-runtime launch. SQL equals the
-  three applied in order.
+  alert moves or is cancelled. The next launch applies the tap before resume,
+  empties the journal and re-renders with the same token and the next step.
+- **A4 (killed chain, end to end).** +30s, +30s, Skip go through the real
+  handler with captured payloads, followed by a real-runtime launch. The SQL
+  state equals all three applied in order.
 - **A5 (Skip semantics).** `restEndedAt` is the tap time, capped at the due
   time. Elapsed mode shows no actions, and no alert fires.
 - **A6 (visible taps).** Taps before the notification visibly updates count
-  once, whatever the app state. A tap after the update counts again, with no
-  time-based debounce.
-- **A7 (concurrent and mixed).** Two deliveries are serialised. Mixed +30s and
-  Skip at one step apply only the first arrival, and the second is
+  once, in every app state. A tap after the update counts again. There is no
+  time debounce.
+- **A7 (concurrent and mixed).** Two deliveries are serialised. With mixed
+  +30s and Skip at one step, only the first arrival applies, and the second is
   `refused(conflict)`. The provisional mirror equals the fold. A redelivered
   entry is a `duplicate`.
-- **A8 (stale token).** A tap issued before an in-app rest change, a finish, a
-  discard or a restore is refused, and the mirror re-renders from SQL. An
-  unrelated autosave does not make the visible token stale.
-- **A9 (late or odd clock).** +30s after the rest end is refused, and Skip is
-  a no-op. A tap time before rest start, or more than 2 min in the future, is
-  refused.
-- **A10 (crash: background).** A kill after the rename and before the render
+- **A8 (token rule).**
+  - An unrelated autosave keeps the visible token valid.
+  - An in-app rest change, a finish, a discard or a restore makes a pending
+    tap `refused`, and the mirror re-renders from SQL.
+  - With the screen open, a +30s pending as the ticker stops the rest at zero
+    is refused `basis_changed`.
+  - The removed revision checks are covered by tests that would fail if those
+    checks returned.
+- **A9 (late or odd clock).**
+  - A +30s or a Skip tapped after the rest end is `refused(late)` and writes
+    nothing.
+  - A tap time before rest start, or more than 2 min in the future, is
+    refused.
+- **A10 (crash, background).** A kill after the rename and before the render
   is applied once by the next drain. A kill before the rename leaves no entry
   and no render.
-- **A11 (crash: owner).** A kill inside the consume transaction applies
-  nothing, keeps the entry, and the next drain applies it. A kill after COMMIT
-  and before the delete is seen as a duplicate and deleted. ENOENT on delete
-  counts as success.
-- **A12 (uncertain COMMIT).** An injected COMMIT failure keeps the entry and
-  the pending action. Reconciling by receipt never applies twice.
-- **A13 (tap during open).** A real-runtime test journals a tap between each
-  open phase:
+- **A11 (crash, owner).** A kill inside the consume transaction applies
+  nothing and keeps the entry, and the next drain applies it. A kill after
+  COMMIT and before the delete is seen as a duplicate and deleted. ENOENT on
+  delete counts as success.
+- **A12 (uncertain COMMIT).** An injected COMMIT failure keeps both the entry
+  and the pending action. Reconciling by receipt never applies a tap twice.
+- **A13 (tap during open).** A real-runtime test journals a tap at each of
+  these points:
   - after quarantine;
   - between drain #1 and resume;
-  - during `initializeNotifications`.
+  - during `initializeNotifications`;
+  - during drain #2;
+  - during the step-9 refresh.
 
-  Each tap is applied once, and the final mirror carries the applied rest.
-- **A14 (ghosts).** A pending provisional mirror is cancelled, alert included,
-  at the next open in each of these cases:
-  - F1 quarantines the draft;
-  - a restore selects a generation without a workout;
+  Each tap is applied exactly once, the port reaches *immediate* mode, and the
+  final mirror carries the applied rest.
+- **A14 (failed open).** An injected failure after port registration leaves
+  no port registered and the store closed. A later background tap renders
+  provisionally.
+- **A15 (ghosts).** A pending provisional mirror is cancelled at the next
+  open, alert included, in each of these cases:
+  - the unreadable-workout-state quarantine retires the draft;
+  - a restore selects a generation with no workout;
   - an old-generation intent is refused.
-- **A15 (close).** During `close()` the port stays registered and ignores wake-ups (`closing`), so the background
-  doesn't render, and the mirror stays cancelled.
-- **A16 (resume ordering).** On `resumed` with a journaled +30s, the rest is
-  extended and not stopped.
-- **A17 (negative input).**
-  - An unknown action ID, an oversize payload or an undecodable payload gets
-    no write and no render.
+- **A16 (close).** During `close()` the port stays registered in *closing*
+  mode, the background doesn't render, and the mirror stays cancelled.
+- **A17 (rest reconciliation).** On `resumed` with a journaled +30s, the rest
+  is extended, not stopped. With an entry that can't be decided, an elapsed
+  rest is still stopped once the drain finishes.
+- **A18 (legacy action).** A bare-payload foreground response with
+  `<prefix>add_30s` applies once and pushes no route. A foreground response
+  with an unknown action ID is ignored.
+- **A19 (negative input).**
+  - An unknown action ID, or an oversize or undecodable payload, causes no
+    write and no render.
   - An undecodable entry is copied byte-identical into `reviews`, then
     removed.
-  - With the journal full, the background refuses.
+  - When the journal is full, the background refuses the tap.
   - Directory, symlink and I/O faults never fail launch.
-- **A18 (isolation).**
-  - The import closure of the background handler holds no store code.
-  - The handler works while a real store holds the owner lock, and never calls
-    `initialize` or requests permission.
+- **A20 (isolation).**
+  - The import closure of the background handler contains no store code.
+  - The handler works while a real store holds the owner lock. It never calls
+    `initialize` and never requests permission.
   - Intents for another application, profile or generation are refused.
-  - A populated journal doesn't change fresh-start or restore inventory
+  - A populated journal doesn't change the fresh-start or restore inventory
     checks.
-- **A19 (envelope).**
-  - Legacy bare `/1` body-tap payloads still open the workout.
-  - The 4096-byte boundary holds with long names in all four locales.
+- **A21 (envelope).**
+  - Legacy `/1` body-tap payloads still open the workout.
+  - The 4096-byte UTF-8 boundary holds for long multibyte names in de, es and
+    it, and also for emoji. The test sits exactly at the boundary.
   - Action order is +30s first and Skip second in every render.
-- **A20 (port).** A stale port with no listener leaves the entry for the next
-  drain. The handler then shows no render, which is the honest feedback.
-- **A21 (backup and restore).** A flush drains before backup, so the backup
+  - Both engines resolve the journal directory through the one shared
+    function.
+- **A22 (port).** A stale port with no listener leaves the entry for the next
+  drain, with no render, which is the honest feedback.
+- **A23 (backup and restore).** A flush drains before backup, so the backup
   holds the applied rest and no journal. After a restore, old-generation
   entries are refused and removed.
-- **A22 (docs).** The docs record the design:
+- **A24 (docs).** The docs record the design:
   - the notification doc comments and the manifest comment;
-  - `docs/alkion/recovery.md` (the "background +30s handler" wording);
+  - `docs/alkion/recovery.md`, replacing the "background +30s handler" wording;
   - `development.md`, `acceptance.md` and `android-smoke.md`.
-- **A23 (checks).** `make -C app analyze` and the full suite pass, apart
-  from the three named inherited failures.
-- **Device.** OG3 and OG4 in the plan, with a decidable bar.
+- **A25 (checks).** `make -C app analyze` and the full suite pass, apart from
+  the three named inherited failures.
+- **Device (the plan's owner gates OG3 and OG4).**
+  - Latency is measured from the **physical tap**, with "show taps" enabled and
+    `adb shell screenrecord`, to the frame where the notification visibly
+    changes. The `received` marker is the earliest point inside the app, and is
+    reported alongside.
+  - The bar is decided from the markers listed in D6.

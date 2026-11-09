@@ -61,7 +61,7 @@ after T1 passes review.
 | --- | --- | --- |
 | T1 Classifiers and quarantine (storage) | See "T1 owns" below | A1–A12, A13 (delete guard) |
 | T2 Runtime, notice and Backup section (UI) | See "T2 owns" below | A1, A4, A5, A9, A13, A16 |
-| T3 Backup, restore and docs | New `test/alkion/recovery/workflow_quarantine_backup_test.dart`, covering backup and restore, isolation (a second profile and other generation digests) and P3's `keepAll`. Docs: `docs/alkion/recovery.md`, `storage.md`, `acceptance.md` (dated entry) | A14, A15, A17 |
+| T3 Backup, restore and docs | New `test/alkion/recovery/workflow_quarantine_backup_test.dart`, covering backup and restore, isolation (a second profile and other generation digests) and P3's `keepAll` (that one case waits for P3's review task, which adds `RestoreReviews.keepAll`). Docs: `docs/alkion/recovery.md`, `storage.md`, `acceptance.md` (dated entry) | A14, A15, A17 |
 
 **T1 owns:**
 - New `app/lib/data/workflow_state_quarantine.dart`, holding:
@@ -71,9 +71,14 @@ after T1 passes review.
   - a `@visibleForTesting` checkpoint;
   - `pendingNotices()`, `acknowledge(ids)` and `keptReviews()`.
 - `active_session_draft.dart` and `finished_session_store.dart`: the shared
-  classifiers and uniform categories (spec D1), plus `clearForSession` skipping
-  `quarantined`.
-- The `session_repository.dart:713-738` active-only guard.
+  classifiers and uniform categories (spec D1, including the new
+  `malformed_timer_preserved`), plus `clearForSession` skipping `quarantined`.
+- `lib/store/local_store.dart`: a new `LocalTransaction.retireLocalState`. It
+  is a status-only `UPDATE` guarded by revision and generation, followed by a
+  re-read, and never rewrites the payload (spec D4).
+- The `session_repository.dart:713-738` guard: check the status before the
+  `payload_bytes as List` cast, and skip `quarantined`. Every other status,
+  `expired` included, behaves as today.
 - Tests: new `test/data/workflow_state_quarantine_test.dart`, a crash child at
   `test/support/workflow_quarantine_crash.dart` (pattern:
   `test/support/remote_recovery_crash.dart`) and a `LocalDatabase` fault
@@ -83,7 +88,9 @@ after T1 passes review.
 - in `AlkionRuntime.open`, the quarantine call before `resumeFromDraft`, plus
   `PackageInfo` and the decoder info;
 - the `workflowNotices` `ValueNotifier` field, and its dispose in `close()`;
-- in the `AlkionApp` `builder` `Stack`, one new child below P2's banner.
+- in the `AlkionApp` `builder` `Stack`, one new `Positioned(top: 0)` child.
+  It is built only while `persistenceFailure.value == null`, so it never
+  overlaps P2's banner (spec D7).
 
 **T2 owns, outside `main.dart`:**
 - the new `lib/widgets/kept_data_notice.dart`;
@@ -108,10 +115,17 @@ after T1 passes review.
   (`lib/recovery/backup.dart:89-90`). The ID is
   `wq-<sha256(localBytes({format, kind, rows}))[0:40]>`, and the `decoder`
   record stays out of the hash. Look up an existing ID inside the write
-  transaction. Identical rows skip the insert; different rows throw
-  `quarantine_review_conflict`.
-- **Retire:** each active inspected row goes through `putLocalState` with the
-  same bytes, `expectedRevision` = its revision, and `quarantined`.
+  transaction:
+  - identical rows skip the insert;
+  - different rows use the deterministic fallback ID, with `conflicts_with`
+    (spec D6);
+  - a taken fallback ID throws `quarantine_conflict_preserved`.
+- **Retire:** each active inspected row goes through `retireLocalState`, with
+  `expectedRevision` set to its revision. Its payload keeps its value and its
+  SQLite type, TEXT included.
+- **Finished format:** if the embedded `draft` object of a decodable snapshot
+  has an unsupported `format`/`version`, the reason is
+  `finished_recovery_unsupported_format`.
 - **Checkpoints:** `quarantine-review-written` (inside the transaction, before
   the retire) and `quarantine-committed`. The crash child exits at each one.
 - **Fault wrapper:** extend the `FaultDatabase` pattern
@@ -120,6 +134,11 @@ after T1 passes review.
   - `readTransaction` throws (`recovery_required`, `SqliteException`);
   - `writeTransaction` faults before COMMIT;
   - `writeTransaction` faults after COMMIT.
+
+  These faults run against the quarantine function directly, because
+  `AlkionRuntime.open` accepts only a real `LocalStore`. A real `open` on the
+  same store directory then checks the launch outcome (spec A8, A12). No
+  production test parameter is added.
 - **Accepted-shape sweep (A6):** run each accepting fixture of
   `test/session/draft_json_test.dart` through the quarantine and through a
   real-store `open`. That covers the unversioned legacy draft, v2 and the
