@@ -140,7 +140,25 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
 
 ## Task state
 
-None started.
+- **T1 Shared pieces: done** (pending review). Code `6425dd21`, tests `2ddd3ec1`.
+  - `make -C app get` → resolved offline with the committed lock.
+  - `make -C app test TEST='--concurrency=2 test/ui/slot_summary_test.dart
+    test/data/planned_workload_test.dart test/ui/training_prescriptions_test.dart
+    test/ui/body_figure_test.dart'` → 64 passed.
+  - `make -C app analyze` → no issues.
+  - `make -C app fmt FORMAT_FILES='<the 5 source and 4 test files>'` → 0 changed.
+  - Public API: `slotFromDraft(SlotDraft, {position})`, `slotSummary(Slot, Exercise)` ->
+    `SlotSummary` (`labels(l, units)`), `SlotSummaryChips({summary})`,
+    `slotArtwork(scope, {exerciseId, selection})`, `SlotThumbnail({exerciseId, selection})`;
+    `resolvePlannedDaySlots(day, exercisesById)`, `plannedDayWorkload(day, exercisesById,
+    resolutions)`, `PlanWorkloadInputs.load(db, days, bundle)` and `.dayWorkload(day)`;
+    `topWorkloadMuscles(workload, limit)`, `WorkloadTopMuscles({workload, limit = 3})`;
+    `formatRepPair`, `formatSetsReps`, `formatRirTarget`, `authoredRepPair`;
+    `workloadDisplayCounts`, `workloadRegionLabel`.
+  - Notes for review and T4: a catalog slot whose profile has no `repetitions` metric has no
+    reps; an invalid `repetitions` target reads unavailable rather than falling through; RIR
+    evidence that does not qualify shows `trainingRirUnavailable` as the editor does; a slot
+    with no reps shows a bare `3×` chip until T4 adds a set-count string.
 
 ## Next
 
