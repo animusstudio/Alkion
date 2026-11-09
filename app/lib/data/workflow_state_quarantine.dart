@@ -367,9 +367,12 @@ Future<String> _keep(
 /// one transaction, before any controller owns the rows. A read transaction
 /// decides first; nothing is written unless it found damage. Storage failures
 /// propagate unchanged. Returns the review IDs that hold the damaged groups.
+/// [decoder] is called only once damage is found, before the write
+/// transaction, so a clean launch never asks the platform for a version;
+/// without it the build is recorded as `unknown`.
 Future<List<String>> quarantineUnreadableWorkflowState(
   LocalDatabase db, {
-  DecoderInfo? decoder,
+  Future<DecoderInfo> Function()? decoder,
   @visibleForTesting RecoveryCheckpoint? checkpoint,
 }) async {
   final expected = db.token;
@@ -378,7 +381,7 @@ Future<List<String>> quarantineUnreadableWorkflowState(
     expected: expected,
   );
   if (!damaged) return const [];
-  final info = decoder ?? DecoderInfo();
+  final info = decoder == null ? DecoderInfo() : await decoder();
   final ids = await db.writeTransaction((tx) async {
     final groups = await _inspect(tx);
     final ids = [for (final group in groups) await _keep(tx, group, info)];

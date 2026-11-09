@@ -355,13 +355,18 @@ void main() {
     final draftType = await sqlType(store, LocalStateKind.draft);
     final others = await withoutWorkflowTables(store);
     final fault = WorkflowFaultDatabase(store);
+    var decoderCalls = 0;
     final ids = await quarantineUnreadableWorkflowState(
       fault,
-      decoder: DecoderInfo(appVersion: '9.8.7', buildNumber: '42'),
+      decoder: () async {
+        decoderCalls++;
+        return DecoderInfo(appVersion: '9.8.7', buildNumber: '42');
+      },
     );
     final rows = [draft, ?timer];
     expect(ids, [expectedId('draft', rows)]);
     expect(fault.writes, 1);
+    expect(decoderCalls, 1, reason: 'asked once, only after damage');
     final review = (await reviews(store)).single;
     expect(review['review_id'], ids.single);
     expect(review['category'], 'workflow_state_unreadable');
@@ -690,9 +695,20 @@ void main() {
       Future<void> check(String name) async {
         final before = await store.inventory();
         final fault = WorkflowFaultDatabase(store);
-        expect(await quarantineUnreadableWorkflowState(fault), isEmpty);
+        var decoderCalls = 0;
+        expect(
+          await quarantineUnreadableWorkflowState(
+            fault,
+            decoder: () async {
+              decoderCalls++;
+              return DecoderInfo();
+            },
+          ),
+          isEmpty,
+        );
         expect(fault.writes, 0, reason: name);
         expect(fault.reads, 1, reason: name);
+        expect(decoderCalls, 0, reason: '$name: no version without damage');
         expect(await store.inventory(), before, reason: name);
         expect(await reviews(store), isEmpty, reason: name);
       }

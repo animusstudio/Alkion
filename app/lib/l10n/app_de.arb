@@ -373,6 +373,14 @@
   },
   "alkionLegacyFallback": "Daten fehlen · Legacy-Anzeige",
   "alkionRetry": "Lokal erneut speichern",
+  "alkionKeptNoticeDraft": "Dein unfertiges Training konnte nicht geöffnet werden. Seine gespeicherten Daten bleiben erhalten und sind in Backups enthalten.",
+  "alkionKeptNoticeFinished": "Das Rückgängigmachen deines zuletzt beendeten Trainings konnte nicht geladen werden. Seine gespeicherten Daten bleiben erhalten und sind in Backups enthalten. Trainings im Verlauf sind nicht betroffen.",
+  "alkionKeptNoticeBoth": "Dein unfertiges Training und das Rückgängigmachen deines zuletzt beendeten Trainings konnten nicht geöffnet werden. Ihre gespeicherten Daten bleiben erhalten und sind in Backups enthalten. Trainings im Verlauf sind nicht betroffen.",
+  "alkionKeptDataSection": "Aufbewahrte Trainingsdaten",
+  "alkionKeptDataDraft": "Unfertiges Training",
+  "alkionKeptDataFinished": "Daten zum Rückgängigmachen des Beendens",
+  "alkionKeptDataOther": "Trainingsdaten",
+  "alkionKeptDataExplain": "Als Nachweis aufbewahrt und in Backups enthalten.",
   "alkionDateUnavailable": "Datum unklar · {raw}",
   "@alkionDateUnavailable": {
     "placeholders": {
