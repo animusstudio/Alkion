@@ -156,9 +156,21 @@ deleted.
   reconciled, which the proof checks on a READONLY copy.
 * The selected generation's higher generation makes every older `StoreToken`,
   autosave, background +30s payload and callback fail as `stale_generation`.
-* In the app, restore flushes owed input, replaces the UI, then closes the
-  runtime (sessions, timers, watches, store) before staging; the next runtime
-  opens the selected generation.
+* In the app, restore is refused with `workout_active` while a workout is
+  running or starting: the screen asks before any picker opens, and
+  `RuntimeRecoveryHost.restoreBackup` checks `hasActive` and takes the session
+  launch fence (`tryBeginLaunch`) synchronously before verifying, so no workout
+  can start or resume until the restore ends; the fence is released on every
+  path. It then flushes owed input, replaces the UI, closes the runtime
+  (sessions, timers, watches, store) before staging; the next runtime opens the
+  selected generation.
+* If that close fails, nothing is restored. *Reopen* shows the same runtime
+  again when the flush barrier refused before any owner was disposed (the
+  optional Animus connection stays closed until the next launch); otherwise it
+  retries the close and relaunches. A retry that fails again stays on the
+  screen as a retryable error, so Reopen never meets the still-held store as
+  `profile_in_use`. `AlkionRuntime.close` clears its closing flag on every
+  failure path.
 * These are owned local fences on one storage. A backup cannot stop another
   offline device or installation from becoming writable; global device
   inventory, controlled primary handoff and server containment are future owner

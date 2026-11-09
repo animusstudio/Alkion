@@ -1,6 +1,6 @@
 # Backup and restore flow
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented, awaiting review.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/backup-and-restore-flow-20261108`.
 Audit items 5.1 to 5.7, 1.7 and the backup-dialog issues found alongside them
@@ -150,8 +150,96 @@ touch `recovery_screen.dart` or `main.dart`.
 
 ## Task state
 
-None started.
+Code at `55eea157` (later commits are docs only). Commits: `c0238823` (T1),
+`b60357c6` (T2), `d8e48739` (T3), `55eea157` (T4).
+
+- T1 — done, awaiting review. `RecoveryHost.workoutActive`
+  (`hasActive || launching`); the screen refuses Restore before any picker,
+  flush or close. `RuntimeRecoveryHost.restoreBackup` throws
+  `StoreException('workout_active')` when `hasActive` or `tryBeginLaunch()`
+  fails, holds the fence through verification, rechecks `hasActive` before the
+  flush and calls `endLaunch()` in `finally`. One `DocumentFile` selection
+  (*Choose backup file*, or the first Check or Restore) is reused; Linux keeps
+  the path field; the confirmation adds "<name>\nCreated <date>". Foreign
+  backups get "Backup from another profile" and three steps. New
+  `recoveryErrorMessage` (`ui/export_failure.dart`) wraps P1's `userMessage`
+  with sentences for `unsaved_editor_input`, `workout_active`,
+  `restore_interrupted`, `restore_target_not_empty` and `restore_staging_*`;
+  the Backup dialogs, `AlkionRecoveryApp` (body and retry line) and first-start
+  failures use it, with the category as a small details line.
+  `recoveryCategory` is removed; the stale first-start Start-new path throws
+  `StoreException('fresh_restore_interrupted')` instead of a `StateError`.
+- T2 — done, awaiting review. `RestoreReviews.pendingSummary()` (SQL
+  `json_extract` group counts over every undecided review) and
+  `RestoreReviews.keepAll()` (count, then one `INSERT … SELECT` of the existing
+  decision bytes in one write transaction; `keep` shares the same bytes).
+  Groups merge internal tables into "internal records"; history rows read
+  "Restored <date>"; IDs, generations, table names and dispositions sit behind
+  *Show technical details*. Per-row *Keep as evidence* is replaced by the
+  confirmed *Keep all as evidence* (`alkionRestoreKeep` removed).
+- T3 — done, awaiting review. `widgets/busy_row.dart` (indeterminate bar,
+  still line under reduced motion, live-region label) in the Backup screen
+  (create, check/restore, keep all), `AlkionRestoringApp` and the first-start
+  restore and Complete restore. `recovery/stored_copies.dart`:
+  `newestBackupCreated`/`backupCreatedFromName` (exact-calendar name parse,
+  this profile only, files only) and `measureStoredCopies` over
+  `platformStoredCopyRoots()` (Android: checked files directory's
+  `document-backups`, `document-exports`, `alkion-documents`; Linux: documents
+  directory filtered to backup names, support `document-exports`, no staging),
+  no links followed, nothing created or deleted. `RecoveryHost` gained
+  `lastBackupCreated()` and `storedCopies()`. The Backup screen shows the last
+  backup line and a "Stored copies" section; the Profile row subtitle shows
+  the last backup and refreshes when the Backup screen closes.
+- T4 — done, awaiting review. `AlkionRuntime.ownersDisposed`; `close()` wraps
+  its body and clears `_closing` on every throw. The failed-close screen's
+  Reopen re-presents `AlkionApp` for the same runtime when no owner was
+  disposed, otherwise retries `close()` then relaunches; a failed retry stays
+  on the screen as a retryable error. `RuntimeRecoveryHost` gained a
+  `@visibleForTesting closeStore` seam.
+
+Evidence (host only):
+
+- `make -C app analyze` → No issues found.
+- `make -C app format` → 541 files, 0 changed.
+- `make -C app test TEST='--concurrency=2 test/alkion/recovery test/alkion/files
+  test/alkion/acceptance test/ui/profile_data_actions_test.dart
+  test/ui/profile_last_backup_test.dart test/main_routing_test.dart test/l10n
+  test/layout'` at `55eea157` → +298, all pass.
+- Real SQLite: `keep_all_test.dart` (233 undecided over 200, repeat writes 0,
+  evidence rows identical, other category and the already decided review
+  untouched, decision bytes equal `keep`'s); `restore_fence_test.dart`
+  (registered controller and held launch refuse with nothing presented, store
+  open and no selection; fence held during verification and released on
+  failure; restore works after the workout ends; host last-backup date);
+  `close_failure_test.dart` (flush refusal re-presents the same runtime; store
+  close failure retries, a second failure stays retryable, then relaunches an
+  `AlkionApp`).
+- Widget: `backup_flow_test.dart` (refusal before picker, refusal when a
+  workout starts during preparation, cancelled picker, foreign title and
+  steps, close-the-editor text, no exception text); `recovery_ui_test.dart`
+  (one `open()` for Check and Restore, name and date in the confirmation,
+  grouped rows, Keep all); `backup_progress_test.dart` (progress with live
+  region and disabled buttons while a completer-blocked create runs, gone
+  after, still under reduced motion; restoring screen; first-start restore;
+  en/de/it/es at 320 dp and 2x with no split words in the new copy);
+  `stored_copies_test.dart` (none, newest wins, other profile, bad names,
+  sizes, links, nothing deleted); `profile_last_backup_test.dart`.
+- `make -C app test TEST=--concurrency=2` at `55eea157` → +3016 ~3 -3. The
+  three failures are the inherited `catalog_metric_controls_test.dart` cases
+  `duration_distance_optional`, `reps_distance_optional` and
+  `reps_duration_optional_load mounts all required and optional controls
+  unset`; no others.
+- Not run: the private Dev APK device check (refused restore mid-workout,
+  restore of a fresh backup, Keep all).
+
+Deviations: dates use intl `yMMMd` plus `Hm` in local time rather than
+`fmtDate`, which drops the year and time. Group lines read "Newer than this
+backup: 12 sets" (disposition first, avoiding gender agreement in it/es). The
+category stays visible as P1's small details line. In de at 2x the screen
+title "Backup & Wiederherstellung" and the reviews header still break inside
+a word; both predate this plan and are outside the new-copy no-split check.
+`restore_source_changed` keeps the foreign-backup bucket sentence.
 
 ## Next
 
-Owner approval, then T1 to T4.
+Independent review of T1 to T4, then the owner device check.
