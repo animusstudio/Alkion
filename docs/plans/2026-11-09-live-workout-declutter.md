@@ -263,6 +263,13 @@ stays (the toast and History editor use it).
   - `catch (_)` is broad.
   - A skipped row shifts the same-numbered index.
 
+- **T3+T4 review PASS** (Sonnet `high`; reruns +163 pass, including the l10n tests). Pending-variant
+  fix `d528404` re-check PASS. Toast word-split fix re-check PASS; its minor (`maxLines`) is
+  fixed in the toast plan and merged here.
+  - PR follow-up: the reference line's date comes from the block-wide `lastTop`, so after a
+    setup change another setup's line can show the newer setup's date (values are correct).
+    Store the date per compatibility key later.
+
 ## Next
 
-Owner approval, then T1 and T2 after the toast plan and the audit-batch plans merge.
+Code-complete. The integrated full suite and device check run at delivery; U4 branches from here plus U3.
