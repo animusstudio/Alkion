@@ -1,10 +1,36 @@
 ---
 app: alkion
 stage: development
-observed: 2026-11-08
+observed: 2026-11-09
 ---
 
 # Alkion integrated acceptance
+
+## P1 error messages and toasts — 2026-11-09
+
+Implements the approved [error-messages and toasts plan](../plans/2026-11-08-error-messages-and-toasts.md)
+(audit items 2.1 and 2.3).
+
+- One pure mapper, `util/error_message.dart`, turns store, document and
+  generation-selection categories into a localized sentence in eight buckets
+  (conflict, recovery, busy, file, wrong or foreign backup, damaged, too large,
+  unexpected). The stable category shows only as a small mono details line.
+  Unknown and non-store errors read as unexpected with no details, so exception
+  text and file paths never reach the user (A1, A2).
+- `showWriteFailed` (every caller), the day and exercise editor save dialogs,
+  the session summary load failure and the export failure dialog use it in all
+  four languages. Recovery-refusal wording is unchanged (A1, A3).
+- Every SnackBar now floats as a flat inverse Alkion toast from the app theme.
+  `showWToast` adds the danger style, an optional action that runs once, and a
+  duration after which an action toast still ends. Toasts that AppShell's
+  Scaffold shows, from tab pages or the notification-limitation message, sit
+  above the tab bar at 320 dp and 1× or 2× text; pushed routes keep the normal
+  inset (A4, A5).
+- The toast sites in History, the live workout and the catalog History editor
+  are left to their own plans; they already pick up the theme.
+- No stored data, backup format or recovery semantics change.
+
+Host checks are listed in the plan's task state. The device check is open.
 
 ## Impeller renderer — 2026-11-08
 

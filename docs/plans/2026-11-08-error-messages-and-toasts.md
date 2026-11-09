@@ -1,6 +1,6 @@
 # One error-message mapper and a themed toast
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented, awaiting review.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/error-messages-and-toasts-20261108`.
 Audit items 2.1 and 2.3. This plan is **first in the audit-batch merge order**:
@@ -115,8 +115,53 @@ only; the failed-saves plan owns their retry state.
 
 ## Task state
 
-None started.
+Code at `b47682b` (later commits are docs only). Commits: `e363d4f` (T1),
+`9ffdeeb` (T2), `b47682b` (T2 fix: inverse toast colours).
+
+- T1 — done, awaiting review. `lib/util/error_message.dart` holds
+  `errorBucket`, `errorCategory`, `userMessage` and `UserMessage`;
+  `isStoreRecoveryRefusal` moved there from `w_dialog.dart` (its only caller).
+  Bucket rules, in order: recovery (`isStoreRecoveryRefusal`), conflict
+  (`revision_conflict`, `observed_revision_required`, `stale_*`), busy (the
+  three plan codes plus `document_busy`), too large (`*resource_limit*`),
+  wrong or foreign backup (`foreign_profile`, `restore_*`,
+  `backup_profile_mismatch`, `backup_foreign_variant`,
+  `fresh_restore_interrupted`), file (`backup_destination_*`, `export_*`, then
+  any other `DocumentException`), damaged (`*_preserved`, `backup_*`,
+  `selected_generation_*`), else unexpected. `showWDialog` gained an optional
+  mono `details` line; `showWriteFailed`, both editor save dialogs, the summary
+  load failure and the export failure use the mapper. `summaryLoadFailed` lost
+  its `{error}` placeholder; seven `error*` keys were added in en, it, de, es.
+- T2 — done, awaiting review. `SnackBarThemeData` in `buildTheme`: floating,
+  inverse (`tokens.text` surface, `tokens.bg` Space Grotesk content, the
+  opposite palette's `accentText` for actions), flat, 8 dp radius, 16/8/16/12
+  inset. `widgets/w_toast.dart`: `showWToast(context, text, {error, action,
+  duration})` (`persist: false`, so an action toast still times out; error =
+  `tokens.danger` with `onError` text) and `ToastTabBarClearance`, which
+  `AppShell` wraps around its Scaffold to raise every toast that Scaffold shows
+  by `kBottomNavInset`. Converted: `main.dart` notification limitation,
+  `split_tab.dart` day enabled/disabled, `day_editor.dart`,
+  `exercise_picker_sheet.dart` and `exercise_library_tab.dart` catalog
+  failures (error style), `profile_screen.dart` empty export.
+
+Evidence at `b47682b`:
+
+- `make -C app analyze` → No issues found.
+- `make -C app format` → 525 files, 0 changed.
+- `make -C app test TEST='--concurrency=2 test/util test/widgets test/theme
+  test/shell test/l10n test/ui/day_editor_slot_row_test.dart
+  test/ui/editor_save_failure_test.dart
+  test/session/session_summary_load_failure_test.dart test/layout'` → +698,
+  all pass (run at `9ffdeeb`); after `b47682b`, `… test/theme/snack_bar_theme_test.dart
+  test/widgets/w_toast_test.dart test/shell/toast_clearance_test.dart` → +24,
+  all pass.
+- `make -C app test TEST=--concurrency=2` → +2955 ~3 -3. The three failures
+  are the inherited `catalog_metric_controls_test.dart` cases
+  `duration_distance_optional`, `reps_distance_optional` and
+  `reps_duration_optional_load mounts all required and optional controls
+  unset`; no others.
+- Not run: the device check (private Dev APK, forced conflict, tab-page toast).
 
 ## Next
 
-Owner approval of this plan, then T1 and T2 on the implementation branch.
+Independent review of T1 and T2, then the owner device check.
