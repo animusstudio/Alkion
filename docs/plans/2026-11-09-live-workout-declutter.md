@@ -199,6 +199,21 @@ stays (the toast and History editor use it).
     - The restart test cannot tell the same-numbered rule from the top-set rule.
     - No test covers two contexts in one block.
 
+- **T1 Format, lines, card: done** in a separate worktree branch (pending review). Code
+  `59c684f`, tests `73697ff`, merged as `f853b19`.
+  - Changes:
+    - The picker flag is `RirPicker.onClear`; `ExerciseBlock.onRir` takes `int?`.
+    - `catalogEvidenceSummary` is kept for T3's three callers. T3 deletes it.
+    - Added `catalogRepsCompact`; removed `sessionClearRir`.
+    - A different variant still shows, dim, on a pending line.
+    - Tests edited outside the owned list: `active_session_screen_test.dart`,
+      `training_prescriptions_test.dart`, `live_inputs_semantics_test.dart`.
+  - Implementer's focused run: +1008 −3.
+  - Coordinator, after the merge at `f853b19`: `make -C app test TEST='--concurrency=2
+    test/session test/catalog_ui test/alkion test/ui/history_session_card_test.dart
+    test/ui/training_prescriptions_test.dart test/l10n test/layout'` → +1573 −3, which are only
+    the three inherited failures. Analyze is clean.
+
 ## Next
 
 Owner approval, then T1 and T2 after the toast plan and the audit-batch plans merge.
