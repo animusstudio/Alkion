@@ -6,6 +6,61 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## P5 failed saves and History editing — 2026-11-09
+
+Implements the approved [failed saves and History editing plan](../plans/2026-11-08-failed-saves-and-history-editing.md)
+(audit items 2.2, 2.5 to 2.8, 3.4 and 4.6 to 4.10).
+
+- Plan editors: after a failed Save the fields stay locked, a "Not saved"
+  note explains why, the button reads "Retry save" and commits the same
+  prepared write once, and "Discard changes" leaves after the destructive
+  discard prompt without a write (A1). Targets lock per muscle: a tap during
+  a write is queued, and a new value after a failure replaces the failed
+  write, prepared against the stored row (A3).
+- History editors can be closed after a failed save and say "Not saved ·
+  will retry"; the owed write keeps its identity and lands once on the next
+  flush. Later edits are queued behind it, never dropped (A2). The catalog
+  editor names sets in its failure, discard and validation messages, uses
+  the error mapper and a neutral Save label, shows validation inline above
+  Save and numbers rows without gaps (A6, A10).
+- RIR can be cleared in History by tapping the selected chip (stored as
+  NULL, other fields keep their raw text); the live workout keeps "a tap
+  never un-logs". Added sets start without RIR (A7). Delete set is a button,
+  the chevron follows the open card and unknown reps are not seeded (A10).
+- History: an exercise no longer in the catalog reads "Deleted exercise"
+  with no chevron or tap, and rows stay a skeleton until the catalog loads
+  (A8). Add exercise on a classic exercise opens an empty set editor that
+  writes nothing until Add set; a catalog exercise with no setup says so
+  (A9). The resume failure toast uses the mapper.
+- Preferences: the next change after a failed save retries the owed one
+  first, with no revision gap or duplicate row; a failed unit write shows
+  the write-failed dialog (A4). Rest steppers queue every tap, read
+  "{count}s" from the ARBs, stop at 900 s and are disabled after an error
+  (A5).
+- Review fixes: History lands an earlier editor's owed write before opening
+  another editor, re-reads the block and session revision when it landed,
+  and opens nothing while a write stays owed (the mapped failure is shown).
+  In the set editor, Add set and a confirmed Delete behind a failing write
+  are queued and land in order; the failure dialog shows once per failed
+  state, then the inline note carries it. Targets rebuild only the row being
+  written and mark a value whose write failed "Not saved".
+- Coordinator decision, permanent History failures: a write that can never
+  land (a conflict, a missing set or workout, a base never observed) stops
+  retrying. The set editor, or History when the editor was closed, shows
+  the mapped message and an explicit, confirmed "Discard set changes" that
+  drops only those owed History writes; transient failures keep "will
+  retry". A set with no observed base fails alone; the others are written.
+  Only owed History editor writes block opening another editor (an owed
+  delete blocks only its own session); a permanently failing owed delete
+  gets the same confirmed discard. The catalog editor shows the mapped
+  message for a permanent failure. Add exercise reads the session revision
+  fresh, and a double tap opens one editor.
+- No schema change, migration or new write path. Nothing owed is abandoned
+  except by an explicit, confirmed Discard (Plan editors; permanently
+  failed History set changes).
+
+Host checks are listed in the plan's task state. The device check is open.
+
 ## P4 honest numbers and PRs — 2026-11-09
 
 Implements the approved [honest numbers and PRs plan](../plans/2026-11-08-honest-numbers-and-prs.md)

@@ -859,7 +859,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           items: Unit.values,
                           selected: unitService.unit,
                           labelOf: (u) => u == Unit.kg ? 'kg' : 'lb',
-                          onSelect: unitService.setUnit,
+                          onSelect: (u) => showWriteFailures(
+                            context,
+                            unitService.setUnit(u),
+                          ),
                         ),
                       ),
 

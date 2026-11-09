@@ -36,6 +36,7 @@ class RirPicker extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    this.onClear,
     this.height = 48,
   });
 
@@ -43,6 +44,12 @@ class RirPicker extends StatelessWidget {
   final int? value;
 
   final ValueChanged<int> onChanged;
+
+  /// Opt-in clear: when set, tapping the selected chip calls this instead
+  /// of [onChanged], so a host can store "no RIR". History's set editor
+  /// opts in; the live workout leaves it null, so a tap there never
+  /// un-logs.
+  final VoidCallback? onClear;
 
   /// Chip height. Defaults to 48, the height every host uses.
   final double height;
@@ -65,7 +72,12 @@ class RirPicker extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: () {
             HapticFeedback.lightImpact();
-            onChanged(r);
+            final clear = onClear;
+            if (selected && clear != null) {
+              clear();
+            } else {
+              onChanged(r);
+            }
           },
           child: Container(
             height: height,

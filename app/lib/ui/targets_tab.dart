@@ -34,8 +34,19 @@ class _TargetsTabState extends State<TargetsTab> {
     context.read<LocalDatabase>(),
   );
   late final Stream<List<MuscleTarget>> _targetsStream = _repo.watchTargets();
+
+  /// Per muscle, the prepared write not yet acknowledged: running, or left
+  /// by a failure. Shown over the stored value until it lands or a newer
+  /// explicit change replaces it.
   final Map<String, PreparedDomainAction> _pending = {};
-  bool _writing = false;
+
+  /// Muscles whose write is running. The lock is per muscle: other rows stay
+  /// editable.
+  final Set<String> _writing = {};
+
+  /// The latest value tapped for a muscle while its write was running; it is
+  /// written next, so no tap is dropped.
+  final Map<String, int> _queued = {};
 
   @override
   Widget build(BuildContext context) {
@@ -51,19 +62,27 @@ class _TargetsTabState extends State<TargetsTab> {
               targetSets: entry.value.input['sets'] as int,
               localRevision: entry.value.action.baseLocalRevision,
             ),
+          for (final entry in _queued.entries)
+            entry.key: MuscleTarget(
+              id: _pending[entry.key]?.action.target.id ?? '',
+              muscle: entry.key,
+              targetSets: entry.value,
+            ),
         };
 
         return Column(
           children: [
             Expanded(
-              child: AbsorbPointer(
-                absorbing: _writing,
-                child: TargetsList(
-                  writing: _writing,
-                  targets: byMuscle,
-                  onChanged: (muscle, sets) =>
-                      _setTarget(muscle, sets, byMuscle[muscle]),
-                ),
+              child: TargetsList(
+                writing: _writing,
+                // A failed write's value stays shown until it lands or a
+                // new change replaces it: mark it.
+                unsaved: {
+                  for (final muscle in _pending.keys)
+                    if (!_writing.contains(muscle)) muscle,
+                },
+                targets: byMuscle,
+                onChanged: _setTarget,
               ),
             ),
           ],
@@ -72,31 +91,59 @@ class _TargetsTabState extends State<TargetsTab> {
     );
   }
 
+  /// The stored target for [muscle], read fresh (the row the watch shows):
+  /// after an uncertain COMMIT the store, not a lagging watch, says whether
+  /// the earlier write landed.
+  Future<MuscleTarget?> _stored(String muscle) async {
+    final row = await _repo.db.getOptional(
+      'SELECT * FROM muscle_targets WHERE profile_id=? AND muscle=? AND deleted=0 ORDER BY id DESC LIMIT 1',
+      [_repo.db.profileId, muscle],
+    );
+    return row == null ? null : MuscleTarget.fromRow(row);
+  }
+
   /// Persists a stepped target; a failed or refused write (e.g. while the
   /// store needs recovery) is shown, never dropped silently.
-  Future<void> _setTarget(
-    String muscle,
-    int sets,
-    MuscleTarget? existing,
-  ) async {
-    if (_writing) return;
-    _writing = true;
+  ///
+  /// A value equal to the failed one retries that exact prepared write. A
+  /// different value is a new explicit change: it replaces the failed write
+  /// (never registered as owed) and is prepared against the stored row, so
+  /// an earlier COMMIT that did land is built on rather than duplicated.
+  Future<void> _setTarget(String muscle, int sets) async {
+    if (_writing.contains(muscle)) {
+      setState(() => _queued[muscle] = sets);
+      return;
+    }
+    setState(() => _writing.add(muscle));
+    final recovery = context.read<DomainRecovery?>();
     try {
-      if (existing == null && sets == 0) return;
-      final intent = _pending.putIfAbsent(
-        muscle,
-        () =>
-            _repo.prepareTarget(muscle: muscle, sets: sets, existing: existing),
-      );
-      if (mounted) setState(() {});
-      await context.read<DomainRecovery?>()?.recover();
+      await recovery?.recover();
+      var intent = _pending[muscle];
+      if (intent == null || intent.input['sets'] != sets) {
+        final existing = await _stored(muscle);
+        if (existing == null && sets == 0) {
+          _pending.remove(muscle);
+          return;
+        }
+        intent = _repo.prepareTarget(
+          muscle: muscle,
+          sets: sets,
+          existing: existing,
+        );
+        _pending[muscle] = intent;
+        if (mounted) setState(() {});
+      }
       await _repo.commitPrepared(intent);
-      _pending.remove(muscle);
+      if (identical(_pending[muscle], intent)) _pending.remove(muscle);
     } catch (e) {
       if (mounted) await showWriteFailed(context, e);
     } finally {
-      _writing = false;
-      if (mounted) setState(() {});
+      _writing.remove(muscle);
+      final next = _queued.remove(muscle);
+      if (mounted) {
+        setState(() {});
+        if (next != null) await _setTarget(muscle, next);
+      }
     }
   }
 }
@@ -113,11 +160,18 @@ class TargetsList extends StatelessWidget {
     super.key,
     required this.targets,
     required this.onChanged,
-    this.writing = false,
+    this.writing = const {},
+    this.unsaved = const {},
   });
 
   final Map<String, MuscleTarget> targets;
-  final bool writing;
+
+  /// Muscles whose write is running. Only those rows' steppers are rebuilt
+  /// when it starts or ends, so another row keeps focus and typed text.
+  final Set<String> writing;
+
+  /// Muscles showing a value whose write failed.
+  final Set<String> unsaved;
   final void Function(String muscle, int sets) onChanged;
 
   @override
@@ -132,7 +186,8 @@ class TargetsList extends StatelessWidget {
           _TargetRow(
             muscle: muscle,
             browse: browse,
-            writing: writing,
+            writing: writing.contains(muscle),
+            unsaved: unsaved.contains(muscle),
             sets: targets[muscle]?.targetSets ?? 0,
             tokens: tokens,
             onChanged: onChanged,
@@ -147,6 +202,7 @@ class _TargetRow extends StatelessWidget {
     required this.muscle,
     required this.browse,
     required this.writing,
+    required this.unsaved,
     required this.sets,
     required this.tokens,
     required this.onChanged,
@@ -154,7 +210,7 @@ class _TargetRow extends StatelessWidget {
 
   final String muscle;
   final CatalogBrowse? browse;
-  final bool writing;
+  final bool writing, unsaved;
   final int sets;
   final WorkoutTokens tokens;
   final void Function(String muscle, int sets) onChanged;
@@ -190,9 +246,17 @@ class _TargetRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 FitLabel(
-                  hasGoal ? l.targetsSetsPerWeek : l.targetsNoGoal,
+                  unsaved
+                      ? l.targetsNotSaved
+                      : hasGoal
+                      ? l.targetsSetsPerWeek
+                      : l.targetsNoGoal,
+                  key: unsaved ? ValueKey('target-unsaved-$muscle') : null,
                   maxLines: 2,
-                  style: WorkoutType.body(size: 12, color: tokens.faint),
+                  style: WorkoutType.body(
+                    size: 12,
+                    color: unsaved ? tokens.danger : tokens.faint,
+                  ),
                 ),
               ],
             );
