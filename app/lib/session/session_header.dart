@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -627,49 +628,112 @@ class _RestRemainingLineState extends State<_RestRemainingLine>
 
   void _onTick(Duration elapsed) {
     _lastElapsed = elapsed;
-    final fraction = _fractionAt(_anchorWall.add(elapsed - _anchorElapsed));
+    var now = _anchorWall.add(elapsed - _anchorElapsed);
+    // A frame clock that stood still while the phone slept or was locked
+    // falls behind the wall clock; catch up at once rather than at the next
+    // header rebuild. One-sided: a clock running ahead is left to that.
+    final wall = DateTime.now();
+    if (wall.difference(now) > const Duration(seconds: 1)) {
+      _anchorWall = now = wall;
+      _anchorElapsed = elapsed;
+    }
+    final fraction = _fractionAt(now);
     _fraction.value = fraction;
     if (fraction <= 0) _ticker.stop();
   }
 
+  // Each tick repaints only the line: no rebuild and no layout.
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<double>(
-    valueListenable: _fraction,
-    builder: (context, fraction, _) => _RemainingLine(
-      fraction: fraction,
-      track: widget.track,
-      fill: widget.fill,
-    ),
+  Widget build(BuildContext context) => _RemainingLine.listenable(
+    fraction: _fraction,
+    track: widget.track,
+    fill: widget.fill,
   );
 }
 
 /// A flat two-pixel instrument line. No interpolated animation changes what
-/// the timer's current second reports.
+/// the timer's current second reports. It is painted, inside its own repaint
+/// boundary, so a moving fraction repaints the line alone.
 class _RemainingLine extends StatelessWidget {
-  const _RemainingLine({
+  _RemainingLine({
+    required double fraction,
+    required this.track,
+    required this.fill,
+  }) : fraction = _FixedFraction(fraction);
+
+  const _RemainingLine.listenable({
     required this.fraction,
     required this.track,
     required this.fill,
   });
-  final double fraction;
+
+  final ValueListenable<double> fraction;
   final Color track;
   final Color fill;
   @override
   Widget build(BuildContext context) => SizedBox(
     key: const Key('rest-remaining-track'),
     height: 2,
-    child: ColoredBox(
-      color: track,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: FractionallySizedBox(
-          widthFactor: fraction.clamp(0.0, 1.0),
-          heightFactor: 1,
-          child: ColoredBox(color: fill),
+    child: RepaintBoundary(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: RemainingLinePainter(
+          fraction: fraction,
+          track: track,
+          fill: fill,
         ),
       ),
     ),
   );
+}
+
+/// A fraction that never changes, for the line outside a fluid rest.
+class _FixedFraction implements ValueListenable<double> {
+  const _FixedFraction(this.value);
+  @override
+  final double value;
+  @override
+  void addListener(VoidCallback listener) {}
+  @override
+  void removeListener(VoidCallback listener) {}
+  @override
+  bool operator ==(Object other) =>
+      other is _FixedFraction && other.value == value;
+  @override
+  int get hashCode => value.hashCode;
+}
+
+/// Paints the remaining line's track and its fill, left-anchored, from
+/// [fraction]; repaints whenever [fraction] notifies.
+@visibleForTesting
+class RemainingLinePainter extends CustomPainter {
+  RemainingLinePainter({
+    required this.fraction,
+    required this.track,
+    required this.fill,
+  }) : super(repaint: fraction);
+
+  final ValueListenable<double> fraction;
+  final Color track;
+  final Color fill;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = track);
+    final width = size.width * fraction.value.clamp(0.0, 1.0);
+    if (width > 0) {
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, width, size.height),
+        Paint()..color = fill,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(RemainingLinePainter oldDelegate) =>
+      oldDelegate.fraction != fraction ||
+      oldDelegate.track != track ||
+      oldDelegate.fill != fill;
 }
 
 class _RestScalePainter extends CustomPainter {
