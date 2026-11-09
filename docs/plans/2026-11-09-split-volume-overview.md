@@ -131,6 +131,13 @@ Implementers Opus `high`, reviewers Sonnet `high`. T1 first, then T2; T3 (ARBs) 
     - Zero active days is per rotation with `activeDays: 0`.
     - A failed read stays the `PlanWorkloadInputs.load` throw; T2 maps it to unavailable.
 
+- **T1 review PASS** (Sonnet `high`). `plannedWorkoutWorkload` behaves exactly as before; the
+  shared loop has the same bounds and ids.
+  - Minor: `splitBasis` counted a repeated day twice. Coordinator fix `059ac347` dedupes by id and
+    adds a test.
+  - Checks: `planned_workload_test.dart` → +22 pass; analyze clean.
+- **Coordinator decision:** T2 absorbs T3 (strings) and owns the four ARB files, as in U3.
+
 ## Next
 
 Owner approval, then implementation after P1 to P8 and U3 merge.
