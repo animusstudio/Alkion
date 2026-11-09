@@ -6,6 +6,7 @@ import '../domain/local_action.dart';
 import '../domain/evidence.dart';
 import '../domain/catalog_execution.dart';
 import 'catalog_execution_repository.dart';
+import 'stats_repository.dart' show setPrSql;
 import 'catalog_load_history.dart';
 export 'catalog_load_history.dart' show CatalogLoadReference;
 import 'exercise_repository.dart';
@@ -436,7 +437,9 @@ class SessionRepository {
   /// PR count, tonnage), ordered newest first.
   ///
   /// Uses a LEFT JOIN so sessions with no sets still appear. `pr_count` counts
-  /// distinct exercises where any set is a PR. `tonnage` excludes warm-up sets
+  /// distinct exercises where any set is a stored PR: a legacy PR by
+  /// its local flag, a catalog PR by its existing derived result
+  /// ([setPrSql]; read only). `tonnage` excludes warm-up sets
   /// and is legacy SQL arithmetic, not for display; History volume comes from
   /// the exact evidence of the same `coverage_sets` rows.
   Stream<List<HistorySessionRow>> watchSessionStats() => reListenable(
@@ -445,7 +448,7 @@ class SessionRepository {
           '''SELECT se.id, se.revision, se.date, se.split_label, se.duration_min, CASE WHEN se.created_at IS NULL OR se.created_at='' OR EXISTS(SELECT 1 FROM sessions other WHERE other.profile_id=se.profile_id AND other.deleted=0 AND other.id!=se.id AND other.date=se.date AND (other.created_at IS NULL OR other.created_at=se.created_at)) THEN 1 ELSE 0 END AS order_uncertain,
                   json_group_array(json_object('id',s.id,'exercise_id',s.exercise_id,'set_number',s.set_number,'weight_kg',s.weight_kg,'reps',s.reps,'rir',s.rir,'is_warmup',s.is_warmup,'is_top_set',s.legacy_local_top,'is_pr',s.legacy_local_pr)) AS coverage_sets,
                   COUNT(DISTINCT s.exercise_id) AS ex_count,
-                  COUNT(DISTINCT CASE WHEN s.legacy_local_pr = 1 THEN s.exercise_id END) AS pr_count,
+                  COUNT(DISTINCT CASE WHEN $setPrSql = 1 THEN s.exercise_id END) AS pr_count,
                   COALESCE(SUM(CASE WHEN s.is_warmup = 0 THEN CAST(s.weight_kg AS REAL) * s.reps ELSE 0 END), 0) AS tonnage
              FROM sessions se LEFT JOIN reps_compat1_legacy_local s ON s.session_id = se.id AND s.deleted=0 AND s.profile_id=se.profile_id
             WHERE se.deleted=0

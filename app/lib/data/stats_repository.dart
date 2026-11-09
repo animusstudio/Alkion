@@ -4,12 +4,24 @@ import '../util/calendar_keys.dart';
 import 're_listenable.dart';
 import 'volume_attribution.dart';
 import '../domain/evidence.dart';
+import '../domain/catalog_execution.dart';
 import 'catalog_load_history.dart';
 
 // Qualification for the pinned SQLite calendar projection. Equality rejects
 // SQLite rollover normalization; the original date text stays in its record.
 const _qualifiedStatsDay =
     "length(se.date)=10 AND se.date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND se.date>='0001-01-01' AND date(se.date)=se.date";
+
+/// The stored catalog PR flag of set `s` in its session `se`'s current
+/// revision, read from that set's existing `catalog-workout:` derived result
+/// (`catalog-load/1`), or NULL for a set with none (every legacy set). Read
+/// only: nothing here writes or recomputes a derived result.
+const catalogPrSql =
+    "(SELECT json_extract(CAST(d.result_bytes AS TEXT),'\$.is_pr') FROM derived_results d WHERE d.profile_id=s.profile_id AND d.result_id='catalog-workout:'||s.session_id||':'||se.revision||':set:'||s.id||':'||s.revision)";
+
+/// Whether set `s` (in session `se`) is a stored PR: its catalog PR flag when
+/// it has one, else its legacy local flag. Each set counts once either way.
+const setPrSql = 'COALESCE($catalogPrSql, s.legacy_local_pr)';
 
 /// Labeled weekly working sets and the sets whose muscle is unavailable.
 /// Unknown evidence is deliberately separate from canonical/custom labels.
@@ -123,31 +135,16 @@ class StatsRepository {
     );
   }
 
-  /// Live count of distinct muscle groups trained since [weekStart].
-  Stream<int> watchDistinctMusclesThisWeek({required DateTime weekStart}) {
-    return reListenable(
-      () => db
-          .watch(
-            'SELECT COUNT(DISTINCT ex.muscle_group) AS n '
-            'FROM reps_compat1_legacy_local s '
-            'JOIN sessions se ON se.id = s.session_id '
-            'JOIN exercises ex ON ex.id = s.exercise_id '
-            "WHERE s.deleted=0 AND se.deleted=0 AND s.is_warmup = 0 AND trim(COALESCE(ex.muscle_group,''))<>'' AND $_qualifiedStatsDay AND se.date >= ?",
-            parameters: [isoDate(weekStart)],
-          )
-          .map((rs) => rs.first['n'] as int? ?? 0),
-    );
-  }
-
-  /// Live count of PR sets logged since [weekStart].
+  /// Live count of PR sets logged since [weekStart]: legacy PRs by their
+  /// local flag and catalog PRs by their stored derived result ([setPrSql]).
   Stream<int> watchPrsThisWeek({required DateTime weekStart}) {
     return reListenable(
       () => db
           .watch(
             'SELECT COUNT(*) AS n '
             'FROM reps_compat1_legacy_local s '
-            'JOIN sessions se ON se.id = s.session_id '
-            'WHERE s.deleted=0 AND se.deleted=0 AND s.legacy_local_pr = 1 AND $legacySetOnlySql AND $_qualifiedStatsDay AND se.date >= ?',
+            'JOIN sessions se ON se.id = s.session_id AND se.profile_id = s.profile_id '
+            'WHERE s.deleted=0 AND se.deleted=0 AND $setPrSql = 1 AND $_qualifiedStatsDay AND se.date >= ?',
             parameters: [isoDate(weekStart)],
           )
           .map((rs) => rs.first['n'] as int? ?? 0),
@@ -199,48 +196,61 @@ class StatsRepository {
 
   // ── List streams ──────────────────────────────────────────────────────────
 
-  /// Live stream of the most-recent [limit] PR sets, newest session first.
+  /// Live stream of the most-recent [limit] PR sets, newest session first:
+  /// legacy PRs and catalog PRs ([setPrSql]).
   ///
-  /// `weight_kg` is TEXT on the client; the CAST produces a real value
-  /// aliased as `weight`.
+  /// A legacy set's load and reps come from its exact `weight_kg`/`reps`
+  /// evidence; a catalog set's from its stored catalog set bytes, decoded as
+  /// [catalogLoadObservations] does. An unavailable value is null, never 0.
   Stream<List<({String exerciseId, double? weight, int? reps, String date})>>
   watchRecentPrs({int limit = 6}) {
     return reListenable(
       () => db
           .watch(
-            'SELECT s.exercise_id, s.weight_kg, '
-            's.reps, se.date '
+            // `s.*` rather than naming `catalog_set_bytes`: a store from
+            // before catalog execution has no such column, and its sets are
+            // all legacy.
+            'SELECT s.*, se.date '
             'FROM reps_compat1_legacy_local s '
-            'JOIN sessions se ON se.id = s.session_id '
-            'WHERE s.deleted=0 AND se.deleted=0 AND s.legacy_local_pr = 1 AND s.is_warmup = 0 AND $legacySetOnlySql '
+            'JOIN sessions se ON se.id = s.session_id AND se.profile_id = s.profile_id '
+            'WHERE s.deleted=0 AND se.deleted=0 AND s.is_warmup = 0 AND $setPrSql = 1 '
             'ORDER BY se.date DESC, se.created_at DESC '
             'LIMIT ?',
             parameters: [limit],
           )
-          .map(
-            (rs) => rs
-                .map(
-                  (row) => (
-                    exerciseId: row['exercise_id'] as String,
-                    weight:
-                        DecimalEvidence.fromRow(row, 'weight_kg').state ==
-                                ValueState.valid &&
-                            DecimalEvidence.fromRow(
-                                  row,
-                                  'weight_kg',
-                                ).exact!.displayDouble?.isFinite ==
-                                true
-                        ? DecimalEvidence.fromRow(
-                            row,
-                            'weight_kg',
-                          ).exact!.displayDouble
-                        : null,
-                    reps: row['reps'] is int ? row['reps'] as int : null,
-                    date: row['date']?.toString() ?? '',
-                  ),
-                )
-                .toList(),
-          ),
+          .map((rs) => rs.map(_recentPr).toList()),
+    );
+  }
+
+  static ({String exerciseId, double? weight, int? reps, String date})
+  _recentPr(Map<String, dynamic> row) {
+    final date = row['date']?.toString() ?? '';
+    final exerciseId = row['exercise_id'] as String;
+    if (row['catalog_set_bytes'] != null) {
+      final metrics = CatalogSetEvidence.fromJson(
+        decodeCatalogBytes(row['catalog_set_bytes']!),
+      ).metrics;
+      final load = metrics['reported_load']?.loadKg?.displayDouble;
+      final repetition = metrics['repetitions'];
+      final reps = repetition?.state == ValueState.valid
+          ? int.tryParse(repetition!.raw.toString())
+          : null;
+      return (
+        exerciseId: exerciseId,
+        weight: load != null && load.isFinite ? load : null,
+        reps: reps,
+        date: date,
+      );
+    }
+    final weight = DecimalEvidence.fromRow(row, 'weight_kg');
+    final display = weight.state == ValueState.valid
+        ? weight.exact!.displayDouble
+        : null;
+    return (
+      exerciseId: exerciseId,
+      weight: display != null && display.isFinite ? display : null,
+      reps: row['reps'] is int ? row['reps'] as int : null,
+      date: date,
     );
   }
 
