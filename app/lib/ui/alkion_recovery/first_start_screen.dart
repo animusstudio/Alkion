@@ -20,6 +20,7 @@ import '../../theme/tokens.dart';
 import '../../theme/typography.dart';
 import '../../widgets/alkion_brand.dart';
 import '../../widgets/alkion_entry_opening.dart';
+import '../../widgets/busy_row.dart';
 import '../../widgets/w_dialog.dart';
 import '../export_failure.dart';
 import 'recovery_app.dart' show RecoveryErrorDetails;
@@ -125,6 +126,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
   bool _busy = false;
   bool _done = false;
 
+  /// The running restore step's label; null when no restore step runs.
+  String? _progress;
+
   /// The failed action's error; shown through the recovery mapper.
   Object? _failure;
   @override
@@ -148,6 +152,7 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
       }
     } finally {
       if (mounted) {
+        setState(() => _progress = null);
         try {
           final current = await widget.service.freshState();
           if (mounted && current != null) setState(() => _state = current);
@@ -174,10 +179,13 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
           );
     if (documents != null && selected == null) return;
     final path = selected?.path ?? _path.text.trim();
+    if (!mounted) return;
+    final l = AppLocalizations.of(context);
+    setState(() => _progress = l.alkionBackupChecking);
     final verified = await verifyBackupFile(File(path));
     verified.requireWriterVariant();
     if (!mounted) return;
-    final l = AppLocalizations.of(context);
+    setState(() => _progress = null);
     final confirmed = await showWConfirm(
       context,
       title: l.alkionFirstRestoreTitle,
@@ -185,6 +193,7 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
       confirmLabel: l.alkionRestoreConfirm,
     );
     if (confirmed != true || !mounted) return;
+    setState(() => _progress = l.alkionRestoreRunning);
     await widget.service.restore(File(path));
     _done = true;
     await widget.relaunch();
@@ -410,6 +419,11 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                       case final details?)
                                     RecoveryErrorDetails(details),
                                 ],
+                                if (_progress != null)
+                                  BusyRow(
+                                    _progress!,
+                                    key: const Key('first-restore-progress'),
+                                  ),
                                 const SizedBox(height: 24),
                                 if (!offline) ...[
                                   if (connection != null) ...[
@@ -602,6 +616,10 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                       onPressed: busy
                                           ? null
                                           : () => _run(() async {
+                                              setState(
+                                                () => _progress =
+                                                    l.alkionRestoreRunning,
+                                              );
                                               await widget.service
                                                   .completeFresh(
                                                     pending!.restoreId,

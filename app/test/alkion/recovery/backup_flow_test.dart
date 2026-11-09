@@ -5,6 +5,7 @@ import 'package:alkion/files/document_access.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/backup.dart' as backup show createBackup;
 import 'package:alkion/recovery/recovery_host.dart';
+import 'package:alkion/recovery/stored_copies.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/ui/alkion_recovery/recovery_screen.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,10 @@ final class _Host implements RecoveryHost {
       zone.run(() => verifyBackupFile(File(path), workDirectory: directory));
   @override
   Future<void> restoreBackup(String path) async => restored.add(path);
+  @override
+  Future<DateTime?> lastBackupCreated() async => null;
+  @override
+  Future<StoredCopySizes> storedCopies() async => const StoredCopySizes();
 }
 
 void main() {

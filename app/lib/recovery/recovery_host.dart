@@ -7,6 +7,7 @@ import '../files/document_access.dart';
 import '../store/local_store.dart';
 import 'backup.dart';
 import 'restore.dart';
+import 'stored_copies.dart';
 
 /// The running app's backup/restore entry. Backups flush owed durable input
 /// first; restore closes the running store before any selection and presents
@@ -21,6 +22,14 @@ abstract interface class RecoveryHost {
   /// is: the screen asks before any picker opens, and [restoreBackup] checks
   /// again under the session launch fence.
   bool get workoutActive;
+
+  /// When the newest backup of this profile in the private backup directory
+  /// was created, read from its file name; null when there is none. Read
+  /// only: nothing is stored in the database.
+  Future<DateTime?> lastBackupCreated();
+
+  /// Sizes of the private copies kept on this device. Read only.
+  Future<StoredCopySizes> storedCopies();
 }
 
 /// Save a coherent existing backup; verification is against the completed

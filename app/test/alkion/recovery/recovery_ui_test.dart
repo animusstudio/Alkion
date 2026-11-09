@@ -9,6 +9,7 @@ import 'package:alkion/files/document_access.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/backup.dart' as backup show createBackup;
 import 'package:alkion/recovery/recovery_host.dart';
+import 'package:alkion/recovery/stored_copies.dart';
 import 'package:alkion/recovery/restore.dart';
 import 'package:alkion/store/generation_selection.dart';
 import 'package:alkion/store/local_store.dart';
@@ -51,6 +52,12 @@ final class _Host implements RecoveryHost {
 
   @override
   Future<void> restoreBackup(String path) async => restored.add(path);
+  @override
+  Future<DateTime?> lastBackupCreated() =>
+      zone.run(() => newestBackupCreated(directory, store.profileId));
+  @override
+  Future<StoredCopySizes> storedCopies() =>
+      zone.run(() => measureStoredCopies(StoredCopyRoots(backups: directory)));
 }
 
 Future<void> _seedReview(LocalStore store) => store.writeTransaction(

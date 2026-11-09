@@ -763,10 +763,20 @@
   "alkionRepsUnavailableLabel": "Reps unavailable",
   "alkionBackupRestore": "Backup & restore",
   "alkionBackupRestoreSub": "Save a backup or restore your Alkion data.",
+  "alkionBackupLast": "Last backup created: {date}",
+  "@alkionBackupLast": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionBackupNone": "No backup yet",
   "alkionBackupTitle": "Backup & restore",
   "alkionBackupSection": "Manual backup",
   "alkionBackupExplain": "A backup counts only once it is verified. Copy the file off this device and check it there; sharing or copying alone is not proof. Alkion never schedules or reminds, so work after your last verified backup can be lost.",
   "alkionBackupCreate": "Create backup",
+  "alkionBackupCreating": "Creating and verifying the backup…",
   "alkionBackupCreated": "Backup saved and verified",
   "alkionBackupCreatedMessage": "{path}\nSHA-256 {digest}…\nCopy it off this device, then check the copy with “Check backup”.",
   "@alkionBackupCreatedMessage": {
@@ -794,6 +804,7 @@
     }
   },
   "alkionBackupCheck": "Check backup",
+  "alkionBackupChecking": "Checking the backup…",
   "alkionBackupCheckOk": "Backup verified",
   "alkionBackupCheckOkMessage": "Created {created}. All {rows} covered rows match the manifest; schema and integrity checks passed.",
   "@alkionBackupCheckOkMessage": {
@@ -833,6 +844,7 @@
     }
   },
   "alkionRestoreConfirm": "Restore",
+  "alkionRestorePreparing": "Preparing the restore…",
   "alkionRestoreWorkoutActiveTitle": "Workout in progress",
   "alkionRestoreWorkoutActive": "Finish or discard your workout first, then restore.",
   "alkionRestoreHistory": "Restores",
@@ -850,6 +862,7 @@
   "alkionRestoreKeepAllTitle": "Keep all as evidence?",
   "alkionRestoreKeepAllMessage": "Every listed item is marked as kept. Nothing is replayed, changed or deleted, and the evidence stays exactly as it is.",
   "alkionRestoreKeepAllConfirm": "Keep all",
+  "alkionRestoreKeeping": "Saving your decisions…",
   "alkionRestoreTechnicalShow": "Show technical details",
   "alkionRestoreTechnicalHide": "Hide technical details",
   "alkionReviewNewer": "Newer than this backup: {things}",
@@ -969,6 +982,12 @@
   "alkionRestoreKeepCurrent": "Keep current state",
   "alkionRestoreRunning": "Restoring the verified backup. Local storage stays closed until the restore is selected.",
   "alkionRestoreUnknownNewerWork": "Newer work unknown: the previous local state could not be read. Its bytes are kept unchanged.",
+  "alkionStoredCopies": "Stored copies",
+  "alkionStoredCopiesExplain": "Private copies Alkion keeps on this device. Nothing here deletes them.",
+  "alkionStoredBackups": "Backups",
+  "alkionStoredExports": "Exports",
+  "alkionStoredStaging": "Picked and saved file copies",
+  "alkionStoredUnavailable": "Sizes are not available on this device.",
   "todayVolumeLoading": "Loading weekly volume…",
   "todayVolumeUnavailable": "Weekly volume unavailable. Current totals could not be loaded.",
   "todayVolumeUnknown": "{count} working sets have no muscle label; labeled totals are partial.",

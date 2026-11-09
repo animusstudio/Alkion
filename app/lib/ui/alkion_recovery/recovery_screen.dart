@@ -8,11 +8,14 @@ import '../../files/document_access.dart';
 import '../../recovery/backup.dart';
 import '../../recovery/recovery_host.dart';
 import '../../recovery/restore.dart' show unknownNewerWork;
+import '../../recovery/stored_copies.dart';
 import '../../store/local_store.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/workout_canvas.dart';
 import '../../theme/typography.dart';
 import '../../util/error_message.dart';
+import '../../theme/tokens.dart';
+import '../../widgets/busy_row.dart';
 import '../../widgets/w_dialog.dart';
 import '../export_failure.dart';
 import 'recovery_format.dart';
@@ -41,6 +44,16 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   bool _technical = false;
   DocumentFile? _selected;
 
+  /// The running step's label and the section showing it; null when idle.
+  String? _progress;
+  _Area? _progressArea;
+
+  /// Read-only facts from the host: the newest backup's creation time and
+  /// the stored-copy sizes. Not loaded yet while [_copies] is null.
+  DateTime? _lastBackup;
+  bool _lastBackupKnown = false;
+  StoredCopySizes? _copies;
+
   RecoveryHost? get _host => context.read<RecoveryHost?>();
 
   @override
@@ -68,16 +81,45 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     } on StoreException {
       // A closed or fenced store (for example during restore) shows nothing.
     }
+    final host = _host;
+    if (host == null) return;
+    try {
+      final last = await host.lastBackupCreated();
+      final copies = await host.storedCopies();
+      if (!mounted) return;
+      setState(() {
+        _lastBackup = last;
+        _lastBackupKnown = true;
+        _copies = copies;
+      });
+    } on Object {
+      // Read-only facts; when they cannot be read the screen omits them.
+    }
+  }
+
+  /// Shows [label] as the running step in [area], or clears it.
+  void _step(String? label, [_Area? area]) {
+    if (!mounted) return;
+    setState(() {
+      _progress = label;
+      _progressArea = label == null ? null : area ?? _progressArea;
+    });
   }
 
   Future<void> _run(
     Future<void> Function(RecoveryHost host, AppLocalizations l) action, {
     bool flush = true,
+    String? progress,
+    _Area? area,
   }) async {
     final host = _host;
     if (_busy || host == null) return;
     final l = AppLocalizations.of(context);
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _progress = progress;
+      _progressArea = area;
+    });
     try {
       if (flush) await widget.flush?.call();
       await action(host, l);
@@ -85,7 +127,11 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
       await _failed(l, e);
     } finally {
       if (mounted) {
-        setState(() => _busy = false);
+        setState(() {
+          _busy = false;
+          _progress = null;
+          _progressArea = null;
+        });
         await _reload();
       }
     }
@@ -119,6 +165,8 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
 
   Future<void> _message(String title, String message, {String? details}) async {
     if (!mounted) return;
+    // A result or failure ends the visible step.
+    _step(null);
     final l = AppLocalizations.of(context);
     await showWDialog<bool>(
       context,
@@ -129,30 +177,34 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     );
   }
 
-  Future<void> _create() => _run((host, l) async {
-    final receipt = await host.createBackup();
-    final documents = _documents;
-    if (documents != null) {
-      final saved = await saveBackupCopy(host, receipt, documents);
+  Future<void> _create() => _run(
+    progress: AppLocalizations.of(context).alkionBackupCreating,
+    area: _Area.create,
+    (host, l) async {
+      final receipt = await host.createBackup();
+      final documents = _documents;
+      if (documents != null) {
+        final saved = await saveBackupCopy(host, receipt, documents);
+        await _message(
+          saved == null ? l.alkionDocumentCancelled : l.alkionDocumentSaved,
+          saved == null
+              ? l.alkionDocumentCancelledMessage
+              : l.alkionBackupCopySaved(
+                  documentLabel(saved.readback.name),
+                  receipt.verified.containerSha256.substring(0, 16),
+                ),
+        );
+        return;
+      }
       await _message(
-        saved == null ? l.alkionDocumentCancelled : l.alkionDocumentSaved,
-        saved == null
-            ? l.alkionDocumentCancelledMessage
-            : l.alkionBackupCopySaved(
-                documentLabel(saved.readback.name),
-                receipt.verified.containerSha256.substring(0, 16),
-              ),
+        l.alkionBackupCreated,
+        l.alkionBackupCreatedMessage(
+          receipt.path,
+          receipt.verified.containerSha256.substring(0, 16),
+        ),
       );
-      return;
-    }
-    await _message(
-      l.alkionBackupCreated,
-      l.alkionBackupCreatedMessage(
-        receipt.path,
-        receipt.verified.containerSha256.substring(0, 16),
-      ),
-    );
-  });
+    },
+  );
 
   /// The chosen backup. With a document picker the file is picked once and
   /// its private copy is reused by Check and Restore until another is chosen;
@@ -188,6 +240,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   Future<void> _check() => _run((host, l) async {
     final chosen = await _chosen();
     if (chosen == null) return;
+    _step(l.alkionBackupChecking, _Area.file);
     final verified = await host.verifyBackup(chosen.path);
     if (verified.profileId != host.profileId) return _foreign(l);
     await _message(
@@ -207,10 +260,12 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     await _run((host, l) async {
       final chosen = await _chosen();
       if (chosen == null) return;
+      _step(l.alkionBackupChecking, _Area.file);
       final verified = await host.verifyBackup(chosen.path);
       verified.requireWriterVariant();
       if (verified.profileId != host.profileId) return _foreign(l);
       if (host.workoutActive) return _workoutActive(l);
+      _step(null);
       if (!mounted) return;
       final confirmed = await showWConfirm(
         context,
@@ -222,6 +277,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
         destructive: true,
       );
       if (confirmed != true) return;
+      _step(l.alkionRestorePreparing, _Area.file);
       // The host verifies again, refuses a workout started meanwhile, closes
       // this runtime and presents the post-restore screen itself.
       await host.restoreBackup(chosen.path);
@@ -238,6 +294,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
       confirmLabel: l.alkionRestoreKeepAllConfirm,
     );
     if (confirmed != true || !mounted) return;
+    _step(l.alkionRestoreKeeping, _Area.reviews);
     await RestoreReviews(context.read<LocalDatabase>()).keepAll();
   }, flush: false);
 
@@ -262,6 +319,9 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     );
     Widget line(String text) =>
         Text(text, style: WorkoutType.body(size: 14, color: tokens.dim));
+    Widget busy(_Area area) => _progress != null && _progressArea == area
+        ? BusyRow(_progress!, key: Key('backup-progress-${area.name}'))
+        : const SizedBox.shrink();
     Widget metadata(String text) =>
         Text(text, style: WorkoutType.mono(size: 12, color: tokens.dim));
     Widget actions(List<Widget> children) => Column(
@@ -315,6 +375,25 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (_lastBackupKnown)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Text(
+                            _lastBackup == null
+                                ? l.alkionBackupNone
+                                : l.alkionBackupLast(
+                                    fmtRecoveryDateTime(
+                                      _lastBackup!,
+                                      l.localeName,
+                                    ),
+                                  ),
+                            key: const Key('backup-last'),
+                            style: WorkoutType.body(
+                              size: 14,
+                              color: tokens.text,
+                            ),
+                          ),
+                        ),
                       header(l.alkionBackupSection),
                       line(l.alkionBackupExplain),
                       const SizedBox(height: 16),
@@ -329,6 +408,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                           ),
                         ),
                       ]),
+                      busy(_Area.create),
                       header(l.alkionBackupFileSection),
                       if (_documents == null)
                         Column(
@@ -389,6 +469,13 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                           child: Text(l.alkionRestoreAction),
                         ),
                       ]),
+                      busy(_Area.file),
+                      if (_copies case final copies?) ...[
+                        header(l.alkionStoredCopies),
+                        line(l.alkionStoredCopiesExplain),
+                        const SizedBox(height: 8),
+                        ..._copyRows(l, tokens, copies),
+                      ],
                       if (_history.isNotEmpty) ...[
                         header(l.alkionRestoreHistory),
                         for (final h in _history)
@@ -408,17 +495,23 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                       if (_reviews.isEmpty)
                         line(l.alkionRestoreNoReviews)
                       else ...[
-                        for (final group in reviewGroupLabels(l, _reviews))
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              group,
-                              style: WorkoutType.body(
-                                size: 14,
-                                color: tokens.text,
+                        Column(
+                          key: const Key('restore-review-groups'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final group in reviewGroupLabels(l, _reviews))
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  group,
+                                  style: WorkoutType.body(
+                                    size: 14,
+                                    color: tokens.text,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
+                          ],
+                        ),
                         const SizedBox(height: 8),
                         actions([
                           OutlinedButton(
@@ -427,6 +520,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                             child: Text(l.alkionRestoreKeepAll),
                           ),
                         ]),
+                        busy(_Area.reviews),
                       ],
                       if (_history.isNotEmpty || _reviews.isNotEmpty) ...[
                         const SizedBox(height: 16),
@@ -473,6 +567,49 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
       ),
     );
   }
+}
+
+/// The screen section a running step belongs to.
+enum _Area { create, file, reviews }
+
+/// One "label · size" row per kind of stored copy whose size is known; a
+/// size that cannot be read is omitted, never guessed.
+List<Widget> _copyRows(
+  AppLocalizations l,
+  WorkoutTokens tokens,
+  StoredCopySizes copies,
+) {
+  final rows = [
+    (l.alkionStoredBackups, copies.backups, 'backups'),
+    (l.alkionStoredExports, copies.exports, 'exports'),
+    (l.alkionStoredStaging, copies.staging, 'staging'),
+  ].where((row) => row.$2 != null);
+  if (rows.isEmpty) {
+    return [
+      Text(
+        l.alkionStoredUnavailable,
+        style: WorkoutType.body(size: 14, color: tokens.dim),
+      ),
+    ];
+  }
+  return [
+    for (final (label, bytes, id) in rows)
+      Padding(
+        key: Key('stored-$id'),
+        padding: const EdgeInsets.only(bottom: 8),
+        // Stacked, so a long label keeps the full width at large text.
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: WorkoutType.body(size: 14, color: tokens.text)),
+            Text(
+              fmtFileSize(bytes!, l.localeName),
+              style: WorkoutType.mono(size: 12, color: tokens.dim),
+            ),
+          ],
+        ),
+      ),
+  ];
 }
 
 /// What a newer-work review row is about, as the user names it.

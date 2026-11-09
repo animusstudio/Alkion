@@ -25,6 +25,7 @@ import 'l10n/app_localizations.dart';
 import 'recovery/backup.dart' as backup;
 import 'recovery/recovery_host.dart';
 import 'recovery/restore.dart';
+import 'recovery/stored_copies.dart';
 import 'session/session_manager.dart';
 import 'session/workout_notification.dart';
 import 'shell/session_launcher.dart';
@@ -547,11 +548,21 @@ final class RuntimeRecoveryHost implements RecoveryHost {
     required this.relaunch,
     this.present = runApp,
     Future<Directory> Function()? backupDirectory,
-  }) : backupDirectory = backupDirectory ?? _privateBackupDirectory;
+    Future<StoredCopyRoots> Function()? copyRoots,
+  }) : backupDirectory = backupDirectory ?? _privateBackupDirectory,
+       copyRoots =
+           copyRoots ??
+           (backupDirectory == null
+               ? platformStoredCopyRoots
+               : () async => StoredCopyRoots(backups: await backupDirectory()));
   final AlkionRuntime runtime;
   final Future<void> Function() relaunch;
   final void Function(Widget app) present;
   final Future<Directory> Function() backupDirectory;
+
+  /// Where the private copies are, for the read-only last-backup date and
+  /// stored-copy sizes. Resolving them creates nothing.
+  final Future<StoredCopyRoots> Function() copyRoots;
 
   static Future<Directory> _privateBackupDirectory() async {
     if (!Platform.isAndroid) return getApplicationDocumentsDirectory();
@@ -570,6 +581,14 @@ final class RuntimeRecoveryHost implements RecoveryHost {
   @override
   Future<backup.VerifiedBackup> verifyBackup(String path) =>
       backup.verifyBackupFile(File(path), schema: runtime.store.schema);
+
+  @override
+  Future<DateTime?> lastBackupCreated() async =>
+      newestBackupCreated((await copyRoots()).backups, profileId);
+
+  @override
+  Future<StoredCopySizes> storedCopies() async =>
+      measureStoredCopies(await copyRoots());
 
   @override
   bool get workoutActive =>

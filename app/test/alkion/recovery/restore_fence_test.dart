@@ -61,7 +61,14 @@ void main() {
       0,
       '70.00',
     );
-    backupPath = (await host.createBackup()).path;
+    expect(await host.lastBackupCreated(), isNull);
+    final receipt = await host.createBackup();
+    backupPath = receipt.path;
+    // The host reads the newest backup's time from its file name.
+    expect(
+      (await host.lastBackupCreated())!.toIso8601String().substring(0, 19),
+      receipt.verified.createdAt.substring(0, 19),
+    );
   });
 
   Future<void> close(WidgetTester tester) => tester.runAsync(() async {

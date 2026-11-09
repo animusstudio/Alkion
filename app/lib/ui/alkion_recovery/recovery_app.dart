@@ -8,6 +8,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/workout_canvas.dart';
 import '../../theme/tokens.dart';
 import '../../theme/typography.dart';
+import '../../widgets/busy_row.dart';
 import '../export_failure.dart';
 
 enum _Kind { restored, failed, interrupted }
@@ -281,10 +282,12 @@ class AlkionRestoringApp extends StatelessWidget {
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 48, 24, 32),
-                child: Text(
-                  AppLocalizations.of(context).alkionRestoreRunning,
-                  textAlign: TextAlign.center,
-                  style: WorkoutType.body(size: 16, color: context.tokens.dim),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: BusyRow(
+                    AppLocalizations.of(context).alkionRestoreRunning,
+                    key: const Key('restore-progress'),
+                  ),
                 ),
               ),
             ),
