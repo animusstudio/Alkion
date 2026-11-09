@@ -13,6 +13,7 @@ import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/data/exercise_repository.dart' show DomainRecovery;
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
 import 'package:alkion/ui/day_view.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/ui/plan_screen.dart';
@@ -284,7 +285,7 @@ Future<void> _viewDay(WidgetTester tester, [String name = longDay]) async {
 Future<void> _editFromView(WidgetTester tester, [String id = 'd1']) async {
   tester.widget<DayView>(_dayView(id)).onEdit();
   await tester.pump();
-  await settleUntilFound(tester, find.byType(DaySlotRow), where: 'day editor');
+  await settleUntilFound(tester, find.byType(DaySlotCard), where: 'day editor');
 }
 
 /// Opens seedLong's four-slot day: its card shows the view, whose Edit
@@ -438,7 +439,7 @@ void main() {
       await tester.tap(find.text(_l.planEditDay).last);
       await settleUntilFound(
         tester,
-        find.byType(DaySlotRow),
+        find.byType(DaySlotCard),
         where: 'day editor',
       );
       expect(find.byType(DayView), findsNothing);

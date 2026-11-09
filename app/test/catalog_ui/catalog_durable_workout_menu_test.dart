@@ -20,6 +20,7 @@ import 'package:alkion/session/active_session_screen.dart';
 import 'package:alkion/shell/session_launcher.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
 import 'package:alkion/widgets/plan_form.dart';
 import 'package:alkion/widgets/stepper.dart';
 import 'package:flutter/material.dart';
@@ -515,27 +516,49 @@ void main() {
       await tester.pump();
       await _settleUntil(
         tester,
-        () => find.byKey(const Key('metric-duration')).evaluate().isNotEmpty,
+        () => find.byType(DaySlotCard).evaluate().length == 2,
       );
       expect(find.byType(DayEditor), findsOneWidget);
     }
 
-    Finder working(int index) => find
-        .byWidgetPredicate(
-          (widget) =>
-              widget is WStepper && widget.semanticLabel == 'Working sets',
-        )
-        .at(index);
+    // A loaded day starts collapsed; one card is open at a time.
+    Future<void> expand(int index) async {
+      final toggle = find
+          .byWidgetPredicate(
+            (widget) =>
+                widget.key is ValueKey<String> &&
+                (widget.key! as ValueKey<String>).value.startsWith(
+                  'day-slot-expand-',
+                ),
+          )
+          .at(index);
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await _settleUntil(
+        tester,
+        () => find
+            .byKey(const Key('day-slot-working-sets'))
+            .evaluate()
+            .isNotEmpty,
+      );
+      // The card finishes opening (and any other finishes folding away).
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    final working = find.byKey(const Key('day-slot-working-sets'));
 
     await openEditor();
     final label = w.runtime.catalog!.index('en').variantLabel(timed.id);
     final machine = w.catalog.selectionFor(w.original)!.displayLabel;
     expect(find.text(label), findsWidgets);
     expect(find.text(machine), findsWidgets);
-    await tester.ensureVisible(working(0));
+    expect(find.byKey(const Key('metric-duration')), findsNothing);
+    await expand(0);
+    await tester.ensureVisible(working);
     await tester.tap(
       find.descendant(
-        of: working(0),
+        of: working,
         matching: find.byKey(const Key('stepper-inc')),
       ),
     );
@@ -565,8 +588,8 @@ void main() {
     await openEditor();
     expect(find.text(label), findsWidgets);
     expect(find.text(machine), findsWidgets);
-    expect(tester.widget<WStepper>(working(0)).value, 2);
-    expect(tester.widget<WStepper>(working(1)).value, 2);
+    await expand(0);
+    expect(tester.widget<WStepper>(working).value, 2);
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('metric-duration')))
@@ -574,6 +597,9 @@ void main() {
           .text,
       '25.000000000000000001',
     );
+    await expand(1);
+    expect(working, findsOneWidget);
+    expect(tester.widget<WStepper>(working).value, 2);
     await tester.runAsync(() async {
       final day = (await DayTemplateRepository.local(w.database).byId(dayId))!;
       expect(day.slots, hasLength(2));

@@ -8,9 +8,11 @@ import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
 import 'package:alkion/ui/editor_guard.dart';
 import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/split_tab.dart' show SplitTab, DayStatusActions;
+import 'package:alkion/widgets/plan_form.dart' show ChipSelect;
 import 'package:alkion/theme/alkion_icon.dart';
 import '../alkion/domains/local_screen_harness.dart';
 import '../alkion/domains/prepared_intent_retry_test.dart' show FaultDatabase;
@@ -59,7 +61,14 @@ void main() {
         );
         await settleReal(tester);
         expect(find.text('Weekday unavailable'), findsOneWidget);
-        expect(find.text('Wed'), findsNothing);
+        expect(
+          tester
+              .widget<ChipSelect<int>>(
+                find.byKey(const Key('day-editor-weekday')),
+              )
+              .selected,
+          9,
+        );
         await tester.enterText(input('Day name'), 'Unrelated name edit');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await settleReal(tester);
@@ -80,22 +89,24 @@ void main() {
           ),
         );
         await settleReal(tester);
-        await tap(tester, find.byType(DayEditor), 'Change weekday');
+        // The out-of-range weekday selects no chip and is kept untouched.
+        expect(find.text('Weekday unavailable'), findsOneWidget);
         expect(guard.isDirty(), isFalse);
         expect(
           tester
-              .widgetList<Semantics>(find.byType(Semantics))
+              .widgetList<Semantics>(
+                find.descendant(
+                  of: find.byKey(const Key('day-editor-weekday')),
+                  matching: find.byType(Semantics),
+                ),
+              )
               .where((s) => s.properties.selected == true),
           isEmpty,
         );
-        if (remove) {
-          await tester.binding.handlePopRoute();
-          await settleReal(tester);
-          await tap(tester, find.byType(DayEditor), 'Remove weekday');
-        } else {
-          await tester.tap(find.text('Tue'));
-          await settleReal(tester);
-        }
+        // Removal: pick a day, then tap it again to clear.
+        await tap(tester, find.byType(DayEditor), 'Tue');
+        if (remove) await tap(tester, find.byType(DayEditor), 'Tue');
+        expect(find.text('Weekday unavailable'), findsNothing);
         expect(guard.isDirty(), isTrue);
         await tap(tester, find.byType(DayEditor), 'Save changes');
         final repaired = (await tester.runAsync(
@@ -110,7 +121,7 @@ void main() {
 
   for (final initial in RirControls.values) {
     testWidgets(
-      'captured ${initial.name} discloses optional RIR for new no-target slots without numeric defaults',
+      'captured ${initial.name} decides the RIR row of a new slot without numeric defaults',
       (tester) async {
         final h = ScreenHarness();
         addTearDown(h.close);
@@ -139,28 +150,28 @@ void main() {
         await tap(tester, find.byType(DayEditor), 'Add exercise');
         await tester.tap(find.text('Plain'));
         await settleReal(tester);
-        await tap(tester, find.byType(DayEditor), 'Plain');
-        final slot = tester.widget<DaySlotRow>(find.byType(DaySlotRow)).slot;
-        expect(slot.showRirAdd, initial == RirControls.show);
+        // The new card opens; its RIR follows the captured preference.
+        final card = tester.widget<DaySlotCard>(find.byType(DaySlotCard));
+        expect(card.expanded, isTrue);
+        final draft = card.draft;
+        expect(draft.rirPolicy, RirPolicy.off);
+        expect(draft.rirLow, isNull);
+        expect(draft.rirHigh, isNull);
         expect(
-          slot.draft.rirPolicy,
-          initial == RirControls.show ? RirPolicy.inherit : RirPolicy.off,
-        );
-        expect(slot.draft.rirLow, isNull);
-        expect(slot.draft.rirHigh, isNull);
-        expect(
-          find.text('Add RIR target'),
+          find.byKey(const Key('rir-1')),
           initial == RirControls.show ? findsOneWidget : findsNothing,
         );
-        if (initial == RirControls.off) {
-          await tap(tester, find.byType(DayEditor), 'More options');
-          expect(slot.draft.rirLow, isNull);
-          expect(slot.draft.rirHigh, isNull);
+        if (initial == RirControls.show) {
+          await scrollIntoView(
+            tester,
+            find.byType(DayEditor),
+            find.byKey(const Key('rir-1')),
+          );
+          await tester.tap(find.byKey(const Key('rir-1')));
+          await settleReal(tester);
+          expect(draft.rirPolicy, RirPolicy.target);
+          expect((draft.rirLow, draft.rirHigh), (1, 1));
         }
-        await tap(tester, find.byType(DayEditor), 'Add RIR target');
-        expect(slot.draft.rirPolicy, RirPolicy.target);
-        expect((slot.draft.rirLow, slot.draft.rirHigh), (1, 1));
-        expect(find.text('RIR LOW'), findsOneWidget);
         await h.unmount(tester);
       },
     );

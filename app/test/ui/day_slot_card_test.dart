@@ -274,13 +274,13 @@ void main() {
       expect(find.byKey(const Key('metric-repetitions')), findsNothing);
       expect(find.byKey(const Key('metric-reported_load')), findsNothing);
       for (final gone in [
-        en.trainingMoreOptions,
-        en.trainingUseExerciseDefault,
+        'More options', // retired trainingMoreOptions
+        'Use exercise default', // retired trainingUseExerciseDefault
         en.trainingRirExplanation,
         en.trainingRemove(en.dayEditorWorkingSets),
         en.trainingRemove(en.dayEditorWarmups),
-        en.trainingAddRir,
-        en.trainingRemoveRir,
+        'Add RIR target', // retired trainingAddRir
+        'Remove RIR target', // retired trainingRemoveRir
       ]) {
         expect(find.text(gone), findsNothing, reason: gone);
       }
@@ -488,7 +488,7 @@ void main() {
       expect(find.byKey(const Key('day-slot-load')), findsNothing);
       expect(loadMode(draft), LoadMode.last);
 
-      await tapAndSettle(tester, find.text('Fixed'));
+      await tapAndSettle(tester, find.text(en.dayEditorLoadFixed));
       expect(loadMode(draft), LoadMode.fixed);
       expect(draft.catalogTargets['reported_load']!.raw, '62.5');
       expect(draft.catalogTargets['reported_load']!.unit, 'kg');
@@ -504,7 +504,7 @@ void main() {
       await tapAndSettle(tester, stepperButton('day-slot-load', 'stepper-inc'));
       expect(draft.catalogTargets['reported_load']!.raw, '65');
 
-      await tapAndSettle(tester, find.text('Last'));
+      await tapAndSettle(tester, find.text(en.dayEditorLoadLast));
       expect(loadMode(draft), LoadMode.last);
       expect(draft.catalogTargets.containsKey('reported_load'), isFalse);
       expect(find.byKey(const Key('day-slot-load')), findsNothing);
@@ -524,7 +524,7 @@ void main() {
         ),
       );
       expect(find.text('Load (lb)'.toUpperCase()), findsOneWidget);
-      await tapAndSettle(tester, find.text('Fixed'));
+      await tapAndSettle(tester, find.text(en.dayEditorLoadFixed));
       // 62.5 kg is 137.79 lb; the stored text is whole lb.
       expect(draft.catalogTargets['reported_load']!.raw, '138');
       expect(draft.catalogTargets['reported_load']!.unit, 'lb');
@@ -546,7 +546,7 @@ void main() {
         tester,
         _Host(expanded: 'a', unit: Unit.lb, entries: [_Entry('a', draft)]),
       );
-      await tapAndSettle(tester, find.text('Fixed'));
+      await tapAndSettle(tester, find.text(en.dayEditorLoadFixed));
       expect(draft.catalogTargets['reported_load']!.raw, '45');
     });
 

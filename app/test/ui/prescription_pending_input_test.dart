@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/data/exercise_repository.dart';
+import 'package:alkion/settings/settings_service.dart' show RirControls;
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
+import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/ui/editor_guard.dart';
-import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/widgets/plan_form.dart';
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
@@ -46,25 +48,45 @@ Future<void> _type(
   expect(tester.testTextInput.hasAnyClients, isTrue);
 }
 
+/// One open slot card, as the day editor hosts it; tapping its header
+/// collapses and reopens it.
+class _CardHost extends StatefulWidget {
+  const _CardHost(this.slot, {super.key});
+  final DaySlotState slot;
+
+  @override
+  State<_CardHost> createState() => _CardHostState();
+}
+
+class _CardHostState extends State<_CardHost> {
+  bool expanded = true;
+
+  @override
+  Widget build(BuildContext context) => DaySlotCard(
+    instanceKey: widget.slot.instanceKey,
+    draft: widget.slot.draft,
+    exercise: _exercise,
+    reorderIndex: 0,
+    unit: Unit.kg,
+    rirControls: RirControls.show,
+    expanded: expanded,
+    onToggle: () => setState(() => expanded = !expanded),
+    onRemove: () {},
+    onChanged: () {},
+  );
+}
+
 Future<void> _row(WidgetTester tester, DaySlotState slot) async {
   setPhone(tester, width: 412, height: 1600);
   await tester.pumpWidget(
     wrapL10n(
       Scaffold(
         body: SingleChildScrollView(
-          child: Builder(
-            builder: (context) => DaySlotRow(
-              index: 0,
-              reorderIndex: 0,
-              total: 1,
-              slot: slot,
-              exercise: _exercise,
-              tokens: context.tokens,
-              expanded: true,
-              onToggle: () {},
-              onRemove: () {},
-              onChanged: () {},
-            ),
+          child: ReorderableListView(
+            shrinkWrap: true,
+            buildDefaultDragHandles: false,
+            onReorderItem: (_, _) {},
+            children: [_CardHost(slot, key: const ValueKey('card'))],
           ),
         ),
       ),
@@ -72,6 +94,9 @@ Future<void> _row(WidgetTester tester, DaySlotState slot) async {
   );
   await tester.pump();
 }
+
+Finder _header(DaySlotState slot) =>
+    find.byKey(ValueKey('day-slot-expand-${slot.instanceKey}'));
 
 void main() {
   setUpAll(preloadAppFonts);
@@ -121,30 +146,34 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets(
-    'removing RIR target with a pending high never repopulates the target',
+    'clearing RIR with a pending rep high keeps RIR off and the typed reps',
     (tester) async {
       final slot = DaySlotState(
         draft: SlotDraft(
           exerciseId: 'plain',
           workSets: 3,
           repLow: 8,
-          repHigh: 8,
+          repHigh: 12,
           rirPolicy: RirPolicy.target,
           rirLow: 1,
-          rirHigh: 2,
+          rirHigh: 1,
+          changedFields: {},
         ),
       );
       await _row(tester, slot);
-      await _type(tester, 'RIR high', '2', '4');
-      await tester.tap(find.text('Remove RIR target'));
+      await _type(tester, 'Rep high', '12', '15');
+      await tester.ensureVisible(find.byKey(const Key('rir-1')));
+      await tester.tap(find.byKey(const Key('rir-1')));
       await tester.pump();
-      await tester.pump();
+      await tester.tap(_header(slot));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(
         (slot.draft.rirPolicy, slot.draft.rirLow, slot.draft.rirHigh),
         (RirPolicy.off, null, null),
       );
-      expect(find.text('RIR HIGH'), findsNothing);
+      expect((slot.draft.repLow, slot.draft.repHigh), (8, 15));
+      expect(find.text('REP HIGH'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -250,7 +279,7 @@ void main() {
     },
   );
   testWidgets(
-    'More options collapse commits its pending warmup count before hiding it',
+    'collapsing the card commits its pending warmup count before hiding it',
     (tester) async {
       final slot = DaySlotState(
         draft: SlotDraft(
@@ -260,18 +289,18 @@ void main() {
           repLow: 8,
           repHigh: 8,
           rirPolicy: RirPolicy.off,
+          changedFields: {},
         ),
       );
       await _row(tester, slot);
-      await tester.tap(find.text('More options'));
-      await tester.pump();
       expect(slot.draft.warmupSets, 0);
       await _type(tester, 'Warmups', '0', '2');
-      await tester.tap(find.text('More options'));
+      await tester.tap(_header(slot));
       await tester.pump();
-      await tester.pump();
-      expect(tester.takeException(), isNull);
       expect(slot.draft.warmupSets, 2);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(slot.draft.changedFields, {'target_warmup_sets'});
       expect(find.text('WARMUPS'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     },

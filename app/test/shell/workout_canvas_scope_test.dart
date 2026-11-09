@@ -2,7 +2,7 @@ import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/theme/workout_canvas.dart';
 import 'package:alkion/ui/split_tab.dart';
-import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_slot_card.dart';
 import 'package:alkion/ui/day_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -43,7 +43,7 @@ void main() {
         tester.widget<DayView>(find.byType(DayView)).onEdit();
         await settleUntilFound(
           tester,
-          find.byType(DaySlotRow),
+          find.byType(DaySlotCard),
           where: 'Plan editor',
         );
         expect(ambient(), isFalse, reason: 'Opaque editor hides the canvas');
