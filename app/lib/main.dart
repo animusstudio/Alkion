@@ -203,6 +203,11 @@ class AlkionRuntime with WidgetsBindingObserver {
   Future<void>? _retry;
   bool _closing = false;
   bool _ownersDisposed = false, _closed = false;
+
+  /// Whether [close] got past its flush barrier and disposed the sessions,
+  /// notifications and catalog owners. While false after a failed [close],
+  /// the runtime still works and can be shown again.
+  bool get ownersDisposed => _ownersDisposed;
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_closing) {
@@ -287,23 +292,31 @@ class AlkionRuntime with WidgetsBindingObserver {
     }
   }
 
+  /// Flushes, disposes every owner and closes the store. A failure clears
+  /// [_closing] on every path, so a later call retries the remaining steps:
+  /// a flush that failed runs again, owners already disposed are not
+  /// disposed twice.
   Future<void> close({
     @visibleForTesting Future<void> Function()? closeStore,
   }) async {
     if (_closed) return;
     _closing = true;
+    try {
+      await _closeNow(closeStore);
+    } catch (_) {
+      _closing = false;
+      rethrow;
+    }
+  }
+
+  Future<void> _closeNow(Future<void> Function()? closeStore) async {
     // Fence remote callbacks synchronously, before any local barrier yields.
     // Drain covered API evidence before SQLite; provider cleanup is separate.
     final senderClose = workoutSender.close();
     final reviewClose = recoveryReview.close();
     unawaited(animus.close());
     final apiDrain = animus.drainApi();
-    try {
-      if (!_ownersDisposed) await flushPersistence();
-    } catch (_) {
-      _closing = false;
-      rethrow;
-    }
+    if (!_ownersDisposed) await flushPersistence();
     WidgetsBinding.instance.removeObserver(this);
     sessions
       ..onPersistenceError = null
@@ -549,6 +562,7 @@ final class RuntimeRecoveryHost implements RecoveryHost {
     this.present = runApp,
     Future<Directory> Function()? backupDirectory,
     Future<StoredCopyRoots> Function()? copyRoots,
+    @visibleForTesting this.closeStore,
   }) : backupDirectory = backupDirectory ?? _privateBackupDirectory,
        copyRoots =
            copyRoots ??
@@ -563,6 +577,9 @@ final class RuntimeRecoveryHost implements RecoveryHost {
   /// Where the private copies are, for the read-only last-backup date and
   /// stored-copy sizes. Resolving them creates nothing.
   final Future<StoredCopyRoots> Function() copyRoots;
+
+  /// Test seam for [AlkionRuntime.close]'s store step; null in the app.
+  final Future<void> Function()? closeStore;
 
   static Future<Directory> _privateBackupDirectory() async {
     if (!Platform.isAndroid) return getApplicationDocumentsDirectory();
@@ -634,11 +651,13 @@ final class RuntimeRecoveryHost implements RecoveryHost {
       ),
     );
     try {
-      await runtime.close();
+      await runtime.close(closeStore: closeStore);
     } catch (error) {
+      // Relaunching now would meet this runtime's still-open store as
+      // `profile_in_use`; Reopen first resolves the failed close.
       present(
         AlkionRecoveryApp.failed(
-          relaunch: relaunch,
+          relaunch: _reopenAfterFailedClose,
           error: error,
           locale: locale,
           brightness: brightness,
@@ -671,6 +690,21 @@ final class RuntimeRecoveryHost implements RecoveryHost {
         ),
       );
     }
+  }
+
+  /// Reopen after the runtime failed to close for a restore (nothing was
+  /// restored). When the flush barrier refused before any owner was disposed,
+  /// the same runtime still works and is shown again. Otherwise the close is
+  /// retried and the app relaunched; a retry that fails again throws, which
+  /// the screen shows as a retryable error. Never relaunches over a store
+  /// this runtime still holds.
+  Future<void> _reopenAfterFailedClose() async {
+    if (!runtime.ownersDisposed) {
+      present(AlkionApp(runtime: runtime, recovery: this));
+      return;
+    }
+    await runtime.close(closeStore: closeStore);
+    await relaunch();
   }
 }
 
