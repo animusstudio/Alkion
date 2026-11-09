@@ -22,15 +22,25 @@ class UnitService extends ChangeNotifier {
   }
 
   bool _unboundOwed = false;
-  void setUnit(Unit u) {
+
+  /// Switches the display unit at once and persists it. The returned write
+  /// may fail (the store needs recovery); a caller that does not await it
+  /// still leaves it owed, so the next change or flush retries it.
+  Future<void> setUnit(Unit u) {
     _unit = u;
     final p = _preferences;
+    final Future<void> write;
     if (p == null) {
       _unboundOwed = true;
+      write = Future<void>.error(const StoreException('unbound_preferences'));
     } else {
-      p.save({'unit': u.name}).ignore();
+      write = p.save({'unit': u.name});
     }
+    // Handled here so a caller that ignores it raises no unhandled error;
+    // callers that listen still receive the failure.
+    write.ignore();
     notifyListeners();
+    return write;
   }
 
   Future<void> flushPersistence() async {

@@ -1,6 +1,6 @@
 # Honest storage banner, launch failure screen and themed restore screens
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented 2026-11-09, awaiting review.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/storage-banner-and-launch-screens-20261108`.
 Audit items 1.2, 1.3, 1.4, 1.5, 1.6, 5.8 and the `main()` retry gap.
@@ -129,8 +129,114 @@ The backup plan owns the rest of `RuntimeRecoveryHost` and rebases onto T3.
 
 ## Task state
 
-None started.
+Review PASS-WITH-FINDINGS (no blocking); fixes in `e9aa001`.
+`make -C app analyze` → No issues found; `make -C app format` → 0 changed;
+`make -C app test TEST='--concurrency=2 test/session test/util
+test/alkion/recovery test/alkion/acceptance test/main_routing_test.dart
+test/layout test/l10n test/widgets/storage_recovery_banner_test.dart
+test/ui/launch_failure_app_test.dart
+test/alkion/workflows/account_free_screens_test.dart'` → +783, all pass.
+
+- `_flushNow` records a failing owed-write drain, still flushes sessions,
+  settings, units, identity and catalog, then reports and rethrows the first
+  failure. The strict open-form refusal now runs last, after a clean flush.
+- A later successful debounced autosave (`onAutosaveSaved`, via
+  `SessionManager.onPersistenceCleared`) clears the banner only while it still
+  shows the failed autosave's own error; failures from other sources stay.
+- `restoreBackup` reads locale, brightness and accent into locals before
+  `runtime.close()` disposes the settings owner.
+- `main()` sets `GoogleFonts.config.allowRuntimeFetching = false` before
+  `startAlkion()`, so the launch failure screen never fetches fonts; the
+  launcher and runtime keep their own guard for direct callers.
+- Retry returns at once once `close()` has begun (also after its `recover()`).
+  Tests: an owed editor write fails yet the draft and settings land; autosave
+  success clears only its own failure; Retry racing `close()` in both orders
+  throws nothing and writes nothing after close.
+- Follow-up for the notifications plan: a notification cancel or show failure
+  that reaches the manager raises this storage banner (decision 1.5), whose
+  wording blames local storage. Today the plugin wrapper catches its own
+  failures, so only storage errors arrive, but a wording or routing split
+  belongs there.
+
+Code at `4e6a2bc` before review. Commits: `9be3b7a` (T1), `3ef82b8` (T2),
+`4e6a2bc` (T3).
+
+- T1 — done, awaiting review. `UnsavedEditors.drainOrThrow({includeOpenForms
+  = true})`; with `false` only a still-owed write throws.
+  `AlkionRuntime.flushPersistence({includeOpenForms = true})`: the lifecycle
+  flush and Retry pass `false`; backup, restore and `close()` keep the strict
+  default. Owed writes are drained first and a failure there raises the
+  banner; the strict open-form refusal follows, before the owner flushes, and
+  does not touch the banner (it is not a storage failure). The owner flushes
+  now run when a form is merely open. `SessionManager.onPersistenceError` hears
+  every swallowed failure (controller-change flush, lifecycle flush,
+  notification response, post-resume refresh, notification cancel); the
+  controller's debounced autosave reports through `onAutosaveError`, which the
+  manager sets on `register` and clears on `clear`/`dispose`. The runtime wires
+  it into `persistenceFailure` and unhooks it in `close()`.
+  `retryPersistence()` returns the in-flight run to a second caller. The banner
+  is `widgets/storage_recovery_banner.dart`: one `Positioned` child of the
+  `AlkionApp` builder `Stack` that listens to `persistenceFailure` itself,
+  `tokens.danger` tint over `tokens.surface` with a danger rule, `WorkoutType`
+  body text, `FitLabel` title and Retry, Retry disabled while its run is in
+  flight, height capped at half the screen with the text scrolling.
+- T2 — done, awaiting review. `ui/launch_failure_app.dart` holds
+  `AlkionPreflightApp` (re-exported from `main.dart`) and
+  `LaunchFailureScreen`: system theme, device locale, title "{app} couldn't
+  start", the mapped `userMessage` (a recovery refusal reads as "Local storage
+  couldn't be opened.") followed by "Your existing files are preserved.", a
+  "Try again" button (disabled while running) and a collapsed "Technical
+  details" toggle with the stable category, or only the error type for a
+  non-store error. `main()` installs `installReleaseErrorSurface()` first and
+  calls `startAlkion()`, whose failure screen re-runs the whole body;
+  `_presentLaunchFailure` passes `relaunch`. The release card shows a generic
+  title and "Tap to copy the error details" in en/it/de/es from the platform
+  locale, copies message and stack on tap, shows "Copied" for 2 s, and is one
+  `Semantics(button: true)` node. Five `launchFailure*` keys in all four ARBs.
+  The pinned `first_start_restore_test.dart` assertion that the raw
+  `FormatException` text is on screen now asserts it is not, and that the type
+  sits behind the details toggle.
+- T3 — done, awaiting review. `AlkionRestoringApp` and the three
+  `AlkionRecoveryApp` constructors take optional `locale`, `brightness`,
+  `accent`; null follows the system theme and device locale.
+  `RuntimeRecoveryHost.restoreBackup` passes them from `runtime.settings` in its
+  three `present(...)` calls (constructor arguments only).
+
+Evidence at `4e6a2bc`:
+
+- `make -C app analyze` → No issues found.
+- `make -C app format` → 531 files, 0 changed.
+- `make -C app test TEST='--concurrency=2 test/session test/alkion/acceptance
+  test/main_routing_test.dart test/l10n test/alkion/workflows/account_free_screens_test.dart
+  test/widgets/storage_recovery_banner_test.dart'` → +470, all pass (at `9be3b7a`).
+- `make -C app test TEST='--concurrency=2 test/alkion/recovery test/util
+  test/ui/launch_failure_app_test.dart test/main_routing_test.dart test/l10n
+  test/theme'` → +271, all pass (at `3ef82b8`).
+- `make -C app test TEST='--concurrency=2 test/alkion/recovery
+  test/alkion/acceptance/integrated_flows_test.dart'` → all pass after the
+  theme-fade wait fix in `restore_screen_theme_test.dart` (at `4e6a2bc`).
+- `make -C app test TEST=--concurrency=2` → +2985 ~3 -3. The three failures
+  are the inherited `catalog_metric_controls_test.dart` cases
+  `duration_distance_optional`, `reps_distance_optional` and
+  `reps_duration_optional_load mounts all required and optional controls
+  unset`; no others.
+- New tests: `test/alkion/acceptance/storage_banner_flush_test.dart` (real
+  SQLite: open form + all lifecycle states → no banner; strict flush refuses
+  without a banner; owed write → banner, Retry clears; blocked draft writes →
+  banner from the controller-change and resume paths, Retry fails while
+  blocked and clears after; debounced autosave reports; Retry calls share one
+  run), `test/widgets/storage_recovery_banner_test.dart` (double tap → one
+  retry, disabled while running, tokens and type in both themes, 320 dp at 2x
+  in en/it/de/es), `test/ui/launch_failure_app_test.dart` (main() Try again
+  re-runs root lookup and launch, launchAlkion relaunch counter, non-storage
+  wording, collapsed category, system light/dark, de and it, 320 dp at 2x),
+  `test/util/error_surface_test.dart` (release-only install, generic text, de,
+  Copied, button semantics, clipboard), and
+  `test/alkion/recovery/restore_screen_theme_test.dart` (German light and
+  Italian dark result screens, Spanish system-themed interrupted screen,
+  in-app restore passes the settings).
+- Not run: the private Dev APK check (open a History card, pull the shade).
 
 ## Next
 
-Owner approval, then T1 to T3.
+Independent review of T1 to T3, then the owner device check.

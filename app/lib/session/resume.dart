@@ -424,7 +424,14 @@ Future<SessionDraft> restoreFinishedDraft(
         title: l.sessionDiscardChangesTitle,
         message: l.sessionDiscardChangesMessage,
       )
-    : (title: l.sessionDiscardTitle, message: l.sessionDiscardMessage);
+    : (
+        title: l.sessionDiscardTitle,
+        // "Logged sets will be lost" only when some are; a draft that was
+        // only edited (values, sets or exercises) or restored says so.
+        message: draft.blocks.any((b) => b.allSets.any((s) => s.done))
+            ? l.sessionDiscardMessage
+            : l.sessionDiscardChangesOnlyMessage,
+      );
 
 Exercise _placeholderExercise(String id) => Exercise(
   id: id,

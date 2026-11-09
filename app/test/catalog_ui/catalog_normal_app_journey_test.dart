@@ -172,54 +172,36 @@ void main() {
           await settleReal(tester, ticks: 10);
           await typeMetric('duration', '75.000000000000000003');
           await tester.pump();
-          await tap(find.text('Save changes'));
-          expect(find.text("Couldn't save"), findsOneWidget);
+          await tap(find.text('Save'));
+          // The failure names sets, uses the mapped message, and the editor
+          // says the owed write will retry.
+          expect(find.text('Sets not saved'), findsOneWidget);
+          expect(find.text('Something went wrong. Try again.'), findsOneWidget);
           await tap(find.text('OK'));
+          expect(find.text('Not saved · will retry'), findsOneWidget);
+          // A later edit is queued, not dropped: the editor stays editable.
           expect(
             tester
                 .widget<CatalogSetValuesEditor>(
                   find.byType(CatalogSetValuesEditor),
                 )
                 .enabled,
-            isFalse,
-          );
-          final editor = find.byType(CatalogHistoryEditor);
-          final add = find.descendant(
-            of: editor,
-            matching: find.text('Add set'),
-          );
-          expect(
-            tester
-                .widget<TextButton>(
-                  find
-                      .ancestor(
-                        of: add,
-                        matching: find.byWidgetPredicate(
-                          (widget) => widget is TextButton,
-                        ),
-                      )
-                      .first,
-                )
-                .onPressed,
-            isNull,
-          );
-          expect(
-            find
-                .descendant(of: editor, matching: find.byType(IconButton))
-                .evaluate()
-                .every(
-                  (element) => (element.widget as IconButton).onPressed == null,
-                ),
             isTrue,
           );
-          await appNavigatorKey.currentState!.maybePop();
+          await typeMetric('duration', '80.000000000000000007');
           await tester.pump();
-          expect(find.byType(CatalogHistoryEditor), findsOneWidget);
-          await tap(find.text('Save changes'));
-          expect(fault.actions, hasLength(2));
+          await tap(find.text('Save'));
+          expect(find.byType(CatalogHistoryEditor), findsNothing);
+          // The owed write was retried with its own frozen bytes (the
+          // uncertain COMMIT reconciled), then the newer edit was prepared.
+          expect(fault.actions, hasLength(3));
           expect(
-            fault.actions.map((action) => base64Encode(action.bytes)).toSet(),
-            hasLength(1),
+            base64Encode(fault.actions[1].bytes),
+            base64Encode(fault.actions[0].bytes),
+          );
+          expect(
+            fault.actions[2].operationId,
+            isNot(fault.actions[0].operationId),
           );
           await tester.runAsync(() async {
             final rows = await SessionRepository.local(
@@ -227,8 +209,13 @@ void main() {
             ).setsForSession(id);
             expect(
               rows.single.catalog!.metrics['duration']!.raw,
-              '75.000000000000000003',
+              '80.000000000000000007',
             );
+            final operations = await runtime.store.getAll(
+              'SELECT operation_id FROM operations WHERE operation_id IN (?,?)',
+              [fault.actions[0].operationId, fault.actions[2].operationId],
+            );
+            expect(operations, hasLength(2), reason: 'each write once');
           });
         }
         await tester.scrollUntilVisible(
@@ -252,7 +239,7 @@ void main() {
         expect(find.byType(CatalogHistoryEditor), findsOneWidget);
         await typeMetric('duration', '70.000000000000000009');
         await tester.pump();
-        await tap(find.text('Save changes'));
+        await tap(find.text('Save'));
         await tester.runAsync(() async {
           final rows = await SessionRepository.local(
             database,

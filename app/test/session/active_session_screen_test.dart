@@ -525,6 +525,20 @@ void main() {
             ),
             isEmpty,
           );
+          // The held Finish is visibly busy, and neither back nor minimize
+          // can leave before its summary.
+          expect(find.text(l.sessionFinishSaving), findsOneWidget);
+          expect(
+            tester
+                .widget<PopScope<Object?>>(
+                  find.byWidgetPredicate((w) => w is PopScope),
+                )
+                .canPop,
+            isFalse,
+          );
+          await tester.tap(find.bySemanticsLabel(l.sessionMinimize));
+          await real.settleReal(tester, ticks: 1);
+          expect(find.byType(ActiveSessionScreen), findsOneWidget);
           await tester.runAsync(() async => releases.single.complete());
           if (refuseCommit) {
             await real.settleUntilFound(

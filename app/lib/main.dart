@@ -36,8 +36,11 @@ import 'store/schema.dart';
 import 'theme/app_theme.dart';
 import 'ui/alkion_recovery/recovery_app.dart';
 import 'ui/alkion_recovery/first_start_screen.dart';
+import 'ui/launch_failure_app.dart';
+import 'util/error_surface.dart';
 import 'units/unit_service.dart';
 import 'widgets/pending_input.dart';
+import 'widgets/storage_recovery_banner.dart';
 import 'widgets/w_toast.dart';
 import 'catalog/catalog.dart';
 import 'catalog/catalog_development.dart';
@@ -46,6 +49,8 @@ import 'catalog_ui/catalog_loading.dart';
 import 'catalog_ui/catalog_scope.dart';
 import 'history_mapping/history_mapping.dart';
 import 'history_mapping/history_mapping_label.dart';
+
+export 'ui/launch_failure_app.dart' show AlkionPreflightApp;
 
 Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
   profile: profile,
@@ -173,6 +178,9 @@ class AlkionRuntime with WidgetsBindingObserver {
         catalog,
         catalogUnavailable,
       );
+      sessions
+        ..onPersistenceError = runtime._reportPersistenceFailure
+        ..onPersistenceCleared = runtime._clearPersistenceFailure;
       runtime.historyMappings = await HistoryMappingStore(store).byExerciseId();
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
@@ -191,6 +199,7 @@ class AlkionRuntime with WidgetsBindingObserver {
   Map<String, HistoryMapping> historyMappings = const {};
 
   Future<void> _flushTail = Future.value();
+  Future<void>? _retry;
   bool _closing = false;
   bool _ownersDisposed = false, _closed = false;
   @override
@@ -199,41 +208,81 @@ class AlkionRuntime with WidgetsBindingObserver {
       return;
     }
     unawaited(
-      flushPersistence().catchError((Object error) {
+      // An open editor (a History set card under a pulled-down shade) owes
+      // nothing yet, so only a write that failed to land fails this flush.
+      flushPersistence(includeOpenForms: false).catchError((Object error) {
         // The barrier retains owed input; the visible failure remains reviewable
         // on resume. A lifecycle callback is never a successful export boundary.
       }),
     );
   }
 
-  Future<void> flushPersistence() {
+  /// Flushes every owner's owed writes in order. The strict default, used by
+  /// backup, restore and [close], also refuses with `unsaved_editor_input`
+  /// while an open form holds unsaved input; that refusal is not a storage
+  /// failure, so it leaves the storage banner as it was. Every other failure
+  /// raises the banner, and a clean flush clears it.
+  Future<void> flushPersistence({bool includeOpenForms = true}) {
     commitPendingInput();
-    final result = _flushTail.then((_) => _flushNow());
+    final result = _flushTail.then((_) => _flushNow(includeOpenForms));
     _flushTail = result.then<void>((_) {}, onError: (Object error) {});
     return result;
   }
 
-  Future<void> _flushNow() async {
+  Future<void> _flushNow(bool includeOpenForms) async {
+    // An owed editor write that keeps failing must not hold back the other
+    // owners: record its failure, flush them anyway, then report the first.
+    (Object, StackTrace)? failure;
     try {
-      await UnsavedEditors.instance.drainOrThrow();
+      await UnsavedEditors.instance.drainOrThrow(includeOpenForms: false);
+    } catch (error, stack) {
+      failure = (error, stack);
+    }
+    try {
       await sessions.flushPersistence();
       await settings.flushPersistence();
       await units.flushPersistence();
       await identity.flushPersistence();
       await catalog?.flushPersistence();
+    } catch (error, stack) {
+      failure ??= (error, stack);
+    }
+    if (failure != null) {
+      _reportPersistenceFailure(failure.$1);
+      Error.throwWithStackTrace(failure.$1, failure.$2);
+    }
+    if (!_closed) persistenceFailure.value = null;
+    // Strict barriers also refuse while a form holds unsaved input. Nothing
+    // is owed, so this refusal leaves the (now clear) banner alone.
+    if (includeOpenForms) await UnsavedEditors.instance.drainOrThrow();
+  }
+
+  void _reportPersistenceFailure(Object error) {
+    if (!_closed) persistenceFailure.value = error;
+  }
+
+  /// A later successful autosave clears the banner only while it still shows
+  /// the autosave failure it replaces; any other failure stays visible.
+  void _clearPersistenceFailure(Object error) {
+    if (!_closed && identical(persistenceFailure.value, error)) {
       persistenceFailure.value = null;
-    } catch (error) {
-      persistenceFailure.value = error;
-      rethrow;
     }
   }
 
-  Future<void> retryPersistence() async {
+  /// The banner's Retry: recovers the store, then re-runs the lenient flush.
+  /// A call while one is running joins it, so a double tap recovers once.
+  Future<void> retryPersistence() =>
+      _retry ??= _retryNow().whenComplete(() => _retry = null);
+
+  Future<void> _retryNow() async {
+    // Once close() has begun, its own barrier owns the final flush.
+    if (_closing) return;
     try {
       await store.recover();
-      await flushPersistence();
+      if (_closing) return;
+      await flushPersistence(includeOpenForms: false);
     } catch (error) {
-      persistenceFailure.value = error;
+      _reportPersistenceFailure(error);
     }
   }
 
@@ -255,6 +304,9 @@ class AlkionRuntime with WidgetsBindingObserver {
       rethrow;
     }
     WidgetsBinding.instance.removeObserver(this);
+    sessions
+      ..onPersistenceError = null
+      ..onPersistenceCleared = null;
     await senderClose;
     await reviewClose;
     await apiDrain;
@@ -277,12 +329,36 @@ class AlkionRuntime with WidgetsBindingObserver {
 }
 
 Future<void> main() async {
+  // First, so even a failure while starting never shows the bare gray box.
+  installReleaseErrorSurface();
   WidgetsFlutterBinding.ensureInitialized();
+  // Before anything renders, including the launch failure screen.
+  GoogleFonts.config.allowRuntimeFetching = false;
+  await startAlkion();
+}
+
+/// The body of [main]: finds the checked support root and launches. A failure
+/// before [launchAlkion] can present its own screen shows the launch failure
+/// screen, whose Try again re-runs this whole body.
+Future<void> startAlkion({
+  @visibleForTesting Future<Directory> Function()? supportRoot,
+  @visibleForTesting Future<void> Function(Directory root)? launch,
+  @visibleForTesting void Function(Widget app) present = runApp,
+}) async {
   try {
-    final root = await checkedAlkionSupportRoot();
-    await launchAlkion(root);
+    final root = await (supportRoot ?? checkedAlkionSupportRoot)();
+    await (launch ?? launchAlkion)(root);
   } catch (error) {
-    runApp(AlkionPreflightApp(error: error));
+    present(
+      AlkionPreflightApp(
+        error: error,
+        relaunch: () => startAlkion(
+          supportRoot: supportRoot,
+          launch: launch,
+          present: present,
+        ),
+      ),
+    );
   }
 }
 
@@ -406,7 +482,7 @@ Future<void> _presentLaunchFailure(
       ),
     );
   } else {
-    present(AlkionPreflightApp(error: error));
+    present(AlkionPreflightApp(error: error, relaunch: relaunch));
   }
 }
 
@@ -503,11 +579,31 @@ final class RuntimeRecoveryHost implements RecoveryHost {
       throw const StoreException('foreign_profile');
     }
     await runtime.flushPersistence();
-    present(const AlkionRestoringApp());
+    // Read before close() disposes the settings owner.
+    final (locale, brightness, accent) = (
+      runtime.settings.locale,
+      runtime.settings.brightness,
+      runtime.settings.accent,
+    );
+    present(
+      AlkionRestoringApp(
+        locale: locale,
+        brightness: brightness,
+        accent: accent,
+      ),
+    );
     try {
       await runtime.close();
     } catch (error) {
-      present(AlkionRecoveryApp.failed(relaunch: relaunch, error: error));
+      present(
+        AlkionRecoveryApp.failed(
+          relaunch: relaunch,
+          error: error,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
+        ),
+      );
       return;
     }
     try {
@@ -515,9 +611,24 @@ final class RuntimeRecoveryHost implements RecoveryHost {
         runtime.supportRoot,
         schema: runtime.store.schema,
       ).restore(File(path));
-      present(AlkionRecoveryApp.restored(relaunch: relaunch));
+      present(
+        AlkionRecoveryApp.restored(
+          relaunch: relaunch,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
+        ),
+      );
     } catch (error) {
-      present(AlkionRecoveryApp.failed(relaunch: relaunch, error: error));
+      present(
+        AlkionRecoveryApp.failed(
+          relaunch: relaunch,
+          error: error,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
+        ),
+      );
     }
   }
 }
@@ -570,64 +681,29 @@ class AlkionApp extends StatelessWidget {
             navigatorKey: appNavigatorKey,
             scaffoldMessengerKey: appScaffoldMessengerKey,
             title: AlkionIdentity.displayName,
-            builder: (context, child) => ValueListenableBuilder<Object?>(
-              valueListenable: runtime.persistenceFailure,
-              builder: (context, error, _) => _RuntimeNotificationNavigation(
-                runtime: runtime,
-                child: HistoryMappingScope(
-                  mappings: runtime.historyMappings,
-                  child: Stack(
-                    children: [
-                      if (child != null)
-                        CatalogReadyReveal.startup(
-                          enabled: revealCatalog,
-                          child: child,
-                        ),
-                      if (error != null)
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          child: SafeArea(
-                            child: Material(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.errorContainer,
-                              elevation: 4,
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      AppLocalizations.of(
-                                        context,
-                                      ).alkionStoreRecoveryTitle,
-                                    ),
-                                    Text(
-                                      AppLocalizations.of(
-                                        context,
-                                      ).alkionStoreRecoveryBody,
-                                    ),
-                                    TextButton(
-                                      style: TextButton.styleFrom(
-                                        minimumSize: const Size(48, 48),
-                                      ),
-                                      onPressed: runtime.retryPersistence,
-                                      child: Text(
-                                        AppLocalizations.of(
-                                          context,
-                                        ).alkionRetry,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+            builder: (context, child) => _RuntimeNotificationNavigation(
+              runtime: runtime,
+              child: HistoryMappingScope(
+                mappings: runtime.historyMappings,
+                child: Stack(
+                  children: [
+                    if (child != null)
+                      CatalogReadyReveal.startup(
+                        enabled: revealCatalog,
+                        child: child,
+                      ),
+                    // One self-contained notice child; later notices are
+                    // siblings here, never folded into this banner.
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: StorageRecoveryBanner(
+                        failure: runtime.persistenceFailure,
+                        onRetry: runtime.retryPersistence,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -736,28 +812,6 @@ class _RuntimeNotificationNavigationState
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-class AlkionPreflightApp extends StatelessWidget {
-  const AlkionPreflightApp({super.key, this.error});
-  final Object? error;
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: AlkionIdentity.displayName,
-    home: Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              '${AlkionIdentity.displayName}\nLocal storage is unavailable. Your existing files are preserved.\n${error ?? ''}',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 Future<void> logOutAndForget({

@@ -13,20 +13,61 @@ import '../../theme/typography.dart';
 
 enum _Kind { restored, failed, interrupted }
 
+/// The restore screens' shell. With the user's [brightness], [accent] and
+/// [locale] (read from the closing runtime's settings) it matches the app;
+/// without them, as for an interrupted restore found at launch when no
+/// settings can be read, it follows the system theme and device language.
+MaterialApp _recoveryShell({
+  required Widget home,
+  Locale? locale,
+  Brightness? brightness,
+  Color? accent,
+}) {
+  final color = accent ?? accents[0];
+  return MaterialApp(
+    title: AlkionIdentity.displayName,
+    debugShowCheckedModeBanner: false,
+    theme: buildTheme(Brightness.light, color),
+    darkTheme: buildTheme(Brightness.dark, color),
+    themeMode: switch (brightness) {
+      null => ThemeMode.system,
+      Brightness.light => ThemeMode.light,
+      Brightness.dark => ThemeMode.dark,
+    },
+    locale: locale,
+    localizationsDelegates: const [
+      AppLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: home,
+  );
+}
+
 /// Shown while no store is open: after a restore selection, after a failed
 /// restore, or when an interrupted restore keeps every opener closed. Its only
 /// actions are explicit: reopen, complete the restore or keep the current
 /// generation. Nothing is chosen or retried automatically.
 class AlkionRecoveryApp extends StatelessWidget {
-  const AlkionRecoveryApp.restored({super.key, required this.relaunch})
-    : _kind = _Kind.restored,
-      error = null,
-      service = null,
-      pending = const [];
+  const AlkionRecoveryApp.restored({
+    super.key,
+    required this.relaunch,
+    this.locale,
+    this.brightness,
+    this.accent,
+  }) : _kind = _Kind.restored,
+       error = null,
+       service = null,
+       pending = const [];
   const AlkionRecoveryApp.failed({
     super.key,
     required this.relaunch,
     required Object this.error,
+    this.locale,
+    this.brightness,
+    this.accent,
   }) : _kind = _Kind.failed,
        service = null,
        pending = const [];
@@ -35,6 +76,9 @@ class AlkionRecoveryApp extends StatelessWidget {
     required this.relaunch,
     required RestoreService this.service,
     required this.pending,
+    this.locale,
+    this.brightness,
+    this.accent,
   }) : _kind = _Kind.interrupted,
        error = null;
 
@@ -44,17 +88,16 @@ class AlkionRecoveryApp extends StatelessWidget {
   final RestoreService? service;
   final List<PendingRestore> pending;
 
+  /// The user's language, theme and accent; null follows the system.
+  final Locale? locale;
+  final Brightness? brightness;
+  final Color? accent;
+
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: AlkionIdentity.displayName,
-    theme: buildTheme(Brightness.dark, accents[0]),
-    localizationsDelegates: const [
-      AppLocalizations.delegate,
-      GlobalMaterialLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-    ],
-    supportedLocales: AppLocalizations.supportedLocales,
+  Widget build(BuildContext context) => _recoveryShell(
+    locale: locale,
+    brightness: brightness,
+    accent: accent,
     home: _RecoveryBody(app: this),
   );
 }
@@ -212,18 +255,23 @@ class _RecoveryBodyState extends State<_RecoveryBody> {
 /// Replaces the running UI while the runtime closes and the restore runs, so
 /// no screen keeps a watch or callback on the store being replaced.
 class AlkionRestoringApp extends StatelessWidget {
-  const AlkionRestoringApp({super.key});
+  const AlkionRestoringApp({
+    super.key,
+    this.locale,
+    this.brightness,
+    this.accent,
+  });
+
+  /// The user's language, theme and accent; null follows the system.
+  final Locale? locale;
+  final Brightness? brightness;
+  final Color? accent;
+
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: AlkionIdentity.displayName,
-    theme: buildTheme(Brightness.dark, accents[0]),
-    localizationsDelegates: const [
-      AppLocalizations.delegate,
-      GlobalMaterialLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-    ],
-    supportedLocales: AppLocalizations.supportedLocales,
+  Widget build(BuildContext context) => _recoveryShell(
+    locale: locale,
+    brightness: brightness,
+    accent: accent,
     home: Builder(
       builder: (context) => Scaffold(
         backgroundColor: context.tokens.bg,

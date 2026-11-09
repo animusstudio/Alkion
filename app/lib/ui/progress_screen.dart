@@ -21,6 +21,7 @@ import '../theme/typography.dart';
 import '../units/unit_format.dart';
 import '../units/unit_service.dart';
 import '../util/dates.dart';
+import '../util/error_message.dart';
 import '../widgets/card.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/line_chart.dart';
@@ -263,6 +264,7 @@ class _CatalogProgressViewState extends State<_CatalogProgressView> {
   }
 
   Future<void> _load() async {
+    if (_error != null) setState(() => _error = null);
     try {
       final contexts = await CatalogExecutionRepository.local(
         context.read<LocalDatabase>(),
@@ -369,43 +371,116 @@ class _CatalogProgressViewState extends State<_CatalogProgressView> {
                 GlyphBlock(220, gap: 24),
               ]),
             ),
-            builder: (context) =>
-                selected == null ||
-                    !selected.supportsLoadProgression ||
-                    _stream == null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        selected == null &&
-                                _error == null &&
-                                _contexts!.isNotEmpty
-                            ? l.catalogSelectSetup
-                            : l.catalogProgressUnsupported,
-                        style: WorkoutType.body(
-                          size: 16,
-                          color: context.tokens.dim,
-                        ),
+            builder: (context) {
+              final error = _error;
+              if (error != null) {
+                return _CatalogProgressError(error: error, onRetry: _load);
+              }
+              // No tracking context yet: never logged, unless its profile
+              // could never show load progression anyway.
+              final message = _contexts!.isEmpty
+                  ? widget.exercise.measurementProfile?.key == 'load_reps'
+                        ? l.catalogProgressNeverLogged
+                        : l.catalogProgressUnsupported
+                  : selected == null
+                  ? l.catalogSelectSetup
+                  : !selected.supportsLoadProgression || _stream == null
+                  ? l.catalogProgressUnsupported
+                  : null;
+              if (message != null) return _CatalogProgressMessage(message);
+              return StreamBuilder<List<ProgressPoint>>(
+                stream: _stream,
+                builder: (context, snapshot) => snapshot.hasError
+                    ? _CatalogProgressError(
+                        error: snapshot.error!,
+                        onRetry: () => setState(() => _select(selected!)),
+                      )
+                    // A setup with no logged sets yet is never logged too.
+                    : snapshot.data?.isEmpty == true
+                    ? _CatalogProgressMessage(l.catalogProgressNeverLogged)
+                    : _LiftView(
+                        catalog: widget.catalog,
+                        exercise: widget.exercise,
+                        metricId: _metric,
+                        metric: kMetrics.firstWhere((m) => m.id == _metric),
+                        rawSeries: snapshot.data ?? [],
+                        unitService: context.watch<UnitService>(),
+                        onPickerTap: widget.onOpenPicker,
+                        onMetricChanged: (value) =>
+                            setState(() => _metric = value),
                       ),
-                    ),
-                  )
-                : StreamBuilder<List<ProgressPoint>>(
-                    stream: _stream,
-                    builder: (context, snapshot) => _LiftView(
-                      catalog: widget.catalog,
-                      exercise: widget.exercise,
-                      metricId: _metric,
-                      metric: kMetrics.firstWhere((m) => m.id == _metric),
-                      rawSeries: snapshot.data ?? [],
-                      unitService: context.watch<UnitService>(),
-                      onPickerTap: widget.onOpenPicker,
-                      onMetricChanged: (value) =>
-                          setState(() => _metric = value),
-                    ),
-                  ),
+              );
+            },
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Why catalog Progress has no chart: never logged, unsupported, or a setup
+/// to choose.
+class _CatalogProgressMessage extends StatelessWidget {
+  const _CatalogProgressMessage(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text(
+        message,
+        key: const Key('catalog-progress-message'),
+        textAlign: TextAlign.center,
+        style: WorkoutType.body(size: 16, color: context.tokens.dim),
+      ),
+    ),
+  );
+}
+
+/// Catalog Progress could not be read: the error in the user's words, and a
+/// Retry that reads it again.
+class _CatalogProgressError extends StatelessWidget {
+  const _CatalogProgressError({required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final tokens = context.tokens;
+    return Center(
+      key: const Key('catalog-progress-error'),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FitLabel(
+              l.catalogProgressLoadFailed,
+              maxLines: 3,
+              textAlign: TextAlign.center,
+              style: WorkoutType.body(size: 16, color: tokens.text),
+            ),
+            const SizedBox(height: 8),
+            FitLabel(
+              userMessage(l, error).message,
+              maxLines: 6,
+              textAlign: TextAlign.center,
+              style: WorkoutType.body(size: 14, color: tokens.dim),
+            ),
+            const SizedBox(height: 16),
+            GlitchTap(
+              child: FilledButton(
+                onPressed: onRetry,
+                child: GlitchLabel(l.trainingRetry),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -452,6 +527,12 @@ class _LiftView extends StatelessWidget {
 
   bool get _isLoad => metricId == 'top' || metricId == 'e1rm';
 
+  /// Whether [p] has a value under the active metric. Top, e1RM and reps
+  /// read the top set, so a point whose top set is unavailable has none: it
+  /// is left out of the chart, Current, Best and the 12wk change, and the
+  /// session log shows it as "—". Volume sums the known sets and keeps it.
+  bool _hasValue(ProgressPoint p) => metricId == 'volume' || p.topAvailable;
+
   // A weight reads as a set weight does on every other screen (whole lb,
   // kg up to two decimals); volume and reps read as whole counts.
   String _fmtVal(double v) =>
@@ -468,21 +549,33 @@ class _LiftView extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final metricName = metricLabel(l, metricId);
     final unit = metric.wt ? unitService.uLabel : '';
-    final seriesValues = rawSeries.map(_displayValue).toList();
+    // Null where the point has no value under this metric (see [_hasValue]).
+    final seriesValues = [
+      for (final p in rawSeries) _hasValue(p) ? _displayValue(p) : null,
+    ];
     // What the cards and the session log show and subtract. The chart keeps
     // the raw values, so its y-domain and ticks don't move.
-    final shownValues = seriesValues.map(_roundVal).toList();
+    final shownValues = [
+      for (final v in seriesValues) v == null ? null : _roundVal(v),
+    ];
+    // The points with a value, oldest first, for the cards.
+    final statPoints = <ProgressDeltaPoint>[
+      for (var i = 0; i < rawSeries.length; i++)
+        if (shownValues[i] case final v?)
+          (date: rawSeries[i].date, value: v, reps: rawSeries[i].topReps),
+    ];
 
     // Chart series — values already in display units.
-    final chartSeries = List.generate(rawSeries.length, (i) {
-      final p = rawSeries[i];
-      return (
-        date: p.date,
-        value: seriesValues[i],
-        reps: p.topReps,
-        isPr: metric.pr && p.isPr,
-      );
-    });
+    final chartSeries = [
+      for (var i = 0; i < rawSeries.length; i++)
+        if (seriesValues[i] case final v?)
+          (
+            date: rawSeries[i].date,
+            value: v,
+            reps: rawSeries[i].topReps,
+            isPr: metric.pr && rawSeries[i].isPr,
+          ),
+    ];
 
     // Subtitle for selector row.
     final muscleStr = localizedMuscle(context, exercise.muscleGroup);
@@ -530,7 +623,7 @@ class _LiftView extends StatelessWidget {
         // existing blank-frame behaviour, and 2+ draws the real chart.
         WCard(
           padding: const EdgeInsets.fromLTRB(8, 16, 8, 10),
-          child: rawSeries.length < 2
+          child: chartSeries.length < 2
               ? SizedBox(
                   height: 210,
                   child: Center(
@@ -570,11 +663,9 @@ class _LiftView extends StatelessWidget {
           ),
         // (5) BigStat cards
         _BigStatRow(
-          series: shownValues,
+          points: statPoints,
           metric: metric,
           unit: unit,
-          topReps: rawSeries.isNotEmpty ? rawSeries.last.topReps : 0,
-          firstTopReps: rawSeries.isNotEmpty ? rawSeries.first.topReps : 0,
           fmtVal: _fmtVal,
         ),
         const SizedBox(height: 24),
@@ -616,19 +707,17 @@ class _LiftView extends StatelessWidget {
 
 class _BigStatRow extends StatelessWidget {
   const _BigStatRow({
-    required this.series,
+    required this.points,
     required this.metric,
     required this.unit,
-    required this.topReps,
-    required this.firstTopReps,
     required this.fmtVal,
   });
 
-  final List<double> series;
+  /// The points with a value under [metric], oldest first, with their
+  /// displayed (rounded) values.
+  final List<ProgressDeltaPoint> points;
   final Metric metric;
   final String unit;
-  final int topReps;
-  final int firstTopReps;
   final String Function(double) fmtVal;
 
   @override
@@ -651,7 +740,7 @@ class _BigStatRow extends StatelessWidget {
         ),
       ),
     );
-    if (series.isEmpty) {
+    if (points.isEmpty) {
       return ProgressStatRow(
         children: [
           tile(l.progressStatCurrent, '—', unit),
@@ -661,11 +750,11 @@ class _BigStatRow extends StatelessWidget {
       );
     }
 
-    final last = series.last;
-    final best = series.reduce((a, b) => a > b ? a : b);
+    final last = points.last.value;
+    final best = points.map((p) => p.value).reduce((a, b) => a > b ? a : b);
 
     // Current card unit: for the `top` metric, append ' ×{topReps}'
-    final currentUnit = metric.reps ? '$unit ×$topReps' : unit;
+    final currentUnit = metric.reps ? '$unit ×${points.last.reps}' : unit;
 
     // 12wk delta: for Top set, fall back to the rep change when the weight
     // itself didn't move. A weight change keeps the unit in the tile's own
@@ -673,10 +762,8 @@ class _BigStatRow extends StatelessWidget {
     // weight unit to show there.
     final delta12wk = progressDeltaStat(
       l,
-      series: series,
+      points: points,
       reps: metric.reps,
-      firstTopReps: firstTopReps,
-      topReps: topReps,
       unit: unit,
       fmtVal: fmtVal,
     );
@@ -714,8 +801,9 @@ class _SessionLogCard extends StatelessWidget {
 
   final List<ProgressPoint> rawSeries;
 
-  /// Each point's displayed (rounded) value, parallel to [rawSeries].
-  final List<double> seriesValues;
+  /// Each point's displayed (rounded) value, parallel to [rawSeries]; null
+  /// where the point has no value under [metric].
+  final List<double?> seriesValues;
   final Metric metric;
   final String unit;
   final WorkoutTokens tokens;
@@ -738,9 +826,15 @@ class _SessionLogCard extends StatelessWidget {
           final entry = reversed[i];
           final p = entry.point;
           final v = entry.value;
-          // Previous in the reversed list = older session.
-          final prevEntry = i < reversed.length - 1 ? reversed[i + 1] : null;
-          final diff = prevEntry != null ? v - prevEntry.value : 0.0;
+          // The nearest older session with a value: a change is never
+          // measured from a missing one.
+          ({ProgressPoint point, double value})? prevEntry;
+          for (final older in reversed.skip(i + 1)) {
+            if (older.value case final value?) {
+              prevEntry = (point: older.point, value: value);
+              break;
+            }
+          }
           final isLast = i == reversed.length - 1;
 
           // Delta label: for Top set, fall back to the rep change when the
@@ -749,7 +843,7 @@ class _SessionLogCard extends StatelessWidget {
           // change slot stays empty.
           final String deltaLabel;
           final Color deltaColor;
-          if (prevEntry == null) {
+          if (prevEntry == null || v == null) {
             deltaLabel = '';
             deltaColor = tokens.faint;
           } else if (metric.reps) {
@@ -767,6 +861,7 @@ class _SessionLogCard extends StatelessWidget {
                 ? tokens.accentText
                 : tokens.faint;
           } else {
+            final diff = v - prevEntry.value;
             deltaLabel = signedChange(diff, fmtVal, l);
             deltaColor = diff > 0 && deltaLabel != l.progressSame
                 ? tokens.accentText
@@ -794,12 +889,22 @@ class _SessionLogCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 // Value + reps for top metric
                 Expanded(
-                  child: _ValueLabel(
-                    value: fmtVal(v),
-                    unit: unit,
-                    reps: metric.reps ? p.topReps : null,
-                    tokens: tokens,
-                  ),
+                  child: v == null
+                      ? Text(
+                          '—',
+                          semanticsLabel: l.alkionValuesUnavailable,
+                          style: WorkoutType.mono(
+                            size: 14,
+                            weight: FontWeight.w400,
+                            color: tokens.text,
+                          ),
+                        )
+                      : _ValueLabel(
+                          value: fmtVal(v),
+                          unit: unit,
+                          reps: metric.reps ? p.topReps : null,
+                          tokens: tokens,
+                        ),
                 ),
                 const SizedBox(width: 8),
                 // PR badge or delta, fixed width so it doesn't move the

@@ -41,21 +41,71 @@ class TrainingPreferencesSheet extends StatefulWidget {
 }
 
 class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
-  bool _saving = false;
+  /// The longest rest either global default can be set to, in seconds.
+  static const maxRestSeconds = 900;
+
+  /// Writes started and not yet settled. [SettingsService] queues every
+  /// change in order, so a tap while an earlier write is running is kept,
+  /// not dropped.
+  int _writes = 0;
   Object? _error;
-  Future<void> _write(Future<void> Function() write) async {
-    if (_saving) return;
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
+  bool get _saving => _writes > 0;
+
+  void _write(Future<void> Function() write) {
+    setState(() => _writes++);
+    Future<void> started;
     try {
-      await write();
+      started = write();
     } catch (e) {
-      if (mounted) setState(() => _error = e);
-    } finally {
-      if (mounted) setState(() => _saving = false);
+      started = Future<void>.error(e);
     }
+    started
+        .then(
+          (_) {
+            // A later write landing means every earlier queued one landed too.
+            if (mounted) setState(() => _error = null);
+          },
+          onError: (Object e) {
+            if (mounted) setState(() => _error = e);
+          },
+        )
+        .whenComplete(() {
+          _writes--;
+          if (mounted) setState(() {});
+        });
+  }
+
+  Widget _restStepper(
+    String label,
+    int seconds,
+    Future<void> Function(int) save,
+  ) {
+    final l = AppLocalizations.of(context);
+    final blocked = _error != null;
+    return AbsorbPointer(
+      absorbing: blocked,
+      child: ExcludeFocus(
+        excluding: blocked,
+        child: Opacity(
+          opacity: blocked ? .5 : 1,
+          child: WStepper(
+            value: seconds.toDouble(),
+            step: 15,
+            format: (v) => l.exerciseEditorRestSeconds(v.round()),
+            formatForEdit: (v) => v.round().toString(),
+            min: 0,
+            max: maxRestSeconds.toDouble(),
+            allowDecimal: false,
+            editable: !blocked,
+            semanticLabel: label,
+            onChanged: (v) {
+              if (_error != null) return;
+              _write(() => save(v.round()));
+            },
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -143,34 +193,18 @@ class _TrainingPreferencesSheetState extends State<TrainingPreferencesSheet> {
               ),
               Field(
                 label: l.profileCompoundRest,
-                child: WStepper(
-                  value: widget.settings.restCompoundSeconds.toDouble(),
-                  step: 15,
-                  format: (v) => '${v.round()}s',
-                  formatForEdit: (v) => v.round().toString(),
-                  min: 0,
-                  allowDecimal: false,
-                  editable: !_saving,
-                  semanticLabel: l.profileCompoundRest,
-                  onChanged: (v) => _write(
-                    () => widget.settings.setRestCompoundSeconds(v.round()),
-                  ),
+                child: _restStepper(
+                  l.profileCompoundRest,
+                  widget.settings.restCompoundSeconds,
+                  widget.settings.setRestCompoundSeconds,
                 ),
               ),
               Field(
                 label: l.profileIsolationRest,
-                child: WStepper(
-                  value: widget.settings.restIsolationSeconds.toDouble(),
-                  step: 15,
-                  format: (v) => '${v.round()}s',
-                  formatForEdit: (v) => v.round().toString(),
-                  min: 0,
-                  allowDecimal: false,
-                  editable: !_saving,
-                  semanticLabel: l.profileIsolationRest,
-                  onChanged: (v) => _write(
-                    () => widget.settings.setRestIsolationSeconds(v.round()),
-                  ),
+                child: _restStepper(
+                  l.profileIsolationRest,
+                  widget.settings.restIsolationSeconds,
+                  widget.settings.setRestIsolationSeconds,
                 ),
               ),
               if (_saving) const LinearProgressIndicator(),

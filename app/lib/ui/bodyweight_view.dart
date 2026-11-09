@@ -26,14 +26,19 @@ import 'progress_change.dart';
 /// target is the `__bodyweight__` sentinel.
 ///
 /// Shows a trend chart, Current / 30-day-delta / Lowest stats,
-/// a "Log today's weight" button, and a scrollable history of the last 24 entries
-/// with signed deltas, accent-coloured only when they move toward the Profile goal
-/// (cut: loss, bulk: gain, maintain: never).
+/// a "Log today's weight" button, and the history: the newest 24 entries, then
+/// "Show all N", with signed deltas, accent-coloured only when they move
+/// toward the Profile goal (cut: loss, bulk: gain, maintain: never). Every row
+/// with an available date opens the sheet to edit or delete that entry.
 class BodyweightView extends StatefulWidget {
-  const BodyweightView({super.key, required this.onOpenPicker});
+  const BodyweightView({super.key, required this.onOpenPicker, this.now});
 
   /// Called when the user taps the selector row (to switch back to a lift).
   final VoidCallback onOpenPicker;
+
+  /// The day the 30-day window ends on; defaults to [DateTime.now] (tests
+  /// fix it).
+  final DateTime? now;
 
   @override
   State<BodyweightView> createState() => _BodyweightViewState();
@@ -43,6 +48,10 @@ class _BodyweightViewState extends State<BodyweightView> {
   late final BodyweightRepository _bwRepo;
   late final Stream<List<BodyweightEntry>> _seriesStream = _bwRepo
       .watchSeriesAsc();
+
+  /// "Show all N" was tapped. Held here, not on the card, so the lazy list
+  /// recycling the card cannot collapse it again.
+  bool _showAll = false;
 
   @override
   void initState() {
@@ -106,7 +115,8 @@ class _BodyweightViewState extends State<BodyweightView> {
             ProgressSelectorRow(
               icon: AlkionGlyph.scale,
               title: l.bodyweightTitle,
-              subtitle: l.bodyweightDailyLog(entries.length),
+              // One count everywhere: every stored entry, readable or not.
+              subtitle: l.bodyweightDailyLog(allEntries.length),
               onTap: widget.onOpenPicker,
             ),
             const SizedBox(height: 16),
@@ -156,6 +166,7 @@ class _BodyweightViewState extends State<BodyweightView> {
               series: series,
               unit: unit,
               goal: goal,
+              now: widget.now,
               currentAvailable:
                   allEntries.isNotEmpty &&
                   allEntries.last.weightKg != null &&
@@ -167,11 +178,6 @@ class _BodyweightViewState extends State<BodyweightView> {
             _LogTodayButton(repo: _bwRepo),
             const SizedBox(height: 24),
 
-            for (final entry in allEntries.where((e) => e.weightKg == null))
-              Text(
-                '${entry.date} · ${l.bodyweightUnavailable}',
-                style: WorkoutType.body(size: 12, color: context.tokens.faint),
-              ),
             // History section
             SectionLabel(
               label: l.bodyweightHistory,
@@ -181,14 +187,12 @@ class _BodyweightViewState extends State<BodyweightView> {
               ),
             ),
             const SizedBox(height: 8),
-            if (series.isEmpty)
+            if (allEntries.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 32),
                 child: Center(
                   child: Text(
-                    allEntries.isEmpty
-                        ? l.bodyweightEmpty
-                        : l.bodyweightUnavailable,
+                    l.bodyweightEmpty,
                     style: WorkoutType.body(
                       size: 14,
                       color: context.tokens.faint,
@@ -197,7 +201,14 @@ class _BodyweightViewState extends State<BodyweightView> {
                 ),
               )
             else
-              BodyweightHistoryCard(series: series, unit: unit, goal: goal),
+              BodyweightHistoryCard(
+                entries: allEntries,
+                unit: unitService.unit,
+                goal: goal,
+                expanded: _showAll,
+                onShowAll: () => setState(() => _showAll = true),
+                onEdit: (entry) => showAddWeightSheet(context, selected: entry),
+              ),
           ],
         );
       },
@@ -213,12 +224,14 @@ class _BwStatRow extends StatelessWidget {
     required this.unit,
     required this.goal,
     required this.currentAvailable,
+    this.now,
   });
 
   final List<({String date, double value, int reps, bool isPr})> series;
   final String unit;
   final BodyweightGoal goal;
   final bool currentAvailable;
+  final DateTime? now;
 
   @override
   Widget build(BuildContext context) {
@@ -256,19 +269,14 @@ class _BwStatRow extends StatelessWidget {
       series.map((s) => s.value).reduce((a, b) => a < b ? a : b),
     );
 
-    // 30-day: earliest entry within the last 30 days.
-    final now = DateTime.now();
-    final cutoff = now.subtract(const Duration(days: 30));
-    final month30 = series.firstWhere((s) {
-      try {
-        final d = qualifiedCalendarDate(s.date);
-        return d != null && (d.isAfter(cutoff) || d.isAtSameMomentAs(cutoff));
-      } catch (_) {
-        return false;
-      }
-    }, orElse: () => series.first);
-    final delta30 = last - roundBodyweight(month30.value);
-    final delta30Label = signedChange(delta30, fmtBodyweight, l);
+    final baseline = bodyweightMonthBaseline(series, now: now);
+    final delta30 = baseline == null
+        ? null
+        : last - roundBodyweight(baseline.value);
+    final delta30Label = delta30 == null
+        ? '—'
+        : signedChange(delta30, fmtBodyweight, l);
+    final delta30Shown = currentAvailable && delta30 != null;
 
     return ProgressStatRow(
       children: [
@@ -279,10 +287,10 @@ class _BwStatRow extends StatelessWidget {
         ),
         tile(
           l.bodyweightStat30Day,
-          currentAvailable ? delta30Label : '—',
-          delta30Label == l.progressSame ? null : unit,
+          delta30Shown ? delta30Label : '—',
+          delta30Shown && delta30Label != l.progressSame ? unit : null,
           accent:
-              currentAvailable &&
+              delta30Shown &&
               bodyweightDeltaTone(displayedBodyweightDelta(delta30), goal) ==
                   DeltaTone.good,
         ),
@@ -290,6 +298,27 @@ class _BwStatRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The 30-day change's baseline: the earliest entry of [series] (ascending by
+/// date) dated within the 30 calendar days up to [now], other than the
+/// current one (`series.last`). Null when there is none, so the change reads
+/// "—" instead of reaching outside the window. [now] defaults to
+/// [DateTime.now].
+({String date, double value, int reps, bool isPr})? bodyweightMonthBaseline(
+  List<({String date, double value, int reps, bool isPr})> series, {
+  DateTime? now,
+}) {
+  final clock = now ?? DateTime.now();
+  final today = DateTime(clock.year, clock.month, clock.day);
+  // Calendar arithmetic, not a 30 × 24 h Duration, so DST cannot move it.
+  final cutoff = DateTime(today.year, today.month, today.day - 30);
+  for (var i = 0; i < series.length - 1; i++) {
+    final day = qualifiedCalendarDate(series[i].date);
+    if (day == null || day.isBefore(cutoff) || day.isAfter(today)) continue;
+    return series[i];
+  }
+  return null;
 }
 
 // ── LogTodayButton ────────────────────────────────────────────────────────────
@@ -332,111 +361,212 @@ class _LogTodayButton extends StatelessWidget {
 class BodyweightHistoryCard extends StatelessWidget {
   const BodyweightHistoryCard({
     super.key,
-    required this.series,
+    required this.entries,
     required this.unit,
     required this.goal,
+    this.expanded = false,
+    this.onShowAll,
+    this.onEdit,
   });
 
-  final List<({String date, double value, int reps, bool isPr})> series;
-  final String unit;
+  /// Rows shown before "Show all N".
+  static const collapsedRows = 24;
+
+  /// Every stored entry, oldest first, readable or not.
+  final List<BodyweightEntry> entries;
+  final Unit unit;
   final BodyweightGoal goal;
+
+  /// Shows every row instead of the newest [collapsedRows].
+  final bool expanded;
+  final VoidCallback? onShowAll;
+
+  /// Opens an entry for editing. Rows whose date is unavailable stay
+  /// read-only: the store cannot address them by day.
+  final ValueChanged<BodyweightEntry>? onEdit;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final l = AppLocalizations.of(context);
     final localeName = Localizations.localeOf(context).toLanguageTag();
-    // Newest first, capped at 24.
-    final items = series.reversed.take(24).toList();
+    final unitLabel = unit == Unit.lb ? 'lb' : 'kg';
 
-    return WCard(
-      padding: EdgeInsets.zero,
+    // Rounded to what the rows show, so a delta is the change between two
+    // displayed weights. Each readable row compares with the previous
+    // readable entry, which may lie outside the visible rows.
+    final shown = <double?>[];
+    final previous = <double?>[];
+    double? last;
+    for (final entry in entries) {
+      final kg = entry.weightKg;
+      final value = kg == null
+          ? null
+          : roundBodyweight(UnitService.fromKg(kg, unit));
+      shown.add(value);
+      previous.add(last);
+      if (value != null) last = value;
+    }
+
+    // Newest first.
+    final collapsed = !expanded && entries.length > collapsedRows;
+    final count = collapsed ? collapsedRows : entries.length;
+    final rows = <Widget>[];
+    for (var i = 0; i < count; i++) {
+      final index = entries.length - 1 - i;
+      rows.add(
+        _row(
+          context,
+          entry: entries[index],
+          value: shown[index],
+          prevValue: previous[index],
+          unitLabel: unitLabel,
+          localeName: localeName,
+          divider: i < count - 1 || collapsed,
+          tokens: tokens,
+          l: l,
+        ),
+      );
+    }
+
+    return Material(
+      color: tokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        side: BorderSide(color: tokens.line),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
-        children: List.generate(items.length, (i) {
-          final entry = items[i];
-          // items[i] is series[series.length - 1 - i]; the entry just before
-          // it chronologically is series[seriesIndex - 1], which may lie
-          // outside the capped-at-24 `items` window for the oldest visible
-          // row. Only the very first entry overall has no predecessor.
-          final seriesIndex = series.length - 1 - i;
-          // Both ends rounded to what the rows show, so the delta is the
-          // change between the two displayed weights.
-          final value = roundBodyweight(entry.value);
-          final prevValue = seriesIndex > 0
-              ? roundBodyweight(series[seriesIndex - 1].value)
-              : null;
-          final diff = prevValue != null ? value - prevValue : 0.0;
-          final isLast = i == items.length - 1;
-
-          return Container(
-            decoration: BoxDecoration(
-              border: isLast
-                  ? null
-                  : Border(bottom: BorderSide(color: tokens.line, width: 1)),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  fmtDate(entry.date, localeName, weekday: true),
-                  style: WorkoutType.mono(size: 12, color: tokens.dim),
-                  maxLines: 1,
-                  softWrap: false,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...rows,
+          if (collapsed)
+            TextButton(
+              key: const Key('bodyweight-show-all'),
+              onPressed: onShowAll,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                shape: const RoundedRectangleBorder(),
+              ),
+              child: Text(
+                l.bodyweightShowAll(entries.length),
+                style: WorkoutType.body(
+                  size: 14,
+                  weight: FontWeight.w500,
+                  color: tokens.text,
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: fmtBodyweight(value),
-                                style: WorkoutType.mono(
-                                  size: 14,
-                                  weight: FontWeight.w400,
-                                  color: tokens.text,
-                                ),
-                              ),
-                              TextSpan(
-                                text: unit,
-                                style: WorkoutType.mono(
-                                  size: 12,
-                                  color: tokens.faint,
-                                ),
-                              ),
-                            ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context, {
+    required BodyweightEntry entry,
+    required double? value,
+    required double? prevValue,
+    required String unitLabel,
+    required String localeName,
+    required bool divider,
+    required WorkoutTokens tokens,
+    required AppLocalizations l,
+  }) {
+    final diff = value != null && prevValue != null ? value - prevValue : null;
+    final editable =
+        onEdit != null &&
+        entry.dateAvailable &&
+        entry.id != null &&
+        entry.localRevision != null;
+    final content = Container(
+      constraints: const BoxConstraints(minHeight: 48),
+      decoration: BoxDecoration(
+        border: divider
+            ? Border(bottom: BorderSide(color: tokens.line, width: 1))
+            : null,
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            fmtDate(entry.date, localeName, weekday: true),
+            style: WorkoutType.mono(size: 12, color: tokens.dim),
+            maxLines: 1,
+            softWrap: false,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: value == null ? '—' : fmtBodyweight(value),
+                          style: WorkoutType.mono(
+                            size: 14,
+                            weight: FontWeight.w400,
+                            color: tokens.text,
                           ),
                         ),
-                      ),
+                        if (value != null)
+                          TextSpan(
+                            text: unitLabel,
+                            style: WorkoutType.mono(
+                              size: 12,
+                              color: tokens.faint,
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    if (prevValue != null)
-                      Text(
-                        signedChange(diff, fmtBodyweight, l),
-                        style: WorkoutType.mono(
-                          size: 12,
-                          weight: FontWeight.w400,
-                          color:
-                              bodyweightDeltaTone(
-                                    displayedBodyweightDelta(diff),
-                                    goal,
-                                  ) ==
-                                  DeltaTone.good
-                              ? tokens.accentText
-                              : tokens.dim,
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-              ],
-            ),
-          );
-        }),
+              ),
+              const SizedBox(width: 12),
+              if (value == null)
+                Flexible(
+                  child: Text(
+                    l.bodyweightUnavailable,
+                    textAlign: TextAlign.end,
+                    style: WorkoutType.body(size: 12, color: tokens.faint),
+                  ),
+                )
+              else if (diff != null)
+                Text(
+                  signedChange(diff, fmtBodyweight, l),
+                  style: WorkoutType.mono(
+                    size: 12,
+                    weight: FontWeight.w400,
+                    color:
+                        bodyweightDeltaTone(
+                              displayedBodyweightDelta(diff),
+                              goal,
+                            ) ==
+                            DeltaTone.good
+                        ? tokens.accentText
+                        : tokens.dim,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+    if (!editable) return content;
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        onTapHint: l.bodyweightEditTitle,
+        child: InkWell(
+          onTap: () => onEdit!(entry),
+          focusColor: tokens.focus.withValues(alpha: .16),
+          child: content,
+        ),
       ),
     );
   }

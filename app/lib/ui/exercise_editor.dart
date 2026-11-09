@@ -24,6 +24,7 @@ import '../widgets/w_dialog.dart';
 import '../widgets/glyph_loading.dart';
 import '../widgets/text_motion.dart';
 import 'editor_guard.dart';
+import 'plan_save_failed.dart';
 
 /// Editor for a single exercise (create or edit).
 ///
@@ -188,8 +189,11 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
     final baseDisplay = UnitService.fromKg(baseKg, unit);
     final stepDisplay = UnitService.fromKg(plateStep, unit);
 
-    // Extra muscle chip: include if not in the 8 canonical groups.
-    final extra = kMuscleLabels.containsKey(ex.muscleGroup)
+    // Extra muscle chip: include if not in the 8 canonical groups. A blank
+    // group has no label, so it gets no chip (and none is selected).
+    final extra =
+        kMuscleLabels.containsKey(ex.muscleGroup) ||
+            ex.muscleGroup.trim().isEmpty
         ? null
         : ex.muscleGroup;
 
@@ -328,6 +332,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       _pendingSave ??= repository.prepareExercise(draft, id: _editId);
       await recovery?.recover();
       await repository.commitPrepared(_pendingSave!);
+      _saved = true;
       if (mounted) widget.onBack();
     } catch (e, st) {
       // Surface the failure instead of silently leaving the button disabled.
@@ -335,6 +340,23 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
       if (mounted) await showWriteFailed(context, e);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// A Save failed and its prepared write is still owed: the fields stay
+  /// locked so Retry save commits exactly that write, once.
+  bool get _saveFailed => _pendingSave != null && !_saving && !_saved;
+
+  /// The Save landed; the editor is closing (it may still fade out).
+  bool _saved = false;
+
+  /// Leaves after a failed Save without writing. The prepared write was
+  /// never registered as owed, so it is dropped; if its COMMIT did land, a
+  /// later edit of this exercise conflicts instead of overwriting it.
+  Future<void> _discardFailedSave() async {
+    if (!_saveFailed) return;
+    if (await confirmPlanDiscard(context, day: false) && mounted) {
+      widget.onBack();
     }
   }
 
@@ -624,18 +646,28 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                   ),
                 ),
 
+                // A catalog exercise takes its groups from the catalog: no
+                // legacy chips, whose choice would override that attribution.
+                // Its stored `muscle_group` is kept as it is.
                 Field(
                   label: l.exerciseEditorMuscleGroup,
-                  child: ChipSelect<String>(
-                    enabled: !_controlsLocked,
-                    items: muscleItems,
-                    selected: _muscleGroup,
-                    onSelect: (v) {
-                      if (_controlsLocked) return;
-                      setState(() => _muscleGroup = v);
-                    },
-                    labelOf: (m) => localizedMuscle(context, m),
-                  ),
+                  child: _original?.executionDefinition != null
+                      ? FitLabel(
+                          l.exerciseEditorCatalogGroups,
+                          key: const Key('exercise-editor-catalog-groups'),
+                          maxLines: 3,
+                          style: WorkoutType.body(size: 13, color: tokens.dim),
+                        )
+                      : ChipSelect<String>(
+                          enabled: !_controlsLocked,
+                          items: muscleItems,
+                          selected: _muscleGroup,
+                          onSelect: (v) {
+                            if (_controlsLocked) return;
+                            setState(() => _muscleGroup = v);
+                          },
+                          labelOf: (m) => localizedMuscle(context, m),
+                        ),
                 ),
 
                 Field(
@@ -807,7 +839,11 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                       hint: l.exerciseEditorStartWeightHint,
                       child: WStepper(
                         value: _baseWeightDisplay,
-                        step: _stepDisplay,
+                        // In lb a whole 5 lb, not the kg plate step
+                        // converted (5.51 lb); plate_step_kg is unchanged.
+                        step: units.unit == Unit.lb
+                            ? startWeightLbStep
+                            : _stepDisplay,
                         format: (v) =>
                             '${fmtLoad(v, units.unit)}${units.uLabel}',
                         formatForEdit: (v) => fmtLoad(v, units.unit),
@@ -964,12 +1000,22 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
           ),
         ),
         // ── Primary action ─────────────────────────────────────────────────
+        if (_saveFailed) const PlanSaveFailedNote(),
         PrimaryBtn(
-          btnLabel,
+          _saveFailed ? l.planEditorRetrySave : btnLabel,
           enabled: canSave && !_saving && !_deleting && _pendingDelete == null,
           onTap: _save,
           glitch: true,
         ),
+        if (_saveFailed) ...[
+          const SizedBox(height: 10),
+          PrimaryBtn(
+            l.planEditorDiscardChanges,
+            enabled: true,
+            secondary: true,
+            onTap: _discardFailedSave,
+          ),
+        ],
 
         if (_editId != null) ...[
           const SizedBox(height: 10),
@@ -983,3 +1029,8 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
     );
   }
 }
+
+/// The exercise editor's start-weight step in lb: a whole 5 lb rather than
+/// the kg plate step converted (5.51 lb). Not snapped to a 5 lb grid, so a
+/// step up and back down returns exactly to the untouched value.
+const double startWeightLbStep = 5;

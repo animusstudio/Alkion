@@ -10,6 +10,7 @@ import 'package:alkion/data/models.dart';
 import 'package:alkion/data/session_repository.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/set_values_editor.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/ui/set_editor_sheet.dart';
 import 'package:alkion/units/unit_service.dart';
@@ -40,6 +41,12 @@ class FakeSessionRepository implements SessionRepository {
         })
       >[];
   String nextId = 'new-set';
+
+  /// Commits that throw before landing, counted down.
+  int failures = 0;
+
+  /// The operation id of every commit that landed, in order.
+  final landed = <String>[];
 
   /// The stored fields per set id, as the last commit left them.
   final values = <String, Map<String, Object?>>{};
@@ -83,6 +90,11 @@ class FakeSessionRepository implements SessionRepository {
 
   @override
   Future<LocalActionResult> commitPrepared(PreparedDomainAction intent) async {
+    if (failures > 0) {
+      failures--;
+      throw const StoreException('document_busy');
+    }
+    landed.add(intent.action.operationId);
     final input = intent.input,
         set = Map<String, dynamic>.from(intent.input['set'] as Map),
         id = (intent.input['set'] as Map)['id'] as String;
@@ -464,7 +476,7 @@ void main() {
   );
 
   testWidgets(
-    'add set calls addSet, seeded from the last working set, and opens its card',
+    'add set calls addSet, seeded from the last working set without its RIR, and opens its card',
     (tester) async {
       final repo = FakeSessionRepository()..nextId = 's2';
       await tester.pumpWidget(
@@ -480,7 +492,7 @@ void main() {
       expect(call.exerciseId, 'bench');
       expect(call.weightKg, '102.50');
       expect(call.reps, 6);
-      expect(call.rir, 2);
+      expect(call.rir, isNull);
       expect(call.isWarmup, isFalse);
       expect(find.byKey(const Key('live-weight')), findsOneWidget);
     },
@@ -652,6 +664,135 @@ void main() {
       await tester.pumpAndSettle(); // let the exit animation and dispose finish
     },
   );
+  testWidgets('tapping the selected RIR chip clears it; only RIR is written, '
+      'as null', (tester) async {
+    final repo = FakeSessionRepository();
+    await tester.pumpWidget(sheet(repo, [_set('s1', rir: 1)]));
+    expect(find.text('RIR 1'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('set-line-s1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('rir-1')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('RIR 1'), findsNothing);
+    expect(repo.prepared.last['set'], {
+      'id': 's1',
+      'base': 1,
+      'fields': {'rir': null},
+    });
+    expect(repo.updateCalls.last.rir, isNull);
+    // Tapping a chip again sets it.
+    await tester.tap(find.byKey(const Key('rir-2')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(repo.updateCalls.last.rir, 2);
+  });
+
+  testWidgets('the chevron points down while the card is open', (tester) async {
+    await tester.pumpWidget(sheet(FakeSessionRepository(), [_set('s1')]));
+    AlkionGlyph glyph() => tester
+        .widget<AlkionIcon>(find.byKey(const Key('set-chevron-s1')))
+        .glyph;
+    expect(glyph(), AlkionGlyph.chevronRight);
+    await tester.tap(find.byKey(const Key('set-line-s1')));
+    await tester.pumpAndSettle();
+    expect(glyph(), AlkionGlyph.chevronDown);
+    await tester.tap(find.byKey(const Key('set-line-s1')));
+    await tester.pumpAndSettle();
+    expect(glyph(), AlkionGlyph.chevronRight);
+  });
+
+  testWidgets('Delete set is a button to screen readers', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(sheet(FakeSessionRepository(), [_set('s1')]));
+    await tester.tap(find.byKey(const Key('set-line-s1')));
+    await tester.pumpAndSettle();
+    final node = tester.getSemantics(find.byKey(const Key('delete-set')));
+    expect(node.getSemanticsData().flagsCollection.isButton, isTrue);
+    expect(node.label, contains('Delete set'));
+    semantics.dispose();
+  });
+
+  testWidgets('unknown reps are not seeded as a number', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      sheet(FakeSessionRepository(), [_stored('s1', '100', reps: null)]),
+    );
+    await tester.tap(find.byKey(const Key('set-line-s1')));
+    await tester.pumpAndSettle();
+    expect(tester.getSemantics(find.byKey(const Key('live-reps'))).value, '—');
+    semantics.dispose();
+  });
+
+  testWidgets('after a failed write the sheet says it will retry, a later '
+      'edit is queued, and the owed write retries with its own identity', (
+    tester,
+  ) async {
+    final repo = FakeSessionRepository()..failures = 1;
+    await tester.pumpWidget(sheet(repo, [_set('s1', rir: 1)]));
+    await tester.tap(find.byKey(const Key('set-line-s1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('rir-3')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.text("Couldn't save"), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('history-not-saved')), findsOneWidget);
+    expect(find.text('Not saved · will retry'), findsOneWidget);
+    expect(repo.landed, isEmpty);
+    // The card stays editable: the next edit is kept, not dropped.
+    await tester.tap(find.byKey(const Key('rir-4')));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(repo.prepared, hasLength(2));
+    expect(repo.landed, hasLength(2));
+    expect(repo.updateCalls.map((c) => c.rir), [3, 4]);
+    expect(find.text('Not saved · will retry'), findsNothing);
+    expect(find.text('RIR 4'), findsOneWidget);
+  });
+
+  testWidgets('an empty block writes nothing until Add set, which seeds the '
+      'start weight with no RIR at the session revision', (tester) async {
+    final repo = FakeSessionRepository();
+    const exercise = Exercise(
+      id: 'row',
+      name: 'Row',
+      slug: 'row',
+      muscleGroup: 'back',
+      compound: true,
+      plateStepKg: 2.5,
+      isTemplate: false,
+      baseWeightKg: 60,
+      defaultRepLow: 10,
+    );
+    await tester.pumpWidget(
+      wrapL10n(
+        SetEditorSheet(
+          block: const ExerciseBlockData(
+            exerciseId: 'row',
+            sets: [],
+            topWeight: 0,
+            topReps: 0,
+            isPr: false,
+          ),
+          exercise: exercise,
+          sessionId: 'session-1',
+          sessionRepo: repo,
+          units: UnitService(),
+          workoutRevision: 7,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repo.prepared, isEmpty);
+    await tester.tap(find.byKey(const Key('add-set')));
+    await tester.pumpAndSettle();
+    expect(repo.prepared, hasLength(1));
+    expect(repo.addCalls.single.weightKg, '60.00');
+    expect(repo.addCalls.single.reps, 10);
+    expect(repo.addCalls.single.rir, isNull);
+    expect(find.byKey(const Key('live-weight')), findsOneWidget);
+  });
+
   group('extreme loads', () {
     final l = lookupAppLocalizations(const Locale('en'));
     final nines = List.filled(400, '9').join();
@@ -767,6 +908,31 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
     }
 
+    /// Over the limit: Done keeps the sheet open and says why, then the
+    /// sheet is dismissed without an edit.
+    Future<void> typeRefusedWeight(
+      WidgetTester tester,
+      String text,
+      String message,
+    ) async {
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('live-weight')),
+          matching: find.byKey(const Key('ruler-centre')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final field = find.byKey(const Key('number-entry-field'));
+      await tester.enterText(field, text);
+      await tester.tap(find.byKey(const Key('number-entry-done')));
+      await tester.pumpAndSettle();
+      expect(field, findsOneWidget, reason: 'the sheet stays open');
+      expect(find.text(message), findsOneWidget);
+      Navigator.of(tester.element(field)).pop();
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    }
+
     testWidgets('a typed weight the kg display cannot show is refused', (
       tester,
     ) async {
@@ -775,7 +941,11 @@ void main() {
       await tester.tap(find.byKey(const Key('set-line-s1')));
       await tester.pumpAndSettle();
 
-      await typeWeight(tester, '99999999999999999999999');
+      await typeRefusedWeight(
+        tester,
+        '99999999999999999999999',
+        'Enter 500 kg or less',
+      );
       // The shared parser saturates it; the sheet refuses the result.
       expect(
         parseNumberInput('99999999999999999999999', min: 0),
@@ -822,7 +992,11 @@ void main() {
       await tester.tap(find.byKey(const Key('set-line-s1')));
       await tester.pumpAndSettle();
 
-      await typeWeight(tester, '10000000000000000');
+      await typeRefusedWeight(
+        tester,
+        '10000000000000000',
+        'Enter 1100 lb or less',
+      );
       expect(repo.updateCalls, isEmpty);
       expect(repo.prepared, isEmpty);
       expect(find.textContaining('220lb', findRichText: true), findsOneWidget);
