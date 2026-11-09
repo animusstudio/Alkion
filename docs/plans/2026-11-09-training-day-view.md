@@ -200,6 +200,16 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
     - the empty-day skeleton
     - an exercise rename not refreshing a mounted view (not reachable through navigation)
 
+- **T3 Navigation: done** in a separate worktree branch (pending review). Code `3e7c6c2` and
+  tests `508987e` are merged as `935ce9f`. A card tap opens the view; the menu's Edit and New
+  day open the editor. Every mode change builds a fresh `_EditorRoute` and guard. Back from
+  edit returns to the view; Save returns to the view. The header title is `planTabSplit`.
+  Also updated: `training_prescriptions_test.dart` and `training_prescriptions_review_test.dart`.
+  - Implementer: focused 198 pass; other affected tests 77 pass; analyze clean; fmt 0 changed.
+  - Coordinator, after the merge at `935ce9f`: `make -C app test TEST='--concurrency=2 test/ui
+    test/shell test/layout test/data/planned_workload_test.dart test/l10n'` → +754 all passed;
+    analyze → no issues.
+
 ## Next
 
 T3 (parallel), then integration and review of T2.
