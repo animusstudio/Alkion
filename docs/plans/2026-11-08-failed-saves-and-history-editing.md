@@ -1,6 +1,6 @@
 # Failed saves and History editing
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented, awaiting review.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/failed-saves-and-history-editing-20261108`.
 Ordering: after [P1 error messages and toasts](2026-11-08-error-messages-and-toasts.md)
@@ -137,8 +137,83 @@ the retry patterns); T2 to T4 own disjoint files and run in parallel; T5 (ARBs) 
 
 ## Task state
 
-None started.
+Implemented 2026-11-09, awaiting review. Code at `e1bd65b` (later commits are
+docs only). Commits: `5bf6eb5` (T1), `2b73b6b` (T2), `f73e73b` (T3),
+`62665f9` (T4), `e1bd65b` (T2 fix: a landed Save keeps its label while the
+editor fades out). T5 strings went in with each task.
+
+- T1 — done. `LocalPreferences.save` now runs `_persist(retry: true)`, so
+  every change lands the owed queue first, in order, each snapshot with its
+  retained base (the identical-bytes check reconciles a landed COMMIT).
+  `UnitService.setUnit` returns its write (handled with `ignore()` for
+  callers that drop it); the profile unit chip wraps it in
+  `showWriteFailures`. The training sheet queues every stepper tap
+  (`_writes` counter, no drop), formats rest with
+  `exerciseEditorRestSeconds`, caps it at 900 s and disables the steppers
+  (absorb, exclude focus, dimmed, not editable) while an error is shown.
+  Two existing preference tests changed expectation: a queued newer save now
+  retries the owed snapshot instead of rethrowing its error without writing
+  (`preferences_retry_test.dart`, `prescriptions_test.dart`).
+- T2 — done. Day and exercise editors keep the frozen prepared write after a
+  failure; `PlanSaveFailedNote` (new `ui/plan_save_failed.dart`) explains
+  the lock, the button reads "Retry save", and "Discard changes" shows the
+  guard's destructive prompt (Keep editing / Discard) and calls `onBack`
+  without a write. `TargetsTab` locks per muscle, queues a tap during a
+  write, and replaces a failed write with a new value prepared against a
+  fresh read of the stored row (no `AbsorbPointer` over the list; P4's
+  rows are untouched, `TargetsList.writing` is now "any write running").
+- T3 — done. `SetEditorSheet`: one serial write chain; prepared writes are
+  committed in order and a failed one is retried with its identity before
+  anything newer is prepared; edits are never dropped (an edit counter tells
+  a landed write whether a newer edit is still unwritten); one owed
+  `history_sets` entry per sheet retries the latest values after close.
+  Inline "Not saved · will retry". RIR clears by tapping the selected chip
+  (`RirPicker.onClear`, opt-in; the live workout passes none). Added sets
+  start without RIR; an empty block seeds the exercise start weight at the
+  passed `workoutRevision`. Delete set has button semantics, the chevron
+  points down while open, unknown reps pass `repsAvailable: false`.
+  `CatalogHistoryEditor`: editable after a failure, owed writes retried
+  first, close allowed (destructive "Discard set changes?" only for edits no
+  write covers), failure dialog "Sets not saved" with the mapper message,
+  inline validation above a neutral "Save", rows numbered among the sets
+  that stay ("Set removed" for a marked row, landed deletes hidden).
+- T4 — done. Classic Add exercise opens `SetEditorSheet` on an empty block;
+  an empty catalog selection shows a toast. Unknown exercises read "Deleted
+  exercise" with no tap or chevron; `SessionCard.catalogLoaded` keeps the
+  expanded rows a skeleton until the catalog future resolves. The resume
+  failure toast uses `showWToast` and the mapper. `_editExercise` and
+  `_addExercise` first call `UnsavedEditors.retryOwed()` so an editor closed
+  after a failed save lands its owed write before a new editor prepares at
+  the same workout revision.
+- T5 — done: 12 keys in en, it, de, es (`planEditor*`, `history*`,
+  `commonSave`).
+
+Evidence at `e1bd65b`:
+
+- `make -C app analyze` → No issues found.
+- `make -C app format` → 529 files, 0 changed.
+- `make -C app test TEST='--concurrency=2 test/settings test/units
+  test/ui/set_editor_sheet_test.dart test/ui/history_session_card_test.dart
+  test/ui/targets_tab_test.dart test/l10n
+  test/ui/training_preferences_sheet_test.dart
+  test/ui/catalog_history_editor_test.dart test/ui/profile_pickers_test.dart
+  test/ui/editor_save_failure_test.dart test/ui/plan_editor_dirty_test.dart
+  test/shell/plan_discard_test.dart'` → +185, all pass.
+- Real SQLite: `make -C app test TEST='--concurrency=2
+  test/alkion/domains/preferences_retry_test.dart
+  test/alkion/domains/editor_pending_retry_test.dart
+  test/alkion/domains/prepared_ui_retry_test.dart
+  test/alkion/domains/history_sets_retry_test.dart
+  test/alkion/domains/prescriptions_test.dart
+  test/catalog_ui/catalog_normal_app_journey_test.dart'` → +64, all pass.
+- `make -C app test TEST=--concurrency=2` → +2984 ~3 -3. The three failures
+  are the known inherited `catalog_metric_controls_test.dart` cases
+  (`duration_distance_optional`, `reps_distance_optional`,
+  `reps_duration_optional_load` "mounts all required and optional controls
+  unset").
+- Device check: open.
 
 ## Next
 
-Owner approval, then implementation after P1 merges.
+Independent review (Sonnet `high`), then the device check and delivery after
+P4.
