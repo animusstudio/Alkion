@@ -192,6 +192,14 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
     inactive or unqualified day shows its state and Edit only. Layout sweep lives in
     `test/layout/day_view_layout_test.dart` (12 conditions + 320 dp 2x es).
 
+- **T2 review PASS** (Sonnet `high`, `085d343`; `test/l10n` → 9 pass).
+  - Minor 1: the eyebrow could take only half of its row. Coordinator fix `704c13b1` (flex 2),
+    checked with `day_view_test` and `day_view_layout_test` → 26 pass; analyze clean.
+  - Follow-ups for the PR:
+    - tests for retry exhaustion, the catalog-bundle reload and a catalog row with real artwork
+    - the empty-day skeleton
+    - an exercise rename not refreshing a mounted view (not reachable through navigation)
+
 ## Next
 
 T3 (parallel), then integration and review of T2.
