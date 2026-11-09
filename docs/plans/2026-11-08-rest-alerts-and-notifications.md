@@ -1,6 +1,6 @@
 # Rest-end alert, notification body, glyph and permission explainer
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/rest-alerts-and-notifications-20261108`.
 Audit items 6.3, 6.5, 6.6, the next-set notification body, and the dead English

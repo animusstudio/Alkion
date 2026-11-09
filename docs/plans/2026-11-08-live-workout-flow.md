@@ -1,6 +1,6 @@
 # Live workout flow
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/live-workout-flow-20261108`.
 Ordering: after [P1 error messages and toasts](2026-11-08-error-messages-and-toasts.md)
