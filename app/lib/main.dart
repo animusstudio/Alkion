@@ -189,9 +189,15 @@ class AlkionRuntime with WidgetsBindingObserver {
       sessions
         ..onPersistenceError = runtime._reportPersistenceFailure
         ..onPersistenceCleared = runtime._clearPersistenceFailure;
-      runtime.workflowNotices.value = await WorkflowStateQuarantine(
-        store,
-      ).pendingNotices();
+      try {
+        runtime.workflowNotices.value = await WorkflowStateQuarantine(
+          store,
+        ).pendingNotices();
+      } on Object {
+        // Informational, like the catalog above: a notice that cannot be
+        // read never blocks launch. Nothing was acknowledged, so it comes
+        // back at the next launch.
+      }
       runtime.historyMappings = await HistoryMappingStore(store).byExerciseId();
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
@@ -388,12 +394,15 @@ class AlkionRuntime with WidgetsBindingObserver {
   }
 }
 
+const _decoderTimeout = Duration(seconds: 2);
+
 /// The running build for the quarantine's decoder record. A version that
 /// cannot be read is recorded as `unknown`; it never fails the quarantine.
-/// Only called once damage is found, so a clean launch calls no plugin.
+/// Only called once damage is found, so a clean launch calls no plugin; a
+/// platform that does not answer within [_decoderTimeout] counts as unknown.
 Future<DecoderInfo> _decoderInfo() async {
   try {
-    final info = await PackageInfo.fromPlatform();
+    final info = await PackageInfo.fromPlatform().timeout(_decoderTimeout);
     return DecoderInfo(
       appVersion: info.version.isEmpty ? 'unknown' : info.version,
       buildNumber: info.buildNumber.isEmpty ? 'unknown' : info.buildNumber,

@@ -17,6 +17,7 @@ import '../../theme/typography.dart';
 import '../../util/error_message.dart';
 import '../../theme/tokens.dart';
 import '../../widgets/busy_row.dart';
+import '../../widgets/fit_label.dart';
 import '../../widgets/w_dialog.dart';
 import '../export_failure.dart';
 import 'recovery_format.dart';
@@ -648,11 +649,15 @@ Widget _keptRow(
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(switch (kept.kind) {
-        KeptWorkflowKind.draft => l.alkionKeptDataDraft,
-        KeptWorkflowKind.finishedRecovery => l.alkionKeptDataFinished,
-        KeptWorkflowKind.unknown => l.alkionKeptDataOther,
-      }, style: WorkoutType.body(size: 14, color: tokens.text)),
+      FitLabel(
+        switch (kept.kind) {
+          KeptWorkflowKind.draft => l.alkionKeptDataDraft,
+          KeptWorkflowKind.finishedRecovery => l.alkionKeptDataFinished,
+          KeptWorkflowKind.unknown => l.alkionKeptDataOther,
+        },
+        maxLines: 3,
+        style: WorkoutType.body(size: 14, color: tokens.text),
+      ),
       Text(
         fmtRecoveryInstant(kept.createdAt, l.localeName),
         style: WorkoutType.mono(size: 12, color: tokens.dim),

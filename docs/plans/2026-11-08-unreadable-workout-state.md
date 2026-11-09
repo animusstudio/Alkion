@@ -224,7 +224,11 @@ after T1 passes review.
   `PackageInfo` (falling back to `unknown`), so a clean launch calls no plugin
   channel. Tests: `unreadable_state_launch_test.dart` (real
   `AlkionRuntime.open` and the real app), `test/layout/kept_data_layout_test.dart`,
-  and decoder-call counts in `workflow_state_quarantine_test.dart`.
+  and decoder-call counts in `workflow_state_quarantine_test.dart`. Review
+  (PASS with findings) fixes: the notice read at open is non-fatal, the version
+  read times out after 2 s to `unknown`, kept-data labels use `FitLabel`, and
+  tests pin quarantine-failure propagation, the acknowledgement join and close
+  during an acknowledgement.
 - T3 — not started.
 
 ## Next

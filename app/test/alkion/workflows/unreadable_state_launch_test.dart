@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -14,6 +15,7 @@ import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/shell/session_launcher.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/widgets/kept_data_notice.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -70,6 +72,7 @@ void main() {
   // PackageInfo caches only a successful read, so the call-counting tests
   // below (declared first) refuse it and are never masked by a cached value.
   var versionAvailable = true;
+  var versionHangs = false;
   final opened = <AlkionRuntime>[];
 
   setUp(() async {
@@ -77,9 +80,11 @@ void main() {
     root = Directory('${temp.path}/${AlkionIdentity.applicationId}');
     versionCalls.clear();
     versionAvailable = true;
+    versionHangs = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_packageInfo, (call) async {
           versionCalls.add(call.method);
+          if (versionHangs) return Completer<Object?>().future;
           if (!versionAvailable) {
             throw PlatformException(code: 'synthetic_unavailable');
           }
@@ -167,6 +172,194 @@ void main() {
       expect(versionCalls, hasLength(1));
     },
   );
+
+  test('a version read that never answers times out to unknown', () async {
+    versionHangs = true;
+    await seedStore((store) => _seedDraft(store, _text('not json')));
+    final clock = Stopwatch()..start();
+    final runtime = await open();
+    expect(clock.elapsed, lessThan(const Duration(seconds: 10)));
+    expect(versionCalls, hasLength(1));
+    final decoder = evidence((await reviews(runtime.store)).single)['decoder'];
+    expect((decoder as Map)['app_version'], 'unknown');
+    expect(runtime.sessions.hasActive, isFalse);
+  });
+
+  test('a quarantine that refuses fails open and closes the store', () async {
+    final profile = await AlkionProfile.open(supportRoot: root);
+    final store = await openAlkionStore(profile);
+    await _seedDraft(store, _text('not json'));
+    final rows = [
+      (await row(store, LocalStateKind.draft))!,
+      (await row(store, LocalStateKind.timer))!,
+    ];
+    // Both the deterministic ID and its fallback hold other content, so the
+    // quarantine refuses with quarantine_conflict_preserved.
+    final id = expectedId('draft', rows);
+    final core = localBytes({
+      'format': workflowQuarantineFormat,
+      'kind': 'draft',
+      'rows': canonicalRows(rows),
+    });
+    final fallback =
+        'wq-${sha256.convert([...utf8.encode('conflict:$id'), ...core]).toString().substring(0, 40)}';
+    await store.writeTransaction((tx) async {
+      for (final taken in [id, fallback]) {
+        await tx.addReview(
+          id: taken,
+          category: workflowQuarantineCategory,
+          evidence: localBytes({
+            'format': workflowQuarantineFormat,
+            'kind': 'draft',
+            'rows': const [],
+          }),
+        );
+      }
+    });
+    final before = await store.inventory();
+    await expectLater(
+      AlkionRuntime.open(
+        root,
+        notifications: FakeWorkoutNotification(),
+        preparedStore: store,
+      ),
+      throwsA(
+        isA<StoreException>().having(
+          (e) => e.category,
+          'category',
+          'quarantine_conflict_preserved',
+        ),
+      ),
+    );
+    expect(store.admission, StoreAdmission.closed);
+    final reopened = await openAlkionStore(profile);
+    try {
+      expect(await reopened.inventory(), before);
+    } finally {
+      await reopened.close();
+    }
+  });
+
+  test('a notice that cannot be read never blocks launch', () async {
+    await seedStore((store) async {
+      await _seedDraft(store, _text('not json'));
+      // Reviews are immutable, so this row stays unreadable for the notice
+      // read: its created_at is a BLOB in a TEXT column.
+      await store.writeTransaction(
+        (tx) => tx.execute('INSERT INTO reviews VALUES(?,?,?,?,?,?,?)', [
+          tx.profileId,
+          'wq-synthetic-unreadable-notice',
+          null,
+          null,
+          workflowQuarantineCategory,
+          localBytes({
+            'format': workflowQuarantineFormat,
+            'kind': 'draft',
+            'rows': const [],
+          }),
+          Uint8List.fromList([1, 2, 3]),
+        ]),
+      );
+    });
+    await seedStore(
+      (store) => expectLater(
+        WorkflowStateQuarantine(store).pendingNotices(),
+        throwsA(anything),
+        reason: 'the notice read itself fails',
+      ),
+    );
+    final runtime = await open();
+    expect(runtime.sessions.hasActive, isFalse);
+    expect(runtime.workflowNotices.value, isEmpty);
+    // The launch still quarantined the draft, and nothing was acknowledged:
+    // its notice stays pending for a later launch.
+    final kept = await runtime.store.getAll(
+      "SELECT review_id FROM reviews WHERE review_id<>'wq-synthetic-unreadable-notice'",
+    );
+    expect(kept, hasLength(1));
+    expect(
+      await runtime.store.getAll('SELECT * FROM review_decisions'),
+      isEmpty,
+    );
+  });
+
+  Future<(AlkionRuntime, List<String>)> openWithNotice() async {
+    await seedStore((store) => _seedDraft(store, _text('not json')));
+    final runtime = await open();
+    return (
+      runtime,
+      [for (final notice in runtime.workflowNotices.value) notice.reviewId],
+    );
+  }
+
+  /// Holds the store's write admission until the returned release runs, so
+  /// an acknowledgement started meanwhile stays in flight.
+  Future<Future<void> Function()> holdWrites(LocalStore store) async {
+    final gate = Completer<void>(), held = Completer<void>();
+    final holder = store.writeTransaction((tx) async {
+      held.complete();
+      await gate.future;
+    });
+    await held.future;
+    return () {
+      gate.complete();
+      return holder;
+    };
+  }
+
+  test('A16 an acknowledgement in flight is joined, not repeated', () async {
+    final (runtime, ids) = await openWithNotice();
+    final release = await holdWrites(runtime.store);
+    final first = runtime.acknowledgeWorkflowNotices(ids);
+    final second = runtime.acknowledgeWorkflowNotices(ids);
+    // Released before asserting, so a failure never leaves the write held.
+    await release();
+    expect(identical(first, second), isTrue);
+    await first;
+    expect(runtime.workflowNotices.value, isEmpty);
+    final decisions = await runtime.store.getAll(
+      'SELECT * FROM review_decisions',
+    );
+    expect(decisions.single['review_id'], ids.single);
+    // Once it ends, a later call starts afresh (and writes nothing new).
+    final third = runtime.acknowledgeWorkflowNotices(ids);
+    expect(identical(third, first), isFalse);
+    await third;
+    expect(
+      await runtime.store.getAll('SELECT * FROM review_decisions'),
+      decisions,
+    );
+  });
+
+  test('close while an acknowledgement is in flight', () async {
+    final (runtime, ids) = await openWithNotice();
+    final release = await holdWrites(runtime.store);
+    final ack = runtime.acknowledgeWorkflowNotices(ids);
+    try {
+      // The store itself is closed below, after the held write ends.
+      await runtime.close(closeStore: () async {});
+      opened.remove(runtime);
+      expect(
+        () => runtime.workflowNotices.addListener(() {}),
+        throwsFlutterError,
+        reason: 'close disposes the notifier',
+      );
+    } finally {
+      await release();
+    }
+    try {
+      // The write lands, then the closed runtime leaves the notifier alone.
+      await ack;
+      expect(
+        (await runtime.store.getAll(
+          'SELECT * FROM review_decisions',
+        )).single['review_id'],
+        ids.single,
+      );
+    } finally {
+      await runtime.store.close();
+    }
+  });
 
   group('A1 a malformed draft opens without the workout', () {
     final cases = <String, (Object, String)>{
