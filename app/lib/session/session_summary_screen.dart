@@ -17,6 +17,7 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../util/error_message.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/state_motion.dart';
 import '../widgets/pr_badge.dart';
@@ -80,10 +81,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   /// Error state: [_notFound] means the session row was missing; otherwise
-  /// [_loadError] (when non-null) carries the raw exception detail. Resolved to
-  /// a localized message at build time so the locale is fully available.
+  /// [_loadError] (when non-null) carries the failure. It is mapped to a
+  /// localized message at build time so the locale is fully available; the
+  /// exception text itself is never shown.
   bool _notFound = false;
-  String? _loadError;
+  Object? _loadError;
 
   Future<void> _load() async {
     final epoch = ++_loadEpoch;
@@ -152,7 +154,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       }
       setState(() {
         _workload = WorkoutWorkload.unavailable(WorkoutWorkloadMode.saved);
-        _loadError = '$e';
+        _loadError = e;
         _loading = false;
       });
     }
@@ -164,10 +166,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final unit = context.watch<UnitService>();
     final l = AppLocalizations.of(context);
 
+    final loadFailure = _loadError == null ? null : userMessage(l, _loadError!);
     final errorMessage = _notFound
         ? l.summarySessionNotFound
-        : _loadError != null
-        ? l.summaryLoadFailed(_loadError!)
+        : loadFailure != null
+        ? '${l.summaryLoadFailed}\n${loadFailure.message}'
         : null;
 
     return Scaffold(
@@ -179,6 +182,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 onWorkload: () =>
                     showBodyWorkloadSheet(context, workload: () => _workload),
                 error: errorMessage,
+                details: _notFound ? null : loadFailure?.details,
                 doneLabel: l.commonDone,
                 tokens: tokens,
                 onDone: () =>
@@ -644,6 +648,7 @@ class _ErrorState extends StatelessWidget {
   const _ErrorState({
     required this.onWorkload,
     required this.error,
+    required this.details,
     required this.doneLabel,
     required this.tokens,
     required this.onDone,
@@ -651,6 +656,7 @@ class _ErrorState extends StatelessWidget {
 
   final VoidCallback onWorkload;
   final String error;
+  final String? details;
   final String doneLabel;
   final WorkoutTokens tokens;
   final VoidCallback onDone;
@@ -670,6 +676,15 @@ class _ErrorState extends StatelessWidget {
               style: WorkoutType.body(size: 14, color: tokens.dim),
               textAlign: TextAlign.center,
             ),
+            if (details case final code?) ...[
+              const SizedBox(height: 6),
+              Text(
+                code,
+                key: const Key('summary-error-details'),
+                style: WorkoutType.mono(size: 11, color: tokens.faint),
+                textAlign: TextAlign.center,
+              ),
+            ],
             const SizedBox(height: 24),
             BodyWorkloadButton(
               key: const Key('summary-workload'),

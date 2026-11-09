@@ -25,6 +25,7 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../util/dates.dart';
+import '../util/error_message.dart';
 import '../widgets/alkion_brand.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
@@ -405,6 +406,24 @@ String? profileTrainingLine(
 
 // ── ProfileScreen ─────────────────────────────────────────────────────────────
 
+/// The export failure dialog's text for [error]: the compatibility refusal
+/// when it applies, otherwise the [userMessage] (a document failure adds that
+/// any external copy may be incomplete) with its category as details. Never
+/// the exception text.
+UserMessage exportFailureMessage(AppLocalizations l, Object error) {
+  final mapped = userMessage(l, error);
+  if (compatibilityExportRefusalMessage(l, error) case final refusal?) {
+    return UserMessage(mapped.bucket, refusal);
+  }
+  return error is DocumentException
+      ? UserMessage(
+          mapped.bucket,
+          l.alkionDocumentFailureMessage(mapped.message),
+          details: mapped.details,
+        )
+      : mapped;
+}
+
 /// Profile & Settings, embedded as a shell destination or opened standalone.
 ///
 /// Exposes:
@@ -693,14 +712,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _exportError(Object e) async {
     final l = AppLocalizations.of(context);
+    final text = exportFailureMessage(l, e);
     await showWDialog<bool>(
       context,
       title: l.exportFailedTitle,
-      message:
-          compatibilityExportRefusalMessage(l, e) ??
-          l.alkionDocumentFailureMessage(
-            e is DocumentException ? e.category : '$e',
-          ),
+      message: text.message,
+      details: text.details,
       actions: [WDialogAction(label: l.commonOk, value: true)],
     );
   }

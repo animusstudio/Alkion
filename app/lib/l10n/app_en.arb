@@ -5,6 +5,13 @@
   "commonCancel": "Cancel",
   "commonOk": "OK",
   "editorSaveFailed": "Couldn't save",
+  "errorConflict": "This changed since you opened it. Go back, open it again and retry.",
+  "errorBusy": "Alkion is still finishing another step. Wait a moment, then try again.",
+  "errorFile": "The file couldn't be read or written. Check the file and where it is stored, then try again.",
+  "errorForeignBackup": "This backup can't be used here. It belongs to another profile or changed during the restore.",
+  "errorDamaged": "This data is damaged or in a format this version can't read. It was left unchanged.",
+  "errorTooLarge": "The file is too large to process.",
+  "errorUnexpected": "Something went wrong. Try again.",
   "todayGreeting": "Ready to train",
   "todayThisWeek": "This week",
   "todayBodyweight": "Bodyweight",
@@ -301,14 +308,7 @@
   "restRestedLabel": "RESTED",
   "restAdd30s": "+30s",
   "summarySessionNotFound": "Session not found.",
-  "summaryLoadFailed": "Failed to load session: {error}",
-  "@summaryLoadFailed": {
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
+  "summaryLoadFailed": "Couldn't load this session.",
   "summaryTopSets": "TOP SETS",
   "summaryDuration": "Duration",
   "summarySets": "Sets",

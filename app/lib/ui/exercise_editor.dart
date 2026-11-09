@@ -332,15 +332,7 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
     } catch (e, st) {
       // Surface the failure instead of silently leaving the button disabled.
       debugPrint('exercise save failed: $e\n$st');
-      if (mounted) {
-        final l = AppLocalizations.of(context);
-        await showWDialog<void>(
-          context,
-          title: l.editorSaveFailed,
-          message: '$e',
-          actions: [WDialogAction(label: l.commonOk, value: null)],
-        );
-      }
+      if (mounted) await showWriteFailed(context, e);
     } finally {
       if (mounted) setState(() => _saving = false);
     }

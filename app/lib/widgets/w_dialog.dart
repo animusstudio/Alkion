@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../store/local_store.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
 import '../theme/typography.dart';
 import '../theme/tokens.dart';
+import '../util/error_message.dart';
 
 /// One action button in a [showWDialog]. [destructive] renders in the danger
 /// color; otherwise the LAST action renders strong text and earlier ones dim.
@@ -23,10 +23,13 @@ class WDialogAction<T> {
 
 /// Flat tokens-styled confirm dialog with a reduced-motion-aware fade.
 /// Returns the tapped action's value, or null on barrier dismiss.
+/// [details] is an optional short code shown in small mono under [message],
+/// for example a stable error category from [userMessage].
 Future<T?> showWDialog<T>(
   BuildContext context, {
   required String title,
   required String message,
+  String? details,
   required List<WDialogAction<T>> actions,
 }) {
   return showGeneralDialog<T>(
@@ -35,8 +38,12 @@ Future<T?> showWDialog<T>(
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: context.tokens.overlay,
     transitionDuration: Motion.of(context, Motion.base),
-    pageBuilder: (ctx, _, __) =>
-        _WDialogBody<T>(title: title, message: message, actions: actions),
+    pageBuilder: (ctx, _, __) => _WDialogBody<T>(
+      title: title,
+      message: message,
+      details: details,
+      actions: actions,
+    ),
     transitionBuilder: (ctx, anim, _, child) {
       final a = CurvedAnimation(parent: anim, curve: Motion.curve);
       return FadeTransition(opacity: a, child: child);
@@ -68,35 +75,27 @@ Future<bool?> showWConfirm(
   );
 }
 
-/// The editors' write-failure feedback: a "Couldn't save" dialog naming
-/// [error]. A write the store refused because it needs recovery says so in
-/// words instead (nothing changed; recover, then retry). Does nothing if
-/// [context] is no longer mounted.
+/// The editors' write-failure feedback: a "Couldn't save" dialog with the
+/// [userMessage] for [error] and its category as a small details line. A
+/// write the store refused because it needs recovery says so in words
+/// instead (nothing changed; recover, then retry). Does nothing if [context]
+/// is no longer mounted.
 Future<void> showWriteFailed(BuildContext context, Object error) async {
   debugPrint('write failed: $error');
   if (!context.mounted) {
     return;
   }
   final l = AppLocalizations.of(context);
-  final recovery = isStoreRecoveryRefusal(error);
+  final mapped = userMessage(l, error);
+  final recovery = mapped.bucket == ErrorBucket.recovery;
   await showWDialog<void>(
     context,
     title: recovery ? l.alkionStoreRecoveryTitle : l.editorSaveFailed,
-    message: recovery ? l.alkionStoreRecoveryBody : '$error',
+    message: mapped.message,
+    details: recovery ? null : mapped.details,
     actions: [WDialogAction(label: l.commonOk, value: null)],
   );
 }
-
-/// Whether [error] is a write the store refused before applying it because
-/// its admission is closed: it needs recovery, or its generation or profile
-/// was fenced.
-bool isStoreRecoveryRefusal(Object error) =>
-    error is StoreException &&
-    {
-      'recovery_required',
-      'stale_generation',
-      'profile_fenced',
-    }.contains(error.category);
 
 /// For a write a tap starts without awaiting it (a settings chip, stepper
 /// or toggle): its failure, for example a write refused while the store
@@ -117,11 +116,13 @@ class _WDialogBody<T> extends StatelessWidget {
   const _WDialogBody({
     required this.title,
     required this.message,
+    required this.details,
     required this.actions,
   });
 
   final String title;
   final String message;
+  final String? details;
   final List<WDialogAction<T>> actions;
 
   @override
@@ -157,6 +158,14 @@ class _WDialogBody<T> extends StatelessWidget {
                       style: WorkoutType.body(size: 14, color: tokens.dim),
                     ),
                   ),
+                  if (details case final code?) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      code,
+                      key: const Key('w-dialog-details'),
+                      style: WorkoutType.mono(size: 11, color: tokens.faint),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Wrap(
                     alignment: WrapAlignment.end,
