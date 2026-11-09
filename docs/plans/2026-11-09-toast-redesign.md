@@ -198,6 +198,14 @@ local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:`
   - `make -C app fmt FORMAT_FILES=<5 owned files>` → 0 changed.
   - Full suite not run (shared machine).
 
+- **T2 review PASS** (Sonnet `high`, `f4dfeb7`). Three minors.
+  - (1) "Set removed · Undo" now times out. It used to persist, which made it shorter than
+    the 5 s logged-set Undo. Coordinator fix `9f344822` gives it 8 s, and
+    `active_session_screen_test.dart` → +63 pass.
+  - (2) The log-bar test hosts its own Scaffold and has no system-inset case.
+  - (3) The source guard also matches comments, which is conservative.
+  (2) and (3) are PR follow-ups.
+
 ## Next
 
 T1 and T2 done; T2 independent review, then the integrated full suite and device check.
