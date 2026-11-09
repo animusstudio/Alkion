@@ -572,11 +572,33 @@ final class RuntimeRecoveryHost implements RecoveryHost {
       backup.verifyBackupFile(File(path), schema: runtime.store.schema);
 
   @override
+  bool get workoutActive =>
+      runtime.sessions.hasActive || runtime.sessions.launching;
+
+  @override
   Future<void> restoreBackup(String path) async {
+    final sessions = runtime.sessions;
+    // Synchronously, before the first await: a running workout refuses the
+    // restore, and holding the launch fence keeps one from starting or
+    // resuming while the backup is verified. Released on every path.
+    if (sessions.hasActive || !sessions.tryBeginLaunch()) {
+      throw const StoreException('workout_active');
+    }
+    try {
+      await _restoreHoldingLaunch(path);
+    } finally {
+      sessions.endLaunch();
+    }
+  }
+
+  Future<void> _restoreHoldingLaunch(String path) async {
     final verified = await verifyBackup(path);
     verified.requireWriterVariant();
     if (verified.profileId != profileId) {
       throw const StoreException('foreign_profile');
+    }
+    if (runtime.sessions.hasActive) {
+      throw const StoreException('workout_active');
     }
     await runtime.flushPersistence();
     // Read before close() disposes the settings owner.

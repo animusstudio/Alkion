@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -11,8 +12,10 @@ import '../../store/local_store.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/workout_canvas.dart';
 import '../../theme/typography.dart';
+import '../../util/error_message.dart';
 import '../../widgets/w_dialog.dart';
 import '../export_failure.dart';
+import 'recovery_format.dart';
 
 /// Manual Alkion backup, receiving check and restore. Nothing here schedules,
 /// reminds, uploads or shares: a backup is a verified local file the owner
@@ -35,6 +38,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
       widget.documents ?? platformDocumentAccess();
   List<Map<String, Object?>> _history = const [];
   List<Map<String, Object?>> _pending = const [];
+  DocumentFile? _selected;
 
   RecoveryHost? get _host => context.read<RecoveryHost?>();
 
@@ -66,25 +70,18 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   }
 
   Future<void> _run(
-    Future<void> Function(RecoveryHost host, AppLocalizations l) action,
-  ) async {
+    Future<void> Function(RecoveryHost host, AppLocalizations l) action, {
+    bool flush = true,
+  }) async {
     final host = _host;
     if (_busy || host == null) return;
     final l = AppLocalizations.of(context);
     setState(() => _busy = true);
     try {
-      await widget.flush?.call();
+      if (flush) await widget.flush?.call();
       await action(host, l);
     } catch (e) {
-      await _message(
-        l.alkionBackupFailed,
-        compatibilityExportRefusalMessage(l, e) ??
-            (e is DocumentException
-                ? l.alkionDocumentFailureMessage(e.category)
-                : l.alkionBackupFailedMessage(
-                    e is StoreException ? e.category : '$e',
-                  )),
-      );
+      await _failed(l, e);
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -93,13 +90,40 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     }
   }
 
-  Future<void> _message(String title, String message) async {
+  /// A failure's dialog: mapped words and, at most, the stable category as a
+  /// small details line. Never the exception text.
+  Future<void> _failed(AppLocalizations l, Object error) async {
+    switch (errorCategory(error)) {
+      case 'foreign_profile':
+        return _foreign(l);
+      case 'workout_active':
+        return _workoutActive(l);
+    }
+    final mapped = recoveryErrorMessage(l, error);
+    await _message(
+      l.alkionBackupFailed,
+      // A failed provider save may have left an incomplete external copy.
+      error is DocumentException && error.originalPath != null
+          ? l.alkionDocumentFailureMessage(mapped.message)
+          : l.alkionBackupFailedMessage(mapped.message),
+      details: mapped.details,
+    );
+  }
+
+  Future<void> _foreign(AppLocalizations l) =>
+      _message(l.alkionBackupForeignTitle, l.alkionBackupForeignProfile);
+
+  Future<void> _workoutActive(AppLocalizations l) =>
+      _message(l.alkionRestoreWorkoutActiveTitle, l.alkionRestoreWorkoutActive);
+
+  Future<void> _message(String title, String message, {String? details}) async {
     if (!mounted) return;
     final l = AppLocalizations.of(context);
     await showWDialog<bool>(
       context,
       title: title,
       message: message,
+      details: details,
       actions: [WDialogAction(label: l.commonOk, value: true)],
     );
   }
@@ -129,53 +153,79 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     );
   });
 
-  Future<String?> _selectedPath() async {
+  /// The chosen backup. With a document picker the file is picked once and
+  /// its private copy is reused by Check and Restore until another is chosen;
+  /// without one (Linux development) the path field is the selection. Null
+  /// when nothing is chosen or the picker was cancelled.
+  Future<({String path, String name})?> _chosen() async {
     final documents = _documents;
-    if (documents == null) return _path.text.trim();
-    return (await documents.open(
-      maxBytes: maxBackupBytes,
-      mimeTypes: const ['*/*'],
-    ))?.path;
+    if (documents == null) {
+      final path = _path.text.trim();
+      return path.isEmpty ? null : (path: path, name: p.basename(path));
+    }
+    final selected = _selected ?? await _pick(documents);
+    return selected == null
+        ? null
+        : (path: selected.path, name: documentLabel(selected.name));
   }
 
+  Future<DocumentFile?> _pick(DocumentAccess documents) async {
+    final file = await documents.open(
+      maxBytes: maxBackupBytes,
+      mimeTypes: const ['*/*'],
+    );
+    // A cancelled picker keeps any earlier choice.
+    if (file != null && mounted) setState(() => _selected = file);
+    return file;
+  }
+
+  Future<void> _choose() => _run((host, l) async {
+    final documents = _documents;
+    if (documents != null) await _pick(documents);
+  }, flush: false);
+
   Future<void> _check() => _run((host, l) async {
-    final path = await _selectedPath();
-    if (path == null) return;
-    final verified = await host.verifyBackup(path);
-    if (verified.profileId != host.profileId) {
-      await _message(l.alkionBackupCheckOk, l.alkionBackupForeignProfile);
-      return;
-    }
+    final chosen = await _chosen();
+    if (chosen == null) return;
+    final verified = await host.verifyBackup(chosen.path);
+    if (verified.profileId != host.profileId) return _foreign(l);
     await _message(
       l.alkionBackupCheckOk,
       l.alkionBackupCheckOkMessage(
-        verified.createdAt,
+        fmtRecoveryInstant(verified.createdAt, l.localeName),
         verified.facts.state.rowCount,
       ),
     );
   });
 
-  Future<void> _restore() => _run((host, l) async {
-    final path = await _selectedPath();
-    if (path == null) return;
-    final verified = await host.verifyBackup(path);
-    verified.requireWriterVariant();
-    if (verified.profileId != host.profileId) {
-      await _message(l.alkionBackupCheckOk, l.alkionBackupForeignProfile);
-      return;
-    }
-    if (!mounted) return;
-    final confirmed = await showWConfirm(
-      context,
-      title: l.alkionRestoreConfirmTitle,
-      message: l.alkionRestoreConfirmMessage,
-      confirmLabel: l.alkionRestoreConfirm,
-      destructive: true,
-    );
-    if (confirmed != true) return;
-    // The host closes this runtime and presents the post-restore screen.
-    await host.restoreBackup(path);
-  });
+  Future<void> _restore() async {
+    final host = _host;
+    if (_busy || host == null) return;
+    // Refused before any picker opens or anything is flushed or closed.
+    if (host.workoutActive) return _workoutActive(AppLocalizations.of(context));
+    await _run((host, l) async {
+      final chosen = await _chosen();
+      if (chosen == null) return;
+      final verified = await host.verifyBackup(chosen.path);
+      verified.requireWriterVariant();
+      if (verified.profileId != host.profileId) return _foreign(l);
+      if (host.workoutActive) return _workoutActive(l);
+      if (!mounted) return;
+      final confirmed = await showWConfirm(
+        context,
+        title: l.alkionRestoreConfirmTitle,
+        message:
+            '${l.alkionRestoreConfirmFile(chosen.name, fmtRecoveryInstant(verified.createdAt, l.localeName))}'
+            '\n\n${l.alkionRestoreConfirmMessage}',
+        confirmLabel: l.alkionRestoreConfirm,
+        destructive: true,
+      );
+      if (confirmed != true) return;
+      // The host verifies again, refuses a workout started meanwhile, closes
+      // this runtime and presents the post-restore screen itself.
+      await host.restoreBackup(chosen.path);
+    });
+  }
 
   Future<void> _keep(String reviewId) => _run(
     (host, l) => RestoreReviews(context.read<LocalDatabase>()).keep(reviewId),
@@ -291,8 +341,31 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                             ),
                           ],
                         ),
-                      if (_documents != null)
+                      if (_documents != null) ...[
                         line(l.alkionDocumentSelectExplain),
+                        const SizedBox(height: 16),
+                        actions([
+                          OutlinedButton(
+                            key: const Key('backup-choose'),
+                            onPressed: enabled ? _choose : null,
+                            child: Text(l.alkionBackupChoose),
+                          ),
+                        ]),
+                        if (_selected case final selected?) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            l.alkionBackupChosen(
+                              documentLabel(selected.name),
+                              fmtFileSize(selected.length, l.localeName),
+                            ),
+                            key: const Key('backup-chosen'),
+                            style: WorkoutType.body(
+                              size: 14,
+                              color: tokens.text,
+                            ),
+                          ),
+                        ],
+                      ],
                       const SizedBox(height: 16),
                       actions([
                         OutlinedButton(

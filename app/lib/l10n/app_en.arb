@@ -781,6 +781,18 @@
   },
   "alkionBackupFileSection": "Backup file",
   "alkionBackupPathLabel": "Backup file path",
+  "alkionBackupChoose": "Choose backup file",
+  "alkionBackupChosen": "Chosen: {name} · {size}",
+  "@alkionBackupChosen": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "alkionBackupCheck": "Check backup",
   "alkionBackupCheckOk": "Backup verified",
   "alkionBackupCheckOkMessage": "Created {created}. All {rows} covered rows match the manifest; schema and integrity checks passed.",
@@ -794,20 +806,35 @@
       }
     }
   },
-  "alkionBackupForeignProfile": "This verified backup belongs to another Alkion profile. It is never merged here; it can only be restored onto separate, empty storage.",
+  "alkionBackupForeignTitle": "Backup from another profile",
+  "alkionBackupForeignProfile": "This backup belongs to another Alkion profile, so it can't be restored into this one. To use it:\n1. Back up this profile first.\n2. Clear Alkion's storage in Android settings.\n3. Open Alkion, choose Go fully offline, then Restore backup.",
   "alkionBackupFailed": "Backup action failed",
-  "alkionBackupFailedMessage": "Reason: {category}. Your current data, the backup file and any staging copy are kept.",
+  "alkionBackupFailedMessage": "{reason}\nYour current data, the backup file and any staging copy are kept.",
   "@alkionBackupFailedMessage": {
     "placeholders": {
-      "category": {
+      "reason": {
         "type": "String"
       }
     }
   },
+  "alkionBackupCloseEditor": "An open editor has unsaved changes. Save or discard them and close the editor, then try again.",
   "alkionRestoreAction": "Restore from this backup",
   "alkionRestoreConfirmTitle": "Restore this backup?",
   "alkionRestoreConfirmMessage": "The backup becomes the selected local state. The current state is kept and fenced, never deleted, and work newer than the backup is listed for review. Alkion closes and must be reopened.",
+  "alkionRestoreConfirmFile": "{name}\nCreated {date}",
+  "@alkionRestoreConfirmFile": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "alkionRestoreConfirm": "Restore",
+  "alkionRestoreWorkoutActiveTitle": "Workout in progress",
+  "alkionRestoreWorkoutActive": "Finish or discard your workout first, then restore.",
   "alkionRestoreHistory": "Restores",
   "alkionRestoreReviewsSection": "Work newer than a restored backup",
   "alkionRestoreNoReviews": "Nothing to review",
@@ -816,14 +843,17 @@
   "alkionRestoreDoneBody": "The backup is now the selected local state. The previous state is preserved and fenced; newer work is listed for review. Reopen Alkion to continue.",
   "alkionRestoreReopen": "Reopen Alkion",
   "alkionRestoreFailedTitle": "Restore not completed",
-  "alkionRestoreFailedBody": "Reason: {category}. The backup file, the staging copy and the current state are kept.",
+  "alkionRestoreFailedBody": "{reason}\nThe backup file, the staging copy and the current state are kept.",
   "@alkionRestoreFailedBody": {
     "placeholders": {
-      "category": {
+      "reason": {
         "type": "String"
       }
     }
   },
+  "alkionRestoreInterruptedError": "The restore was interrupted before it finished. The backup file is fine; try again.",
+  "alkionRestoreTargetNotEmpty": "This profile already has data, so the backup can't be restored onto it. Nothing was changed.",
+  "alkionRestoreStagingChanged": "The staging copy of the backup changed during the restore. Choose the backup file again and retry.",
   "alkionRestoreInterruptedTitle": "A restore was interrupted",
   "alkionRestoreInterruptedBody": "Local storage stays closed until you choose. Completing selects the verified staged backup; keeping the current state leaves the staged copy in place.",
   "alkionRestoreComplete": "Complete restore",

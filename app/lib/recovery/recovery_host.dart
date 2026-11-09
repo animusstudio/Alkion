@@ -15,6 +15,11 @@ abstract interface class RecoveryHost {
   Future<VerifiedBackup> verifyBackup(String path);
   Future<void> restoreBackup(String path);
   String get profileId;
+
+  /// Whether a workout is running or starting. Restore is refused while it
+  /// is: the screen asks before any picker opens, and [restoreBackup] checks
+  /// again under the session launch fence.
+  bool get workoutActive;
 }
 
 /// Save a coherent existing backup; verification is against the completed

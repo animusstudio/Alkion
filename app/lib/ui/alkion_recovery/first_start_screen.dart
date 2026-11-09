@@ -12,6 +12,7 @@ import '../../identity/alkion_identity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../recovery/backup.dart';
 import '../../recovery/restore.dart';
+import '../../store/local_store.dart';
 import '../../theme/alkion_icon.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/workout_canvas.dart';
@@ -20,7 +21,8 @@ import '../../theme/typography.dart';
 import '../../widgets/alkion_brand.dart';
 import '../../widgets/alkion_entry_opening.dart';
 import '../../widgets/w_dialog.dart';
-import 'recovery_app.dart' show recoveryCategory;
+import '../export_failure.dart';
+import 'recovery_app.dart' show RecoveryErrorDetails;
 
 /// Optional browser sign-in or account-free setup before a writable runtime exists.
 class AlkionFirstStartApp extends StatelessWidget {
@@ -122,7 +124,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
   AnimusConnectionController? _connection;
   bool _busy = false;
   bool _done = false;
-  String? _failure;
+
+  /// The failed action's error; shown through the recovery mapper.
+  Object? _failure;
   @override
   void dispose() {
     _connection?.removeListener(_connectionChanged);
@@ -140,11 +144,7 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _failure = error is DocumentException
-              ? error.category
-              : recoveryCategory(error),
-        );
+        setState(() => _failure = error);
       }
     } finally {
       if (mounted) {
@@ -155,7 +155,7 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
           if (mounted) {
             setState(() {
               _state = const FreshRestoreState(canStartLocal: false);
-              _failure = recoveryCategory(error);
+              _failure = error;
             });
           }
         }
@@ -272,6 +272,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
     final pending = _state.pending;
     final tokens = context.tokens;
     final offline = _offline || !_state.canStartLocal;
+    final failure = _failure == null
+        ? null
+        : recoveryErrorMessage(l, _failure!);
     final connection = _connection;
     final confirming =
         connection?.state == AnimusConnectionState.awaitingConfirmation;
@@ -393,7 +396,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                     liveRegion: true,
                                     child: Text(
                                       offline
-                                          ? l.alkionRestoreFailedBody(_failure!)
+                                          ? l.alkionRestoreFailedBody(
+                                              failure!.message,
+                                            )
                                           : l.alkionEntryFailed,
                                       style: WorkoutType.body(
                                         size: 14,
@@ -401,6 +406,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                       ),
                                     ),
                                   ),
+                                  if ((offline ? failure?.details : null)
+                                      case final details?)
+                                    RecoveryErrorDetails(details),
                                 ],
                                 const SizedBox(height: 24),
                                 if (!offline) ...[
@@ -574,7 +582,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                                   .freshState();
                                               if (current == null ||
                                                   !current.canStartLocal) {
-                                                throw StateError(
+                                                // A stable category, so the
+                                                // mapped message keeps it.
+                                                throw const StoreException(
                                                   'fresh_restore_interrupted',
                                                 );
                                               }
