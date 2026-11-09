@@ -84,6 +84,35 @@ void main() {
     expect(artwork().scores, scores);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('the artwork box defaults to the card surface in both themes', (
+    tester,
+  ) async {
+    for (final brightness in Brightness.values) {
+      final tokens = brightness == Brightness.dark
+          ? WorkoutTokens.dark(defaultWorkoutAccent)
+          : WorkoutTokens.light(defaultWorkoutAccent);
+      Widget scene({Color? background}) => wrapL10n(
+        Theme(
+          data: buildTheme(brightness, defaultWorkoutAccent),
+          child: Center(
+            child: BodyFigure(workload: _workload(), background: background),
+          ),
+        ),
+      );
+      CharacterBody artwork() =>
+          tester.widget<CharacterBody>(find.byType(CharacterBody));
+      await tester.pumpWidget(scene());
+      await tester.pump();
+      expect(artwork().background, tokens.surface);
+      // A caller on another surface passes its colour through.
+      await tester.pumpWidget(scene(background: tokens.bg));
+      await tester.pump();
+      expect(artwork().background, tokens.bg);
+      expect(tokens.bg, isNot(tokens.surface));
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
   for (final code in ['en', 'de', 'es', 'it']) {
     testWidgets(
       'workload sheet keeps only body, legend and counts at 320dp 2x in $code',

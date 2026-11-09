@@ -1,16 +1,25 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:alkion/catalog/catalog.dart';
+import 'package:alkion/catalog_ui/catalog_media_widgets.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/store/local_store.dart';
+import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/ui/body_figure.dart';
+import 'package:alkion/ui/character_body.dart';
 import 'package:alkion/ui/day_view.dart';
 import 'package:alkion/widgets/plan_form.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import '../catalog/catalog_fixture.dart';
+import '../support/memory_catalog_state.dart';
 import '../support/screen_harness.dart';
 
 final en = lookupAppLocalizations(const Locale('en'));
@@ -75,6 +84,43 @@ class _GateDatabase extends RealZoneDatabase {
   }
 }
 
+String _variantId(int n) =>
+    '10000000-0000-4000-8000-${n.toString().padLeft(12, '0')}';
+
+/// A memory catalog with one variant that has reviewed owner artwork; `ex1`
+/// (Bench Press) is backed by it, `ex2` (Barbell Row) stays owned.
+MemoryCatalogState _catalog() {
+  final source = syntheticCatalog();
+  (source['facet_vocabulary']['support'] as List).add('flat_bench');
+  (source['families'] as List).add({
+    'id': _variantId(500),
+    'key': 'synthetic_media_family',
+    'names': {'en': 'Synthetic media family'},
+  });
+  (source['variants'] as List).add({
+    'id': _variantId(501),
+    'key': 'barbell_bench_press',
+    'family_id': _variantId(500),
+    'revision': 1,
+    'names': {'en': 'Synthetic bench'},
+    'equipment_kind': 'barbell',
+    'facets': {'angle': 'flat', 'support': 'flat_bench'},
+    'measurement_profile': 'load_reps',
+  });
+  (source['muscle_profiles'] as List).add({
+    'id': 'synthetic-media-profile',
+    'variant_id': _variantId(501),
+    'variant_revision': 1,
+    'coverage': 'unknown',
+    'relationships': <Map<String, String>>[],
+  });
+  final state = MemoryCatalogState(
+    CatalogBundle.fromJsonString(jsonEncode(source)),
+  );
+  state.exercises['ex1'] = CatalogChoice.variant(_variantId(501));
+  return state;
+}
+
 class _Calls {
   int edit = 0, close = 0;
   final starts = <DayTemplate>[];
@@ -90,23 +136,25 @@ void main() {
     LocalDatabase? database,
     bool withStart = true,
     bool visible = true,
+    MemoryCatalogState? catalog,
   }) async {
     setPhone(tester, width: 412, height: 2400);
     final calls = _Calls();
+    final Widget page = Scaffold(
+      body: Visibility(
+        visible: visible,
+        maintainState: true,
+        child: DayView(
+          id: id,
+          onEdit: () => calls.edit++,
+          onClose: () => calls.close++,
+          onStart: withStart ? calls.starts.add : null,
+        ),
+      ),
+    );
     await tester.pumpWidget(
       harness.wrap(
-        Scaffold(
-          body: Visibility(
-            visible: visible,
-            maintainState: true,
-            child: DayView(
-              id: id,
-              onEdit: () => calls.edit++,
-              onClose: () => calls.close++,
-              onStart: withStart ? calls.starts.add : null,
-            ),
-          ),
-        ),
+        catalog == null ? page : CatalogScope(state: catalog, child: page),
         extra: [
           if (database != null) Provider<LocalDatabase>.value(value: database),
         ],
@@ -436,6 +484,144 @@ void main() {
       where: 'hidden day view',
     );
     expect(find.byType(BodyFigure, skipOffstage: false), findsNothing);
+    await harness.unmount(tester);
+  });
+
+  testWidgets('the figure takes the page background, not the card surface', (
+    tester,
+  ) async {
+    await harness.open(tester, seed: _seed);
+    await mount(tester);
+    await settleUntilFound(tester, workingSets, where: 'day view');
+    final tokens = tester.element(find.byType(DayView)).tokens;
+    expect(tokens.bg, isNot(tokens.surface));
+    expect(
+      tester.widget<BodyFigure>(find.byType(BodyFigure)).background,
+      tokens.bg,
+    );
+    // The colour the native view and its loading cover receive.
+    expect(
+      tester.widget<CharacterBody>(find.byType(CharacterBody)).background,
+      tokens.bg,
+    );
+    await harness.unmount(tester);
+  });
+
+  testWidgets('a catalog row opens its read-only catalog details', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final catalog = _catalog();
+    addTearDown(catalog.dispose);
+    await harness.open(tester, seed: _seed);
+    await mount(tester, catalog: catalog);
+    await settleUntilFound(tester, workingSets, where: 'catalog day view');
+
+    // The catalog row reads as one button node at least 48 dp tall.
+    final row = find.byKey(const ValueKey('day-view-row-d1-i0'));
+    expect(row, findsOneWidget);
+    expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+    final node = tester.getSemantics(row);
+    expect(node.label, startsWith('Synthetic bench, 3×6–10'));
+    expect(node.flagsCollection.isButton, isTrue);
+    expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+
+    await tester.tap(row);
+    await settleReal(tester, ticks: 8);
+    final sheet = find.byType(BottomSheet);
+    expect(sheet, findsOneWidget);
+    expect(
+      find.descendant(of: sheet, matching: find.text(en.catalogDetails)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Synthetic bench')),
+      findsOneWidget,
+    );
+    // The bigger image, and no second native figure beside the view's.
+    expect(
+      find.descendant(of: sheet, matching: find.byType(CatalogArtworkDetails)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.byType(BodyFigure)),
+      findsNothing,
+    );
+    expect(find.byType(CharacterBody), findsOneWidget);
+    // Read-only: no favourite star and no edit, add or remove action.
+    expect(find.byKey(const Key('catalog-details-favorite')), findsNothing);
+    expect(find.text(en.planEditExercise), findsNothing);
+    expect(catalog.favorites, isEmpty);
+    expect(catalog.recents, isEmpty);
+
+    await tester.tap(find.byTooltip(en.commonDone));
+    await settleReal(tester, ticks: 8);
+    expect(find.byType(BottomSheet), findsNothing);
+    semantics.dispose();
+    await harness.unmount(tester);
+  });
+
+  testWidgets('a row the catalog does not know opens nothing', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final catalog = _catalog();
+    addTearDown(catalog.dispose);
+    await harness.open(tester, seed: _seed);
+    await mount(tester, catalog: catalog);
+    await settleUntilFound(tester, workingSets, where: 'catalog day view');
+    final row = find.byKey(const ValueKey('day-view-row-d1-i1'));
+    expect(
+      find.descendant(of: row, matching: find.text('Barbell Row')),
+      findsOneWidget,
+    );
+    expect(tester.getSemantics(row).flagsCollection.isButton, isFalse);
+    expect(
+      find.descendant(of: row, matching: find.byType(InkWell)),
+      findsNothing,
+    );
+    await tester.tap(row);
+    await settleReal(tester, ticks: 8);
+    expect(find.byType(BottomSheet), findsNothing);
+    semantics.dispose();
+    await harness.unmount(tester);
+  });
+
+  testWidgets('an unavailable exercise row is not tappable', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final catalog = _catalog();
+    addTearDown(catalog.dispose);
+    await harness.open(
+      tester,
+      seed: (d) async {
+        await _seed(d);
+        // A slot whose exercise was deleted: the day keeps its id.
+        await seedExercise(d, 'gone', 'Gone Press');
+        await seedDay(d, 'd4', 'Gone Day', position: 3, exerciseIds: ['gone']);
+        await d.execute("UPDATE exercises SET deleted=1 WHERE id='gone'");
+      },
+    );
+    // The missing id is even known to the catalog: the row stays inert.
+    catalog.exercises['gone'] = CatalogChoice.variant(_variantId(501));
+    await mount(tester, id: 'd4', catalog: catalog);
+    final unavailable = find.text(en.dayViewExerciseUnavailable);
+    await settleUntilFound(tester, unavailable, where: 'unavailable row');
+    final row = find.ancestor(
+      of: unavailable,
+      matching: find.byWidgetPredicate(
+        (w) =>
+            w.key is ValueKey<String> &&
+            (w.key! as ValueKey<String>).value.startsWith('day-view-row-'),
+      ),
+    );
+    expect(row, findsOneWidget);
+    expect(tester.getSemantics(row).flagsCollection.isButton, isFalse);
+    expect(
+      find.descendant(of: row, matching: find.byType(InkWell)),
+      findsNothing,
+    );
+    await tester.tap(row);
+    await settleReal(tester, ticks: 8);
+    expect(find.byType(BottomSheet), findsNothing);
+    semantics.dispose();
     await harness.unmount(tester);
   });
 }
