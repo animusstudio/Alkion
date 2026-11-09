@@ -270,6 +270,12 @@ stays (the toast and History editor use it).
     setup change another setup's line can show the newer setup's date (values are correct).
     Store the date per compatibility key later.
 
+- **Coordinator fix `9740491`.** The merged U2+U3 base for U4 showed 3 failures in
+  `test/ui/training_prescription_consumers_test.dart`. That file sits outside U2's focused
+  sets, and the failures came from the removed "Clear RIR" button and the hidden rep-range
+  text, so they are U2 regressions. The test now clears RIR by its chip and expects no
+  rep-range tag. `test/ui test/shell test/widgets test/theme` → +1041 all pass.
+
 ## Next
 
 Code-complete. The integrated full suite and device check run at delivery; U4 branches from here plus U3.
