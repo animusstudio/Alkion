@@ -33,6 +33,8 @@ void main() {
         final day = find.byWidgetPredicate(
           (widget) => widget is SplitDayCard && widget.name == longDay,
         );
+        // The split overview sits above the day cards.
+        await scrollIntoView(tester, find.byType(SplitTab), day);
         await tester.tap(day);
         await settleUntilFound(
           tester,
