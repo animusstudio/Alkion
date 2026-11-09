@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../catalog/catalog.dart';
+import '../catalog_ui/catalog_choice_details.dart';
+import '../catalog_ui/catalog_picker.dart' show catalogMetricLabel;
 import '../catalog_ui/catalog_runtime_state.dart';
 import '../catalog_ui/catalog_scope.dart';
 import '../data/body_workload.dart';
@@ -543,7 +545,12 @@ class _Overview extends StatelessWidget {
         // A Plan tab kept mounted but hidden behind Today (IndexedStack) must
         // not hold a second native renderer behind the visible one.
         final figure = Visibility.of(context)
-            ? BodyFigure(width: width, workload: workload)
+            // The figure sits on the page, not a card: its box takes `bg`.
+            ? BodyFigure(
+                width: width,
+                workload: workload,
+                background: context.tokens.bg,
+              )
             : SizedBox(
                 key: const Key('day-view-figure-hidden'),
                 width: width,
@@ -575,8 +582,9 @@ class _Overview extends StatelessWidget {
 
 // ── Exercise rows ───────────────────────────────────────────────────────────
 
-/// One exercise: art (or the neutral tile), name and summary chips. Not
-/// interactive; one accessibility node reads the name and the summary.
+/// One exercise: art (or the neutral tile), name and summary chips, read as
+/// one accessibility node. A catalog-backed row is a button that opens the
+/// read-only catalog details; a missing exercise is not interactive.
 class _ExerciseRow extends StatelessWidget {
   const _ExerciseRow({super.key, required this.slot, required this.exercise});
 
@@ -595,44 +603,87 @@ class _ExerciseRow extends StatelessWidget {
         ? l.dayViewExerciseUnavailable
         : _displayName(context, exercise);
     final labels = summary?.labels(l, units) ?? const <String>[];
+    final scope = CatalogScope.maybeOf(context);
+    final choice = exercise == null ? null : _choice(scope);
+    final VoidCallback? onTap = scope == null || choice == null
+        ? null
+        : () => _openDetails(context, scope, choice, name);
+    final row = Container(
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.line)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SlotThumbnail(exerciseId: slot.exerciseId, selection: slot.catalog),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FitLabel(
+                  name,
+                  maxLines: 3,
+                  style: WorkoutType.body(
+                    size: 15.5,
+                    weight: FontWeight.w500,
+                    color: exercise == null ? t.dim : t.text,
+                  ),
+                ),
+                if (summary != null) ...[
+                  const SizedBox(height: 6),
+                  SlotSummaryChips(summary: summary),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
     return Semantics(
       container: true,
       excludeSemantics: true,
+      button: onTap != null,
+      onTap: onTap,
       label: [name, ...labels].join(', '),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: t.line)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SlotThumbnail(exerciseId: slot.exerciseId, selection: slot.catalog),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FitLabel(
-                    name,
-                    maxLines: 3,
-                    style: WorkoutType.body(
-                      size: 15.5,
-                      weight: FontWeight.w500,
-                      color: exercise == null ? t.dim : t.text,
-                    ),
-                  ),
-                  if (summary != null) ...[
-                    const SizedBox(height: 6),
-                    SlotSummaryChips(summary: summary),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: onTap == null ? row : InkWell(onTap: onTap, child: row),
+    );
+  }
+
+  /// The slot's catalog choice, resolved as [slotArtwork] resolves the
+  /// thumbnail: the persisted selection, else the exercise's default choice.
+  /// Null without a catalog or for an exercise the catalog does not know.
+  CatalogChoice? _choice(CatalogRuntimeState? scope) {
+    if (scope == null) return null;
+    final selection = slot.catalog;
+    return selection != null
+        ? scope.choiceForSelection(selection)
+        : scope.exercises[slot.exerciseId];
+  }
+
+  /// The existing catalog details sheet, read-only: no actions and no
+  /// favourite star, so nothing here writes.
+  Future<void> _openDetails(
+    BuildContext context,
+    CatalogRuntimeState scope,
+    CatalogChoice choice,
+    String title,
+  ) async {
+    if (!scope.active) return;
+    final l = AppLocalizations.of(context);
+    await showCatalogChoiceDetails(
+      context,
+      title: title,
+      index: scope.index(Localizations.localeOf(context).languageCode),
+      variant: scope.bundle.variants[choice.variantId],
+      metrics: [
+        for (final metric in scope.measurement(choice).requiredMetrics)
+          catalogMetricLabel(l, metric),
+      ],
+      actions: const [],
     );
   }
 
@@ -641,10 +692,7 @@ class _ExerciseRow extends StatelessWidget {
   String _displayName(BuildContext context, Exercise exercise) {
     final CatalogRuntimeState? scope = CatalogScope.maybeOf(context);
     if (scope == null) return exercise.name;
-    final selection = slot.catalog;
-    final choice = selection != null
-        ? scope.choiceForSelection(selection)
-        : scope.exercises[slot.exerciseId];
+    final choice = _choice(scope);
     if (choice == null ||
         (choice.customName == null && choice.variantId == null)) {
       return exercise.name;
