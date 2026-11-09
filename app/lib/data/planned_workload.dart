@@ -118,10 +118,12 @@ class SplitBasis {
 /// every active day has a distinct scheduled weekday, per rotation otherwise.
 SplitBasis splitBasis(Iterable<DayTemplate> days) {
   final weekdays = <int>{};
+  final seen = <String>{};
   var activeDays = 0;
   var distinct = true;
   for (final day in days) {
-    if (!day.isActive) continue;
+    // A day passed twice counts once, as in the workload.
+    if (!day.isActive || !seen.add(day.id)) continue;
     activeDays++;
     final weekday = day.scheduledWeekday;
     if (weekday == null ||

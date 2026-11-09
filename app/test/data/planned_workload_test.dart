@@ -395,6 +395,14 @@ void main() {
       );
     });
 
+    test('a day passed twice counts once', () {
+      final push = splitDay('push', const [], active: true, weekday: 1);
+      expect(
+        splitBasis([push, push]),
+        const SplitBasis(perWeek: true, activeDays: 1),
+      );
+    });
+
     test('no active day is per rotation with zero days', () {
       expect(basis([]), const SplitBasis(perWeek: false, activeDays: 0));
       expect(
