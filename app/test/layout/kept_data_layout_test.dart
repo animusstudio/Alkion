@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:alkion/data/workflow_state_quarantine.dart';
 import 'package:alkion/domain/evidence.dart';
@@ -273,6 +274,37 @@ void main() {
       expect(find.byKey(const Key('backup-create')), findsOneWidget);
       expect(section, findsNothing);
       expect(find.text('Kept workout data'), findsNothing);
+      await harness.unmount(tester);
+    });
+
+    testWidgets('an unreadable kept review never breaks the screen', (
+      tester,
+    ) async {
+      await harness.open(
+        tester,
+        seed: (db) => db.store.writeTransaction(
+          (tx) => tx.execute('INSERT INTO reviews VALUES(?,?,?,?,?,?,?)', [
+            tx.profileId,
+            'wq-synthetic-unreadable-row',
+            null,
+            null,
+            workflowQuarantineCategory,
+            localBytes({
+              'format': workflowQuarantineFormat,
+              'kind': 'draft',
+              'rows': const [],
+            }),
+            // created_at is a BLOB in a TEXT column: the kept read throws.
+            Uint8List.fromList([1, 2, 3]),
+          ]),
+        ),
+      );
+      setPhone(tester, width: 412);
+      await tester.pumpWidget(harness.wrap(const AlkionRecoveryScreen()));
+      await settleReal(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('backup-create')), findsOneWidget);
+      expect(section, findsNothing);
       await harness.unmount(tester);
     });
 

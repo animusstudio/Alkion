@@ -89,8 +89,9 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
       final kept = await WorkflowStateQuarantine(database).keptReviews();
       if (!mounted) return;
       setState(() => _kept = kept);
-    } on StoreException {
-      // As above: kept workout data is read-only and shown when readable.
+    } on Object {
+      // Kept workout data is read-only and shown only when readable. A review
+      // row this build cannot read must not hide the facts below it.
     }
     final host = _host;
     if (host == null) return;
