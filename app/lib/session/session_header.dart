@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../catalog_ui/catalog_set_format.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/alkion_icon.dart';
@@ -9,28 +10,33 @@ import '../units/unit_service.dart';
 import '../widgets/fit_label.dart';
 import 'active_session_controller.dart';
 
-/// "Next · …" for the header rest row: the live set, or finishing.
+/// "Next · …" for the header rest row, classic and catalog alike: the next
+/// set ("Set 3" or "Warm-up") and its values, or finishing. The exercise
+/// leads only when the next set's block has no logged set yet, i.e. when the
+/// next set moves to another exercise. A catalog set shows its compact values
+/// ([catalogSetCompact]) and none when it has no valid value; a classic set
+/// whose stored values are unavailable says so.
 String restNextLabel(AppLocalizations l, UnitService unit, LiveSet? live) {
   if (live == null) {
     return l.sessionRestNext(l.sessionFinishWorkout);
   }
+  final block = live.block;
   final s = live.set;
-  if (!s.weightAvailable || !s.repsAvailable) {
-    return l.sessionRestNext(
-      '${live.block.exercise.name} · ${l.alkionValuesUnavailable}',
-    );
-  }
-  final weight = '${unit.fmtWt(s.weightKg)}${unit.uLabel}';
-  final name = live.block.exercise.name;
+  final evidence = s.catalog;
+  final values = evidence != null
+      ? catalogSetCompact(evidence, l)
+      : s.weightAvailable && s.repsAvailable
+      ? '${unit.fmtWt(s.weightKg)}${unit.uLabel} × ${s.reps}'
+      : l.alkionValuesUnavailable;
   return l.sessionRestNext(
-    s.isWarmup
-        ? l.sessionNextWarmup(name, weight, s.reps)
-        : l.sessionNextSet(
-            name,
-            live.block.workingSets.indexOf(s) + 1,
-            weight,
-            s.reps,
-          ),
+    [
+      if (!block.allSets.any((set) => set.done))
+        evidence?.selection.displayLabel ?? block.exercise.name,
+      s.isWarmup
+          ? l.sessionNextWarmup
+          : l.sessionNextSet(block.workingSets.indexOf(s) + 1),
+      values,
+    ].where((part) => part.isNotEmpty).join(' · '),
   );
 }
 

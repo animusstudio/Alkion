@@ -1,7 +1,7 @@
 import '../catalog_ui/catalog_picker.dart';
 import '../catalog_ui/catalog_scope.dart';
 import '../catalog_ui/catalog_runtime_state.dart';
-import '../catalog_ui/catalog_evidence_widgets.dart';
+import '../catalog_ui/catalog_set_format.dart';
 import '../domain/catalog_execution.dart';
 import 'dart:async';
 
@@ -28,6 +28,7 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../util/dates.dart';
 import '../util/error_message.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
@@ -800,7 +801,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     return selection.displayLabel;
   }
 
-  /// A catalog-backed workout leaves the final rest without a Finish target.
+  /// "Next · …" for the rest row ([restNextLabel]), classic and catalog. A
+  /// catalog-backed workout leaves the final rest without a Finish target.
   String _restNextLabel(
     CatalogRuntimeState? catalog,
     ActiveSessionController controller,
@@ -810,24 +812,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final next = controller.nextPendingSet;
     if (catalog != null && next == null) return '';
     return restNextLabel(l, unit, next);
-  }
-
-  String _typedNextLabel(
-    ActiveSessionController controller,
-    AppLocalizations l,
-  ) {
-    final next = controller.nextPendingSet;
-    if (next?.set.catalog case final evidence?) {
-      return l.sessionRestNext(
-        [
-          evidence.selection.displayLabel,
-          if (evidence.selection.contextLabel.isNotEmpty)
-            evidence.selection.contextLabel,
-          catalogEvidenceSummary(evidence, l),
-        ].where((s) => s.isNotEmpty).join(' · '),
-      );
-    }
-    return '';
   }
 
   Future<void> _changeSetup(
@@ -894,26 +878,23 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       );
       if (!mounted || !catalog.active || !c.hasSession) return;
       final selection = catalog.selectionFor(selected)!;
-      final reference = await SessionRepository.local(
-        context.read<LocalDatabase>(),
-      ).catalogLoadReference(selection, excludeSessionId: c.draft.sessionId);
+      final reference =
+          await SessionRepository.local(
+            context.read<LocalDatabase>(),
+          ).catalogLoadReference(
+            selection,
+            excludeSessionId: c.draft.sessionId,
+            includeLastSets: true,
+          );
       if (!mounted || !catalog.active || !c.hasSession) return;
+      // Attach first: the appended set prefills from this context's last
+      // session.
+      attachCatalogReference(b, selection, reference);
       final added = c.appendCatalogSet(
         b,
         selection,
         dependencies: catalog.dependenciesFor(selected),
       );
-      if (reference.bestMetrics?['reported_load'] case final best?) {
-        b.catalogBaselines[selection.compatibilityKey] = best;
-      }
-      b.bestKg = reference.bestKg;
-      if (reference.lastMetrics case final metrics?) {
-        b.catalogLastMetrics[selection.compatibilityKey] = metrics;
-      }
-      final last = reference.last;
-      b.lastTop = last == null
-          ? null
-          : (weight: last.weightKg, reps: last.reps, date: last.date);
       c.focusSet(added);
     } catch (_) {
       if (mounted) {
@@ -1012,9 +993,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     restTotal: controller.restTotal,
                     restEndedAt: controller.restEndedAt,
                     showRestRow: controller.hasLoggedSet,
-                    nextLabel: controller.nextPendingSet?.set.catalog != null
-                        ? _typedNextLabel(controller, l)
-                        : _restNextLabel(catalog, controller, l, unit),
+                    nextLabel: _restNextLabel(catalog, controller, l, unit),
                     onMinimize: () {
                       // A Finish in flight must reach its summary.
                       if (_finishing) return;
@@ -1116,45 +1095,36 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                             final selection = set.catalog!.selection;
                             final metrics = block
                                 .catalogLastMetrics[selection.compatibilityKey];
-                            if (metrics == null) {
+                            final values = metrics == null
+                                ? ''
+                                : catalogSetCompact(
+                                    CatalogSetEvidence(
+                                      selection: selection,
+                                      metrics: metrics,
+                                    ),
+                                    l,
+                                  );
+                            if (values.isEmpty) {
                               return const SizedBox.shrink();
                             }
+                            // One dim line, like the classic card's:
+                            // "last 18 kg × 11 · 3d ago".
+                            final date = block.lastTop?.date;
                             return Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  FitLabel(
-                                    catalogEvidenceSummary(
-                                      CatalogSetEvidence(
-                                        selection: selection,
-                                        metrics: metrics,
-                                      ),
-                                      l,
-                                    ),
-                                    maxLines: 3,
-                                    style: WorkoutType.body(
-                                      size: 12,
-                                      color: tokens.dim,
-                                    ),
-                                  ),
-                                  if (!set.done)
-                                    TextButton(
-                                      onPressed: () {
-                                        commitPendingInput();
-                                        controller.useCatalogValues(
-                                          set,
-                                          metrics,
-                                        );
-                                      },
-                                      style: TextButton.styleFrom(
-                                        minimumSize: const Size(48, 48),
-                                      ),
-                                      child: Text(l.catalogUseLast),
-                                    ),
-                                ],
+                              child: FitLabel(
+                                key: const Key('catalog-last-reference'),
+                                [
+                                  l.catalogLastRef(values),
+                                  if (date != null) localizedDaysAgo(l, date),
+                                ].join(' · '),
+                                maxLines: 2,
+                                style: WorkoutType.body(
+                                  size: 12,
+                                  color: tokens.dim,
+                                ),
                               ),
                             );
                           },

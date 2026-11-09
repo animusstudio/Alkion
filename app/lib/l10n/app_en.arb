@@ -179,31 +179,15 @@
       }
     }
   },
-  "sessionLogSet": "Log set {index} · {weight} × {reps}",
+  "sessionLogSet": "Log set {index}",
   "@sessionLogSet": {
     "placeholders": {
       "index": {
         "type": "int"
-      },
-      "weight": {
-        "type": "String"
-      },
-      "reps": {
-        "type": "int"
       }
     }
   },
-  "sessionLogWarmup": "Log warm-up · {weight} × {reps}",
-  "@sessionLogWarmup": {
-    "placeholders": {
-      "weight": {
-        "type": "String"
-      },
-      "reps": {
-        "type": "int"
-      }
-    }
-  },
+  "sessionLogWarmup": "Log warm-up",
   "sessionUpdateSet": "Update set {index}",
   "@sessionUpdateSet": {
     "placeholders": {
@@ -253,37 +237,15 @@
       }
     }
   },
-  "sessionNextSet": "{exercise} · set {index} · {weight} × {reps}",
+  "sessionNextSet": "Set {index}",
   "@sessionNextSet": {
     "placeholders": {
-      "exercise": {
-        "type": "String"
-      },
       "index": {
         "type": "int"
-      },
-      "weight": {
-        "type": "String"
-      },
-      "reps": {
-        "type": "int"
       }
     }
   },
-  "sessionNextWarmup": "{exercise} · warm-up · {weight} × {reps}",
-  "@sessionNextWarmup": {
-    "placeholders": {
-      "exercise": {
-        "type": "String"
-      },
-      "weight": {
-        "type": "String"
-      },
-      "reps": {
-        "type": "int"
-      }
-    }
-  },
+  "sessionNextWarmup": "Warm-up",
   "sessionWorkoutOptions": "Workout options",
   "sessionExerciseOptions": "Exercise options",
   "sessionDiscardWorkout": "Discard workout",
@@ -1151,6 +1113,14 @@
       }
     }
   },
+  "catalogLastRef": "last {values}",
+  "@catalogLastRef": {
+    "placeholders": {
+      "values": {
+        "type": "String"
+      }
+    }
+  },
   "catalogAddAgain": "Add again",
   "catalogAddSelected": "Add selected",
   "catalogChangeSetup": "Change execution/equipment",
@@ -1162,7 +1132,6 @@
   "catalogSuggested": "Suggested matches — check the choice",
   "catalogNoResults": "No exact match. Try another name or create your exercise.",
   "catalogSaveFailed": "Could not add exercise. Try again.",
-  "catalogLogSet": "Log set",
   "catalogAdd": "Add",
   "catalogBrowseMuscles": "Browse by muscle",
   "catalogAllAZ": "All A–Z",
@@ -1248,7 +1217,6 @@
   "catalogUnavailable": "The catalog is unavailable. Your saved exercises and workouts are available.",
   "catalogProgressUnsupported": "Load progression is unavailable for this measurement profile or setup.",
   "catalogSelectSetup": "Choose setup",
-  "catalogUseLast": "Use last values",
   "catalogCustomExercise": "Custom exercise",
   "catalogLegacyExercise": "Legacy exercise",
   "animusSavedLocally": "Saved locally",

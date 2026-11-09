@@ -2584,21 +2584,3 @@ String _explicitOffsetInstant(DateTime at) {
   final magnitude = minutes.abs();
   return '${at.toIso8601String()}$sign${(magnitude ~/ 60).toString().padLeft(2, '0')}:${(magnitude % 60).toString().padLeft(2, '0')}';
 }
-
-/// Temporary bridge for the screen's "Use last values" button, which U2 T3
-/// removes together with this extension. Sets now prefill at build time
-/// ([buildCatalogBlock], [ActiveSessionController.appendCatalogSet]).
-extension UseLastValuesBridge on ActiveSessionController {
-  void useCatalogValues(
-    SetState set,
-    Map<String, CatalogMetricEvidence> metrics,
-  ) {
-    if (finishPending) throw const StoreException('finish_retry_required');
-    set.catalog = CatalogSetEvidence(
-      selection: set.catalog!.selection,
-      metrics: metrics,
-    );
-    set.catalogTouched = true;
-    markChanged();
-  }
-}
