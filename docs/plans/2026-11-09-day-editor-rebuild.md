@@ -268,6 +268,16 @@ T3 after both; T4 (ARBs) last.
     `format` reports 0 changed.
   - The later merges (review records, audit plan records `03d1ff4`) change docs only.
 
+- **Private Dev APK:**
+  - Built at `e56e6a7` (code identical to `e01958f`) with
+    `build-catalog-dev-local-test-release` and private body assets.
+  - `alkion-catalog-dev-android-arm64-release.apk` sha256 `5606fd22…`.
+  - Catalog asset hashes match the reviewed inputs (`4ff35c33…` muscles,
+    `3a3d197d…` scopes).
+- **Installed** in place on the owner's A024 with `adb install -r` → Success
+  (lastUpdateTime 2026-11-09 18:14:20).
+- The owner device check for U1–U5 is pending.
+
 ## Next
 
 Code-complete. Integrated in `feat/ui-declutter-20261109`; full suite, Dev APK and owner device check follow.
