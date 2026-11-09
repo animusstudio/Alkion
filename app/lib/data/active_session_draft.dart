@@ -6,6 +6,7 @@ import '../session/active_session_controller.dart';
 import '../session/notification_action.dart';
 import 'json_file_store.dart';
 import 'session_writer.dart';
+import 'workflow_state_quarantine.dart';
 
 /// Account-free SQLite draft/timer state. A directory constructor is retained
 /// only for explicitly supplied incoming evidence; it never discovers a root.
@@ -77,24 +78,19 @@ class DraftStore {
       if (row == null || row['status'] != 'active') {
         return null;
       }
-      final draft = tryDecode(
-        utf8.decode((row['payload_bytes'] as List).cast<int>()),
-      );
+      // The same classifiers decide launch quarantine; nothing is rewritten.
+      final read = classifyDraftPayload(row['payload_bytes']);
+      final draft = read.value;
       if (draft == null) {
-        throw const StoreException('malformed_draft_preserved');
+        throw StoreException(read.damage!.loaderCategory);
       }
       final timer = await tx.localState(
         LocalStateKind.timer,
         WorkoutRepository.activeKey,
       );
-      if (timer == null || timer['status'] != 'active') {
-        throw const StoreException('timer_evidence_unavailable');
-      }
-      final payload =
-          jsonDecode(utf8.decode((timer['payload_bytes'] as List).cast<int>()))
-              as Map;
-      if (payload['draftId'] != draft.draftId) {
-        throw const StoreException('timer_draft_mismatch');
+      final damage = classifyTimerRow(timer, draft.draftId);
+      if (damage != null) {
+        throw StoreException(damage.loaderCategory);
       }
       return draft;
     });

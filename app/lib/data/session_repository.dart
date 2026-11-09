@@ -717,7 +717,9 @@ class SessionRepository {
         'last',
       );
       Object? recovered;
-      if (recovery != null) {
+      // A quarantined snapshot is kept evidence: checked before any cast or
+      // decode, and never flipped. Every other status behaves as before.
+      if (recovery != null && recovery['status'] != 'quarantined') {
         try {
           recovered = jsonDecode(
             utf8.decode((recovery['payload_bytes'] as List).cast<int>()),
