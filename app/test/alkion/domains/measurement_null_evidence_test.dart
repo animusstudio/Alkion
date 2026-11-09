@@ -520,7 +520,7 @@ void main() {
   );
 
   testWidgets(
-    'late real NULL seed cannot replace a refused prepared correction or prevent identical retry',
+    'an edited NULL entry reads no late seed; a refused prepared correction retries identically',
     (tester) async {
       setPhone(tester, width: 412);
       final harness = ScreenHarness();
@@ -545,18 +545,9 @@ void main() {
           find.text('Save entry'),
           where: 'gated NULL sheet',
         );
-        final realRows = (await tester.runAsync(
-          () => gate.received.future.timeout(const Duration(seconds: 5)),
-        ))!;
-        expect(
-          realRows.singleWhere((r) => r['id'] == 'null-id')['weight_kg'],
-          isNull,
-        );
-        expect(realRows.map((r) => r['id']).toSet(), sourceValues.keys.toSet());
-        await settleReal(
-          tester,
-          ticks: 10,
-        ); // Modal only: real seed stays gated.
+        await settleReal(tester, ticks: 10);
+        // An edit is seeded from its own entry: no measurement watch at all.
+        expect(gate.received.isCompleted, isFalse);
         await tester.tap(find.text('—'));
         await tester.pump();
         await tester.enterText(find.byType(TextField), '181.7');
@@ -646,7 +637,7 @@ void main() {
 
   for (final focused in [false, true]) {
     testWidgets(
-      'late real seed preserves ${focused ? 'focused' : 'committed'} correction before first Save',
+      'late real seed preserves a ${focused ? 'focused' : 'committed'} new entry before first Save',
       (tester) async {
         setPhone(tester, width: 412);
         final harness = ScreenHarness();
@@ -656,18 +647,15 @@ void main() {
           prefs: {'unit': 'lb'},
           seed: seedMeasurements,
         );
-        final selected = (await tester.runAsync(
-          () => BodyweightRepository.local(
-            harness.database,
-          ).onDate(measurementDate),
-        ))!.singleWhere((e) => e.id == 'null-id');
+        // Only a new entry has a seed: today's, from the last known weight
+        // (valid-id, 181.8 lb), while the gate holds the real watch.
         final before = (await tester.runAsync(harness.database.inventory))!;
         final gate = (await tester.runAsync(
           () async => SeedGateDatabase(harness.database),
         ))!;
         harness.overrideDatabase = gate;
         try {
-          await tester.pumpWidget(openSheet(harness, selected: selected));
+          await tester.pumpWidget(openSheet(harness));
           await tester.runAsync(() => tester.tap(find.text('open')));
           await settleUntilFound(
             tester,
@@ -707,16 +695,26 @@ void main() {
           final after = (await tester.runAsync(harness.database.inventory))!;
           expect(gate.actions, hasLength(1));
           expect((after['operations'] as List), hasLength(1));
-          final row = (after['bodyweight_logs'] as List)
-              .cast<Map>()
-              .singleWhere((r) => r['id'] == 'null-id');
+          final rows = (after['bodyweight_logs'] as List).cast<Map>();
+          final row = rows.singleWhere(
+            (r) => !sourceValues.containsKey(r['id']),
+          );
+          expect(row['date'], isoDate(DateTime.now()));
           expect(
             row['weight_kg'],
             UnitService.toKg(181.7, Unit.lb).toStringAsFixed(2),
           );
-          await tester.runAsync(
-            () => expectOriginalsAndAlternatives(harness.database, before),
+          expect(
+            rows.where((r) => sourceValues.containsKey(r['id'])),
+            (before['bodyweight_logs'] as List).cast<Map>(),
           );
+          for (final table in [
+            'source_artifacts',
+            'source_revisions',
+            'origin_mappings',
+          ]) {
+            expect(after[table], before[table], reason: table);
+          }
           await tester.runAsync(
             () => snapshot(harness.database, 'seed-before-save-$focused-final'),
           );

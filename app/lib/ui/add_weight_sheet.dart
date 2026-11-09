@@ -146,9 +146,14 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
   @override
   void initState() {
     super.initState();
-    // Nothing is suggested before the seed resolves: a new entry starts
-    // empty, and selected unavailable evidence has no number.
-    _val = null;
+    // An edit shows its entry's weight from the first frame (selected
+    // unavailable evidence has no number). A new entry starts empty and only
+    // the async last-entry seed may suggest a value.
+    final selected = widget.selected;
+    _val = selected == null
+        ? null
+        : _displaySeed(selected.weightKg, context.read<UnitService>().unit);
+    _seedResolved = selected != null;
     WidgetsBinding.instance.addObserver(this);
     _focusNode.addListener(_onFocusChange);
   }
@@ -158,7 +163,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     super.didChangeDependencies();
     if (!_seeded) {
       _seeded = true;
-      _seedFromLastEntry();
+      if (widget.selected == null) _seedFromLastEntry();
     }
   }
 
@@ -205,8 +210,16 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     }
   }
 
+  /// [kg] in the display [unit], at the sheet's fixed one decimal.
+  static double? _displaySeed(double? kg, Unit unit) {
+    final display = kg == null ? null : UnitService.fromKg(kg, unit);
+    return display == null || !display.isFinite
+        ? null
+        : double.tryParse(display.toStringAsFixed(1));
+  }
+
+  /// New entries only: suggests the last known weight, if any.
   Future<void> _seedFromLastEntry() async {
-    final selected = widget.selected;
     final entries = await _repo.watchSeriesAsc().first;
     if (!mounted) return;
     // Initial IO may complete after a focused edit, committed change or Save.
@@ -218,20 +231,14 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     final unit = context.read<UnitService>().unit;
     final known = entries.map((e) => e.weightKg).whereType<double>().toList();
     // A first-ever entry has no suggestion: it stays empty until typed.
-    final kg = selected == null
-        ? (known.isEmpty ? null : known.last)
-        : selected.weightKg;
-    final display = kg == null ? null : UnitService.fromKg(kg, unit);
     setState(() {
       _seedResolved = true;
-      _val = display == null || !display.isFinite
-          ? null
-          : double.tryParse(display.toStringAsFixed(1));
+      _val = known.isEmpty ? null : _displaySeed(known.last, unit);
     });
   }
 
   void _bump(int dir) {
-    if (_pending != null) return;
+    if (_pending != null || _pendingDelete != null) return;
     // An open field must not be silently overridden: commit whatever was
     // typed FIRST, so the bump builds on it — mirrors WStepper._step. The
     // ± buttons stay visible while editing, so without this the bump would
@@ -257,7 +264,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
   }
 
   void _beginEdit() {
-    if (_pending != null) return;
+    if (_pending != null || _pendingDelete != null) return;
     final initial = _val?.toStringAsFixed(1) ?? '';
     _editCtrl = TextEditingController(text: initial)..addListener(_onTyped);
     _editCtrl!.selection = TextSelection(
@@ -301,8 +308,13 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     return value >= range.min && value <= range.max;
   }
 
+  /// A pending retry of the other action blocks this one: a failed delete
+  /// must be retried (or the sheet closed) before a save, and vice versa.
   bool _canSave(Unit unit) =>
-      _pending != null || _preserving || _inRange(_candidate, unit);
+      _pendingDelete == null &&
+      (_pending != null || _preserving || _inRange(_candidate, unit));
+
+  bool get _canDelete => widget.selected != null && _pending == null;
 
   /// Unsaved input that closing the sheet would drop.
   bool get _dirty => _changed || _typed;
@@ -364,7 +376,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
   }
 
   Future<void> _save() async {
-    if (_saving) return;
+    if (_saving || _pendingDelete != null) return;
     // A retry owns its original bytes, regardless of later display state.
     if (_pending == null) {
       if (_editing) _commitEdit();
@@ -393,7 +405,7 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
   /// prepared delete is reused if a commit fails and the user retries.
   Future<void> _delete() async {
     final selected = widget.selected;
-    if (selected == null || _saving || _confirming) return;
+    if (selected == null || _saving || _confirming || !_canDelete) return;
     final l = AppLocalizations.of(context);
     _confirming = true;
     final confirmed = await showWConfirm(
@@ -426,7 +438,12 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
     } catch (e) {
       if (mounted) await showWriteFailed(context, e);
     } finally {
-      _saving = false;
+      // Rebuild so Save and Delete reflect the pending retry.
+      if (mounted) {
+        setState(() => _saving = false);
+      } else {
+        _saving = false;
+      }
     }
   }
 
@@ -716,13 +733,13 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
                         ),
                         padding: EdgeInsets.zero,
                       ),
-                      onPressed: _delete,
+                      onPressed: _canDelete ? _delete : null,
                       child: Text(
                         l.bodyweightDeleteEntry,
                         style: WorkoutType.body(
                           size: 15,
                           weight: FontWeight.w500,
-                          color: tokens.danger,
+                          color: _canDelete ? tokens.danger : tokens.faint,
                         ),
                       ),
                     ),
@@ -741,6 +758,10 @@ class _AddWeightSheetState extends State<_AddWeightSheet>
         if (!didPop) _confirmDiscard();
       },
       child: GestureDetector(
+        // Like Flutter's own sheet drag: a screen reader's scroll action
+        // would call only the update callback, sliding the sheet away with
+        // no end and no discard prompt. Back and the barrier dismiss it.
+        excludeFromSemantics: true,
         onVerticalDragStart: (_) => setState(() => _dragging = true),
         onVerticalDragUpdate: (details) =>
             setState(() => _drag = math.max(0, _drag + details.delta.dy)),

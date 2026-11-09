@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/data/exercise_repository.dart';
@@ -292,6 +293,33 @@ void main() {
     expect(find.text('500.0'), findsOneWidget);
     expect(saveAction(tester), isNotNull);
   });
+
+  testWidgets(
+    'the sheet exposes no scroll actions; back and the barrier still dismiss it',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final scroll = find.semantics.byAnyAction([
+        SemanticsAction.scrollUp,
+        SemanticsAction.scrollDown,
+      ]);
+      await openEmpty(tester);
+      // The sheet's own drag is excluded from semantics, as Flutter's sheet
+      // drag is: a scroll action would slide it away with no end.
+      expect(scroll, findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Save entry'), findsNothing);
+
+      await tester.runAsync(() => tester.tap(find.text('open')));
+      await tester.pumpAndSettle();
+      await pumpUntilFound(tester, _hint);
+      expect(scroll, findsNothing);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      expect(find.text('Save entry'), findsNothing);
+      semantics.dispose();
+    },
+  );
 
   group('dismissing', () {
     Future<void> change(WidgetTester tester) async {

@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkion/data/models.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/ui/add_weight_sheet.dart';
 import 'package:alkion/ui/bodyweight_view.dart';
 import 'package:alkion/util/dates.dart';
 import 'package:alkion/widgets/progress_widgets.dart';
 
+import '../../support/icon_finders.dart';
 import 'local_screen_harness.dart';
 import 'measurement_null_evidence_test.dart'
-    show SeedGateDatabase, putSourceMeasurement, waitForSave;
+    show SeedGateDatabase, openSheet, putSourceMeasurement, waitForSave;
+import 'prepared_intent_retry_test.dart' show FaultDatabase;
+import 'prepared_ui_retry_test.dart' show observeDialog;
 
 /// The bodyweight screen and sheet over a real disposable store: editing,
 /// soft-deleting, read-only undated rows, the empty-start seed, the
@@ -319,5 +324,184 @@ void main() {
     );
     expect(_stats(tester), ['80', '—', '80']);
     await harness.unmount(tester);
+  });
+
+  group('the edit sheet over a real store', () {
+    Future<(ScreenHarness, BodyweightEntry)> openEdit(
+      WidgetTester tester,
+      String id, {
+      LocalDatabase Function(LocalStore)? wrapDatabase,
+      Future<void> Function(LocalStore)? seed,
+      bool settle = true,
+    }) async {
+      setPhone(tester, width: 412);
+      final harness = ScreenHarness();
+      addTearDown(harness.close);
+      await harness.open(tester, seed: seed ?? _three);
+      final entry = (await tester.runAsync(
+        () async => BodyweightEntry.fromRow(
+          await harness.database.get(
+            'SELECT * FROM bodyweight_logs WHERE id=?',
+            [id],
+          ),
+        ),
+      ))!;
+      if (wrapDatabase != null) {
+        harness.overrideDatabase = (await tester.runAsync(
+          () async => wrapDatabase(harness.database),
+        ))!;
+      }
+      await tester.pumpWidget(openSheet(harness, selected: entry));
+      await tester.runAsync(() => tester.tap(find.text('open')));
+      await settleUntilFound(
+        tester,
+        find.text('Edit entry'),
+        where: 'edit sheet',
+      );
+      // Let the sheet finish opening before it is tapped.
+      if (settle) await settleReal(tester, ticks: 5);
+      return (harness, entry);
+    }
+
+    VoidCallback? onPressed(WidgetTester tester, String label) => tester
+        .widget<TextButton>(find.widgetWithText(TextButton, label))
+        .onPressed;
+
+    Future<Map<String, Object?>> row(
+      WidgetTester tester,
+      ScreenHarness harness,
+      String id,
+    ) async => (await tester.runAsync(
+      () => harness.database.get('SELECT * FROM bodyweight_logs WHERE id=?', [
+        id,
+      ]),
+    ))!;
+
+    testWidgets(
+      'shows its own weight from the first frame, with no seed read',
+      (tester) async {
+        late SeedGateDatabase gate;
+        final (harness, _) = await openEdit(
+          tester,
+          'm1',
+          wrapDatabase: (store) => gate = SeedGateDatabase(store),
+          settle: false,
+        );
+        // The first frame of the sheet: nothing has been awaited since.
+        expect(find.text('82.4'), findsOneWidget);
+        await settleReal(tester, ticks: 5);
+        expect(gate.received.isCompleted, isFalse);
+        await tester.tap(findGlyph(AlkionGlyph.add));
+        await tester.pump();
+        expect(find.text('82.5'), findsOneWidget);
+        expect(find.byType(TextField), findsNothing);
+        gate.release.complete();
+        await harness.unmount(tester);
+      },
+    );
+
+    testWidgets(
+      'a failed delete retries the same prepared intent; Save waits for it',
+      (tester) async {
+        late FaultDatabase fault;
+        final (harness, _) = await openEdit(
+          tester,
+          'm1',
+          wrapDatabase: (store) =>
+              fault = FaultDatabase(store, beforeCommit: true),
+        );
+        final before = (await tester.runAsync(harness.database.inventory))!;
+        await tester.tap(find.text('Delete entry'));
+        await settleReal(tester, ticks: 8);
+        await tester.runAsync(() => tester.tap(find.text('Delete')));
+        await observeDialog(tester, harness.database);
+        expect(fault.actions, hasLength(1));
+        expect(await tester.runAsync(harness.database.inventory), before);
+        await tester.tap(find.text('OK'));
+        await settleReal(tester, ticks: 5);
+
+        expect(find.text('Edit entry'), findsOneWidget);
+        expect(onPressed(tester, 'Save entry'), isNull);
+        expect(onPressed(tester, 'Delete entry'), isNotNull);
+
+        await tester.tap(find.text('Delete entry'));
+        await settleReal(tester, ticks: 8);
+        await tester.runAsync(() => tester.tap(find.text('Delete')));
+        await waitForSave(tester);
+        expect(fault.actions, hasLength(2));
+        expect(fault.actions[1].hash, fault.actions[0].hash);
+        expect(fault.actions[1].operationId, fault.actions[0].operationId);
+        final operations = (await tester.runAsync(
+          () => harness.database.getAll(
+            'SELECT action FROM operations WHERE target_id=?',
+            ['m1'],
+          ),
+        ))!;
+        expect(operations.single['action'], 'bodyweightDelete');
+        final deleted = await row(tester, harness, 'm1');
+        expect(deleted['deleted'], 1);
+        expect(deleted['revision'], 2);
+        expect(deleted['weight_kg'], '82.40');
+        await harness.unmount(tester);
+      },
+    );
+
+    testWidgets('a failed save keeps Delete off until the save is retried', (
+      tester,
+    ) async {
+      late FaultDatabase fault;
+      final (harness, _) = await openEdit(
+        tester,
+        'm1',
+        wrapDatabase: (store) =>
+            fault = FaultDatabase(store, beforeCommit: true),
+      );
+      await tester.tap(find.text('82.4'));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), '78.5');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.runAsync(() => tester.tap(find.text('Save entry')));
+      await observeDialog(tester, harness.database);
+      await tester.tap(find.text('OK'));
+      await settleReal(tester, ticks: 5);
+
+      expect(onPressed(tester, 'Delete entry'), isNull);
+      await tester.tap(find.text('Delete entry'), warnIfMissed: false);
+      await settleReal(tester, ticks: 5);
+      expect(find.text('Delete this entry?'), findsNothing);
+      expect(onPressed(tester, 'Save entry'), isNotNull);
+
+      await tester.runAsync(() => tester.tap(find.text('Save entry')));
+      await waitForSave(tester);
+      expect(fault.actions, hasLength(2));
+      expect(fault.actions[1].hash, fault.actions[0].hash);
+      final saved = await row(tester, harness, 'm1');
+      expect(saved['weight_kg'], '78.50');
+      expect(saved['revision'], 2);
+      expect(saved['deleted'], 0);
+      await harness.unmount(tester);
+    });
+
+    testWidgets(
+      'an untouched Save on a stored out-of-range row keeps its evidence',
+      (tester) async {
+        final (harness, _) = await openEdit(
+          tester,
+          'big',
+          seed: _seed({'big': ('2026-10-20', '600.00')}),
+        );
+        expect(find.text('600.0'), findsOneWidget);
+        expect(onPressed(tester, 'Save entry'), isNotNull);
+        expect(find.byKey(const Key('bodyweight-range-hint')), findsNothing);
+        await tester.runAsync(() => tester.tap(find.text('Save entry')));
+        await waitForSave(tester);
+        final kept = await row(tester, harness, 'big');
+        expect(kept['weight_kg'], '600.00');
+        expect(kept['revision'], 2);
+        expect(kept['source_revision_id'], 'source-big');
+        await harness.unmount(tester);
+      },
+    );
   });
 }
