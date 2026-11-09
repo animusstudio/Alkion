@@ -1448,5 +1448,25 @@
       }
     }
   },
-  "sessionDiscardChangesOnlyMessage": "This workout and your changes will be lost."
+  "sessionDiscardChangesOnlyMessage": "This workout and your changes will be lost.",
+  "dayViewTitle": "Training day",
+  "dayViewEdit": "Edit",
+  "dayViewWorkingSets": "{count, plural, =1{1 working set} other{{count} working sets}}",
+  "@dayViewWorkingSets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dayViewInactive": "Inactive. Enable this day to start it.",
+  "slotSetCount": "{count, plural, =1{1 set} other{{count} sets}}",
+  "@slotSetCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dayViewExerciseUnavailable": "Exercise unavailable"
 }

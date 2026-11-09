@@ -834,5 +834,11 @@
   "numberEntryInvalid": "Gib eine Zahl ein",
   "numberEntryMax": "Gib höchstens {max} ein",
   "numberEntryMin": "Gib mindestens {min} ein",
-  "sessionDiscardChangesOnlyMessage": "Dieses Training und deine Änderungen gehen verloren."
+  "sessionDiscardChangesOnlyMessage": "Dieses Training und deine Änderungen gehen verloren.",
+  "dayViewTitle": "Trainingstag",
+  "dayViewEdit": "Bearbeiten",
+  "dayViewWorkingSets": "{count, plural, =1{1 Arbeitssatz} other{{count} Arbeitssätze}}",
+  "dayViewInactive": "Inaktiv. Aktiviere diesen Tag, um ihn zu starten.",
+  "slotSetCount": "{count, plural, =1{1 Satz} other{{count} Sätze}}",
+  "dayViewExerciseUnavailable": "Übung nicht verfügbar"
 }

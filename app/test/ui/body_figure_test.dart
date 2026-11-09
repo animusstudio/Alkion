@@ -7,6 +7,8 @@ import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/body_figure.dart';
 import 'package:alkion/ui/character_body.dart';
+import 'package:alkion/ui/workload_top_muscles.dart';
+import 'package:alkion/widgets/glyph_loading.dart';
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
 import '../support/body_sheet_expect.dart';
@@ -29,6 +31,20 @@ WorkoutWorkload _workload() => calculateWorkoutWorkload(
         WorkloadSetInput(completed: false, isWarmup: null),
       ],
     ),
+  ],
+);
+
+WorkoutWorkload _legacy(Map<String, int> sets) => calculateWorkoutWorkload(
+  mode: WorkoutWorkloadMode.planned,
+  exercises: [
+    for (final entry in sets.entries)
+      WorkloadExerciseInput(
+        muscleGroup: entry.key,
+        sets: [
+          for (var i = 0; i < entry.value; i++)
+            const WorkloadSetInput(completed: false, isWarmup: false),
+        ],
+      ),
   ],
 );
 
@@ -387,6 +403,90 @@ void main() {
       lookupAppLocalizations(const Locale('en')),
       mode: 'Planned working sets',
     );
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('exported counts and labels are the ones the sheet lists', (
+    tester,
+  ) async {
+    final workload = _workload();
+    final counts = workloadDisplayCounts(workload);
+    expect(counts[WorkloadMuscle.chest]!.count, 2);
+    late BuildContext context;
+    await tester.pumpWidget(
+      wrapL10n(
+        SingleChildScrollView(
+          child: Builder(
+            builder: (c) {
+              context = c;
+              return BodyWorkloadCounts(workload: workload);
+            },
+          ),
+        ),
+      ),
+    );
+    for (final muscle in WorkloadMuscle.values) {
+      expect(
+        tester
+            .widget<Text>(find.byKey(ValueKey('body-count-${muscle.name}')))
+            .data,
+        '${counts[muscle]!.count}',
+      );
+      expect(find.text(workloadRegionLabel(context, muscle)), findsOneWidget);
+    }
+    expect(workloadRegionLabel(context, WorkloadMuscle.glutes), 'Glutes');
+    expect(workloadRegionLabel(context, WorkloadMuscle.chest), 'Chest');
+  });
+  test('top muscles are highest first, ties in region order, zeros out', () {
+    final workload = _legacy({'biceps': 2, 'back': 5, 'chest': 5, 'quads': 1});
+    expect(topWorkloadMuscles(workload, 3), [
+      (muscle: WorkloadMuscle.chest, count: 5),
+      (muscle: WorkloadMuscle.back, count: 5),
+      (muscle: WorkloadMuscle.biceps, count: 2),
+    ]);
+    expect(topWorkloadMuscles(workload, 10), hasLength(4));
+    expect(topWorkloadMuscles(workload, 0), isEmpty);
+    expect(topWorkloadMuscles(_legacy(const {}), 3), isEmpty);
+    for (final pending in [
+      WorkoutWorkload.loading(WorkoutWorkloadMode.planned),
+      WorkoutWorkload.unavailable(WorkoutWorkloadMode.planned),
+    ]) {
+      expect(topWorkloadMuscles(pending, 3), isEmpty);
+    }
+  });
+  testWidgets('top muscles list rows, and never reads loading as zero', (
+    tester,
+  ) async {
+    final l = lookupAppLocalizations(const Locale('en'));
+    await tester.pumpWidget(
+      wrapL10n(WorkloadTopMuscles(workload: _legacy({'chest': 9, 'back': 4}))),
+    );
+    expect(find.byKey(const ValueKey('workload-top-chest')), findsOneWidget);
+    expect(find.text('Chest'), findsOneWidget);
+    expect(find.text('9'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.byKey(const ValueKey('workload-top-quads')), findsNothing);
+
+    await tester.pumpWidget(
+      wrapL10n(
+        WorkloadTopMuscles(
+          workload: WorkoutWorkload.loading(WorkoutWorkloadMode.planned),
+        ),
+      ),
+    );
+    expect(find.byType(GlyphSkeleton), findsOneWidget);
+    expect(find.text('0'), findsNothing);
+
+    for (final (workload, text) in [
+      (
+        WorkoutWorkload.unavailable(WorkoutWorkloadMode.planned),
+        l.bodyReadUnavailable,
+      ),
+      (_legacy(const {}), l.bodyEmpty),
+    ]) {
+      await tester.pumpWidget(wrapL10n(WorkloadTopMuscles(workload: workload)));
+      expect(find.text(text), findsOneWidget);
+      expect(find.byKey(const Key('workload-top-muscles')), findsNothing);
+    }
     await tester.pumpWidget(const SizedBox());
   });
 }

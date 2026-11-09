@@ -76,12 +76,21 @@ class DayStatusActions extends ChangeNotifier {
 
 /// The Split sub-tab: a list of training days in rotation.
 ///
-/// [onOpenEditor] is called with the day id to edit (null = new day).
+/// A card's tap calls [onOpenDay]; the card menu's Edit and "New training
+/// day" call [onEditDay].
 class SplitTab extends StatefulWidget {
-  const SplitTab({super.key, required this.onOpenEditor, this.statusActions});
+  const SplitTab({
+    super.key,
+    required this.onOpenDay,
+    required this.onEditDay,
+    this.statusActions,
+  });
+
+  /// Called with the id of the day to view.
+  final ValueChanged<String> onOpenDay;
 
   /// Called with the day id to edit (null = new day).
-  final void Function(String? id) onOpenEditor;
+  final void Function(String? id) onEditDay;
 
   final DayStatusActions? statusActions;
 
@@ -158,7 +167,7 @@ class _SplitTabState extends State<SplitTab> {
       ],
     );
     if (!mounted) return;
-    if (action == 'edit') widget.onOpenEditor(day.id);
+    if (action == 'edit') widget.onEditDay(day.id);
     if (action == 'active') await _setActive(day);
   }
 
@@ -167,7 +176,7 @@ class _SplitTabState extends State<SplitTab> {
     name: day.name,
     focus: day.focus,
     exerciseCount: day.slots.length,
-    onTap: () => widget.onOpenEditor(day.id),
+    onTap: () => widget.onOpenDay(day.id),
     onActions: () => _actions(day),
     status: _statusActions.isBusy(day.id)
         ? AppLocalizations.of(context).trainingSaving
@@ -233,7 +242,7 @@ class _SplitTabState extends State<SplitTab> {
               // "New training day" dashed button
               _NewDayButton(
                 tokens: tokens,
-                onTap: () => widget.onOpenEditor(null),
+                onTap: () => widget.onEditDay(null),
               ),
             ],
           );

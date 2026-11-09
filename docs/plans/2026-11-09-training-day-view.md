@@ -140,8 +140,87 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
 
 ## Task state
 
-None started.
+- **T1 Shared pieces: done, review PASS** (Sonnet `high`). Code `6425dd21`, tests `2ddd3ec1`.
+  - `make -C app get` → resolved offline with the committed lock.
+  - `make -C app test TEST='--concurrency=2 test/ui/slot_summary_test.dart
+    test/data/planned_workload_test.dart test/ui/training_prescriptions_test.dart
+    test/ui/body_figure_test.dart'` → 64 passed.
+  - `make -C app analyze` → no issues.
+  - `make -C app fmt FORMAT_FILES='<the 5 source and 4 test files>'` → 0 changed.
+  - Public API: `slotFromDraft(SlotDraft, {position})`, `slotSummary(Slot, Exercise)` ->
+    `SlotSummary` (`labels(l, units)`), `SlotSummaryChips({summary})`,
+    `slotArtwork(scope, {exerciseId, selection})`, `SlotThumbnail({exerciseId, selection})`;
+    `resolvePlannedDaySlots(day, exercisesById)`, `plannedDayWorkload(day, exercisesById,
+    resolutions)`, `PlanWorkloadInputs.load(db, days, bundle)` and `.dayWorkload(day)`;
+    `topWorkloadMuscles(workload, limit)`, `WorkloadTopMuscles({workload, limit = 3})`;
+    `formatRepPair`, `formatSetsReps`, `formatRirTarget`, `authoredRepPair`;
+    `workloadDisplayCounts`, `workloadRegionLabel`.
+  - Notes for review and T4: a catalog slot whose profile has no `repetitions` metric has no
+    reps; an invalid `repetitions` target reads unavailable rather than falling through; RIR
+    evidence that does not qualify shows `trainingRirUnavailable` as the editor does; a slot
+    with no reps shows a bare `3×` chip until T4 adds a set-count string.
+
+- T1 review minors:
+  - (1) The view shows volume for a legacy slot that Today marks unavailable. This is
+    deliberate and pinned by `planned_workload_test.dart`, and goes in the PR description.
+  - (2) The bare `3×` chip and the `labels` bare-`×` branch are replaced by a set-count
+    string in the strings task.
+- **Coordinator decision:** T2 owns the four ARB files and absorbs T4, adding the strings
+  T2 and T3 need. T3 reuses existing keys only, so T2 and T3 stay disjoint. The branch
+  merges the integrated audit plans P2 and P4–P7 before T2 and T3.
+
+- **T2 View screen (+T4 Strings): done, review pending** (Opus `high`). Code and strings
+  `ecb78748`, tests `085d343d`.
+  - `make -C app get` → resolved offline; localizations regenerated.
+  - `make -C app test TEST='--concurrency=2 test/ui/day_view_test.dart
+    test/ui/slot_summary_test.dart test/data/planned_workload_test.dart test/layout test/l10n'`
+    → 186 passed.
+  - `make -C app analyze` → no issues.
+  - `make -C app fmt FORMAT_FILES='<day_view, slot_summary and the 3 test files>'` → 2 test
+    files reformatted, then committed.
+  - New ARB keys (en/it/de/es): `dayViewTitle` (eyebrow above the name), `dayViewEdit`,
+    `dayViewWorkingSets` (plural), `dayViewInactive` (inactive-day state, no Start),
+    `dayViewExerciseUnavailable` (row whose exercise is missing), `slotSetCount` (plural; T1
+    minor 2: replaces the bare `3×` chip in `SlotSummary.labels`). Reused `splitStartWorkout`,
+    `todayResumeWorkout`, `todayExerciseCount`, `bodyPlanned`, `splitExercises`,
+    `bodyReadUnavailable`, `trainingDayUnavailable` (unqualified active flag),
+    `trainingWeekdayUnavailable`.
+  - Behaviour notes for review: the view watches `watchDays()` (cached subscription) and closes
+    via `onClose` when the id is absent; workload inputs reload per emission and on a catalog
+    bundle change, keeping covering inputs during a reload; a token change while reading re-runs
+    (up to 3 attempts), stale epochs are dropped. Resume shows only on an active day; an
+    inactive or unqualified day shows its state and Edit only. Layout sweep lives in
+    `test/layout/day_view_layout_test.dart` (12 conditions + 320 dp 2x es).
+
+- **T2 review PASS** (Sonnet `high`, `085d343`; `test/l10n` → 9 pass).
+  - Minor 1: the eyebrow could take only half of its row. Coordinator fix `704c13b1` (flex 2),
+    checked with `day_view_test` and `day_view_layout_test` → 26 pass; analyze clean.
+  - Follow-ups for the PR:
+    - tests for retry exhaustion, the catalog-bundle reload and a catalog row with real artwork
+    - the empty-day skeleton
+    - an exercise rename not refreshing a mounted view (not reachable through navigation)
+
+- **T3 Navigation: done, review PASS** (Sonnet `high`); eyebrow fix `704c13b` re-check PASS. Code `3e7c6c2` and
+  tests `508987e` are merged as `935ce9f`. A card tap opens the view; the menu's Edit and New
+  day open the editor. Every mode change builds a fresh `_EditorRoute` and guard. Back from
+  edit returns to the view; Save returns to the view. The header title is `planTabSplit`.
+  Also updated: `training_prescriptions_test.dart` and `training_prescriptions_review_test.dart`.
+  - Implementer: focused 198 pass; other affected tests 77 pass; analyze clean; fmt 0 changed.
+  - Coordinator, after the merge at `935ce9f`: `make -C app test TEST='--concurrency=2 test/ui
+    test/shell test/layout test/data/planned_workload_test.dart test/l10n'` → +754 all passed;
+    analyze → no issues.
+
+- T3 review minors:
+  - (2) The delete test called `onClose` by hand. Coordinator fix `83278713` makes the view close
+    itself; `plan_discard_test.dart` → +27 pass, analyze clean.
+  - PR follow-ups:
+    - (1) A test that taps Start in the view and expects `onStartDay` once.
+    - (3) System Back in view mode, and `requestClose` after Discard reaching the list.
+    - (4) A one-frame view flash after Delete.
+    - (5) Start from the view lands on Today. This is existing `_start` behaviour, and Plan
+      still holds the view.
+    - The "Weekday unavailable" chip ellipsizes at 320 dp and 2x.
 
 ## Next
 
-Owner approval, then implementation after P1 to P8 merge.
+Code-complete. The integrated full suite and device check run at delivery; U5 branches from here.
