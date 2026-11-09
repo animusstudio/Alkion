@@ -1,6 +1,7 @@
 # Live workout flow
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09;
+implemented 2026-11-09, awaiting review.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/live-workout-flow-20261108`.
 Ordering: after [P1 error messages and toasts](2026-11-08-error-messages-and-toasts.md)
@@ -128,8 +129,63 @@ first; T2 to T4 are disjoint and run in parallel after it; T5 (ARBs) last.
 
 ## Task state
 
-None started.
+Implemented 2026-11-09 on `c171880` (main `458aac6` plus P1), awaiting
+independent review. Code at `6cb83c6`; commits `7d79596` (T1, T4, T5),
+`11c12e9` (T2, T3), `6cb83c6` (tests).
+
+- T1 — done. `hasEdits` (done, weight/reps/RIR/catalog touched, or sets and
+  blocks added, removed or moved; an adopted draft counts as edited because
+  those changes are not in the draft file) gates the discard confirm; a refused
+  discard goes through `userMessage` (busy bucket). `startRestAfterLog` records
+  which log started the rest; `undoLog` un-logs, refocuses, and stops that rest
+  only (`restStartedBy`), restoring the earlier `restEndedAt`. The Undo toast
+  (`showWToast`, 5 s) and "Mark as not done" both use it. `unloggedWorkingSets`
+  drives the early-finish confirm; the menu Finish is always enabled and
+  explains itself. `LogSetBar(busy:)`; `PopScope(canPop: !_finishing)` and the
+  minimize guard. `buildBlock`, `addSet`, `addWarmupSet`, `addBlock` and
+  `buildFromTemplate` take the display `Unit` and round suggestions to 5 lb.
+  `liveTopOf` and `prCount` untouched.
+- T2 — done. `setLineSemanticsLabel` on the `SetLine` container; RIR chips get
+  `semanticsLabel` "RIR n" (one line in `rir_picker.dart`). Warm-up log and
+  rest end announce through `SemanticsService.sendAnnouncement`; a working
+  set's Undo toast is already a live region. `state_motion.dart` unchanged.
+- T3 — done. Sheet `validate` hook and inline error (live region); 500 kg /
+  1100 lb, reps 1–100, "Enter a number" for unparseable text. Duration 5 s and
+  distance 10 m rulers without fine step. `ruler_picker.dart` unchanged (its
+  `min` was already a parameter).
+- T4 — done. Exercise-editor start weight steps 5 lb in lb (not snapped, so
+  up then down returns to the untouched value); launcher route durations go
+  through `Motion.of` and skip fade and slide under reduced motion.
+- T5 — done. 16 keys in en, it, de, es.
+
+Deviations: the in-flight guard is `!_finishing`, not `&& !finishPending`, so
+a failed Finish awaiting a retry can still be left (the summary cannot be
+skipped then; the workout is kept until Finish commits). System back stays
+minimize; the discard predicate applies to the menu's Discard. Discard also
+asks after sets are added, removed or moved and for a restored draft.
+
+Checks at `6cb83c6`:
+
+- `make -C app analyze` → No issues found.
+- `make -C app format` → 0 changed.
+- `make -C app test TEST='--concurrency=2 test/session test/widgets
+  test/ui/exercise_editor_start_weight_test.dart test/shell test/l10n
+  test/ui/set_editor_sheet_test.dart test/layout/live_layout_test.dart'`
+  (before the new tests) → only failures were the updated RIR label, typed
+  limit and lb stepper expectations, then fixed;
+  `test/session/live_workout_flow_test.dart` → +21 all pass;
+  `test/session/live_inputs_semantics_test.dart`,
+  `test/ui/exercise_editor_start_weight_test.dart`,
+  `test/ui/set_editor_sheet_test.dart`, `test/widgets/rir_picker_test.dart`,
+  `test/shell/plan_discard_test.dart` → +86 all pass;
+  `test/session/active_session_screen_test.dart` → +63 all pass.
+- `make -C app test TEST=--concurrency=2` → +2406 ~3 -3; the three failures
+  are the known inherited `catalog_metric_controls_test.dart` cases
+  (`duration_distance_optional`, `reps_distance_optional`,
+  `reps_duration_optional_load` "mounts all required and optional controls
+  unset", each missing an optional ruler behind More measurements).
+- Device check (log, undo, early finish, TalkBack, reduced motion) open.
 
 ## Next
 
-Owner approval, then implementation after P1 merges.
+Independent review, then delivery after P4, P5 and P6 merge.
