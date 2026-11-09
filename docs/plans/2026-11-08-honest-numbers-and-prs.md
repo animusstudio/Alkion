@@ -133,8 +133,82 @@ files are shared.
 
 ## Task state
 
-None started.
+Implemented 2026-11-09, awaiting review. Code at `17a6eb9`; commits `76ab4fc`
+(T3), `52f5a75` (T4 and A9), `439d69f` (T5 strings), `9b13581` (T1),
+`a363fc7` and `9db1986` (T2), `17a6eb9` (a test pinning the old forearms
+label). Device check open.
+
+- T1 — done. `kCatalogExtraMuscles` (forearms, glutes, core, adductors,
+  abductors, in `CatalogBrowse.muscleKeys` order) and `targetMuscleKeys` in
+  `data/muscles.dart`; `localizedMuscle` names the five with the existing
+  `body*` strings, so `volumeGroupLabel` is localized even without a catalog.
+  Targets lists 8 + 5 + stored custom keys (blank keys skipped) with
+  `volumeGroupLabel` labels. The exercise editor replaces the chips with
+  `exerciseEditorCatalogGroups` when the exercise has an execution definition;
+  `_muscleGroup` is never touched, so Save keeps the stored value. A blank
+  group on a classic exercise gets no chip and selects none.
+- T2 — done. New `ui/today_stat_tiles.dart` (`todayStatState`,
+  `TodaySetsTile`, `TodayPrsTile`, `todayRecentPrsPlaceholder`): "—" with a
+  spoken loading/unavailable label, an "unavailable" line on error, "No PRs
+  yet" only for data that is empty. Progress drops `!topAvailable` points from
+  the chart, Current, Best and the 12wk change for top, e1RM and reps; the log
+  shows them as "—" (`alkionValuesUnavailable`) and measures each change from
+  the nearest older point with a value; volume keeps all points.
+  `progressDeltaStat` takes dated points: baseline = earliest other qualified
+  point at most 84 days before the latest qualified point, else "—". Catalog
+  Progress: no context or an empty series → `catalogProgressNeverLogged`
+  (unsupported profile wins when there is no context), unsupported → existing
+  text, load or stream error → `catalogProgressLoadFailed` + `userMessage`
+  + Retry. `data/progress_repository.dart` needed no change: both series
+  already set `topAvailable`.
+- T3 — done. `liveTopOf` classic: `best != null && top > best`; `prCount`
+  classic counts only a block with a previous best. Catalog branches unchanged.
+- T4 — done. `stats_repository.dart` `catalogPrSql`/`setPrSql`
+  (`COALESCE(catalog_pr, legacy_local_pr)` per set, read from the existing
+  `catalog-workout:` derived result) feed `watchPrsThisWeek`, `watchRecentPrs`
+  (catalog load and reps decoded from `catalog_set_bytes`, null when
+  unavailable) and `watchSessionStats` `pr_count`. The catalog `_BlockRow`
+  shows the legacy PR glyph when a working set's stored flag is set.
+  `watchDistinctMusclesThisWeek` removed. No writes, schema or derivation
+  change; `reps-compat/1` and `catalog-load/1` untouched.
+- T5 — done. Seven keys in en, it, de, es: `exerciseEditorCatalogGroups`,
+  `todayStatLoading`, `todayStatUnavailable`, `todayRecentPrsLoading`,
+  `todayRecentPrsUnavailable`, `catalogProgressNeverLogged`,
+  `catalogProgressLoadFailed`. Retry reuses `trainingRetry`.
+
+Checks at `17a6eb9`:
+
+- `make -C app analyze` → No issues found.
+- `make -C app format` → 530 files, 0 changed.
+- Focused: `make -C app test TEST='--concurrency=2 test/ui/targets_tab_test.dart
+  test/ui/progress_screen_target_test.dart test/ui/progress_change_test.dart
+  test/session/controller_live_set_test.dart test/session/finish_workout_test.dart
+  test/data test/l10n test/ui/today_stat_tiles_test.dart
+  test/ui/progress_unavailable_test.dart test/ui/exercise_editor_muscle_test.dart'`
+  → +287, all pass (includes `arb_parity_test` and `unused_keys_test`).
+- Real SQLite: `test/data/catalog_prs_test.dart` finishes two legacy
+  (100 → 105 kg) and two catalog (40 → 45 kg) workouts through the real
+  controller and `WorkoutRepository`. Live `liveTopOf`/`prCount` agree with the
+  stored flags (first-ever lift no PR, beaten best PR); History `prCount`
+  per session 0/1/0/1 (total 2), the catalog set's `isPr`, Today's
+  `watchPrsThisWeek` = 2 and `watchRecentPrs` (catalog 45 kg × 8, legacy
+  105 kg × 5); a snapshot of `sets`, `sessions`, `derived_results`,
+  `operations` and `record_revisions` is identical before and after the
+  reads; the card renders the catalog PR glyph only for the PR session. Run
+  against the old `session_repository.dart`/`stats_repository.dart` it fails
+  (catalog `prCount` 0).
+- `test/ui/exercise_editor_muscle_test.dart` (real store, catalog exercise via
+  `materialize`), `test/ui/progress_unavailable_test.dart` (real store; catalog
+  never logged, unsupported, error + Retry), `test/ui/today_stat_tiles_test.dart`
+  (waiting, error, data snapshots), `test/ui/progress_change_test.dart` (fixed
+  date strings).
+- Full: `make -C app test TEST=--concurrency=2` → +2985 ~3 -3. The three
+  failures are the known inherited `catalog_metric_controls_test.dart` cases:
+  `duration_distance_optional`, `reps_distance_optional` and
+  `reps_duration_optional_load` "mounts all required and optional controls
+  unset".
 
 ## Next
 
-Owner approval of this plan, then implementation after P1 merges.
+Independent review, then the device check (Targets, a catalog exercise, Today
+at launch) on a private Dev APK.
