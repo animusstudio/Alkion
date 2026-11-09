@@ -376,12 +376,14 @@ void main() {
       final stats = tester.widgetList<BigStat>(find.byType(BigStat)).toList();
       expect(stats[0].value, '—');
       expect(stats[1].value, '—');
+      // Unreadable weights are ordinary history rows with a formatted date.
       await scrollIntoView(
         tester,
         find.byType(BodyweightView),
-        find.text('2026-10-14 · Measurement unavailable'),
+        find.text(fmtDate('2026-10-14', 'en', weekday: true)),
       );
       expect(find.textContaining('Measurement unavailable'), findsNWidgets(4));
+      expect(find.textContaining('2026-10-14'), findsNothing);
       await tester.runAsync(
         () => snapshot(harness.database, 'chart-unavailable'),
       );
@@ -474,16 +476,18 @@ void main() {
       final before = (await tester.runAsync(harness.database.inventory))!;
       await tester.pumpWidget(openSheet(harness));
       await tester.runAsync(() => tester.tap(find.text('open')));
+      // Labelled by position (ids sort empty, invalid, null, valid), never
+      // by the raw id.
+      const nullLabel = 'Entry 3 of 4 · Measurement unavailable';
       await settleUntilFound(
         tester,
-        find.textContaining('null-id'),
+        find.text(nullLabel),
         where: 'explicit duplicate chooser',
       );
       await settleReal(tester, ticks: 10);
-      expect(find.text('Measurement unavailable · null-id'), findsOneWidget);
-      await tester.runAsync(
-        () => tester.tap(find.text('Measurement unavailable · null-id')),
-      );
+      expect(find.text(nullLabel), findsOneWidget);
+      expect(find.textContaining('-id'), findsNothing);
+      await tester.runAsync(() => tester.tap(find.text(nullLabel)));
       await settleUntilFound(
         tester,
         find.text('Save entry'),

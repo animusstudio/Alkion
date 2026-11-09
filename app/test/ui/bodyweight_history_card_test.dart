@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkion/data/models.dart';
 import 'package:alkion/settings/bodyweight_goal.dart';
+import 'package:alkion/units/unit_service.dart';
+import 'package:alkion/util/dates.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/ui/bodyweight_view.dart';
 import 'package:alkion/l10n/app_localizations.dart';
@@ -12,11 +15,17 @@ import '../support/app_fonts.dart';
 import '../support/layout_expect.dart';
 import '../support/screen_harness.dart';
 
-final _series = [
-  (date: '2026-09-06', value: 67.0, reps: 0, isPr: false),
-  (date: '2026-09-18', value: 67.3, reps: 0, isPr: false), // +0.3
-  (date: '2026-09-24', value: 66.3, reps: 0, isPr: false), // −1
+/// Stored entries (kg) for the card, oldest first.
+List<BodyweightEntry> _entries(List<(String, double?)> rows) => [
+  for (final (date, kg) in rows)
+    BodyweightEntry(date: date, weightKg: kg, id: 'bw-$date', localRevision: 1),
 ];
+
+final _series = _entries([
+  ('2026-09-06', 67.0),
+  ('2026-09-18', 67.3), // +0.3
+  ('2026-09-24', 66.3), // −1
+]);
 
 Color _colorOf(WidgetTester tester, String text) =>
     tester.widget<Text>(find.text(text)).style!.color!;
@@ -28,8 +37,8 @@ void main() {
       wrapL10n(
         SingleChildScrollView(
           child: BodyweightHistoryCard(
-            series: _series,
-            unit: 'kg',
+            entries: _series,
+            unit: Unit.kg,
             goal: BodyweightGoal.maintain,
           ),
         ),
@@ -44,8 +53,8 @@ void main() {
       wrapL10n(
         SingleChildScrollView(
           child: BodyweightHistoryCard(
-            series: _series,
-            unit: 'kg',
+            entries: _series,
+            unit: Unit.kg,
             goal: BodyweightGoal.cut,
           ),
         ),
@@ -61,8 +70,8 @@ void main() {
       wrapL10n(
         SingleChildScrollView(
           child: BodyweightHistoryCard(
-            series: _series,
-            unit: 'kg',
+            entries: _series,
+            unit: Unit.kg,
             goal: BodyweightGoal.maintain,
           ),
         ),
@@ -80,8 +89,8 @@ void main() {
           child: SizedBox(
             width: 360,
             child: BodyweightHistoryCard(
-              series: _series,
-              unit: 'kg',
+              entries: _series,
+              unit: Unit.kg,
               goal: BodyweightGoal.cut,
             ),
           ),
@@ -96,21 +105,16 @@ void main() {
   testWidgets('a delta that displays as 0 reads "same" and is never coloured', (
     tester,
   ) async {
-    final series = [
-      (date: '2026-09-06', value: 67.00, reps: 0, isPr: false),
-      (
-        date: '2026-09-07',
-        value: 67.03,
-        reps: 0,
-        isPr: false,
-      ), // +0.03 → "same"
-    ];
+    final series = _entries([
+      ('2026-09-06', 67.00),
+      ('2026-09-07', 67.03), // +0.03 → "same"
+    ]);
     await tester.pumpWidget(
       wrapL10n(
         SingleChildScrollView(
           child: BodyweightHistoryCard(
-            series: series,
-            unit: 'kg',
+            entries: series,
+            unit: Unit.kg,
             goal: BodyweightGoal.bulk,
           ),
         ),
@@ -125,16 +129,13 @@ void main() {
     'a delta is taken between the displayed values: 67.04 to 67.06 reads +0.1',
     (tester) async {
       // 67.04 → 67.06 displays 67 → 67.1; the raw +0.02 read "same".
-      final series = [
-        (date: '2026-09-06', value: 67.04, reps: 0, isPr: false),
-        (date: '2026-09-07', value: 67.06, reps: 0, isPr: false),
-      ];
+      final series = _entries([('2026-09-06', 67.04), ('2026-09-07', 67.06)]);
       await tester.pumpWidget(
         wrapL10n(
           SingleChildScrollView(
             child: BodyweightHistoryCard(
-              series: series,
-              unit: 'kg',
+              entries: series,
+              unit: Unit.kg,
               goal: BodyweightGoal.bulk,
             ),
           ),
@@ -150,16 +151,13 @@ void main() {
     'rows that display the same weight read "same", neutral, on bulk',
     (tester) async {
       // 67.06 → 67.14 displays 67.1 → 67.1; the raw +0.08 read "+0.1".
-      final series = [
-        (date: '2026-09-06', value: 67.06, reps: 0, isPr: false),
-        (date: '2026-09-07', value: 67.14, reps: 0, isPr: false),
-      ];
+      final series = _entries([('2026-09-06', 67.06), ('2026-09-07', 67.14)]);
       await tester.pumpWidget(
         wrapL10n(
           SingleChildScrollView(
             child: BodyweightHistoryCard(
-              series: series,
-              unit: 'kg',
+              entries: series,
+              unit: Unit.kg,
               goal: BodyweightGoal.bulk,
             ),
           ),
@@ -184,21 +182,17 @@ void main() {
         6.0,
         for (var i = 3; i < 26; i++) 6.0 + (i - 2),
       ];
-      final series = List.generate(26, (i) {
-        final day = 6 + i; // 2026-08-06 .. 2026-08-31
-        return (
-          date: '2026-08-${day.toString().padLeft(2, '0')}',
-          value: values[i],
-          reps: 0,
-          isPr: false,
-        );
-      });
+      final series = _entries([
+        for (var i = 0; i < 26; i++)
+          // 2026-08-06 .. 2026-08-31
+          ('2026-08-${(6 + i).toString().padLeft(2, '0')}', values[i]),
+      ]);
       await tester.pumpWidget(
         wrapL10n(
           SingleChildScrollView(
             child: BodyweightHistoryCard(
-              series: series,
-              unit: 'kg',
+              entries: series,
+              unit: Unit.kg,
               goal: BodyweightGoal.maintain,
             ),
           ),
@@ -217,15 +211,16 @@ void main() {
       MediaQuery(
         data: const MediaQueryData(textScaler: TextScaler.linear(2)),
         child: wrapL10n(
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: SingleChildScrollView(
               child: BodyweightHistoryCard(
-                series: [
-                  (date: '2026-09-06', value: 1388.8, reps: 0, isPr: false),
-                  (date: '2026-09-07', value: 1489.9, reps: 0, isPr: false),
-                ],
-                unit: 'lb',
+                // 1388.8 lb and 1489.9 lb.
+                entries: _entries([
+                  ('2026-09-06', 1388.8 / UnitService.lbFactor),
+                  ('2026-09-07', 1489.9 / UnitService.lbFactor),
+                ]),
+                unit: Unit.lb,
                 goal: BodyweightGoal.maintain,
               ),
             ),
@@ -277,10 +272,140 @@ void main() {
       find.text(l.bodyweightHistory.toUpperCase()),
     );
     expect(find.text(l.bodyweightEmpty), findsNothing);
+    // Each is an ordinary row with a formatted date, not loose ISO text.
+    final card = find.byType(BodyweightHistoryCard);
     expect(
-      find.text('2026-10-12 · ${l.bodyweightUnavailable}'),
+      find.descendant(of: card, matching: find.text(l.bodyweightUnavailable)),
+      findsNWidgets(3),
+    );
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text(fmtDate('2026-10-12', 'en', weekday: true)),
+      ),
       findsOneWidget,
     );
+    expect(find.textContaining('2026-10-12'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  group('bodyweightMonthBaseline', () {
+    final now = DateTime(2026, 10, 30, 18, 45);
+    ({String date, double value, int reps, bool isPr}) rec(
+      String date,
+      double value,
+    ) => (date: date, value: value, reps: 0, isPr: false);
+
+    test('is the earliest entry in the window other than the current one', () {
+      final series = [
+        rec('2026-09-20', 90),
+        rec('2026-10-01', 85),
+        rec('2026-10-10', 84),
+        rec('2026-10-25', 80),
+      ];
+      expect(bodyweightMonthBaseline(series, now: now)?.date, '2026-10-01');
+    });
+
+    test('the window starts 30 calendar days before now, inclusive', () {
+      expect(
+        bodyweightMonthBaseline([
+          rec('2026-09-29', 90),
+          rec('2026-09-30', 88),
+          rec('2026-10-25', 80),
+        ], now: now)?.date,
+        '2026-09-30',
+      );
+    });
+
+    test('is null with one entry, or with only older entries', () {
+      expect(
+        bodyweightMonthBaseline([rec('2026-10-25', 80)], now: now),
+        isNull,
+      );
+      expect(
+        bodyweightMonthBaseline([
+          rec('2026-08-01', 90),
+          rec('2026-09-29', 88),
+          rec('2026-10-25', 80),
+        ], now: now),
+        isNull,
+      );
+      // The current entry itself is never its own baseline, even when it
+      // is the only one inside the window.
+      expect(
+        bodyweightMonthBaseline([
+          rec('2026-09-01', 90),
+          rec('2026-10-29', 80),
+        ], now: now),
+        isNull,
+      );
+    });
+
+    test('ignores entries dated after now and unavailable dates', () {
+      expect(
+        bodyweightMonthBaseline([
+          rec('not-a-date', 70),
+          rec('2026-11-02', 75),
+          rec('2026-11-03', 80),
+        ], now: now),
+        isNull,
+      );
+    });
+
+    test('defaults now to today', () {
+      final today = DateTime.now();
+      final yesterday = isoDate(today.subtract(const Duration(days: 1)));
+      expect(
+        bodyweightMonthBaseline([
+          rec(yesterday, 81),
+          rec(isoDate(today), 80),
+        ])?.date,
+        yesterday,
+      );
+    });
+  });
+
+  testWidgets('dated rows are 48 dp buttons; undated rows are not', (
+    tester,
+  ) async {
+    final opened = <String?>[];
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      wrapL10n(
+        SingleChildScrollView(
+          child: BodyweightHistoryCard(
+            entries: _entries([('not-a-date', 80), ('2026-09-24', 66.3)]),
+            unit: Unit.kg,
+            goal: BodyweightGoal.maintain,
+            onEdit: (entry) => opened.add(entry.id),
+          ),
+        ),
+      ),
+    );
+    final dated = find.ancestor(
+      of: find.text(fmtDate('2026-09-24', 'en', weekday: true)),
+      matching: find.byType(InkWell),
+    );
+    expect(dated, findsOneWidget);
+    expect(tester.getSize(dated).height, greaterThanOrEqualTo(48));
+    expect(
+      tester.getSemantics(dated),
+      isSemantics(
+        isButton: true,
+        hasTapAction: true,
+        onTapHint: 'Edit entry',
+        // Its delta is taken from the previous readable entry.
+        label: 'Thu 24 Sep\n66.3kg\n−13.7',
+      ),
+    );
+    final undated = find.text(fmtDate('not-a-date', 'en', weekday: true));
+    expect(
+      find.ancestor(of: undated, matching: find.byType(InkWell)),
+      findsNothing,
+    );
+    await tester.tap(undated, warnIfMissed: false);
+    await tester.tap(dated);
+    expect(opened, ['bw-2026-09-24']);
+    handle.dispose();
   });
 }
