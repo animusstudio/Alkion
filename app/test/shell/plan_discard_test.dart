@@ -620,13 +620,8 @@ void main() {
       await settleReal(tester, ticks: 15);
       expect(find.byType(DayEditor), findsNothing);
       expect(_discardTitle, findsNothing);
-      // The view sees its day gone and calls onClose (the view's own test
-      // covers that); here PlanScreen must honour it.
-      final view = _dayView('d2');
-      if (view.evaluate().isNotEmpty) {
-        tester.widget<DayView>(view).onClose();
-        await settleReal(tester, ticks: 10);
-      }
+      // The view sees its day gone and closes the route by itself.
+      await settleReal(tester, ticks: 10);
       expect(find.byType(DayView), findsNothing);
       expect(_dayCard('Pull'), findsNothing);
       expect(_dayCard(longDay), findsOneWidget);
