@@ -6,11 +6,13 @@ import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/shell/session_indicator.dart';
 import 'package:alkion/session/active_session_controller.dart';
+import 'package:alkion/ui/day_view.dart';
 import 'package:alkion/ui/history_screen.dart';
 import 'package:alkion/ui/exercise_library_tab.dart';
 import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/progress_screen.dart';
 import 'package:alkion/ui/profile_screen.dart';
+import 'package:alkion/ui/split_tab.dart';
 import 'package:alkion/ui/targets_tab.dart';
 import 'package:alkion/ui/today_screen.dart';
 import 'package:alkion/theme/alkion_icon.dart';
@@ -183,6 +185,25 @@ void main() {
         find.byType(PlanScreen),
         'Plan split $name',
       );
+      // A day card opens the day's view inside Plan; Back returns.
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is SplitDayCard && w.name == longDay),
+      );
+      await settleUntilFound(
+        tester,
+        find.byType(DayView),
+        where: 'Plan day view $name',
+      );
+      await settleReal(tester, ticks: 6);
+      // The view's own body is swept by its own tests.
+      expectLayoutHolds(tester, 'Plan day view $name');
+      await tester.tap(find.byKey(const Key('plan-editor-back')));
+      await settleUntilFound(
+        tester,
+        find.byType(SplitTab),
+        where: 'Plan split after the view $name',
+      );
+      await settleReal(tester, ticks: 6);
       for (final (label, where, marker) in [
         (
           l.planTabExercises,

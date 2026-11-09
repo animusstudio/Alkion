@@ -187,7 +187,11 @@ void main() {
         await tester.tap(find.text('OK'));
         await settleReal(tester);
         if (editor) {
-          await tester.tap(find.text(longDay));
+          // The card menu's Edit opens the editor directly (a card's tap
+          // opens the day's view).
+          await tester.tap(findGlyph(AlkionGlyph.more).first);
+          await settleReal(tester);
+          await tester.tap(find.text('Edit training day'));
           await settleReal(tester);
           expect(find.byType(DayEditor), findsOneWidget);
           expect(find.byType(SplitTab), findsNothing);
@@ -253,7 +257,11 @@ void main() {
       final first = fault.actions.single;
       await tester.tap(find.text('OK'));
       await settleReal(tester);
-      await tester.tap(find.text(longDay));
+      // The card menu's Edit opens the editor directly, so Save returns to
+      // the list (a card's tap opens the day's view).
+      await tester.tap(findGlyph(AlkionGlyph.more).first);
+      await settleReal(tester);
+      await tester.tap(find.text('Edit training day'));
       await settleReal(tester);
       await tester.enterText(input('Day name'), 'Retained renamed day');
       await tester.testTextInput.receiveAction(TextInputAction.done);

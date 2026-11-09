@@ -13,6 +13,7 @@ import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/data/exercise_repository.dart' show DomainRecovery;
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_view.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/ui/plan_screen.dart';
 import 'package:alkion/ui/split_tab.dart';
@@ -262,11 +263,35 @@ Future<void> _openPlan(
   await openTab(tester, AlkionGlyph.plan);
 }
 
-/// Opens seedLong's four-slot day.
-Future<void> _openDay(WidgetTester tester) async {
-  await settleUntilFound(tester, _dayCard(longDay), where: 'Plan split');
-  await tester.tap(_dayCard(longDay));
+/// The day views mounted now for [id], fading ones included.
+Finder _dayView(String id) =>
+    find.byWidgetPredicate((w) => w is DayView && w.id == id);
+
+/// The ids of the day views mounted now, fading ones included.
+List<String> _dayViewIds(WidgetTester tester) => [
+  for (final v in tester.widgetList<DayView>(find.byType(DayView))) v.id,
+];
+
+/// Taps the card named [name], which opens that day's view.
+Future<void> _viewDay(WidgetTester tester, [String name = longDay]) async {
+  await settleUntilFound(tester, _dayCard(name), where: 'Plan split');
+  await tester.tap(_dayCard(name));
+  await settleUntilFound(tester, find.byType(DayView), where: 'day view');
+}
+
+/// The open view's Edit, called through the widget so these navigation
+/// tests do not depend on the view's own layout.
+Future<void> _editFromView(WidgetTester tester, [String id = 'd1']) async {
+  tester.widget<DayView>(_dayView(id)).onEdit();
+  await tester.pump();
   await settleUntilFound(tester, find.byType(DaySlotRow), where: 'day editor');
+}
+
+/// Opens seedLong's four-slot day: its card shows the view, whose Edit
+/// opens the editor.
+Future<void> _openDay(WidgetTester tester) async {
+  await _viewDay(tester);
+  await _editFromView(tester);
 }
 
 /// Expands the open day's Bench Press slot, scrolling it to the top.
@@ -348,15 +373,107 @@ void main() {
   tearDown(harness.close);
 
   group('day editor', () {
-    testWidgets('untouched, back closes it without asking', (tester) async {
+    testWidgets('a day card opens the view; Back there returns to the list '
+        'without asking', (tester) async {
+      await harness.open(tester);
+      setPhone(tester, width: 412);
+      await _openPlan(tester, harness);
+      await _viewDay(tester);
+      await settleReal(tester, ticks: 6);
+      expect(_dayViewIds(tester), ['d1']);
+      expect(find.byType(DayEditor), findsNothing);
+      expect(find.byType(SplitTab), findsNothing);
+      expect(find.text(_l.planTabSplit), findsOneWidget);
+      final plan = tester.state<PlanScreenState>(find.byType(PlanScreen));
+      expect(plan.hasUnsavedEdits, isFalse);
+
+      await _back(tester);
+      expect(_discardTitle, findsNothing);
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayCard(longDay), findsOneWidget);
+
+      // The header chevron does the same.
+      await _viewDay(tester);
+      await tester.tap(find.byKey(const Key('plan-editor-back')));
+      await settleReal(tester, ticks: 10);
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayCard(longDay), findsOneWidget);
+      await harness.unmount(tester);
+    });
+
+    testWidgets('untouched, back from the editor returns to the view '
+        'without asking', (tester) async {
       await harness.open(tester);
       setPhone(tester, width: 412);
       await _openPlan(tester, harness);
       await _openDay(tester);
+      expect(find.text(_l.planEditDay), findsOneWidget);
 
       await _back(tester);
       expect(_discardTitle, findsNothing);
       expect(find.byType(DayEditor), findsNothing);
+      expect(_dayViewIds(tester), ['d1']);
+
+      await _back(tester);
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayCard(longDay), findsOneWidget);
+      await harness.unmount(tester);
+    });
+
+    testWidgets('the card menu Edit and New training day open the editor '
+        'directly and Back returns to the list', (tester) async {
+      await harness.open(tester);
+      setPhone(tester, width: 412);
+      await _openPlan(tester, harness);
+      await settleUntilFound(tester, _dayCard(longDay), where: 'Plan split');
+      await tester.tap(
+        find
+            .descendant(
+              of: _dayCard(longDay),
+              matching: find.byTooltip(_l.trainingDayActions(longDay)),
+            )
+            .first,
+      );
+      await settleReal(tester, ticks: 10);
+      await tester.tap(find.text(_l.planEditDay).last);
+      await settleUntilFound(
+        tester,
+        find.byType(DaySlotRow),
+        where: 'day editor',
+      );
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayEditorIds(tester), ['d1']);
+
+      await _back(tester);
+      expect(find.byType(DayEditor), findsNothing);
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayCard(longDay), findsOneWidget);
+
+      final create = find.text(_l.planNewDay);
+      await scrollIntoView(tester, find.byType(SplitTab), create);
+      await tester.tap(create);
+      await settleUntilFound(tester, find.byType(DayEditor), where: 'new day');
+      expect(_dayEditorIds(tester), [null]);
+      expect(find.byType(DayView), findsNothing);
+
+      await _back(tester);
+      expect(find.byType(DayEditor), findsNothing);
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayCard(longDay), findsOneWidget);
+      await harness.unmount(tester);
+    });
+
+    testWidgets('a view that reports its day gone returns to the list', (
+      tester,
+    ) async {
+      await harness.open(tester);
+      setPhone(tester, width: 412);
+      await _openPlan(tester, harness);
+      await _viewDay(tester);
+      tester.widget<DayView>(_dayView('d1')).onClose();
+      await settleReal(tester, ticks: 10);
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayCard(longDay), findsOneWidget);
       await harness.unmount(tester);
     });
 
@@ -430,9 +547,8 @@ void main() {
       await harness.unmount(tester);
     });
 
-    testWidgets('Keep editing keeps the edit; Discard closes and drops it', (
-      tester,
-    ) async {
+    testWidgets('Keep editing keeps the edit; Discard returns to the view and '
+        'drops it', (tester) async {
       await harness.open(tester);
       setPhone(tester, width: 412);
       await _openPlan(tester, harness);
@@ -452,14 +568,17 @@ void main() {
       await settleReal(tester, ticks: 10);
       expect(_discardTitle, findsNothing);
       expect(find.byType(DayEditor), findsNothing);
+      expect(_dayViewIds(tester), [
+        'd1',
+      ], reason: 'Discard returns to the view');
 
-      await _openDay(tester);
+      await _editFromView(tester);
       await _expandBenchPress(tester);
       expect(_workingSetsShows('3'), findsOneWidget);
       await harness.unmount(tester);
     });
 
-    testWidgets('Save closes without asking', (tester) async {
+    testWidgets('Save returns to the view without asking', (tester) async {
       await harness.open(tester);
       setPhone(tester, width: 412);
       await _openPlan(tester, harness);
@@ -473,6 +592,44 @@ void main() {
       await settleReal(tester, ticks: 15);
       expect(_discardTitle, findsNothing);
       expect(find.byType(DayEditor), findsNothing);
+      expect(_dayViewIds(tester), ['d1']);
+
+      // A fresh editor from the view loads the saved value.
+      await _editFromView(tester);
+      await _expandBenchPress(tester);
+      expect(_workingSetsShows('4'), findsOneWidget);
+      await harness.unmount(tester);
+    });
+
+    testWidgets('a Delete from the view\'s editor lands on the view, '
+        'which closes on its own', (tester) async {
+      await harness.open(tester);
+      setPhone(tester, width: 412);
+      await _openPlan(tester, harness);
+      await _viewDay(tester, 'Pull');
+      await _editFromView(tester, 'd2');
+      final delete = find.text(_l.dayEditorDeleteButton);
+      await scrollIntoView(tester, find.byType(DayEditor), delete);
+      await tester.tap(delete);
+      await settleUntilFound(
+        tester,
+        find.text(_l.dayEditorDeleteTitle),
+        where: 'day delete confirm',
+      );
+      await tester.tap(find.text(_l.commonDelete));
+      await settleReal(tester, ticks: 15);
+      expect(find.byType(DayEditor), findsNothing);
+      expect(_discardTitle, findsNothing);
+      // The view sees its day gone and calls onClose (the view's own test
+      // covers that); here PlanScreen must honour it.
+      final view = _dayView('d2');
+      if (view.evaluate().isNotEmpty) {
+        tester.widget<DayView>(view).onClose();
+        await settleReal(tester, ticks: 10);
+      }
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayCard('Pull'), findsNothing);
+      expect(_dayCard(longDay), findsOneWidget);
       await harness.unmount(tester);
     });
 
@@ -502,23 +659,37 @@ void main() {
     });
 
     testWidgets('a tap that falls through to the outgoing list keeps the '
-        'opened editor', (tester) async {
+        'opened view', (tester) async {
       await harness.open(tester);
       setPhone(tester, width: 412);
       await _openPlan(tester, harness);
       await settleUntilFound(tester, _dayCard('Pull'), where: 'Plan split');
       await tester.tap(_dayCard(longDay));
       await tester.pump(const Duration(milliseconds: 50));
-      // The new editor still shows its spinner; the list is fading out.
+      // The new view is fading in; the list is fading out.
       await tester.tap(_dayCard('Pull'), warnIfMissed: false);
       await tester.pump();
 
-      await settleUntilFound(
-        tester,
-        find.byType(DaySlotRow),
-        where: 'day editor',
-      );
-      expect(_dayEditorIds(tester), ['d1']);
+      await settleReal(tester, ticks: 10);
+      expect(_dayViewIds(tester), ['d1']);
+      expect(find.byType(DayEditor), findsNothing);
+      await harness.unmount(tester);
+    });
+
+    testWidgets('a late Edit from a view that was left opens nothing', (
+      tester,
+    ) async {
+      await harness.open(tester);
+      setPhone(tester, width: 412);
+      await _openPlan(tester, harness);
+      await _viewDay(tester);
+      final stale = tester.widget<DayView>(_dayView('d1'));
+      await _back(tester);
+      stale.onEdit();
+      await settleReal(tester, ticks: 10);
+      expect(find.byType(DayEditor), findsNothing);
+      expect(find.byType(DayView), findsNothing);
+      expect(_dayCard(longDay), findsOneWidget);
       await harness.unmount(tester);
     });
 
@@ -528,13 +699,8 @@ void main() {
       setPhone(tester, width: 412);
       final delayed = _DelayedPlanSaveDatabase(harness.database);
       await _openPlan(tester, harness, database: delayed);
-      await settleUntilFound(tester, _dayCard('Pull'), where: 'Plan split');
-      await tester.tap(_dayCard('Pull'));
-      await settleUntilFound(
-        tester,
-        find.byType(DaySlotRow),
-        where: 'day editor',
-      );
+      await _viewDay(tester, 'Pull');
+      await _editFromView(tester, 'd2');
       final save = find.text(_l.dayEditorSaveChanges);
       await scrollIntoView(tester, find.byType(DayEditor), save);
       final pullSave = find.descendant(
@@ -554,13 +720,29 @@ void main() {
         );
         expect(pullSaveEnabled(), isFalse, reason: 'the save is waiting');
 
-        // Saving, it closes on back without asking, then fades out for 220ms.
+        // Saving, it steps back to the view without asking, then fades out
+        // for 220ms; a second back leaves the view for the list.
+        await tester.binding.handlePopRoute();
+        await tester.pump();
+        expect(_discardTitle, findsNothing);
+        expect(_dayView('d2'), findsOneWidget);
         await tester.binding.handlePopRoute();
         await tester.pump();
         final card = _dayCard(longDay).hitTestable();
         await _shortTicks(tester, until: () => card.evaluate().isNotEmpty);
         await tester.tap(card);
         await tester.pump();
+        await _shortTicks(
+          tester,
+          until: () => _dayView('d1').evaluate().isNotEmpty,
+        );
+        tester.widget<DayView>(_dayView('d1')).onEdit();
+        await tester.pump();
+        expect(
+          pullSave,
+          findsOneWidget,
+          reason: 'the saving editor is still fading out',
+        );
 
         delayed.released.complete();
         // The closed editor re-enables its Save right after calling back, and
@@ -573,6 +755,7 @@ void main() {
         );
         await settleReal(tester, ticks: 10);
         expect(_dayEditorIds(tester), ['d1']);
+        expect(find.byType(DayView), findsNothing);
         final saved = await tester.runAsync(
           () => harness.database.get(
             'SELECT revision FROM day_templates WHERE id=?',
@@ -617,13 +800,8 @@ void main() {
           }),
         );
         await _openPlan(tester, harness, recovery: recovery);
-        await settleUntilFound(tester, _dayCard('Pull'), where: 'Plan split');
-        await tester.tap(_dayCard('Pull'));
-        await settleUntilFound(
-          tester,
-          find.byType(DaySlotRow),
-          where: 'day editor',
-        );
+        await _viewDay(tester, 'Pull');
+        await _editFromView(tester, 'd2');
         final save = find.text(_l.dayEditorSaveChanges);
         await scrollIntoView(tester, find.byType(DayEditor), save);
         try {
@@ -640,6 +818,8 @@ void main() {
             isEmpty,
             reason: 'the old State is fully disposed',
           );
+          expect(_dayViewIds(tester), ['d2']);
+          await _back(tester);
           await _openDay(tester);
           expect(_dayEditorIds(tester), ['d1']);
           release.complete();
@@ -725,6 +905,12 @@ void main() {
       await settleReal(tester, ticks: 10);
       expect(await first, isTrue);
       expect(find.byType(DayEditor), findsNothing);
+      expect(
+        find.byType(DayView),
+        findsNothing,
+        reason: 'requestClose closes everything, not one step',
+      );
+      expect(_dayCard(longDay), findsOneWidget);
       await harness.unmount(tester);
     });
 
@@ -842,13 +1028,8 @@ void main() {
           database: audit,
           recovery: gate.service,
         );
-        await settleUntilFound(tester, _dayCard('Pull'), where: 'Plan split');
-        await tester.tap(_dayCard('Pull'));
-        await settleUntilFound(
-          tester,
-          find.byType(DaySlotRow),
-          where: 'day editor',
-        );
+        await _viewDay(tester, 'Pull');
+        await _editFromView(tester, 'd2');
         final delete = find.text(_l.dayEditorDeleteButton);
         await scrollIntoView(tester, find.byType(DayEditor), delete);
         try {
@@ -872,6 +1053,10 @@ void main() {
             isEmpty,
             reason: 'the deleting State is fully disposed',
           );
+          // Back stepped to the day's view; leave it for the list.
+          if (find.byType(DayView).evaluate().isNotEmpty) {
+            await _back(tester);
+          }
           await _openDay(tester);
           gate.release();
           await settleReal(tester, ticks: 10);

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/ui/plan_screen.dart';
+import 'package:alkion/ui/split_tab.dart';
 import 'package:alkion/ui/targets_tab.dart';
 import 'package:alkion/widgets/stepper.dart';
 import 'package:alkion/widgets/plan_form.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_view.dart';
 import 'package:alkion/ui/exercise_editor.dart';
 import 'package:alkion/ui/exercise_library_tab.dart';
 
@@ -59,6 +61,55 @@ void main() {
           tester,
           find.byType(PlanScreen),
           'Plan targets $code',
+        );
+        await harness.unmount(tester);
+      });
+    }
+
+    // A day card opens the view; its Edit swaps in the editor, whose header
+    // reads "Edit training day" beside Back.
+    for (final code in ['en', 'de', 'it']) {
+      testWidgets('a day view and its editor hold at 320dp 2.0x $code', (
+        tester,
+      ) async {
+        await harness.open(tester);
+        setPhone(tester, width: 320, textScale: 2.0);
+        final locale = Locale(code);
+        final l = lookupAppLocalizations(locale);
+        await tester.pumpWidget(
+          harness.wrap(const Scaffold(body: PlanScreen()), locale: locale),
+        );
+        final card = find.byWidgetPredicate(
+          (w) => w is SplitDayCard && w.name == longDay,
+        );
+        await settleUntilFound(tester, card, where: 'Plan split $code');
+        await tester.tap(card);
+        await settleUntilFound(
+          tester,
+          find.byType(DayView),
+          where: 'day view $code',
+        );
+        await settleReal(tester, ticks: 6);
+        expect(find.byType(DayEditor), findsNothing);
+        expect(find.text(l.planTabSplit), findsOneWidget);
+        final back = find.byKey(const Key('plan-editor-back'));
+        expect(tester.getSize(back).width, greaterThanOrEqualTo(48));
+        // The view's own body is swept by its own tests.
+        expectLayoutHolds(tester, 'Plan day view $code');
+
+        tester.widget<DayView>(find.byType(DayView)).onEdit();
+        await settleUntilFound(
+          tester,
+          find.byType(TextInput),
+          where: 'day editor $code',
+        );
+        await settleReal(tester, ticks: 6);
+        expect(find.byType(DayView), findsNothing);
+        expect(find.text(l.planEditDay), findsOneWidget);
+        await expectLayoutHoldsWhileScrolling(
+          tester,
+          find.byType(PlanScreen),
+          'Plan day editor $code',
         );
         await harness.unmount(tester);
       });
