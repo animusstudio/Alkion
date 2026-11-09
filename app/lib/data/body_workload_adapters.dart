@@ -12,6 +12,29 @@ WorkoutWorkload plannedWorkoutWorkload(
   Iterable<ResolvedSlot> slots, {
   List<CatalogSelectionEvidence?> selections = const [],
   Map<String, CatalogMuscleResolution> resolutions = const {},
+}) => calculateWorkoutWorkload(
+  mode: WorkoutWorkloadMode.planned,
+  exercises: plannedSlotWorkloadInputs(
+    slots,
+    selections: selections,
+    resolutions: resolutions,
+    physicalId: (slot, set) => 'planned:$slot:$set',
+  ),
+);
+
+/// The working-set inputs of one planned workout, under the fresh-session
+/// limits a new session from these slots would meet: at most
+/// [freshTemplateSlotLimit] slots, 1 to 99 working and 0 to 99 warm-up sets per
+/// slot, and [freshGeneratedSetLimit] generated sets in total. Every slot is
+/// checked before any input is returned; a violation throws
+/// [FreshSessionLimitException]. Warm-ups count toward the bounds only and are
+/// never inputs. [physicalId] names set `set` of slot `slot` (both 0-based);
+/// it must be distinct for every set the caller passes to one calculation.
+List<WorkloadExerciseInput> plannedSlotWorkloadInputs(
+  Iterable<ResolvedSlot> slots, {
+  required String Function(int slot, int set) physicalId,
+  List<CatalogSelectionEvidence?> selections = const [],
+  Map<String, CatalogMuscleResolution> resolutions = const {},
 }) {
   final boundedSlots = <ResolvedSlot>[];
   var remaining = freshGeneratedSetLimit;
@@ -46,28 +69,26 @@ WorkoutWorkload plannedWorkoutWorkload(
     remaining -= slot.workSets + slot.warmupSets;
     boundedSlots.add(slot);
   }
-  return calculateWorkoutWorkload(
-    mode: WorkoutWorkloadMode.planned,
-    exercises: boundedSlots.indexed.map(
-      (entry) => WorkloadExerciseInput(
+  return [
+    for (final (index, slot) in boundedSlots.indexed)
+      WorkloadExerciseInput(
         catalogBacked:
-            (entry.$1 < selections.length && selections[entry.$1] != null) ||
-            entry.$2.exercise.executionDefinition != null,
-        resolution: entry.$1 < selections.length
-            ? resolutions[selections[entry.$1]?.muscleResolutionKey]
+            (index < selections.length && selections[index] != null) ||
+            slot.exercise.executionDefinition != null,
+        resolution: index < selections.length
+            ? resolutions[selections[index]?.muscleResolutionKey]
             : null,
-        muscleGroup: entry.$2.exercise.muscleGroup,
+        muscleGroup: slot.exercise.muscleGroup,
         sets: Iterable.generate(
-          entry.$2.workSets,
-          (index) => WorkloadSetInput(
-            physicalId: 'planned:${entry.$1}:$index',
+          slot.workSets,
+          (set) => WorkloadSetInput(
+            physicalId: physicalId(index, set),
             completed: false,
             isWarmup: false,
           ),
         ),
       ),
-    ),
-  );
+  ];
 }
 
 /// Takes the controller's current draft; no cached totals or planned targets.

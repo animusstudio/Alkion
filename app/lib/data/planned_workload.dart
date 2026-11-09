@@ -49,6 +49,96 @@ WorkoutWorkload plannedDayWorkload(
   }
 }
 
+/// The planned working sets of one rotation of the split: every active day of
+/// [days] counted once, warm-ups excluded. Inactive days and days whose active
+/// flag is unknown add nothing. Each day keeps its own fresh-session bounds
+/// (see [plannedSlotWorkloadInputs]), and the whole split is one calculation in
+/// which every set is a distinct physical set `split:<day id>:<slot>:<set>`,
+/// so a region's count is the number of planned sets touching it. A missing
+/// exercise or an exceeded bound on any active day makes the whole split
+/// unavailable, never zero counts.
+WorkoutWorkload plannedSplitWorkload(
+  Iterable<DayTemplate> days,
+  Map<String, Exercise> exercisesById,
+  Map<String, CatalogMuscleResolution> resolutions,
+) {
+  final inputs = <WorkloadExerciseInput>[];
+  for (final day in days) {
+    if (!day.isActive) continue;
+    final slots = resolvePlannedDaySlots(day, exercisesById);
+    if (slots == null) {
+      return WorkoutWorkload.unavailable(WorkoutWorkloadMode.planned);
+    }
+    try {
+      inputs.addAll(
+        plannedSlotWorkloadInputs(
+          slots,
+          selections: [for (final slot in day.slots) slot.catalog],
+          resolutions: resolutions,
+          physicalId: (slot, set) => 'split:${day.id}:$slot:$set',
+        ),
+      );
+    } on FreshSessionLimitException {
+      return WorkoutWorkload.unavailable(WorkoutWorkloadMode.planned);
+    }
+  }
+  return calculateWorkoutWorkload(
+    mode: WorkoutWorkloadMode.planned,
+    exercises: inputs,
+  );
+}
+
+/// What one rotation of the split spans.
+class SplitBasis {
+  const SplitBasis({required this.perWeek, required this.activeDays});
+
+  /// True only when one rotation is provably one week: at least one active
+  /// day, and every active day has its own scheduled weekday (0 to 6, no two
+  /// equal). Otherwise the next day is picked by rotation and no weekly
+  /// frequency is claimed.
+  final bool perWeek;
+
+  /// The number of active days in one rotation.
+  final int activeDays;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SplitBasis &&
+      other.perWeek == perWeek &&
+      other.activeDays == activeDays;
+
+  @override
+  int get hashCode => Object.hash(perWeek, activeDays);
+
+  @override
+  String toString() => 'SplitBasis(perWeek: $perWeek, activeDays: $activeDays)';
+}
+
+/// The basis of [plannedSplitWorkload] over the same [days]: per week only when
+/// every active day has a distinct scheduled weekday, per rotation otherwise.
+SplitBasis splitBasis(Iterable<DayTemplate> days) {
+  final weekdays = <int>{};
+  final seen = <String>{};
+  var activeDays = 0;
+  var distinct = true;
+  for (final day in days) {
+    // A day passed twice counts once, as in the workload.
+    if (!day.isActive || !seen.add(day.id)) continue;
+    activeDays++;
+    final weekday = day.scheduledWeekday;
+    if (weekday == null ||
+        weekday < 0 ||
+        weekday > 6 ||
+        !weekdays.add(weekday)) {
+      distinct = false;
+    }
+  }
+  return SplitBasis(
+    perWeek: distinct && activeDays > 0,
+    activeDays: activeDays,
+  );
+}
+
 /// What planned workloads need from the store: every owned exercise and the
 /// muscle resolution of every catalog selection the days use.
 class PlanWorkloadInputs {
@@ -92,4 +182,8 @@ class PlanWorkloadInputs {
   /// [plannedDayWorkload] of [day] over these inputs.
   WorkoutWorkload dayWorkload(DayTemplate day) =>
       plannedDayWorkload(day, exercisesById, resolutions);
+
+  /// [plannedSplitWorkload] of [days] over these inputs.
+  WorkoutWorkload splitWorkload(Iterable<DayTemplate> days) =>
+      plannedSplitWorkload(days, exercisesById, resolutions);
 }

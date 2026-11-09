@@ -878,5 +878,9 @@
   "dayViewWorkingSets": "{count, plural, =1{1 serie de trabajo} other{{count} series de trabajo}}",
   "dayViewInactive": "Inactivo. Activa este día para empezarlo.",
   "slotSetCount": "{count, plural, =1{1 serie} other{{count} series}}",
-  "dayViewExerciseUnavailable": "Ejercicio no disponible"
+  "dayViewExerciseUnavailable": "Ejercicio no disponible",
+  "splitVolumeTitle": "Volumen de la rutina",
+  "splitVolumePerRotation": "Series planificadas por rotación",
+  "splitVolumePerWeek": "Series planificadas por semana",
+  "splitVolumeDays": "{count, plural, =1{1 día} other{{count} días}}"
 }

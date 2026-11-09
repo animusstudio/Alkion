@@ -41,6 +41,29 @@ DayTemplate day(List<Slot> slots) => DayTemplate(
   slots: slots,
 );
 
+DayTemplate splitDay(
+  String id,
+  List<Slot> slots, {
+  bool? active = true,
+  int? weekday,
+}) => DayTemplate(
+  id: id,
+  name: 'Synthetic $id',
+  position: 0,
+  slots: slots,
+  active: active,
+  scheduledWeekday: weekday,
+);
+
+/// The per-region sum of [counts] over [workloads].
+Map<WorkloadMuscle, int> summed(
+  Iterable<WorkoutWorkload> workloads,
+  Map<WorkloadMuscle, int> Function(WorkoutWorkload) counts,
+) => {
+  for (final m in WorkloadMuscle.values)
+    m: workloads.fold(0, (sum, w) => sum + (counts(w)[m] ?? 0)),
+};
+
 Map<WorkloadMuscle, int> legacyCounts(WorkoutWorkload w) => {
   for (final e in w.legacyMuscles.entries) e.key: e.value.count,
 };
@@ -172,6 +195,223 @@ void main() {
     }
   });
 
+  group('split workload', () {
+    final push = splitDay('push', const [
+      Slot(exerciseId: 'bench', position: 0, workSets: 4, warmupSets: 2),
+      Slot(exerciseId: 'curl', position: 1, workSets: 2),
+    ]);
+    final pull = splitDay('pull', const [
+      // Null counts resolve as the workout builds them: exercise default 4.
+      Slot(exerciseId: 'row', position: 0),
+      Slot(exerciseId: 'curl', position: 1, workSets: 3, warmupSets: 1),
+    ]);
+
+    test('equals the per-day sums per region, warm-ups excluded', () {
+      final result = plannedSplitWorkload([push, pull], byId, const {});
+      final perDay = [
+        for (final d in [push, pull]) plannedDayWorkload(d, byId, const {}),
+      ];
+      expect(result.availability, WorkloadAvailability.ready);
+      expect(result.mode, WorkoutWorkloadMode.planned);
+      expect(legacyCounts(result), summed(perDay, legacyCounts));
+      expect(strengthCounts(result), summed(perDay, strengthCounts));
+      expect(result.legacyMuscles[WorkloadMuscle.chest]!.count, 4);
+      expect(result.legacyMuscles[WorkloadMuscle.back]!.count, 4);
+      expect(result.legacyMuscles[WorkloadMuscle.biceps]!.count, 5);
+      expect(result.coverage!.eligibleSets, 13);
+      expect(result.coverage!.legacySets, 13);
+      expect(result.coverage!.warmupSets, 0);
+    });
+
+    test('identical days count as distinct sets; one day counts once', () {
+      final twin = splitDay('push-b', push.slots);
+      expect(legacyCounts(plannedSplitWorkload([push, twin], byId, const {})), {
+        for (final e in legacyCounts(
+          plannedDayWorkload(push, byId, const {}),
+        ).entries)
+          e.key: e.value * 2,
+      });
+      // The same saved day passed twice is still one day of the rotation.
+      expect(
+        legacyCounts(plannedSplitWorkload([push, push], byId, const {})),
+        legacyCounts(plannedDayWorkload(push, byId, const {})),
+      );
+    });
+
+    test('inactive and unknown-status days add nothing', () {
+      final result = plannedSplitWorkload(
+        [
+          push,
+          splitDay('off', pull.slots, active: false),
+          splitDay('unknown', pull.slots, active: null),
+          // Neither a missing exercise nor a bound on an excluded day matters.
+          splitDay('off-missing', const [
+            Slot(exerciseId: 'deleted', position: 0, workSets: 3),
+          ], active: false),
+          splitDay('unknown-bound', const [
+            Slot(exerciseId: 'bench', position: 0, workSets: 100),
+          ], active: null),
+        ],
+        byId,
+        const {},
+      );
+      expect(result.availability, WorkloadAvailability.ready);
+      expect(
+        legacyCounts(result),
+        legacyCounts(plannedDayWorkload(push, byId, const {})),
+      );
+      expect(result.legacyMuscles[WorkloadMuscle.back]!.count, 0);
+    });
+
+    test('no active day is ready with empty coverage', () {
+      for (final days in [
+        const <DayTemplate>[],
+        [splitDay('off', push.slots, active: false)],
+        [splitDay('empty', const [])],
+      ]) {
+        final result = plannedSplitWorkload(days, byId, const {});
+        expect(result.availability, WorkloadAvailability.ready);
+        expect(result.coverage!.status, WorkloadCoverageStatus.empty);
+      }
+    });
+
+    test('a missing exercise on an active day is unavailable, never zero', () {
+      final result = plannedSplitWorkload(
+        [
+          push,
+          splitDay('broken', const [
+            Slot(exerciseId: 'deleted', position: 0, workSets: 3),
+          ]),
+        ],
+        byId,
+        const {},
+      );
+      expect(result.availability, WorkloadAvailability.unavailable);
+      expect(result.muscles, isEmpty);
+      expect(result.legacyMuscles, isEmpty);
+      expect(result.coverage, isNull);
+    });
+
+    test('each active day keeps the fresh-session bounds', () {
+      for (final slots in [
+        const [Slot(exerciseId: 'bench', position: 0, workSets: 100)],
+        const [Slot(exerciseId: 'bench', position: 0, workSets: 0)],
+        const [
+          Slot(exerciseId: 'bench', position: 0, workSets: 3, warmupSets: 100),
+        ],
+        [
+          for (var i = 0; i < 101; i++)
+            Slot(exerciseId: 'bench', position: i, workSets: 1),
+        ],
+        [
+          for (var i = 0; i < 11; i++)
+            Slot(exerciseId: 'bench', position: i, workSets: 99),
+        ],
+      ]) {
+        final result = plannedSplitWorkload(
+          [push, splitDay('over', slots)],
+          byId,
+          const {},
+        );
+        expect(result.availability, WorkloadAvailability.unavailable);
+        expect(result.muscles, isEmpty);
+      }
+    });
+
+    test('the bounds are per day, not per split', () {
+      // Each day sits at the limits: 100 slots, 1000 generated sets.
+      List<Slot> full(int workSets, int warmupSets) => [
+        for (var i = 0; i < 100; i++)
+          Slot(
+            exerciseId: 'bench',
+            position: i,
+            workSets: workSets,
+            warmupSets: warmupSets,
+          ),
+      ];
+      final result = plannedSplitWorkload(
+        [splitDay('a', full(10, 0)), splitDay('b', full(6, 4))],
+        byId,
+        const {},
+      );
+      expect(result.availability, WorkloadAvailability.ready);
+      expect(result.legacyMuscles[WorkloadMuscle.chest]!.count, 1600);
+    });
+
+    test('PlanWorkloadInputs.splitWorkload uses the same inputs', () {
+      final inputs = PlanWorkloadInputs(
+        exercisesById: byId,
+        resolutions: const {},
+      );
+      expect(
+        legacyCounts(inputs.splitWorkload([push, pull])),
+        legacyCounts(plannedSplitWorkload([push, pull], byId, const {})),
+      );
+    });
+  });
+
+  group('split basis', () {
+    SplitBasis basis(List<(bool?, int?)> days) => splitBasis([
+      for (final (i, (active, weekday)) in days.indexed)
+        splitDay('d$i', const [], active: active, weekday: weekday),
+    ]);
+
+    test('per week only when every active day has its own weekday', () {
+      expect(
+        basis([(true, 0), (true, 3), (true, 6)]),
+        const SplitBasis(perWeek: true, activeDays: 3),
+      );
+      expect(
+        basis([(true, 2)]),
+        const SplitBasis(perWeek: true, activeDays: 1),
+      );
+    });
+
+    test('a null, duplicate or out-of-range weekday means per rotation', () {
+      for (final days in [
+        [(true, 0), (true, null)],
+        [(true, null)],
+        [(true, 1), (true, 1)],
+        [(true, 0), (true, 7)],
+        [(true, -1), (true, 2)],
+      ]) {
+        expect(
+          basis(days),
+          SplitBasis(perWeek: false, activeDays: days.length),
+          reason: '$days',
+        );
+      }
+    });
+
+    test('only active days count', () {
+      // Inactive or unknown-status days neither break nor join the week.
+      expect(
+        basis([(true, 0), (false, 0), (null, null), (true, 4), (false, null)]),
+        const SplitBasis(perWeek: true, activeDays: 2),
+      );
+      expect(
+        basis([(true, 0), (true, null), (false, 1)]),
+        const SplitBasis(perWeek: false, activeDays: 2),
+      );
+    });
+
+    test('a day passed twice counts once', () {
+      final push = splitDay('push', const [], active: true, weekday: 1);
+      expect(
+        splitBasis([push, push]),
+        const SplitBasis(perWeek: true, activeDays: 1),
+      );
+    });
+
+    test('no active day is per rotation with zero days', () {
+      expect(basis([]), const SplitBasis(perWeek: false, activeDays: 0));
+      expect(
+        basis([(false, 0), (null, 1)]),
+        const SplitBasis(perWeek: false, activeDays: 0),
+      );
+    });
+  });
+
   group('real SQLite inputs', () {
     late Directory root;
     late LocalStore db;
@@ -245,6 +485,58 @@ void main() {
           ).muscles[WorkloadMuscle.chest]!.count,
           3,
         );
+      },
+    );
+
+    test(
+      'catalog-backed split counts equal the per-day sums per region',
+      () async {
+        final fixture = SyntheticMuscleCatalog();
+        configure(fixture, compound);
+        final bundle = fixture.load();
+        final owned = await select(bundle);
+        final days = [
+          splitDay('a', [
+            Slot(
+              exerciseId: owned.exercise.id,
+              position: 0,
+              workSets: 3,
+              catalog: owned.selection,
+            ),
+          ]),
+          splitDay('b', [
+            Slot(
+              exerciseId: owned.exercise.id,
+              position: 0,
+              workSets: 2,
+              catalog: owned.selection,
+            ),
+          ]),
+          splitDay('off', [
+            Slot(
+              exerciseId: owned.exercise.id,
+              position: 0,
+              workSets: 5,
+              catalog: owned.selection,
+            ),
+          ], active: false),
+        ];
+        final inputs = await PlanWorkloadInputs.load(db, days, bundle);
+        final result = inputs.splitWorkload(days);
+        final perDay = [for (final d in days.take(2)) inputs.dayWorkload(d)];
+        expect(result.availability, WorkloadAvailability.ready);
+        expect(result.muscles[WorkloadMuscle.chest]!.count, 5);
+        expect(result.muscles[WorkloadMuscle.triceps]!.count, 5);
+        expect(strengthCounts(result), summed(perDay, strengthCounts));
+        for (final role in CatalogMuscleRole.values) {
+          Map<WorkloadMuscle, int> byRole(WorkoutWorkload w) => {
+            for (final e in w.regionCounts(role: role).entries)
+              e.key: e.value.count,
+          };
+          expect(byRole(result), summed(perDay, byRole), reason: '$role');
+        }
+        expect(result.coverage!.catalogSets, 5);
+        expect(result.coverage!.legacySets, 0);
       },
     );
 

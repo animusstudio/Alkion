@@ -1642,5 +1642,16 @@
       }
     }
   },
-  "dayViewExerciseUnavailable": "Exercise unavailable"
+  "dayViewExerciseUnavailable": "Exercise unavailable",
+  "splitVolumeTitle": "Split volume",
+  "splitVolumePerRotation": "Planned sets per rotation",
+  "splitVolumePerWeek": "Planned sets per week",
+  "splitVolumeDays": "{count, plural, =1{1 day} other{{count} days}}",
+  "@splitVolumeDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }
