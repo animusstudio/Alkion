@@ -69,7 +69,9 @@ class SetLine extends StatelessWidget {
     // A logged working set with no RIR (resumed, or added in History) shows
     // none, as History's line does.
     final rir = showRir && done && !set.isWarmup ? set.rir : null;
-    final variant = variantLabel ?? '';
+    // A pending set is blank until logged (owner decision): the variant
+    // shows on the live card when focused, and on the line once logged.
+    final variant = done ? variantLabel ?? '' : '';
 
     return Semantics(
       container: true,
@@ -295,7 +297,8 @@ class _ClassicValues extends StatelessWidget {
 /// What a screen reader says for [set]'s line: "Set 2, 140 kg × 6, RIR 1,
 /// done" (warm-up: "Warm-up, …"; a typed set reads its compact form, "Set 2,
 /// 18 kg × 12, done"). A pending set has no values on screen and reads "Set 3,
-/// not done". A different variant or setup ([variantLabel]) follows the name.
+/// not done". A logged set in a different variant or setup ([variantLabel])
+/// reads it after the name.
 /// The visual digits and marks are excluded so nothing repeats.
 String setLineSemanticsLabel(
   AppLocalizations l,
@@ -327,7 +330,7 @@ String setLineSemanticsLabel(
   final rir = showRir && set.done && !set.isWarmup ? set.rir : null;
   return [
     name,
-    if (variantLabel.isNotEmpty) variantLabel,
+    if (set.done && variantLabel.isNotEmpty) variantLabel,
     ?values,
     if (rir != null) l.sessionRir(rir),
     set.done ? l.sessionSetStateDone : l.sessionSetStateNotDone,

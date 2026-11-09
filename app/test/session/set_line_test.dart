@@ -184,12 +184,21 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('a pending line with a different variant shows only that', (
+  testWidgets('a pending line stays blank even in a different variant', (
     tester,
   ) async {
     await tester.pumpWidget(wrapL10n(line(_s(), variant: 'Machine B')));
-    expect(find.text('Machine B'), findsOneWidget);
+    expect(find.text('Machine B'), findsNothing);
     expect(find.textContaining('×'), findsNothing);
+  });
+
+  testWidgets('a logged line in a different variant shows it once, dim', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapL10n(line(_s(done: true), variant: 'Machine B')),
+    );
+    expect(find.text('Machine B'), findsOneWidget);
   });
 
   testWidgets('a logged line shows its RIR and the TOP tag', (tester) async {

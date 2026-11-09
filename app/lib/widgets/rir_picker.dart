@@ -47,9 +47,9 @@ class RirPicker extends StatelessWidget {
   final ValueChanged<int> onChanged;
 
   /// Opt-in clear: when set, tapping the selected chip calls this instead
-  /// of [onChanged], so a host can store "no RIR". History's set editor
-  /// opts in; the live workout leaves it null, so a tap there never
-  /// un-logs.
+  /// of [onChanged], so a host can store "no RIR". History's set editor and
+  /// the live workout's card and RIR strip opt in; clearing RIR never
+  /// un-logs a set.
   final VoidCallback? onClear;
 
   /// Chip height. Defaults to 48, the height every host uses.
