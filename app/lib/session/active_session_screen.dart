@@ -352,9 +352,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final live = c.liveSet;
     if (live?.set.catalog case final evidence?) {
       if (!evidence.validForLogging) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).catalogRequired)),
-        );
+        showWToast(context, AppLocalizations.of(context).catalogRequired);
         return;
       }
     }
@@ -430,14 +428,14 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   void _removeSet(ActiveSessionController c, BlockState b, SetState s) {
     final index = c.removeSet(b, s);
     final l = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     _trackUndoToast(
-      (ScaffoldMessenger.of(context)..hideCurrentSnackBar()).showSnackBar(
-        SnackBar(
-          content: Text(l.sessionSetRemoved),
-          action: SnackBarAction(
-            label: l.commonUndo,
-            onPressed: () => c.restoreSet(b, s, index),
-          ),
+      showWToast(
+        context,
+        l.sessionSetRemoved,
+        action: WToastAction(
+          label: l.commonUndo,
+          onPressed: () => c.restoreSet(b, s, index),
         ),
       ),
     );
@@ -631,9 +629,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         final origin = c.originSlotIdFor(b);
         final templateId = c.draft.templateId;
         if (origin == null || templateId == null) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(l.catalogRoutineNotice)));
+          showWToast(context, l.catalogRoutineNotice);
         } else {
           final template = await DayTemplateRepository.local(
             context.read<LocalDatabase>(),
@@ -672,9 +668,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
               await repo.commitPrepared(intent);
             } catch (_) {
               if (mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(l.catalogSaveFailed)));
+                showWToast(context, l.catalogSaveFailed, error: true);
               }
             }
             return;
@@ -689,9 +683,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                 expectedRevision: c.originSlotRevisionFor(b),
               );
           if (!applied) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(l.catalogRoutineNotice)));
+            showWToast(context, l.catalogRoutineNotice);
           }
         }
       case 'again':
@@ -922,9 +914,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       c.focusSet(added);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l.catalogSaveFailed)));
+        showWToast(context, l.catalogSaveFailed, error: true);
       }
     }
   }

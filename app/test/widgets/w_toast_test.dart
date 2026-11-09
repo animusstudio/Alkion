@@ -343,24 +343,120 @@ void main() {
     expect(shown(tester).duration, const Duration(seconds: 4));
   });
 
-  testWidgets('a raw SnackBar followed by a toast shows and ends both', (
+  testWidgets('with reduced motion the toast neither slides nor fades', (
     tester,
   ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     final context = await host(tester, Brightness.dark);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Raw notice')));
-    await settle(tester);
     showWToast(context, 'Day enabled');
     await tester.pump();
-    await tester.pump(const Duration(seconds: 5));
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('Raw notice'), findsNothing);
-    expect(find.text('Day enabled'), findsOneWidget);
+    expect(shown(tester).animation!.value, 1);
+    // A tap hides it in the next frame, with no exit animation.
+    await tester.tap(find.text('Day enabled'));
+    await tester.pump();
+    expect(find.byType(SnackBar), findsNothing);
+
+    // So does the timeout.
+    showWToast(context, 'Exported nothing');
+    await tester.pump();
+    expect(shown(tester).animation!.value, 1);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump();
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a reduced-motion toggle while a toast is up replaces it at '
+      'once and the next toast still ends', (tester) async {
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final context = await host(tester, Brightness.dark);
+    final first = showWToast(context, 'Day enabled')!;
+    await settle(tester);
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    await tester.pump();
+    showWToast(context, 'Exported nothing');
+    await tester.pump();
+    expect(await first.closed, SnackBarClosedReason.remove);
+    expect(find.text('Day enabled'), findsNothing);
+    expect(shown(tester).animation!.value, 1);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump();
+    expect(find.byType(SnackBar), findsNothing);
+
+    // And back: the next toast animates again and ends.
+    tester.platformDispatcher.clearAccessibilityFeaturesTestValue();
+    await tester.pump();
+    showWToast(context, 'Day disabled');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(shown(tester).animation!.value, lessThan(1));
     await settle(tester);
     await tester.pump(const Duration(seconds: 4));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a second toast at the same speed waits for the first', (
+    tester,
+  ) async {
+    final context = await host(tester, Brightness.dark);
+    showWToast(context, 'Day enabled');
+    await settle(tester);
+    showWToast(context, 'Exported nothing');
+    await tester.pump();
+    expect(find.text('Day enabled'), findsOneWidget);
+    expect(find.text('Exported nothing'), findsNothing);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 500));
+    await settle(tester);
+    expect(find.text('Day enabled'), findsNothing);
+    expect(find.text('Exported nothing'), findsOneWidget);
+  });
+
+  testWidgets('a raw SnackBar followed by a toast shows and ends both', (
+    tester,
+  ) async {
+    final context = await host(tester, Brightness.dark);
+    final raw = ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Raw notice')));
+    await settle(tester);
+    expect(find.text('Raw notice'), findsOneWidget);
+    // The toast's speed differs from the raw SnackBar's default, so the raw
+    // one gives way at once instead of being stranded on a replaced
+    // controller.
+    showWToast(context, 'Day enabled');
+    await tester.pump();
+    expect(await raw.closed, SnackBarClosedReason.remove);
+    expect(find.text('Raw notice'), findsNothing);
+    await settle(tester);
+    expect(find.text('Day enabled'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a tap on an action toast\'s text hides it without running '
+      'the action', (tester) async {
+    final context = await host(tester, Brightness.dark);
+    var undone = 0;
+    showWToast(
+      context,
+      'Set 2 logged',
+      action: WToastAction(label: 'Undo', onPressed: () => undone++),
+      duration: const Duration(seconds: 5),
+    );
+    await settle(tester);
+    await tester.tap(find.text('Set 2 logged'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(SnackBar), findsNothing);
+    expect(undone, 0);
   });
 
   testWidgets('outside the shell a toast keeps the normal inset', (

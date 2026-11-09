@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/alkion_icon.dart';
 import '../theme/app_theme.dart';
+import '../theme/motion.dart';
 import '../theme/tokens.dart';
 
 /// The bottom inset that keeps a floating toast fully above `AppShell`'s tab
@@ -66,8 +67,9 @@ const Duration kToastAccessibleActionDuration = Duration(seconds: 10);
 /// A tap on the card or a sideways swipe hides it. [action] adds one button
 /// that runs its callback once; the toast still ends after [duration]
 /// (default four seconds, at least [kToastAccessibleActionDuration] for an
-/// action under accessible navigation). Raised from a tab page it clears the
-/// tab bar ([ToastTabBarClearance]). Returns null when no messenger is
+/// action under accessible navigation). It shows and hides at [Motion.sheet]
+/// speed, instantly under reduced motion. Raised from a tab page it clears
+/// the tab bar ([ToastTabBarClearance]). Returns null when no messenger is
 /// available.
 ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showWToast(
   BuildContext context,
@@ -86,6 +88,19 @@ ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showWToast(
       (MediaQuery.maybeAccessibleNavigationOf(context) ?? false) &&
       shownFor < kToastAccessibleActionDuration) {
     shownFor = kToastAccessibleActionDuration;
+  }
+  final style = Motion.sheet(context);
+  if (!_sameSpeed(_toastStyles[messenger], style)) {
+    // A style with other durations makes the messenger dispose and replace
+    // its one SnackBar controller (Flutter 3.44 `_didUpdateAnimationStyle`),
+    // even while a SnackBar is up: that one is left on a dead controller that
+    // never ends, with this toast queued behind it. So when the speed changes
+    // (a reduced-motion toggle, or a first toast after a raw SnackBar) take
+    // everything down at once, without its exit animation, before showing.
+    messenger
+      ..clearSnackBars()
+      ..removeCurrentSnackBar();
+    _toastStyles[messenger] = style;
   }
   return messenger.showSnackBar(
     SnackBar(
@@ -113,8 +128,21 @@ ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showWToast(
           ? null
           : SnackBarAction(label: action.label, onPressed: action.onPressed),
     ),
+    snackBarAnimationStyle: style,
   );
 }
+
+/// The animation style each messenger last showed a toast with.
+final Expando<AnimationStyle> _toastStyles = Expando<AnimationStyle>(
+  'toast animation style',
+);
+
+/// Whether [a] would keep the messenger's SnackBar controller for [b]: the
+/// messenger compares only the two durations.
+bool _sameSpeed(AnimationStyle? a, AnimationStyle b) =>
+    a != null &&
+    a.duration == b.duration &&
+    a.reverseDuration == b.reverseDuration;
 
 /// The toast's glyph and text inside one tap target at least 48dp tall.
 class _ToastContent extends StatelessWidget {
