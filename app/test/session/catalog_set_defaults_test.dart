@@ -1,4 +1,5 @@
-import 'package:alkion/data/catalog_load_history.dart' show CatalogLastSet;
+import 'package:alkion/data/catalog_load_history.dart'
+    show CatalogLastSet, catalogLastSets;
 import 'package:alkion/domain/catalog_execution.dart';
 import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/session/catalog_set_defaults.dart';
@@ -171,14 +172,14 @@ void main() {
             expected: const {},
           ),
           (
-            name: 'slot targets still apply to warm-ups, as before',
+            name: 'a warm-up never takes slot targets',
             warmup: true,
-            index: 5,
+            index: 0,
             targets: {'reported_load': _v('reported_load', '40')},
             fixedReps: null,
             last: lastSets,
             lastTop: top,
-            expected: const {'reported_load': '40'},
+            expected: const {'reported_load': '20', 'repetitions': '10'},
           ),
         ];
     for (final row in table) {
@@ -307,5 +308,25 @@ void main() {
     defaults(targets: targets, last: lastSets, lastTop: top);
     expect(_json(targets), copy);
     expect(lastSets, hasLength(5));
+  });
+
+  test('an unreadable history row is skipped, not fatal', () {
+    final good = CatalogSetEvidence(
+      selection: loadReps,
+      metrics: {
+        'reported_load': _v('reported_load', '50'),
+        'repetitions': _v('repetitions', '8'),
+      },
+    );
+    final sets = catalogLastSets([
+      {
+        'session_id': 's1',
+        'is_warmup': 0,
+        'catalog_set_bytes': [1, 2, 3],
+      },
+      {'session_id': 's1', 'is_warmup': 0, 'catalog_set_bytes': good.bytes},
+    ], loadReps);
+    expect(sets, hasLength(1));
+    expect(_json(sets.single.metrics), _json(good.metrics));
   });
 }

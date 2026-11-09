@@ -5,8 +5,9 @@ import '../domain/evidence.dart' show ValueState;
 /// The values a new catalog set opens with, per metric of [selection]'s
 /// measurement profile, in this order:
 ///
-/// 1. a slot-fixed value: a [slotTargets] entry, then, for a working set,
-///    `repetitions` from [fixedReps] (an authored rep pair with low == high);
+/// 1. for a working set, a slot-fixed value: a [slotTargets] entry, then
+///    `repetitions` from [fixedReps] (an authored rep pair with low == high).
+///    A warm-up never takes the working prescription; it uses its own history;
 /// 2. the same-numbered set of the last session: the [index]-th warm-up for a
 ///    warm-up, the [index]-th working set for a working set ([lastSets] in
 ///    `set_number` order);
@@ -34,7 +35,7 @@ Map<String, CatalogMetricEvidence> catalogSetDefaults({
   final values = <String, CatalogMetricEvidence>{};
   for (final metric in selection.profile.metrics) {
     final candidates = [
-      slotTargets[metric],
+      if (!isWarmup) slotTargets[metric],
       if (metric == 'repetitions' && !isWarmup && fixedReps != null)
         CatalogMetricEvidence.fromInput(
           '$fixedReps',

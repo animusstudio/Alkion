@@ -65,9 +65,16 @@ List<CatalogLastSet> catalogLastSets(
   for (final row in rows) {
     if (session != null && row['session_id'] != session) break;
     if (row['catalog_set_bytes'] == null) continue;
-    final evidence = CatalogSetEvidence.fromJson(
-      decodeCatalogBytes(row['catalog_set_bytes']!),
-    );
+    final CatalogSetEvidence evidence;
+    try {
+      evidence = CatalogSetEvidence.fromJson(
+        decodeCatalogBytes(row['catalog_set_bytes']!),
+      );
+    } catch (_) {
+      // Prefill is a convenience: an unreadable history row is skipped,
+      // never fatal to starting a workout.
+      continue;
+    }
     if (evidence.selection.compatibilityKey != selection.compatibilityKey) {
       continue;
     }
