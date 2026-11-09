@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Status-bar glyph for Alkion notifications: white on transparent; Android
+  renders only its alpha. The outline is the silhouette of the approved
+  character artwork in app/assets/icon (alkion-icon-1024.png): its glyphs
+  merged into one solid shape, the outer contour traced and simplified, and
+  fitted to the 24dp canvas with a 1dp margin.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12.47,1.12 L14.13,1.71 17.56,4.67 22.05,12.35 22.76,16.14 23,19.57 21.94,20.99 20.4,21.7 17.8,22.05 16.97,22.41 14.6,22.41 13.18,22.88 11.53,22.76 8.69,21.94 5.85,19.92 4.31,19.81 2.66,19.1 1.83,18.27 1.47,17.44 1,15.67 1,13.54 1.83,11.29 2.89,10.34 4.08,10.11 6.09,10.23 7.86,11.05 9.75,12.95 11.76,12.71 13.06,13.06 14.6,14.01 15.19,14.01 15.55,13.66 15.9,12.59 15.9,11.29 14.84,7.86 14.25,7.27 12.35,7.15 10.58,6.44 9.87,6.09 9.28,5.26 9.63,3.13 10.82,2.06Z" />
+</vector>

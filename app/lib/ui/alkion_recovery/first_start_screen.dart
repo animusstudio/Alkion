@@ -12,6 +12,7 @@ import '../../identity/alkion_identity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../recovery/backup.dart';
 import '../../recovery/restore.dart';
+import '../../store/local_store.dart';
 import '../../theme/alkion_icon.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/workout_canvas.dart';
@@ -19,8 +20,10 @@ import '../../theme/tokens.dart';
 import '../../theme/typography.dart';
 import '../../widgets/alkion_brand.dart';
 import '../../widgets/alkion_entry_opening.dart';
+import '../../widgets/busy_row.dart';
 import '../../widgets/w_dialog.dart';
-import 'recovery_app.dart' show recoveryCategory;
+import '../export_failure.dart';
+import 'recovery_app.dart' show RecoveryErrorDetails;
 
 /// Optional browser sign-in or account-free setup before a writable runtime exists.
 class AlkionFirstStartApp extends StatelessWidget {
@@ -122,7 +125,12 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
   AnimusConnectionController? _connection;
   bool _busy = false;
   bool _done = false;
-  String? _failure;
+
+  /// The running restore step's label; null when no restore step runs.
+  String? _progress;
+
+  /// The failed action's error; shown through the recovery mapper.
+  Object? _failure;
   @override
   void dispose() {
     _connection?.removeListener(_connectionChanged);
@@ -140,14 +148,11 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
       await action();
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _failure = error is DocumentException
-              ? error.category
-              : recoveryCategory(error),
-        );
+        setState(() => _failure = error);
       }
     } finally {
       if (mounted) {
+        setState(() => _progress = null);
         try {
           final current = await widget.service.freshState();
           if (mounted && current != null) setState(() => _state = current);
@@ -155,7 +160,7 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
           if (mounted) {
             setState(() {
               _state = const FreshRestoreState(canStartLocal: false);
-              _failure = recoveryCategory(error);
+              _failure = error;
             });
           }
         }
@@ -174,10 +179,13 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
           );
     if (documents != null && selected == null) return;
     final path = selected?.path ?? _path.text.trim();
+    if (!mounted) return;
+    final l = AppLocalizations.of(context);
+    setState(() => _progress = l.alkionBackupChecking);
     final verified = await verifyBackupFile(File(path));
     verified.requireWriterVariant();
     if (!mounted) return;
-    final l = AppLocalizations.of(context);
+    setState(() => _progress = null);
     final confirmed = await showWConfirm(
       context,
       title: l.alkionFirstRestoreTitle,
@@ -185,6 +193,7 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
       confirmLabel: l.alkionRestoreConfirm,
     );
     if (confirmed != true || !mounted) return;
+    setState(() => _progress = l.alkionRestoreRunning);
     await widget.service.restore(File(path));
     _done = true;
     await widget.relaunch();
@@ -272,6 +281,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
     final pending = _state.pending;
     final tokens = context.tokens;
     final offline = _offline || !_state.canStartLocal;
+    final failure = _failure == null
+        ? null
+        : recoveryErrorMessage(l, _failure!);
     final connection = _connection;
     final confirming =
         connection?.state == AnimusConnectionState.awaitingConfirmation;
@@ -393,7 +405,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                     liveRegion: true,
                                     child: Text(
                                       offline
-                                          ? l.alkionRestoreFailedBody(_failure!)
+                                          ? l.alkionRestoreFailedBody(
+                                              failure!.message,
+                                            )
                                           : l.alkionEntryFailed,
                                       style: WorkoutType.body(
                                         size: 14,
@@ -401,7 +415,15 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                       ),
                                     ),
                                   ),
+                                  if ((offline ? failure?.details : null)
+                                      case final details?)
+                                    RecoveryErrorDetails(details),
                                 ],
+                                if (_progress != null)
+                                  BusyRow(
+                                    _progress!,
+                                    key: const Key('first-restore-progress'),
+                                  ),
                                 const SizedBox(height: 24),
                                 if (!offline) ...[
                                   if (connection != null) ...[
@@ -574,7 +596,9 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                                   .freshState();
                                               if (current == null ||
                                                   !current.canStartLocal) {
-                                                throw StateError(
+                                                // A stable category, so the
+                                                // mapped message keeps it.
+                                                throw const StoreException(
                                                   'fresh_restore_interrupted',
                                                 );
                                               }
@@ -592,6 +616,10 @@ class _FirstStartScreenState extends State<FirstStartScreen> {
                                       onPressed: busy
                                           ? null
                                           : () => _run(() async {
+                                              setState(
+                                                () => _progress =
+                                                    l.alkionRestoreRunning,
+                                              );
                                               await widget.service
                                                   .completeFresh(
                                                     pending!.restoreId,

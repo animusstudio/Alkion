@@ -6,6 +6,115 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## P3 backup and restore flow — 2026-11-09
+
+Implements the approved [backup and restore flow plan](../plans/2026-11-08-backup-and-restore-flow.md)
+(audit items 5.1 to 5.7 and 1.7, plus the backup-dialog issues found with
+them).
+
+- Restore while a workout is running or starting is refused with "Finish or
+  discard your workout first, then restore." before any file picker opens and
+  before anything is flushed or closed. The host checks again under the session
+  launch fence, which it holds while verifying and releases on every path.
+  After the workout ends, restore works as before (A1).
+- The backup file is picked once: Check and Restore reuse the chosen private
+  copy, whose name and size are shown. A cancelled picker does nothing. The
+  restore confirmation names the file and its creation date (A2).
+- Restore reviews read as counts per kind, for example "Newer than this backup:
+  12 sets", with no IDs or keys on the surface; table names and restore IDs sit
+  under "Show technical details". "Keep all as evidence" asks first, then
+  writes the existing `alkion-restore-decision/1` / `kept_as_evidence` row for
+  every undecided `restore_newer_work` review in one transaction (all of them,
+  not only the first 200). Other review categories and already decided reviews
+  are skipped, a repeat writes nothing, and review evidence stays
+  byte-identical (A3).
+- A backup of another profile gets its own title and the three steps to use
+  it; "Backup verified" is never shown for it, and there is no in-app replace
+  (A4).
+- Create, Check, Restore and Keep all show a progress row with a live-region
+  label, also on the restoring screen and the first-start restore. It goes away
+  when the step ends; under reduced motion it is a still line (A5).
+- A read-only "Stored copies" section lists the sizes of private backups,
+  exports and picker staging; nothing is deleted and unreadable sizes are
+  omitted. "Last backup created" (or "No backup yet"), on the Backup screen and
+  the Profile row, comes from the newest backup file name of this profile; no
+  database write (A6).
+- If the runtime fails to close for a restore, Reopen shows the same working
+  runtime only when the flush barrier itself refused (its Animus connection,
+  workout sender and recovery review stay closed until the next launch). Once
+  teardown began it retries the close and relaunches; a failed retry stays a
+  retryable error, never `profile_in_use` (A7).
+- Backup, restore and first-start errors use the shared mapper: a sentence and
+  at most a small category line, never exception text. An open editor gets
+  "close the editor" guidance; an interrupted restore, a profile that already
+  has data and a changed staging copy get their own sentences; an interrupted
+  fresh restore at first start reads as the retryable interrupted restore, not
+  a foreign backup. New strings exist in en, it, de and es; parity and
+  unused-key tests pass, and the Backup screen holds at 320 dp and 2x text in
+  all four (A8). Explicit exception to A8's "no raw code": by the P1 decision
+  the stable category stays visible as a small mono details line under the
+  sentence; it is never the message and never exception text.
+- Restore re-verifies the chosen file at every step, so a copy that changed
+  after Check is checked again; damaged bytes are refused with a mapped
+  sentence before the confirmation.
+- No backup, evidence, schema or restore-semantics change; restore still
+  re-verifies the backup.
+
+Host checks are listed in the plan's task state. The device check (refused
+restore mid-workout, restore of a fresh backup, Keep all) is open.
+
+## P8 rest alerts and notifications — 2026-11-09
+
+Implements the approved [rest-end alert and notification plan](../plans/2026-11-08-rest-alerts-and-notifications.md)
+(audit items 6.3, 6.5 and 6.6, the next-set body and the dead English bodies).
+The only stored change is one optional settings key; no schema, store,
+backup or draft format change.
+
+- When a rest ends while the workout screen is not in front of the user (app
+  in the background, phone locked, or another tab), the scheduled rest-end
+  notification posts on its own channel `<prefix>rest_end`: high importance
+  (heads-up), vibration, no sound, titled "Rest finished" with the next
+  exercise as body. It replaces the workout notification under the same id
+  (4101) and stays ongoing with the elapsed chronometer. The user tunes or
+  silences it per channel in Android settings; there is no in-app switch (A1).
+- With the workout screen open in the foreground the alert is not scheduled
+  (the quiet mirror is used) and the screen's own haptics mark the end: one
+  buzz. Opening or closing the screen and leaving or returning to the app
+  reschedule the matching variant. In the background the open screen neither
+  buzzes nor stops the rest; the resume reconciliation stops it. A rest that
+  ended more than 2 s before the screen's first foreground tick (timers frozen
+  while locked, or the screen opened late) gets no buzz or "Rest over"
+  announcement, since the notification already marked it. A screen visible
+  but not resumed (shade, split screen) keeps rebuilding its timers (A1).
+- Ghost cleanup (owner decision 2026-11-09): at runtime open, after the draft
+  is loaded, when no workout is active and no start or resume is running,
+  Alkion cancels its workout notification id 4101, which also cancels any
+  scheduled rest-end alert. An active or resuming workout is never cancelled.
+- The rest countdown and the rest-end post name the next exercise, "Next ·
+  name" (catalog display label or exercise name, no weights), in en, it, de
+  and es. With nothing pending the countdown says "Rest" and the rest-end post
+  shows the workout name (A2).
+- Notifications use a monochrome 24 dp vector glyph,
+  `drawable/ic_stat_alkion.xml`, traced from the approved character icon, with
+  a resource keep rule so release shrinking cannot drop it (A3).
+- The workout notification never asks for permission. At the first workout
+  start, after admission and before the workout opens, a one-line explainer
+  appears when notifications are off; Continue shows the Android prompt, Not
+  now starts the workout normally (the existing "notifications are off" toast
+  follows). The answer is remembered in the optional settings key
+  `notifications_explained` (absent means not yet explained). A user who
+  already allowed notifications sees nothing (A4).
+- The payload mapping no longer carries English body strings (A5).
+- The +30s action, its id `<prefix>add_30s` and its wiring are unchanged; the
+  quiet mirror channel `<prefix>workout_session` is unchanged. Arb parity and
+  unused-key tests pass (A6).
+- The inexact-alarm notice stays removed: exact scheduling when allowed,
+  `inexactAllowWhileIdle` otherwise (the alert may then be late).
+
+Host checks are listed in the plan's task state. Native rendering (heads-up,
+vibration, channel settings, glyph, release resources) is not provable on the
+host; the device check is open.
+
 ## P7 live workout flow — 2026-11-09
 
 Implements the approved [live workout flow plan](../plans/2026-11-08-live-workout-flow.md)

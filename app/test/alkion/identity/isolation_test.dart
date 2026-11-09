@@ -281,5 +281,6 @@ void main() {
     );
     expect(notification, contains('AlkionIdentity.notificationChannel'));
     expect(notification, contains('AlkionIdentity.addRestAction'));
+    expect(notification, contains('AlkionIdentity.restEndChannel'));
   });
 }

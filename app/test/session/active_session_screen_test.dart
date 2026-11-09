@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -1370,6 +1371,78 @@ void main() {
     },
   );
 
+  testWidgets(
+    'backgrounded, the open screen leaves the rest end to the notification',
+    (tester) async {
+      final haptics = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method.startsWith('HapticFeedback')) {
+            haptics.add(call.method);
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final a = SetState(
+        id: 'a',
+        weightKg: 60,
+        reps: 8,
+        rir: 1,
+        isWarmup: false,
+        done: false,
+      );
+      controller.seedForTest(
+        _draftWith([
+          _block(warm: [], work: [a]),
+        ]),
+      );
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump();
+      final manager = tester
+          .element(find.byType(ActiveSessionScreen))
+          .read<SessionManager>();
+      expect(manager.screenOpen, isTrue);
+
+      // Phone locked with the screen open: a rest that ends meanwhile neither
+      // buzzes here nor is stopped here, so the scheduled alert stands.
+      manager.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(manager.restEndAlertWanted, isTrue);
+      final start = DateTime.now().subtract(const Duration(seconds: 30));
+      controller.setRestRaw(start, 10);
+      await tester.pump(const Duration(seconds: 2));
+      expect(controller.restStart, start);
+      expect(haptics, isEmpty);
+
+      // Back in front: the over rest is stopped without a late second buzz.
+      manager.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      expect(manager.restEndAlertWanted, isFalse);
+      await tester.pump(const Duration(seconds: 1));
+      expect(controller.restStart, isNull);
+      expect(haptics, isEmpty);
+
+      // In the foreground the screen still marks the end itself.
+      controller.setRestRaw(DateTime.now(), 60);
+      await tester.pump(const Duration(seconds: 1));
+      controller.setRestRaw(
+        DateTime.now().subtract(const Duration(seconds: 10)),
+        10,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(haptics, contains('HapticFeedback.vibrate'));
+      expect(controller.restStart, isNull);
+      await _teardown(tester);
+    },
+  );
+
   for (final code in ['en', 'de', 'es', 'it']) {
     testWidgets(
       'after a catalog log, Next names the set and values at 320dp 2× $code',
@@ -1406,4 +1479,77 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'timers frozen while locked: a rest that ended meanwhile gets no late buzz',
+    (tester) async {
+      final haptics = <String>[], said = <String>[];
+      final messenger = tester.binding.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method.startsWith('HapticFeedback')) {
+          haptics.add(call.method);
+        }
+        return null;
+      });
+      messenger.setMockDecodedMessageHandler<Object?>(
+        SystemChannels.accessibility,
+        (message) async {
+          final map = message as Map<Object?, Object?>;
+          if (map['type'] == 'announce') {
+            said.add(
+              (map['data'] as Map<Object?, Object?>)['message'] as String,
+            );
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+        messenger.setMockDecodedMessageHandler<Object?>(
+          SystemChannels.accessibility,
+          null,
+        );
+      });
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      controller.seedForTest(
+        _draftWith([
+          _block(
+            warm: [],
+            work: [
+              SetState(
+                id: 'a',
+                weightKg: 60,
+                reps: 8,
+                rir: 1,
+                isWarmup: false,
+                done: false,
+              ),
+            ],
+          ),
+        ]),
+      );
+      controller.setRestRaw(DateTime.now(), 60);
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump(const Duration(seconds: 1));
+      final manager = tester
+          .element(find.byType(ActiveSessionScreen))
+          .read<SessionManager>();
+      expect(haptics, isEmpty, reason: 'rest still running, guards armed');
+
+      // Locked with no tick at all while paused; on unlock the rest has been
+      // over for 10 s (the rest-end notification already marked it).
+      manager.didChangeAppLifecycleState(AppLifecycleState.paused);
+      controller.setRestRaw(
+        DateTime.now().subtract(const Duration(seconds: 70)),
+        60,
+      );
+      manager.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await tester.pump(const Duration(seconds: 1));
+      expect(controller.restStart, isNull, reason: 'the over rest is stopped');
+      expect(haptics, isEmpty);
+      expect(said, isEmpty);
+      await _teardown(tester);
+    },
+  );
 }

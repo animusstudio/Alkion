@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../domain/evidence.dart';
 import '../files/document_access.dart';
 import '../store/local_store.dart';
 import 'backup.dart';
 import 'restore.dart';
+import 'stored_copies.dart';
 
 /// The running app's backup/restore entry. Backups flush owed durable input
 /// first; restore closes the running store before any selection and presents
@@ -15,6 +17,19 @@ abstract interface class RecoveryHost {
   Future<VerifiedBackup> verifyBackup(String path);
   Future<void> restoreBackup(String path);
   String get profileId;
+
+  /// Whether a workout is running or starting. Restore is refused while it
+  /// is: the screen asks before any picker opens, and [restoreBackup] checks
+  /// again under the session launch fence.
+  bool get workoutActive;
+
+  /// When the newest backup of this profile in the private backup directory
+  /// was created, read from its file name; null when there is none. Read
+  /// only: nothing is stored in the database.
+  Future<DateTime?> lastBackupCreated();
+
+  /// Sizes of the private copies kept on this device. Read only.
+  Future<StoredCopySizes> storedCopies();
 }
 
 /// Save a coherent existing backup; verification is against the completed
@@ -109,12 +124,53 @@ final class RestoreReviews {
       tx.profileId,
       reviewId,
       'decision',
-      localBytes({
-        'format': 'alkion-restore-decision/1',
-        'decision': 'kept_as_evidence',
-      }),
+      _keptDecision(),
       OperationInstant.now().text,
     ]);
+  });
+
+  /// Undecided newer-work reviews counted by table and disposition, over all
+  /// of them (not capped like [pending]). The unknown-loss review has a null
+  /// table. Ordered by table, then disposition.
+  Future<List<PendingReviewGroup>> pendingSummary() => db.readTransaction(
+    (tx) async => [
+      for (final row in await tx.getAll(
+        "SELECT json_extract(CAST(r.evidence_bytes AS TEXT),'\$.table') AS review_table, json_extract(CAST(r.evidence_bytes AS TEXT),'\$.disposition') AS disposition, COUNT(*) AS n FROM reviews r LEFT JOIN review_decisions d ON d.profile_id=r.profile_id AND d.review_id=r.review_id WHERE r.profile_id=? AND r.category=? AND d.review_id IS NULL GROUP BY review_table,disposition ORDER BY review_table,disposition",
+        [tx.profileId, newerWorkCategory],
+      ))
+        PendingReviewGroup(
+          table: row['review_table'] as String?,
+          disposition: row['disposition'] as String? ?? '',
+          count: row['n'] as int,
+        ),
+    ],
+  );
+
+  /// Records the same explicit [keep] decision for every undecided
+  /// [newerWorkCategory] review, in one write transaction. Reviews of any
+  /// other category and reviews already decided are left alone; the review
+  /// evidence is never touched. Nothing is replayed or deleted. Returns how
+  /// many decisions were written, so a repeat returns 0.
+  Future<int> keepAll() => db.writeTransaction((tx) async {
+    const undecided =
+        'FROM reviews r LEFT JOIN review_decisions d ON d.profile_id=r.profile_id AND d.review_id=r.review_id WHERE r.profile_id=? AND r.category=? AND d.review_id IS NULL';
+    final count =
+        (await tx.get('SELECT COUNT(*) AS n $undecided', [
+              tx.profileId,
+              newerWorkCategory,
+            ]))['n']
+            as int;
+    if (count == 0) return 0;
+    await tx.execute(
+      "INSERT INTO review_decisions SELECT r.profile_id,r.review_id,'decision',?,? $undecided",
+      [
+        _keptDecision(),
+        OperationInstant.now().text,
+        tx.profileId,
+        newerWorkCategory,
+      ],
+    );
+    return count;
   });
 
   /// Any future sender must stay closed while newer work from a restore is
@@ -133,6 +189,27 @@ final class RestoreReviews {
       'automatic_replay': 'never',
     };
   });
+}
+
+/// The existing keep decision, byte for byte the same for [RestoreReviews.keep]
+/// and [RestoreReviews.keepAll].
+Uint8List _keptDecision() => localBytes({
+  'format': 'alkion-restore-decision/1',
+  'decision': 'kept_as_evidence',
+});
+
+/// Undecided newer-work reviews of one table and disposition.
+final class PendingReviewGroup {
+  const PendingReviewGroup({
+    required this.table,
+    required this.disposition,
+    required this.count,
+  });
+
+  /// Null for the unknown-loss review of an unreadable previous state.
+  final String? table;
+  final String disposition;
+  final int count;
 }
 
 Map<String, Object?> _json(Object? bytes) => Map<String, Object?>.from(

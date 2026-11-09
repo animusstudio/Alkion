@@ -4,12 +4,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../identity/alkion_identity.dart';
 import '../../l10n/app_localizations.dart';
 import '../../recovery/restore.dart';
-import '../../store/generation_selection.dart';
-import '../../store/local_store.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/workout_canvas.dart';
 import '../../theme/tokens.dart';
 import '../../theme/typography.dart';
+import '../../widgets/busy_row.dart';
+import '../export_failure.dart';
 
 enum _Kind { restored, failed, interrupted }
 
@@ -102,12 +102,6 @@ class AlkionRecoveryApp extends StatelessWidget {
   );
 }
 
-String recoveryCategory(Object error) => switch (error) {
-  StoreException(:final category) => category,
-  GenerationSelectionException(:final category) => category,
-  _ => '$error',
-};
-
 class _RecoveryBody extends StatefulWidget {
   const _RecoveryBody({required this.app});
   final AlkionRecoveryApp app;
@@ -117,7 +111,7 @@ class _RecoveryBody extends StatefulWidget {
 
 class _RecoveryBodyState extends State<_RecoveryBody> {
   bool _busy = false;
-  String? _failure;
+  Object? _failure;
 
   Future<void> _act(Future<void> Function() action) async {
     if (_busy) return;
@@ -128,7 +122,7 @@ class _RecoveryBodyState extends State<_RecoveryBody> {
     try {
       await action();
     } catch (e) {
-      if (mounted) setState(() => _failure = recoveryCategory(e));
+      if (mounted) setState(() => _failure = e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -140,17 +134,21 @@ class _RecoveryBodyState extends State<_RecoveryBody> {
     final tokens = context.tokens;
     final app = widget.app;
     final pending = app.pending.isEmpty ? null : app.pending.first;
+    final failed = app._kind == _Kind.failed
+        ? recoveryErrorMessage(l, app.error!)
+        : null;
     final (title, body) = switch (app._kind) {
       _Kind.restored => (l.alkionRestoreDoneTitle, l.alkionRestoreDoneBody),
       _Kind.failed => (
         l.alkionRestoreFailedTitle,
-        l.alkionRestoreFailedBody(recoveryCategory(app.error!)),
+        l.alkionRestoreFailedBody(failed!.message),
       ),
       _Kind.interrupted => (
         l.alkionRestoreInterruptedTitle,
         l.alkionRestoreInterruptedBody,
       ),
     };
+    final retry = _failure == null ? null : recoveryErrorMessage(l, _failure!);
     Widget button(String label, Key key, Future<void> Function() action) =>
         FilledButton(
           key: key,
@@ -189,6 +187,8 @@ class _RecoveryBodyState extends State<_RecoveryBody> {
                         body,
                         style: WorkoutType.body(size: 16, color: tokens.dim),
                       ),
+                      if (failed?.details case final details?)
+                        RecoveryErrorDetails(details),
                       if (pending != null) ...[
                         const SizedBox(height: 12),
                         Text(
@@ -196,18 +196,20 @@ class _RecoveryBodyState extends State<_RecoveryBody> {
                           style: WorkoutType.mono(size: 12, color: tokens.dim),
                         ),
                       ],
-                      if (_failure != null) ...[
+                      if (retry != null) ...[
                         const SizedBox(height: 12),
                         Semantics(
                           liveRegion: true,
                           child: Text(
-                            l.alkionRestoreFailedBody(_failure!),
+                            l.alkionRestoreFailedBody(retry.message),
                             style: WorkoutType.body(
                               size: 14,
                               color: tokens.danger,
                             ),
                           ),
                         ),
+                        if (retry.details case final details?)
+                          RecoveryErrorDetails(details),
                       ],
                       const SizedBox(height: 24),
                       Column(
@@ -280,16 +282,34 @@ class AlkionRestoringApp extends StatelessWidget {
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 48, 24, 32),
-                child: Text(
-                  AppLocalizations.of(context).alkionRestoreRunning,
-                  textAlign: TextAlign.center,
-                  style: WorkoutType.body(size: 16, color: context.tokens.dim),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: BusyRow(
+                    AppLocalizations.of(context).alkionRestoreRunning,
+                    key: const Key('restore-progress'),
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
+    ),
+  );
+}
+
+/// The stable category under a mapped recovery message: a small mono line,
+/// never the message itself and never exception text.
+class RecoveryErrorDetails extends StatelessWidget {
+  const RecoveryErrorDetails(this.details, {super.key});
+  final String details;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Text(
+      details,
+      style: WorkoutType.mono(size: 12, color: context.tokens.dim),
     ),
   );
 }

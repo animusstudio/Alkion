@@ -11,6 +11,17 @@ import 'workout_notification.dart';
 import 'notification_action.dart';
 import '../identity/alkion_identity.dart';
 
+/// The exercise the notification names as next: the catalog display label of
+/// the next pending set (or of its block), else its exercise name; null when
+/// nothing is pending.
+String? notificationNextName(ActiveSessionController c) {
+  final next = c.nextPendingSet;
+  if (next == null) return null;
+  return next.set.catalog?.selection.displayLabel ??
+      next.block.catalogSelection?.displayLabel ??
+      next.block.exercise.name;
+}
+
 /// App-scoped owner. SQLite commits precede adoption and notification mirrors.
 class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   SessionManager({FinishedSessionStore? finishedStore, this.draftStore})
@@ -35,7 +46,27 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       } else {
         notifyListeners();
       }
+      // The rest-end schedule depends on whether the screen is open.
+      _refreshInBackground();
     }
+  }
+
+  bool _appForeground = true;
+
+  /// Whether the app is in front of the user (lifecycle `resumed`).
+  bool get appForeground => _appForeground;
+
+  /// The rest-end alert is wanted unless the workout screen is open in front
+  /// of the user; then its own haptics mark the end, so there is one buzz.
+  bool get restEndAlertWanted => !(_screenOpen && _appForeground);
+
+  void _refreshInBackground() {
+    if (_active == null || _disposed) return;
+    unawaited(
+      refreshNotifications().catchError((Object error) {
+        _reportPersistence(error);
+      }),
+    );
   }
 
   bool _disposed = false;
@@ -61,7 +92,20 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       },
     );
     if (launch != null) await handleNotificationResponse(launch);
+    await _clearGhostNotification(value);
     await refreshNotifications();
+  }
+
+  /// At runtime open with no active workout (the draft was already loaded),
+  /// cancels Alkion's workout notification and any scheduled rest-end alert:
+  /// both use id 4101, and the plugin's cancel removes the pending alarm too.
+  /// Never while a workout is active or a launch (start/resume) is running.
+  Future<void> _clearGhostNotification(WorkoutNotification value) async {
+    await _responseTail;
+    if (_active != null || _launching || _notificationsClosed || _disposed) {
+      return;
+    }
+    await value.cancel();
   }
 
   void _notificationStatusChanged() {
@@ -132,6 +176,8 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       restStart: c.restStart,
       restTotal: c.restTotal,
       action: action,
+      nextName: notificationNextName(c),
+      alertAtRestEnd: restEndAlertWanted,
     );
   }
 
@@ -217,6 +263,8 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Set first: the refresh below schedules the matching rest-end variant.
+    _appForeground = state == AppLifecycleState.resumed;
     if (state == AppLifecycleState.resumed) {
       _recheckFinished(DateTime.now());
       unawaited(

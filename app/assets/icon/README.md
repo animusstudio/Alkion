@@ -27,5 +27,13 @@ scale. The source geometry remains unchanged by both outer compositions.
 
 `generation.json` records composition settings and input/output hashes. CPU
 Chromium PNG bytes may vary with renderer versions. Android resources are
-regenerated from the checked-in config and inputs; the application manifest and
-existing notification initialization both continue resolving `@mipmap/ic_launcher`.
+regenerated from the checked-in config and inputs; the application manifest
+resolves `@mipmap/ic_launcher`.
+
+Notifications use `@drawable/ic_stat_alkion`
+(`android/app/src/main/res/drawable/ic_stat_alkion.xml`), a hand-checked 24dp
+white-on-transparent vector derived from the approved icon: the glyphs of
+`alkion-icon-1024.png` merged into one silhouette, its outer contour traced,
+simplified and fitted with a 1dp margin. It is not produced by
+`make -C app brand-icons`; redraw it when the character form changes.
+`res/raw/keep.xml` keeps it through release resource shrinking.

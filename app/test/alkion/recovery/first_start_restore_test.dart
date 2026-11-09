@@ -399,6 +399,16 @@ void main() {
           tester,
           find.textContaining('fresh_restore_interrupted'),
         );
+        // The retryable interrupted-restore sentence, not the foreign-backup
+        // one; the category is only the small details line.
+        expect(
+          find.textContaining(
+            'The restore was interrupted before it finished. The backup file is fine; try again.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('another profile'), findsNothing);
+        expect(find.text('fresh_restore_interrupted'), findsOneWidget);
         expect(localCalls, 0);
         expect(root.existsSync(), isFalse);
         expect(find.byKey(const Key('first-start-local')), findsNothing);

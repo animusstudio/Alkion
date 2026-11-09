@@ -66,12 +66,14 @@ void main() {
       expect(dev.preferencePrefix, 'alkion.dev.');
       expect(dev.notificationChannel, 'alkion.dev.workout_session');
       expect(dev.addRestAction, 'alkion.dev.add_30s');
+      expect(dev.restEndChannel, 'alkion.dev.rest_end');
       expect(supported.applicationId, 'dev.animusstudio.alkion');
       expect(supported.displayName, 'Alkion');
       expect(supported.preferencePrefix, 'alkion.');
       expect(supported.credentialPrefix, 'alkion.auth.');
       expect(supported.notificationChannel, 'alkion.workout_session');
       expect(supported.addRestAction, 'alkion.add_30s');
+      expect(supported.restEndChannel, 'alkion.rest_end');
       for (final variant in AlkionVariant.values) {
         variant.requireNativeIdentity(nativeIdentity(variant));
         final other = variant == dev ? supported : dev;
