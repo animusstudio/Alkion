@@ -169,6 +169,21 @@ device measurement and needs the coordinator's phone access, so the coordinator 
     - a double tap can stack two sheets, as in the catalog picker
     - the sheet title uses the display name
 
+- **T3 Rest bar and accent: done, review PASS** (Sonnet `high`). Code `ce2907d` and `afbede0`,
+  tests `5bc3075` and `ab9ca41`, merged.
+  - **Rest line:** a `Ticker` paints the fill per frame through a `CustomPaint` with
+    `repaint: fraction` in a `RepaintBoundary`, so it does no per-frame rebuild or layout. It
+    re-anchors after sleep. Under reduced motion it stays stepped.
+  - **Accent:** the all-done block badge is filled with `accent` and its check drawn in
+    `accentInk`, tested at 3:1 or better for all 7 accents. The rest fill and the done/total line
+    already used the accent.
+  - **Fix re-check** (Sonnet `low`): PASS.
+  - **Checks:** `test/session test/shell test/layout test/l10n` → +777; analyze clean.
+  - **PR notes:**
+    - A5's "four places" is loose: older accent uses (the card outline, the set number,
+      +30s, units) predate this plan.
+    - The m2 re-anchor has no test, because the fake clock never lags.
+
 ## Next
 
 T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
