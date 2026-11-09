@@ -215,9 +215,13 @@ after T1 passes review.
   `storage.md` and a dated `acceptance.md` entry. Checks: focused T3 set 128
   passed, `analyze` and `format` clean. The "next open" is the quarantine
   function on a reopened store, since T2 wires `AlkionRuntime.open`.
-  `alkion-backup-recovery` does not compile: since `d8e4873` (P3)
-  `recovery_host.dart` imports `stored_copies.dart` → `path_provider` →
-  Flutter `dart:ui`, which `dart run` can't load. Not fixed here; no case ran.
+  `alkion-backup-recovery` didn't compile at first: `d8e4873` (P3) had
+  made `recovery_host.dart` import Flutter through `stored_copies.dart`. The
+  coordinator fixed this on the F1 branch: `6862fac` splits `stored_copies`
+  so `recovery_host` is Flutter-free, and `c422d62` updates the stale
+  `unsupported_version` case. The target now passes 26/26. Review findings
+  (vacuous export check, no `replayCompleteness` blocking control, no
+  post-backup newer-work assertion) were fixed in a follow-up commit.
 
 ## Next
 

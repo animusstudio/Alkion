@@ -259,6 +259,12 @@ void main() {
           }
           // Only the post-backup bodyweight is newer work; the kept rows are
           // not, because the backup already holds them.
+          final postBackup = _newerWork(
+            restored,
+          )['bodyweight_logs|${jsonEncode([store.profileId, 'bw-after'])}'];
+          expect(postBackup?['disposition'], 'newer_than_backup');
+          expect((postBackup!['previous_row'] as Map)['id'], 'bw-after');
+          expect(postBackup['backup_row'], isNull);
           expect(
             _newerWork(restored).keys.where(
               (k) =>
@@ -625,6 +631,40 @@ void main() {
               ),
             ],
           );
+          // Every kept byte, as an export would write it: a BLOB as its
+          // base64 (exports encode BLOBs as `{blob_base64}`), the TEXT
+          // payload as stored and JSON-escaped.
+          final kept = <String>{};
+          for (final row in await store.getAll(
+            "SELECT payload_bytes FROM local_state WHERE status='quarantined'",
+          )) {
+            final payload = row['payload_bytes'];
+            if (payload is List) {
+              kept.add(base64.encode(payload.cast<int>()));
+            } else {
+              kept
+                ..add(payload as String)
+                ..add(jsonEncode(payload));
+            }
+          }
+          for (final row in await store.getAll(
+            "SELECT r.evidence_bytes AS b FROM reviews r WHERE r.category=? UNION ALL SELECT d.decision_bytes FROM review_decisions d WHERE d.review_id LIKE 'wq-%'",
+            [workflowQuarantineCategory],
+          )) {
+            kept.add(base64.encode((row['b'] as List).cast<int>()));
+          }
+          expect(kept, hasLength(6), reason: '2 BLOBs, TEXT twice, 2 reviews');
+          // Positive control: a BLOB the domain export does carry is found
+          // by the same base64 search.
+          final revision = await store.get(
+            "SELECT payload_bytes FROM record_revisions WHERE record_id='bw-1'",
+          );
+          expect(
+            exported.first,
+            contains(
+              base64.encode((revision['payload_bytes'] as List).cast<int>()),
+            ),
+          );
           for (final text in exported) {
             expect(text, contains('bw-1'));
             for (final id in ids) {
@@ -632,10 +672,25 @@ void main() {
             }
             expect(text, isNot(contains(workflowQuarantineCategory)));
             expect(text, isNot(contains('quarantined')));
-            expect(text, isNot(contains('synthetic-damaged')));
+            for (final bytes in kept) {
+              expect(text, isNot(contains(bytes)));
+            }
           }
 
-          // Control: a restore review does block the same gates.
+          // Controls: a malformed queue review blocks replay, and a restore
+          // review blocks the transport and upload gates.
+          await store.writeTransaction(
+            (tx) => tx.addReview(
+              id: 'rv-synthetic-queue-control',
+              category: 'queue_malformed',
+              evidence: localBytes({'synthetic': true}),
+            ),
+          );
+          expect(await IncomingQuarantine(store).replayCompleteness(), {
+            'replay': 'blocked',
+            'blocking_reviews': 1,
+            'automatic_replay': 'never',
+          });
           await store.writeTransaction(
             (tx) => tx.addReview(
               id: 'rv-synthetic-control',
