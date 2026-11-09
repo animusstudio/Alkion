@@ -206,6 +206,11 @@ local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:`
   - (3) The source guard also matches comments, which is conservative.
   (2) and (3) are PR follow-ups.
 
+- **Coordinator fix `5e7d31a7`.** U2 found that the Undo toast split a word at 320 dp and 2x in
+  de, es and it ("Satz 1 ge|speichert"). The content is now a `FitLabel`. A new German test
+  fails without the fix.
+  - Checks: `test/widgets test/theme test/shell` → +525 pass; analyze clean.
+
 ## Next
 
 T1 and T2 done; T2 independent review, then the integrated full suite and device check.

@@ -4,6 +4,7 @@ import '../theme/alkion_icon.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
+import 'fit_label.dart';
 
 /// The bottom inset that keeps a floating toast fully above `AppShell`'s tab
 /// bar. The Scaffold already lifts floating SnackBars over the system
@@ -181,7 +182,15 @@ class _ToastContent extends StatelessWidget {
             children: [
               AlkionIcon(glyph, size: 20, color: glyphColor),
               const SizedBox(width: 12),
-              Expanded(child: Text(text)),
+              // FitLabel shrinks before it would split a word, e.g. a German
+              // "Satz 1 gespeichert" beside Undo at 320 dp and 2x text.
+              Expanded(
+                child: FitLabel(
+                  text,
+                  maxLines: 4,
+                  style: DefaultTextStyle.of(context).style,
+                ),
+              ),
             ],
           ),
         ),
