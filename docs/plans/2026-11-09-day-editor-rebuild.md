@@ -262,6 +262,12 @@ T3 after both; T4 (ARBs) last.
       - the editor's Load seed
     - The fold animation keeps the body reachable for ~200 ms.
 
+- **Integration:** branch `feat/ui-declutter-20261109` combines the audit P1–P8 work with U1–U5.
+  - At `e01958f`: `make -C app test TEST=--concurrency=2` → +3495 ~3 −3. The only failures
+    are the three inherited `catalog_metric_controls_test.dart` ones. Analyze is clean and
+    `format` reports 0 changed.
+  - The later merges (review records, audit plan records `03d1ff4`) change docs only.
+
 ## Next
 
 Code-complete. Integrated in `feat/ui-declutter-20261109`; full suite, Dev APK and owner device check follow.
