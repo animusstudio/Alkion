@@ -237,7 +237,16 @@ _WorkloadView _defaultView(WorkoutWorkload w) {
   return _views.first;
 }
 
-String _regionLabel(BuildContext context, WorkloadMuscle muscle) {
+/// The region counts the figure, its sheet and [BodyWorkloadCounts] show:
+/// the first view with loaded evidence (strength, then stretch, mobility,
+/// conditioning, then legacy groups). Counts overlap across regions, so they
+/// are never summed.
+Map<WorkloadMuscle, MuscleWorkload> workloadDisplayCounts(
+  WorkoutWorkload workload,
+) => _defaultView(workload).counts(workload);
+
+/// The localized name of one surface region, as the sheet lists it.
+String workloadRegionLabel(BuildContext context, WorkloadMuscle muscle) {
   final l = AppLocalizations.of(context);
   return switch (muscle) {
     WorkloadMuscle.glutes => l.bodyGlutes,
@@ -404,7 +413,7 @@ class BodyWorkloadCounts extends StatelessWidget {
         style: WorkoutType.body(size: 14, color: t.dim),
       );
     }
-    final counts = _defaultView(workload).counts(workload);
+    final counts = workloadDisplayCounts(workload);
     Widget cell(WorkloadMuscle muscle) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -412,7 +421,7 @@ class BodyWorkloadCounts extends StatelessWidget {
         children: [
           Expanded(
             child: FitLabel(
-              _regionLabel(context, muscle),
+              workloadRegionLabel(context, muscle),
               maxLines: 2,
               style: WorkoutType.body(size: 14, color: t.text),
             ),
@@ -612,9 +621,7 @@ class _BodyArtworkState extends State<_BodyArtwork> {
             ? CharacterBodyStyle.female
             : CharacterBodyStyle.male,
         scores: {
-          for (final entry in _defaultView(
-            widget.workload,
-          ).counts(widget.workload).entries)
+          for (final entry in workloadDisplayCounts(widget.workload).entries)
             entry.key: entry.value.score,
         },
         neutral: t.text,

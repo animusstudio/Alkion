@@ -28,8 +28,10 @@ RepPair? qualifiedRepPair(
   return (low: low, high: high);
 }
 
-/// Null means retained unavailable evidence. Only truly absent pairs fall back.
-RepPair? resolveRepPair(Slot slot, Exercise exercise) {
+/// The rep pair a slot or, failing that, its exercise authors, without the
+/// built-in fallback. Null when neither holds any rep evidence; otherwise
+/// `reps` is the qualified pair, or null for retained unavailable evidence.
+({RepPair? reps})? authoredRepPair(Slot slot, Exercise exercise) {
   if (_hasEvidence(
     slot.repLow,
     slot.repHigh,
@@ -37,10 +39,12 @@ RepPair? resolveRepPair(Slot slot, Exercise exercise) {
     'target_rep_low',
     'target_rep_high',
   )) {
-    return qualifiedRepPair(
-      slot.repLow,
-      slot.repHigh,
-      rawFields: slot.rawFields,
+    return (
+      reps: qualifiedRepPair(
+        slot.repLow,
+        slot.repHigh,
+        rawFields: slot.rawFields,
+      ),
     );
   }
   if (_hasEvidence(
@@ -50,17 +54,42 @@ RepPair? resolveRepPair(Slot slot, Exercise exercise) {
     'default_rep_low',
     'default_rep_high',
   )) {
-    return qualifiedRepPair(
-      exercise.defaultRepLow,
-      exercise.defaultRepHigh,
-      rawFields: exercise.rawFields,
-      lowKey: 'default_rep_low',
-      highKey: 'default_rep_high',
+    return (
+      reps: qualifiedRepPair(
+        exercise.defaultRepLow,
+        exercise.defaultRepHigh,
+        rawFields: exercise.rawFields,
+        lowKey: 'default_rep_low',
+        highKey: 'default_rep_high',
+      ),
     );
   }
-  return (low: 8, high: 8);
+  return null;
 }
 
+/// Null means retained unavailable evidence. Only truly absent pairs fall back.
+RepPair? resolveRepPair(Slot slot, Exercise exercise) {
+  final authored = authoredRepPair(slot, exercise);
+  return authored == null ? (low: 8, high: 8) : authored.reps;
+}
+
+/// The reps part of a prescription: `8` or `8–12`, or [unavailable] for
+/// retained evidence that does not qualify.
+String formatRepPair(RepPair? reps, {String unavailable = '…'}) =>
+    reps == null ? unavailable : rirToString(reps.low, reps.high);
+
+/// Working sets times reps: `3×8` or `3×8–12`.
+String formatSetsReps({
+  required int workSets,
+  required RepPair? reps,
+  String unavailable = '…',
+}) => '$workSets×${formatRepPair(reps, unavailable: unavailable)}';
+
+/// A resolved RIR target: `RIR 2` or `RIR 0–1`.
+String formatRirTarget(int low, int high) => 'RIR ${rirToString(low, high)}';
+
+/// The full one-line prescription, `3×8–12 · RIR 0–1`, composed from the
+/// parts above.
 String formatPrescription({
   required int workSets,
   required RepPair? reps,
@@ -68,9 +97,12 @@ String formatPrescription({
   int? rirHigh,
   String unavailable = '…',
 }) {
-  final repText = reps == null ? unavailable : rirToString(reps.low, reps.high);
-  final rir = rirLow != null && rirHigh != null
-      ? ' · RIR ${rirToString(rirLow, rirHigh)}'
-      : '';
-  return '$workSets×$repText$rir';
+  final base = formatSetsReps(
+    workSets: workSets,
+    reps: reps,
+    unavailable: unavailable,
+  );
+  return rirLow != null && rirHigh != null
+      ? '$base · ${formatRirTarget(rirLow, rirHigh)}'
+      : base;
 }
