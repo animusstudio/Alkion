@@ -835,5 +835,11 @@
   "numberEntryInvalid": "Inserisci un numero",
   "numberEntryMax": "Inserisci {max} o meno",
   "numberEntryMin": "Inserisci {min} o più",
-  "sessionDiscardChangesOnlyMessage": "Questo allenamento e le tue modifiche andranno persi."
+  "sessionDiscardChangesOnlyMessage": "Questo allenamento e le tue modifiche andranno persi.",
+  "dayViewTitle": "Giorno di allenamento",
+  "dayViewEdit": "Modifica",
+  "dayViewWorkingSets": "{count, plural, =1{1 serie allenante} other{{count} serie allenanti}}",
+  "dayViewInactive": "Inattivo. Attiva questo giorno per iniziarlo.",
+  "slotSetCount": "{count, plural, =1{1 serie} other{{count} serie}}",
+  "dayViewExerciseUnavailable": "Esercizio non disponibile"
 }

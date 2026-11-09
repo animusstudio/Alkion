@@ -268,7 +268,8 @@ void main() {
         bench,
       );
       expect(none.hasReps, isFalse);
-      expect(none.labels(en, kg), ['3×']);
+      expect(none.labels(en, kg), [en.slotSetCount(3)]);
+      expect(en.slotSetCount(3), '3 sets');
     });
 
     test('an invalid target or pair is unavailable', () {
@@ -288,13 +289,25 @@ void main() {
       final kgSlot = catalogSlot(
         targets: {'reported_load': metric('60', 'reported_load')},
       );
-      expect(slotSummary(kgSlot, bench).labels(en, kg), ['3×', '60kg']);
-      expect(slotSummary(kgSlot, bench).labels(en, lb), ['3×', '132lb']);
+      expect(slotSummary(kgSlot, bench).labels(en, kg), [
+        en.slotSetCount(3),
+        '60kg',
+      ]);
+      expect(slotSummary(kgSlot, bench).labels(en, lb), [
+        en.slotSetCount(3),
+        '132lb',
+      ]);
       final lbSlot = catalogSlot(
         targets: {'reported_load': metric('135', 'reported_load', unit: 'lb')},
       );
-      expect(slotSummary(lbSlot, bench).labels(en, lb), ['3×', '135lb']);
-      expect(slotSummary(lbSlot, bench).labels(en, kg), ['3×', '61.23kg']);
+      expect(slotSummary(lbSlot, bench).labels(en, lb), [
+        en.slotSetCount(3),
+        '135lb',
+      ]);
+      expect(slotSummary(lbSlot, bench).labels(en, kg), [
+        en.slotSetCount(3),
+        '61.23kg',
+      ]);
       final invalid = catalogSlot(
         targets: {'reported_load': metric('-1', 'reported_load')},
       );

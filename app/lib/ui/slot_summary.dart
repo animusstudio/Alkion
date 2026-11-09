@@ -74,7 +74,8 @@ class SlotSummary {
 
   bool get hasReps => reps != null || repsUnavailable;
 
-  /// One text per chip, in order: sets × reps, RIR, warm-ups, fixed load.
+  /// One text per chip, in order: sets × reps (or the set count when the slot
+  /// has no reps), RIR, warm-ups, fixed load.
   List<String> labels(AppLocalizations l, UnitService units) {
     final load = loadKg?.displayDouble;
     return [
@@ -84,7 +85,7 @@ class SlotSummary {
               reps: reps,
               unavailable: l.trainingUnavailable,
             )
-          : '$workSets×',
+          : l.slotSetCount(workSets),
       if (rir case final rir?)
         formatRirTarget(rir.low, rir.high)
       else if (rirUnavailable)
