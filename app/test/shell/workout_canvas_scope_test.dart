@@ -3,6 +3,7 @@ import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/theme/workout_canvas.dart';
 import 'package:alkion/ui/split_tab.dart';
 import 'package:alkion/ui/day_editor.dart';
+import 'package:alkion/ui/day_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/screen_harness.dart';
@@ -35,10 +36,25 @@ void main() {
         await tester.tap(day);
         await settleUntilFound(
           tester,
+          find.byType(DayView),
+          where: 'Plan day view',
+        );
+        expect(ambient(), isFalse, reason: 'Opaque view hides the canvas');
+        tester.widget<DayView>(find.byType(DayView)).onEdit();
+        await settleUntilFound(
+          tester,
           find.byType(DaySlotRow),
           where: 'Plan editor',
         );
         expect(ambient(), isFalse, reason: 'Opaque editor hides the canvas');
+        await tester.tap(find.byTooltip('Back'));
+        await settleReal(tester);
+        expect(find.byType(DayView), findsOneWidget);
+        expect(
+          ambient(),
+          isFalse,
+          reason: 'Back from the editor shows the view',
+        );
         await tester.tap(find.byTooltip('Back'));
         await settleReal(tester);
         expect(

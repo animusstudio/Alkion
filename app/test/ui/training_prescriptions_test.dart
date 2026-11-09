@@ -437,15 +437,19 @@ void main() {
           );
         }
       });
-      String? edited;
+      String? opened;
       await tester.pumpWidget(
-        h.wrap(Scaffold(body: SplitTab(onOpenEditor: (id) => edited = id))),
+        h.wrap(
+          Scaffold(
+            body: SplitTab(onOpenDay: (id) => opened = id, onEditDay: (_) {}),
+          ),
+        ),
       );
       await settleReal(tester);
       expect(find.text('Inactive (2)'), findsOneWidget);
       expect(find.text('Enable'), findsNWidgets(2));
       await tester.tap(find.text('Pull'));
-      expect(edited, 'd2');
+      expect(opened, 'd2');
       await tester.tap(find.text('Enable').first);
       await settleReal(tester, ticks: 12);
       final days = (await tester.runAsync(
@@ -525,7 +529,11 @@ void main() {
       final fault = FaultDatabase(h.database, beforeCommit: true);
       h.overrideDatabase = fault;
       await tester.pumpWidget(
-        h.wrap(Scaffold(body: SplitTab(onOpenEditor: (_) {}))),
+        h.wrap(
+          Scaffold(
+            body: SplitTab(onOpenDay: (_) {}, onEditDay: (_) {}),
+          ),
+        ),
       );
       await settleReal(tester);
       await tester.tap(findGlyph(AlkionGlyph.more).first);
@@ -773,7 +781,7 @@ void main() {
             }
           }
         });
-        await mount(SplitTab(onOpenEditor: (_) {}));
+        await mount(SplitTab(onOpenDay: (_) {}, onEditDay: (_) {}));
         await check('inactive-retained');
       }
       await h.unmount(tester);
