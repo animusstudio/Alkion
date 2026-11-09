@@ -217,11 +217,13 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                         borderRadius: BorderRadius.circular(AppRadius.control),
                       ),
                       alignment: Alignment.center,
+                      // The all-done check is one of the live page's four
+                      // accent marks; the count stays neutral.
                       child: allDone
                           ? AlkionIcon(
                               AlkionGlyph.check,
                               size: 18,
-                              color: tokens.text,
+                              color: tokens.accentText,
                             )
                           : Text(
                               '$doneWorking/${working.length}',

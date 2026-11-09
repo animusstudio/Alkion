@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../catalog_ui/catalog_set_format.dart';
 import '../l10n/app_localizations.dart';
@@ -380,8 +381,10 @@ class SessionHeader extends StatelessWidget {
                 value: '${clock(remaining)} / ${clock(restTotal)}',
                 child: Column(
                   children: [
-                    _RemainingLine(
-                      fraction: barFraction,
+                    _RestRemainingLine(
+                      start: start,
+                      total: restTotal,
+                      stepped: barFraction,
                       track: tokens.surface3,
                       fill: tokens.accentText,
                     ),
@@ -521,6 +524,123 @@ class _RestChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The rest's remaining-time line. With animations on, a ticker moves the
+/// fill every frame from the rest's real start and end (`start + total`), read
+/// against the wall clock, so +30s and Skip retarget it at once and no fixed
+/// animation duration is involved. The countdown text and the semantics
+/// value still change once per second in the header. Under reduced motion,
+/// outside [TickerMode] (a covered route) or once the rest has run out, no
+/// ticker runs and the line shows the header's per-second [stepped] fraction.
+class _RestRemainingLine extends StatefulWidget {
+  const _RestRemainingLine({
+    required this.start,
+    required this.total,
+    required this.stepped,
+    required this.track,
+    required this.fill,
+  });
+
+  final DateTime start;
+  final int total;
+
+  /// The header's per-second fraction, shown whenever the ticker is off.
+  final double stepped;
+  final Color track;
+  final Color fill;
+
+  @override
+  State<_RestRemainingLine> createState() => _RestRemainingLineState();
+}
+
+class _RestRemainingLineState extends State<_RestRemainingLine>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  late final ValueNotifier<double> _fraction;
+
+  // The ticker's frame clock interpolates between wall-clock anchors. The
+  // header rebuilds every second, which re-anchors on [DateTime.now], so a
+  // clock that stalled while the phone slept cannot drift the line.
+  DateTime _anchorWall = DateTime.now();
+  Duration _anchorElapsed = Duration.zero;
+  Duration _lastElapsed = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onTick);
+    _fraction = ValueNotifier<double>(widget.stepped);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_RestRemainingLine oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _anchor();
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _fraction.dispose();
+    super.dispose();
+  }
+
+  void _anchor() {
+    _anchorWall = DateTime.now();
+    _anchorElapsed = _lastElapsed;
+  }
+
+  /// The continuous remaining fraction at [now].
+  double _fractionAt(DateTime now) {
+    if (widget.total <= 0) return 0;
+    final totalMs = widget.total * 1000;
+    final remainingMs = totalMs - now.difference(widget.start).inMilliseconds;
+    return (remainingMs / totalMs).clamp(0.0, 1.0);
+  }
+
+  /// Starts or stops the ticker for the current rest, motion setting and
+  /// ticker mode, and sets the fraction shown now.
+  void _sync() {
+    final fluid =
+        !MediaQuery.disableAnimationsOf(context) &&
+        TickerMode.valuesOf(context).enabled;
+    final now = DateTime.now();
+    final fraction = fluid ? _fractionAt(now) : widget.stepped;
+    final run = fluid && fraction > 0;
+    if (run && !_ticker.isActive) {
+      _anchorWall = now;
+      _anchorElapsed = _lastElapsed = Duration.zero;
+      _ticker.start();
+    } else if (!run && _ticker.isActive) {
+      _ticker.stop();
+    }
+    _fraction.value = fraction;
+  }
+
+  void _onTick(Duration elapsed) {
+    _lastElapsed = elapsed;
+    final fraction = _fractionAt(_anchorWall.add(elapsed - _anchorElapsed));
+    _fraction.value = fraction;
+    if (fraction <= 0) _ticker.stop();
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<double>(
+    valueListenable: _fraction,
+    builder: (context, fraction, _) => _RemainingLine(
+      fraction: fraction,
+      track: widget.track,
+      fill: widget.fill,
+    ),
+  );
 }
 
 /// A flat two-pixel instrument line. No interpolated animation changes what
