@@ -8,6 +8,9 @@ import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/session_header.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/theme/alkion_icon.dart';
+import 'package:alkion/theme/app_theme.dart';
+import 'package:alkion/theme/tokens.dart';
+import 'package:alkion/widgets/fit_label.dart';
 
 import '../support/l10n_harness.dart';
 import '../support/icon_finders.dart';
@@ -91,6 +94,19 @@ final _draft = SessionDraft(
 void main() {
   late int adds, skips, menus, mins;
   setUp(() => adds = skips = menus = mins = 0);
+
+  // The remaining line is painted: read its fraction and fill from the
+  // painter rather than from a laid-out box.
+  final track = find.byKey(const Key('rest-remaining-track'));
+  RemainingLinePainter linePainter(WidgetTester tester) =>
+      tester
+              .widget<CustomPaint>(
+                find.descendant(of: track, matching: find.byType(CustomPaint)),
+              )
+              .painter!
+          as RemainingLinePainter;
+  double fillOf(WidgetTester tester) => linePainter(tester).fraction.value;
+  Color fillColorOf(WidgetTester tester) => linePainter(tester).fill;
 
   Widget header({
     DateTime? restStart,
@@ -443,12 +459,8 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('rest-total'))).data,
         endpoint,
       );
-      final track = find.byKey(const Key('rest-remaining-track'));
       expect(tester.getSize(track).height, 2);
-      final fill = tester.widget<FractionallySizedBox>(
-        find.descendant(of: track, matching: find.byType(FractionallySizedBox)),
-      );
-      expect(fill.widthFactor, closeTo(fraction, 0.01));
+      expect(fillOf(tester), closeTo(fraction, 0.01));
       final semantics = tester.widget<Semantics>(
         find.byKey(const Key('rest-remaining-value')),
       );
@@ -469,13 +481,7 @@ void main() {
   ) async {
     await tester.pumpWidget(header());
     expect(find.byKey(const Key('rest-scale')), findsNothing);
-    final fill = tester.widget<FractionallySizedBox>(
-      find.descendant(
-        of: find.byKey(const Key('rest-remaining-track')),
-        matching: find.byType(FractionallySizedBox),
-      ),
-    );
-    expect(fill.widthFactor, closeTo(1 / 14, 0.0001));
+    expect(fillOf(tester), closeTo(1 / 14, 0.0001));
   });
 
   for (final code in const ['en', 'de', 'es', 'it']) {
@@ -624,4 +630,207 @@ void main() {
       },
     );
   });
+
+  // ── Fluid rest line (round 2, A4) and the header accents (A5) ────────────
+
+  // Every frame callback still registered: a running ticker holds one.
+  int frameCallbacks(WidgetTester tester) =>
+      tester.binding.transientCallbackCount;
+  // One theme instance for every pump: a fresh `buildTheme` per pump makes
+  // MaterialApp's implicit theme animations run and hold frame callbacks.
+  final themes = {
+    for (final b in Brightness.values) b: buildTheme(b, accents[0]),
+  };
+  Widget steady({
+    DateTime? restStart,
+    int restTotal = 0,
+    DateTime? restEndedAt,
+    bool showRestRow = false,
+    Brightness brightness = Brightness.dark,
+  }) => MaterialApp(
+    theme: themes[brightness],
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(
+      body: SessionHeader(
+        draft: _draft,
+        elapsed: Duration.zero,
+        doneWork: 3,
+        totalWork: 12,
+        prCount: 0,
+        restStart: restStart,
+        restTotal: restTotal,
+        restEndedAt: restEndedAt,
+        showRestRow: showRestRow || restStart != null,
+        nextLabel: 'Next',
+        onMinimize: () {},
+        onMenu: () {},
+        onAdd30s: () {},
+        onSkip: () {},
+      ),
+    ),
+  );
+
+  testWidgets('with animations on the rest fill moves between second ticks', (
+    tester,
+  ) async {
+    await tester.pumpWidget(steady(restStart: DateTime.now(), restTotal: 90));
+    final clock = tester.widget<Text>(find.byKey(const Key('rest-clock'))).data;
+    final first = fillOf(tester);
+    expect(frameCallbacks(tester), greaterThan(0));
+    CustomPaint line() => tester.widget<CustomPaint>(
+      find.descendant(of: track, matching: find.byType(CustomPaint)),
+    );
+    final painted = line();
+    await tester.pump(const Duration(milliseconds: 250));
+    final quarter = fillOf(tester);
+    // A tick repaints the same painter; nothing was rebuilt.
+    expect(line(), same(painted));
+    await tester.pump(const Duration(milliseconds: 250));
+    final half = fillOf(tester);
+    // A quarter second of a 90 s rest each, well inside one second.
+    expect(first - quarter, closeTo(0.25 / 90, 0.001));
+    expect(quarter - half, closeTo(0.25 / 90, 0.001));
+    // The line sits behind its own repaint boundary.
+    expect(
+      find.descendant(of: track, matching: find.byType(RepaintBoundary)),
+      findsOneWidget,
+    );
+    // The countdown text keeps its once-per-second step.
+    expect(
+      tester.widget<Text>(find.byKey(const Key('rest-clock'))).data,
+      clock,
+    );
+  });
+
+  testWidgets('+30s retargets the moving fill at once', (tester) async {
+    final start = DateTime.now().subtract(const Duration(seconds: 45));
+    await tester.pumpWidget(steady(restStart: start, restTotal: 90));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(fillOf(tester), closeTo(45 / 90, 0.01));
+    await tester.pumpWidget(steady(restStart: start, restTotal: 120));
+    expect(fillOf(tester), closeTo(75 / 120, 0.01));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(fillOf(tester), lessThan(75 / 120));
+    expect(frameCallbacks(tester), greaterThan(0));
+  });
+
+  testWidgets('under reduced motion the fill steps per second with no ticker', (
+    tester,
+  ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        FakeAccessibilityFeatures.allOn;
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final start = DateTime.now();
+    await tester.pumpWidget(steady(restStart: start, restTotal: 90));
+    expect(fillOf(tester), 1.0);
+    expect(frameCallbacks(tester), 0);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(fillOf(tester), 1.0);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    // The header's next second-tick rebuild moves it by one whole step.
+    await tester.pumpWidget(
+      steady(
+        restStart: start.subtract(const Duration(seconds: 1)),
+        restTotal: 90,
+      ),
+    );
+    expect(fillOf(tester), 89 / 90);
+    expect(frameCallbacks(tester), 0);
+  });
+
+  testWidgets('the ticker stops when no rest runs, off screen and on dispose', (
+    tester,
+  ) async {
+    await tester.pumpWidget(steady());
+    expect(frameCallbacks(tester), 0);
+    await tester.pumpWidget(steady(showRestRow: true));
+    expect(frameCallbacks(tester), 0);
+
+    await tester.pumpWidget(steady(restStart: DateTime.now(), restTotal: 90));
+    expect(frameCallbacks(tester), greaterThan(0));
+    // Rest over (Skip, or the countdown reached 0): the stepped row returns.
+    await tester.pumpWidget(
+      steady(showRestRow: true, restEndedAt: DateTime.now()),
+    );
+    // Hiding +30s/Skip moves focus, whose one-off rebuild lands next frame.
+    await tester.pump();
+    expect(frameCallbacks(tester), 0);
+
+    // A covered route disables its tickers; the line stops and resumes.
+    final start = DateTime.now();
+    Widget gated(bool enabled) => TickerMode(
+      enabled: enabled,
+      child: steady(restStart: start, restTotal: 90),
+    );
+    await tester.pumpWidget(gated(true));
+    expect(frameCallbacks(tester), greaterThan(0));
+    await tester.pumpWidget(gated(false));
+    expect(frameCallbacks(tester), 0);
+    await tester.pumpWidget(gated(true));
+    expect(frameCallbacks(tester), greaterThan(0));
+
+    await tester.pumpWidget(const SizedBox());
+    expect(frameCallbacks(tester), 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a rest already run out starts no ticker', (tester) async {
+    // Inside the second before the screen ticker stops a finished rest.
+    await tester.pumpWidget(
+      steady(
+        restStart: DateTime.now().subtract(const Duration(milliseconds: 90500)),
+        restTotal: 91,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(fillOf(tester), 0);
+    expect(frameCallbacks(tester), 0);
+  });
+
+  for (final brightness in Brightness.values) {
+    WorkoutTokens tokensFor(Color accent) => brightness == Brightness.dark
+        ? WorkoutTokens.dark(accent)
+        : WorkoutTokens.light(accent);
+
+    testWidgets('the rest fill and set progress use the accent in '
+        '${brightness.name}; their text stays neutral', (tester) async {
+      final tokens = tokensFor(accents[0]);
+      await tester.pumpWidget(steady(brightness: brightness));
+      expect(fillColorOf(tester), tokens.accentText);
+      expect(fillOf(tester), closeTo(3 / 12, 0.0001));
+      final progress = tester.widget<FitLabel>(
+        find.byKey(const Key('session-progress')),
+      );
+      expect(progress.style?.color, tokens.dim);
+
+      await tester.pumpWidget(
+        steady(
+          restStart: DateTime.now(),
+          restTotal: 90,
+          brightness: brightness,
+        ),
+      );
+      expect(fillColorOf(tester), tokens.accentText);
+      expect(
+        tester.widget<Text>(find.byKey(const Key('rest-clock'))).style?.color,
+        tokens.text,
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    test('every accent reads at 3:1 on the rest track and page in '
+        '${brightness.name}', () {
+      for (final accent in accents) {
+        final t = tokensFor(accent);
+        for (final ground in [t.surface3, t.bg]) {
+          expect(
+            contrastRatio(t.accentText, ground),
+            greaterThanOrEqualTo(3),
+            reason: '$accent on $ground',
+          );
+        }
+      }
+    });
+  }
 }

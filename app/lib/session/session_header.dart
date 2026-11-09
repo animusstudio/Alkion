@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../catalog_ui/catalog_set_format.dart';
 import '../l10n/app_localizations.dart';
@@ -380,8 +382,10 @@ class SessionHeader extends StatelessWidget {
                 value: '${clock(remaining)} / ${clock(restTotal)}',
                 child: Column(
                   children: [
-                    _RemainingLine(
-                      fraction: barFraction,
+                    _RestRemainingLine(
+                      start: start,
+                      total: restTotal,
+                      stepped: barFraction,
                       track: tokens.surface3,
                       fill: tokens.accentText,
                     ),
@@ -523,33 +527,213 @@ class _RestChip extends StatelessWidget {
   }
 }
 
+/// The rest's remaining-time line. With animations on, a ticker moves the
+/// fill every frame from the rest's real start and end (`start + total`), read
+/// against the wall clock, so +30s and Skip retarget it at once and no fixed
+/// animation duration is involved. The countdown text and the semantics
+/// value still change once per second in the header. Under reduced motion,
+/// outside [TickerMode] (a covered route) or once the rest has run out, no
+/// ticker runs and the line shows the header's per-second [stepped] fraction.
+class _RestRemainingLine extends StatefulWidget {
+  const _RestRemainingLine({
+    required this.start,
+    required this.total,
+    required this.stepped,
+    required this.track,
+    required this.fill,
+  });
+
+  final DateTime start;
+  final int total;
+
+  /// The header's per-second fraction, shown whenever the ticker is off.
+  final double stepped;
+  final Color track;
+  final Color fill;
+
+  @override
+  State<_RestRemainingLine> createState() => _RestRemainingLineState();
+}
+
+class _RestRemainingLineState extends State<_RestRemainingLine>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  late final ValueNotifier<double> _fraction;
+
+  // The ticker's frame clock interpolates between wall-clock anchors. The
+  // header rebuilds every second, which re-anchors on [DateTime.now], so a
+  // clock that stalled while the phone slept cannot drift the line.
+  DateTime _anchorWall = DateTime.now();
+  Duration _anchorElapsed = Duration.zero;
+  Duration _lastElapsed = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onTick);
+    _fraction = ValueNotifier<double>(widget.stepped);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_RestRemainingLine oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _anchor();
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _fraction.dispose();
+    super.dispose();
+  }
+
+  void _anchor() {
+    _anchorWall = DateTime.now();
+    _anchorElapsed = _lastElapsed;
+  }
+
+  /// The continuous remaining fraction at [now].
+  double _fractionAt(DateTime now) {
+    if (widget.total <= 0) return 0;
+    final totalMs = widget.total * 1000;
+    final remainingMs = totalMs - now.difference(widget.start).inMilliseconds;
+    return (remainingMs / totalMs).clamp(0.0, 1.0);
+  }
+
+  /// Starts or stops the ticker for the current rest, motion setting and
+  /// ticker mode, and sets the fraction shown now.
+  void _sync() {
+    final fluid =
+        !MediaQuery.disableAnimationsOf(context) &&
+        TickerMode.valuesOf(context).enabled;
+    final now = DateTime.now();
+    final fraction = fluid ? _fractionAt(now) : widget.stepped;
+    final run = fluid && fraction > 0;
+    if (run && !_ticker.isActive) {
+      _anchorWall = now;
+      _anchorElapsed = _lastElapsed = Duration.zero;
+      _ticker.start();
+    } else if (!run && _ticker.isActive) {
+      _ticker.stop();
+    }
+    _fraction.value = fraction;
+  }
+
+  void _onTick(Duration elapsed) {
+    _lastElapsed = elapsed;
+    var now = _anchorWall.add(elapsed - _anchorElapsed);
+    // A frame clock that stood still while the phone slept or was locked
+    // falls behind the wall clock; catch up at once rather than at the next
+    // header rebuild. One-sided: a clock running ahead is left to that.
+    final wall = DateTime.now();
+    if (wall.difference(now) > const Duration(seconds: 1)) {
+      _anchorWall = now = wall;
+      _anchorElapsed = elapsed;
+    }
+    final fraction = _fractionAt(now);
+    _fraction.value = fraction;
+    if (fraction <= 0) _ticker.stop();
+  }
+
+  // Each tick repaints only the line: no rebuild and no layout.
+  @override
+  Widget build(BuildContext context) => _RemainingLine.listenable(
+    fraction: _fraction,
+    track: widget.track,
+    fill: widget.fill,
+  );
+}
+
 /// A flat two-pixel instrument line. No interpolated animation changes what
-/// the timer's current second reports.
+/// the timer's current second reports. It is painted, inside its own repaint
+/// boundary, so a moving fraction repaints the line alone.
 class _RemainingLine extends StatelessWidget {
-  const _RemainingLine({
+  _RemainingLine({
+    required double fraction,
+    required this.track,
+    required this.fill,
+  }) : fraction = _FixedFraction(fraction);
+
+  const _RemainingLine.listenable({
     required this.fraction,
     required this.track,
     required this.fill,
   });
-  final double fraction;
+
+  final ValueListenable<double> fraction;
   final Color track;
   final Color fill;
   @override
   Widget build(BuildContext context) => SizedBox(
     key: const Key('rest-remaining-track'),
     height: 2,
-    child: ColoredBox(
-      color: track,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: FractionallySizedBox(
-          widthFactor: fraction.clamp(0.0, 1.0),
-          heightFactor: 1,
-          child: ColoredBox(color: fill),
+    child: RepaintBoundary(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: RemainingLinePainter(
+          fraction: fraction,
+          track: track,
+          fill: fill,
         ),
       ),
     ),
   );
+}
+
+/// A fraction that never changes, for the line outside a fluid rest.
+class _FixedFraction implements ValueListenable<double> {
+  const _FixedFraction(this.value);
+  @override
+  final double value;
+  @override
+  void addListener(VoidCallback listener) {}
+  @override
+  void removeListener(VoidCallback listener) {}
+  @override
+  bool operator ==(Object other) =>
+      other is _FixedFraction && other.value == value;
+  @override
+  int get hashCode => value.hashCode;
+}
+
+/// Paints the remaining line's track and its fill, left-anchored, from
+/// [fraction]; repaints whenever [fraction] notifies.
+@visibleForTesting
+class RemainingLinePainter extends CustomPainter {
+  RemainingLinePainter({
+    required this.fraction,
+    required this.track,
+    required this.fill,
+  }) : super(repaint: fraction);
+
+  final ValueListenable<double> fraction;
+  final Color track;
+  final Color fill;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = track);
+    final width = size.width * fraction.value.clamp(0.0, 1.0);
+    if (width > 0) {
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, width, size.height),
+        Paint()..color = fill,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(RemainingLinePainter oldDelegate) =>
+      oldDelegate.fraction != fraction ||
+      oldDelegate.track != track ||
+      oldDelegate.fill != fill;
 }
 
 class _RestScalePainter extends CustomPainter {

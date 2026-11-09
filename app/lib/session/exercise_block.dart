@@ -213,15 +213,18 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       decoration: BoxDecoration(
-                        color: tokens.surface2,
+                        color: allDone ? tokens.accent : tokens.surface2,
                         borderRadius: BorderRadius.circular(AppRadius.control),
                       ),
                       alignment: Alignment.center,
+                      // The all-done badge is one of the live page's four
+                      // accent marks, filled like a logged set's ring; the
+                      // count stays neutral.
                       child: allDone
                           ? AlkionIcon(
                               AlkionGlyph.check,
                               size: 18,
-                              color: tokens.text,
+                              color: tokens.accentInk,
                             )
                           : Text(
                               '$doneWorking/${working.length}',
