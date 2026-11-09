@@ -807,7 +807,11 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                       hint: l.exerciseEditorStartWeightHint,
                       child: WStepper(
                         value: _baseWeightDisplay,
-                        step: _stepDisplay,
+                        // In lb a whole 5 lb, not the kg plate step
+                        // converted (5.51 lb); plate_step_kg is unchanged.
+                        step: units.unit == Unit.lb
+                            ? startWeightLbStep
+                            : _stepDisplay,
                         format: (v) =>
                             '${fmtLoad(v, units.unit)}${units.uLabel}',
                         formatForEdit: (v) => fmtLoad(v, units.unit),
@@ -983,3 +987,8 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
     );
   }
 }
+
+/// The exercise editor's start-weight step in lb: a whole 5 lb rather than
+/// the kg plate step converted (5.51 lb). Not snapped to a 5 lb grid, so a
+/// step up and back down returns exactly to the untouched value.
+const double startWeightLbStep = 5;

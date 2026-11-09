@@ -779,5 +779,21 @@
   "volumeLegendDone": "Fatte questa settimana",
   "volumeLegendLive": "Questa sessione",
   "volumeLegendPlanned": "Pianificate",
-  "volumeLiveSemantics": "{muscle}: {done} serie fatte questa settimana, {live} in questa sessione, {planned} pianificate, obiettivo {target}"
+  "volumeLiveSemantics": "{muscle}: {done} serie fatte questa settimana, {live} in questa sessione, {planned} pianificate, obiettivo {target}",
+  "sessionSetLogged": "Serie {index} registrata",
+  "sessionWarmupLogged": "Riscaldamento registrato",
+  "sessionRestOver": "Recupero finito",
+  "sessionUnloggedSetsTitle": "{count, plural, =1{1 serie non registrata} other{{count} serie non registrate}}",
+  "sessionUnloggedSetsMessage": "Le serie non registrate non verranno salvate. Terminare comunque?",
+  "sessionFinishAnyway": "Termina comunque",
+  "sessionFinishNeedsSet": "Registra almeno una serie per terminare",
+  "sessionFinishSaving": "Salvataggio allenamento…",
+  "sessionSetSpoken": "Serie {index}",
+  "sessionWarmupSpoken": "Riscaldamento",
+  "sessionSetStateDone": "fatta",
+  "sessionSetStateNotDone": "non fatta",
+  "sessionSetNoValue": "nessun valore",
+  "numberEntryInvalid": "Inserisci un numero",
+  "numberEntryMax": "Inserisci {max} o meno",
+  "numberEntryMin": "Inserisci {min} o più"
 }
