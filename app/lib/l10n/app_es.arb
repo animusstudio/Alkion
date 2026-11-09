@@ -622,7 +622,6 @@
     }
   },
   "trainingWeekdayUnavailable": "Día de la semana no disponible",
-  "sessionClearRir": "Borrar RIR",
   "trainingOpenPlan": "Abrir Plan",
   "trainingEnableDayInPlan": "Activar un día en Plan",
   "trainingNoActiveDays": "Tus días guardados no están activos. Revísalos en Plan o empieza un entrenamiento libre.",
@@ -665,6 +664,7 @@
   "catalogDistance": "Distancia (metros)",
   "catalogOptional": "Opcional",
   "catalogRequired": "Introduce las medidas necesarias",
+  "catalogRepsCompact": "{count, plural, =1{{reps} rep.} other{{reps} rep.}}",
   "catalogAddAgain": "Añadir otra vez",
   "catalogAddSelected": "Añadir selección",
   "catalogChangeSetup": "Cambiar ejecución/equipamiento",

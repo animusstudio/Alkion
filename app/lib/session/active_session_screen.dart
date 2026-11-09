@@ -1164,8 +1164,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                           },
                           onSetChanged: (_, __) => controller.markChanged(),
                           onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
-                          onClearRir: (_, s) =>
-                              controller.setRirFromPrompt(s, null),
                           onMarkNotDone: (_, s) => _undo(controller, s),
                           onRemoveSet: (b, s) => _removeSet(controller, b, s),
                           onMenu: (b) => _openBlockMenu(controller, b),

@@ -24,7 +24,7 @@ import '../widgets/pr_badge.dart';
 import '../widgets/glyph_loading.dart';
 import '../widgets/tag.dart';
 import '../widgets/plan_form.dart';
-import '../catalog_ui/catalog_evidence_widgets.dart';
+import '../catalog_ui/catalog_set_format.dart';
 
 /// Post-session summary overlay.
 ///
@@ -559,13 +559,7 @@ class _TopSetRow extends StatelessWidget {
               ),
             const SizedBox(height: 8),
             for (final set in block.sets)
-              Text(
-                catalogEvidenceSummary(
-                  set.catalog!,
-                  AppLocalizations.of(context),
-                ),
-                style: WorkoutType.mono(size: 14, color: tokens.text),
-              ),
+              CatalogSetText(set.catalog!, size: 14),
           ],
         ),
       );

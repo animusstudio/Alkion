@@ -34,7 +34,7 @@ import '../widgets/w_dialog.dart';
 import '../widgets/w_toast.dart';
 import 'set_editor_sheet.dart';
 import 'catalog_history_editor.dart';
-import '../catalog_ui/catalog_evidence_widgets.dart';
+import '../catalog_ui/catalog_set_format.dart';
 import '../data/catalog_execution_repository.dart';
 import '../domain/catalog_execution.dart';
 import '../widgets/w_action_sheet.dart';
@@ -1786,9 +1786,10 @@ class _BlockRow extends StatelessWidget {
                     ),
                   const SizedBox(height: 8),
                   for (final set in block.sets)
-                    Text(
-                      catalogEvidenceSummary(set.catalog!, l),
-                      style: WorkoutType.mono(size: 12.5, color: tokens.text),
+                    CatalogSetText(
+                      set.catalog!,
+                      size: 12.5,
+                      weight: FontWeight.w400,
                     ),
                 ],
               ),
