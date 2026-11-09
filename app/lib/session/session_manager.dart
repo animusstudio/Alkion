@@ -64,7 +64,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     if (_active == null || _disposed) return;
     unawaited(
       refreshNotifications().catchError((Object error) {
-        persistenceError = error;
+        _reportPersistence(error);
       }),
     );
   }
