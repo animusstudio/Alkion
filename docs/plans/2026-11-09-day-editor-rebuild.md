@@ -137,7 +137,39 @@ T3 after both; T4 (ARBs) last.
 
 ## Task state
 
-None started.
+- **T1 Slot modes: done**, pending review. Code `abf2ac8`, tests `915b63e`.
+  - Plan corrections applied: P5's picker flag is `RirPicker.onClear` (not `allowClear`);
+    U2's `catalogSetDefaults` ignores slot values for warm-ups, so a Fixed load never reaches
+    warm-ups.
+  - `ui/slot_modes.dart` public API (T2 and T3 build on it):
+    - Reps: `enum RepsMode {fixed, range}`; `hasRepsRow(draft)`;
+      `slotReps(draft, exercise) → RepPair?` (as `slotSummary` resolves; null without a row or
+      for unavailable evidence); `repsMode(draft, exercise) → RepsMode?`;
+      `applyRepsFixed(draft, n)`, `applyRepsRange(draft, low, high)` (equal bounds go to
+      Fixed), `applyReps(draft, low, high)` for `RepControls.onChanged`. Out of 1–99 throws
+      `RangeError`; no Reps row throws `StateError`.
+    - Load: `enum LoadMode {last, fixed}`; `hasLoadRow(draft)`; `loadMode(draft)`;
+      `loadDisplay(draft, Unit) → double?` (other-unit evidence converted, not rewritten);
+      `fixedLoadSeed(CatalogLoadReference, Unit) → double` (last top `reported_load`, else
+      20 kg / 45 lb); `applyLoadFixed(draft, display, Unit)` (`fmtLoad` text, unit `kg`/`lb`);
+      `applyLoadLast(draft)` (no target: writes nothing).
+    - RIR: `SlotRir {value, range, unavailable, hasEvidence}`; `rirOf(draft, exercise)`
+      (resolved like the workout, inherit included); `showRirRow(draft, exercise,
+      RirControls)`; `applyRir(draft, int?)` (null is `off`).
+    - New slots: `newSlotDefaults({exercise, repEntry, rirControls, selection}) → SlotDraft`
+      with explicit sets (default in range, else 3), warm-ups (else 0), reps through
+      `applyReps`, and RIR per the Decision. `changedFields` stays null.
+  - Each `apply…` adds only the fields it writes to `changedFields`; readers never write. Any
+    new `catalogTargets` map is unmodifiable.
+  - For review: unqualified exercise rep defaults now give a new slot 8 / 8–12 (the plan's
+    "else"), where `_appendExercise` stored null reps. The exercise evidence is untouched.
+  - Checks:
+    - `make -C app get` → Got dependencies.
+    - `make -C app test TEST='--concurrency=2 test/ui/slot_modes_test.dart
+      test/session/catalog_set_defaults_test.dart test/ui/slot_summary_test.dart'` → +61, all
+      passed.
+    - `make -C app analyze` → No issues found.
+    - `make -C app format` → 0 changed.
 
 ## Next
 
