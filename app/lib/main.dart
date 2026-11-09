@@ -204,10 +204,17 @@ class AlkionRuntime with WidgetsBindingObserver {
   bool _closing = false;
   bool _ownersDisposed = false, _closed = false;
 
+  bool _teardownBegan = false;
+
   /// Whether [close] got past its flush barrier and disposed the sessions,
-  /// notifications and catalog owners. While false after a failed [close],
-  /// the runtime still works and can be shown again.
+  /// notifications and catalog owners.
   bool get ownersDisposed => _ownersDisposed;
+
+  /// Whether [close] got past its flush barrier and began tearing down: the
+  /// lifecycle observer, the persistence callbacks and possibly notifications
+  /// are gone. While false after a failed [close] (the barrier itself
+  /// refused), the runtime still works and can be shown again.
+  bool get teardownBegan => _teardownBegan;
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_closing) {
@@ -317,6 +324,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     unawaited(animus.close());
     final apiDrain = animus.drainApi();
     if (!_ownersDisposed) await flushPersistence();
+    _teardownBegan = true;
     WidgetsBinding.instance.removeObserver(this);
     sessions
       ..onPersistenceError = null
@@ -693,13 +701,14 @@ final class RuntimeRecoveryHost implements RecoveryHost {
   }
 
   /// Reopen after the runtime failed to close for a restore (nothing was
-  /// restored). When the flush barrier refused before any owner was disposed,
-  /// the same runtime still works and is shown again. Otherwise the close is
-  /// retried and the app relaunched; a retry that fails again throws, which
-  /// the screen shows as a retryable error. Never relaunches over a store
-  /// this runtime still holds.
+  /// restored). When the flush barrier itself refused, before any teardown,
+  /// the same runtime still works and is shown again (its Animus connection,
+  /// workout sender and recovery review stay closed until the next launch).
+  /// Once teardown began, the close is retried and the app relaunched; a
+  /// retry that fails again throws, which the screen shows as a retryable
+  /// error. Never relaunches over a store this runtime still holds.
   Future<void> _reopenAfterFailedClose() async {
-    if (!runtime.ownersDisposed) {
+    if (!runtime.teardownBegan) {
       present(AlkionApp(runtime: runtime, recovery: this));
       return;
     }

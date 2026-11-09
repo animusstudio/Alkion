@@ -3,10 +3,13 @@ import 'dart:io';
 import 'package:alkion/data/session_writer.dart';
 import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/main.dart';
+import 'package:alkion/session/notification_action.dart';
+import 'package:alkion/session/workout_notification.dart';
 import 'package:alkion/store/generation_selection.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/ui/alkion_recovery/recovery_app.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -35,10 +38,11 @@ void main() {
   Future<RuntimeRecoveryHost> open({
     Future<void> Function()? closeStore,
     void Function(Widget app)? onPresent,
+    WorkoutNotification? notifications,
   }) async {
     temp = await Directory.systemTemp.createTemp('alkion-close-failure-');
     root = proof.supportRootOf(temp);
-    runtime = await AlkionRuntime.open(root);
+    runtime = await AlkionRuntime.open(root, notifications: notifications);
     presented = [];
     relaunches = 0;
     final backups = await Directory(p.join(temp.path, 'backups')).create();
@@ -109,6 +113,7 @@ void main() {
         final failed = presented.last as AlkionRecoveryApp;
         expect(failed.error, isA<StoreException>());
         expect(runtime.ownersDisposed, isFalse);
+        expect(runtime.teardownBegan, isFalse);
         expect(runtime.store.admission, isNot(StoreAdmission.closed));
         expect(selectedRestoreId(profileDirectory()), isNull);
         await tester.pumpWidget(failed);
@@ -222,4 +227,79 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'a throw after the flush barrier never re-presents the torn-down runtime',
+    (tester) async {
+      final notifications = _ThrowingCloseNotification();
+      await tester.runAsync(() async {
+        final host = await open(notifications: notifications);
+        await host.restoreBackup(backupPath);
+      });
+      AlkionRuntime? reopened;
+      try {
+        // The barrier passed and teardown began (observer and persistence
+        // callbacks removed), but the notification close threw before any
+        // owner was disposed.
+        expect(presented.last, isA<AlkionRecoveryApp>());
+        expect(notifications.closeAttempts, 1);
+        expect(runtime.teardownBegan, isTrue);
+        expect(runtime.ownersDisposed, isFalse);
+        expect(runtime.store.admission, isNot(StoreAdmission.closed));
+
+        await reopen(tester);
+        // Reopen retried the close and relaunched instead of showing the
+        // same runtime without its pause flush and storage banner wiring.
+        expect(notifications.closeAttempts, greaterThanOrEqualTo(2));
+        expect(runtime.ownersDisposed, isTrue);
+        expect(runtime.store.admission, StoreAdmission.closed);
+        expect(relaunches, 1);
+        expect(
+          presented.last,
+          isA<AlkionApp>(),
+          reason: presented.last is AlkionPreflightApp
+              ? '${(presented.last as AlkionPreflightApp).error}'
+              : null,
+        );
+        reopened = (presented.last as AlkionApp).runtime;
+        expect(reopened, isNot(same(runtime)));
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(() async {
+          await reopened?.close();
+          if (runtime.store.admission != StoreAdmission.closed) {
+            await runtime.close();
+          }
+          await temp.delete(recursive: true);
+        });
+      }
+    },
+  );
+}
+
+/// A notification owner whose first close fails, after the flush barrier.
+final class _ThrowingCloseNotification extends WorkoutNotification {
+  _ThrowingCloseNotification() : super(isAndroid: true);
+  var closeAttempts = 0;
+  @override
+  Future<NotificationResponse?> init({
+    required void Function(NotificationResponse) onResponse,
+  }) async => null;
+  @override
+  Future<void> showFor({
+    required String name,
+    required DateTime startedAt,
+    DateTime? restStart,
+    int restTotal = 0,
+    NotificationAction? action,
+  }) async {}
+  @override
+  Future<void> cancel() async {}
+  @override
+  Future<void> close() async {
+    closeAttempts++;
+    if (closeAttempts == 1) {
+      throw const StoreException('synthetic_notification_close_failed');
+    }
+  }
 }

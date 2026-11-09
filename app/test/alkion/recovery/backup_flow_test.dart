@@ -22,6 +22,7 @@ final class _Host implements RecoveryHost {
   final Zone zone;
   final Directory directory;
   final restored = <String>[];
+  final verified = <String>[];
   String? foreignProfileId;
   @override
   bool workoutActive = false;
@@ -31,8 +32,13 @@ final class _Host implements RecoveryHost {
   Future<BackupReceipt> createBackup() =>
       zone.run(() => backup.createBackup(store, directory));
   @override
-  Future<VerifiedBackup> verifyBackup(String path) =>
-      zone.run(() => verifyBackupFile(File(path), workDirectory: directory));
+  Future<VerifiedBackup> verifyBackup(String path) {
+    verified.add(path);
+    return zone.run(
+      () => verifyBackupFile(File(path), workDirectory: directory),
+    );
+  }
+
   @override
   Future<void> restoreBackup(String path) async => restored.add(path);
   @override
@@ -216,4 +222,51 @@ void main() {
       await finish(tester);
     }
   });
+
+  testWidgets(
+    'a chosen file that changes after Check is verified again by Restore',
+    (tester) async {
+      await mount(tester);
+      try {
+        final chosen = documents.selection!.path;
+        await press(tester, find.byKey(const Key('backup-check')));
+        await dismissDialog(tester, find.text('Backup verified'));
+        expect(host.verified, [chosen]);
+
+        // Replaced by another valid backup: Restore re-verifies the bytes
+        // now in the chosen copy and restores that path.
+        await tester.runAsync(() async {
+          final newer = await host.createBackup();
+          await File(newer.path).copy(chosen);
+        });
+        await press(tester, find.byKey(const Key('backup-restore')));
+        await settleUntil(tester, find.text('Restore this backup?'));
+        expect(host.verified, [chosen, chosen]);
+        expect(documents.opens, 1);
+        await tester.tap(find.text('Cancel').last);
+        await settleReal(tester, ticks: 4);
+        expect(host.restored, isEmpty);
+
+        // Changed into damaged bytes: Restore refuses with a mapped sentence
+        // and never reaches the confirmation or the host.
+        await tester.runAsync(() async {
+          final bytes = await File(chosen).readAsBytes();
+          await File(chosen).writeAsBytes(bytes.sublist(0, bytes.length - 7));
+        });
+        await press(tester, find.byKey(const Key('backup-restore')));
+        await settleUntil(tester, find.text('Backup action failed'));
+        expect(host.verified, [chosen, chosen, chosen]);
+        expect(
+          find.textContaining('This data is damaged or in a format'),
+          findsOneWidget,
+        );
+        expect(find.text('Restore this backup?'), findsNothing);
+        expect(find.textContaining('Exception'), findsNothing);
+        await dismissDialog(tester, find.text('Backup action failed'));
+        expect(host.restored, isEmpty);
+      } finally {
+        await finish(tester);
+      }
+    },
+  );
 }
