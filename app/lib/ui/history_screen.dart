@@ -29,7 +29,9 @@ import '../util/group_by_week.dart';
 import '../widgets/card.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pr_badge.dart';
+import '../util/error_message.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_toast.dart';
 import 'set_editor_sheet.dart';
 import 'catalog_history_editor.dart';
 import '../catalog_ui/catalog_evidence_widgets.dart';
@@ -107,6 +109,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               catalogMap,
               activeSessionId,
               lastFinished,
+              catalogLoaded:
+                  catalogSnap.connectionState == ConnectionState.done,
             );
           },
         );
@@ -148,11 +152,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (!mounted) {
             return;
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(l.historyResumeFailed('$e')),
-              backgroundColor: context.tokens.danger,
-            ),
+          // The mapped message: never the exception text.
+          showWToast(
+            context,
+            l.historyResumeFailed(userMessage(l, e).message),
+            error: true,
           );
         }
     }
@@ -165,8 +169,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     List<HistorySessionRow> sessions,
     Map<String, Exercise> catalogMap,
     String? activeSessionId,
-    FinishedSession? lastFinished,
-  ) {
+    FinishedSession? lastFinished, {
+    bool catalogLoaded = true,
+  }) {
     // Capture the app-scoped owner before an owed delete can outlive this view.
     final manager = context.read<SessionManager>();
     final l = AppLocalizations.of(context);
@@ -262,6 +267,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 session: session,
                 onOpenProfile: widget.onOpenProfile,
                 catalogMap: catalogMap,
+                catalogLoaded: catalogLoaded,
                 sessionRepo: _sessionRepo,
                 units: units,
                 resumeState: resumeStateFor(
@@ -803,11 +809,16 @@ class SessionCard extends StatefulWidget {
     this.onResume,
     this.onDeleted,
     this.onOpenProfile,
+    this.catalogLoaded = true,
   });
 
   final VoidCallback? onOpenProfile;
   final HistorySessionRow session;
   final Map<String, Exercise> catalogMap;
+
+  /// False while the exercise catalog is still loading: the expanded rows
+  /// stay a skeleton instead of reading as deleted exercises.
+  final bool catalogLoaded;
   final SessionRepository sessionRepo;
   final UnitService units;
 
@@ -1089,6 +1100,7 @@ class _SessionCardState extends State<SessionCard> {
                     ? _ExerciseBlocks(
                         session: widget.session,
                         catalogMap: widget.catalogMap,
+                        catalogLoaded: widget.catalogLoaded,
                         sessionRepo: widget.sessionRepo,
                         units: widget.units,
                         resumeState: widget.resumeState,
@@ -1129,10 +1141,12 @@ class _ExerciseBlocks extends StatefulWidget {
     required this.resumeState,
     this.onResume,
     this.onDeleted,
+    this.catalogLoaded = true,
   });
 
   final HistorySessionRow session;
   final Map<String, Exercise> catalogMap;
+  final bool catalogLoaded;
   final SessionRepository sessionRepo;
   final UnitService units;
   final SessionResumeState resumeState;
@@ -1178,8 +1192,16 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     _future = _load();
   });
 
+  /// Before a History editor prepares anything, lands what an earlier one
+  /// still owes (one closed after a failed save): a new edit at the same
+  /// workout revision would otherwise leave that owed write conflicting.
+  /// Never throws; a write that fails again stays owed.
+  Future<void> _retryOwedEdits() => UnsavedEditors.instance.retryOwed();
+
   /// Opens the per-exercise set editor, then reloads.
   Future<void> _editExercise(ExerciseBlockData block) async {
+    await _retryOwedEdits();
+    if (!mounted) return;
     if (block.sets.first.catalog != null) {
       await showModalBottomSheet<void>(
         context: context,
@@ -1196,6 +1218,8 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       if (mounted) _reload();
       return;
     }
+    // A deleted exercise's row is read-only (no tap reaches here); keep the
+    // guard for a catalog that changed meanwhile.
     final exercise = widget.catalogMap[block.exerciseId];
     if (exercise == null) {
       return;
@@ -1217,9 +1241,11 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     }
   }
 
-  /// Picks an exercise and seeds one working set so it appears in the session.
-  /// The user then taps the new block to edit/add more sets.
+  /// Picks an exercise, then opens its set editor on an empty block: nothing
+  /// is written until "Add set", and dismissing writes nothing.
   Future<void> _addExercise() async {
+    await _retryOwedEdits();
+    if (!mounted) return;
     final exId = await showExerciseSheet(
       context,
       exercises: widget.catalogMap.values.toList(),
@@ -1235,7 +1261,11 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       final selections = await CatalogExecutionRepository.local(
         context.read<LocalDatabase>(),
       ).selectionsForExercise(exId);
-      if (!mounted || selections.isEmpty) return;
+      if (!mounted) return;
+      if (selections.isEmpty) {
+        showWToast(context, AppLocalizations.of(context).historyNoSetupToLog);
+        return;
+      }
       final selected = selections.length == 1
           ? selections.single
           : await showWActionSheet<CatalogSelectionEvidence>(
@@ -1289,22 +1319,26 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       if (mounted) _reload();
       return;
     }
-    try {
-      await widget.sessionRepo.addSet(
-        widget.session.id,
-        exId,
-        weightKg: '0.00',
-        reps: ex?.defaultRepLow ?? 8,
-        rir: null,
-        isWarmup: false,
-      );
-    } catch (e) {
-      // E.g. refused while the store needs recovery.
-      if (mounted) {
-        await showWriteFailed(context, e);
-      }
-      return;
-    }
+    if (ex == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => SetEditorSheet(
+        block: ExerciseBlockData(
+          exerciseId: ex.id,
+          sets: const [],
+          topWeight: 0,
+          topReps: 0,
+          isPr: false,
+        ),
+        exercise: ex,
+        sessionId: widget.session.id,
+        sessionRepo: widget.sessionRepo,
+        units: widget.units,
+        workoutRevision: widget.session.localRevision,
+      ),
+    );
     if (mounted) {
       _reload();
     }
@@ -1355,7 +1389,10 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
         final inProgress = widget.resumeState == SessionResumeState.inProgress;
         // Skeleton only for the very first load; a reload keeps the old data.
         return GlyphReveal.builder(
+          // Until the catalog resolves an exercise cannot be told from a
+          // deleted one, so the rows stay a skeleton.
           loading:
+              !widget.catalogLoaded ||
               blocks == null && snap.connectionState == ConnectionState.waiting,
           cover: tokens.surface,
           // Two exercise blocks: a name line over its set line.
@@ -1432,7 +1469,13 @@ class SessionCardBody extends StatelessWidget {
                 block: block,
                 catalogMap: catalogMap,
                 units: units,
-                onTap: edit == null ? null : () => edit(block),
+                // A deleted exercise reads as such and is read-only.
+                onTap:
+                    edit == null ||
+                        block.sets.first.catalog == null &&
+                            !catalogMap.containsKey(block.exerciseId)
+                    ? null
+                    : () => edit(block),
               ),
             ),
           if (blocks.any(
@@ -1593,7 +1636,7 @@ class _BlockRow extends StatelessWidget {
     }
     final exercise = catalogMap[block.exerciseId];
     final isCompound = exercise?.compound ?? false;
-    final name = exercise?.name ?? block.exerciseId;
+    final name = exercise?.name ?? l.historyDeletedExercise;
     final dotColor = isCompound ? tokens.accentText : tokens.lineStrong;
     // History's own selection; ExerciseBlockData.topWeight stays Summary's.
     final top = historyTopSet(block.sets);

@@ -8,6 +8,9 @@ import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/data/session_repository.dart';
 import 'package:alkion/session/resume.dart';
 import 'package:alkion/ui/history_screen.dart';
+import 'package:alkion/ui/set_editor_sheet.dart';
+import 'package:alkion/domain/catalog_execution.dart';
+import 'package:provider/provider.dart';
 import 'package:alkion/units/unit_service.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 
@@ -135,6 +138,7 @@ final deleteAction = find.byKey(const ValueKey('history-delete-session'));
 Widget card(
   FakeSessionRepository repo, {
   HistorySessionRow? session,
+  bool catalogLoaded = true,
   SessionResumeState state = SessionResumeState.none,
   VoidCallback? onResume,
   HistoryDeleted? onDeleted,
@@ -146,6 +150,7 @@ Widget card(
     child: SessionCard(
       session: session ?? sessionRow(),
       catalogMap: catalog,
+      catalogLoaded: catalogLoaded,
       sessionRepo: repo,
       units: UnitService()..setUnit(unit),
       resumeState: state,
@@ -520,4 +525,168 @@ void main() {
       expect(tester.getSize(blockRow.first).height, greaterThanOrEqualTo(48));
     },
   );
+
+  LoggedSet gone() => LoggedSet(
+    id: 'g1',
+    exerciseId: 'removed-exercise-id',
+    setNumber: 1,
+    weightKg: 60,
+    reps: 8,
+    isWarmup: false,
+    isTopSet: true,
+    isPr: false,
+  );
+
+  testWidgets('an unknown exercise reads "Deleted exercise", read-only with '
+      'no chevron', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final edited = <ExerciseBlockData>[];
+    final blocks = [
+      ExerciseBlockData(
+        exerciseId: 'removed-exercise-id',
+        sets: [gone()],
+        topWeight: 60,
+        topReps: 8,
+        isPr: false,
+      ),
+      ExerciseBlockData(
+        exerciseId: 'bench',
+        sets: [logged(100)],
+        topWeight: 100,
+        topReps: 5,
+        isPr: false,
+      ),
+    ];
+    await tester.pumpWidget(
+      wrapL10n(
+        SessionCardBody(
+          blocks: blocks,
+          catalogMap: catalog,
+          units: UnitService(),
+          onEditExercise: edited.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Deleted exercise'), findsOneWidget);
+    expect(find.text('removed-exercise-id'), findsNothing);
+    // Only the known row has a chevron.
+    expect(findGlyph(AlkionGlyph.chevronRight), findsOneWidget);
+    await tester.tap(find.text('Deleted exercise'));
+    await tester.pumpAndSettle();
+    expect(edited, isEmpty);
+    await tester.tap(find.text('Bench'));
+    await tester.pumpAndSettle();
+    expect(edited.single.exerciseId, 'bench');
+    expect(
+      tester
+          .getSemantics(find.text('Deleted exercise'))
+          .getSemanticsData()
+          .flagsCollection
+          .isButton,
+      isFalse,
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('known rows stay a skeleton until the catalog loads', (
+    tester,
+  ) async {
+    final repo = FakeSessionRepository([logged(100)]);
+    await tester.pumpWidget(card(repo, catalogLoaded: false));
+    await expand(tester);
+    expect(
+      find.byKey(const Key('history-session-loading'), skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.text('Deleted exercise'), findsNothing);
+    expect(find.text('bench'), findsNothing);
+    await tester.pumpWidget(card(repo));
+    await tester.pumpAndSettle();
+    expect(find.text('Bench'), findsOneWidget);
+  });
+
+  testWidgets('Add exercise on a classic exercise opens an empty set editor '
+      'and writes nothing; dismissing writes nothing', (tester) async {
+    // The fake has no write methods: any write would throw.
+    final repo = FakeSessionRepository([logged(100)]);
+    await tester.pumpWidget(card(repo));
+    await expand(tester);
+    await tester.tap(addAction);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bench').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(SetEditorSheet), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(SetEditorSheet),
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w.key is ValueKey<String> &&
+              (w.key as ValueKey<String>).value.startsWith('set-line-'),
+        ),
+      ),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('add-set')), findsOneWidget);
+    Navigator.of(tester.element(find.byType(SetEditorSheet))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(SetEditorSheet), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Add exercise on a catalog exercise with no setup shows a '
+      'message and writes nothing', (tester) async {
+    final typed = Exercise(
+      id: 'typed',
+      name: 'Typed sit-up',
+      slug: 'typed',
+      muscleGroup: 'core',
+      compound: false,
+      plateStepKg: 2.5,
+      isTemplate: false,
+      executionDefinition: CatalogExecutionDefinition(
+        profile: CatalogMeasurementProfileEvidence.forKey(
+          'reps_duration_optional_load',
+        ),
+        displayLabel: 'Typed sit-up',
+      ),
+    );
+    await tester.pumpWidget(
+      Provider<LocalDatabase>.value(
+        value: _NoSetups(),
+        child: wrapL10n(
+          Scaffold(
+            body: SessionCard(
+              session: sessionRow(),
+              catalogMap: {...catalog, 'typed': typed},
+              sessionRepo: FakeSessionRepository([logged(100)]),
+              units: UnitService(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await expand(tester);
+    await tester.tap(addAction);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Typed sit-up').last);
+    await tester.pumpAndSettle();
+    expect(find.text('This exercise has no setup to log yet.'), findsOneWidget);
+    expect(find.byType(SetEditorSheet), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+/// A store with no tracking contexts; nothing else may be called.
+class _NoSetups implements LocalDatabase {
+  @override
+  String get profileId => 'test-profile';
+  @override
+  Future<List<Map<String, dynamic>>> getAll(
+    String sql, [
+    List<Object?> parameters = const [],
+  ]) async => const [];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
