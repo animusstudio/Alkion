@@ -231,9 +231,10 @@ void main() {
         );
         await tester.pump(const Duration(milliseconds: 400));
         expect(
-          find.text('Rep range: ${range == null ? '—' : '5–9'}'),
-          findsOneWidget,
+          find.byKey(const Key('live-rep-range')),
+          range == null ? findsNothing : findsOneWidget,
         );
+        if (range != null) expect(find.text('5–9'), findsOneWidget);
         expect(restored.workingSets.single.toJson(), observations);
         expect(restored.workingSets.single.reps, 8);
         await _teardown(tester);
@@ -306,8 +307,10 @@ void main() {
           );
           await tester.pump(const Duration(milliseconds: 400));
           expect(
-            find.text('Rep range: ${range == null ? '—' : '5–9'}'),
-            profile == 'load_reps' ? findsOneWidget : findsNothing,
+            find.byKey(const Key('live-rep-range')),
+            profile == 'load_reps' && range != null
+                ? findsOneWidget
+                : findsNothing,
           );
           expect(
             restored.workingSets.single.catalog!.toJson(),
@@ -387,12 +390,12 @@ void main() {
       await tester.pumpWidget(_harness(controller, settings: settings));
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const Key('rir-2')), findsNothing);
-      expect(find.text('Rep range: 8–10'), findsNothing);
+      expect(find.byKey(const Key('live-rep-range')), findsNothing);
       await tester.runAsync(() => settings.setRirControls(RirControls.show));
       await tester.runAsync(() => settings.setRepEntry(RepEntry.range));
       await tester.pump();
       expect(find.byKey(const Key('rir-2')), findsOneWidget);
-      expect(find.text('Rep range: 8–10'), findsOneWidget);
+      expect(find.byKey(const Key('live-rep-range')), findsOneWidget);
       expect(a.toJson(), before);
       expect(block.resolved, same(prescription));
       await tester.runAsync(() => settings.setRestCompoundSeconds(45));
@@ -403,7 +406,7 @@ void main() {
       await tester.runAsync(() => settings.setRepEntry(RepEntry.fixed));
       await tester.pump();
       expect(find.byKey(const Key('rir-2')), findsNothing);
-      expect(find.text('Rep range: 8–10'), findsNothing);
+      expect(find.byKey(const Key('live-rep-range')), findsNothing);
       expect(a.toJson(), before);
       await tester.tap(find.byKey(const Key('log-set-bar')));
       await tester.pump();
@@ -1095,7 +1098,8 @@ void main() {
       await tester.tap(prompt);
       await tester.pump();
       expect(a.rir, 2);
-      final compactLabel = find.text('Synthetic execution · Machine A');
+      // The line no longer repeats the exercise; tap the logged line itself.
+      final compactLabel = find.byType(SetLine).first;
       await Scrollable.ensureVisible(
         tester.element(compactLabel),
         alignment: .5,
@@ -1108,8 +1112,13 @@ void main() {
       await tester.pump();
       expect(controller.liveSet!.set, same(a));
       expect(find.byType(LiveSetCard), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('live-clear-rir')));
-      await tester.tap(find.byKey(const Key('live-clear-rir')));
+      // Tapping the selected chip clears the RIR (no Clear RIR button).
+      final selected = find.descendant(
+        of: find.byType(LiveSetCard),
+        matching: find.byKey(const Key('rir-2')),
+      );
+      await tester.ensureVisible(selected);
+      await tester.tap(selected);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(a.rir, isNull);

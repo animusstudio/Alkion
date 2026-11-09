@@ -128,12 +128,14 @@ void main() {
 
     for (final (name, set, idx, label) in [
       ('logged', _s(done: true), 1, 'Set 1, 140 kg × 6, RIR 1, done'),
-      ('pending', _s(), 3, 'Set 3, 140 kg × 6, not done'),
+      // A pending line is blank on screen and reads no values either.
+      ('pending', _s(), 3, 'Set 3, not done'),
+      ('warm-up', _s(warmup: true, w: 70, reps: 8), -1, 'Warm-up, not done'),
       (
-        'warm-up',
-        _s(warmup: true, w: 70, reps: 8),
+        'logged warm-up',
+        _s(warmup: true, w: 70, reps: 8, done: true),
         -1,
-        'Warm-up, 70 kg × 8, not done',
+        'Warm-up, 70 kg × 8, done',
       ),
     ]) {
       testWidgets('a $name line reads its state', (tester) async {
@@ -149,10 +151,10 @@ void main() {
     }
 
     test('an unknown weight reads as no value, never zero', () {
-      final set = _s()..weightUnavailable = true;
+      final set = _s(done: true)..weightUnavailable = true;
       expect(
         setLineSemanticsLabel(_l, UnitService(), set, 2),
-        'Set 2, no value × 6, not done',
+        'Set 2, no value × 6, RIR 1, done',
       );
     });
   });
