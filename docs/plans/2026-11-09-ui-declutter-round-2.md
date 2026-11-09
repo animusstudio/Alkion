@@ -134,6 +134,19 @@ device measurement and needs the coordinator's phone access, so the coordinator 
       for every shipped label today
     - the ruler's own reps label still uses `sessionReps`
 
+- **T1 Toast and blues: done, review PASS** (Sonnet `high`). Code `c51c97e`, `ee3045c`, `b6f780a`,
+  merged.
+  - `info` and `focus` are `accentText` in both themes. A new test pins focus at ≥3:1 on `bg` and
+    `surface` for all 7 accents.
+  - The toast uses a `surface2` fill with a `line` border, one 48 dp row, and 3 s / 5 s / 3 s
+    durations.
+  - Focused tests `test/widgets test/theme test/shell test/session test/catalog_ui test/l10n` →
+    +1472 −3 (inherited); analyze clean.
+  - The review's wording minors are fixed in the next commit.
+  - **Watch on device:** in dark mode the card is close to `bg` (fill about 1.03:1, border about
+    1.1:1, per the plan's "like other cards"). If it is too hard to see, give the toast alone a
+    `lineStrong` border.
+
 ## Next
 
 T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
