@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path/path.dart' as paths;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,6 +16,7 @@ import 'animus/recovery_review.dart';
 import 'data/active_session_draft.dart';
 import 'data/finished_session_store.dart';
 import 'data/session_writer.dart';
+import 'data/workflow_state_quarantine.dart';
 import 'data/exercise_repository.dart' show DomainRecovery;
 import 'identity/alkion_identity.dart';
 import 'identity/alkion_flutter_identity.dart';
@@ -40,6 +42,7 @@ import 'ui/alkion_recovery/first_start_screen.dart';
 import 'ui/launch_failure_app.dart';
 import 'util/error_surface.dart';
 import 'units/unit_service.dart';
+import 'widgets/kept_data_notice.dart';
 import 'widgets/pending_input.dart';
 import 'widgets/storage_recovery_banner.dart';
 import 'widgets/w_toast.dart';
@@ -154,6 +157,15 @@ class AlkionRuntime with WidgetsBindingObserver {
         catalog = null;
         catalogUnavailable = true;
       }
+      // Before any controller, autosave or notification owns the rows: copy
+      // unreadable saved workout state into reviews and retire it, so it can
+      // neither lock launch nor be overwritten. Storage failures propagate.
+      if (await _workflowStateDamaged(store)) {
+        await quarantineUnreadableWorkflowState(
+          store,
+          decoder: await _decoderInfo(),
+        );
+      }
       final drafts = DraftStore.local(store);
       final sessions = SessionManager(
         draftStore: drafts,
@@ -182,6 +194,9 @@ class AlkionRuntime with WidgetsBindingObserver {
       sessions
         ..onPersistenceError = runtime._reportPersistenceFailure
         ..onPersistenceCleared = runtime._clearPersistenceFailure;
+      runtime.workflowNotices.value = await WorkflowStateQuarantine(
+        store,
+      ).pendingNotices();
       runtime.historyMappings = await HistoryMappingStore(store).byExerciseId();
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
@@ -195,6 +210,33 @@ class AlkionRuntime with WidgetsBindingObserver {
   }
 
   final persistenceFailure = ValueNotifier<Object?>(null);
+
+  /// Kept unreadable workout state whose one-time notice is not acknowledged
+  /// yet; set once at open.
+  final workflowNotices = ValueNotifier<List<KeptWorkflowState>>(const []);
+  Future<void>? _acknowledging;
+
+  /// The notice's OK: records that [reviewIds] were seen, then drops them
+  /// from [workflowNotices]. A call while one is running joins it. A failed
+  /// write drops them too, for this run only: nothing was recorded, so the
+  /// notice shows again at the next launch. Never throws.
+  Future<void> acknowledgeWorkflowNotices(Iterable<String> reviewIds) =>
+      _acknowledging ??= _acknowledgeNow(
+        reviewIds.toSet(),
+      ).whenComplete(() => _acknowledging = null);
+
+  Future<void> _acknowledgeNow(Set<String> shown) async {
+    try {
+      await WorkflowStateQuarantine(store).acknowledge(shown);
+    } on Object {
+      // The notice never blocks the app.
+    }
+    if (_closed) return;
+    workflowNotices.value = [
+      for (final notice in workflowNotices.value)
+        if (!shown.contains(notice.reviewId)) notice,
+    ];
+  }
 
   /// Mapping rows already stored in the profile; display only.
   Map<String, HistoryMapping> historyMappings = const {};
@@ -343,10 +385,48 @@ class AlkionRuntime with WidgetsBindingObserver {
     units.dispose();
     identity.dispose();
     persistenceFailure.dispose();
+    workflowNotices.dispose();
     workoutSender.dispose();
     recoveryReview.dispose();
     animus.dispose();
     _closed = true;
+  }
+}
+
+/// Whether the launch quarantine has anything to keep: the same rows and
+/// shared classifiers it reads, in one read transaction. A clean launch then
+/// neither calls the quarantine nor asks the platform for the app version.
+Future<bool> _workflowStateDamaged(LocalStore store) => store.readTransaction((
+  tx,
+) async {
+  final draft = await tx.localState(LocalStateKind.draft, 'active');
+  if (draft != null && draft['status'] == 'active') {
+    final read = classifyDraftPayload(draft['payload_bytes']);
+    final timer = read.damage == null
+        ? await tx.localState(LocalStateKind.timer, 'active')
+        : null;
+    if (read.damage != null ||
+        classifyTimerRow(timer, read.value!.draftId) != null) {
+      return true;
+    }
+  }
+  final finished = await tx.localState(LocalStateKind.finishedRecovery, 'last');
+  return finished != null &&
+      finished['status'] == 'active' &&
+      classifyFinishedPayload(finished['payload_bytes']).damage != null;
+}, expected: store.token);
+
+/// The running build for the quarantine's decoder record. A version that
+/// cannot be read is recorded as `unknown`; it never fails the quarantine.
+Future<DecoderInfo> _decoderInfo() async {
+  try {
+    final info = await PackageInfo.fromPlatform();
+    return DecoderInfo(
+      appVersion: info.version.isEmpty ? 'unknown' : info.version,
+      buildNumber: info.buildNumber.isEmpty ? 'unknown' : info.buildNumber,
+    );
+  } on Object {
+    return DecoderInfo();
   }
 }
 
@@ -785,6 +865,24 @@ class AlkionApp extends StatelessWidget {
                       child: StorageRecoveryBanner(
                         failure: runtime.persistenceFailure,
                         onRetry: runtime.retryPersistence,
+                      ),
+                    ),
+                    // Built only while no storage error holds the top slot:
+                    // the banner takes it, and the notice stays pending
+                    // until Retry clears the error. Never two overlays.
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: ValueListenableBuilder<Object?>(
+                        valueListenable: runtime.persistenceFailure,
+                        builder: (context, failure, _) => failure != null
+                            ? const SizedBox.shrink()
+                            : KeptDataNotice(
+                                notices: runtime.workflowNotices,
+                                onAcknowledge:
+                                    runtime.acknowledgeWorkflowNotices,
+                              ),
                       ),
                     ),
                   ],

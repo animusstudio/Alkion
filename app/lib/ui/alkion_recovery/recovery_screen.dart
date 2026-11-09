@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
+import '../../data/workflow_state_quarantine.dart';
 import '../../l10n/app_localizations.dart';
 import '../../files/android_documents.dart';
 import '../../files/document_access.dart';
@@ -41,6 +42,7 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
       widget.documents ?? platformDocumentAccess();
   List<Map<String, Object?>> _history = const [];
   List<PendingReviewGroup> _reviews = const [];
+  List<KeptWorkflowState> _kept = const [];
   bool _technical = false;
   DocumentFile? _selected;
 
@@ -69,7 +71,8 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   }
 
   Future<void> _reload() async {
-    final reviews = RestoreReviews(context.read<LocalDatabase>());
+    final database = context.read<LocalDatabase>();
+    final reviews = RestoreReviews(database);
     try {
       final history = await reviews.history();
       final pending = await reviews.pendingSummary();
@@ -80,6 +83,13 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
       });
     } on StoreException {
       // A closed or fenced store (for example during restore) shows nothing.
+    }
+    try {
+      final kept = await WorkflowStateQuarantine(database).keptReviews();
+      if (!mounted) return;
+      setState(() => _kept = kept);
+    } on StoreException {
+      // As above: kept workout data is read-only and shown when readable.
     }
     final host = _host;
     if (host == null) return;
@@ -476,6 +486,18 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                         const SizedBox(height: 8),
                         ..._copyRows(l, tokens, copies),
                       ],
+                      // Read-only: no delete, export or revive action. Shown
+                      // only when something was kept.
+                      if (_kept.isNotEmpty) ...[
+                        header(l.alkionKeptDataSection),
+                        Column(
+                          key: const Key('kept-workout-data'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final kept in _kept) _keptRow(l, tokens, kept),
+                          ],
+                        ),
+                      ],
                       if (_history.isNotEmpty) ...[
                         header(l.alkionRestoreHistory),
                         for (final h in _history)
@@ -611,6 +633,37 @@ List<Widget> _copyRows(
       ),
   ];
 }
+
+/// One kept workout-state review: its kind, when it was kept, and that it is
+/// kept as evidence. A kind this build does not recognise gets the generic
+/// label.
+Widget _keptRow(
+  AppLocalizations l,
+  WorkoutTokens tokens,
+  KeptWorkflowState kept,
+) => Padding(
+  key: Key('kept-${kept.reviewId}'),
+  padding: const EdgeInsets.only(bottom: 12),
+  // Stacked, so a long label keeps the full width at large text.
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(switch (kept.kind) {
+        KeptWorkflowKind.draft => l.alkionKeptDataDraft,
+        KeptWorkflowKind.finishedRecovery => l.alkionKeptDataFinished,
+        KeptWorkflowKind.unknown => l.alkionKeptDataOther,
+      }, style: WorkoutType.body(size: 14, color: tokens.text)),
+      Text(
+        fmtRecoveryInstant(kept.createdAt, l.localeName),
+        style: WorkoutType.mono(size: 12, color: tokens.dim),
+      ),
+      Text(
+        l.alkionKeptDataExplain,
+        style: WorkoutType.body(size: 14, color: tokens.dim),
+      ),
+    ],
+  ),
+);
 
 /// What a newer-work review row is about, as the user names it.
 enum _ReviewKind {
