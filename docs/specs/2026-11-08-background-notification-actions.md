@@ -137,7 +137,7 @@ proves both. The main isolate remains the only SQL owner.
   - the `NotificationAction` value type, its `encode`/`decode`, the payload
     envelope and the intent record;
   - the **only** journal-path function,
-    `notificationJournalDirectory(Directory filesDirectory)`, used by both
+    `notificationJournalDirectory(Directory supportRoot)`, used by both
     engines (D4);
   - the port name constant `notificationPortName`
     (`'<applicationId>.notification-intents'`) and the wake-up message
@@ -179,7 +179,7 @@ proves both. The main isolate remains the only SQL owner.
     labels, because the renderer derives them from the locale through
     `_notifStrings`.
 - **Size limit.** If the payload is too long, the title is shortened on a
-  character boundary. If it still doesn't fit, `view` is omitted, and the tap
+  Unicode code point boundary (never splitting a UTF-16 surrogate pair). If it still doesn't fit, `view` is omitted, and the tap
   then journals but doesn't render.
 - **Legacy payloads.** The bare `/1` token from notifications posted by an
   older build decodes as step 1 with no `view`.
@@ -194,6 +194,12 @@ proves both. The main isolate remains the only SQL owner.
     through the same serialised consumption as a drained intent.
   - A legacy tap never sets the open request. A foreground response carrying
     an unknown action ID is ignored.
+  - Legacy receipts recorded no basis. A legacy `issued` receipt takes its
+    basis as the receipt's `rest_start` plus the current SQL `restTotal` at
+    first sight; a legacy `consumed` receipt (only `rest_total`) is judged by
+    `restTotal` alone. A legacy tap that meets a `consumed` receipt or a fresh
+    token ends as `refused(conflict)` or `refused(token_superseded)`; that is
+    the intended outcome, and the mirror re-renders from SQL.
 - **Action order** is fixed in every render:
   - index 0: **+30s**, the existing `<prefix>add_30s`;
   - index 1: **Skip rest**, the new `<prefix>skip_rest`.
@@ -245,9 +251,14 @@ For each event, the handler:
 
 ### D4. Intent journal
 
-- **Location.** `notificationJournalDirectory(filesDirectory)` returns a
+- **Location.** `notificationJournalDirectory(supportRoot)` returns a
   sibling of the support root:
-  `<parent of filesDirectory>/.<applicationId>-notification-intents/`.
+  `<parent of supportRoot>/.<applicationId>-notification-intents/`. Both
+  engines pass the **support root**: the owner its checked root, the
+  background `join(filesDirectory, applicationId)`, mirroring
+  `checkedAlkionSupportRoot` including its basename-equals-applicationId case.
+  A test feeds the owner's checked root and the background's derivation from
+  one simulated files directory and asserts the results are identical.
   - This follows the `EntryJournal` precedent
     (`lib/identity/entry_journal.dart:47-50`).
   - The root inventories in `AlkionProfile`
@@ -256,8 +267,9 @@ For each event, the handler:
     this directory. Fresh start, first-start restore and "bytes without
     identity" detection are therefore unchanged, and a test proves this with a
     populated journal.
-- **Paths.** The background passes path_provider's files directory, which
-  starts `/data/user/0`. The owner passes its checked, canonical root. The two
+- **Paths.** The background derives the support root from path_provider's
+  files directory, which starts `/data/user/0`. The owner passes its checked,
+  canonical root. The two
   strings can differ but name the same directory, so the owner compares with
   `FileSystemEntity.identical`. A host test covers a symlinked alias, and OG4
   checks it on the device.
@@ -365,7 +377,9 @@ ENOENT counts as success.
      `force`, which clears `_lastShown`.
   10. **Release the owed drain.** While `drainOwed` is set, clear it, run one
       more drain and repeat step 9. Then switch the port to *immediate* mode,
-      where every later wake-up queues a drain on the tail directly.
+      where every later wake-up queues a drain on the tail directly. The final
+      `drainOwed` check and the switch run synchronously, with no `await`
+      between them, so a wake-up can't fall into the gap.
 - **Failed open.** If `AlkionRuntime.open` throws after step 4, its catch
   **unregisters the port** before `store.close()` (`lib/main.dart:181-184`).
   This leaves no owner port behind a launch-failure screen, so the background
@@ -373,7 +387,7 @@ ENOENT counts as success.
 - **Refresh drains first.** A refresh then applies the token rule (D5). A
   fresh token is issued only when the SQL rest differs from the receipt's
   basis or post-step rest. Any entries still journaled for the old token
-  could then no longer apply (`basis_changed`).
+  then end as `refused(token_superseded)`.
 - **With a live controller:**
   1. Settle owed saves. They don't refuse an intent, because consumption
      judges by rest fields.
@@ -474,7 +488,8 @@ as reviews.
   - The removed revision checks are covered by tests that would fail if those
     checks returned.
 - **A9 (late or odd clock).**
-  - A +30s after the rest end is refused, and a Skip after it is a no-op.
+  - A +30s or a Skip tapped after the rest end is `refused(late)` and writes
+    nothing.
   - A tap time before rest start, or more than 2 min in the future, is
     refused.
 - **A10 (crash, background).** A kill after the rename and before the render

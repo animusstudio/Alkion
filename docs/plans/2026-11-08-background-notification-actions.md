@@ -189,5 +189,5 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
 
 ## Next
 
-Re-review of the revised spec and plan. Start after P8 and F1 merge. OG3
+Owner approval of the spec and plan. Start after P8 and F1 merge. OG3
 decides whether design (a) stands or the fallback gets specified.
