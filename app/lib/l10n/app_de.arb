@@ -784,5 +784,12 @@
   "volumeLegendDone": "Diese Woche erledigt",
   "volumeLegendLive": "Dieses Training",
   "volumeLegendPlanned": "Geplant",
-  "volumeLiveSemantics": "{muscle}: {done} Sätze diese Woche erledigt, {live} in diesem Training, {planned} geplant, Ziel {target}"
+  "volumeLiveSemantics": "{muscle}: {done} Sätze diese Woche erledigt, {live} in diesem Training, {planned} geplant, Ziel {target}",
+  "exerciseEditorCatalogGroups": "Die Muskelgruppen dieser Übung stammen aus dem Katalog.",
+  "todayStatLoading": "Wird geladen",
+  "todayStatUnavailable": "Nicht verfügbar",
+  "todayRecentPrsLoading": "Neueste PRs werden geladen…",
+  "todayRecentPrsUnavailable": "Neueste PRs nicht verfügbar. Sie konnten nicht geladen werden.",
+  "catalogProgressNeverLogged": "Erfasse diese Übung, um deinen Fortschritt zu sehen.",
+  "catalogProgressLoadFailed": "Der Fortschritt konnte nicht geladen werden."
 }

@@ -153,7 +153,8 @@ void main() {
     // A catalog key matching a legacy key keeps the app's own name.
     expect(volumeGroupLabel(context, 'biceps', bundle.browse), 'Bicipiti');
     expect(volumeGroupLabel(context, 'glutes', bundle.browse), 'Glutes (it)');
-    expect(volumeGroupLabel(context, 'glutes', null), 'Glutes');
+    // Without a catalog, a catalog group still reads in the UI language.
+    expect(volumeGroupLabel(context, 'glutes', null), 'Glutei');
     expect(volumeGroupLabel(context, 'custom', bundle.browse), 'Custom');
   });
 

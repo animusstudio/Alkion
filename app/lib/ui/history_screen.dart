@@ -1568,10 +1568,27 @@ class _BlockRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  FitLabel(
-                    evidence.selection.displayLabel,
-                    maxLines: 3,
-                    style: WorkoutType.body(size: 14, color: tokens.text),
+                  // The stored catalog PR (its derived result, read only)
+                  // takes the legacy row's PR glyph.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FitLabel(
+                          evidence.selection.displayLabel,
+                          maxLines: 3,
+                          style: WorkoutType.body(size: 14, color: tokens.text),
+                        ),
+                      ),
+                      if (block.sets.any((s) => !s.isWarmup && s.isPr)) ...[
+                        const SizedBox(width: 8),
+                        AlkionIcon(
+                          AlkionGlyph.energy,
+                          key: const Key('history-catalog-pr'),
+                          size: 16,
+                          color: tokens.accentText,
+                        ),
+                      ],
+                    ],
                   ),
                   if (evidence.selection.contextLabel.isNotEmpty)
                     Text(

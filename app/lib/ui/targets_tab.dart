@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../catalog/catalog_browse.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../data/models.dart';
 import '../data/muscle_target_repository.dart';
 import '../data/muscles.dart';
@@ -13,6 +15,7 @@ import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
+import 'today_labels.dart';
 
 /// The Targets sub-tab: edit weekly per-muscle set goals.
 ///
@@ -98,7 +101,10 @@ class _TargetsTabState extends State<TargetsTab> {
   }
 }
 
-/// Presentational list of weekly muscle targets — one row per canonical muscle.
+/// Presentational list of weekly muscle targets: the 8 legacy groups, the 5
+/// further catalog groups, then any other stored key ([targetMuscleKeys]).
+/// Labels are the weekly volume labels ([volumeGroupLabel]) in the UI
+/// language.
 ///
 /// [targets] maps muscle key → its current [MuscleTarget] (absent = no goal).
 /// [onChanged] reports `(muscle, newSets)` on each stepper change.
@@ -117,18 +123,17 @@ class TargetsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final browse = CatalogScope.maybeOf(context)?.bundle.browse;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 12, 16, bottomNavInset(context)),
       children: [
-        for (final entry in {
-          ...kMuscleLabels,
-          for (final key in targets.keys) key: key,
-        }.entries)
+        for (final muscle in targetMuscleKeys(targets.keys))
           _TargetRow(
-            muscle: entry.key,
+            muscle: muscle,
+            browse: browse,
             writing: writing,
-            sets: targets[entry.key]?.targetSets ?? 0,
+            sets: targets[muscle]?.targetSets ?? 0,
             tokens: tokens,
             onChanged: onChanged,
           ),
@@ -140,6 +145,7 @@ class TargetsList extends StatelessWidget {
 class _TargetRow extends StatelessWidget {
   const _TargetRow({
     required this.muscle,
+    required this.browse,
     required this.writing,
     required this.sets,
     required this.tokens,
@@ -147,6 +153,7 @@ class _TargetRow extends StatelessWidget {
   });
 
   final String muscle;
+  final CatalogBrowse? browse;
   final bool writing;
   final int sets;
   final WorkoutTokens tokens;
@@ -155,6 +162,7 @@ class _TargetRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final label = volumeGroupLabel(context, muscle, browse);
     final hasGoal = sets > 0;
     final labelColor = hasGoal ? tokens.text : tokens.faint;
 
@@ -173,7 +181,7 @@ class _TargetRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 FitLabel(
-                  localizedMuscle(context, muscle),
+                  label,
                   style: WorkoutType.body(
                     size: 15.5,
                     weight: FontWeight.w500,
@@ -203,7 +211,7 @@ class _TargetRow extends StatelessWidget {
                 emptyValue: 0,
                 formatForEdit: (v) =>
                     v.round() == 0 ? '' : v.round().toString(),
-                semanticLabel: localizedMuscle(context, muscle),
+                semanticLabel: label,
               ),
             );
             // Beside the stepper a narrow phone at large text leaves the name

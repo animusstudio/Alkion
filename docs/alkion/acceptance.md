@@ -6,6 +6,36 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## P4 honest numbers and PRs — 2026-11-09
+
+Implements the approved [honest numbers and PRs plan](../plans/2026-11-08-honest-numbers-and-prs.md)
+(audit items 3.1–3.3, 3.5, 3.7, 3.8, 3.11).
+
+- Targets offers all 13 groups (8 legacy, then forearms, glutes, core,
+  adductors, abductors, then stored custom keys) in the UI language. A
+  catalog exercise's editor shows a note that its groups come from the
+  catalog instead of chips, and Save leaves `muscle_group` as stored; no chip
+  has an empty label (A1, A2).
+- Today's sets and PRs tiles and Recent PRs show "—" while loading and an
+  "unavailable" state on error, never "0" or "No PRs yet" (A3).
+- Progress leaves unavailable top sets out of the chart, Current, Best and the
+  12wk change for top, e1RM and reps; the log shows them as "—" and volume
+  keeps them. The 12wk change compares with the earliest point within 84 days
+  before the latest dated point, or shows "—" (A4, A5).
+- A PR needs a previous best everywhere: the live badge, haptic and header
+  count now agree with finish, the summary and History (A6).
+- Stored catalog PRs (existing derived results, read only) count in History
+  (tile, week header, card badge, row glyph), Today's PRs tile and Recent PRs;
+  legacy PRs still count once. History counts a catalog PR once per setup,
+  so two setups of one exercise that both PR count twice, as Today and the
+  live count do. A catalog set whose bytes cannot be read shows its Recent
+  PR values as unavailable without hiding the others (A7).
+- Catalog Progress distinguishes never logged, unsupported and a load error
+  with Retry (A8). An unused stats stream was removed (A9).
+- No stored data, schema, derivation or `derived_results` row changes.
+
+Host checks are listed in the plan's task state. The device check is open.
+
 ## P2 storage banner and launch screens — 2026-11-09
 
 Implements the approved [storage banner and launch screens plan](../plans/2026-11-08-storage-banner-and-launch-screens.md)

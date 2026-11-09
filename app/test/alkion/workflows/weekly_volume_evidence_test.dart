@@ -142,7 +142,8 @@ Future<void> assertVolume(
   await settleReal(tester, ticks: 4);
   final bars = tester.widget<VolumeBars>(find.byType(VolumeBars));
   expect(bars.rows.singleWhere((r) => r.muscle == l.muscleChest).sets, known);
-  expect(bars.rows.singleWhere((r) => r.muscle == 'Forearms').sets, 1);
+  // A custom 'forearms' label is the catalog group, named in the UI language.
+  expect(bars.rows.singleWhere((r) => r.muscle == l.bodyForearms).sets, 1);
   // An empty label is not a group: its set joins the unknown note.
   expect(bars.rows.where((r) => r.muscle.trim().isEmpty), isEmpty);
   expect(find.text(l.todayVolumeUnknown(unknown)), findsOneWidget);
@@ -350,7 +351,7 @@ void main() {
               expect(find.text(l.todayVolumeUnknown(3)), findsOneWidget);
               final bars = tester.widget<VolumeBars>(find.byType(VolumeBars));
               expect(bars.rows.toSet(), {
-                (muscle: 'Forearms', sets: 1, target: 1),
+                (muscle: l.bodyForearms, sets: 1, target: 1),
               });
               reopened.faults.add(null);
               await settleReal(tester, ticks: 2);
