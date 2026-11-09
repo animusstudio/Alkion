@@ -47,6 +47,12 @@ class FakeSessionRepository implements SessionRepository {
     return Future.value();
   }
 
+  /// The stored session, read fresh before an editor opens.
+  @override
+  Future<SessionSummaryRow?> sessionById(String id) => Future.value(
+    SessionSummaryRow(id: id, localRevision: 1, date: '2026-09-23'),
+  );
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

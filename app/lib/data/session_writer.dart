@@ -625,6 +625,12 @@ class UnsavedEditors {
   /// The kind [key] is owed as, or null when it is not owed.
   String? kindOf(String key) => _owed[key]?.kind;
 
+  /// Every owed key with its kind.
+  List<({String key, String kind})> owed() => [
+    for (final MapEntry(:key, :value) in _owed.entries)
+      (key: key, kind: value.kind),
+  ];
+
   /// Drops the owed write for [key] after the user explicitly discarded it
   /// (a History edit that can never land). Nothing else removes owed work.
   void discard(String key) => _owed.remove(key);

@@ -1357,6 +1357,9 @@
   "historyNoSetupToLog": "This exercise has no setup to log yet.",
   "historyDiscardSetChanges": "Discard set changes",
   "historyDiscardOwedMessage": "These set changes can't be saved. Discarding drops only them; the stored sets stay as they are.",
-  "historyEarlierNotSaved": "Earlier set changes in History are not saved yet.",
-  "targetsNotSaved": "Not saved"
+  "historyEarlierNotSaved": "Earlier changes in History are not saved yet.",
+  "targetsNotSaved": "Not saved",
+  "historyDiscardUnsaved": "Discard unsaved changes",
+  "historyDiscardUnsavedTitle": "Discard unsaved changes?",
+  "historyDiscardUnsavedMessage": "These History changes can't be saved. Discarding drops only them; what is stored stays as it is."
 }

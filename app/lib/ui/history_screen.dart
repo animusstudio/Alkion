@@ -1192,24 +1192,64 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     _future = _load();
   });
 
+  /// Owed History editor writes block opening another editor anywhere; an
+  /// owed delete of this session blocks editing it. Other owed work (a
+  /// delete elsewhere) is retried on the way in but never blocks.
+  bool _blocksEditing(({String key, String kind}) owed) =>
+      _editorKinds.contains(owed.kind) ||
+      owed.kind == 'history_delete' &&
+          owed.key.contains(':${widget.session.id}:');
+
+  static const _editorKinds = {'history_sets', 'catalog_history'};
+
+  /// Owed History writes whose user may discard them after they failed for
+  /// good (editor writes and session deletes).
+  static const _discardableKinds = {..._editorKinds, 'history_delete'};
+
+  /// Permanent failures already offered for discard while not blocking, so
+  /// a delete failing elsewhere does not interrupt every editor open.
+  static final _offered = <String>{};
+
+  /// True while an editor is being opened: a second tap during the owed
+  /// retry or the picker cannot stack a second editor.
+  bool _opening = false;
+
   /// Before a History editor prepares anything, lands what an earlier one
   /// still owes (one closed after a failed save). An editor opened on the
   /// pre-retry revisions would conflict with a write that just landed, and
   /// a second editor beside a write still owed could make that write
-  /// conflict for good. So: [open] is false (the failure is shown) while
-  /// anything stays owed, and [landed] says the caller must re-read.
+  /// conflict for good. So: [open] is false (the failure is shown) while a
+  /// blocking write stays owed, and [landed] says the caller must re-read.
   Future<({bool open, bool landed})> _landOwedEdits() async {
-    if (UnsavedEditors.instance.unsaved().isEmpty) {
+    if (UnsavedEditors.instance.owed().isEmpty) {
       return (open: true, landed: false);
     }
     final failures = await UnsavedEditors.instance.retryOwed();
     if (!mounted) return (open: false, landed: true);
-    if (UnsavedEditors.instance.unsaved().isEmpty) {
-      return (open: true, landed: true);
+    final blocking = UnsavedEditors.instance.owed().where(_blocksEditing);
+    if (blocking.isNotEmpty) {
+      await _showOwed({
+        for (final owed in blocking)
+          owed.key:
+              failures[owed.key] ??
+              const StoreException('unsaved_editor_input'),
+      });
+      if (mounted) _reload();
+      return (open: false, landed: true);
     }
-    await _showOwed(failures);
-    if (mounted) _reload();
-    return (open: false, landed: true);
+    // Not blocking: still offer a permanently failed one for discard, once.
+    final unoffered = {
+      for (final MapEntry(:key, :value) in failures.entries)
+        if (historyWriteIsPermanent(value) &&
+            _discardableKinds.contains(UnsavedEditors.instance.kindOf(key)) &&
+            !_offered.contains(key))
+          key: value,
+    };
+    if (unoffered.isNotEmpty) {
+      _offered.addAll(unoffered.keys);
+      await _showOwed(unoffered);
+    }
+    return (open: mounted, landed: true);
   }
 
   /// Shows why earlier History changes are still not saved. A History
@@ -1224,21 +1264,18 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     final permanent = [
       for (final MapEntry(:key, :value) in failures.entries)
         if (historyWriteIsPermanent(value) &&
-            const {
-              'history_sets',
-              'catalog_history',
-            }.contains(UnsavedEditors.instance.kindOf(key)))
+            _discardableKinds.contains(UnsavedEditors.instance.kindOf(key)))
           key,
     ];
     final discard = await showWDialog<bool>(
       context,
-      title: l.historySetsNotSaved,
+      title: l.editorSaveFailed,
       message: '${l.historyEarlierNotSaved} ${mapped.message}',
       details: mapped.details,
       actions: [
         if (permanent.isNotEmpty)
           WDialogAction(
-            label: l.historyDiscardSetChanges,
+            label: l.historyDiscardUnsaved,
             value: true,
             destructive: true,
           ),
@@ -1248,8 +1285,8 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     if (discard != true || !mounted) return;
     final confirmed = await showWConfirm(
       context,
-      title: l.historyDiscardSetsTitle,
-      message: l.historyDiscardOwedMessage,
+      title: l.historyDiscardUnsavedTitle,
+      message: l.historyDiscardUnsavedMessage,
       cancelLabel: l.commonKeepEditing,
       confirmLabel: l.commonDiscard,
       destructive: true,
@@ -1258,10 +1295,27 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     for (final key in permanent) {
       UnsavedEditors.instance.discard(key);
     }
+    if (mounted) _reload();
   }
+
+  /// The session's workout revision as stored now: another editor, a retry
+  /// or a sheet that just closed may have moved it since this card was
+  /// built. Null when the session is gone.
+  Future<int?> _currentRevision() async =>
+      (await widget.sessionRepo.sessionById(widget.session.id))?.localRevision;
 
   /// Opens the per-exercise set editor, then reloads.
   Future<void> _editExercise(ExerciseBlockData block) async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await _openEditor(block);
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _openEditor(ExerciseBlockData block) async {
     final owed = await _landOwedEdits();
     if (!owed.open || !mounted) return;
     if (owed.landed) {
@@ -1320,16 +1374,19 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
   /// Picks an exercise, then opens its set editor on an empty block: nothing
   /// is written until "Add set", and dismissing writes nothing.
   Future<void> _addExercise() async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await _addExerciseNow();
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _addExerciseNow() async {
     final owed = await _landOwedEdits();
     if (!owed.open || !mounted) return;
-    var workoutRevision = widget.session.localRevision;
-    if (owed.landed) {
-      // The session revision moved with the write that just landed.
-      final session = await widget.sessionRepo.sessionById(widget.session.id);
-      if (!mounted || session == null) return;
-      workoutRevision = session.localRevision;
-      _reload();
-    }
+    if (owed.landed) _reload();
     final exId = await showExerciseSheet(
       context,
       exercises: widget.catalogMap.values.toList(),
@@ -1367,7 +1424,9 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
             );
       if (!mounted || selected == null) return;
       await widget.sessionRepo.preloadCatalogDependencies(selected);
-      if (!mounted) return;
+      // Read after the picker: a write since this card was built moved it.
+      final workoutRevision = await _currentRevision();
+      if (!mounted || workoutRevision == null) return;
       final row = LoggedSet(
         id: domainUuid.v4(),
         exerciseId: exId,
@@ -1404,6 +1463,9 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       return;
     }
     if (ex == null) return;
+    // Read after the picker: a write since this card was built moved it.
+    final workoutRevision = await _currentRevision();
+    if (!mounted || workoutRevision == null) return;
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,

@@ -25,6 +25,9 @@ class _ApplyFaults implements LocalDatabase {
   int remaining = 0;
   final actions = <LocalAction>[];
 
+  /// When set, every apply waits for it first.
+  Completer<void>? gate;
+
   @override
   String get profileId => store.profileId;
   @override
@@ -36,6 +39,7 @@ class _ApplyFaults implements LocalDatabase {
     StoreToken? expected,
   }) async {
     actions.add(action);
+    await gate?.future;
     final fault = remaining > 0;
     if (fault) remaining--;
     final result = await store.apply(action, (tx) async {
@@ -362,15 +366,13 @@ void main() {
       await tester.tap(find.text('Bench'));
       await settleReal(tester, ticks: 5);
       expect(find.byType(SetEditorSheet), findsNothing);
-      expect(find.text('Sets not saved'), findsOneWidget);
+      expect(find.text("Couldn't save"), findsOneWidget);
       expect(
-        find.textContaining(
-          'Earlier set changes in History are not saved yet.',
-        ),
+        find.textContaining('Earlier changes in History are not saved yet.'),
         findsOneWidget,
       );
       expect(
-        find.text('Discard set changes'),
+        find.text('Discard unsaved changes'),
         findsNothing,
         reason: 'a transient failure offers no discard',
       );
@@ -477,14 +479,14 @@ void main() {
         find.textContaining('This changed since you opened it.'),
         findsOneWidget,
       );
-      await tester.tap(find.text('Discard set changes'));
+      await tester.tap(find.text('Discard unsaved changes'));
       await settleReal(tester, ticks: 3);
       await tester.tap(find.text('Keep editing'));
       await settleReal(tester, ticks: 3);
       expect(UnsavedEditors.instance.unsaved(), ['history_sets']);
       await tester.tap(find.text('Bench'));
       await settleReal(tester, ticks: 5);
-      await tester.tap(find.text('Discard set changes'));
+      await tester.tap(find.text('Discard unsaved changes'));
       await settleReal(tester, ticks: 3);
       await tester.tap(find.text('Discard'));
       await settleReal(tester, ticks: 3);
@@ -738,6 +740,226 @@ void main() {
         "SELECT * FROM sessions WHERE id='w'",
       )).single;
       expect(workout['revision'], (card.session['revision'] as int) + 3);
+      await harness.unmount(tester);
+    },
+  );
+
+  testWidgets(
+    'an owed session delete blocks only its own session; a permanent one is '
+    'offered a confirmed discard; elsewhere it never blocks',
+    (tester) async {
+      final harness = ScreenHarness();
+      addTearDown(harness.close);
+      await harness.open(tester, seed: _seed);
+      late _ApplyFaults fault;
+      await tester.runAsync(() async {
+        fault = _ApplyFaults(harness.database.store, afterCommit: false);
+      });
+      await openCard(tester, harness, fault);
+      Future<void> failing(String key, String category) async =>
+          throw StoreException(category);
+      // A transiently failing delete of another session: retried, not blocking.
+      UnsavedEditors.instance.owe(
+        'history_delete:1:other-session:3',
+        'history_delete',
+        () => failing('a', 'recovery_required'),
+      );
+      await tester.tap(find.text('Bench'));
+      await settleReal(tester, ticks: 8);
+      expect(find.text("Couldn't save"), findsNothing);
+      expect(find.byType(SetEditorSheet), findsOneWidget);
+      await closeSheet(tester);
+
+      // A permanently failing delete elsewhere: offered once, then editing opens.
+      UnsavedEditors.instance.owe(
+        'history_delete:1:gone-session:4',
+        'history_delete',
+        () => failing('b', 'revision_conflict'),
+      );
+      await tester.tap(find.text('Bench'));
+      await settleReal(tester, ticks: 5);
+      expect(find.text('Discard unsaved changes'), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await settleReal(tester, ticks: 8);
+      expect(find.byType(SetEditorSheet), findsOneWidget);
+      await closeSheet(tester);
+      await tester.tap(find.text('Bench'));
+      await settleReal(tester, ticks: 8);
+      expect(find.text('Discard unsaved changes'), findsNothing);
+      expect(find.byType(SetEditorSheet), findsOneWidget);
+      await closeSheet(tester);
+
+      // A permanently failing delete of this session blocks it until discarded.
+      UnsavedEditors.instance.owe(
+        'history_delete:1:w:5',
+        'history_delete',
+        () => failing('c', 'revision_conflict'),
+      );
+      await tester.tap(find.text('Bench'));
+      await settleReal(tester, ticks: 5);
+      expect(find.byType(SetEditorSheet), findsNothing);
+      await tester.tap(find.text('Discard unsaved changes'));
+      await settleReal(tester, ticks: 3);
+      expect(find.text('Discard unsaved changes?'), findsOneWidget);
+      await tester.tap(find.text('Discard'));
+      await settleReal(tester, ticks: 3);
+      expect(
+        UnsavedEditors.instance.owed().map((o) => o.key),
+        isNot(contains('history_delete:1:w:5')),
+      );
+      await tester.tap(find.text('Bench'));
+      await settleReal(tester, ticks: 8);
+      expect(find.byType(SetEditorSheet), findsOneWidget);
+      await closeSheet(tester);
+      expect(fault.actions, isEmpty, reason: 'no History write was attempted');
+      await harness.unmount(tester);
+    },
+  );
+
+  testWidgets('a double tap while owed work is retried opens one editor', (
+    tester,
+  ) async {
+    final harness = ScreenHarness();
+    addTearDown(harness.close);
+    await harness.open(tester, seed: _seed);
+    late _ApplyFaults fault;
+    late Completer<void> slow;
+    await tester.runAsync(() async {
+      fault = _ApplyFaults(harness.database.store, afterCommit: false);
+      slow = Completer<void>();
+    });
+    await openCard(tester, harness, fault);
+    UnsavedEditors.instance.owe(
+      'history_delete:1:elsewhere:2',
+      'history_delete',
+      () => slow.future,
+    );
+    await tester.tap(find.text('Bench'));
+    await tester.pump();
+    await tester.tap(find.text('Bench'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('history-add-exercise')));
+    await tester.pump();
+    await tester.runAsync(() async => slow.complete());
+    await settleReal(tester, ticks: 10);
+    expect(find.byType(SetEditorSheet), findsOneWidget);
+    expect(find.text('Add exercise'), findsOneWidget, reason: 'no picker');
+    await closeSheet(tester);
+    await harness.unmount(tester);
+  });
+
+  testWidgets(
+    'Add exercise right after a sheet write reads the session revision '
+    'fresh and lands without conflict',
+    (tester) async {
+      final harness = ScreenHarness();
+      addTearDown(harness.close);
+      await harness.open(tester, seed: _seed);
+      late _ApplyFaults fault;
+      await tester.runAsync(() async {
+        fault = _ApplyFaults(harness.database.store, afterCommit: false);
+      });
+      final card = await openCard(tester, harness, fault);
+      await tester.tap(find.text('Bench'));
+      await settleReal(tester, ticks: 5);
+      await rir(tester, 's0', 2);
+      await closeSheet(tester);
+      // The card still holds the revision it was built with.
+      await tester.tap(find.byKey(const ValueKey('history-add-exercise')));
+      await settleReal(tester, ticks: 5);
+      await tester.tap(find.text('Bench').last);
+      await settleReal(tester, ticks: 8);
+      expect(find.byType(SetEditorSheet), findsOneWidget);
+      await tester.tap(find.byKey(const Key('add-set')));
+      await settleReal(tester, ticks: 8);
+      expect(find.text('OK'), findsNothing, reason: 'no conflict');
+      await closeSheet(tester);
+      final operations = await rows(
+        tester,
+        harness,
+        'SELECT * FROM operations',
+      );
+      expect(operations, hasLength(card.operations + 2));
+      expect(
+        await rows(
+          tester,
+          harness,
+          "SELECT * FROM sets WHERE session_id='w' AND deleted=0",
+        ),
+        hasLength(3),
+      );
+      await harness.unmount(tester);
+    },
+  );
+
+  testWidgets(
+    'an uncertain COMMIT reconciles once, then a permanent conflict behind it '
+    'stops and can be discarded without touching the landed write',
+    (tester) async {
+      final harness = ScreenHarness();
+      addTearDown(harness.close);
+      await harness.open(tester, seed: _seed);
+      late _ApplyFaults fault;
+      await tester.runAsync(() async {
+        fault = _ApplyFaults(harness.database.store, afterCommit: true);
+      });
+      final card = await openCard(tester, harness, fault);
+      await tester.tap(find.text('Bench'));
+      await settleReal(tester, ticks: 5);
+      fault.remaining = 1;
+      await rir(tester, 's0', 2);
+      await tester.tap(find.text('OK'));
+      await settleReal(tester, ticks: 3);
+      expect(find.text('Not saved · will retry'), findsOneWidget);
+      final head = fault.actions.single.operationId;
+      // Another writer moves the workout on behind the uncertain head.
+      await tester.runAsync(() async {
+        final other = SessionRepository.local(harness.database.store);
+        final s1 = (await other.setsForSession(
+          'w',
+        )).firstWhere((s) => s.id == 's1');
+        await other.commitPrepared(
+          other.prepareHistoryEdit('w', s1.workoutRevision!, {
+            'mode': 'edit',
+            'set': {
+              'id': 's1',
+              'base': s1.localRevision,
+              'fields': {'reps': 6},
+            },
+          }),
+        );
+      });
+      await rir(tester, 's1', 4);
+      // The head replays (reconciled, not rewritten); the edit behind it
+      // conflicts for good: shown once more, as a different failure.
+      expect(find.text('OK'), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await settleReal(tester, ticks: 3);
+      expect(
+        find.byKey(const Key('history-not-saved-permanent')),
+        findsOneWidget,
+      );
+      expect(fault.actions.where((a) => a.operationId == head), hasLength(2));
+      await tester.tap(find.byKey(const Key('history-discard-owed')));
+      await settleReal(tester, ticks: 3);
+      await tester.tap(find.text('Discard'));
+      await settleReal(tester, ticks: 10);
+      expect(find.byType(SetEditorSheet), findsNothing);
+      expect(UnsavedEditors.instance.unsaved(), isEmpty);
+      final operations = await rows(
+        tester,
+        harness,
+        'SELECT * FROM operations',
+      );
+      expect(operations, hasLength(card.operations + 2));
+      expect(operations.where((o) => o['operation_id'] == head), hasLength(1));
+      final sets = await rows(
+        tester,
+        harness,
+        "SELECT * FROM sets WHERE session_id='w' ORDER BY id",
+      );
+      expect(sets.map((r) => r['rir']), [null, 1]);
+      expect(sets.last['reps'], 6);
       await harness.unmount(tester);
     },
   );

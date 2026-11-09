@@ -19,6 +19,7 @@ import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
 import '../util/error_message.dart';
 import '../widgets/w_dialog.dart';
+import 'set_editor_sheet.dart' show historyWriteIsPermanent;
 
 /// Typed History corrections use the same metric form and prepared workout
 /// action as logging. Untouched raw quantities are never rebuilt from display.
@@ -59,6 +60,11 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
 
   /// A save failed and a write is still owed: the editor says it will retry.
   bool _failed = false;
+
+  /// The last failure, when it can never land ([historyWriteIsPermanent]):
+  /// the editor shows its mapped message instead of "will retry". Its owed
+  /// write can be discarded from History once the editor is closed.
+  Object? _permanent;
 
   /// Save found a row without its required values; nothing was written.
   bool _invalid = false;
@@ -218,6 +224,7 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
       if (!mounted) return;
       setState(() {
         _failed = false;
+        _permanent = null;
         _allowPop = true;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -225,7 +232,10 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
       });
     } catch (e) {
       if (mounted) {
-        setState(() => _failed = true);
+        setState(() {
+          _failed = true;
+          _permanent = historyWriteIsPermanent(e) ? e : null;
+        });
         final l = AppLocalizations.of(context);
         final mapped = userMessage(l, e);
         final recovery = mapped.bucket == ErrorBucket.recovery;
@@ -298,9 +308,15 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
                     child: Semantics(
                       liveRegion: true,
                       child: FitLabel(
-                        l.historyNotSavedWillRetry,
-                        key: const Key('history-not-saved'),
-                        maxLines: 3,
+                        _permanent == null
+                            ? l.historyNotSavedWillRetry
+                            : userMessage(l, _permanent!).message,
+                        key: Key(
+                          _permanent == null
+                              ? 'history-not-saved'
+                              : 'history-not-saved-permanent',
+                        ),
+                        maxLines: 6,
                         style: WorkoutType.body(
                           size: 12,
                           color: context.tokens.danger,

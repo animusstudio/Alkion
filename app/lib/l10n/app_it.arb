@@ -794,6 +794,9 @@
   "historyNoSetupToLog": "Questo esercizio non ha ancora un’esecuzione o un’attrezzatura da registrare.",
   "historyDiscardSetChanges": "Scarta le modifiche alle serie",
   "historyDiscardOwedMessage": "Queste modifiche alle serie non possono essere salvate. Scartandole si eliminano solo loro; le serie salvate restano invariate.",
-  "historyEarlierNotSaved": "Le modifiche precedenti alle serie nella cronologia non sono ancora salvate.",
-  "targetsNotSaved": "Non salvato"
+  "historyEarlierNotSaved": "Le modifiche precedenti nella cronologia non sono ancora salvate.",
+  "targetsNotSaved": "Non salvato",
+  "historyDiscardUnsaved": "Scarta le modifiche non salvate",
+  "historyDiscardUnsavedTitle": "Scartare le modifiche non salvate?",
+  "historyDiscardUnsavedMessage": "Queste modifiche alla cronologia non possono essere salvate. Scartandole si eliminano solo loro; i dati salvati restano invariati."
 }

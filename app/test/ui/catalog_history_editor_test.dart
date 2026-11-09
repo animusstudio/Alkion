@@ -263,4 +263,24 @@ void main() {
     await UnsavedEditors.instance.retryOwed();
     expect(repository.committed, hasLength(1));
   });
+
+  testWidgets('a permanent failure shows the mapped conflict, not "will '
+      'retry"', (tester) async {
+    final repository = _Repository()
+      ..failure = const StoreException('revision_conflict');
+    await open(tester, repository, [_row('a')]);
+    await tester.tap(find.byTooltip('Remove'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.text('Not saved · will retry'), findsNothing);
+    expect(
+      find.text(
+        'This changed since you opened it. Go back, open it again and retry.',
+      ),
+      findsOneWidget,
+    );
+  });
 }
