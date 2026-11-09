@@ -138,6 +138,36 @@ Implementers Opus `high`, reviewers Sonnet `high`. T1 first, then T2; T3 (ARBs) 
   - Checks: `planned_workload_test.dart` → +22 pass; analyze clean.
 - **Coordinator decision:** T2 absorbs T3 (strings) and owns the four ARB files, as in U3.
 
+- **T2+T3 Card, tab and strings: done, review pending** (Opus `high`). Strings `e9cc6699`,
+  code `91782841`, tests `f3903aa1`, `60babafe`, `6dbe0772`, `07a28823`.
+  - `make -C app get` → resolved offline with the committed lock.
+  - `make -C app test TEST='--concurrency=2 test/ui test/shell test/layout
+    test/data/planned_workload_test.dart test/l10n'` → +785 all passed (ARB parity and unused
+    keys included).
+  - `make -C app analyze` → no issues.
+  - `make -C app fmt FORMAT_FILES='<the 2 source files and 5 test files>'` → 0 changed.
+  - New ARB keys (en, it, de, es): `splitVolumeTitle`, `splitVolumePerRotation`,
+    `splitVolumePerWeek`, `splitVolumeDays` (plural). The basis line is
+    "Planned sets per rotation · 3 days".
+  - Notes for review:
+    - `SplitTab` now listens to `_daysStream` once in `initState` instead of through a
+      `StreamBuilder`. A days read error still empties the list, as before.
+    - A new read starts when the active days' signature changes, or when the catalog bundle
+      changes. The signature covers each day's id and revision, and each slot's id, revision,
+      exercise and catalog key. Set counts come from the latest days without a new read.
+      Epoch and token retry work as in `DayView`.
+    - One renderer: `IndexedStack` keeps Plan mounted behind Today. The card therefore mounts
+      `BodyFigure` only when `Visibility.of(context)` is true, otherwise a same-size box. The
+      shell sweep asserts exactly one `BodyFigure` app-wide on Today, on Split and in the day
+      view, and none on Exercises or Targets.
+    - Open: during the 220 ms `PlanScreen` cross-fade from the list to a day view, the
+      outgoing card and the incoming view each hold a figure. `plan_screen.dart` is not
+      owned here.
+    - `test/shell/workout_canvas_scope_test.dart` (not listed) now scrolls to the day card,
+      because the overview pushes it down.
+    - The catalog-backed split counts stay covered by T1's real-SQLite test. The widget store
+      test uses legacy exercises.
+
 ## Next
 
 Owner approval, then implementation after P1 to P8 and U3 merge.
