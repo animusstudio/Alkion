@@ -818,5 +818,22 @@
   "targetsNotSaved": "No guardado",
   "historyDiscardUnsaved": "Descartar los cambios sin guardar",
   "historyDiscardUnsavedTitle": "¿Descartar los cambios sin guardar?",
-  "historyDiscardUnsavedMessage": "Estos cambios del historial no se pueden guardar. Al descartarlos solo se eliminan ellos; lo guardado no cambia."
+  "historyDiscardUnsavedMessage": "Estos cambios del historial no se pueden guardar. Al descartarlos solo se eliminan ellos; lo guardado no cambia.",
+  "sessionSetLogged": "Serie {index} registrada",
+  "sessionWarmupLogged": "Calentamiento registrado",
+  "sessionRestOver": "Descanso terminado",
+  "sessionUnloggedSetsTitle": "{count, plural, =1{1 serie sin registrar} other{{count} series sin registrar}}",
+  "sessionUnloggedSetsMessage": "Las series sin registrar no se guardarán. ¿Finalizar de todos modos?",
+  "sessionFinishAnyway": "Finalizar igualmente",
+  "sessionFinishNeedsSet": "Registra al menos una serie para finalizar",
+  "sessionFinishSaving": "Guardando entrenamiento…",
+  "sessionSetSpoken": "Serie {index}",
+  "sessionWarmupSpoken": "Calentamiento",
+  "sessionSetStateDone": "hecha",
+  "sessionSetStateNotDone": "no hecha",
+  "sessionSetNoValue": "sin valor",
+  "numberEntryInvalid": "Introduce un número",
+  "numberEntryMax": "Introduce {max} o menos",
+  "numberEntryMin": "Introduce {min} o más",
+  "sessionDiscardChangesOnlyMessage": "Se perderán este entrenamiento y tus cambios."
 }

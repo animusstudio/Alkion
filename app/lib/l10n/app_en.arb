@@ -1418,5 +1418,57 @@
   "targetsNotSaved": "Not saved",
   "historyDiscardUnsaved": "Discard unsaved changes",
   "historyDiscardUnsavedTitle": "Discard unsaved changes?",
-  "historyDiscardUnsavedMessage": "These History changes can't be saved. Discarding drops only them; what is stored stays as it is."
+  "historyDiscardUnsavedMessage": "These History changes can't be saved. Discarding drops only them; what is stored stays as it is.",
+  "sessionSetLogged": "Set {index} logged",
+  "@sessionSetLogged": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionWarmupLogged": "Warm-up logged",
+  "sessionRestOver": "Rest over",
+  "sessionUnloggedSetsTitle": "{count, plural, =1{1 set not logged} other{{count} sets not logged}}",
+  "@sessionUnloggedSetsTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionUnloggedSetsMessage": "Sets you haven't logged won't be saved. Finish anyway?",
+  "sessionFinishAnyway": "Finish anyway",
+  "sessionFinishNeedsSet": "Log at least one set to finish",
+  "sessionFinishSaving": "Saving workout…",
+  "sessionSetSpoken": "Set {index}",
+  "@sessionSetSpoken": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionWarmupSpoken": "Warm-up",
+  "sessionSetStateDone": "done",
+  "sessionSetStateNotDone": "not done",
+  "sessionSetNoValue": "no value",
+  "numberEntryInvalid": "Enter a number",
+  "numberEntryMax": "Enter {max} or less",
+  "@numberEntryMax": {
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "numberEntryMin": "Enter {min} or more",
+  "@numberEntryMin": {
+    "placeholders": {
+      "min": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionDiscardChangesOnlyMessage": "This workout and your changes will be lost."
 }

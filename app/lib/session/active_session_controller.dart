@@ -17,6 +17,8 @@ import '../data/session_writer.dart';
 import '../util/calendar_keys.dart';
 import '../util/prescription_format.dart';
 import '../store/local_store.dart';
+import '../units/unit_service.dart';
+import '../util/number_input.dart' show clampRound2;
 import '../domain/catalog_execution.dart';
 import '../domain/local_action.dart';
 import '../domain/evidence.dart';
@@ -124,6 +126,34 @@ void _validateFreshCounts(ResolvedSlot resolved) {
 /// Example: `roundTo(38.75, 2.5) == 40.0`.
 double roundTo(double v, double step) => (v / step).round() * step;
 
+/// The plate step suggestions round to in lb: whole 5 lb, whatever the
+/// stored `plate_step_kg` (which stays unchanged).
+const double lbSuggestionStep = 5;
+
+/// Rounds a suggested weight [kg] to the grid the user sees: [stepKg] in kg,
+/// [lbSuggestionStep] in lb, converted back to kg so it displays as a
+/// multiple of 5 lb.
+double roundSuggestion(double kg, double stepKg, Unit unit) {
+  if (unit != Unit.lb) return roundTo(kg, stepKg);
+  final lb = roundTo(UnitService.fromKg(kg, Unit.lb), lbSuggestionStep);
+  return clampRound2(UnitService.toKg(lb, Unit.lb));
+}
+
+/// The suggested working weight from [seedKg]: one plate up for a compound
+/// exercise (2.5 kg on a 2.5 kg step, 5 lb in lb), on the [unit]'s grid.
+double suggestedWeightKg(double seedKg, Exercise exercise, Unit unit) {
+  final step = exercise.plateStepKg;
+  if (unit != Unit.lb) {
+    return roundTo(seedKg + (exercise.compound ? step : 0), step);
+  }
+  final lb = roundTo(
+    UnitService.fromKg(seedKg, Unit.lb) +
+        (exercise.compound ? lbSuggestionStep : 0),
+    lbSuggestionStep,
+  );
+  return clampRound2(UnitService.toKg(lb, Unit.lb));
+}
+
 /// Builds a [BlockState] from a fully-resolved slot, seeding weights from
 /// [lastTopKg] (or the exercise's base weight, or 20 as a last-resort floor
 /// for custom exercises that have no base weight yet).
@@ -133,12 +163,16 @@ double roundTo(double v, double step) => (v / step).round() * step;
 ///   reps_i   = max(1, 8 − 2*i)
 ///
 /// Working sets use [suggested] weight and [repLow] reps; actual RIR is absent.
+///
+/// In lb ([unit]) the suggestion and the ramp round to whole 5 lb instead of
+/// the kg plate step (see [roundSuggestion]); weights stay stored in kg.
 BlockState buildBlock({
   required ResolvedSlot resolved,
   RepPair? repRange,
   double? lastTopKg,
   String? originSlotId,
   int? originSlotRevision,
+  Unit unit = Unit.kg,
 }) {
   _validateFreshCounts(resolved);
   final exercise = resolved.exercise;
@@ -150,7 +184,7 @@ BlockState buildBlock({
 
   // Compound exercises bump one plate on top of the seed to encourage
   // progressive overload; isolation exercises stay at the seed.
-  final suggested = roundTo(seed + (exercise.compound ? step : 0), step);
+  final suggested = suggestedWeightKg(seed, exercise, unit);
 
   // Warm-up ramp
   final warmups = <SetState>[];
@@ -158,7 +192,7 @@ BlockState buildBlock({
     warmups.add(
       SetState(
         id: uuid.v4(),
-        weightKg: roundTo(suggested * (0.5 + 0.18 * i), step),
+        weightKg: roundSuggestion(suggested * (0.5 + 0.18 * i), step, unit),
         reps: max(1, 8 - 2 * i),
         rir: null,
         isWarmup: true,
@@ -960,6 +994,9 @@ class ActiveSessionController extends ChangeNotifier {
     restEndedAt = draft.restEndedAt;
     _focusedSetId = draft.focusedSetId;
     _rirPromptSetId = draft.rirPromptSetId;
+    // Whether blocks or sets were added, removed or moved is not in the
+    // draft file, so an adopted draft counts as edited: Discard asks first.
+    _structureEdited = true;
   }
 
   final DraftStore? _draftStore;
@@ -1277,6 +1314,7 @@ class ActiveSessionController extends ChangeNotifier {
     required ExerciseRepository exerciseRepo,
     required SessionRepository sessionRepo,
     CatalogBundle? currentBundle,
+    Unit unit = Unit.kg,
   }) async {
     // Count all slots, including unresolved references, before any lookup.
     if (template.slots.length > freshTemplateSlotLimit) {
@@ -1409,6 +1447,7 @@ class ActiveSessionController extends ChangeNotifier {
         lastTopKg: lastTop?.weight,
         originSlotId: originSlotIds[i],
         originSlotRevision: originSlotRevisions[i],
+        unit: unit,
       );
       block.bestKg = bestKg;
       block.lastTop = lastTop;
@@ -1663,12 +1702,72 @@ class ActiveSessionController extends ChangeNotifier {
     return (block: live.block, set: live.set, newlyDone: newlyDone);
   }
 
-  /// Un-logs [set] and makes it the live set.
+  /// Un-logs [set] and makes it the live set. Use [undoLog] for a user's
+  /// Undo or "Mark as not done": it also stops the rest that log started.
   void markNotDone(SetState set) {
     set.done = false;
     _focusedSetId = set.id;
     _closeRirPrompt();
     notifyListeners();
+  }
+
+  /// The rest the last log started: which set, its start, and the "rested"
+  /// mark it replaced. In memory only, like the live set.
+  ({String setId, DateTime start, DateTime? endedBefore})? _logRest;
+
+  /// Starts the rest after [set] was newly logged, remembering that this log
+  /// started it so [undoLog] can stop exactly this rest.
+  void startRestAfterLog(SetState set, int seconds) {
+    final endedBefore = restEndedAt;
+    startRest(seconds);
+    _logRest = (setId: set.id, start: restStart!, endedBefore: endedBefore);
+  }
+
+  /// Whether the running rest is the one logging [set] started: an older
+  /// rest, or one started (or restarted) since, is not.
+  bool restStartedBy(SetState set) {
+    final owner = _logRest;
+    final start = restStart;
+    return owner != null &&
+        start != null &&
+        owner.setId == set.id &&
+        owner.start == start;
+  }
+
+  /// Undo of a log: [set] is not done again and becomes the live set, and
+  /// the rest stops only if this set's log started it ([restStartedBy]),
+  /// with the header's previous "rested" mark back — also when a
+  /// notification rest action is still saving. False, with nothing
+  /// changed, when [set] is no longer a logged set of this workout or a
+  /// Finish is pending (a late toast action after the workout moved on).
+  bool undoLog(SetState set) {
+    final d = _draft;
+    if (d == null ||
+        finishPending ||
+        !set.done ||
+        !d.blocks.any((b) => b.allSets.contains(set))) {
+      return false;
+    }
+    final owner = _logRest;
+    final stop = restStartedBy(set);
+    if (owner?.setId == set.id) _logRest = null;
+    if (stop) {
+      final start = owner!.start;
+      final endedBefore = owner.endedBefore;
+      // A notification rest action in flight replays its queued edits on its
+      // committed rest: stop that rest the same way, if it is still this one
+      // (+30s keeps the start; a skip or a new rest does not).
+      _notificationRestEdits?.add(
+        (state) => state.start == start
+            ? (start: null, total: 0, endedAt: endedBefore)
+            : state,
+      );
+      restStart = null;
+      restTotal = 0;
+      restEndedAt = endedBefore;
+    }
+    markNotDone(set);
+    return true;
   }
 
   /// A tap on the RIR strip: stores [rir]; the strip stays open.
@@ -1689,6 +1788,31 @@ class ActiveSessionController extends ChangeNotifier {
 
   /// Total number of working sets (done + not done).
   int get totalWork => draft.blocks.fold(0, (n, b) => n + b.workingSets.length);
+
+  /// Working sets not logged yet; warm-ups never count. Finishing leaves
+  /// these out of the saved workout, so Finish asks first while any remain.
+  int get unloggedWorkingSets => totalWork - doneWork;
+
+  /// Whether discarding would lose anything the user did: a set is done or
+  /// one of its values was touched, or blocks or sets were added, removed
+  /// or moved. A pristine fresh draft discards without asking.
+  bool get hasEdits {
+    final d = _draft;
+    if (d == null) return false;
+    return _structureEdited ||
+        d.blocks.any(
+          (b) => b.allSets.any(
+            (s) =>
+                s.done ||
+                s.weightTouched ||
+                s.repsTouched ||
+                s.rirTouched ||
+                s.catalogTouched,
+          ),
+        );
+  }
+
+  bool _structureEdited = false;
 
   /// Whether the session can be finished (at least one working set done).
   bool get canFinish =>
@@ -1811,6 +1935,7 @@ class ActiveSessionController extends ChangeNotifier {
       }
     }
     (isWarmup ? block.warmupSets : block.workingSets).add(added);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
     return added;
@@ -1830,18 +1955,15 @@ class ActiveSessionController extends ChangeNotifier {
 
   /// Appends a new working set to [block] (cloning weight/reps from the last
   /// working set in the block, or using the block's default suggested weight).
-  void addSet(BlockState block) {
+  /// In lb ([unit]) the default suggestion rounds to whole 5 lb.
+  void addSet(BlockState block, {Unit unit = Unit.kg}) {
     if (block.catalogSelection case final selection?) {
       appendCatalogSet(block, selection);
       return;
     }
     final last = block.workingSets.isNotEmpty ? block.workingSets.last : null;
-    final step = block.exercise.plateStepKg;
     final seed = block.resolved.exercise.baseWeightKg ?? 20.0;
-    final suggested = roundTo(
-      seed + (block.exercise.compound ? step : 0),
-      step,
-    );
+    final suggested = suggestedWeightKg(seed, block.exercise, unit);
     block.workingSets.add(
       SetState(
         id: uuid.v4(),
@@ -1852,6 +1974,7 @@ class ActiveSessionController extends ChangeNotifier {
         done: false,
       ),
     );
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -1865,6 +1988,7 @@ class ActiveSessionController extends ChangeNotifier {
     if (_focusedSetId == set.id) {
       _focusedSetId = null;
     }
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
     return index;
@@ -1888,8 +2012,8 @@ class ActiveSessionController extends ChangeNotifier {
   /// [buildBlock] uses: the i-th warm-up is `(0.5 + 0.18 * i)` of the first
   /// working set's weight (or, with no working set, the block's suggested
   /// weight), rounded to the plate step and never above it; reps
-  /// `max(1, 8 - 2 * i)`.
-  void addWarmupSet(BlockState block) {
+  /// `max(1, 8 - 2 * i)`. In lb ([unit]) both round to whole 5 lb.
+  void addWarmupSet(BlockState block, {Unit unit = Unit.kg}) {
     if (block.catalogSelection case final selection?) {
       appendCatalogSet(block, selection, isWarmup: true);
       return;
@@ -1898,9 +2022,9 @@ class ActiveSessionController extends ChangeNotifier {
     final seed = block.exercise.baseWeightKg ?? 20.0;
     final reference = block.workingSets.isNotEmpty
         ? block.workingSets.first.weightKg
-        : roundTo(seed + (block.exercise.compound ? step : 0), step);
+        : suggestedWeightKg(seed, block.exercise, unit);
     final i = block.warmupSets.length;
-    final weight = roundTo(reference * (0.5 + 0.18 * i), step);
+    final weight = roundSuggestion(reference * (0.5 + 0.18 * i), step, unit);
     block.warmupSets.add(
       SetState(
         id: uuid.v4(),
@@ -1911,6 +2035,7 @@ class ActiveSessionController extends ChangeNotifier {
         done: false,
       ),
     );
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -1930,6 +2055,7 @@ class ActiveSessionController extends ChangeNotifier {
     blocks
       ..removeAt(from)
       ..insert(to, block);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -1950,6 +2076,7 @@ class ActiveSessionController extends ChangeNotifier {
       return;
     }
     blocks.insert(to, blocks.removeAt(from));
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -1960,6 +2087,7 @@ class ActiveSessionController extends ChangeNotifier {
       throw const StoreException('finish_retry_required');
     }
     draft.blocks.remove(block);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -1982,6 +2110,7 @@ class ActiveSessionController extends ChangeNotifier {
     required SessionRepository sessionRepo,
     bool allowRepeat = false,
     CatalogSelectionEvidence? catalogSelection,
+    Unit unit = Unit.kg,
   }) async {
     if (catalogSelection != null) {
       await addCatalogBlock(
@@ -2038,11 +2167,13 @@ class ActiveSessionController extends ChangeNotifier {
         Slot(exerciseId: exercise.id, position: draft.blocks.length),
         exercise,
       ),
+      unit: unit,
     );
     block.bestKg = bestKg;
     block.lastTop = lastTop;
     block.lastTopUnavailable = reference.unavailable;
     draft.blocks.add(block);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -2095,6 +2226,7 @@ class ActiveSessionController extends ChangeNotifier {
         ? null
         : (weight: last.weightKg, reps: last.reps, date: last.date);
     current.blocks.add(block);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -2320,6 +2452,7 @@ class ActiveSessionController extends ChangeNotifier {
     restStart = null;
     restTotal = 0;
     restEndedAt = null;
+    _logRest = null;
     _focusedSetId = null;
     _rirPromptSetId = null;
     super.notifyListeners();
@@ -2354,6 +2487,7 @@ class ActiveSessionController extends ChangeNotifier {
     restStart = null;
     restTotal = 0;
     restEndedAt = null;
+    _logRest = null;
     _focusedSetId = null;
     _rirPromptSetId = null;
     _savePending = false;

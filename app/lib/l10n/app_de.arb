@@ -818,5 +818,22 @@
   "targetsNotSaved": "Nicht gespeichert",
   "historyDiscardUnsaved": "Nicht gespeicherte Änderungen verwerfen",
   "historyDiscardUnsavedTitle": "Nicht gespeicherte Änderungen verwerfen?",
-  "historyDiscardUnsavedMessage": "Diese Änderungen im Verlauf können nicht gespeichert werden. Verwerfen entfernt nur sie; das Gespeicherte bleibt unverändert."
+  "historyDiscardUnsavedMessage": "Diese Änderungen im Verlauf können nicht gespeichert werden. Verwerfen entfernt nur sie; das Gespeicherte bleibt unverändert.",
+  "sessionSetLogged": "Satz {index} gespeichert",
+  "sessionWarmupLogged": "Aufwärmsatz gespeichert",
+  "sessionRestOver": "Pause vorbei",
+  "sessionUnloggedSetsTitle": "{count, plural, =1{1 Satz nicht gespeichert} other{{count} Sätze nicht gespeichert}}",
+  "sessionUnloggedSetsMessage": "Nicht gespeicherte Sätze gehen verloren. Trotzdem beenden?",
+  "sessionFinishAnyway": "Trotzdem beenden",
+  "sessionFinishNeedsSet": "Speichere mindestens einen Satz, um zu beenden",
+  "sessionFinishSaving": "Training wird gespeichert…",
+  "sessionSetSpoken": "Satz {index}",
+  "sessionWarmupSpoken": "Aufwärmsatz",
+  "sessionSetStateDone": "erledigt",
+  "sessionSetStateNotDone": "nicht erledigt",
+  "sessionSetNoValue": "kein Wert",
+  "numberEntryInvalid": "Gib eine Zahl ein",
+  "numberEntryMax": "Gib höchstens {max} ein",
+  "numberEntryMin": "Gib mindestens {min} ein",
+  "sessionDiscardChangesOnlyMessage": "Dieses Training und deine Änderungen gehen verloren."
 }

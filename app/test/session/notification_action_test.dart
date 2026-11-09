@@ -68,6 +68,108 @@ void main() {
     await temp.delete(recursive: true);
   });
 
+  group('undoLog', () {
+    late SetState logged;
+    late DateTime earlier;
+    Future<void> logWithRest() async {
+      logged = SetState(
+        id: 'undo-set',
+        weightKg: 100,
+        reps: 5,
+        rir: null,
+        isWarmup: false,
+        done: false,
+      );
+      const ex = Exercise(
+        id: 'synthetic',
+        name: 'Synthetic',
+        slug: 'synthetic',
+        muscleGroup: 'legs',
+        compound: true,
+        plateStepKg: 2.5,
+        isTemplate: false,
+      );
+      c.seedForTest(
+        SessionDraft(
+          templateId: null,
+          name: 'Synthetic workout',
+          focus: '',
+          startedAt: DateTime.now(),
+          blocks: [
+            BlockState(
+              exercise: ex,
+              resolved: const ResolvedSlot(
+                exercise: ex,
+                workSets: 2,
+                warmupSets: 0,
+                repLow: 5,
+                repHigh: 8,
+                rirLow: null,
+                rirHigh: null,
+              ),
+              warmupSets: [],
+              workingSets: [
+                logged,
+                SetState(
+                  id: 'next-set',
+                  weightKg: 100,
+                  reps: 5,
+                  rir: null,
+                  isWarmup: false,
+                  done: false,
+                ),
+              ],
+              expanded: true,
+            ),
+          ],
+        ),
+      );
+      c.stopRest();
+      earlier = DateTime.now().subtract(const Duration(minutes: 4));
+      c.restEndedAt = earlier;
+      c.logLiveSet();
+      c.startRestAfterLog(logged, 600);
+      await c.flushPersistence();
+    }
+
+    test(
+      'during a notification +30s the undone rest stays stopped with the earlier rested mark',
+      () async {
+        await logWithRest();
+        final action = (await drafts.notificationAction())!;
+        actions.gate = true;
+        final applying = c.applyNotificationAction(action);
+        await actions.entered.future;
+        expect(c.undoLog(logged), isTrue);
+        expect(c.restStart, isNull);
+        expect(c.restEndedAt, earlier);
+        actions.release.complete();
+        expect(await applying, isTrue);
+        expect(logged.done, isFalse);
+        expect(c.restStart, isNull, reason: 'the replayed +30s is undone too');
+        expect(c.restTotal, 0);
+        expect(c.restEndedAt, earlier);
+        await c.flushPersistence();
+        final saved = (await drafts.load())!;
+        expect(saved.restStart, isNull);
+        expect(saved.restEndedAt, earlier);
+      },
+    );
+
+    test('while a Finish is pending it changes nothing', () async {
+      await logWithRest();
+      final restStart = c.restStart;
+      c.prepareFinish(WorkoutRepository.local(actions));
+      expect(c.finishPending, isTrue);
+      final before = logged.toJson();
+      expect(c.undoLog(logged), isFalse);
+      expect(logged.toJson(), before);
+      expect(c.restStart, restStart);
+      expect(c.restTotal, 600);
+      expect(c.restStartedBy(logged), isTrue);
+    });
+  });
+
   test(
     'one token commits once; refreshed token works; controller autosave retains committed rest',
     () async {

@@ -22,11 +22,17 @@ class LogSetBar extends StatelessWidget {
     required this.unit,
     required this.onLog,
     required this.onFinish,
+    this.busy = false,
   });
 
   final LiveSet? live;
   final bool canFinish;
   final UnitService unit;
+
+  /// A Finish is saving: the bar is disabled, says so (a live region for
+  /// screen readers) and shows a small progress ring, which reduced motion
+  /// leaves out.
+  final bool busy;
 
   /// Logs (or confirms the correction of) [live].
   final VoidCallback onLog;
@@ -58,6 +64,7 @@ class LogSetBar extends StatelessWidget {
   }
 
   void _tap() {
+    if (busy) return;
     // A typed value commits on focus loss only, a flung ruler keeps gliding,
     // and on Android a tap on a non-text widget stops neither. Settle both
     // first, or the bar would log — or the glide would later overwrite — a
@@ -73,8 +80,21 @@ class LogSetBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final label = labelFor(AppLocalizations.of(context), unit, live, canFinish);
+    final l = AppLocalizations.of(context);
+    final label = busy
+        ? l.sessionFinishSaving
+        : labelFor(l, unit, live, canFinish);
     if (label == null) return const SizedBox.shrink();
+    final text = FitLabel(
+      label,
+      maxLines: 3,
+      textAlign: TextAlign.center,
+      style: WorkoutType.body(
+        size: 16,
+        weight: FontWeight.w500,
+        color: tokens.onAction,
+      ),
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -88,12 +108,14 @@ class LogSetBar extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
           child: Semantics(
             button: true,
+            enabled: !busy,
+            liveRegion: busy,
             label: label,
             excludeSemantics: true,
-            onTap: _tap,
+            onTap: busy ? null : _tap,
             child: FilledButton(
               key: const Key('log-set-bar'),
-              onPressed: _tap,
+              onPressed: busy ? null : _tap,
               style: FilledButton.styleFrom(
                 minimumSize: const Size(double.infinity, 56),
                 padding: const EdgeInsets.symmetric(
@@ -102,20 +124,30 @@ class LogSetBar extends StatelessWidget {
                 ),
                 backgroundColor: tokens.action,
                 foregroundColor: tokens.onAction,
+                // Busy, not unavailable: the bar keeps its colours.
+                disabledBackgroundColor: tokens.action,
+                disabledForegroundColor: tokens.onAction,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.control),
                 ),
               ),
-              child: FitLabel(
-                label,
-                maxLines: 3,
-                textAlign: TextAlign.center,
-                style: WorkoutType.body(
-                  size: 16,
-                  weight: FontWeight.w500,
-                  color: tokens.onAction,
-                ),
-              ),
+              child: busy && !MediaQuery.disableAnimationsOf(context)
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(
+                            key: const Key('log-set-bar-progress'),
+                            strokeWidth: 2,
+                            color: tokens.onAction,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Flexible(child: text),
+                      ],
+                    )
+                  : text,
             ),
           ),
         ),
