@@ -25,11 +25,6 @@ import '../widgets/stepper.dart';
 import 'slot_modes.dart';
 import 'slot_summary.dart';
 
-// T4: replace with l10n keys. Until then these are the only card strings
-// without one.
-const _loadLastLabel = 'Last'; // T4: replace with l10n key dayEditorLoadLast
-const _loadFixedLabel = 'Fixed'; // T4: replace with l10n key dayEditorLoadFixed
-
 /// Metrics with their own row in the card, so the measurement form skips them.
 const _ownRows = {'repetitions', 'reported_load'};
 
@@ -69,6 +64,7 @@ class DaySlotCard extends StatefulWidget {
     required this.onChanged,
     this.displayName,
     this.loadReference,
+    this.measuresReps = true,
     this.enabled = true,
   });
 
@@ -93,6 +89,11 @@ class DaySlotCard extends StatefulWidget {
   /// Last to Fixed. Null seeds 20 kg or 45 lb.
   final CatalogLoadReference? loadReference;
 
+  /// False for a slot without selection evidence whose catalog choice
+  /// measures no repetitions (a duration-only exercise, say): it then has no
+  /// Reps row and no reps in its summary. Selection evidence decides itself.
+  final bool measuresReps;
+
   final bool expanded;
   final VoidCallback onToggle;
   final VoidCallback onRemove;
@@ -114,6 +115,22 @@ class _DaySlotCardState extends State<DaySlotCard> {
 
   SlotDraft get _draft => widget.draft;
   String get _name => widget.displayName ?? widget.exercise.name;
+
+  bool get _hasReps =>
+      hasRepsRow(_draft) && (_draft.catalog != null || widget.measuresReps);
+
+  /// As [slotSummary], without reps where the slot has no Reps row.
+  SlotSummary get _summary {
+    final summary = slotSummary(slotFromDraft(_draft), widget.exercise);
+    if (_hasReps || _draft.catalog != null) return summary;
+    return SlotSummary(
+      workSets: summary.workSets,
+      warmupSets: summary.warmupSets,
+      rir: summary.rir,
+      rirUnavailable: summary.rirUnavailable,
+      loadKg: summary.loadKg,
+    );
+  }
 
   @override
   void didUpdateWidget(DaySlotCard oldWidget) {
@@ -182,17 +199,25 @@ class _DaySlotCardState extends State<DaySlotCard> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _header(context, narrow),
-              AnimatedSize(
+              // The body stays mounted while it folds away, so a collapse
+              // shrinks the body itself rather than an empty surface.
+              TweenAnimationBuilder<double>(
+                tween: Tween(end: widget.expanded ? 1 : 0),
                 duration: Motion.of(context, Motion.base),
                 curve: Motion.curve,
-                alignment: Alignment.topCenter,
-                child: widget.expanded
-                    ? Padding(
-                        key: const ValueKey('day-slot-body'),
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                        child: _body(context),
-                      )
-                    : const SizedBox(width: double.infinity),
+                builder: (context, open, _) => open == 0
+                    ? const SizedBox(width: double.infinity)
+                    : ClipRect(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          heightFactor: open,
+                          child: Padding(
+                            key: const ValueKey('day-slot-body'),
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                            child: _body(context),
+                          ),
+                        ),
+                      ),
               ),
             ],
           );
@@ -207,7 +232,7 @@ class _DaySlotCardState extends State<DaySlotCard> {
     final l = AppLocalizations.of(context), t = context.tokens;
     // As [SlotSummaryChips] reads it, so the spoken chips match the shown.
     final units = Provider.of<UnitService?>(context) ?? UnitService();
-    final summary = slotSummary(slotFromDraft(_draft), widget.exercise);
+    final summary = _summary;
     final chips = SlotSummaryChips(summary: summary);
     final spoken = [_name, ...summary.labels(l, units)].join('\n');
 
@@ -356,7 +381,7 @@ class _DaySlotCardState extends State<DaySlotCard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _setCounts(context),
-        if (hasRepsRow(_draft)) _reps(context),
+        if (_hasReps) _reps(context),
         if (hasLoadRow(_draft)) _load(context),
         ?_otherMetrics(),
         ?rir,
@@ -390,7 +415,7 @@ class _DaySlotCardState extends State<DaySlotCard> {
     final l = AppLocalizations.of(context);
     // Null fields show what the workout will build, and stay null until
     // touched, so an untouched save is unchanged.
-    final summary = slotSummary(slotFromDraft(_draft), widget.exercise);
+    final summary = _summary;
     final work = _countStepper(
       key: const Key('day-slot-working-sets'),
       label: l.dayEditorWorkingSets,
@@ -471,8 +496,8 @@ class _DaySlotCardState extends State<DaySlotCard> {
             items: LoadMode.values,
             selected: mode,
             labelOf: (m) => switch (m) {
-              LoadMode.last => _loadLastLabel,
-              LoadMode.fixed => _loadFixedLabel,
+              LoadMode.last => l.dayEditorLoadLast,
+              LoadMode.fixed => l.dayEditorLoadFixed,
             },
             onSelect: (m) {
               commitPendingInput();

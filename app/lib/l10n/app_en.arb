@@ -334,7 +334,6 @@
       }
     }
   },
-  "dayEditorSlotHint": "Tap an exercise to change its sets and reps.",
   "dayEditorWarmupShort": "{count}wu",
   "@dayEditorWarmupShort": {
     "placeholders": {
@@ -345,6 +344,14 @@
   },
   "dayEditorWorkingSets": "Working sets",
   "dayEditorWarmups": "Warmups",
+  "dayEditorLoadLast": "Last",
+  "@dayEditorLoadLast": {
+    "description": "Day editor Load mode: the workout prefills the load from the last session."
+  },
+  "dayEditorLoadFixed": "Fixed",
+  "@dayEditorLoadFixed": {
+    "description": "Day editor Load mode: a fixed load the workout starts every working set at."
+  },
   "dayEditorRepLow": "Rep low",
   "dayEditorRepHigh": "Rep high",
   "dayEditorRirLow": "RIR low",
@@ -1185,15 +1192,8 @@
   "trainingRepairRir": "Set an RIR target",
   "trainingRirTarget": "RIR target",
   "trainingRirExplanation": "Repetitions in reserve: how many more reps you could do. A target is optional.",
-  "trainingMoreOptions": "More options",
-  "trainingAddRir": "Add RIR target",
-  "trainingRemoveRir": "Remove RIR target",
-  "trainingUseExerciseDefault": "Use exercise default",
   "trainingUnavailable": "Prescription unavailable",
   "trainingRirUnavailable": "RIR target unavailable",
-  "trainingAddWeekday": "Add weekday",
-  "trainingChangeWeekday": "Change weekday",
-  "trainingRemoveWeekday": "Remove weekday",
   "trainingDisable": "Disable",
   "trainingEnable": "Enable",
   "trainingInactive": "Inactive ({count})",
