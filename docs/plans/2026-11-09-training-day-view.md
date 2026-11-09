@@ -223,4 +223,4 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
 
 ## Next
 
-T3 (parallel), then integration and review of T2.
+Code-complete. The integrated full suite and device check run at delivery; U5 branches from here.
