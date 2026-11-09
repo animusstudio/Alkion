@@ -239,6 +239,16 @@ T3 after both; T4 (ARBs) last.
     - `make -C app analyze` → No issues found.
     - `make -C app fmt FORMAT_FILES=<owned files>`, then `make -C app format` → 0 changed.
 
+- **T2 review PASS** (Sonnet `high`): write parity with the old editor, and an untouched card
+  writes nothing.
+  - Minors were relayed to T3 and fixed in `4ad1ece`:
+    - the chip and Load units come from the same Provider
+    - a no-selection slot that measures no reps gets no Reps row
+    - the body stays mounted while it folds
+  - PR follow-ups:
+    - a width near 350 dp, where the header and body can stack differently
+    - a disabled `RirPicker`
+
 ## Next
 
 Owner approval, then implementation after P1 to P8, U2 and U3 merge.
