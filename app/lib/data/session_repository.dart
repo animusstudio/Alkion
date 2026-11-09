@@ -7,7 +7,7 @@ import '../domain/evidence.dart';
 import '../domain/catalog_execution.dart';
 import 'catalog_execution_repository.dart';
 import 'catalog_load_history.dart';
-export 'catalog_load_history.dart' show CatalogLoadReference;
+export 'catalog_load_history.dart' show CatalogLastSet, CatalogLoadReference;
 import 'exercise_repository.dart';
 import 'session_writer.dart';
 import 'models.dart';
@@ -136,14 +136,19 @@ class SessionRepository {
         ).dependenciesForSelection(selection);
   }
 
+  /// The exact-context load reference; [includeLastSets] adds the latest
+  /// qualified session's sets (any profile) for workout prefill, in the same
+  /// single scan.
   Future<CatalogLoadReference> catalogLoadReference(
     CatalogSelectionEvidence selection, {
     String? excludeSessionId,
+    bool includeLastSets = false,
   }) => db.readTransaction(
     (tx) => readCatalogLoadReference(
       tx,
       selection,
       excludeSessionId: excludeSessionId,
+      includeLastSets: includeLastSets,
     ),
   );
   final LocalDatabase db;

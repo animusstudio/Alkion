@@ -28,16 +28,58 @@ const setPrSql = 'COALESCE($catalogPrSql, s.legacy_local_pr)';
 const prUnitSql =
     "s.exercise_id||':'||COALESCE((SELECT json_extract(CAST(d.coverage_bytes AS TEXT),'\$.compatibilityKey') FROM derived_results d WHERE d.profile_id=s.profile_id AND d.result_id='catalog-workout:'||s.session_id||':'||se.revision||':set:'||s.id||':'||s.revision),'')";
 
+/// One set of the latest qualified session in an exact context, in
+/// `set_number` order: its warm-up flag and its stored metrics, verbatim.
+final class CatalogLastSet {
+  const CatalogLastSet({required this.isWarmup, required this.metrics});
+  final bool isWarmup;
+  final Map<String, CatalogMetricEvidence> metrics;
+}
+
 final class CatalogLoadReference {
   const CatalogLoadReference({
     this.last,
     this.bestKg,
     this.lastMetrics,
     this.bestMetrics,
+    this.lastSets = const [],
   });
   final ({double weightKg, int reps, String date})? last;
   final double? bestKg;
   final Map<String, CatalogMetricEvidence>? lastMetrics, bestMetrics;
+
+  /// The latest qualified session's sets for the exact context, for any
+  /// measurement profile. Empty unless requested with `includeLastSets`.
+  final List<CatalogLastSet> lastSets;
+}
+
+/// The sets of the latest session in [rows] (ordered newest session first,
+/// then by `set_number`) that has a catalog set in [selection]'s exact
+/// context. Rows of other contexts and legacy rows are skipped.
+List<CatalogLastSet> catalogLastSets(
+  List<Map<String, dynamic>> rows,
+  CatalogSelectionEvidence selection,
+) {
+  final sets = <CatalogLastSet>[];
+  Object? session;
+  for (final row in rows) {
+    if (session != null && row['session_id'] != session) break;
+    if (row['catalog_set_bytes'] == null) continue;
+    final evidence = CatalogSetEvidence.fromJson(
+      decodeCatalogBytes(row['catalog_set_bytes']!),
+    );
+    if (evidence.selection.compatibilityKey != selection.compatibilityKey) {
+      continue;
+    }
+    session = row['session_id'];
+    sets.add(
+      CatalogLastSet(
+        isWarmup: row['is_warmup'] != 0,
+        metrics: evidence.metrics,
+      ),
+    );
+  }
+  return sets;
 }
 
 final class CatalogLoadObservation {
@@ -91,8 +133,11 @@ Future<CatalogLoadReference> readCatalogLoadReference(
   LocalRead tx,
   CatalogSelectionEvidence selection, {
   String? excludeSessionId,
+  bool includeLastSets = false,
 }) async {
-  if (!selection.supportsLoadProgression) return const CatalogLoadReference();
+  if (!selection.supportsLoadProgression && !includeLastSets) {
+    return const CatalogLoadReference();
+  }
   final rows = await tx.getAll(
     'SELECT s.*,se.date,se.created_at AS session_created_at FROM sets s JOIN sessions se ON se.profile_id=s.profile_id AND se.id=s.session_id WHERE s.profile_id=? AND s.tracking_context_id=? AND s.deleted=0 AND se.deleted=0 ${excludeSessionId == null ? '' : 'AND s.session_id!=?'} ORDER BY se.date DESC,se.created_at DESC,se.id DESC,s.set_number,s.id',
     [
@@ -101,17 +146,18 @@ Future<CatalogLoadReference> readCatalogLoadReference(
       if (excludeSessionId != null) excludeSessionId,
     ],
   );
-  final values = catalogLoadObservations(
-    rows
-        .where(
-          (row) => hasQualifiedCalendarDay(
-            row['date'] is String ? row['date'] as String : null,
-          ),
-        )
-        .toList(),
-    selection,
-  );
-  if (values.isEmpty) return const CatalogLoadReference();
+  final qualified = rows
+      .where(
+        (row) => hasQualifiedCalendarDay(
+          row['date'] is String ? row['date'] as String : null,
+        ),
+      )
+      .toList();
+  final lastSets = includeLastSets
+      ? catalogLastSets(qualified, selection)
+      : const <CatalogLastSet>[];
+  final values = catalogLoadObservations(qualified, selection);
+  if (values.isEmpty) return CatalogLoadReference(lastSets: lastSets);
   final best = values.reduce((a, b) => compareCatalogLoad(a, b) >= 0 ? a : b);
   final lastSession = values.first.row['session_id'];
   final last = values
@@ -131,6 +177,7 @@ Future<CatalogLoadReference> readCatalogLoadReference(
         : null,
     lastMetrics: last.evidence.metrics,
     bestMetrics: best.evidence.metrics,
+    lastSets: lastSets,
   );
 }
 
