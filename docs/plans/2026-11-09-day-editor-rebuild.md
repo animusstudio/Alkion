@@ -186,6 +186,10 @@ T3 after both; T4 (ARBs) last.
       `RangeError`/`StateError`.
   - **PR follow-up:** a `fixedLoadSeed` lb/lb test.
 
+- **Full suite** at `f2135e1` (audit P1–P8 + U1 + U2 + U3 + U4 T1): `make -C app test
+  TEST=--concurrency=2` → +3434 ~3 −3. The three failures are the inherited
+  `catalog_metric_controls_test.dart` ones.
+
 ## Next
 
 Owner approval, then implementation after P1 to P8, U2 and U3 merge.
