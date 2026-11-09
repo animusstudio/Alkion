@@ -140,7 +140,7 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
 
 ## Task state
 
-- **T1 Shared pieces: done** (pending review). Code `6425dd21`, tests `2ddd3ec1`.
+- **T1 Shared pieces: done, review PASS** (Sonnet `high`). Code `6425dd21`, tests `2ddd3ec1`.
   - `make -C app get` → resolved offline with the committed lock.
   - `make -C app test TEST='--concurrency=2 test/ui/slot_summary_test.dart
     test/data/planned_workload_test.dart test/ui/training_prescriptions_test.dart
@@ -160,6 +160,15 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
     evidence that does not qualify shows `trainingRirUnavailable` as the editor does; a slot
     with no reps shows a bare `3×` chip until T4 adds a set-count string.
 
+- T1 review minors:
+  - (1) The view shows volume for a legacy slot that Today marks unavailable. This is
+    deliberate and pinned by `planned_workload_test.dart`, and goes in the PR description.
+  - (2) The bare `3×` chip and the `labels` bare-`×` branch are replaced by a set-count
+    string in the strings task.
+- **Coordinator decision:** T2 owns the four ARB files and absorbs T4, adding the strings
+  T2 and T3 need. T3 reuses existing keys only, so T2 and T3 stay disjoint. The branch
+  merges the integrated audit plans P2 and P4–P7 before T2 and T3.
+
 ## Next
 
-Owner approval, then implementation after P1 to P8 merge.
+T2 and T3 in parallel.
