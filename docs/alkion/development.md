@@ -1,10 +1,10 @@
 # Alkion development and qualified driver handoff
 
-2026-11-09 · [Toast redesign](../plans/2026-11-09-toast-redesign.md) · Proposed.
-2026-11-09 · [Live workout declutter](../plans/2026-11-09-live-workout-declutter.md) · Proposed.
-2026-11-09 · [Training day view](../plans/2026-11-09-training-day-view.md) · Proposed.
-2026-11-09 · [Day editor rebuild](../plans/2026-11-09-day-editor-rebuild.md) · Proposed.
-2026-11-09 · [Split volume overview](../plans/2026-11-09-split-volume-overview.md) · Proposed.
+2026-11-09 · [Toast redesign](../plans/2026-11-09-toast-redesign.md) · Approved.
+2026-11-09 · [Live workout declutter](../plans/2026-11-09-live-workout-declutter.md) · Approved.
+2026-11-09 · [Training day view](../plans/2026-11-09-training-day-view.md) · Approved.
+2026-11-09 · [Day editor rebuild](../plans/2026-11-09-day-editor-rebuild.md) · Approved.
+2026-11-09 · [Split volume overview](../plans/2026-11-09-split-volume-overview.md) · Approved.
 
 2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Done.
 

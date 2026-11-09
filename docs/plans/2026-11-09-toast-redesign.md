@@ -1,6 +1,6 @@
 # A calmer toast
 
-Date: 2026-11-09. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-09. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/toast-redesign-20261109`.
 Ordering: **after** [error messages and toasts](2026-11-08-error-messages-and-toasts.md)

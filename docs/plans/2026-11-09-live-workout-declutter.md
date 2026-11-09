@@ -1,6 +1,6 @@
 # Live workout declutter
 
-Date: 2026-11-09. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-09. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/live-workout-declutter-20261109`.
 Ordering: **after** the audit-batch plans and the toast plan: [live workout flow](2026-11-08-live-workout-flow.md)
