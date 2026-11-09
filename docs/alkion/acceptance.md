@@ -6,6 +6,63 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## P3 backup and restore flow — 2026-11-09
+
+Implements the approved [backup and restore flow plan](../plans/2026-11-08-backup-and-restore-flow.md)
+(audit items 5.1 to 5.7 and 1.7, plus the backup-dialog issues found with
+them).
+
+- Restore while a workout is running or starting is refused with "Finish or
+  discard your workout first, then restore." before any file picker opens and
+  before anything is flushed or closed. The host checks again under the session
+  launch fence, which it holds while verifying and releases on every path.
+  After the workout ends, restore works as before (A1).
+- The backup file is picked once: Check and Restore reuse the chosen private
+  copy, whose name and size are shown. A cancelled picker does nothing. The
+  restore confirmation names the file and its creation date (A2).
+- Restore reviews read as counts per kind, for example "Newer than this backup:
+  12 sets", with no IDs or keys on the surface; table names and restore IDs sit
+  under "Show technical details". "Keep all as evidence" asks first, then
+  writes the existing `alkion-restore-decision/1` / `kept_as_evidence` row for
+  every undecided `restore_newer_work` review in one transaction (all of them,
+  not only the first 200). Other review categories and already decided reviews
+  are skipped, a repeat writes nothing, and review evidence stays
+  byte-identical (A3).
+- A backup of another profile gets its own title and the three steps to use
+  it; "Backup verified" is never shown for it, and there is no in-app replace
+  (A4).
+- Create, Check, Restore and Keep all show a progress row with a live-region
+  label, also on the restoring screen and the first-start restore. It goes away
+  when the step ends; under reduced motion it is a still line (A5).
+- A read-only "Stored copies" section lists the sizes of private backups,
+  exports and picker staging; nothing is deleted and unreadable sizes are
+  omitted. "Last backup created" (or "No backup yet"), on the Backup screen and
+  the Profile row, comes from the newest backup file name of this profile; no
+  database write (A6).
+- If the runtime fails to close for a restore, Reopen shows the same working
+  runtime only when the flush barrier itself refused (its Animus connection,
+  workout sender and recovery review stay closed until the next launch). Once
+  teardown began it retries the close and relaunches; a failed retry stays a
+  retryable error, never `profile_in_use` (A7).
+- Backup, restore and first-start errors use the shared mapper: a sentence and
+  at most a small category line, never exception text. An open editor gets
+  "close the editor" guidance; an interrupted restore, a profile that already
+  has data and a changed staging copy get their own sentences; an interrupted
+  fresh restore at first start reads as the retryable interrupted restore, not
+  a foreign backup. New strings exist in en, it, de and es; parity and
+  unused-key tests pass, and the Backup screen holds at 320 dp and 2x text in
+  all four (A8). Explicit exception to A8's "no raw code": by the P1 decision
+  the stable category stays visible as a small mono details line under the
+  sentence; it is never the message and never exception text.
+- Restore re-verifies the chosen file at every step, so a copy that changed
+  after Check is checked again; damaged bytes are refused with a mapped
+  sentence before the confirmation.
+- No backup, evidence, schema or restore-semantics change; restore still
+  re-verifies the backup.
+
+Host checks are listed in the plan's task state. The device check (refused
+restore mid-workout, restore of a fresh backup, Keep all) is open.
+
 ## P8 rest alerts and notifications — 2026-11-09
 
 Implements the approved [rest-end alert and notification plan](../plans/2026-11-08-rest-alerts-and-notifications.md)

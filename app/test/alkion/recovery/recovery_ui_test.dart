@@ -9,6 +9,7 @@ import 'package:alkion/files/document_access.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/backup.dart' as backup show createBackup;
 import 'package:alkion/recovery/recovery_host.dart';
+import 'package:alkion/recovery/stored_copies.dart';
 import 'package:alkion/recovery/restore.dart';
 import 'package:alkion/store/generation_selection.dart';
 import 'package:alkion/store/local_store.dart';
@@ -32,16 +33,31 @@ final class _Host implements RecoveryHost {
   final Zone zone;
   final Directory directory;
   final restored = <String>[];
+  final verified = <String>[];
+  String? foreignProfileId;
   @override
-  String get profileId => store.profileId;
+  bool workoutActive = false;
+  @override
+  String get profileId => foreignProfileId ?? store.profileId;
   @override
   Future<BackupReceipt> createBackup() =>
       zone.run(() => backup.createBackup(store, directory));
   @override
-  Future<VerifiedBackup> verifyBackup(String path) =>
-      zone.run(() => verifyBackupFile(File(path), workDirectory: directory));
+  Future<VerifiedBackup> verifyBackup(String path) {
+    verified.add(path);
+    return zone.run(
+      () => verifyBackupFile(File(path), workDirectory: directory),
+    );
+  }
+
   @override
   Future<void> restoreBackup(String path) async => restored.add(path);
+  @override
+  Future<DateTime?> lastBackupCreated() =>
+      zone.run(() => newestBackupCreated(directory, store.profileId));
+  @override
+  Future<StoredCopySizes> storedCopies() =>
+      zone.run(() => measureStoredCopies(StoredCopyRoots(backups: directory)));
 }
 
 Future<void> _seedReview(LocalStore store) => store.writeTransaction(
@@ -68,6 +84,15 @@ Future<void> _tapDialogAction(WidgetTester tester, String label) async {
   await tester.pump();
   expect(action.hitTestable(), findsOneWidget);
   await tester.tap(action);
+}
+
+Future<void> _keepAll(WidgetTester tester) async {
+  final button = find.byKey(const Key('restore-keep-all'));
+  await tester.ensureVisible(button);
+  await tester.pump();
+  await press(tester, button);
+  await settleUntil(tester, find.text('Keep all as evidence?'));
+  await _tapDialogAction(tester, 'Keep all');
 }
 
 void main() {
@@ -131,11 +156,36 @@ void main() {
         await press(tester, find.byKey(const Key('backup-check')));
         await dismissDialog(tester, find.text('Backup verified'));
         expect(documents.openedLimit, maxBackupBytes);
+        expect(documents.opens, 1);
+        expect(
+          find.textContaining('Chosen: backup.alkionbackup'),
+          findsOneWidget,
+        );
         await press(tester, find.byKey(const Key('backup-restore')));
         await settleUntil(tester, find.text('Restore this backup?'));
+        // Check and Restore share one pick; the confirmation names the file
+        // and its creation date, never a raw ISO stamp.
+        expect(documents.opens, 1);
+        expect(
+          find.textContaining('backup.alkionbackup\nCreated '),
+          findsOneWidget,
+        );
+        expect(find.textContaining(RegExp(r'\d{4}-\d\d-\d\dT')), findsNothing);
         await _tapDialogAction(tester, 'Cancel');
         await settleReal(tester, ticks: 4);
         expect(host.restored, isEmpty);
+        // Choosing again with a cancelled picker keeps the earlier file.
+        final previous = documents.selection;
+        documents.selection = null;
+        await press(tester, find.byKey(const Key('backup-choose')));
+        await settleReal(tester, ticks: 3);
+        expect(documents.opens, 2);
+        expect(find.byType(Dialog), findsNothing);
+        expect(
+          find.textContaining('Chosen: backup.alkionbackup'),
+          findsOneWidget,
+        );
+        documents.selection = previous;
         await h.unmount(tester);
       } finally {
         await h.close();
@@ -166,7 +216,13 @@ void main() {
             extra: [Provider<RecoveryHost?>.value(value: host)],
           ),
         );
-        await settleUntil(tester, find.text('operations · newer_than_backup'));
+        await settleUntil(
+          tester,
+          find.text('Newer than this backup: 1 internal record'),
+        );
+        // No table names, dispositions or keys on the surface.
+        expect(find.textContaining('op-after-backup'), findsNothing);
+        expect(find.textContaining('newer_than_backup'), findsNothing);
         await press(tester, find.byKey(const Key('backup-create')));
         await dismissDialog(tester, find.text('Backup saved and verified'));
         final published = out
@@ -194,13 +250,18 @@ void main() {
           '${out.path}/absent$backupExtension',
         );
         await press(tester, find.byKey(const Key('backup-check')));
+        // Mapped words and a small category line; never the exception text.
+        await settleUntil(
+          tester,
+          find.textContaining('This data is damaged or in a format'),
+        );
+        expect(find.text('backup_unreadable'), findsOneWidget);
+        expect(find.textContaining('Reason:'), findsNothing);
         await dismissDialog(
           tester,
-          find.textContaining('Reason: backup_unreadable'),
+          find.textContaining('This data is damaged or in a format'),
         );
-        await tester.ensureVisible(find.text('Keep as evidence'));
-        await tester.pump();
-        await press(tester, find.text('Keep as evidence'));
+        await _keepAll(tester);
         await settleUntil(tester, find.text('Nothing to review'));
         expect(tester.takeException(), isNull);
         await h.unmount(tester);
@@ -251,7 +312,7 @@ void main() {
         );
         await settleUntil(tester, find.textContaining('Newer work unknown'));
         expect(await gate(), 'blocked');
-        await press(tester, find.text('Keep as evidence'));
+        await _keepAll(tester);
         await settleUntil(tester, find.text('Nothing to review'));
         expect(await gate(), 'no_restore_review_blocking');
         await h.unmount(tester);
@@ -520,7 +581,11 @@ void main() {
           }
 
           await choose();
-          await settleUntil(tester, find.textContaining('FileSystemException'));
+          await settleUntil(
+            tester,
+            find.textContaining('Something went wrong. Try again.'),
+          );
+          expect(find.textContaining('FileSystemException'), findsNothing);
           expect(presented, isEmpty);
           await tester.runAsync(() async {
             final state = await fixture.raw();

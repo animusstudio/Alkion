@@ -346,9 +346,7 @@ void main() {
       final l = AppLocalizations.of(
         tester.element(find.byType(FirstStartScreen)),
       );
-      final failure = find.text(
-        l.alkionRestoreFailedBody('Bad state: synthetic_local_failure'),
-      );
+      final failure = find.text(l.alkionRestoreFailedBody(l.errorUnexpected));
       expect(failure, findsOneWidget);
       await tester.ensureVisible(failure);
       _completeParagraphs(tester);

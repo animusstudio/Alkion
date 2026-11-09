@@ -136,6 +136,18 @@ reviews, records an explicit `kept_as_evidence` decision and reports a
 is undecided (that milestone predates the optional manual sender). Repeating a restore carries lineage
 and creates no duplicate operations or records.
 
+The Backup & restore screen shows undecided reviews as counts per kind and
+disposition (`pendingSummary`, over all of them), for example "Newer than this
+backup: 12 sets"; internal tables share one "internal records" kind and the
+unknown-loss review keeps its own sentence. Table names, dispositions, restore
+IDs and generations appear only under *Show technical details*; review keys are
+not shown. *Keep all as evidence* asks for confirmation, then `keepAll` writes
+the same `alkion-restore-decision/1` / `kept_as_evidence` decision row for every
+undecided `restore_newer_work` review in one write transaction. Reviews of any
+other category and reviews already decided are skipped, so a repeat writes
+nothing; review evidence rows are never changed, and nothing is replayed or
+deleted.
+
 ### Fencing
 
 * The previous generation's metadata is fenced (`write_state='fenced'`,
@@ -144,9 +156,25 @@ and creates no duplicate operations or records.
   reconciled, which the proof checks on a READONLY copy.
 * The selected generation's higher generation makes every older `StoreToken`,
   autosave, background +30s payload and callback fail as `stale_generation`.
-* In the app, restore flushes owed input, replaces the UI, then closes the
-  runtime (sessions, timers, watches, store) before staging; the next runtime
-  opens the selected generation.
+* In the app, restore is refused with `workout_active` while a workout is
+  running or starting: the screen asks before any picker opens, and
+  `RuntimeRecoveryHost.restoreBackup` checks `hasActive` and takes the session
+  launch fence (`tryBeginLaunch`) synchronously before verifying, so no workout
+  can start or resume until the restore ends; the fence is released on every
+  path. It then flushes owed input, replaces the UI, closes the runtime
+  (sessions, timers, watches, store) before staging; the next runtime opens the
+  selected generation.
+* If that close fails, nothing is restored. *Reopen* shows the same runtime
+  again only when the flush barrier itself refused, before any teardown
+  (`AlkionRuntime.teardownBegan` is false). The close fence has already closed
+  the optional Animus connection, the workout sender and the recovery review,
+  so they stay closed in that runtime until the next launch; local use, the
+  pause flush and the storage banner keep working. Once teardown began (the
+  lifecycle observer and persistence callbacks are removed, notifications may
+  be closed), *Reopen* retries the close and relaunches. A retry that fails again stays on the
+  screen as a retryable error, so Reopen never meets the still-held store as
+  `profile_in_use`. `AlkionRuntime.close` clears its closing flag on every
+  failure path.
 * These are owned local fences on one storage. A backup cannot stop another
   offline device or installation from becoming writable; global device
   inventory, controlled primary handoff and server containment are future owner

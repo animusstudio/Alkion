@@ -801,10 +801,20 @@
   "alkionRepsUnavailableLabel": "Reps unavailable",
   "alkionBackupRestore": "Backup & restore",
   "alkionBackupRestoreSub": "Save a backup or restore your Alkion data.",
+  "alkionBackupLast": "Last backup created: {date}",
+  "@alkionBackupLast": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionBackupNone": "No backup yet",
   "alkionBackupTitle": "Backup & restore",
   "alkionBackupSection": "Manual backup",
   "alkionBackupExplain": "A backup counts only once it is verified. Copy the file off this device and check it there; sharing or copying alone is not proof. Alkion never schedules or reminds, so work after your last verified backup can be lost.",
   "alkionBackupCreate": "Create backup",
+  "alkionBackupCreating": "Creating and verifying the backup…",
   "alkionBackupCreated": "Backup saved and verified",
   "alkionBackupCreatedMessage": "{path}\nSHA-256 {digest}…\nCopy it off this device, then check the copy with “Check backup”.",
   "@alkionBackupCreatedMessage": {
@@ -819,7 +829,20 @@
   },
   "alkionBackupFileSection": "Backup file",
   "alkionBackupPathLabel": "Backup file path",
+  "alkionBackupChoose": "Choose backup file",
+  "alkionBackupChosen": "Chosen: {name} · {size}",
+  "@alkionBackupChosen": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "alkionBackupCheck": "Check backup",
+  "alkionBackupChecking": "Checking the backup…",
   "alkionBackupCheckOk": "Backup verified",
   "alkionBackupCheckOkMessage": "Created {created}. All {rows} covered rows match the manifest; schema and integrity checks passed.",
   "@alkionBackupCheckOkMessage": {
@@ -832,42 +855,177 @@
       }
     }
   },
-  "alkionBackupForeignProfile": "This verified backup belongs to another Alkion profile. It is never merged here; it can only be restored onto separate, empty storage.",
+  "alkionBackupForeignTitle": "Backup from another profile",
+  "alkionBackupForeignProfile": "This backup belongs to another Alkion profile, so it can't be restored into this one. To use it:\n1. Back up this profile first.\n2. Clear Alkion's storage in Android settings.\n3. Open Alkion, choose Go fully offline, then Restore backup.",
   "alkionBackupFailed": "Backup action failed",
-  "alkionBackupFailedMessage": "Reason: {category}. Your current data, the backup file and any staging copy are kept.",
+  "alkionBackupFailedMessage": "{reason}\nYour current data, the backup file and any staging copy are kept.",
   "@alkionBackupFailedMessage": {
     "placeholders": {
-      "category": {
+      "reason": {
         "type": "String"
       }
     }
   },
+  "alkionBackupCloseEditor": "An open editor has unsaved changes. Save or discard them and close the editor, then try again.",
   "alkionRestoreAction": "Restore from this backup",
   "alkionRestoreConfirmTitle": "Restore this backup?",
   "alkionRestoreConfirmMessage": "The backup becomes the selected local state. The current state is kept and fenced, never deleted, and work newer than the backup is listed for review. Alkion closes and must be reopened.",
+  "alkionRestoreConfirmFile": "{name}\nCreated {date}",
+  "@alkionRestoreConfirmFile": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "alkionRestoreConfirm": "Restore",
+  "alkionRestorePreparing": "Preparing the restore…",
+  "alkionRestoreWorkoutActiveTitle": "Workout in progress",
+  "alkionRestoreWorkoutActive": "Finish or discard your workout first, then restore.",
   "alkionRestoreHistory": "Restores",
+  "alkionRestoreHistoryRow": "Restored {date}",
+  "@alkionRestoreHistoryRow": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "alkionRestoreReviewsSection": "Work newer than a restored backup",
   "alkionRestoreNoReviews": "Nothing to review",
-  "alkionRestoreKeep": "Keep as evidence",
+  "alkionRestoreKeepAll": "Keep all as evidence",
+  "alkionRestoreKeepAllTitle": "Keep all as evidence?",
+  "alkionRestoreKeepAllMessage": "Every listed item is marked as kept. Nothing is replayed, changed or deleted, and the evidence stays exactly as it is.",
+  "alkionRestoreKeepAllConfirm": "Keep all",
+  "alkionRestoreKeeping": "Saving your decisions…",
+  "alkionRestoreTechnicalShow": "Show technical details",
+  "alkionRestoreTechnicalHide": "Hide technical details",
+  "alkionReviewNewer": "Newer than this backup: {things}",
+  "@alkionReviewNewer": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewChanged": "Changed since this backup: {things}",
+  "@alkionReviewChanged": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewRemoved": "Removed after this backup: {things}",
+  "@alkionReviewRemoved": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewOther": "Other differences: {things}",
+  "@alkionReviewOther": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewSets": "{count, plural, =1{1 set} other{{count} sets}}",
+  "@alkionReviewSets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewWorkouts": "{count, plural, =1{1 workout} other{{count} workouts}}",
+  "@alkionReviewWorkouts": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewExercises": "{count, plural, =1{1 exercise} other{{count} exercises}}",
+  "@alkionReviewExercises": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewTrainingDays": "{count, plural, =1{1 training day} other{{count} training days}}",
+  "@alkionReviewTrainingDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewPlannedExercises": "{count, plural, =1{1 planned exercise} other{{count} planned exercises}}",
+  "@alkionReviewPlannedExercises": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewBodyweight": "{count, plural, =1{1 bodyweight entry} other{{count} bodyweight entries}}",
+  "@alkionReviewBodyweight": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewMuscleTargets": "{count, plural, =1{1 muscle target} other{{count} muscle targets}}",
+  "@alkionReviewMuscleTargets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewRecords": "{count, plural, =1{1 internal record} other{{count} internal records}}",
+  "@alkionReviewRecords": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "alkionRestoreDoneTitle": "Restore selected",
   "alkionRestoreDoneBody": "The backup is now the selected local state. The previous state is preserved and fenced; newer work is listed for review. Reopen Alkion to continue.",
   "alkionRestoreReopen": "Reopen Alkion",
   "alkionRestoreFailedTitle": "Restore not completed",
-  "alkionRestoreFailedBody": "Reason: {category}. The backup file, the staging copy and the current state are kept.",
+  "alkionRestoreFailedBody": "{reason}\nThe backup file, the staging copy and the current state are kept.",
   "@alkionRestoreFailedBody": {
     "placeholders": {
-      "category": {
+      "reason": {
         "type": "String"
       }
     }
   },
+  "alkionRestoreInterruptedError": "The restore was interrupted before it finished. The backup file is fine; try again.",
+  "alkionRestoreTargetNotEmpty": "This profile already has data, so the backup can't be restored onto it. Nothing was changed.",
+  "alkionRestoreStagingChanged": "The staging copy of the backup changed during the restore. Choose the backup file again and retry.",
   "alkionRestoreInterruptedTitle": "A restore was interrupted",
   "alkionRestoreInterruptedBody": "Local storage stays closed until you choose. Completing selects the verified staged backup; keeping the current state leaves the staged copy in place.",
   "alkionRestoreComplete": "Complete restore",
   "alkionRestoreKeepCurrent": "Keep current state",
   "alkionRestoreRunning": "Restoring the verified backup. Local storage stays closed until the restore is selected.",
   "alkionRestoreUnknownNewerWork": "Newer work unknown: the previous local state could not be read. Its bytes are kept unchanged.",
+  "alkionStoredCopies": "Stored copies",
+  "alkionStoredCopiesExplain": "Private copies Alkion keeps on this device. Nothing here deletes them.",
+  "alkionStoredBackups": "Backups",
+  "alkionStoredExports": "Exports",
+  "alkionStoredStaging": "Picked and saved file copies",
+  "alkionStoredUnavailable": "Sizes are not available on this device.",
   "todayVolumeLoading": "Loading weekly volume…",
   "todayVolumeUnavailable": "Weekly volume unavailable. Current totals could not be loaded.",
   "todayVolumeUnknown": "{count} working sets have no muscle label; labeled totals are partial.",
