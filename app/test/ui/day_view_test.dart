@@ -89,17 +89,22 @@ void main() {
     String id = 'd1',
     LocalDatabase? database,
     bool withStart = true,
+    bool visible = true,
   }) async {
     setPhone(tester, width: 412, height: 2400);
     final calls = _Calls();
     await tester.pumpWidget(
       harness.wrap(
         Scaffold(
-          body: DayView(
-            id: id,
-            onEdit: () => calls.edit++,
-            onClose: () => calls.close++,
-            onStart: withStart ? calls.starts.add : null,
+          body: Visibility(
+            visible: visible,
+            maintainState: true,
+            child: DayView(
+              id: id,
+              onEdit: () => calls.edit++,
+              onClose: () => calls.close++,
+              onStart: withStart ? calls.starts.add : null,
+            ),
           ),
         ),
         extra: [
@@ -419,6 +424,18 @@ void main() {
     expect(find.byKey(const Key('day-view-skeleton')), findsOneWidget);
     expect(find.text('Push A'), findsNothing);
     await settleUntilFound(tester, workingSets, where: 'day view');
+    await harness.unmount(tester);
+  });
+
+  testWidgets('a hidden view holds no body figure', (tester) async {
+    await harness.open(tester, seed: _seed);
+    await mount(tester, visible: false);
+    await settleUntilFound(
+      tester,
+      find.byKey(const Key('day-view-figure-hidden'), skipOffstage: false),
+      where: 'hidden day view',
+    );
+    expect(find.byType(BodyFigure, skipOffstage: false), findsNothing);
     await harness.unmount(tester);
   });
 }
