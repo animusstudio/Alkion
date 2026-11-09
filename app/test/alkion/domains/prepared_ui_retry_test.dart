@@ -62,9 +62,12 @@ void main() {
         );
         await tester.tap(find.text('open'));
         await settleReal(tester, ticks: 15);
-        await tester.tap(find.text('70.0'));
+        // A first entry starts empty; nothing is suggested.
+        await tester.tap(find.text('—'));
         await tester.pump();
         await tester.enterText(find.byType(TextField), '81.4');
+        // Save follows the typed text: let the frame enable it.
+        await tester.pump();
         await tester.runAsync(() => tester.tap(find.text('Save entry')));
         await settleReal(tester, ticks: 20);
         await observeDialog(tester, harness.database);
@@ -137,6 +140,11 @@ void main() {
       );
       await tester.tap(find.text('open'));
       await settleReal(tester, ticks: 15);
+      await tester.tap(find.text('—'));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), '81.4');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
       await tester.runAsync(() => tester.tap(find.text('Save entry')));
       await tester.pump();
       await tester.runAsync(() => tester.tap(find.text('Save entry')));
