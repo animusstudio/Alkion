@@ -318,7 +318,10 @@ class _Header extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            // The eyebrow gets two thirds of a contested row, so long
+            // localized titles stay on one line beside a short weekday chip.
             Expanded(
+              flex: 2,
               child: FitLabel(
                 l.dayViewTitle.toUpperCase(),
                 maxLines: 2,
