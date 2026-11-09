@@ -187,7 +187,7 @@ class _ToastContent extends StatelessWidget {
               Expanded(
                 child: FitLabel(
                   text,
-                  maxLines: 4,
+                  maxLines: 6,
                   style: DefaultTextStyle.of(context).style,
                 ),
               ),
