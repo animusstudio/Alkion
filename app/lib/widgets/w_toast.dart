@@ -57,17 +57,20 @@ class WToastGlyph {
   final Color? color;
 }
 
+/// How long a toast stays up when its caller sets no duration.
+const Duration kToastDefaultDuration = Duration(seconds: 3);
+
 /// The shortest time a toast with an action stays up under accessible
 /// navigation, so a screen-reader user can reach the action.
 const Duration kToastAccessibleActionDuration = Duration(seconds: 10);
 
-/// Shows an Alkion toast: a floating SnackBar card under the app's
+/// Shows an Alkion toast: one compact floating SnackBar card under the app's
 /// `SnackBarThemeData`, led by a decorative glyph ([AlkionGlyph.info] in
-/// `tokens.info`, or [glyph]). [error] draws a `tokens.danger` border and an
-/// [AlkionGlyph.error] glyph, never a fill, so the text stays `tokens.text`.
-/// A tap on the card or a sideways swipe hides it. [action] adds one button
+/// `tokens.info`, the accent text, or [glyph]). [error] draws a
+/// `tokens.danger` border and an [AlkionGlyph.error] glyph, never a fill, so
+/// the text stays `tokens.text`. A tap on the card or a sideways swipe hides it. [action] adds one button
 /// that runs its callback once; the toast still ends after [duration]
-/// (default four seconds, at least [kToastAccessibleActionDuration] for an
+/// (default three seconds, at least [kToastAccessibleActionDuration] for an
 /// action under accessible navigation). It shows and hides at [Motion.sheet]
 /// speed, instantly under reduced motion. Raised from a tab page it clears
 /// the tab bar ([ToastTabBarClearance]). Returns null when no messenger is
@@ -84,7 +87,7 @@ ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showWToast(
   if (messenger == null) return null;
   final tokens = context.tokens;
   final defaultColor = error ? tokens.danger : tokens.info;
-  var shownFor = duration ?? const Duration(seconds: 4);
+  var shownFor = duration ?? kToastDefaultDuration;
   if (action != null &&
       (MediaQuery.maybeAccessibleNavigationOf(context) ?? false) &&
       shownFor < kToastAccessibleActionDuration) {
@@ -145,7 +148,8 @@ bool _sameSpeed(AnimationStyle? a, AnimationStyle b) =>
     a.duration == b.duration &&
     a.reverseDuration == b.reverseDuration;
 
-/// The toast's glyph and text inside one tap target at least 48dp tall.
+/// The toast's glyph and text inside one tap target: a compact row 48dp tall
+/// for one line, growing only when the text wraps.
 class _ToastContent extends StatelessWidget {
   const _ToastContent({
     required this.text,
@@ -172,16 +176,11 @@ class _ToastContent extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
         child: Padding(
-          padding: EdgeInsetsDirectional.fromSTEB(
-            16,
-            14,
-            hasAction ? 0 : 16,
-            14,
-          ),
+          padding: EdgeInsetsDirectional.fromSTEB(12, 8, hasAction ? 0 : 12, 8),
           child: Row(
             children: [
               AlkionIcon(glyph, size: 20, color: glyphColor),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               // FitLabel shrinks before it would split a word, e.g. a German
               // "Satz 1 gespeichert" beside Undo at 320 dp and 2x text.
               Expanded(

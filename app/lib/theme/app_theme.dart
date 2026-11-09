@@ -100,15 +100,14 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
         ),
       ),
     ),
-    // Every SnackBar floats as a flat card on the app's own surfaces: a
-    // `surface3` fill whose 1dp `lineStrong` border separates it from the
-    // page (in the light theme `surface3` is close to the page). It is
-    // dismissed sideways, never down, which would collide with Android's
-    // one-handed mode. `showWToast` adds the glyph, tap to hide, the danger
-    // border for errors and the tab-bar clearance.
+    // Every SnackBar floats as a flat card like the app's other cards: a
+    // `surface2` fill with a 1dp `line` border. It is dismissed sideways,
+    // never down, which would collide with Android's one-handed mode.
+    // `showWToast` adds the glyph, tap to hide, the danger border for errors
+    // and the tab-bar clearance.
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: tokens.surface3,
+      backgroundColor: tokens.surface2,
       contentTextStyle: WorkoutType.body(size: 14, color: tokens.text),
       actionTextColor: tokens.accentText,
       disabledActionTextColor: tokens.dim,
@@ -118,7 +117,7 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
       dismissDirection: DismissDirection.horizontal,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.panel),
-        side: BorderSide(color: tokens.lineStrong),
+        side: BorderSide(color: tokens.line),
       ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.text),

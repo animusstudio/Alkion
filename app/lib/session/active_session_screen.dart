@@ -415,7 +415,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     });
   }
 
-  /// "Set N logged · Undo" for about five seconds after a newly logged
+  /// "Set N logged · Undo" for about three seconds after a newly logged
   /// working set. It replaces any earlier toast, so only the latest log can
   /// be undone from here.
   void _offerUndo(ActiveSessionController c, BlockState block, SetState set) {
@@ -425,7 +425,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       showWToast(
         context,
         l.sessionSetLogged(block.workingSets.indexOf(set) + 1),
-        duration: const Duration(seconds: 5),
+        duration: const Duration(seconds: 3),
         action: WToastAction(
           label: l.commonUndo,
           onPressed: () => _undo(c, set),
@@ -453,8 +453,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         context,
         l.sessionSetRemoved,
         // Removal is the more destructive action: a longer Undo window than
-        // the 5 s logged-set toast.
-        duration: const Duration(seconds: 8),
+        // the 3 s logged-set toast.
+        duration: const Duration(seconds: 5),
         action: WToastAction(
           label: l.commonUndo,
           onPressed: () => c.restoreSet(b, s, index),
