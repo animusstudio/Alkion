@@ -1,6 +1,6 @@
 # UI declutter round 2: owner device feedback
 
-Date: 2026-11-09. Lane: **Standard**. Status: **Proposed**.
+Date: 2026-11-09. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09 (toast durations confirmed; the card element is the field label above each ruler).
 Parent: [development](../alkion/development.md).
 Baseline: `feat/ui-declutter-20261109` at `aad1a4a` (the audit plans P1–P8 plus
 [toast](2026-11-09-toast-redesign.md), [live workout](2026-11-09-live-workout-declutter.md),
@@ -18,9 +18,9 @@ editor. Everything else here comes from that review.
   and selection, so the catalog search bar turns blue (`theme/app_theme.dart:60,131,143,149`). The
   card's `surface3` fill and `lineStrong` border read lighter than every other card, which use a
   `surface` or `surface2` fill with a `line` border.
-- **Live set card.** The value rulers (`widgets/ruler_picker.dart`, ShaderMask fade `:770`) draw a
-  dashed tick line that fades out before the card's new outline, plus a boxed centre. The result
-  reads unfinished.
+- **Live set card.** Each value has a field label above its ruler (`SetFieldGuide`,
+  `session/set_values_editor.dart:170`). It paints a dotted square marker and a dashed leader line
+  that stops short of the row's end. It reads unfinished.
 - **Rest bar.** The remaining-time scale in `session/session_header.dart` (`rest-scale`) advances
   once per second, in visible steps.
 - **Accent.** The live page is almost all black and white. The accent appears only on a done check
@@ -45,10 +45,11 @@ editor. Everything else here comes from that review.
   colour family. Focus rings, the caret, selection and the toast's info glyph use the accent, which
   also gives the toast its touch of primary colour. Contrast tests are adjusted where they pin these
   tokens; focus stays at least 3:1 against `bg` and `surface`.
-- **Ruler in the card.** The tick line runs edge to edge inside the card, clipped by the card's
-  rounded outline, with no fade-out short of the edge. The centre box gives way to a single solid
-  centre marker in `accentText`. Values, steps and the display-unit echo rule are unchanged.
-  *Owner to confirm this is the element meant.*
+- **Field label above the ruler.** `SetFieldGuide` drops the painted marker square and the dashed
+  leader. The label becomes a clean caption: the field name in small dim uppercase on the left,
+  and the unit (`kg`, `reps`, `s`, `m`) in `accentText` on the right edge of the same row, aligned
+  to the card's inset. An optional hint stacks under it when narrow, as now. The classic and
+  catalog editors use the same widget, so they match. The rulers are unchanged.
 - **Fluid rest bar.** The scale animates continuously between second ticks with a linear
   controller driven by the rest's start and end times. Under reduced motion it keeps the
   per-second steps. The countdown text still changes once per second.
@@ -88,8 +89,8 @@ editor. Everything else here comes from that review.
   card is one compact row and its fill and border match other cards in both themes.
 - **A2.** No blue remains: the toast glyph, focus, caret, selection and the catalog search bar use
   the accent.
-- **A3.** The card's ruler tick line reaches the card edge, and a solid accent centre marker
-  replaces the box.
+- **A3.** The label above each ruler is a plain caption with the unit in the accent: no dotted
+  marker, no dashed leader, and nothing overflows or splits at 320 dp and 2x.
 - **A4.** The rest bar moves smoothly while resting, and in steps under reduced motion.
 - **A5.** The live page shows the accent in the four places above, and nowhere else is added.
 - **A6.** The summary shows logged RIR on the right of each set.
@@ -106,7 +107,7 @@ device measurement and needs the coordinator's phone access, so the coordinator 
 | Task | Owns | Acceptance | Class |
 | --- | --- | --- | --- |
 | T1 Toast and blues | `widgets/w_toast.dart`, `theme/app_theme.dart` (snackBar, input, selection), `theme/tokens.dart` (`info`, `focus` only), the two duration lines in `session/active_session_screen.dart`, and their tests | A1, A2 | UI |
-| T2 Ruler in the card | `widgets/ruler_picker.dart` (edge and centre drawing only), `session/live_set_card.dart`, and their tests | A3 | UI |
+| T2 Field label | `session/set_values_editor.dart` (`SetFieldGuide` and `_GuidePainter`), its callers' tests | A3 | UI |
 | T3 Rest bar and accent | `session/session_header.dart`, `session/exercise_block.dart` (badge), and their tests | A4, A5 | UI |
 | T4 Summary RIR | `session/session_summary_screen.dart`, and its tests | A6 | UI |
 | T5 Day view | `ui/day_view.dart` (row tap, figure background), `ui/body_figure.dart` (`background` parameter), and their tests | A7 | UI |
@@ -126,5 +127,4 @@ None started.
 
 ## Next
 
-Owner approval, including whether the ruler is the "dotted square" meant. Then T1, T2, T4 and T5 run in
-parallel, followed by T3 and then T6.
+T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.

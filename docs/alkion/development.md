@@ -1,6 +1,6 @@
 # Alkion development and qualified driver handoff
 
-2026-11-09 · [UI declutter round 2](../plans/2026-11-09-ui-declutter-round-2.md) · Proposed.
+2026-11-09 · [UI declutter round 2](../plans/2026-11-09-ui-declutter-round-2.md) · Approved.
 2026-11-09 · [Toast redesign](../plans/2026-11-09-toast-redesign.md) · Approved.
 2026-11-09 · [Live workout declutter](../plans/2026-11-09-live-workout-declutter.md) · Approved.
 2026-11-09 · [Training day view](../plans/2026-11-09-training-day-view.md) · Approved.
