@@ -6,6 +6,58 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## P8 rest alerts and notifications — 2026-11-09
+
+Implements the approved [rest-end alert and notification plan](../plans/2026-11-08-rest-alerts-and-notifications.md)
+(audit items 6.3, 6.5 and 6.6, the next-set body and the dead English bodies).
+The only stored change is one optional settings key; no schema, store,
+backup or draft format change.
+
+- When a rest ends while the workout screen is not in front of the user (app
+  in the background, phone locked, or another tab), the scheduled rest-end
+  notification posts on its own channel `<prefix>rest_end`: high importance
+  (heads-up), vibration, no sound, titled "Rest finished" with the next
+  exercise as body. It replaces the workout notification under the same id
+  (4101) and stays ongoing with the elapsed chronometer. The user tunes or
+  silences it per channel in Android settings; there is no in-app switch (A1).
+- With the workout screen open in the foreground the alert is not scheduled
+  (the quiet mirror is used) and the screen's own haptics mark the end: one
+  buzz. Opening or closing the screen and leaving or returning to the app
+  reschedule the matching variant. In the background the open screen neither
+  buzzes nor stops the rest; the resume reconciliation stops it. A rest that
+  ended more than 2 s before the screen's first foreground tick (timers frozen
+  while locked, or the screen opened late) gets no buzz or "Rest over"
+  announcement, since the notification already marked it. A screen visible
+  but not resumed (shade, split screen) keeps rebuilding its timers (A1).
+- Ghost cleanup (owner decision 2026-11-09): at runtime open, after the draft
+  is loaded, when no workout is active and no start or resume is running,
+  Alkion cancels its workout notification id 4101, which also cancels any
+  scheduled rest-end alert. An active or resuming workout is never cancelled.
+- The rest countdown and the rest-end post name the next exercise, "Next ·
+  name" (catalog display label or exercise name, no weights), in en, it, de
+  and es. With nothing pending the countdown says "Rest" and the rest-end post
+  shows the workout name (A2).
+- Notifications use a monochrome 24 dp vector glyph,
+  `drawable/ic_stat_alkion.xml`, traced from the approved character icon, with
+  a resource keep rule so release shrinking cannot drop it (A3).
+- The workout notification never asks for permission. At the first workout
+  start, after admission and before the workout opens, a one-line explainer
+  appears when notifications are off; Continue shows the Android prompt, Not
+  now starts the workout normally (the existing "notifications are off" toast
+  follows). The answer is remembered in the optional settings key
+  `notifications_explained` (absent means not yet explained). A user who
+  already allowed notifications sees nothing (A4).
+- The payload mapping no longer carries English body strings (A5).
+- The +30s action, its id `<prefix>add_30s` and its wiring are unchanged; the
+  quiet mirror channel `<prefix>workout_session` is unchanged. Arb parity and
+  unused-key tests pass (A6).
+- The inexact-alarm notice stays removed: exact scheduling when allowed,
+  `inexactAllowWhileIdle` otherwise (the alert may then be late).
+
+Host checks are listed in the plan's task state. Native rendering (heads-up,
+vibration, channel settings, glyph, release resources) is not provable on the
+host; the device check is open.
+
 ## P7 live workout flow — 2026-11-09
 
 Implements the approved [live workout flow plan](../plans/2026-11-08-live-workout-flow.md)

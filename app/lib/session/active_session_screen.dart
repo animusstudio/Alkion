@@ -99,6 +99,17 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       if (!mounted) {
         return;
       }
+      // In the background the scheduled rest-end notification alerts
+      // instead: no haptics here (one buzz, not two), and the rest is left
+      // for the resume reconciliation, so stopping it cannot replace that
+      // alert. Guards consumed here re-arm if the rest is still running.
+      // Still rebuild: a screen visible but not resumed (notification shade,
+      // split screen) keeps its countdown and elapsed time moving.
+      if (!(_manager?.appForeground ?? true)) {
+        _tickHapticFired = _buzzHapticFired = true;
+        setState(() {});
+        return;
+      }
       _handleRestHaptics();
       // Screen-open rest revert: when remaining hits 0 while the screen is
       // open, stop the rest here (the OS alarm covers the backgrounded case;
@@ -177,10 +188,17 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     }
     if (remaining <= 0 && !_buzzHapticFired) {
       _buzzHapticFired = true;
+      // A rest that ended well before this tick (timers frozen while the
+      // phone was locked, or the screen opened late) was already marked by
+      // the rest-end notification: no late buzz or announcement.
+      if (remaining < -_lateRestEndSeconds) return;
       HapticFeedback.vibrate();
       _announce(AppLocalizations.of(context).sessionRestOver);
     }
   }
+
+  /// How long after the end of a rest the open screen still marks it.
+  static const _lateRestEndSeconds = 2;
 
   /// Speaks [message] through the platform screen reader (no-op without one).
   void _announce(String message) {
