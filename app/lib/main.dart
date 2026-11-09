@@ -38,6 +38,7 @@ import 'ui/alkion_recovery/recovery_app.dart';
 import 'ui/alkion_recovery/first_start_screen.dart';
 import 'units/unit_service.dart';
 import 'widgets/pending_input.dart';
+import 'widgets/storage_recovery_banner.dart';
 import 'widgets/w_toast.dart';
 import 'catalog/catalog.dart';
 import 'catalog/catalog_development.dart';
@@ -173,6 +174,7 @@ class AlkionRuntime with WidgetsBindingObserver {
         catalog,
         catalogUnavailable,
       );
+      sessions.onPersistenceError = runtime._reportPersistenceFailure;
       runtime.historyMappings = await HistoryMappingStore(store).byExerciseId();
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
@@ -191,6 +193,7 @@ class AlkionRuntime with WidgetsBindingObserver {
   Map<String, HistoryMapping> historyMappings = const {};
 
   Future<void> _flushTail = Future.value();
+  Future<void>? _retry;
   bool _closing = false;
   bool _ownersDisposed = false, _closed = false;
   @override
@@ -199,41 +202,63 @@ class AlkionRuntime with WidgetsBindingObserver {
       return;
     }
     unawaited(
-      flushPersistence().catchError((Object error) {
+      // An open editor (a History set card under a pulled-down shade) owes
+      // nothing yet, so only a write that failed to land fails this flush.
+      flushPersistence(includeOpenForms: false).catchError((Object error) {
         // The barrier retains owed input; the visible failure remains reviewable
         // on resume. A lifecycle callback is never a successful export boundary.
       }),
     );
   }
 
-  Future<void> flushPersistence() {
+  /// Flushes every owner's owed writes in order. The strict default, used by
+  /// backup, restore and [close], also refuses with `unsaved_editor_input`
+  /// while an open form holds unsaved input; that refusal is not a storage
+  /// failure, so it leaves the storage banner as it was. Every other failure
+  /// raises the banner, and a clean flush clears it.
+  Future<void> flushPersistence({bool includeOpenForms = true}) {
     commitPendingInput();
-    final result = _flushTail.then((_) => _flushNow());
+    final result = _flushTail.then((_) => _flushNow(includeOpenForms));
     _flushTail = result.then<void>((_) {}, onError: (Object error) {});
     return result;
   }
 
-  Future<void> _flushNow() async {
+  Future<void> _flushNow(bool includeOpenForms) async {
     try {
-      await UnsavedEditors.instance.drainOrThrow();
+      await UnsavedEditors.instance.drainOrThrow(includeOpenForms: false);
+    } catch (error) {
+      _reportPersistenceFailure(error);
+      rethrow;
+    }
+    if (includeOpenForms) await UnsavedEditors.instance.drainOrThrow();
+    try {
       await sessions.flushPersistence();
       await settings.flushPersistence();
       await units.flushPersistence();
       await identity.flushPersistence();
       await catalog?.flushPersistence();
-      persistenceFailure.value = null;
+      if (!_closed) persistenceFailure.value = null;
     } catch (error) {
-      persistenceFailure.value = error;
+      _reportPersistenceFailure(error);
       rethrow;
     }
   }
 
-  Future<void> retryPersistence() async {
+  void _reportPersistenceFailure(Object error) {
+    if (!_closed) persistenceFailure.value = error;
+  }
+
+  /// The banner's Retry: recovers the store, then re-runs the lenient flush.
+  /// A call while one is running joins it, so a double tap recovers once.
+  Future<void> retryPersistence() =>
+      _retry ??= _retryNow().whenComplete(() => _retry = null);
+
+  Future<void> _retryNow() async {
     try {
       await store.recover();
-      await flushPersistence();
+      await flushPersistence(includeOpenForms: false);
     } catch (error) {
-      persistenceFailure.value = error;
+      _reportPersistenceFailure(error);
     }
   }
 
@@ -255,6 +280,7 @@ class AlkionRuntime with WidgetsBindingObserver {
       rethrow;
     }
     WidgetsBinding.instance.removeObserver(this);
+    sessions.onPersistenceError = null;
     await senderClose;
     await reviewClose;
     await apiDrain;
@@ -570,64 +596,29 @@ class AlkionApp extends StatelessWidget {
             navigatorKey: appNavigatorKey,
             scaffoldMessengerKey: appScaffoldMessengerKey,
             title: AlkionIdentity.displayName,
-            builder: (context, child) => ValueListenableBuilder<Object?>(
-              valueListenable: runtime.persistenceFailure,
-              builder: (context, error, _) => _RuntimeNotificationNavigation(
-                runtime: runtime,
-                child: HistoryMappingScope(
-                  mappings: runtime.historyMappings,
-                  child: Stack(
-                    children: [
-                      if (child != null)
-                        CatalogReadyReveal.startup(
-                          enabled: revealCatalog,
-                          child: child,
-                        ),
-                      if (error != null)
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          child: SafeArea(
-                            child: Material(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.errorContainer,
-                              elevation: 4,
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      AppLocalizations.of(
-                                        context,
-                                      ).alkionStoreRecoveryTitle,
-                                    ),
-                                    Text(
-                                      AppLocalizations.of(
-                                        context,
-                                      ).alkionStoreRecoveryBody,
-                                    ),
-                                    TextButton(
-                                      style: TextButton.styleFrom(
-                                        minimumSize: const Size(48, 48),
-                                      ),
-                                      onPressed: runtime.retryPersistence,
-                                      child: Text(
-                                        AppLocalizations.of(
-                                          context,
-                                        ).alkionRetry,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+            builder: (context, child) => _RuntimeNotificationNavigation(
+              runtime: runtime,
+              child: HistoryMappingScope(
+                mappings: runtime.historyMappings,
+                child: Stack(
+                  children: [
+                    if (child != null)
+                      CatalogReadyReveal.startup(
+                        enabled: revealCatalog,
+                        child: child,
+                      ),
+                    // One self-contained notice child; later notices are
+                    // siblings here, never folded into this banner.
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: StorageRecoveryBanner(
+                        failure: runtime.persistenceFailure,
+                        onRetry: runtime.retryPersistence,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
