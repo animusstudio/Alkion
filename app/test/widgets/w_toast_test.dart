@@ -372,14 +372,18 @@ void main() {
       'once and the next toast still ends', (tester) async {
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     final context = await host(tester, Brightness.dark);
-    final first = showWToast(context, 'Day enabled')!;
+    SnackBarClosedReason? firstClosed;
+    showWToast(
+      context,
+      'Day enabled',
+    )!.closed.then((reason) => firstClosed = reason);
     await settle(tester);
     tester.platformDispatcher.accessibilityFeaturesTestValue =
         const FakeAccessibilityFeatures(disableAnimations: true);
     await tester.pump();
     showWToast(context, 'Exported nothing');
     await tester.pump();
-    expect(await first.closed, SnackBarClosedReason.remove);
+    expect(firstClosed, SnackBarClosedReason.remove);
     expect(find.text('Day enabled'), findsNothing);
     expect(shown(tester).animation!.value, 1);
     await tester.pump(const Duration(seconds: 4));
@@ -421,9 +425,11 @@ void main() {
     tester,
   ) async {
     final context = await host(tester, Brightness.dark);
-    final raw = ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Raw notice')));
+    SnackBarClosedReason? rawClosed;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Raw notice')))
+        .closed
+        .then((reason) => rawClosed = reason);
     await settle(tester);
     expect(find.text('Raw notice'), findsOneWidget);
     // The toast's speed differs from the raw SnackBar's default, so the raw
@@ -431,7 +437,7 @@ void main() {
     // controller.
     showWToast(context, 'Day enabled');
     await tester.pump();
-    expect(await raw.closed, SnackBarClosedReason.remove);
+    expect(rawClosed, SnackBarClosedReason.remove);
     expect(find.text('Raw notice'), findsNothing);
     await settle(tester);
     expect(find.text('Day enabled'), findsOneWidget);
