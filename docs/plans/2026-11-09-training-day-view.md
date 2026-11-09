@@ -221,6 +221,15 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
       still holds the view.
     - The "Weekday unavailable" chip ellipsizes at 320 dp and 2x.
 
+- **Coordinator fix `2161c0aa`** (from the U5 card review): with Plan left on a day view while
+  the user is on Today (IndexedStack), the view's `BodyFigure` stayed mounted beside Today's.
+  It now mounts only when `Visibility.of` is true, as the Split card does, and has a test.
+  - Checks: `plan_discard_test`, `day_view_test`, `plan_layout_test` → +57 pass; analyze clean.
+  - Tried and reverted: `reverseDuration: Duration.zero` on PlanScreen's switcher, to end the
+    ~220 ms two-figure overlap during the list↔view fade. It broke the two
+    `plan_discard_test` cases that pin taps and saves landing during the fade. The overlap
+    stays as a known low-severity follow-up for the device check.
+
 ## Next
 
 Code-complete. The integrated full suite and device check run at delivery; U5 branches from here.

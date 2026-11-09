@@ -540,7 +540,15 @@ class _Overview extends StatelessWidget {
         final stacked = splitOverviewStacked(context, box.maxWidth);
         final width = splitFigureWidth(context, box.maxWidth);
         final muscles = WorkloadTopMuscles(workload: workload);
-        final figure = BodyFigure(width: width, workload: workload);
+        // A Plan tab kept mounted but hidden behind Today (IndexedStack) must
+        // not hold a second native renderer behind the visible one.
+        final figure = Visibility.of(context)
+            ? BodyFigure(width: width, workload: workload)
+            : SizedBox(
+                key: const Key('day-view-figure-hidden'),
+                width: width,
+                height: BodyFigure.heightFor(width),
+              );
         if (stacked) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
