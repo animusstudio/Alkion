@@ -7,7 +7,7 @@ import '../files/document_access.dart';
 import '../store/local_store.dart';
 import 'backup.dart';
 import 'restore.dart';
-import 'stored_copies.dart';
+import 'stored_copy_sizes.dart';
 
 /// The running app's backup/restore entry. Backups flush owed durable input
 /// first; restore closes the running store before any selection and presents
