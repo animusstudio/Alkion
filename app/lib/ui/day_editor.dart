@@ -30,6 +30,7 @@ import '../settings/settings_service.dart';
 import '../util/prescription_format.dart';
 import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_toast.dart';
 import '../widgets/glyph_loading.dart';
 import 'editor_guard.dart';
 import 'exercise_sheet.dart';
@@ -338,10 +339,10 @@ class _DayEditorState extends State<DayEditor> {
         }
       } catch (_) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(AppLocalizations.of(context).catalogSaveFailed),
-            ),
+          showWToast(
+            context,
+            AppLocalizations.of(context).catalogSaveFailed,
+            error: true,
           );
         }
       }

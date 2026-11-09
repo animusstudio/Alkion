@@ -38,6 +38,7 @@ import 'ui/alkion_recovery/recovery_app.dart';
 import 'ui/alkion_recovery/first_start_screen.dart';
 import 'units/unit_service.dart';
 import 'widgets/pending_input.dart';
+import 'widgets/w_toast.dart';
 import 'catalog/catalog.dart';
 import 'catalog/catalog_development.dart';
 import 'catalog_ui/catalog_runtime_state.dart';
@@ -704,12 +705,11 @@ class _RuntimeNotificationNavigationState
           NotificationLimitation.unavailable =>
             l.alkionNotificationsUnavailable,
         };
-        appScaffoldMessengerKey.currentState?.showSnackBar(
-          SnackBar(
-            content: Text(message),
-            duration: const Duration(seconds: 8),
-            action: SnackBarAction(label: l.commonOk, onPressed: () {}),
-          ),
+        showWToast(
+          navigation,
+          message,
+          duration: const Duration(seconds: 8),
+          action: WToastAction(label: l.commonOk, onPressed: () {}),
         );
       } else if (limitation == null) {
         _shown = null;

@@ -14,6 +14,7 @@ import '../ui/today_screen.dart';
 import '../session/session_manager.dart';
 import '../theme/motion.dart';
 import '../theme/workout_canvas.dart';
+import '../widgets/w_toast.dart';
 import 'back_dispatch.dart';
 import 'session_launcher.dart' as launcher;
 import 'session_indicator.dart';
@@ -86,8 +87,12 @@ class _AppShellState extends State<AppShell> {
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
+  // Toasts this Scaffold shows float above the tab bar.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ToastTabBarClearance(child: _buildShell(context));
+
+  Widget _buildShell(BuildContext context) {
     final manager = context.watch<SessionManager>();
     final reserveIndicator =
         manager.active != null && !manager.screenOpen && _index != 0;

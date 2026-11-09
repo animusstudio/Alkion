@@ -15,6 +15,7 @@ import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
+import '../widgets/w_toast.dart';
 
 /// Shows a modal bottom sheet that lets the user search and pick an exercise.
 ///
@@ -60,10 +61,10 @@ Future<Exercise?> showExercisePicker(
       return exercise;
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(AppLocalizations.of(context).catalogSaveFailed),
-          ),
+        showWToast(
+          context,
+          AppLocalizations.of(context).catalogSaveFailed,
+          error: true,
         );
       }
       return null;

@@ -31,6 +31,7 @@ import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_toast.dart';
 import 'alkion_recovery/recovery_screen.dart';
 import 'animus_connection_panel.dart';
 import 'export_failure.dart';
@@ -704,9 +705,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           actions: [WDialogAction(label: l.commonOk, value: true)],
         );
       case ExportOutcome.empty:
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l.exportNoSessionsInRange)));
+        showWToast(context, l.exportNoSessionsInRange);
     }
   }
 

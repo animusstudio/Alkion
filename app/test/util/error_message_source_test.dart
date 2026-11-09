@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 const _owned = [
   'lib/util/error_message.dart',
   'lib/widgets/w_dialog.dart',
+  'lib/widgets/w_toast.dart',
   'lib/ui/day_editor.dart',
   'lib/ui/exercise_editor.dart',
   'lib/session/session_summary_screen.dart',

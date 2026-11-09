@@ -16,6 +16,7 @@ import '../widgets/fit_label.dart';
 import '../widgets/prescription_controls.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_toast.dart';
 
 /// The Plan route owns immutable status intents independently of the list's
 /// lifetime, so opening an editor or another sub-tab cannot discard a retry.
@@ -119,14 +120,11 @@ class _SplitTabState extends State<SplitTab> {
       );
       if (enabling == null) return;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              enabling
-                  ? l.trainingDayEnabled(day.name)
-                  : l.trainingDayDisabled(day.name),
-            ),
-          ),
+        showWToast(
+          context,
+          enabling
+              ? l.trainingDayEnabled(day.name)
+              : l.trainingDayDisabled(day.name),
         );
       }
     } catch (e) {

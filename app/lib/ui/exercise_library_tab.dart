@@ -19,6 +19,7 @@ import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
+import '../widgets/w_toast.dart';
 
 /// The Exercises sub-tab: a catalog of all exercises grouped by muscle.
 ///
@@ -99,12 +100,10 @@ class _LibraryTabState extends State<LibraryTab> {
                 );
               } catch (_) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        AppLocalizations.of(context).catalogSaveFailed,
-                      ),
-                    ),
+                  showWToast(
+                    context,
+                    AppLocalizations.of(context).catalogSaveFailed,
+                    error: true,
                   );
                 }
               }

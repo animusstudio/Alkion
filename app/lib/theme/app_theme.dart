@@ -100,6 +100,22 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
         ),
       ),
     ),
+    // Every SnackBar floats as a flat Alkion toast; `showWToast` adds the
+    // danger style, actions and the tab-bar clearance.
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: tokens.surface3,
+      contentTextStyle: WorkoutType.body(size: 14, color: tokens.text),
+      actionTextColor: tokens.accentText,
+      disabledActionTextColor: tokens.dim,
+      closeIconColor: tokens.dim,
+      elevation: 0,
+      insetPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        side: BorderSide(color: tokens.lineStrong),
+      ),
+    ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.text),
     inputDecorationTheme: InputDecorationTheme(
       floatingLabelStyle: WidgetStateTextStyle.resolveWith(
