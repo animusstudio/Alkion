@@ -108,7 +108,28 @@ Implementers Opus `high`, reviewers Sonnet `high`. T1 first, then T2; T3 (ARBs) 
 
 ## Task state
 
-None started.
+- **T1 Aggregate: done, review pending** (Opus `high`). Code `3709884c`, tests `40674114`.
+  - `make -C app get` → resolved offline with the committed lock.
+  - `make -C app test TEST='--concurrency=2 test/data'` → +209 all passed
+    (`body_workload_test.dart` unchanged).
+  - `make -C app analyze` → no issues.
+  - `make -C app fmt FORMAT_FILES='<the 2 source files and planned_workload_test.dart>'` → 0
+    changed after the commits.
+  - Public API: `plannedSplitWorkload(Iterable<DayTemplate> days, Map<String, Exercise>
+    exercisesById, Map<String, CatalogMuscleResolution> resolutions)` → `WorkoutWorkload`;
+    `PlanWorkloadInputs.splitWorkload(days)`; `splitBasis(Iterable<DayTemplate> days)` →
+    `SplitBasis({perWeek, activeDays})` (value equality); shared loop
+    `plannedSlotWorkloadInputs(slots, {required physicalId, selections, resolutions})` in
+    `body_workload_adapters.dart`, which `plannedWorkoutWorkload` now calls with the unchanged
+    ids `planned:<slot>:<set>`.
+  - Notes for review and T2:
+    - Only `active == true` days count, for both the workload and the basis. A bound or missing
+      exercise on an excluded day does not make the split unavailable.
+    - The day segment of the id is `DayTemplate.id`, so the same day passed twice counts once.
+    - No active day, or only empty ones, is ready with empty coverage. T2 decides visibility
+      (A1).
+    - Zero active days is per rotation with `activeDays: 0`.
+    - A failed read stays the `PlanWorkloadInputs.load` throw; T2 maps it to unavailable.
 
 ## Next
 
