@@ -36,6 +36,8 @@ import 'store/schema.dart';
 import 'theme/app_theme.dart';
 import 'ui/alkion_recovery/recovery_app.dart';
 import 'ui/alkion_recovery/first_start_screen.dart';
+import 'ui/launch_failure_app.dart';
+import 'util/error_surface.dart';
 import 'units/unit_service.dart';
 import 'widgets/pending_input.dart';
 import 'widgets/storage_recovery_banner.dart';
@@ -47,6 +49,8 @@ import 'catalog_ui/catalog_loading.dart';
 import 'catalog_ui/catalog_scope.dart';
 import 'history_mapping/history_mapping.dart';
 import 'history_mapping/history_mapping_label.dart';
+
+export 'ui/launch_failure_app.dart' show AlkionPreflightApp;
 
 Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
   profile: profile,
@@ -303,12 +307,34 @@ class AlkionRuntime with WidgetsBindingObserver {
 }
 
 Future<void> main() async {
+  // First, so even a failure while starting never shows the bare gray box.
+  installReleaseErrorSurface();
   WidgetsFlutterBinding.ensureInitialized();
+  await startAlkion();
+}
+
+/// The body of [main]: finds the checked support root and launches. A failure
+/// before [launchAlkion] can present its own screen shows the launch failure
+/// screen, whose Try again re-runs this whole body.
+Future<void> startAlkion({
+  @visibleForTesting Future<Directory> Function()? supportRoot,
+  @visibleForTesting Future<void> Function(Directory root)? launch,
+  @visibleForTesting void Function(Widget app) present = runApp,
+}) async {
   try {
-    final root = await checkedAlkionSupportRoot();
-    await launchAlkion(root);
+    final root = await (supportRoot ?? checkedAlkionSupportRoot)();
+    await (launch ?? launchAlkion)(root);
   } catch (error) {
-    runApp(AlkionPreflightApp(error: error));
+    present(
+      AlkionPreflightApp(
+        error: error,
+        relaunch: () => startAlkion(
+          supportRoot: supportRoot,
+          launch: launch,
+          present: present,
+        ),
+      ),
+    );
   }
 }
 
@@ -432,7 +458,7 @@ Future<void> _presentLaunchFailure(
       ),
     );
   } else {
-    present(AlkionPreflightApp(error: error));
+    present(AlkionPreflightApp(error: error, relaunch: relaunch));
   }
 }
 
@@ -727,28 +753,6 @@ class _RuntimeNotificationNavigationState
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-class AlkionPreflightApp extends StatelessWidget {
-  const AlkionPreflightApp({super.key, this.error});
-  final Object? error;
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: AlkionIdentity.displayName,
-    home: Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              '${AlkionIdentity.displayName}\nLocal storage is unavailable. Your existing files are preserved.\n${error ?? ''}',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 Future<void> logOutAndForget({

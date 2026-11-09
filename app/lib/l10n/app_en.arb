@@ -12,6 +12,18 @@
   "errorDamaged": "This data is damaged or in a format this version can't read. It was left unchanged.",
   "errorTooLarge": "The file is too large to process.",
   "errorUnexpected": "Something went wrong. Try again.",
+  "launchFailureTitle": "{app} couldn't start",
+  "@launchFailureTitle": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "launchFailureStorage": "Local storage couldn't be opened.",
+  "launchFailurePreserved": "Your existing files are preserved.",
+  "launchFailureTryAgain": "Try again",
+  "launchFailureDetails": "Technical details",
   "todayGreeting": "Ready to train",
   "todayThisWeek": "This week",
   "todayBodyweight": "Bodyweight",
