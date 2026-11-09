@@ -116,8 +116,84 @@ void main() {
         ),
         '3×8–12 · RIR 0–1',
       );
+      expect(
+        formatPrescription(workSets: 2, reps: null, unavailable: 'n/a'),
+        '2×n/a',
+      );
     },
   );
+  test('prescription parts compose the unchanged one-line text', () {
+    expect(formatRepPair((low: 8, high: 8)), '8');
+    expect(formatRepPair((low: 8, high: 12)), '8–12');
+    expect(formatRepPair(null), '…');
+    expect(formatRepPair(null, unavailable: 'n/a'), 'n/a');
+    expect(formatSetsReps(workSets: 3, reps: (low: 8, high: 12)), '3×8–12');
+    expect(formatSetsReps(workSets: 3, reps: null), '3×…');
+    expect(formatRirTarget(2, 2), 'RIR 2');
+    expect(formatRirTarget(0, 1), 'RIR 0–1');
+    for (final (reps, rir) in [
+      ((low: 8, high: 8), null),
+      ((low: 6, high: 10), (0, 2)),
+      (null, (1, 1)),
+    ]) {
+      expect(
+        formatPrescription(
+          workSets: 4,
+          reps: reps,
+          rirLow: rir?.$1,
+          rirHigh: rir?.$2,
+        ),
+        [
+          formatSetsReps(workSets: 4, reps: reps),
+          if (rir != null) formatRirTarget(rir.$1, rir.$2),
+        ].join(' · '),
+      );
+    }
+    // A half-specified RIR pair never prints.
+    expect(formatPrescription(workSets: 3, reps: null, rirLow: 1), '3×…');
+  });
+  test('authored rep pairs omit the fallback that resolveRepPair adds', () {
+    const blank = Slot(exerciseId: 'e', position: 1);
+    expect(authoredRepPair(blank, ex), isNull);
+    expect(resolveRepPair(blank, ex), (low: 8, high: 8));
+    expect(
+      authoredRepPair(
+        const Slot(exerciseId: 'e', position: 1, repLow: 6, repHigh: 9),
+        ex,
+      ),
+      (reps: (low: 6, high: 9)),
+    );
+    expect(
+      authoredRepPair(
+        const Slot(exerciseId: 'e', position: 1, repLow: 9, repHigh: 6),
+        ex,
+      ),
+      (reps: null),
+    );
+    const defaults = Exercise(
+      id: 'e',
+      name: 'Bench',
+      slug: 'bench',
+      muscleGroup: 'chest',
+      compound: false,
+      plateStepKg: 2.5,
+      isTemplate: false,
+      defaultRepLow: 5,
+      defaultRepHigh: 5,
+    );
+    expect(authoredRepPair(blank, defaults), (reps: (low: 5, high: 5)));
+    expect(
+      authoredRepPair(
+        const Slot(
+          exerciseId: 'e',
+          position: 1,
+          rawFields: {'target_rep_low': 'eight'},
+        ),
+        defaults,
+      ),
+      (reps: null),
+    );
+  });
   test(
     'compatibility refusal explains native backup in all supported languages',
     () {
