@@ -782,5 +782,14 @@
   "volumeLiveSemantics": "{muscle}: {done} series hechas esta semana, {live} en este entrenamiento, {planned} planificadas, objetivo {target}",
   "planEditorRetrySave": "Reintentar guardar",
   "planEditorNotSaved": "No guardado. Los campos quedan bloqueados para que Reintentar guardar guarde exactamente estos valores una vez. Descarta para salir sin guardar.",
-  "planEditorDiscardChanges": "Descartar cambios"
+  "planEditorDiscardChanges": "Descartar cambios",
+  "historyNotSavedWillRetry": "No guardado · se reintentará",
+  "commonSave": "Guardar",
+  "historySetsNotSaved": "Series no guardadas",
+  "historySetsRequired": "Introduce los valores necesarios de cada serie antes de guardar.",
+  "historyDiscardSetsTitle": "¿Descartar los cambios en las series?",
+  "historyDiscardSetsMessage": "Se perderán los cambios sin guardar en estas series.",
+  "historySetRemoved": "Serie eliminada",
+  "historyDeletedExercise": "Ejercicio eliminado",
+  "historyNoSetupToLog": "Este ejercicio aún no tiene un equipo para registrar."
 }

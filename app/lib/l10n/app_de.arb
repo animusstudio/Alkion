@@ -782,5 +782,14 @@
   "volumeLiveSemantics": "{muscle}: {done} Sätze diese Woche erledigt, {live} in diesem Training, {planned} geplant, Ziel {target}",
   "planEditorRetrySave": "Erneut speichern",
   "planEditorNotSaved": "Nicht gespeichert. Die Felder bleiben gesperrt, damit „Erneut speichern“ genau diese Werte einmal speichert. Verwerfen, um ohne Speichern zu gehen.",
-  "planEditorDiscardChanges": "Änderungen verwerfen"
+  "planEditorDiscardChanges": "Änderungen verwerfen",
+  "historyNotSavedWillRetry": "Nicht gespeichert · wird erneut versucht",
+  "commonSave": "Speichern",
+  "historySetsNotSaved": "Sätze nicht gespeichert",
+  "historySetsRequired": "Gib vor dem Speichern die erforderlichen Werte für jeden Satz ein.",
+  "historyDiscardSetsTitle": "Änderungen an den Sätzen verwerfen?",
+  "historyDiscardSetsMessage": "Deine nicht gespeicherten Änderungen an diesen Sätzen gehen verloren.",
+  "historySetRemoved": "Satz entfernt",
+  "historyDeletedExercise": "Gelöschte Übung",
+  "historyNoSetupToLog": "Für diese Übung gibt es noch kein Gerät zum Erfassen."
 }

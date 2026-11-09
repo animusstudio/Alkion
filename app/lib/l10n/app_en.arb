@@ -1345,5 +1345,14 @@
   },
   "planEditorRetrySave": "Retry save",
   "planEditorNotSaved": "Not saved. The fields stay locked so Retry save saves exactly these values once. Discard to leave without saving.",
-  "planEditorDiscardChanges": "Discard changes"
+  "planEditorDiscardChanges": "Discard changes",
+  "historyNotSavedWillRetry": "Not saved · will retry",
+  "commonSave": "Save",
+  "historySetsNotSaved": "Sets not saved",
+  "historySetsRequired": "Enter the required values for each set before saving.",
+  "historyDiscardSetsTitle": "Discard set changes?",
+  "historyDiscardSetsMessage": "Your unsaved changes to these sets will be lost.",
+  "historySetRemoved": "Set removed",
+  "historyDeletedExercise": "Deleted exercise",
+  "historyNoSetupToLog": "This exercise has no setup to log yet."
 }
