@@ -128,31 +128,56 @@ String? shownProgressTarget({
   return catalog.isEmpty ? null : catalog.first.id;
 }
 
+/// One Progress point as the 12-week change reads it: its session day, its
+/// displayed (rounded) value and its top-set reps.
+typedef ProgressDeltaPoint = ({String date, double value, int reps});
+
+/// The 12-week change window, in days back from the latest point.
+const progressDeltaWindowDays = 84;
+
 /// The value and unit slot of Progress's 12-week change tile.
 ///
-/// [series] holds the displayed (rounded) values. For a top-set metric
-/// ([reps]) the rep change stands in when the weight didn't move. The unit
-/// slot is null whenever the value is not a weight: a rep change, or "same".
-/// Fewer than two points show "—".
+/// [points] are oldest first and hold the displayed (rounded) values. Only
+/// points with a qualified calendar day count. The window is measured back
+/// from the latest of them, not from the clock: the baseline is the earliest
+/// other point at most [progressDeltaWindowDays] days before it. With no such
+/// point the change is "—".
+///
+/// For a top-set metric ([reps]) the rep change stands in when the weight
+/// didn't move. The unit slot is null whenever the value is not a weight: a
+/// rep change, or "same".
 ({String value, String? unit}) progressDeltaStat(
   AppLocalizations l, {
-  required List<double> series,
+  required List<ProgressDeltaPoint> points,
   required bool reps,
-  required int firstTopReps,
-  required int topReps,
   required String unit,
   required String Function(double) fmtVal,
 }) {
   final unitSlot = unit.isNotEmpty ? unit : null;
-  if (series.length < 2) return (value: '—', unit: unitSlot);
-  final first = series.first;
-  final last = series.last;
+  final none = (value: '—', unit: unitSlot);
+  final dated = [
+    for (final p in points)
+      if (hasQualifiedCalendarDay(p.date)) p,
+  ];
+  if (dated.length < 2) return none;
+  final latest = dated.last;
+  final from = _utcDay(
+    latest.date,
+  ).subtract(const Duration(days: progressDeltaWindowDays));
+  ProgressDeltaPoint? baseline;
+  for (final p in dated.take(dated.length - 1)) {
+    if (!_utcDay(p.date).isBefore(from)) {
+      baseline = p;
+      break;
+    }
+  }
+  if (baseline == null) return none;
   if (reps) {
     final c = topSetChange(
-      prevWeight: first,
-      prevReps: firstTopReps,
-      curWeight: last,
-      curReps: topReps,
+      prevWeight: baseline.value,
+      prevReps: baseline.reps,
+      curWeight: latest.value,
+      curReps: latest.reps,
     );
     final value = changeLabel(l, c, fmtVal: fmtVal);
     return (
@@ -160,6 +185,13 @@ String? shownProgressTarget({
       unit: c is WeightChange && value != l.progressSame ? unitSlot : null,
     );
   }
-  final value = signedChange(last - first, fmtVal, l);
+  final value = signedChange(latest.value - baseline.value, fmtVal, l);
   return (value: value, unit: value == l.progressSame ? null : unitSlot);
+}
+
+/// A qualified `YYYY-MM-DD` day as a UTC midnight, so day arithmetic never
+/// crosses a DST change.
+DateTime _utcDay(String day) {
+  final parts = day.split('-').map(int.parse).toList();
+  return DateTime.utc(parts[0], parts[1], parts[2]);
 }
