@@ -92,7 +92,20 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       },
     );
     if (launch != null) await handleNotificationResponse(launch);
+    await _clearGhostNotification(value);
     await refreshNotifications();
+  }
+
+  /// At runtime open with no active workout (the draft was already loaded),
+  /// cancels Alkion's workout notification and any scheduled rest-end alert:
+  /// both use id 4101, and the plugin's cancel removes the pending alarm too.
+  /// Never while a workout is active or a launch (start/resume) is running.
+  Future<void> _clearGhostNotification(WorkoutNotification value) async {
+    await _responseTail;
+    if (_active != null || _launching || _notificationsClosed || _disposed) {
+      return;
+    }
+    await value.cancel();
   }
 
   void _notificationStatusChanged() {

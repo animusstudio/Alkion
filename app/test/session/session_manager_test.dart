@@ -563,4 +563,71 @@ void main() {
       }
     },
   );
+
+  group('ghost notification cleanup at runtime open', () {
+    test('no active workout: cancels the notification and its alarm', () async {
+      final m = SessionManager();
+      addTearDown(m.dispose);
+      final notifier = FakeWorkoutNotification();
+      await m.initializeNotifications(notifier);
+      expect(notifier.cancels, 1);
+      expect(notifier.shown, isEmpty);
+    });
+
+    test('an active workout is never cancelled', () async {
+      final m = SessionManager();
+      addTearDown(m.dispose);
+      final c = ActiveSessionController();
+      addTearDown(c.dispose);
+      c.seedEmpty(name: 'Synthetic workout', focus: '');
+      m.register(c);
+      final notifier = FakeWorkoutNotification();
+      await m.initializeNotifications(notifier);
+      expect(notifier.cancels, 0);
+      m.clear();
+    });
+
+    test('a workout being resumed is never cancelled', () async {
+      final m = SessionManager();
+      addTearDown(m.dispose);
+      expect(m.tryBeginLaunch(), isTrue);
+      final notifier = FakeWorkoutNotification();
+      await m.initializeNotifications(notifier);
+      expect(notifier.cancels, 0);
+      m.endLaunch();
+    });
+
+    test('real runtime: cleanup with no draft, none with a draft', () async {
+      final temp = await Directory.systemTemp.createTemp('alkion-ghost-');
+      final root = Directory('${temp.path}/${AlkionIdentity.applicationId}');
+      final empty = FakeWorkoutNotification();
+      var runtime = await AlkionRuntime.open(root, notifications: empty);
+      try {
+        expect(runtime.sessions.active, isNull);
+        expect(empty.cancels, 1);
+        final c = ActiveSessionController(
+          draftStore: runtime.sessions.draftStore,
+        );
+        c.seedEmpty(name: 'Synthetic workout', focus: '');
+        c.startRest(600);
+        runtime.sessions.register(c);
+        await runtime.flushPersistence();
+        await runtime.close();
+        c.dispose();
+        final resumed = FakeWorkoutNotification();
+        runtime = await AlkionRuntime.open(root, notifications: resumed);
+        expect(runtime.sessions.active, isNotNull);
+        expect(resumed.cancels, 0);
+        expect(resumed.shown, isNotEmpty, reason: 'the workout is mirrored');
+        final owner = runtime.sessions.active!;
+        runtime.sessions.clear();
+        owner.dispose();
+      } finally {
+        if (runtime.store.admission != StoreAdmission.closed) {
+          await runtime.close();
+        }
+        await temp.delete(recursive: true);
+      }
+    });
+  });
 }
