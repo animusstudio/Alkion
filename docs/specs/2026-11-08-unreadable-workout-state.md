@@ -6,6 +6,15 @@ Parent: [development](../alkion/development.md).
 Implementation: [plan](../plans/2026-11-08-unreadable-workout-state.md).
 Baseline: `458aac6`. Audit item 1.1. Paths are relative to `app/` at that commit.
 
+This spec uses short names for its sibling plans, all dated 2026-11-08:
+
+| Name | Plan |
+| --- | --- |
+| P1 | [error messages and toasts](../plans/2026-11-08-error-messages-and-toasts.md) |
+| P2 | [storage banner and launch screens](../plans/2026-11-08-storage-banner-and-launch-screens.md) |
+| P3 | [backup and restore flow](../plans/2026-11-08-backup-and-restore-flow.md) |
+| F2 | [background notification actions](2026-11-08-background-notification-actions.md) |
+
 ## Outcome
 
 If the saved in-progress workout or the saved "undo finish" snapshot can't be
@@ -21,8 +30,7 @@ Owner decisions:
   deterministic ID in one transaction, open normally without that workout or
   undo option, and show a one-time notice.
 - **2026-11-09:** set aside a draft the build can't read, **and record why**.
-  OG1 is confirmed: missing or mismatched timer evidence is quarantined, not
-  repaired.
+  Missing or mismatched timer evidence is quarantined, not repaired.
 
 ## Current behaviour
 
@@ -77,13 +85,23 @@ loaders keep throwing, nothing is overwritten, and the next launch quarantines
 it. One set of pure classifiers decides "readable" for `DraftStore.load`,
 `FinishedSessionStore.load` and the quarantine, so the three can't disagree.
 
-Loader categories become uniform (L6):
+Loader categories become uniform:
 
 | Bytes | Loader error |
 | --- | --- |
 | Draft payload that isn't a BLOB, or isn't UTF-8 | `malformed_draft_preserved` (no raw `FormatException`/`TypeError`) |
 | Finished snapshot payload that isn't a BLOB, or isn't UTF-8 | `malformed_recovery_preserved` |
-| Timer bytes that don't decode | new `timer_evidence_unreadable` |
+| Timer payload that isn't a BLOB, or doesn't decode to a JSON object | new `malformed_timer_preserved` |
+
+Two store categories are new: `malformed_timer_preserved` and
+`quarantine_conflict_preserved` (D6). Both end in `_preserved`, so P1's mapper
+puts them in its existing "damaged" bucket (`*_preserved`), and the raw
+category shows only in the details line. They reach the user only through:
+- P2's launch failure screen, for a quarantine conflict; or
+- P1's mapper during an in-runtime History resume, for a timer that became
+  unreadable mid-run.
+
+This plan adds no message strings for them.
 
 The pinned "load throws and bytes are preserved" tests still hold:
 `test/session/draft_json_test.dart:297` and
@@ -102,9 +120,16 @@ Only content damage of a row whose `status` is `active` is quarantined.
 | `draft/active` (decodable) | Timer payload isn't a BLOB or doesn't decode to a JSON object | `timer_evidence_unreadable` |
 | `draft/active` (decodable) | Timer `draftId` differs from the draft's | `timer_draft_mismatch` |
 | `finishedRecovery/last` | Payload isn't a BLOB, isn't UTF-8 or JSON, or isn't a valid `FinishedSession` | `finished_recovery_unreadable` |
+| `finishedRecovery/last` | Valid snapshot JSON whose embedded `draft` has a `format`/`version` this build doesn't support | `finished_recovery_unsupported_format` |
+
+An embedded newer-format draft gets its own reason. It is the snapshot
+written by a newer build, which a future build may want to revive, so the
+evidence must not lump it in with damaged bytes. It is detected by checking the
+embedded `draft` object's `format`/`version` before `FinishedSession.fromJson`
+rejects it.
 
 **Missing or mismatched timer evidence is quarantined, not repaired**
-(owner, OG1). The draft and timer rows are always written together
+(owner decision, 2026-11-09). The draft and timer rows are always written together
 (`session_writer.dart:526-578`). Disagreement therefore means something
 outside that path damaged the pair. Rebuilding the timer could revive a draft
 that a lost or foreign write should have ended, and it would issue
@@ -116,8 +141,8 @@ decoder, is retired from the active slot. It is never rewritten, and the
 evidence records exactly why this build refused it (D3). A future build or
 tool can then judge whether to revive it. This build can't resume it.
 
-These are **not** quarantined, and keep today's launch failure (now on P2's
-retry screen):
+These are **not** quarantined. They keep today's launch failure, now shown
+on P2's retry screen:
 
 - store-level failures (SQLite or I/O errors, `recovery_required`,
   `stale_generation`, `foreign_profile`);
@@ -146,9 +171,20 @@ evidence is `localBytes` of:
            error_type, error_message (first 512 characters)}}
 ```
 
-- The draft group is `draft/active` plus `timer/active` when present. The
-  finished group is `finishedRecovery/last`. The `notification-action` receipt
-  is neither copied nor changed.
+- `kind` is exactly `'draft'` or `'finishedRecovery'`, the `LocalStateKind`
+  name of the damaged row.
+- `rows` is ordered by (`state_kind`, `state_key`):
+  - the draft group is `[draft/active, timer/active]`, with the timer row left
+    out when it is absent;
+  - the finished group is `[finishedRecovery/last]`.
+
+  Each row holds every column, and `localBytes` sorts the keys, so the hash
+  input is fully determined. The `notification-action` receipt
+  (`timer/notification-action`) is neither copied nor changed.
+- `error_message` can contain a snippet of the stored bytes, because a
+  `FormatException` message quotes its source. That is harmless here: the
+  review stays local and goes only into backups, and reviews are never
+  exported (D9).
 - `decoder` comes from `PackageInfo.fromPlatform()` (`package_info_plus`, already
   a dependency, `ui/profile_screen.dart:460`) and `AlkionIdentity.current`.
   If `PackageInfo` fails, `app_version` is `"unknown"`. Quarantine never fails
@@ -163,12 +199,21 @@ evidence is `localBytes` of:
 
 ### D4. Retiring the damaged row
 
-In the same write transaction as the review insert, each inspected row whose
-status is `active` is rewritten through `putLocalState` with:
+The retire happens in the same write transaction as the review insert. For
+each inspected row whose status is `active`, it runs a **status-only update**,
+through a new `LocalTransaction.retireLocalState(kind, key, expectedRevision)`:
 
-- its exact payload bytes;
-- `expectedRevision` set to its current revision;
-- status `quarantined`.
+```
+UPDATE local_state SET revision=revision+1, status='quarantined', updated_at=?
+WHERE profile_id=? AND state_kind=? AND state_key=? AND revision=? AND generation=?
+```
+
+It then re-reads the row to confirm exactly that change, and throws
+`stale_local_state` otherwise. `payload_bytes` is never rewritten. `putLocalState`
+is not used, because it takes a `Uint8List`: retiring a payload stored as TEXT
+through it would quietly change the stored type. With this update, every
+payload keeps its original value and type in place, and the evidence keeps it
+too.
 
 Its revision goes up by one. After this, both loaders return `null` without
 throwing. `persistedRevision` then matches the retired row, so the next
@@ -184,9 +229,16 @@ Two other readers learn the new status:
 
 - `FinishedSessionStore.clearForSession` returns early for `quarantined`,
   next to `expired`.
-- History delete (`session_repository.dart:713-738`) changes a row to `review`
-  **only when it is `active`** (L1). A retired snapshot is therefore never
-  flipped.
+- History delete (`session_repository.dart:713-738`) checks the status
+  **before** the `payload_bytes as List` cast and the decode, and skips a
+  `quarantined` row entirely. A retired snapshot is never decoded or flipped.
+  This also covers a TEXT payload, whose cast would otherwise throw an
+  uncaught `TypeError` (only `FormatException` is caught there).
+  - The guard is deliberately narrow. Every other status behaves as today. An
+    `expired` row with a matching session ID is still rewritten as `review`,
+    which is today's behaviour, kept unchanged and tested (A13).
+  - An "active only" guard was rejected, because it would silently change that
+    `expired` path.
 
 ### D5. Crash safety
 
@@ -204,24 +256,51 @@ not retired" state exists.
 
 ### D6. Idempotence and conflicts
 
-If a review with the computed ID exists and its `{format, kind, rows}` are
-identical, no row is inserted, and any still-active row in the group is
-retired. If the ID exists with different `{format, kind, rows}`, the
-quarantine refuses with `quarantine_review_conflict` and writes nothing.
+- **Same ID, identical content.** If a review with the computed ID exists and
+  its `{format, kind, rows}` are identical, no row is inserted, and any
+  still-active row in the group is retired.
+- **Same ID, different content.** This can only follow a SHA-256 prefix
+  collision or a tampered review. Failing closed here would be a **permanent
+  lockout**: nothing would be written, the damaged row would stay active, and
+  every launch would hit the same conflict. P2's "Try again" can't fix that,
+  and Backup stays unreachable. So the quarantine uses a **deterministic
+  fallback ID** instead:
+  - `wq-` plus the first 40 hex digits of SHA-256 over
+    `"conflict:" + existing_id + localBytes({format, kind, rows})`;
+  - its evidence adds `conflicts_with: existing_id`;
+  - the existing review is never changed;
+  - the row is retired as usual.
 
-**This is fail-closed by design (L4).** It can only follow a SHA-256 collision
-or a tampered review. Either way the app must not guess, so launch shows the
-failure screen with the bytes untouched. A second open finds no active damaged
-row and writes nothing.
+  A relaunch computes the same fallback ID and finds it identical, so nothing
+  more is written. Both reviews are kept, and the app never chooses between
+  them.
+- **Fallback ID also taken.** Only if the fallback ID itself exists with
+  different content does the quarantine refuse, with
+  `quarantine_conflict_preserved`, and write nothing. That requires a second
+  independent collision or deliberate tampering. Failing closed is the honest
+  answer then. P2's failure screen shows the category under "Technical
+  details" with the bytes untouched, and only a restore from first start, or
+  a future tool, recovers.
+- **Next open.** A second open after any of these finds no active damaged row
+  and writes nothing.
 
 ### D7. One-time notice
 
 After open, the runtime lists `workflow_state_unreadable` reviews that have no
 `review_decisions` row with `decision_id = 'notice'`. It exposes them as a
-`ValueNotifier` on `AlkionRuntime`. The notice is F1's **own informational
-widget**, not P2's danger-styled banner (M1). It uses neutral tokens,
-`WorkoutType.body` and an OK action, and sits in the same `AlkionApp` builder
-`Stack` as P2's banner, below it.
+`ValueNotifier` on `AlkionRuntime`. The notice is this plan's **own
+informational widget**, not P2's danger-styled banner. It uses neutral tokens,
+`WorkoutType.body`, `FitLabel` and an OK action.
+
+**Placement.** The notice is a second child of the `AlkionApp` builder `Stack`,
+a `Positioned(top: 0, left: 0, right: 0)` with a `SafeArea`. P2's banner uses
+the same placement (`Positioned(top: 0)`, `lib/main.dart:586-589`). The two
+must never overlap, so the notice is built **only while
+`persistenceFailure.value == null`**. If a storage error appears, the banner
+takes the slot, and the notice stays pending and comes back once Retry clears
+the error. There is never more than one top overlay, so nothing overlaps at
+320 dp or at 2× text, whatever the heights. Both draw above the page content
+in z-order, as the banner does today.
 
 | Damaged | Copy (English) |
 | --- | --- |
@@ -237,7 +316,7 @@ OK writes one `notice` row per review shown, in one write transaction:
 - If the write fails, the notice closes for this run and shows again at the
   next launch. It never blocks the app.
 - `notice` is an **acknowledgement that the notice was seen, not a
-  disposition** (L5). It decides nothing about the evidence, and no gate reads
+  disposition**. It decides nothing about the evidence, and no gate reads
   it.
 - The four ARB files (en, it, de, es) get the strings.
 
@@ -249,8 +328,9 @@ undo data), the review date, and one line, "Kept as evidence and included in
 backups." The section has no delete, export or revive action. It is separate
 from P3's restore-review list. P3's `RestoreReviews.keepAll` must decide only
 `restore_newer_work` reviews, as `keep` does today
-(`lib/recovery/recovery_host.dart:93-100`). F1 adds a test that it never
-writes a decision for a `workflow_state_unreadable` review.
+(`lib/recovery/recovery_host.dart:93-100`). This plan adds a test that it never
+writes a decision for a `workflow_state_unreadable` review. That test needs
+`keepAll`, so it lands only after P3's review task has merged.
 
 ### D9. Backups and restores
 
@@ -263,7 +343,7 @@ The backup format doesn't change. Backups already cover `reviews`,
   `restore_newer_work` reviews, which hold the exact previous rows
   (`restore.dart:604-711`). The "Kept workout data" section is then empty for
   that generation. The data survives, but it appears in the restore-review
-  list instead. `docs/alkion/recovery.md` records this (L7).
+  list instead. `docs/alkion/recovery.md` records this.
 - A restored backup that holds a damaged *active* row is quarantined at the
   next open.
 
@@ -325,8 +405,8 @@ with the payload byte-identical.
   `sessions.hasActive == false`. The malformed cases are invalid JSON, invalid
   UTF-8, a wrong-typed field and a TEXT payload. One review holds the exact
   draft and timer rows and a `decoder` record naming the failed step. The draft
-  row is `quarantined` with unchanged bytes, and the timer row is retired if it
-  was active.
+  row is `quarantined` with its payload unchanged in value and in SQLite type,
+  and the timer row is retired if it was active.
 - **A2.** An unsupported draft format is quarantined with
   `draft_unsupported_format`. The evidence lists this build's supported formats
   and the error.
@@ -334,7 +414,8 @@ with the payload byte-identical.
   active, undecodable or names another draft. The reason names the case.
 - **A4.** A malformed `finishedRecovery/last` gives `lastFinished == null` and
   no undo or resume offer in History. One exact review is written, the row is
-  `quarantined`, and History rows are unchanged.
+  `quarantined`, and History rows are unchanged. A snapshot whose embedded
+  draft has an unsupported format gets `finished_recovery_unsupported_format`.
 - **A5.** Damage in both groups gives two reviews in one transaction and the
   combined notice.
 - **A6 (negative, accepted shapes).** Each draft and snapshot shape the current
@@ -346,30 +427,47 @@ with the payload byte-identical.
 - **A7 (negative).** Rows that aren't active are untouched and get no review,
   whatever their bytes. A valid but no-longer-resumable snapshot is not
   quarantined.
-- **A8 (negative, storage failure).** A `LocalDatabase` wrapper in the
-  `FaultDatabase` pattern (`test/alkion/domains/prepared_intent_retry_test.dart:13`,
-  extended to fault `readTransaction` and `writeTransaction`) throws
-  `StoreException('recovery_required')` and a raw `SqliteException` from the
-  read. A token from another generation gives `stale_generation`. In each case
-  nothing is quarantined, open fails as before, and the inventory is unchanged.
+- **A8 (negative, storage failure).** These cases run at function level.
+  `AlkionRuntime.open` takes only a real `LocalStore` (`preparedStore`), while
+  the fault wrapper is a `LocalDatabase`, so it can't be injected there. The
+  quarantine function takes a `LocalDatabase`, so A8 and A12 call it directly
+  with the wrapper, which follows the `FaultDatabase` pattern
+  (`test/alkion/domains/prepared_intent_retry_test.dart:13`) extended to fault
+  `readTransaction` and `writeTransaction`.
+  - The read throws `StoreException('recovery_required')`, and separately a
+    raw `SqliteException`.
+  - `expected` is a token from another generation, giving `stale_generation`.
+
+  In each case the function rethrows, nothing is quarantined, and the
+  inventory is unchanged. A real `AlkionRuntime.open` on the same, unfaulted
+  store directory then proves the launch outcome. No production parameter is
+  added.
 - **A9 (replay).** Second and third opens write nothing. Once the notice is
   acknowledged, it doesn't show again. Without an acknowledgement it shows
   again, and no second review appears.
 - **A10 (idempotence).** A pre-existing review with the same
   `{format, kind, rows}` and different `decoder` fields leaves no duplicate
   review, and the still-active row is retired. The same ID with different rows
-  refuses with `quarantine_review_conflict` and writes nothing.
+  writes one review under the deterministic fallback ID, with
+  `conflicts_with`, and retires the row. The existing review stays
+  byte-identical, a relaunch writes nothing, and open succeeds. If the
+  fallback ID is also taken with different content, the quarantine refuses
+  with `quarantine_conflict_preserved` and writes nothing.
 - **A11 (crash).** A child process is killed inside the uncommitted
   quarantine transaction: the rows and `reviews` stay exact, and the next open
   quarantines once. When it is killed after COMMIT and before the notice, the
   next open writes nothing and shows the notice.
-- **A12 (uncertain COMMIT).** The wrapper fails before COMMIT (not committed)
-  and after COMMIT (committed, result lost). In both cases open fails with the
-  bytes intact, and the next open ends in one review and one retired row.
+- **A12 (uncertain COMMIT).** At function level, as in A8, the wrapper fails
+  before COMMIT (not committed) and after COMMIT (committed, result lost). In
+  both cases the function throws with the bytes intact, either untouched or
+  already copied. A real `AlkionRuntime.open` afterwards ends in exactly one
+  review and one retired row.
 - **A13.** After a quarantine, start, autosave and finish a new workout, then
-  resume that finish from History. The review stays byte-identical. Deleting a
-  History session whose ID matches the retired snapshot leaves that row
-  `quarantined`.
+  resume that finish from History. The review stays byte-identical.
+  - Deleting a History session whose ID matches a retired snapshot leaves that
+    row `quarantined`, with no decode, and that holds for a TEXT payload too.
+  - Deleting a session whose ID matches an `expired` snapshot still rewrites
+    it as `review`, as today.
 - **A14 (backup/restore).** A backup taken after a quarantine contains the
   review, its decision and the retired rows, and restoring it reproduces them.
   Restoring an older backup keeps them as `restore_newer_work` evidence with
@@ -378,11 +476,15 @@ with the payload byte-identical.
 - **A15 (isolation).** A second profile in the same support root is
   untouched, and so are the other generation directories (digests compared).
   The review counts toward neither `transportGate`, the upload gate nor
-  `replayCompleteness`. It isn't exported, and P3's `keepAll` never decides it.
+  `replayCompleteness`, and it isn't exported. P3's `keepAll` never decides
+  it; that test runs once P3's review task has merged.
 - **A16 (UI).**
   - The notice shows the right variant, and OK records `notice` once, even
     after a double tap or across two successive runtimes.
   - When the acknowledgement fails, the notice comes back at the next launch.
+  - With a storage error raised, the notice is hidden and P2's banner shows
+    alone. Once Retry clears the error, the notice returns. The two never
+    overlap, at 320 dp and at 2× text.
   - The Backup screen lists the kept data read-only.
   - Layout sweeps pass at {320, 412}dp × {1.0, 2.0}× in en, de and it, and
     the ARB files keep parity.

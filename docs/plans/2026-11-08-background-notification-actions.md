@@ -2,8 +2,8 @@
 
 Date: 2026-11-08, revised 2026-11-09 after design review. Lane: **Full**.
 Status: **Proposed**. The first design review failed with four blocking
-findings; this revision addresses them, and it needs a re-review before
-implementation.
+findings. The re-check passed with findings, and this revision addresses
+them.
 Parent: [development](../alkion/development.md).
 Specification: [background notification actions](../specs/2026-11-08-background-notification-actions.md).
 Baseline: `458aac6`. Branch: `feat/background-notification-actions-20261108`.
@@ -22,7 +22,12 @@ background whether the app is open, backgrounded or killed:
 - When no owner is present, a provisional mirror is folded from the journal.
 - Each launch cancels ghost mirrors.
 
-The spec holds decisions D1–D7 and acceptance A1–A23.
+The spec holds decisions D1–D7 and acceptance A1–A25.
+
+Short names: **P2** is the storage banner plan, **P3** the backup and restore
+flow plan, and **P8** the rest alerts and notifications plan. **F1** is the
+unreadable workout state plan, and **F2** is this plan. All are in this
+directory and dated 2026-11-08.
 
 ## Dependencies and order
 
@@ -50,9 +55,10 @@ The spec holds decisions D1–D7 and acceptance A1–A23.
   version and patch level in the `acceptance.md` entry. A release-mode APK
   isn't `run-as` debuggable, so the evidence is only logcat markers and the
   app's visible state.
-  - **Markers:** `received`, `journaled`, `rendered`, `woke` from the
-    background, and `applied` or `refused <reason>` and `ghost-cancelled` from
-    the owner.
+  - **Markers** (listed in spec D6):
+    - from the background: `received`, `journaled`, `rendered` and `woke`;
+    - from the owner: `applied`, `refused <reason>`, `duplicate`,
+      `re-rendered` and `ghost-cancelled`.
   - **States:**
     - foreground, with the shade down;
     - backgrounded;
@@ -67,10 +73,18 @@ The spec holds decisions D1–D7 and acceptance A1–A23.
     - a tap during a restore;
     - double +30s taps;
     - mixed +30s and Skip taps.
-  - **Bar:** in every state, 10 of 10 taps reach `journaled` and then
-    `applied` (or the expected `refused`). The p90 time from `received` to the
-    visible re-render is 3 s or less. Any lost tap, or a missed p90, means the
-    owner decides on a revised spec for fallback (c′).
+  - **Latency** is measured from the **physical tap** to the first
+    screen-recording frame where the notification visibly changes. Use "Show
+    taps" in developer options and `adb shell screenrecord`. The
+    `received` → `rendered` / `re-rendered` marker interval is reported
+    beside it. It is the earliest point inside the app, and doesn't count the
+    receiver and engine start time.
+  - **Bar:**
+    - in every state, 10 of 10 taps reach `journaled`, and then `applied` (or
+      the expected `refused`) at the next owner drain;
+    - the p90 from the physical tap to the visible change is 3 s or less;
+    - any lost tap, or a missed p90, means the owner decides on a revised spec
+      for fallback (c′).
 - **OG4 (device):**
   - The journal path is the same in both engines: a killed-state tap is
     applied at the next launch.
@@ -92,11 +106,11 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
 
 | Task | Owns | Acceptance |
 | --- | --- | --- |
-| T0 Pure modules (no behaviour change) | New `app/lib/session/notification_envelope.dart` (value type, envelope, intent record, legacy decode); new `app/lib/session/workout_notification_render.dart` (P8's builders, `_notifStrings`, `renderRestMirror`, fixed action order); `notification_action.dart` (class moved out, `owns` becomes a function); `workout_notification.dart` delegates to the renderer; a new transitive import-closure guard in `test/session/notification_import_guard_test.dart`; envelope and renderer unit tests | A19, A18 (guard) |
-| T1 Receipts and consumption (storage) | `notification_action.dart` (issue reuse by rest fields, receipt basis, `consumeNotificationIntent` for add and skip, the step, duplicate, conflict and gap rules, tap-time checks); `data/active_session_draft.dart` (`consumeAction` and `reconcileNotificationAction` take an intent); `CommittedRestChange` with nullable `restStart` and `restEndedAt`; `active_session_controller.dart`, notification-apply region only (`applyNotificationAction`, `_adoptNotificationRest` taking `endedAt` from the commit). Tests: `test/session/notification_action_test.dart`, `test/alkion/workflows/timer_callback_test.dart` (real SQLite), `test/session/controller_rest_row_test.dart` | A5, A6–A9, A12, A18 (refusals) |
-| T2 Journal and background handler (no SQL) | New `app/lib/session/notification_journal.dart` (sibling directory, atomic write with `flushDirectory`, bounds, ordered read, `.partial` cleanup, checkpoint seam); new `app/lib/session/notification_background.dart` (entry point, module tail, `DartPluginRegistrant`, fold, port check before and after render, trace markers). Tests: `test/session/notification_journal_test.dart`, `test/session/notification_background_test.dart` (injected port, renderer, clock and directory; concurrent delivery; mixed taps; 4096-byte boundary); the crash child `test/support/notification_journal_crash.dart` (pattern: `test/support/remote_recovery_crash.dart`); the guard extended to the handler | A7 (fold), A10, A17 (background side), A18, A20 |
-| T3 Owner wiring | `session_manager.dart` (drain tail, the resume order, init reconcile skip, drain before issue, forced refresh, ghost cancel, body-tap-only open request); `workout_notification.dart` (the two actions, `initialize` with the handler, `force`); `main.dart` (the open sequence with the port registered before drain #1, drain #2, ghost rule, port `closing` and unregister after `closeNotifications`, the restore path); `AndroidManifest.xml` (receiver and comment). Copying an undecodable entry into `reviews`. Tests: `session_manager_test.dart`, `workout_notification_test.dart`, a new `test/alkion/workflows/notification_intent_launch_test.dart` (real runtime: tap during open, ghosts, close, resume, the end-to-end killed chain), `test/alkion/recovery/backup_restore_test.dart` additions, and a fresh-start and restore inventory test with a populated journal | A1–A4, A11, A13–A17, A21 |
-| T4 Docs and integration | `docs/alkion/recovery.md`, `development.md`, `acceptance.md` (dated entry, including OG3 results), `android-smoke.md` (the OG3/OG4 rows); integrated checks | A22, A23 |
+| T0 Pure modules (no behaviour change) | New `app/lib/session/notification_envelope.dart` (value type, envelope with the UTF-8 byte limit, intent record, legacy decode, the one `notificationJournalDirectory` function, the port-name and wake-message constants); new `app/lib/session/workout_notification_render.dart` (P8's builders, `_notifStrings`, `renderRestMirror`, fixed action order); `notification_action.dart` (class moved out, `owns` becomes a function); `workout_notification.dart` delegates to the renderer; a new transitive import-closure guard in `test/session/notification_import_guard_test.dart`; envelope and renderer unit tests | A20 (guard), A21 |
+| T1 Receipts and consumption (storage) | `notification_action.dart`: the one token rule (spec D5), receipt basis and post-step rest, and **removal of the timer-revision checks at `:113`, `:182`, `:190` and `:209`**, `consumeNotificationIntent` for add and skip, the step, duplicate, conflict and gap rules, tap-time checks); `data/active_session_draft.dart` (`consumeAction` and `reconcileNotificationAction` take an intent); `CommittedRestChange` with nullable `restStart` and `restEndedAt`; `active_session_controller.dart`, notification-apply region only (`applyNotificationAction`, `_adoptNotificationRest` taking `endedAt` from the commit). Tests: `test/session/notification_action_test.dart`, `test/alkion/workflows/timer_callback_test.dart` (real SQLite), `test/session/controller_rest_row_test.dart` | A5–A9, A12, A20 (refusals) |
+| T2 Journal and background handler (no SQL) | New `app/lib/session/notification_journal.dart` (the directory comes from T0's shared function; atomic write with `flushDirectory`, bounds, ordered read, `.partial` cleanup, checkpoint seam); new `app/lib/session/notification_background.dart` (entry point, module tail, `DartPluginRegistrant`, fold, port check before and after render, trace markers). Tests: `test/session/notification_journal_test.dart`, `test/session/notification_background_test.dart` (injected port, renderer, clock and directory; concurrent delivery; mixed taps; 4096-byte boundary); the crash child `test/support/notification_journal_crash.dart` (pattern: `test/support/remote_recovery_crash.dart`); the guard extended to the handler | A7 (fold), A10, A19 (background side), A20, A21 (boundary), A22 |
+| T3 Owner wiring | `session_manager.dart` (drain tail, `drainOwed` and the switch to immediate mode, bounded reconcile skip on resume and init, refresh drains first, forced refresh, ghost cancel, body-tap-only open request, legacy foreground +30s applied directly); `workout_notification.dart` (the two actions, `initialize` with the handler, `force`); `main.dart` (the open sequence with the port registered before drain #1, drain #2, ghost rule, owed-drain release, port unregistered in the failed-open catch, port `closing` and unregistered after `closeNotifications`, the restore path); `AndroidManifest.xml` (receiver and comment). Copying an undecodable entry into `reviews`. Tests: `session_manager_test.dart`, `workout_notification_test.dart`, a new `test/alkion/workflows/notification_intent_launch_test.dart` (real runtime: taps at all five open points, failed open, ghosts, close, bounded reconcile, legacy foreground action, the end-to-end killed chain), `test/alkion/recovery/backup_restore_test.dart` additions, and a fresh-start and restore inventory test with a populated journal | A1–A4, A11, A13–A19, A23 |
+| T4 Docs and integration | `docs/alkion/recovery.md`, `development.md`, `acceptance.md` (dated entry, including OG3 results), `android-smoke.md` (the OG3/OG4 rows); integrated checks | A24, A25 |
 
 ### Task notes
 
