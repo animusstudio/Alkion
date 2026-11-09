@@ -37,6 +37,7 @@ class CatalogMeasurementForm extends StatefulWidget {
     this.enabled = true,
     this.units = const {},
     this.onMetricChanged,
+    this.exclude = const {},
   });
   final CatalogMeasurementProfile profile;
   final Map<String, String> values;
@@ -44,6 +45,9 @@ class CatalogMeasurementForm extends StatefulWidget {
   final bool enabled;
   final Map<String, String> units;
   final void Function(String metric, String text)? onMetricChanged;
+
+  /// Metrics another control edits; they get no field here. Empty by default.
+  final Set<String> exclude;
   @override
   State<CatalogMeasurementForm> createState() => _CatalogMeasurementFormState();
 }
@@ -82,39 +86,41 @@ class _CatalogMeasurementFormState extends State<CatalogMeasurementForm> {
           ...widget.profile.requiredMetrics,
           ...widget.profile.optionalMetrics,
         ])
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: TextField(
-              key: ValueKey('metric-$metric'),
-              enabled: widget.enabled,
-              controller: _controllers.putIfAbsent(
-                metric,
-                () => TextEditingController(text: widget.values[metric] ?? ''),
+          if (!widget.exclude.contains(metric))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: TextField(
+                key: ValueKey('metric-$metric'),
+                enabled: widget.enabled,
+                controller: _controllers.putIfAbsent(
+                  metric,
+                  () =>
+                      TextEditingController(text: widget.values[metric] ?? ''),
+                ),
+                keyboardType: TextInputType.numberWithOptions(
+                  decimal: metric != 'repetitions',
+                ),
+                textInputAction: TextInputAction.next,
+                inputFormatters: [
+                  TextInputFormatter.withFunction((old, next) {
+                    final text = next.text.replaceAll(',', '.');
+                    return RegExp(r'^\d*\.?\d*$').hasMatch(text)
+                        ? next.copyWith(text: text)
+                        : old;
+                  }),
+                ],
+                style: WorkoutType.mono(size: 20, color: context.tokens.text),
+                decoration: InputDecoration(
+                  labelText:
+                      '${catalogMetricLabel(l, metric, unit: widget.units[metric])}${widget.profile.optionalMetrics.contains(metric) ? ' · ${l.catalogOptional}' : ''}',
+                ),
+                onChanged: (v) {
+                  widget.values[metric] = v;
+                  widget.onMetricChanged?.call(metric, v);
+                  widget.onChanged();
+                },
               ),
-              keyboardType: TextInputType.numberWithOptions(
-                decimal: metric != 'repetitions',
-              ),
-              textInputAction: TextInputAction.next,
-              inputFormatters: [
-                TextInputFormatter.withFunction((old, next) {
-                  final text = next.text.replaceAll(',', '.');
-                  return RegExp(r'^\d*\.?\d*$').hasMatch(text)
-                      ? next.copyWith(text: text)
-                      : old;
-                }),
-              ],
-              style: WorkoutType.mono(size: 20, color: context.tokens.text),
-              decoration: InputDecoration(
-                labelText:
-                    '${catalogMetricLabel(l, metric, unit: widget.units[metric])}${widget.profile.optionalMetrics.contains(metric) ? ' · ${l.catalogOptional}' : ''}',
-              ),
-              onChanged: (v) {
-                widget.values[metric] = v;
-                widget.onMetricChanged?.call(metric, v);
-                widget.onChanged();
-              },
             ),
-          ),
       ],
     );
   }
