@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkion/catalog/catalog_browse.dart';
 import 'package:alkion/data/muscles.dart';
 
 import '../support/l10n_harness.dart';
@@ -34,8 +35,51 @@ void main() {
     tester,
   ) async {
     expect(
+      await resolve(tester, 'pinkies', locale: const Locale('it')),
+      'Pinkies',
+    );
+  });
+
+  testWidgets('the 5 further catalog groups have their own ARB strings', (
+    tester,
+  ) async {
+    expect(
       await resolve(tester, 'forearms', locale: const Locale('it')),
-      'Forearms',
+      'Avambracci',
+    );
+    expect(
+      await resolve(tester, 'glutes', locale: const Locale('de')),
+      'Gesäß',
+    );
+    expect(
+      await resolve(tester, 'adductors', locale: const Locale('es')),
+      'Aductores',
+    );
+    expect(await resolve(tester, 'core'), 'Core');
+    expect(await resolve(tester, 'abductors'), 'Abductors');
+  });
+
+  test('the legacy and further groups are exactly the catalog muscles', () {
+    expect({
+      ...kMuscleLabels.keys,
+      ...kCatalogExtraMuscles,
+    }, CatalogBrowse.muscleKeys);
+    expect(kMuscleLabels.length + kCatalogExtraMuscles.length, 13);
+  });
+
+  test('Targets offers 8 legacy, 5 catalog, then stored custom keys', () {
+    expect(
+      targetMuscleKeys(const ['zeta', 'chest', '', '  ', 'alpha', 'core']),
+      [
+        ...kMuscleLabels.keys,
+        'forearms',
+        'glutes',
+        'core',
+        'adductors',
+        'abductors',
+        'alpha',
+        'zeta',
+      ],
     );
   });
 }

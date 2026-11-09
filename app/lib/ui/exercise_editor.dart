@@ -188,8 +188,11 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
     final baseDisplay = UnitService.fromKg(baseKg, unit);
     final stepDisplay = UnitService.fromKg(plateStep, unit);
 
-    // Extra muscle chip: include if not in the 8 canonical groups.
-    final extra = kMuscleLabels.containsKey(ex.muscleGroup)
+    // Extra muscle chip: include if not in the 8 canonical groups. A blank
+    // group has no label, so it gets no chip (and none is selected).
+    final extra =
+        kMuscleLabels.containsKey(ex.muscleGroup) ||
+            ex.muscleGroup.trim().isEmpty
         ? null
         : ex.muscleGroup;
 
@@ -624,18 +627,28 @@ class _ExerciseEditorState extends State<ExerciseEditor> {
                   ),
                 ),
 
+                // A catalog exercise takes its groups from the catalog: no
+                // legacy chips, whose choice would override that attribution.
+                // Its stored `muscle_group` is kept as it is.
                 Field(
                   label: l.exerciseEditorMuscleGroup,
-                  child: ChipSelect<String>(
-                    enabled: !_controlsLocked,
-                    items: muscleItems,
-                    selected: _muscleGroup,
-                    onSelect: (v) {
-                      if (_controlsLocked) return;
-                      setState(() => _muscleGroup = v);
-                    },
-                    labelOf: (m) => localizedMuscle(context, m),
-                  ),
+                  child: _original?.executionDefinition != null
+                      ? FitLabel(
+                          l.exerciseEditorCatalogGroups,
+                          key: const Key('exercise-editor-catalog-groups'),
+                          maxLines: 3,
+                          style: WorkoutType.body(size: 13, color: tokens.dim),
+                        )
+                      : ChipSelect<String>(
+                          enabled: !_controlsLocked,
+                          items: muscleItems,
+                          selected: _muscleGroup,
+                          onSelect: (v) {
+                            if (_controlsLocked) return;
+                            setState(() => _muscleGroup = v);
+                          },
+                          labelOf: (m) => localizedMuscle(context, m),
+                        ),
                 ),
 
                 Field(
