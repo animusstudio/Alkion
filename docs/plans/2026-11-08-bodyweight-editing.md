@@ -1,6 +1,6 @@
 # Bodyweight editing
 
-Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09.
+Date: 2026-11-08. Lane: **Standard**. Status: **Approved** by the owner on 2026-11-09; implemented 2026-11-09, awaiting review.
 Parent: [development](../alkion/development.md).
 Baseline: `458aac6`; branch `feat/bodyweight-editing-20261108`.
 Ordering: after [P1 error messages and toasts](2026-11-08-error-messages-and-toasts.md)
@@ -120,8 +120,66 @@ they run **serially** in this order; T4 (ARBs) last.
 
 ## Task state
 
-None started.
+T1 to T4 done, awaiting review. Code at `dead40b` on `c171880` (later
+commits are docs only). Commits: `be39ac5` (T4 strings, first so every later
+commit builds), `e9766ce` (T1 and T2, sheet), `dead40b` (T1 and T3, screen).
+
+- T1 — `showAddWeightSheet(selected:)` opens "Edit entry" with the entry's
+  formatted date, pre-filled, and a destructive "Delete entry" behind
+  `showWConfirm` that commits `prepareMeasurement(delete: true)`; a failed
+  delete or save retries its own prepared intent. History rows with an
+  available date are 48 dp `InkWell` buttons (merged button semantics, tap hint
+  "Edit entry"); undated rows stay plain. The chooser reads "Entry 1 of 2 ·
+  weight". No new write path, schema or migration.
+- T2 — `bodyweightInputRange`: 20–500 kg or 44–1100 lb, inclusive, in the
+  display unit; Save converts with `UnitService.toKg`. Save follows the open
+  field's text and is disabled when empty or out of range, with the inline hint
+  "Enter a weight from 20 to 500 kg"; an untouched edit stays saveable and keeps
+  its evidence (unavailable or out-of-range stored values). The formatter
+  rejects `-`; ± clamps a touched value into the range. `_val` starts null (no
+  70 kg), the seed uses the last known entry only. Back, scrim and drag on a
+  changed sheet ask "Discard changes?" (Keep editing / Discard, destructive):
+  the route's drag is off and the sheet drags itself through `PopScope`.
+- T3 — the history card takes the stored entries: 24 rows, then "Show all N"
+  (state held by the screen); header and selector both count every entry;
+  unreadable weights are rows ("—", "Measurement unavailable") with a formatted
+  date. `bodyweightMonthBaseline(series, now:)`: earliest entry within the 30
+  calendar days up to `now` other than the current one, else "—";
+  `BodyweightView(now:)` fixes it in tests; the dead `try/catch` is gone.
+- T4 — eight `bodyweight*` keys in en, it, de, es, inserted after
+  `bodyweightUnavailable`; the discard prompt reuses `planDiscardTitle`,
+  `commonKeepEditing`, `commonDiscard`, `commonDelete`.
+
+Tests: `test/alkion/domains/bodyweight_edit_delete_test.dart` (real SQLite:
+edit, soft delete, restore, one `operations` entry per action, retry after a
+refused or uncertain commit writes once, untouched out-of-range row kept),
+`test/alkion/domains/bodyweight_editing_test.dart` (screen and sheet over a real
+store with fixed `now`), and updated `add_weight_sheet_test.dart`,
+`bodyweight_history_card_test.dart`, `measurement_null_evidence_test.dart`
+(chooser and unreadable rows) and `prepared_ui_retry_test.dart` (no 70 kg seed).
+
+Evidence at `dead40b`:
+
+- `make -C app analyze` → No issues found.
+- `make -C app format` → 527 files, 0 changed.
+- `make -C app test TEST='--concurrency=2 test/ui/add_weight_sheet_test.dart
+  test/ui/bodyweight_history_card_test.dart test/l10n
+  test/alkion/domains/bodyweight_edit_delete_test.dart
+  test/alkion/domains/bodyweight_editing_test.dart
+  test/alkion/domains/measurement_null_evidence_test.dart
+  test/alkion/domains/prepared_ui_retry_test.dart
+  test/alkion/domains/exact_editor_ui_test.dart
+  test/alkion/domains/measurements_targets_test.dart
+  test/alkion/domains/prepared_intent_retry_test.dart test/layout'` → +211, all
+  pass (includes `arb_parity_test` and `unused_keys_test`).
+- `make -C app test TEST=--concurrency=2` → +2988 ~3 -3. The three failures
+  are the inherited `catalog_metric_controls_test.dart` cases
+  `duration_distance_optional`, `reps_distance_optional` and
+  `reps_duration_optional_load mounts all required and optional controls
+  unset`; no others.
+- Not run: the device check on the owner's phone.
 
 ## Next
 
-Owner approval, then implementation after P1 merges.
+Independent review, then the owner device check (edit and delete a test entry,
+then confirm the figures).

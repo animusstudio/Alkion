@@ -6,6 +6,32 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## P6 bodyweight editing — 2026-11-09
+
+Implements the approved [bodyweight editing plan](../plans/2026-11-08-bodyweight-editing.md)
+(audit items 4.1 to 4.5 and 3.6).
+
+- Every history row with an available date opens the sheet as "Edit entry"
+  with that date, pre-filled. Save stores one new revision with the same date
+  and source revision; "Delete entry" asks first and soft-deletes (the row
+  stays in the store, hidden from the history, chart and stats). Both reuse
+  `prepareMeasurement` with one outbox entry per action; no schema change.
+  Undated rows stay read-only; an unreadable weight can be corrected, and an
+  untouched save keeps the original evidence (A1 to A3).
+- The sheet accepts 20–500 kg or 44–1100 lb; Save is disabled with a hint when
+  the value is empty or out of range, and a minus sign cannot be typed. A first
+  entry starts empty: no 70 kg default and no write before a value exists.
+  Stored out-of-range rows are never rewritten (A4, A5).
+- History shows 24 rows, then "Show all N"; header and selector count the same
+  entries, unreadable ones included as ordinary rows (A6).
+- A changed sheet asks "Discard changes?" on back, scrim or drag (A7). The
+  chooser for several entries on one day is labelled by position, and the
+  title and date follow the mode (A8).
+- The 30-day change starts from the earliest entry in the last 30 days other
+  than the current one, and reads "—" without one (A9).
+
+Host checks are listed in the plan's task state. The device check is open.
+
 ## P1 error messages and toasts — 2026-11-09
 
 Implements the approved [error-messages and toasts plan](../plans/2026-11-08-error-messages-and-toasts.md)
