@@ -555,11 +555,25 @@ final class RuntimeRecoveryHost implements RecoveryHost {
       throw const StoreException('foreign_profile');
     }
     await runtime.flushPersistence();
-    present(const AlkionRestoringApp());
+    present(
+      AlkionRestoringApp(
+        locale: runtime.settings.locale,
+        brightness: runtime.settings.brightness,
+        accent: runtime.settings.accent,
+      ),
+    );
     try {
       await runtime.close();
     } catch (error) {
-      present(AlkionRecoveryApp.failed(relaunch: relaunch, error: error));
+      present(
+        AlkionRecoveryApp.failed(
+          relaunch: relaunch,
+          error: error,
+          locale: runtime.settings.locale,
+          brightness: runtime.settings.brightness,
+          accent: runtime.settings.accent,
+        ),
+      );
       return;
     }
     try {
@@ -567,9 +581,24 @@ final class RuntimeRecoveryHost implements RecoveryHost {
         runtime.supportRoot,
         schema: runtime.store.schema,
       ).restore(File(path));
-      present(AlkionRecoveryApp.restored(relaunch: relaunch));
+      present(
+        AlkionRecoveryApp.restored(
+          relaunch: relaunch,
+          locale: runtime.settings.locale,
+          brightness: runtime.settings.brightness,
+          accent: runtime.settings.accent,
+        ),
+      );
     } catch (error) {
-      present(AlkionRecoveryApp.failed(relaunch: relaunch, error: error));
+      present(
+        AlkionRecoveryApp.failed(
+          relaunch: relaunch,
+          error: error,
+          locale: runtime.settings.locale,
+          brightness: runtime.settings.brightness,
+          accent: runtime.settings.accent,
+        ),
+      );
     }
   }
 }
