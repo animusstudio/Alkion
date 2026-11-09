@@ -273,6 +273,7 @@ void main() {
           await tester.enterText(name, 'Requested');
           expect(tester.testTextInput.hasAnyClients, isTrue);
           final save = find.text(day ? 'Save changes' : 'Save exercise');
+          final retry = find.text('Retry save');
           await scrollIntoView(tester, editor, save);
           expect(
             tester.testTextInput.hasAnyClients,
@@ -313,6 +314,12 @@ void main() {
               reason:
                   'failed pending request requires explicit navigation/discard',
             );
+            // The failure is explained: the primary action retries, a note
+            // says nothing was saved and Discard is offered.
+            expect(save, findsNothing);
+            expect(retry, findsOneWidget);
+            expect(find.textContaining('Not saved.'), findsOneWidget);
+            expect(find.text('Discard changes'), findsOneWidget);
           }
           // No keyboard client survives Save. A real pointer cannot reopen it.
           expect(tester.testTextInput.hasAnyClients, isFalse);
@@ -375,7 +382,7 @@ void main() {
             });
           } else {
             if (mode == 'closed') {
-              await tapVisible(tester, editor, save);
+              await tapVisible(tester, editor, retry);
               await observeDialog(tester, harness.database);
               await until(
                 tester,
@@ -392,7 +399,7 @@ void main() {
               );
               await tester.runAsync(fault.restorePreserved);
             }
-            await tapVisible(tester, editor, save);
+            await tapVisible(tester, editor, retry);
           }
           await until(
             tester,
@@ -452,6 +459,113 @@ void main() {
         },
       );
     }
+  }
+  for (final (day, uncertain) in [
+    (false, false),
+    (true, false),
+    (false, true),
+    (true, true),
+  ]) {
+    testWidgets(
+      '${day ? 'Day' : 'Exercise'} editor Discard after a ${uncertain ? 'COMMIT that landed unacknowledged' : 'refused save'} leaves without a further write',
+      (tester) async {
+        final harness = ScreenHarness();
+        addTearDown(harness.close);
+        addTearDown(() => harness.unmount(tester));
+        await harness.open(tester, withWorkoutHistory: !day, seed: seedEditors);
+        setPhone(tester, width: 412);
+        final before = await inventory(tester, harness);
+        final fault = EditorFaultDatabase(
+          harness.database,
+          beforeCommit: !uncertain,
+          afterCommit: uncertain,
+        );
+        harness.overrideDatabase = fault;
+        var closed = 0;
+        final guard = EditorGuard();
+        final editor = day
+            ? find.byType(DayEditor)
+            : find.byType(ExerciseEditor);
+        await tester.pumpWidget(
+          harness.wrap(
+            Scaffold(
+              body: day
+                  ? DayEditor(id: 'day', guard: guard, onBack: () => closed++)
+                  : ExerciseEditor(
+                      id: 'ex',
+                      guard: guard,
+                      onBack: () => closed++,
+                    ),
+            ),
+          ),
+        );
+        final name = input(day ? 'Day name' : 'Exercise name');
+        await settleUntilFound(tester, name, where: 'discard editor');
+        await tester.enterText(name, 'Requested');
+        await tapVisible(
+          tester,
+          editor,
+          find.text(day ? 'Save changes' : 'Save exercise'),
+        );
+        await observeDialog(tester, harness.database);
+        await until(
+          tester,
+          () => fault.completed == fault.actions.length,
+          'owned apply/fault lifecycle returned',
+        );
+        await tester.tap(find.text('OK'));
+        await until(
+          tester,
+          () => find.text('OK').evaluate().isEmpty,
+          'error dialog fully dismissed',
+        );
+        expect(find.text('Retry save'), findsOneWidget);
+        final discard = find.text('Discard changes');
+        await tapVisible(tester, editor, discard);
+        await settleUntilFound(
+          tester,
+          find.text('Keep editing'),
+          where: 'destructive discard prompt',
+        );
+        await tester.tap(find.text('Keep editing'));
+        await settleReal(tester, ticks: 5);
+        expect(closed, 0);
+        expect(find.text('Retry save'), findsOneWidget);
+        await tapVisible(tester, editor, discard);
+        await settleUntilFound(
+          tester,
+          find.text('Discard'),
+          where: 'destructive discard prompt',
+        );
+        await tester.tap(find.text('Discard'));
+        await until(tester, () => closed == 1, 'Discard closes the editor');
+        expect(fault.actions, hasLength(1));
+        final after = await inventory(tester, harness);
+        if (!uncertain) {
+          expect(after, before);
+        } else {
+          // The landed COMMIT stays exactly as committed: one operation with
+          // the prepared bytes, the requested name at the next revision, and
+          // nothing written after it.
+          final operations = after['operations'] as List;
+          expect(
+            operations,
+            hasLength((before['operations'] as List).length + 1),
+          );
+          final operation = operations.last as Map;
+          expect(operation['operation_id'], fault.actions.single.operationId);
+          expect(operation['input_bytes'], fault.actions.single.bytes);
+          final saved =
+              ((day ? after['day_templates'] : after['exercises']) as List)
+                  .cast<Map>()
+                  .firstWhere((r) => r['id'] == (day ? 'day' : 'ex'));
+          expect(saved['name'], 'Requested');
+          expect(saved['revision'], 2);
+          expect(await inventory(tester, harness), after);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
   for (final mode in ['deferred', 'closed']) {
     testWidgets(
@@ -658,7 +772,7 @@ void main() {
         );
         await tester.pump();
         expect(frozen, findsOneWidget);
-        await tapVisible(tester, editor, save);
+        await tapVisible(tester, editor, find.text('Retry save'));
         await until(tester, () => closed == 1, 'stepper save reconciled');
         expect(fault.actions.map((a) => a.hash).toSet(), {original.hash});
         final after = await inventory(tester, harness);

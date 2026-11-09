@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../store/local_store.dart';
 
 import '../util/calendar_keys.dart';
 import 're_listenable.dart';
 import 'volume_attribution.dart';
 import '../domain/evidence.dart';
+import '../domain/catalog_execution.dart';
 import 'catalog_load_history.dart';
 
 // Qualification for the pinned SQLite calendar projection. Equality rejects
@@ -123,31 +126,16 @@ class StatsRepository {
     );
   }
 
-  /// Live count of distinct muscle groups trained since [weekStart].
-  Stream<int> watchDistinctMusclesThisWeek({required DateTime weekStart}) {
-    return reListenable(
-      () => db
-          .watch(
-            'SELECT COUNT(DISTINCT ex.muscle_group) AS n '
-            'FROM reps_compat1_legacy_local s '
-            'JOIN sessions se ON se.id = s.session_id '
-            'JOIN exercises ex ON ex.id = s.exercise_id '
-            "WHERE s.deleted=0 AND se.deleted=0 AND s.is_warmup = 0 AND trim(COALESCE(ex.muscle_group,''))<>'' AND $_qualifiedStatsDay AND se.date >= ?",
-            parameters: [isoDate(weekStart)],
-          )
-          .map((rs) => rs.first['n'] as int? ?? 0),
-    );
-  }
-
-  /// Live count of PR sets logged since [weekStart].
+  /// Live count of PR sets logged since [weekStart]: legacy PRs by their
+  /// local flag and catalog PRs by their stored derived result ([setPrSql]).
   Stream<int> watchPrsThisWeek({required DateTime weekStart}) {
     return reListenable(
       () => db
           .watch(
             'SELECT COUNT(*) AS n '
             'FROM reps_compat1_legacy_local s '
-            'JOIN sessions se ON se.id = s.session_id '
-            'WHERE s.deleted=0 AND se.deleted=0 AND s.legacy_local_pr = 1 AND $legacySetOnlySql AND $_qualifiedStatsDay AND se.date >= ?',
+            'JOIN sessions se ON se.id = s.session_id AND se.profile_id = s.profile_id '
+            'WHERE s.deleted=0 AND se.deleted=0 AND $setPrSql = 1 AND $_qualifiedStatsDay AND se.date >= ?',
             parameters: [isoDate(weekStart)],
           )
           .map((rs) => rs.first['n'] as int? ?? 0),
@@ -199,48 +187,68 @@ class StatsRepository {
 
   // ── List streams ──────────────────────────────────────────────────────────
 
-  /// Live stream of the most-recent [limit] PR sets, newest session first.
+  /// Live stream of the most-recent [limit] PR sets, newest session first:
+  /// legacy PRs and catalog PRs ([setPrSql]).
   ///
-  /// `weight_kg` is TEXT on the client; the CAST produces a real value
-  /// aliased as `weight`.
+  /// A legacy set's load and reps come from its exact `weight_kg`/`reps`
+  /// evidence; a catalog set's from its stored catalog set bytes, decoded as
+  /// [catalogLoadObservations] does. An unavailable value is null, never 0.
   Stream<List<({String exerciseId, double? weight, int? reps, String date})>>
   watchRecentPrs({int limit = 6}) {
     return reListenable(
       () => db
           .watch(
-            'SELECT s.exercise_id, s.weight_kg, '
-            's.reps, se.date '
+            // `s.*` rather than naming `catalog_set_bytes`: a store from
+            // before catalog execution has no such column, and its sets are
+            // all legacy.
+            'SELECT s.*, se.date '
             'FROM reps_compat1_legacy_local s '
-            'JOIN sessions se ON se.id = s.session_id '
-            'WHERE s.deleted=0 AND se.deleted=0 AND s.legacy_local_pr = 1 AND s.is_warmup = 0 AND $legacySetOnlySql '
+            'JOIN sessions se ON se.id = s.session_id AND se.profile_id = s.profile_id '
+            'WHERE s.deleted=0 AND se.deleted=0 AND s.is_warmup = 0 AND $setPrSql = 1 '
             'ORDER BY se.date DESC, se.created_at DESC '
             'LIMIT ?',
             parameters: [limit],
           )
-          .map(
-            (rs) => rs
-                .map(
-                  (row) => (
-                    exerciseId: row['exercise_id'] as String,
-                    weight:
-                        DecimalEvidence.fromRow(row, 'weight_kg').state ==
-                                ValueState.valid &&
-                            DecimalEvidence.fromRow(
-                                  row,
-                                  'weight_kg',
-                                ).exact!.displayDouble?.isFinite ==
-                                true
-                        ? DecimalEvidence.fromRow(
-                            row,
-                            'weight_kg',
-                          ).exact!.displayDouble
-                        : null,
-                    reps: row['reps'] is int ? row['reps'] as int : null,
-                    date: row['date']?.toString() ?? '',
-                  ),
-                )
-                .toList(),
-          ),
+          .map((rs) => rs.map(recentPrFromRow).toList()),
+    );
+  }
+
+  /// One Recent PRs row. A catalog set's load and reps come from its stored
+  /// set bytes; bytes that cannot be decoded make that row's values
+  /// unavailable (null, never 0) without failing the other rows.
+  @visibleForTesting
+  static ({String exerciseId, double? weight, int? reps, String date})
+  recentPrFromRow(Map<String, dynamic> row) {
+    final date = row['date']?.toString() ?? '';
+    final exerciseId = row['exercise_id'] as String;
+    if (row['catalog_set_bytes'] != null) {
+      double? weight;
+      int? reps;
+      try {
+        final metrics = CatalogSetEvidence.fromJson(
+          decodeCatalogBytes(row['catalog_set_bytes']!),
+        ).metrics;
+        final load = metrics['reported_load']?.loadKg?.displayDouble;
+        weight = load != null && load.isFinite ? load : null;
+        final repetition = metrics['repetitions'];
+        reps = repetition?.state == ValueState.valid
+            ? int.tryParse(repetition!.raw.toString())
+            : null;
+      } catch (_) {
+        weight = null;
+        reps = null;
+      }
+      return (exerciseId: exerciseId, weight: weight, reps: reps, date: date);
+    }
+    final weight = DecimalEvidence.fromRow(row, 'weight_kg');
+    final display = weight.state == ValueState.valid
+        ? weight.exact!.displayDouble
+        : null;
+    return (
+      exerciseId: exerciseId,
+      weight: display != null && display.isFinite ? display : null,
+      reps: row['reps'] is int ? row['reps'] as int : null,
+      date: date,
     );
   }
 

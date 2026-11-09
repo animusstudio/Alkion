@@ -43,6 +43,7 @@ import '../widgets/volume_bars.dart';
 import '../widgets/week_strip.dart';
 import '../widgets/glyph_loading.dart';
 import 'today_labels.dart';
+import 'today_stat_tiles.dart';
 
 /// Resolves the title shown for the active workout: the live day name when
 /// the draft is bound to a template (so a since-renamed day stays current),
@@ -230,10 +231,7 @@ class _TodayScreenState extends State<TodayScreen> {
   late final Stream<({int known, int total})> _dateCoverageStream;
   late final Stream<int> _setsLastWeekStream;
   late final Stream<int> _prsWeekStream;
-  late final Stream<
-    List<({String exerciseId, double? weight, int? reps, String date})>
-  >
-  _recentPrsStream;
+  late final Stream<List<TodayRecentPr>> _recentPrsStream;
   late final Stream<List<Exercise>> _catalogStream;
   late final Stream<WeeklyMuscleVolume> _volumeStream;
   late final Stream<List<MuscleTarget>> _targetsStream;
@@ -735,50 +733,19 @@ class _TodayScreenState extends State<TodayScreen> {
           ),
           StreamBuilder<int>(
             stream: _setsWeekStream,
-            builder: (context, setsSnap) {
-              return StreamBuilder<int>(
-                stream: _setsLastWeekStream,
-                builder: (context, lastWeekSnap) {
-                  final sets = setsSnap.data ?? 0;
-                  final lastWeek = lastWeekSnap.data ?? 0;
-                  return StatTile(
-                    label: l.todaySetsThisWeek,
-                    value: '$sets',
-                    sub: setsVsLastWeek(l, sets, lastWeek),
-                  );
-                },
-              );
-            },
+            builder: (context, setsSnap) => StreamBuilder<int>(
+              stream: _setsLastWeekStream,
+              builder: (context, lastWeekSnap) =>
+                  TodaySetsTile(thisWeek: setsSnap, lastWeek: lastWeekSnap),
+            ),
           ),
           StreamBuilder<int>(
             stream: _prsWeekStream,
-            builder: (context, prsSnap) {
-              final prs = prsSnap.data ?? 0;
-              return StreamBuilder<
-                List<
-                  ({String exerciseId, double? weight, int? reps, String date})
-                >
-              >(
-                stream: _recentPrsStream,
-                builder: (context, recentSnap) {
-                  final recent = recentSnap.data ?? [];
-                  final sub = recent.isEmpty
-                      ? l.todayNoPrsShort
-                      : l.todayLastPrDate(
-                          fmtDate(
-                            recent.first.date,
-                            Localizations.localeOf(context).toLanguageTag(),
-                          ),
-                        );
-                  return StatTile(
-                    label: l.todayPrsThisWeek,
-                    value: '$prs',
-                    sub: sub,
-                    fitSub: true,
-                  );
-                },
-              );
-            },
+            builder: (context, prsSnap) => StreamBuilder<List<TodayRecentPr>>(
+              stream: _recentPrsStream,
+              builder: (context, recentSnap) =>
+                  TodayPrsTile(prs: prsSnap, recent: recentSnap),
+            ),
           ),
         ];
         return LayoutBuilder(
@@ -814,14 +781,14 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Widget _buildRecentPrs(UnitService units, WorkoutTokens tokens) {
-    return StreamBuilder<
-      List<({String exerciseId, double? weight, int? reps, String date})>
-    >(
+    return StreamBuilder<List<TodayRecentPr>>(
       stream: _recentPrsStream,
       builder: (context, prsSnap) {
         final l = AppLocalizations.of(context);
-        final allPrs = prsSnap.data ?? [];
-        final displayPrs = allPrs.take(4).toList();
+        final placeholder = todayRecentPrsPlaceholder(context, prsSnap);
+        final displayPrs = (prsSnap.data ?? const <TodayRecentPr>[])
+            .take(4)
+            .toList();
 
         return StreamBuilder<List<Exercise>>(
           stream: _catalogStream,
@@ -832,9 +799,9 @@ class _TodayScreenState extends State<TodayScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SectionLabel(label: l.todayRecentPrs),
-                if (displayPrs.isEmpty) ...[
+                if (placeholder != null) ...[
                   const SizedBox(height: 10),
-                  _EmptyState(tokens: tokens, message: l.todayNoPrsYet),
+                  placeholder,
                 ] else ...[
                   const SizedBox(height: 10),
                   Column(
@@ -1058,7 +1025,7 @@ class _PrRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final ({String exerciseId, double? weight, int? reps, String date}) pr;
+  final TodayRecentPr pr;
   final Exercise? exercise;
   final UnitService units;
   final WorkoutTokens tokens;

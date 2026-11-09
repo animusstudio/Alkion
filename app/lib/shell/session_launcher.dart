@@ -17,6 +17,7 @@ import '../session/resume.dart';
 import '../session/session_manager.dart';
 import '../store/local_store.dart';
 import '../theme/motion.dart';
+import '../units/unit_service.dart';
 import '../widgets/w_dialog.dart';
 
 /// Starts an active session, optionally pre-loaded from a [DayTemplate].
@@ -36,6 +37,8 @@ Future<void> startSession(
   // Read before any await so the context is still valid (used for the
   // localized custom-session name below).
   final customName = AppLocalizations.of(context).todayCustomSession;
+  // Suggested weights round on the grid the user sees (5 lb in lb).
+  final unit = context.read<UnitService?>()?.unit ?? Unit.kg;
 
   // A workout is already running → resume it instead of starting a new one.
   if (manager.hasActive) {
@@ -88,6 +91,7 @@ Future<void> startSession(
             exerciseRepo: ExerciseRepository.local(database),
             sessionRepo: sessionRepo,
             currentBundle: currentBundle,
+            unit: unit,
           );
           break;
         } on HistoryOrderReview catch (review) {
@@ -219,16 +223,19 @@ Future<void> openActiveSession(
     return;
   }
 
+  // Reduced motion opens and closes the workout at once: zero durations
+  // and, should a frame still run the transition, no fade or slide.
   await Navigator.of(context, rootNavigator: true).push<void>(
     PageRouteBuilder<void>(
-      transitionDuration: const Duration(milliseconds: 250),
-      reverseTransitionDuration: const Duration(milliseconds: 200),
+      transitionDuration: Motion.of(context, Motion.slow),
+      reverseTransitionDuration: Motion.of(context, Motion.base),
       pageBuilder: (_, __, ___) =>
           ChangeNotifierProvider<ActiveSessionController>.value(
             value: controller,
             child: const ActiveSessionScreen(),
           ),
-      transitionsBuilder: (_, anim, __, child) {
+      transitionsBuilder: (context, anim, __, child) {
+        if (MediaQuery.disableAnimationsOf(context)) return child;
         final curved = CurvedAnimation(parent: anim, curve: Motion.curve);
         return FadeTransition(
           opacity: curved,

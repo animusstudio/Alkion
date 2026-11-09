@@ -47,7 +47,10 @@ class LocalPreferences {
         database.token,
       ),
     );
-    return _persist(retry: false);
+    // Every new change also retries what an earlier failure left owed, in
+    // order: each snapshot keeps its own base, and the identical-bytes check
+    // below reconciles one whose COMMIT landed without an acknowledgement.
+    return _persist(retry: true);
   }
 
   Future<void> flushPersistence() async {

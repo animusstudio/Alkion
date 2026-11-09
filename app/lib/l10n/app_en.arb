@@ -12,6 +12,18 @@
   "errorDamaged": "This data is damaged or in a format this version can't read. It was left unchanged.",
   "errorTooLarge": "The file is too large to process.",
   "errorUnexpected": "Something went wrong. Try again.",
+  "launchFailureTitle": "{app} couldn't start",
+  "@launchFailureTitle": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "launchFailureStorage": "Local storage couldn't be opened.",
+  "launchFailurePreserved": "Your existing files are preserved.",
+  "launchFailureTryAgain": "Try again",
+  "launchFailureDetails": "Technical details",
   "todayGreeting": "Ready to train",
   "todayThisWeek": "This week",
   "todayBodyweight": "Bodyweight",
@@ -673,6 +685,44 @@
   "finishNotSavedBanner": "This workout isn't saved yet and is kept as it is. Tap Finish workout to try again.",
   "bodyweightChooseEntry": "Choose the measurement to edit",
   "bodyweightUnavailable": "Measurement unavailable",
+  "bodyweightEditTitle": "Edit entry",
+  "bodyweightDeleteEntry": "Delete entry",
+  "bodyweightDeleteTitle": "Delete this entry?",
+  "bodyweightDeleteMessage": "It's removed from your history, chart and stats.",
+  "bodyweightDiscardMessage": "The weight you entered won't be saved.",
+  "bodyweightRangeHint": "Enter a weight from {min} to {max} {unit}",
+  "@bodyweightRangeHint": {
+    "placeholders": {
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "bodyweightEntryPosition": "Entry {position} of {count}",
+  "@bodyweightEntryPosition": {
+    "placeholders": {
+      "position": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bodyweightShowAll": "Show all {count}",
+  "@bodyweightShowAll": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "alkionOrderChoiceTitle": "Choose a baseline",
   "alkionOrderChoiceBody": "History has an uncertain order. Choose which workout to use for this action. This records a preference, not a historical fact.",
   "alkionUnavailableOn": "Unavailable · {date}",
@@ -1342,5 +1392,83 @@
         "type": "int"
       }
     }
-  }
+  },
+  "exerciseEditorCatalogGroups": "Muscle groups for this exercise come from the catalog.",
+  "todayStatLoading": "Loading",
+  "todayStatUnavailable": "Unavailable",
+  "todayRecentPrsLoading": "Loading recent PRs…",
+  "todayRecentPrsUnavailable": "Recent PRs unavailable. They could not be loaded.",
+  "catalogProgressNeverLogged": "Log this exercise to see progress.",
+  "catalogProgressLoadFailed": "Progress couldn’t be loaded.",
+  "planEditorRetrySave": "Retry save",
+  "planEditorNotSaved": "Not saved. The fields stay locked so Retry save saves exactly these values once. Discard to leave without saving.",
+  "planEditorDiscardChanges": "Discard changes",
+  "historyNotSavedWillRetry": "Not saved · will retry",
+  "commonSave": "Save",
+  "historySetsNotSaved": "Sets not saved",
+  "historySetsRequired": "Enter the required values for each set before saving.",
+  "historyDiscardSetsTitle": "Discard set changes?",
+  "historyDiscardSetsMessage": "Your unsaved changes to these sets will be lost.",
+  "historySetRemoved": "Set removed",
+  "historyDeletedExercise": "Deleted exercise",
+  "historyNoSetupToLog": "This exercise has no setup to log yet.",
+  "historyDiscardSetChanges": "Discard set changes",
+  "historyDiscardOwedMessage": "These set changes can't be saved. Discarding drops only them; the stored sets stay as they are.",
+  "historyEarlierNotSaved": "Earlier changes in History are not saved yet.",
+  "targetsNotSaved": "Not saved",
+  "historyDiscardUnsaved": "Discard unsaved changes",
+  "historyDiscardUnsavedTitle": "Discard unsaved changes?",
+  "historyDiscardUnsavedMessage": "These History changes can't be saved. Discarding drops only them; what is stored stays as it is.",
+  "sessionSetLogged": "Set {index} logged",
+  "@sessionSetLogged": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionWarmupLogged": "Warm-up logged",
+  "sessionRestOver": "Rest over",
+  "sessionUnloggedSetsTitle": "{count, plural, =1{1 set not logged} other{{count} sets not logged}}",
+  "@sessionUnloggedSetsTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionUnloggedSetsMessage": "Sets you haven't logged won't be saved. Finish anyway?",
+  "sessionFinishAnyway": "Finish anyway",
+  "sessionFinishNeedsSet": "Log at least one set to finish",
+  "sessionFinishSaving": "Saving workout…",
+  "sessionSetSpoken": "Set {index}",
+  "@sessionSetSpoken": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionWarmupSpoken": "Warm-up",
+  "sessionSetStateDone": "done",
+  "sessionSetStateNotDone": "not done",
+  "sessionSetNoValue": "no value",
+  "numberEntryInvalid": "Enter a number",
+  "numberEntryMax": "Enter {max} or less",
+  "@numberEntryMax": {
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "numberEntryMin": "Enter {min} or more",
+  "@numberEntryMin": {
+    "placeholders": {
+      "min": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionDiscardChangesOnlyMessage": "This workout and your changes will be lost."
 }

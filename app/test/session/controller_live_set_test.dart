@@ -395,10 +395,25 @@ void main() {
       a.bestKg = 110;
       expect(liveTopOf(a).isPr, isFalse);
       expect(liveTopOf(_b('b', work: [_s('b1')])), (topKg: 0.0, isPr: false));
-      expect(
-        liveTopOf(_b('c', work: [_s('c1', done: true)])).isPr,
-        isTrue,
-      ); // no history
+      // A PR needs a previous best: a first-ever lift is not one.
+      expect(liveTopOf(_b('c', work: [_s('c1', done: true)])).isPr, isFalse);
+    });
+
+    test('prCount agrees with liveTopOf: no previous best, no PR', () {
+      final first = _b('a', work: [_s('a1', done: true, w: 100)]);
+      final beaten = _b(
+        'b',
+        work: [_s('b1', done: true, w: 105)],
+        bestKg: 102.5,
+      );
+      final held = _b('c', work: [_s('c1', done: true, w: 100)], bestKg: 100);
+      final c = _c([first, beaten, held]);
+      expect([first, beaten, held].map((b) => liveTopOf(b).isPr), [
+        false,
+        true,
+        false,
+      ]);
+      expect(c.prCount, 1);
     });
 
     test('expandOnlyFirst expands the first block and collapses the rest', () {

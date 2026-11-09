@@ -6,6 +6,206 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## P7 live workout flow — 2026-11-09
+
+Implements the approved [live workout flow plan](../plans/2026-11-08-live-workout-flow.md)
+(audit items 2.4, 6.1, 6.2 and 6.7 to 6.13). Draft-only: no stored-data,
+draft-file, outbox or derivation change.
+
+- Discard confirms only when a set is done, a value was touched (weight, reps,
+  RIR or a catalog measurement) or sets or blocks were added, removed or moved;
+  a pristine fresh workout discards silently. A restored draft always asks,
+  because those structural edits are not in the draft file. The confirm says
+  logged sets will be lost only when some are, otherwise "This workout and
+  your changes will be lost." A refused discard
+  (pending notification action or Finish) shows the "busy, try again" message,
+  never "Couldn't save" (A1). System back still minimizes, as before.
+- A newly logged working set shows "Set N logged · Undo" for 5 s. Undo, and
+  "Mark as not done", make the set live and not done again, clear the
+  confirmation line, and stop the rest only when that set's log started it
+  (an older or newer rest keeps running); the earlier "rested" mark returns,
+  also while a notification rest action is saving. Warm-ups get no Undo, and
+  back or minimize takes an open Undo toast down with the screen (A2).
+- Finish from the workout menu asks "N sets not logged" when working sets are
+  still open (warm-ups never count); Keep going keeps the workout. A retry of a
+  failed Finish does not ask. The menu's Finish is always tappable and explains
+  "Log at least one set to finish" (or the missing measurements) (A3).
+- Screen readers: a set line reads "Set 2, 140 kg × 6, RIR 1, done"; RIR
+  chips read "RIR 2"; the Undo toast is a live region, a warm-up log announces
+  "Warm-up logged" and the end of rest announces "Rest over" once. The
+  2 px success line stays decorative (A4).
+- While a Finish is saving, the bar is disabled and reads "Saving workout…"
+  (live region) with a small spinner, none under reduced motion; back and
+  minimize cannot leave until the summary opens. A failed Finish awaiting a
+  retry can still be left (A5).
+- Typed weight over 500 kg (1100 lb) and reps outside 1 to 100 are refused in
+  the open sheet with an inline message; unparseable text says "Enter a
+  number". The reps ruler runs 1 to 100, the lb weight ruler ends at 1100 lb.
+  Duration rulers step 5 s and distance 10 m with no fine zoom. Catalog typed
+  entry keeps its exact-evidence rules and gains no new limits (A6).
+- In lb, suggested weights and warm-up ramps round to whole 5 lb (a 135 lb top
+  set suggests 140 lb on a compound lift); the exercise editor's start weight
+  steps 5 lb. Stored `plate_step_kg` and kg behaviour are unchanged (A7).
+- Opening the live workout uses `Motion.of` durations and no fade or slide
+  under reduced motion (A8).
+
+Host checks are listed in the plan's task state. The device check (log, undo,
+early finish, TalkBack, reduced motion) is open.
+
+## P6 bodyweight editing — 2026-11-09
+
+Implements the approved [bodyweight editing plan](../plans/2026-11-08-bodyweight-editing.md)
+(audit items 4.1 to 4.5 and 3.6).
+
+- Every history row with an available date opens the sheet as "Edit entry"
+  with that date, pre-filled. Save stores one new revision with the same date
+  and source revision; "Delete entry" asks first and soft-deletes (the row
+  stays in the store, hidden from the history, chart and stats). Both reuse
+  `prepareMeasurement` with one outbox entry per action; no schema change.
+  Undated rows stay read-only; an unreadable weight can be corrected, and an
+  untouched save keeps the original evidence (A1 to A3). An edit shows its
+  weight from the first frame. While a failed Save waits for its retry, Delete
+  is off, and the other way round; a retry reuses the same prepared action.
+- The sheet accepts 20–500 kg or 44–1100 lb; Save is disabled with a hint when
+  the value is empty or out of range, and a minus sign cannot be typed. A first
+  entry starts empty: no 70 kg default and no write before a value exists.
+  Stored out-of-range rows are never rewritten (A4, A5).
+- History shows 24 rows, then "Show all N"; header and selector count the same
+  entries, unreadable ones included as ordinary rows (A6).
+- A changed sheet asks "Discard changes?" on back, scrim or drag (A7). The
+  sheet's drag is hidden from screen readers, which dismiss it with back or the
+  barrier. The
+  chooser for several entries on one day is labelled by position, and the
+  title and date follow the mode (A8).
+- The 30-day change starts from the earliest entry in the last 30 days other
+  than the current one, and reads "—" without one (A9).
+
+Host checks are listed in the plan's task state. The device check is open.
+
+## P5 failed saves and History editing — 2026-11-09
+
+Implements the approved [failed saves and History editing plan](../plans/2026-11-08-failed-saves-and-history-editing.md)
+(audit items 2.2, 2.5 to 2.8, 3.4 and 4.6 to 4.10).
+
+- Plan editors: after a failed Save the fields stay locked, a "Not saved"
+  note explains why, the button reads "Retry save" and commits the same
+  prepared write once, and "Discard changes" leaves after the destructive
+  discard prompt without a write (A1). Targets lock per muscle: a tap during
+  a write is queued, and a new value after a failure replaces the failed
+  write, prepared against the stored row (A3).
+- History editors can be closed after a failed save and say "Not saved ·
+  will retry"; the owed write keeps its identity and lands once on the next
+  flush. Later edits are queued behind it, never dropped (A2). The catalog
+  editor names sets in its failure, discard and validation messages, uses
+  the error mapper and a neutral Save label, shows validation inline above
+  Save and numbers rows without gaps (A6, A10).
+- RIR can be cleared in History by tapping the selected chip (stored as
+  NULL, other fields keep their raw text); the live workout keeps "a tap
+  never un-logs". Added sets start without RIR (A7). Delete set is a button,
+  the chevron follows the open card and unknown reps are not seeded (A10).
+- History: an exercise no longer in the catalog reads "Deleted exercise"
+  with no chevron or tap, and rows stay a skeleton until the catalog loads
+  (A8). Add exercise on a classic exercise opens an empty set editor that
+  writes nothing until Add set; a catalog exercise with no setup says so
+  (A9). The resume failure toast uses the mapper.
+- Preferences: the next change after a failed save retries the owed one
+  first, with no revision gap or duplicate row; a failed unit write shows
+  the write-failed dialog (A4). Rest steppers queue every tap, read
+  "{count}s" from the ARBs, stop at 900 s and are disabled after an error
+  (A5).
+- Review fixes: History lands an earlier editor's owed write before opening
+  another editor, re-reads the block and session revision when it landed,
+  and opens nothing while a write stays owed (the mapped failure is shown).
+  In the set editor, Add set and a confirmed Delete behind a failing write
+  are queued and land in order; the failure dialog shows once per failed
+  state, then the inline note carries it. Targets rebuild only the row being
+  written and mark a value whose write failed "Not saved".
+- Coordinator decision, permanent History failures: a write that can never
+  land (a conflict, a missing set or workout, a base never observed) stops
+  retrying. The set editor, or History when the editor was closed, shows
+  the mapped message and an explicit, confirmed "Discard set changes" that
+  drops only those owed History writes; transient failures keep "will
+  retry". A set with no observed base fails alone; the others are written.
+  Only owed History editor writes block opening another editor (an owed
+  delete blocks only its own session); a permanently failing owed delete
+  gets the same confirmed discard. The catalog editor shows the mapped
+  message for a permanent failure. Add exercise reads the session revision
+  fresh, and a double tap opens one editor.
+- No schema change, migration or new write path. Nothing owed is abandoned
+  except by an explicit, confirmed Discard (Plan editors; permanently
+  failed History set changes).
+
+Host checks are listed in the plan's task state. The device check is open.
+
+## P4 honest numbers and PRs — 2026-11-09
+
+Implements the approved [honest numbers and PRs plan](../plans/2026-11-08-honest-numbers-and-prs.md)
+(audit items 3.1–3.3, 3.5, 3.7, 3.8, 3.11).
+
+- Targets offers all 13 groups (8 legacy, then forearms, glutes, core,
+  adductors, abductors, then stored custom keys) in the UI language. A
+  catalog exercise's editor shows a note that its groups come from the
+  catalog instead of chips, and Save leaves `muscle_group` as stored; no chip
+  has an empty label (A1, A2).
+- Today's sets and PRs tiles and Recent PRs show "—" while loading and an
+  "unavailable" state on error, never "0" or "No PRs yet" (A3).
+- Progress leaves unavailable top sets out of the chart, Current, Best and the
+  12wk change for top, e1RM and reps; the log shows them as "—" and volume
+  keeps them. The 12wk change compares with the earliest point within 84 days
+  before the latest dated point, or shows "—" (A4, A5).
+- A PR needs a previous best everywhere: the live badge, haptic and header
+  count now agree with finish, the summary and History (A6).
+- Stored catalog PRs (existing derived results, read only) count in History
+  (tile, week header, card badge, row glyph), Today's PRs tile and Recent PRs;
+  legacy PRs still count once. History counts a catalog PR once per setup,
+  so two setups of one exercise that both PR count twice, as Today and the
+  live count do. A catalog set whose bytes cannot be read shows its Recent
+  PR values as unavailable without hiding the others (A7).
+- Catalog Progress distinguishes never logged, unsupported and a load error
+  with Retry (A8). An unused stats stream was removed (A9).
+- No stored data, schema, derivation or `derived_results` row changes.
+
+Host checks are listed in the plan's task state. The device check is open.
+
+## P2 storage banner and launch screens — 2026-11-09
+
+Implements the approved [storage banner and launch screens plan](../plans/2026-11-08-storage-banner-and-launch-screens.md)
+(audit items 1.2 to 1.6, 5.8 and the `main()` retry gap).
+
+- Backgrounding or resuming with an editor merely open (a History set card
+  under the pulled-down shade) no longer shows "Local storage needs recovery".
+  The lifecycle flush and Retry ignore open forms but still fail, and show the
+  banner, when a write is genuinely owed. Backup, restore and close still
+  refuse while a form holds unsaved input; that refusal no longer raises the
+  banner (A1).
+- A failed workout autosave, notification action or post-resume refresh now
+  raises the same banner; Retry recovers and flushes, and clears it once the
+  fault is gone (A4).
+- The banner is one self-contained overlay child with Alkion tokens and type.
+  It fits 320 dp at 2x text in all four languages, and Retry is disabled while
+  its run is in flight, so a double tap recovers once (A5).
+- A launch failure, from `main()` or the launcher, shows a themed, localized
+  screen in the system theme with "Try again", which re-runs the launch. The
+  message comes from the shared error mapper; a non-storage error is not called
+  a storage failure, and the stable category (or only the error type) sits
+  behind a collapsed "Technical details" line. "Your existing files are
+  preserved" is kept (A2).
+- Release builds install the error card first in `main()`. It shows a generic,
+  localized title; the raw error and stack are copied on tap, with a "Copied"
+  confirmation and a button role (A3).
+- The restoring and restore result screens use the user's language, theme and
+  accent; the interrupted-restore screen found at launch follows the system
+  (A6). New strings exist in en, it, de and es; parity and unused-key tests
+  pass (A7).
+- After review: a failing owed editor write no longer holds back the other
+  owners' flushes; a later successful autosave withdraws only its own banner;
+  the restore screens read the settings before the runtime closes; fonts are
+  never fetched at launch; Retry after close begins does nothing.
+- No stored data, backup format or recovery semantics change; owed writes are
+  never dropped.
+
+Host checks are listed in the plan's task state. The device check is open.
+
 ## P1 error messages and toasts — 2026-11-09
 
 Implements the approved [error-messages and toasts plan](../plans/2026-11-08-error-messages-and-toasts.md)

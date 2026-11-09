@@ -6,6 +6,7 @@ import '../domain/catalog_execution.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -27,10 +28,12 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../util/error_message.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_toast.dart';
 import 'active_session_controller.dart';
 import 'confirmed_set_feedback.dart';
 import 'exercise_block.dart';
@@ -72,6 +75,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   // controller without a BuildContext.
   SessionManager? _manager;
   ActiveSessionController? _controller;
+
+  /// The app-level messenger the live workout's Undo toasts go to; they act
+  /// on this screen, so they leave with it ([_leaving]).
+  ScaffoldMessengerState? _messenger;
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _undoToast;
   int _logFeedbackEvent = 0;
   SetState? _confirmedLogCandidate;
 
@@ -121,6 +129,27 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     super.didChangeDependencies();
     _manager = context.read<SessionManager>();
     _controller = context.read<ActiveSessionController>();
+    _messenger = ScaffoldMessenger.maybeOf(context);
+  }
+
+  /// Back or minimize: an Undo left up (set logged or set removed) would
+  /// show over Today and act on a workout no longer on screen. Called as the
+  /// route pops, never from dispose (the messenger may be going away too).
+  void _leaving() {
+    if (_undoToast != null) _messenger?.clearSnackBars();
+  }
+
+  /// Tracks an Undo toast until it closes, so [_leaving] can take it down.
+  void _trackUndoToast(
+    ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? toast,
+  ) {
+    if (toast == null) return;
+    _undoToast = toast;
+    toast.closed.then((_) {
+      // A replaced toast closes after its successor is shown; only the
+      // latest tracked toast clears the marker.
+      if (mounted && identical(_undoToast, toast)) _undoToast = null;
+    });
   }
 
   /// Fires countdown haptics at the 3s and 0s thresholds, once each, and
@@ -149,7 +178,17 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     if (remaining <= 0 && !_buzzHapticFired) {
       _buzzHapticFired = true;
       HapticFeedback.vibrate();
+      _announce(AppLocalizations.of(context).sessionRestOver);
     }
+  }
+
+  /// Speaks [message] through the platform screen reader (no-op without one).
+  void _announce(String message) {
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      message,
+      Directionality.of(context),
+    );
   }
 
   @override
@@ -165,11 +204,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     BuildContext context,
     ActiveSessionController controller,
   ) async {
-    final hasDone = controller.draft.blocks.any(
-      (b) => b.allSets.any((s) => s.done),
-    );
-
-    if (!hasDone) {
+    // A pristine draft (nothing done, touched, added, removed or moved) has
+    // nothing to lose: it leaves without asking.
+    if (!controller.hasEdits) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       if (!await _discard(context, controller)) {
         return;
@@ -206,21 +243,21 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
   /// Discards the workout, including its draft file. False (with the error
   /// shown, the workout left running when nothing was discarded) if that
-  /// failed — e.g. while the store needs recovery.
+  /// failed — e.g. while a notification action or a Finish is still pending
+  /// ("try again"), or while the store needs recovery.
   Future<bool> _discard(
     BuildContext context,
     ActiveSessionController controller,
   ) async {
-    final messenger = ScaffoldMessenger.of(context);
     final l = AppLocalizations.of(context);
-    final danger = context.tokens.danger;
     try {
       await controller.discard();
       return true;
-    } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(l.editorSaveFailed), backgroundColor: danger),
-      );
+    } catch (error) {
+      debugPrint('discard failed: $error');
+      if (context.mounted) {
+        showWToast(context, userMessage(l, error).message, error: true);
+      }
       // Discarded in memory but its file survived: leave the empty screen.
       return !controller.hasSession;
     }
@@ -235,6 +272,26 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     ActiveSessionController controller,
   ) async {
     if (_finishing) return;
+    // A retry finishes the already prepared workout as it is: no question.
+    if (!controller.finishPending) {
+      final unlogged = controller.unloggedWorkingSets;
+      if (unlogged > 0) {
+        final l = AppLocalizations.of(context);
+        final confirmed = await showWConfirm(
+          context,
+          title: l.sessionUnloggedSetsTitle(unlogged),
+          message: l.sessionUnloggedSetsMessage,
+          cancelLabel: l.sessionKeepGoing,
+          confirmLabel: l.sessionFinishAnyway,
+        );
+        if (confirmed != true ||
+            !context.mounted ||
+            _finishing ||
+            !controller.hasSession) {
+          return;
+        }
+      }
+    }
     setState(() => _finishing = true);
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     try {
@@ -255,17 +312,24 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       if (!mounted) return;
       setState(() => _finishing = false);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              AppLocalizations.of(context).sessionSaveFailedMessage,
-            ),
-            duration: const Duration(seconds: 3),
-            backgroundColor: context.tokens.danger,
-          ),
+        showWToast(
+          context,
+          AppLocalizations.of(context).sessionSaveFailedMessage,
+          error: true,
+          duration: const Duration(seconds: 3),
         );
       }
     }
+  }
+
+  /// Why Finish is unavailable: nothing logged yet, or a logged set misses
+  /// its required measurements.
+  void _explainFinishUnavailable(ActiveSessionController c) {
+    final l = AppLocalizations.of(context);
+    showWToast(
+      context,
+      c.doneWork == 0 ? l.sessionFinishNeedsSet : l.catalogRequired,
+    );
   }
 
   // ── Rest / log-bar handling ───────────────────────────────────────────────
@@ -311,7 +375,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           : !r.set.isWarmup && top.isPr && r.set.weightKg == top.topKg;
       isPr ? HapticFeedback.heavyImpact() : HapticFeedback.mediumImpact();
       if (!r.set.isWarmup) {
-        c.startRest(_restSecondsFor(r.block));
+        c.startRestAfterLog(r.set, _restSecondsFor(r.block));
+        _offerUndo(c, r.block, r.set);
+      } else {
+        // A working set's toast is a live region and speaks for itself.
+        _announce(AppLocalizations.of(context).sessionWarmupLogged);
       }
     } else {
       HapticFeedback.selectionClick();
@@ -330,12 +398,40 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     });
   }
 
+  /// "Set N logged · Undo" for about five seconds after a newly logged
+  /// working set. It replaces any earlier toast, so only the latest log can
+  /// be undone from here.
+  void _offerUndo(ActiveSessionController c, BlockState block, SetState set) {
+    final l = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    _trackUndoToast(
+      showWToast(
+        context,
+        l.sessionSetLogged(block.workingSets.indexOf(set) + 1),
+        duration: const Duration(seconds: 5),
+        action: WToastAction(
+          label: l.commonUndo,
+          onPressed: () => _undo(c, set),
+        ),
+      ),
+    );
+  }
+
+  /// Un-logs [set] (Undo, or "Mark as not done"): it becomes the live set
+  /// again and the rest its log started stops. A no-op once the set is gone,
+  /// already not done, or a Finish is pending.
+  void _undo(ActiveSessionController c, SetState set) {
+    if (!mounted) return;
+    // Switching the live set: settle any in-flight value first.
+    commitPendingInput();
+    c.undoLog(set);
+  }
+
   void _removeSet(ActiveSessionController c, BlockState b, SetState s) {
     final index = c.removeSet(b, s);
     final l = AppLocalizations.of(context);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
+    _trackUndoToast(
+      (ScaffoldMessenger.of(context)..hideCurrentSnackBar()).showSnackBar(
         SnackBar(
           content: Text(l.sessionSetRemoved),
           action: SnackBarAction(
@@ -343,7 +439,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
             onPressed: () => c.restoreSet(b, s, index),
           ),
         ),
-      );
+      ),
+    );
   }
 
   Future<void> _openWorkoutMenu(ActiveSessionController c) async {
@@ -363,11 +460,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           value: 'volume',
           icon: AlkionGlyph.progress,
         ),
+        // Always tappable: when the workout cannot finish yet, the tap
+        // explains why instead of a silently faint row.
         WSheetAction(
           label: l.sessionFinishWorkout,
           value: 'finish',
           icon: AlkionGlyph.check,
-          enabled: c.canFinish,
         ),
         WSheetAction(
           label: l.sessionDiscardWorkout,
@@ -407,6 +505,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       return;
     }
     if (picked == 'finish') {
+      if (!c.canFinish && !c.finishPending) {
+        _explainFinishUnavailable(c);
+        return;
+      }
       await _handleFinish(context, c);
     }
     if (picked == 'discard' && mounted) {
@@ -445,9 +547,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     if (!mounted || picked == null) return;
     switch (picked) {
       case 'undone':
-        c.markNotDone(set);
+        _undo(c, set);
       case 'warmup':
-        c.addWarmupSet(block);
+        c.addWarmupSet(block, unit: context.read<UnitService>().unit);
       case 'remove':
         if (await confirmRemoveSessionSet(context, set) && mounted) {
           _removeSet(c, block, set);
@@ -617,18 +719,19 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           ex,
           sessionRepo: SessionRepository.local(context.read<LocalDatabase>()),
           allowRepeat: true,
+          unit: context.read<UnitService>().unit,
         );
         catalog.blockContexts[c.draft.blocks.last] = choice;
       case 'set':
         typedSelection == null
-            ? c.addSet(b)
+            ? c.addSet(b, unit: context.read<UnitService>().unit)
             : c.appendCatalogSet(b, typedSelection);
       case 'undone':
-        c.markNotDone(contextSet!);
+        _undo(c, contextSet!);
       case 'remove-set':
         _removeSet(c, b, contextSet!);
       case 'warmup':
-        c.addWarmupSet(b);
+        c.addWarmupSet(b, unit: context.read<UnitService>().unit);
       case 'up':
         c.moveBlock(b, -1);
       case 'down':
@@ -862,6 +965,39 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     final draft = controller.draft;
     final live = controller.liveSet;
 
+    // Back (like minimize) cannot leave while a Finish is in flight, so the
+    // summary it opens is never skipped. A failed Finish awaiting a retry
+    // can still be left; the workout is kept until Finish commits.
+    return PopScope(
+      canPop: !_finishing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _leaving();
+      },
+      child: _buildScaffold(
+        context,
+        controller,
+        catalog,
+        tokens,
+        unit,
+        preferences,
+        l,
+        draft,
+        live,
+      ),
+    );
+  }
+
+  Widget _buildScaffold(
+    BuildContext context,
+    ActiveSessionController controller,
+    CatalogRuntimeState? catalog,
+    WorkoutTokens tokens,
+    UnitService unit,
+    SettingsService preferences,
+    AppLocalizations l,
+    SessionDraft draft,
+    LiveSet? live,
+  ) {
     return Scaffold(
       body: WorkoutCanvas(
         child: Column(
@@ -887,6 +1023,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         ? _typedNextLabel(controller, l)
                         : _restNextLabel(catalog, controller, l, unit),
                     onMinimize: () {
+                      // A Finish in flight must reach its summary.
+                      if (_finishing) return;
                       commitPendingInput();
                       Navigator.of(context).pop();
                     },
@@ -1035,10 +1173,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                           onRir: (_, s, v) => controller.setRirFromPrompt(s, v),
                           onClearRir: (_, s) =>
                               controller.setRirFromPrompt(s, null),
-                          onMarkNotDone: (_, s) {
-                            commitPendingInput();
-                            controller.markNotDone(s);
-                          },
+                          onMarkNotDone: (_, s) => _undo(controller, s),
                           onRemoveSet: (b, s) => _removeSet(controller, b, s),
                           onMenu: (b) => _openBlockMenu(controller, b),
                         ),
@@ -1081,6 +1216,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                             await controller.addBlock(
                               picked,
                               sessionRepo: sessionRepo,
+                              unit: unit.unit,
                               allowRepeat:
                                   catalog != null &&
                                   catalogChoice != null &&
@@ -1119,6 +1255,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         child: LogSetBar(
           live: controller.finishPending ? null : live,
           canFinish: controller.canFinish || controller.finishPending,
+          busy: _finishing,
           unit: unit,
           onLog: () => _logLive(controller),
           onFinish: () => _handleFinish(context, controller),

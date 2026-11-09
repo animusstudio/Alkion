@@ -33,6 +33,7 @@ import '../widgets/w_dialog.dart';
 import '../widgets/w_toast.dart';
 import '../widgets/glyph_loading.dart';
 import 'editor_guard.dart';
+import 'plan_save_failed.dart';
 import 'exercise_sheet.dart';
 
 // ── DaySlotState ────────────────────────────────────────────────────────────────
@@ -494,6 +495,7 @@ class _DayEditorState extends State<DayEditor> {
       }
       await recovery?.recover();
       await repository.commitPrepared(_pendingSave!);
+      _saved = true;
       if (mounted) widget.onBack();
     } catch (e, st) {
       // Surface the failure instead of silently leaving the button disabled.
@@ -501,6 +503,23 @@ class _DayEditorState extends State<DayEditor> {
       if (mounted) await showWriteFailed(context, e);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// A Save failed and its prepared write is still owed: the fields stay
+  /// locked so Retry save commits exactly that write, once.
+  bool get _saveFailed => _pendingSave != null && !_saving && !_saved;
+
+  /// The Save landed; the editor is closing (it may still fade out).
+  bool _saved = false;
+
+  /// Leaves after a failed Save without writing. The prepared write was
+  /// never registered as owed, so it is dropped; if its COMMIT did land, a
+  /// later edit of this day conflicts instead of overwriting it.
+  Future<void> _discardFailedSave() async {
+    if (!_saveFailed) return;
+    if (await confirmPlanDiscard(context, day: true) && mounted) {
+      widget.onBack();
     }
   }
 
@@ -915,12 +934,26 @@ class _DayEditorState extends State<DayEditor> {
           ),
         ),
         // ── Save button ───────────────────────────────────────────────────
+        if (_saveFailed) const PlanSaveFailedNote(),
         PrimaryBtn(
-          isOwned ? l.dayEditorSaveChanges : l.dayEditorCreateDay,
+          _saveFailed
+              ? l.planEditorRetrySave
+              : isOwned
+              ? l.dayEditorSaveChanges
+              : l.dayEditorCreateDay,
           enabled: canSave && !_saving && !_deleting && _pendingDelete == null,
           onTap: _save,
           glitch: true,
         ),
+        if (_saveFailed) ...[
+          const SizedBox(height: 10),
+          PrimaryBtn(
+            l.planEditorDiscardChanges,
+            enabled: true,
+            secondary: true,
+            onTap: _discardFailedSave,
+          ),
+        ],
 
         // ── Delete button (owned days only) ───────────────────────────────
         if (isOwned) ...[

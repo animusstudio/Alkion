@@ -29,7 +29,9 @@ import '../util/group_by_week.dart';
 import '../widgets/card.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pr_badge.dart';
+import '../util/error_message.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_toast.dart';
 import 'set_editor_sheet.dart';
 import 'catalog_history_editor.dart';
 import '../catalog_ui/catalog_evidence_widgets.dart';
@@ -107,6 +109,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               catalogMap,
               activeSessionId,
               lastFinished,
+              catalogLoaded:
+                  catalogSnap.connectionState == ConnectionState.done,
             );
           },
         );
@@ -148,11 +152,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (!mounted) {
             return;
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(l.historyResumeFailed('$e')),
-              backgroundColor: context.tokens.danger,
-            ),
+          // The mapped message: never the exception text.
+          showWToast(
+            context,
+            l.historyResumeFailed(userMessage(l, e).message),
+            error: true,
           );
         }
     }
@@ -165,8 +169,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     List<HistorySessionRow> sessions,
     Map<String, Exercise> catalogMap,
     String? activeSessionId,
-    FinishedSession? lastFinished,
-  ) {
+    FinishedSession? lastFinished, {
+    bool catalogLoaded = true,
+  }) {
     // Capture the app-scoped owner before an owed delete can outlive this view.
     final manager = context.read<SessionManager>();
     final l = AppLocalizations.of(context);
@@ -262,6 +267,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 session: session,
                 onOpenProfile: widget.onOpenProfile,
                 catalogMap: catalogMap,
+                catalogLoaded: catalogLoaded,
                 sessionRepo: _sessionRepo,
                 units: units,
                 resumeState: resumeStateFor(
@@ -803,11 +809,16 @@ class SessionCard extends StatefulWidget {
     this.onResume,
     this.onDeleted,
     this.onOpenProfile,
+    this.catalogLoaded = true,
   });
 
   final VoidCallback? onOpenProfile;
   final HistorySessionRow session;
   final Map<String, Exercise> catalogMap;
+
+  /// False while the exercise catalog is still loading: the expanded rows
+  /// stay a skeleton instead of reading as deleted exercises.
+  final bool catalogLoaded;
   final SessionRepository sessionRepo;
   final UnitService units;
 
@@ -1089,6 +1100,7 @@ class _SessionCardState extends State<SessionCard> {
                     ? _ExerciseBlocks(
                         session: widget.session,
                         catalogMap: widget.catalogMap,
+                        catalogLoaded: widget.catalogLoaded,
                         sessionRepo: widget.sessionRepo,
                         units: widget.units,
                         resumeState: widget.resumeState,
@@ -1129,10 +1141,12 @@ class _ExerciseBlocks extends StatefulWidget {
     required this.resumeState,
     this.onResume,
     this.onDeleted,
+    this.catalogLoaded = true,
   });
 
   final HistorySessionRow session;
   final Map<String, Exercise> catalogMap;
+  final bool catalogLoaded;
   final SessionRepository sessionRepo;
   final UnitService units;
   final SessionResumeState resumeState;
@@ -1178,8 +1192,146 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     _future = _load();
   });
 
+  /// Owed History editor writes block opening another editor anywhere; an
+  /// owed delete of this session blocks editing it. Other owed work (a
+  /// delete elsewhere) is retried on the way in but never blocks.
+  bool _blocksEditing(({String key, String kind}) owed) =>
+      _editorKinds.contains(owed.kind) ||
+      owed.kind == 'history_delete' &&
+          owed.key.contains(':${widget.session.id}:');
+
+  static const _editorKinds = {'history_sets', 'catalog_history'};
+
+  /// Owed History writes whose user may discard them after they failed for
+  /// good (editor writes and session deletes).
+  static const _discardableKinds = {..._editorKinds, 'history_delete'};
+
+  /// Permanent failures already offered for discard while not blocking, so
+  /// a delete failing elsewhere does not interrupt every editor open.
+  static final _offered = <String>{};
+
+  /// True while an editor is being opened: a second tap during the owed
+  /// retry or the picker cannot stack a second editor.
+  bool _opening = false;
+
+  /// Before a History editor prepares anything, lands what an earlier one
+  /// still owes (one closed after a failed save). An editor opened on the
+  /// pre-retry revisions would conflict with a write that just landed, and
+  /// a second editor beside a write still owed could make that write
+  /// conflict for good. So: [open] is false (the failure is shown) while a
+  /// blocking write stays owed, and [landed] says the caller must re-read.
+  Future<({bool open, bool landed})> _landOwedEdits() async {
+    if (UnsavedEditors.instance.owed().isEmpty) {
+      return (open: true, landed: false);
+    }
+    final failures = await UnsavedEditors.instance.retryOwed();
+    if (!mounted) return (open: false, landed: true);
+    final blocking = UnsavedEditors.instance.owed().where(_blocksEditing);
+    if (blocking.isNotEmpty) {
+      await _showOwed({
+        for (final owed in blocking)
+          owed.key:
+              failures[owed.key] ??
+              const StoreException('unsaved_editor_input'),
+      });
+      if (mounted) _reload();
+      return (open: false, landed: true);
+    }
+    // Not blocking: still offer a permanently failed one for discard, once.
+    final unoffered = {
+      for (final MapEntry(:key, :value) in failures.entries)
+        if (historyWriteIsPermanent(value) &&
+            _discardableKinds.contains(UnsavedEditors.instance.kindOf(key)) &&
+            !_offered.contains(key))
+          key: value,
+    };
+    if (unoffered.isNotEmpty) {
+      _offered.addAll(unoffered.keys);
+      await _showOwed(unoffered);
+    }
+    return (open: mounted, landed: true);
+  }
+
+  /// Shows why earlier History changes are still not saved. A History
+  /// write that failed for good ([historyWriteIsPermanent]) is offered an
+  /// explicit, confirmed discard that drops only those owed writes.
+  Future<void> _showOwed(Map<String, Object> failures) async {
+    final l = AppLocalizations.of(context);
+    final error = failures.values.isEmpty
+        ? const StoreException('unsaved_editor_input')
+        : failures.values.first;
+    final mapped = userMessage(l, error);
+    final permanent = [
+      for (final MapEntry(:key, :value) in failures.entries)
+        if (historyWriteIsPermanent(value) &&
+            _discardableKinds.contains(UnsavedEditors.instance.kindOf(key)))
+          key,
+    ];
+    final discard = await showWDialog<bool>(
+      context,
+      title: l.editorSaveFailed,
+      message: '${l.historyEarlierNotSaved} ${mapped.message}',
+      details: mapped.details,
+      actions: [
+        if (permanent.isNotEmpty)
+          WDialogAction(
+            label: l.historyDiscardUnsaved,
+            value: true,
+            destructive: true,
+          ),
+        WDialogAction(label: l.commonOk, value: false),
+      ],
+    );
+    if (discard != true || !mounted) return;
+    final confirmed = await showWConfirm(
+      context,
+      title: l.historyDiscardUnsavedTitle,
+      message: l.historyDiscardUnsavedMessage,
+      cancelLabel: l.commonKeepEditing,
+      confirmLabel: l.commonDiscard,
+      destructive: true,
+    );
+    if (confirmed != true) return;
+    for (final key in permanent) {
+      UnsavedEditors.instance.discard(key);
+    }
+    if (mounted) _reload();
+  }
+
+  /// The session's workout revision as stored now: another editor, a retry
+  /// or a sheet that just closed may have moved it since this card was
+  /// built. Null when the session is gone.
+  Future<int?> _currentRevision() async =>
+      (await widget.sessionRepo.sessionById(widget.session.id))?.localRevision;
+
   /// Opens the per-exercise set editor, then reloads.
   Future<void> _editExercise(ExerciseBlockData block) async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await _openEditor(block);
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _openEditor(ExerciseBlockData block) async {
+    final owed = await _landOwedEdits();
+    if (!owed.open || !mounted) return;
+    if (owed.landed) {
+      // Open on what the store holds now, not the pre-retry block.
+      final blocks = await _load();
+      if (!mounted) return;
+      setState(() {
+        _future = Future.value(blocks);
+      });
+      final id = block.sets.first.id;
+      final fresh =
+          blocks.where((b) => b.sets.any((s) => s.id == id)).firstOrNull ??
+          blocks.where((b) => b.exerciseId == block.exerciseId).firstOrNull;
+      if (fresh == null) return;
+      block = fresh;
+    }
     if (block.sets.first.catalog != null) {
       await showModalBottomSheet<void>(
         context: context,
@@ -1196,6 +1348,8 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       if (mounted) _reload();
       return;
     }
+    // A deleted exercise's row is read-only (no tap reaches here); keep the
+    // guard for a catalog that changed meanwhile.
     final exercise = widget.catalogMap[block.exerciseId];
     if (exercise == null) {
       return;
@@ -1217,9 +1371,22 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     }
   }
 
-  /// Picks an exercise and seeds one working set so it appears in the session.
-  /// The user then taps the new block to edit/add more sets.
+  /// Picks an exercise, then opens its set editor on an empty block: nothing
+  /// is written until "Add set", and dismissing writes nothing.
   Future<void> _addExercise() async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await _addExerciseNow();
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _addExerciseNow() async {
+    final owed = await _landOwedEdits();
+    if (!owed.open || !mounted) return;
+    if (owed.landed) _reload();
     final exId = await showExerciseSheet(
       context,
       exercises: widget.catalogMap.values.toList(),
@@ -1235,7 +1402,11 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       final selections = await CatalogExecutionRepository.local(
         context.read<LocalDatabase>(),
       ).selectionsForExercise(exId);
-      if (!mounted || selections.isEmpty) return;
+      if (!mounted) return;
+      if (selections.isEmpty) {
+        showWToast(context, AppLocalizations.of(context).historyNoSetupToLog);
+        return;
+      }
       final selected = selections.length == 1
           ? selections.single
           : await showWActionSheet<CatalogSelectionEvidence>(
@@ -1253,7 +1424,9 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
             );
       if (!mounted || selected == null) return;
       await widget.sessionRepo.preloadCatalogDependencies(selected);
-      if (!mounted) return;
+      // Read after the picker: a write since this card was built moved it.
+      final workoutRevision = await _currentRevision();
+      if (!mounted || workoutRevision == null) return;
       final row = LoggedSet(
         id: domainUuid.v4(),
         exerciseId: exId,
@@ -1263,7 +1436,7 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
         isWarmup: false,
         isTopSet: false,
         isPr: false,
-        workoutRevision: widget.session.localRevision,
+        workoutRevision: workoutRevision,
         blockId: domainUuid.v4(),
         catalog: CatalogSetEvidence(selection: selected, metrics: const {}),
       );
@@ -1289,22 +1462,29 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       if (mounted) _reload();
       return;
     }
-    try {
-      await widget.sessionRepo.addSet(
-        widget.session.id,
-        exId,
-        weightKg: '0.00',
-        reps: ex?.defaultRepLow ?? 8,
-        rir: null,
-        isWarmup: false,
-      );
-    } catch (e) {
-      // E.g. refused while the store needs recovery.
-      if (mounted) {
-        await showWriteFailed(context, e);
-      }
-      return;
-    }
+    if (ex == null) return;
+    // Read after the picker: a write since this card was built moved it.
+    final workoutRevision = await _currentRevision();
+    if (!mounted || workoutRevision == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => SetEditorSheet(
+        block: ExerciseBlockData(
+          exerciseId: ex.id,
+          sets: const [],
+          topWeight: 0,
+          topReps: 0,
+          isPr: false,
+        ),
+        exercise: ex,
+        sessionId: widget.session.id,
+        sessionRepo: widget.sessionRepo,
+        units: widget.units,
+        workoutRevision: workoutRevision,
+      ),
+    );
     if (mounted) {
       _reload();
     }
@@ -1355,7 +1535,10 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
         final inProgress = widget.resumeState == SessionResumeState.inProgress;
         // Skeleton only for the very first load; a reload keeps the old data.
         return GlyphReveal.builder(
+          // Until the catalog resolves an exercise cannot be told from a
+          // deleted one, so the rows stay a skeleton.
           loading:
+              !widget.catalogLoaded ||
               blocks == null && snap.connectionState == ConnectionState.waiting,
           cover: tokens.surface,
           // Two exercise blocks: a name line over its set line.
@@ -1432,7 +1615,13 @@ class SessionCardBody extends StatelessWidget {
                 block: block,
                 catalogMap: catalogMap,
                 units: units,
-                onTap: edit == null ? null : () => edit(block),
+                // A deleted exercise reads as such and is read-only.
+                onTap:
+                    edit == null ||
+                        block.sets.first.catalog == null &&
+                            !catalogMap.containsKey(block.exerciseId)
+                    ? null
+                    : () => edit(block),
               ),
             ),
           if (blocks.any(
@@ -1568,10 +1757,27 @@ class _BlockRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  FitLabel(
-                    evidence.selection.displayLabel,
-                    maxLines: 3,
-                    style: WorkoutType.body(size: 14, color: tokens.text),
+                  // The stored catalog PR (its derived result, read only)
+                  // takes the legacy row's PR glyph.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FitLabel(
+                          evidence.selection.displayLabel,
+                          maxLines: 3,
+                          style: WorkoutType.body(size: 14, color: tokens.text),
+                        ),
+                      ),
+                      if (block.sets.any((s) => !s.isWarmup && s.isPr)) ...[
+                        const SizedBox(width: 8),
+                        AlkionIcon(
+                          AlkionGlyph.energy,
+                          key: const Key('history-catalog-pr'),
+                          size: 16,
+                          color: tokens.accentText,
+                        ),
+                      ],
+                    ],
                   ),
                   if (evidence.selection.contextLabel.isNotEmpty)
                     Text(
@@ -1593,7 +1799,7 @@ class _BlockRow extends StatelessWidget {
     }
     final exercise = catalogMap[block.exerciseId];
     final isCompound = exercise?.compound ?? false;
-    final name = exercise?.name ?? block.exerciseId;
+    final name = exercise?.name ?? l.historyDeletedExercise;
     final dotColor = isCompound ? tokens.accentText : tokens.lineStrong;
     // History's own selection; ExerciseBlockData.topWeight stays Summary's.
     final top = historyTopSet(block.sets);

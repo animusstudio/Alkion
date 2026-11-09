@@ -604,8 +604,9 @@ class UnsavedEditors {
   /// Retries every owed write once; one that fails again stays owed. A
   /// write superseded while an earlier retry was awaited (a newer edit of
   /// the same key landed or was owed meanwhile) is skipped, never replayed
-  /// over the newer value.
-  Future<void> retryOwed() async {
+  /// over the newer value. Returns each failure by key.
+  Future<Map<String, Object>> retryOwed() async {
+    final failures = <String, Object>{};
     for (final MapEntry(:key, :value) in _owed.entries.toList()) {
       if (!identical(_owed[key]?.write, value.write)) {
         continue;
@@ -613,20 +614,40 @@ class UnsavedEditors {
       try {
         await value.write();
         paid(key, value.write);
-      } catch (_) {
+      } catch (error) {
         // Still owed; the next flush retries it and fails until it is paid.
+        failures[key] = error;
       }
     }
+    return failures;
   }
+
+  /// The kind [key] is owed as, or null when it is not owed.
+  String? kindOf(String key) => _owed[key]?.kind;
+
+  /// Every owed key with its kind.
+  List<({String key, String kind})> owed() => [
+    for (final MapEntry(:key, :value) in _owed.entries)
+      (key: key, kind: value.kind),
+  ];
+
+  /// Drops the owed write for [key] after the user explicitly discarded it
+  /// (a History edit that can never land). Nothing else removes owed work.
+  void discard(String key) => _owed.remove(key);
 
   void resetForTesting() {
     _open.clear();
     _owed.clear();
   }
 
-  Future<void> drainOrThrow() async {
+  /// Retries every owed write once, then throws `unsaved_editor_input` while
+  /// a write is still owed or, with [includeOpenForms], while an open form
+  /// holds unsaved input. Backup, export and close keep the strict default.
+  /// The lifecycle flush passes false: a form that is merely open owes
+  /// nothing yet, so only a write that failed to land makes it fail.
+  Future<void> drainOrThrow({bool includeOpenForms = true}) async {
     await retryOwed();
-    if (unsaved().isNotEmpty) {
+    if (includeOpenForms ? unsaved().isNotEmpty : _owed.isNotEmpty) {
       throw const StoreException('unsaved_editor_input');
     }
   }
