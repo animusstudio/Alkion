@@ -1,142 +1,173 @@
 # Background notification actions: +30s and Skip rest
 
-Date: 2026-11-08. Lane: **Full**. Status: **Proposed** (needs design review
-before implementation).
+Date: 2026-11-08, revised 2026-11-09 after design review. Lane: **Full**.
+Status: **Proposed**. The first design review failed with four blocking
+findings; this revision addresses them, and it needs a re-review before
+implementation.
 Parent: [development](../alkion/development.md).
 Specification: [background notification actions](../specs/2026-11-08-background-notification-actions.md).
 Baseline: `458aac6`. Branch: `feat/background-notification-actions-20261108`.
 
 ## Outcome
 
-Today, notification +30s brings the app forward, and there is no Skip
+Today, the notification's +30s brings the app forward, and there is no Skip
 (`app/lib/session/workout_notification.dart:106-116`,
 `app/lib/session/session_manager.dart:83-90`). After this plan, both act in the
 background whether the app is open, backgrounded or killed:
 
-- The plugin's background isolate only writes a durable intent journal.
-- The main isolate stays the only SQL owner and applies each intent through a
-  step-numbered token receipt.
-- With no owner in the process, the background re-renders a provisional mirror
-  after its journal entry is durable.
+- The plugin's background isolate, which imports no store code, writes only a
+  durable intent journal.
+- The main isolate is still the only SQL owner. It applies taps through
+  step-numbered receipts keyed by rest fields.
+- When no owner is present, a provisional mirror is folded from the journal.
+- Each launch cancels ghost mirrors.
 
-The spec holds the decisions D1–D7 and the acceptance A1–A21.
+The spec holds decisions D1–D7 and acceptance A1–A23.
 
 ## Dependencies and order
 
-- **After P8** (`2026-11-08-rest-alerts-and-notifications.md`). F2 replaces
-  P8's action wiring, which keeps `showsUserInterface: true` and stops the
-  route push. F2 reuses P8's rest-end channel and alert scheduling, its
-  next-set body and its `ic_stat` icon. The renderer F2 shares between
-  isolates is P8's `showFor` logic, extracted.
-- **After F1** where both touch `AlkionRuntime.open`. The journal drain goes
-  right after F1's quarantine step. If F1 has not merged, the drain goes before
-  `resumeFromDraft` and F1 rebases.
-- Shares `main.dart` (the `open` and `close` regions only) with P2, P3 and F1.
-  It merges after them.
+- **After P8** (`2026-11-08-rest-alerts-and-notifications.md`). P8 leaves the
+  +30s wiring as it is. F2 replaces that wiring and stops the route push for
+  actions. F2 reuses P8's rest-end channel, its alert variant (same ID 4101),
+  its next-set body and its `ic_stat` icon. T0 extracts them into the pure
+  renderer.
+- **After F1** in `AlkionRuntime.open`: F2's drain #1 runs right after F1's
+  quarantine. If F1 hasn't merged, drain #1 goes before `resumeFromDraft`,
+  and F1 rebases.
+- **`main.dart`** (the `open` and `close` regions only) is shared with P2, P3
+  and F1. F2 merges after all three.
 
 ## Owner gates
 
-- **OG1 (design review):** approve design (a). The journal-only background
-  and owner-only SQL include the provisional mirror in the killed case. That
-  mirror shows the change before SQL holds it, but only after the tap is
-  durably journaled. Fallback (c′) is native posting with `goAsync`.
-- **OG2 (behaviour):** a quick double tap on one rendered notification counts
-  once, not +60 s (A6). The Skip label is "Skip rest".
-- **OG3 (device, decides the fallback):** on the owner's phone with a private
-  Dev APK, run ten taps each of +30s and Skip in each state:
-  - foreground with the shade down;
-  - backgrounded;
-  - swiped from recents;
-  - after `am kill` while backgrounded;
-  - on the lock screen without unlocking.
-
-  Record the time to the re-render and any lost tap. If a tap is lost, or the
-  killed-state re-render routinely takes longer than about 3 s, the owner
-  decides whether to switch to (c′) in a revised spec.
+- **OG1, OG2:** resolved 2026-11-09.
+  - Design (a) stays, with the provisional render.
+  - Each visible tap counts: taps before the visible update count once, with
+    no debounce.
+  - Ghosts are cancelled on open when there is no active workout.
+  - The label is "Skip rest".
+- **OG3 (device bar, decides on the fallback):** run a private Dev APK built
+  with `ALKION_NOTIFICATION_TRACE` on the owner's phone. Record the Android
+  version and patch level in the `acceptance.md` entry. A release-mode APK
+  isn't `run-as` debuggable, so the evidence is only logcat markers and the
+  app's visible state.
+  - **Markers:** `received`, `journaled`, `rendered`, `woke` from the
+    background, and `applied` or `refused <reason>` and `ghost-cancelled` from
+    the owner.
+  - **States:**
+    - foreground, with the shade down;
+    - backgrounded;
+    - swiped from recents;
+    - `am kill` while backgrounded;
+    - the lock screen, without unlocking;
+    - Doze (`dumpsys deviceidle force-idle`);
+    - a frozen cached process (app cached for 10 minutes or more with the
+      screen off);
+    - battery saver on together with `am set-standby-bucket <pkg> restricted`;
+    - a tap during a cold launch;
+    - a tap during a restore;
+    - double +30s taps;
+    - mixed +30s and Skip taps.
+  - **Bar:** in every state, 10 of 10 taps reach `journaled` and then
+    `applied` (or the expected `refused`). The p90 time from `received` to the
+    visible re-render is 3 s or less. Any lost tap, or a missed p90, means the
+    owner decides on a revised spec for fallback (c′).
 - **OG4 (device):**
-  - the journal path is the same in both engines (a killed-state tap is
-    applied at the next launch);
-  - the rest-end alert fires at the new end after +30s, and never after Skip;
-  - opening the app during a background tap gives no `profile_in_use` and no
-    double apply;
-  - after force-stop, no stale action remains;
-  - a normal launch with the secondary engine resident is fine.
+  - The journal path is the same in both engines: a killed-state tap is
+    applied at the next launch.
+  - `DartPluginRegistrant` lets path_provider resolve in the handler.
+  - The alert fires at the new end after +30s, and never after Skip.
+  - A ghost is cancelled after a launch with no workout.
+  - Opening the app during a background tap gives no `profile_in_use`.
+  - **After an app update, tap an action before opening the app.** A stale
+    dispatcher handle leaves that process's taps queued until it dies; record
+    what happens.
+  - After a force-stop, nothing is left pending.
 
 ## Tasks
 
 Routing: Claude. Implementers run on Opus `high`, reviewers on Sonnet `high`.
-T1 and T2 own disjoint files and run **in parallel**. T3 needs both. T4 is
-last. All are **serial** with respect to `main.dart`.
+T0 comes first. T1 and T2 then run **in parallel**, because their files are
+disjoint and both depend only on T0. T3 needs both. T4 is last. T0, T3 and T4
+are **serial** with respect to `main.dart` and `workout_notification.dart`.
 
 | Task | Owns | Acceptance |
 | --- | --- | --- |
-| T1 Step receipts and consumption (storage) | `app/lib/session/notification_action.dart`: envelope encode/decode, `step`, the generalised `consumeNotificationIntent` for add and skip with tap-time checks, and the legacy `consumed` receipt read as step 1. `app/lib/data/active_session_draft.dart`: `consumeAction`/`reconcileNotificationAction` take an intent. Tests in `test/session/notification_action_test.dart` and `test/alkion/workflows/timer_callback_test.dart` (real SQLite) | A4–A9, A12, A14 (generation/profile), A15 |
-| T2 Journal and background handler (no SQL) | New `app/lib/session/notification_journal.dart` (writer, reader, `retained/`, bounds, `.partial` cleanup, a checkpoint seam). New `app/lib/session/notification_background.dart` (entry point, port lookup, provisional render through an injected renderer). New `test/session/notification_journal_test.dart`, `test/session/notification_background_test.dart`, a source guard (pattern: `test/theme/font_family_source_test.dart`), and a crash child `test/support/notification_journal_crash.dart` (pattern: `test/support/remote_recovery_crash.dart`) | A10, A13, A14 (imports, held lock), A6 (journal side) |
-| T3 Owner wiring and renderer | `workout_notification.dart`: shared renderer, the two background actions, `initialize` with the handler, forced re-render, labels in `_notifStrings`. `session_manager.dart`: drain on wake-up, resume and flush, body-tap-only open request. `active_session_controller.dart`: notification apply region only. `main.dart`: drain in `open`, port register and unregister in `open`/`close`, restore path. `AndroidManifest.xml`: receiver and comment. Tests: `session_manager_test.dart`, `workout_notification_test.dart`, a real-runtime launch drain test, `test/alkion/recovery/backup_restore_test.dart` additions | A1–A3, A5, A8 (re-render), A11, A16–A19 |
-| T4 Docs and integration | `docs/alkion/recovery.md`, `development.md`, `acceptance.md` (dated entry), `android-smoke.md` (OG3/OG4 checklist rows). Integrated checks | A20, A21 |
+| T0 Pure modules (no behaviour change) | New `app/lib/session/notification_envelope.dart` (value type, envelope, intent record, legacy decode); new `app/lib/session/workout_notification_render.dart` (P8's builders, `_notifStrings`, `renderRestMirror`, fixed action order); `notification_action.dart` (class moved out, `owns` becomes a function); `workout_notification.dart` delegates to the renderer; a new transitive import-closure guard in `test/session/notification_import_guard_test.dart`; envelope and renderer unit tests | A19, A18 (guard) |
+| T1 Receipts and consumption (storage) | `notification_action.dart` (issue reuse by rest fields, receipt basis, `consumeNotificationIntent` for add and skip, the step, duplicate, conflict and gap rules, tap-time checks); `data/active_session_draft.dart` (`consumeAction` and `reconcileNotificationAction` take an intent); `CommittedRestChange` with nullable `restStart` and `restEndedAt`; `active_session_controller.dart`, notification-apply region only (`applyNotificationAction`, `_adoptNotificationRest` taking `endedAt` from the commit). Tests: `test/session/notification_action_test.dart`, `test/alkion/workflows/timer_callback_test.dart` (real SQLite), `test/session/controller_rest_row_test.dart` | A5, A6–A9, A12, A18 (refusals) |
+| T2 Journal and background handler (no SQL) | New `app/lib/session/notification_journal.dart` (sibling directory, atomic write with `flushDirectory`, bounds, ordered read, `.partial` cleanup, checkpoint seam); new `app/lib/session/notification_background.dart` (entry point, module tail, `DartPluginRegistrant`, fold, port check before and after render, trace markers). Tests: `test/session/notification_journal_test.dart`, `test/session/notification_background_test.dart` (injected port, renderer, clock and directory; concurrent delivery; mixed taps; 4096-byte boundary); the crash child `test/support/notification_journal_crash.dart` (pattern: `test/support/remote_recovery_crash.dart`); the guard extended to the handler | A7 (fold), A10, A17 (background side), A18, A20 |
+| T3 Owner wiring | `session_manager.dart` (drain tail, the resume order, init reconcile skip, drain before issue, forced refresh, ghost cancel, body-tap-only open request); `workout_notification.dart` (the two actions, `initialize` with the handler, `force`); `main.dart` (the open sequence with the port registered before drain #1, drain #2, ghost rule, port `closing` and unregister after `closeNotifications`, the restore path); `AndroidManifest.xml` (receiver and comment). Copying an undecodable entry into `reviews`. Tests: `session_manager_test.dart`, `workout_notification_test.dart`, a new `test/alkion/workflows/notification_intent_launch_test.dart` (real runtime: tap during open, ghosts, close, resume, the end-to-end killed chain), `test/alkion/recovery/backup_restore_test.dart` additions, and a fresh-start and restore inventory test with a populated journal | A1–A4, A11, A13–A17, A21 |
+| T4 Docs and integration | `docs/alkion/recovery.md`, `development.md`, `acceptance.md` (dated entry, including OG3 results), `android-smoke.md` (the OG3/OG4 rows); integrated checks | A22, A23 |
 
 ### Task notes
 
-- **T1** keeps the exact-frozen-bytes reconciliation contract. The receipt
-  answers "did step k commit?" from `consumed_step`, `last_intent_id` and
-  `timer_revision`. A duplicate returns the committed rest; a refusal writes
+- **T0** moves code without changing behaviour. The existing
+  `workout_notification_test.dart` and `notification_action_test.dart` must
+  pass unchanged, apart from import paths.
+- **T1** keeps the exact-frozen-bytes reconciliation contract. A receipt
+  answers "did step k commit, and with which `intent_id`?". A refusal writes
   nothing.
-- **T2** must not import `store/`, `identity/alkion_profile.dart`,
-  `recovery/` or `data/`. The handler takes injected seams (journal directory,
-  port lookup, renderer, clock), so host tests drive every branch. Crash cuts:
-  `journal-partial-written`, `journal-renamed` (before render).
-- **T3** drains in `open` with SQL only, and through the controller once one
-  is registered. Every decided intent ends with
-  `refreshNotifications(force: true)`. The port name is
-  `<applicationId>.notification-intents`. Crash cuts: `intent-consume-open`
-  (inside the transaction) and `intent-committed` (before the delete).
+- **T2** crash cuts:
+  - `journal-partial-written`;
+  - `journal-renamed` (before the render).
+
+  Tests drive the handler through two un-awaited calls, which reproduces how
+  the plugin dispatcher delivers.
+- **T3** crash cuts:
+  - `intent-consume-open`, inside the transaction;
+  - `intent-committed`, before the delete.
+
+  Tests use the fault wrapper for COMMIT uncertainty. The tap-during-open
+  test calls the real handler, with a fake renderer, from hooks between the
+  open phases.
 
 ## Checks
 
-- Focused (T1):
+- **Focused, T0:**
+  `make -C app test TEST='--concurrency=2 test/session/notification_import_guard_test.dart test/session/workout_notification_test.dart test/session/notification_action_test.dart test/session/notif_strings_test.dart'`.
+- **Focused, T1:**
   `make -C app test TEST='--concurrency=2 test/session/notification_action_test.dart test/alkion/workflows/timer_callback_test.dart test/session/controller_rest_row_test.dart'`.
-- Focused (T2):
-  `make -C app test TEST='--concurrency=2 test/session/notification_journal_test.dart test/session/notification_background_test.dart'`
-  plus the source guard.
-- Focused (T3):
-  `make -C app test TEST='--concurrency=2 test/session test/alkion/workflows test/alkion/recovery/backup_restore_test.dart test/main_routing_test.dart test/l10n'`.
-- `make -C app analyze` and `make -C app format` for every task.
-- Real SQLite for consumption, drain and crash cases. Fixtures are synthetic
-  and storage is disposable.
-- Build: `make -C app build-apk` (debug, disposable `ANDROID_USER_HOME`). The
-  merged manifest must contain the receiver.
-- Integrated: `make -C app test TEST=--concurrency=2` passes, apart from the
-  three known inherited failures in
+- **Focused, T2:**
+  `make -C app test TEST='--concurrency=2 test/session/notification_journal_test.dart test/session/notification_background_test.dart test/session/notification_import_guard_test.dart'`.
+- **Focused, T3:**
+  `make -C app test TEST='--concurrency=2 test/session test/alkion/workflows test/alkion/recovery test/main_routing_test.dart test/l10n'`.
+- **Every task:** `make -C app analyze` and `make -C app format`. Use real
+  SQLite for consumption, drain and crash, with synthetic fixtures and
+  disposable storage only.
+- **Build:** `make -C app build-apk` (debug, with a disposable
+  `ANDROID_USER_HOME`). The merged manifest must contain the receiver.
+- **Integrated:** `make -C app test TEST=--concurrency=2` passes, apart from
+  the three known inherited failures in
   `test/catalog_ui/catalog_metric_controls_test.dart`:
   `duration_distance_optional`, `reps_distance_optional` and
   `reps_duration_optional_load` ("mounts all required and optional controls
   unset").
-- Device: OG3 and OG4 on the owner's phone with a private Dev APK, following
-  [the manual APK checklist](../alkion/android-smoke.md). Host PASS never
-  stands in for them.
+- **Device:** OG3 and OG4, following the
+  [manual APK checklist](../alkion/android-smoke.md). A host PASS never stands
+  in for them.
 
 ## Risks
 
-- **Background lifetime.** The plugin receiver has no `goAsync`, so in a cold
-  or frozen process a tap can be lost before the journal write. The failure is
-  visible and benign: no re-render, so the user taps again. OG3 measures it,
-  and (c′) is the fallback.
-- **Two renderers race.** A provisional mirror posted just after the owner's
-  can carry a superseded token. A tap on it is refused, and the forced
-  re-render corrects the mirror (A8). The window is narrow, because the port
-  is registered before the first refresh.
-- **Cross-engine `IsolateNameServer`.** It is expected to be process-wide, but
-  this is only proven by OG3/OG4. A missing wake-up only delays the apply to
-  the next resume.
-- **Payload budget.** Long names in four locales must fit in 4096 bytes. The
-  title shortens; without `view`, the tap journals but doesn't render.
-- **P8 coupling.** F2 depends on P8's alert IDs and channel. Its renderer
-  extraction must stay byte-compatible with P8's tests.
-- **A resident secondary engine** costs memory for the rest of the process
-  lifetime once a background action has run.
+- **Background lifetime.** The plugin's receiver has no `goAsync`, so a
+  frozen or cold process can lose a tap before it is journaled. The failure is
+  visible: no re-render. OG3 measures it, and fallback (c′) covers it.
+- **A stale dispatcher handle after an update.** A process can queue taps
+  forever (constraint 3). It is checked in OG4. The next app launch
+  re-registers the handle.
+- **Renderer races.** These are narrowed by registering the port before the
+  first drain, re-checking the port after a render, and forcing a refresh on
+  every wake-up and every decided intent.
+- **Cross-engine `IsolateNameServer`.** This is proven only on the device. A
+  missed wake-up delays the apply until the next resume or flush.
+- **Payload budget.** Long names in four locales must fit. The title is
+  shortened; if the payload still doesn't fit, the tap journals but doesn't
+  render.
+- **Coupling to P8.** T0's extraction must keep P8's tests byte-compatible.
+- **The secondary engine stays resident** for the life of the process once a
+  background action has run.
 
 ## Task state
 
+- T0 — not started.
 - T1 — not started.
 - T2 — not started.
 - T3 — not started.
@@ -144,5 +175,5 @@ last. All are **serial** with respect to `main.dart`.
 
 ## Next
 
-Design review of the spec and this plan, then the OG1/OG2 answers. Start after
-P8 (and F1) merge. OG3 decides whether (a) stands or the fallback is specified.
+Re-review of the revised spec and plan. Start after P8 and F1 merge. OG3
+decides whether design (a) stands or the fallback gets specified.

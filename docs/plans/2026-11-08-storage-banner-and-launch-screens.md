@@ -64,6 +64,7 @@ one-time notice reuses the banner/notice surface built here.
 - **1.6.** Extract the banner to `lib/widgets/storage_recovery_banner.dart`
   using `context.tokens`, `WorkoutType.body` and the `tokens.danger` family;
   Retry is disabled while a retry future is in flight.
+  Keep the banner one self-contained `Positioned` child of the `AlkionApp` builder `Stack`; the unreadable-workout-state plan adds its own informational notice as a second child there.
 - **5.8.** Optional `locale`, `brightness`, `accent` on both restore apps;
   `RuntimeRecoveryHost` passes them from `runtime.settings` before
   `runtime.close()`. Interrupted-restore and preflight cases use system

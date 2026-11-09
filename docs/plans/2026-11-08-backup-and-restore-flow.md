@@ -99,8 +99,9 @@ formats.
 - **A2.** Check then Restore asks for the file once. The confirmation shows the
   file name and creation date. A cancelled picker does nothing.
 - **A3.** Review rows read as counts per kind with no UUIDs on the surface.
-  "Keep all" asks to confirm, records one decision per undecided review, is safe
-  to repeat, and leaves every evidence row byte-identical.
+  "Keep all" asks to confirm, records one decision per undecided
+  `restore_newer_work` review only (never other categories, such as kept
+  workout data), is safe to repeat, and leaves every evidence row byte-identical.
 - **A4.** A foreign backup shows its own title and the three steps.
 - **A5.** Create, Check and Restore show progress while running; it disappears
   after, and nothing animates under reduced motion.
