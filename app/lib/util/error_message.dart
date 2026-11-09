@@ -113,7 +113,8 @@ ErrorBucket errorBucket(Object error) {
 }
 
 /// The localized message for [error] and its category as [UserMessage.details].
-/// An unknown or non-store error reads as unexpected and carries no details.
+/// A non-store error reads as unexpected with no details; a store error with an
+/// unknown category also reads as unexpected but keeps that category as details.
 UserMessage userMessage(AppLocalizations l, Object error) {
   final bucket = errorBucket(error);
   final message = switch (bucket) {

@@ -408,15 +408,20 @@ String? profileTrainingLine(
 // ── ProfileScreen ─────────────────────────────────────────────────────────────
 
 /// The export failure dialog's text for [error]: the compatibility refusal
-/// when it applies, otherwise the [userMessage] (a document failure adds that
-/// any external copy may be incomplete) with its category as details. Never
-/// the exception text.
+/// when it applies, otherwise the [userMessage] (a document failure, or a
+/// store-side export verification failure after the external copy was written,
+/// adds that any external copy may be incomplete) with its category as details.
+/// Never the exception text.
 UserMessage exportFailureMessage(AppLocalizations l, Object error) {
   final mapped = userMessage(l, error);
   if (compatibilityExportRefusalMessage(l, error) case final refusal?) {
     return UserMessage(mapped.bucket, refusal);
   }
-  return error is DocumentException
+  final externalCopyMayBeIncomplete =
+      error is DocumentException ||
+      (error is StoreException &&
+          error.category == 'export_verification_failed');
+  return externalCopyMayBeIncomplete
       ? UserMessage(
           mapped.bucket,
           l.alkionDocumentFailureMessage(mapped.message),

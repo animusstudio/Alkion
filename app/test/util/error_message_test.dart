@@ -186,7 +186,7 @@ void main() {
           l,
           const StoreException('export_verification_failed'),
         );
-        expect(store.message, l.errorFile);
+        expect(store.message, l.alkionDocumentFailureMessage(l.errorFile));
         expect(store.details, 'export_verification_failed');
 
         final document = exportFailureMessage(
