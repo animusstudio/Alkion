@@ -126,7 +126,7 @@ plan; the fixed tab-bar clearance is shared with page padding
 Code at `b47682b` (later commits are docs only). Commits: `e363d4f` (T1),
 `9ffdeeb` (T2), `b47682b` (T2 fix: inverse toast colours).
 
-- T1 — done, awaiting review. `lib/util/error_message.dart` holds
+- T1 — done, reviewed. `lib/util/error_message.dart` holds
   `errorBucket`, `errorCategory`, `userMessage` and `UserMessage`;
   `isStoreRecoveryRefusal` moved there from `w_dialog.dart` (its only caller).
   Bucket rules, in order: recovery (`isStoreRecoveryRefusal`), conflict
@@ -140,7 +140,7 @@ Code at `b47682b` (later commits are docs only). Commits: `e363d4f` (T1),
   mono `details` line; `showWriteFailed`, both editor save dialogs, the summary
   load failure and the export failure use the mapper. `summaryLoadFailed` lost
   its `{error}` placeholder; seven `error*` keys were added in en, it, de, es.
-- T2 — done, awaiting review. `SnackBarThemeData` in `buildTheme`: floating,
+- T2 — done, reviewed. `SnackBarThemeData` in `buildTheme`: floating,
   inverse (`tokens.text` surface, `tokens.bg` Space Grotesk content, the
   opposite palette's `accentText` for actions), flat, 8 dp radius, 16/8/16/12
   inset. `widgets/w_toast.dart`: `showWToast(context, text, {error, action,
