@@ -214,6 +214,38 @@ stays (the toast and History editor use it).
     test/ui/training_prescriptions_test.dart test/l10n test/layout'` → +1573 −3, which are only
     the three inherited failures. Analyze is clean.
 
+- **T3 Screen, bar, next and T4 Strings: done**, pending review. Code `e426b1c`, tests `ac387f7`.
+  - Changes:
+    - `LogSetBar.labelFor` returns "Log set N", "Log warm-up", "Update …" or Finish for
+      classic and catalog sets. Its `unit` parameter is now unused but kept, so the widget
+      API P7 owns does not change.
+    - `restNextLabel` is the single Next function. `_typedNextLabel` is gone, and the header
+      rest row is its only caller. A catalog name is the set's `displayLabel`. A classic
+      set with unavailable values still reads "Values unavailable".
+    - The reference is one `FitLabel` (`catalog-last-reference`) reading "last 18 kg × 11 ·
+      3d ago". It has no button and returns nothing when there are no values.
+    - `_changeSetup` reads with `includeLastSets: true` and calls `attachCatalogReference`
+      before `appendCatalogSet`.
+    - `UseLastValuesBridge` and `catalogEvidenceSummary` are deleted. The refusal already
+      used `showWToast`.
+  - ARB changes in all four languages:
+    - Removed: `catalogUseLast`, `catalogLogSet`.
+    - Changed: `sessionLogSet` keeps only `{index}`; `sessionLogWarmup` has no placeholders.
+      `sessionNextSet` is now "Set {index}"; `sessionNextWarmup` is now "Warm-up".
+    - Added: `catalogLastRef` ("last {values}").
+  - Tests outside the owned list:
+    - `catalog_durable_workout_menu_test.dart`: a changed setup prefills from a real finished
+      workout. A mutation without `includeLastSets` fails.
+  - Checks:
+    - `make -C app test TEST='--concurrency=2 test/session test/catalog_ui test/alkion
+      test/ui/training_prescriptions_test.dart test/l10n test/layout'` → +1577 −3. The
+      three are the inherited `catalog_metric_controls_test.dart` failures.
+    - `make -C app analyze` → No issues found.
+    - `make -C app format` → 0 changed.
+  - For review: at 320 dp and 2× in de, es and it, the Undo toast splits a word ("Satz 1
+    ge|speichert"). The toast is outside T3, so the new test checks only the header and the
+    bar.
+
 ## Next
 
 Owner approval, then T1 and T2 after the toast plan and the audit-batch plans merge.
