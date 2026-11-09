@@ -186,6 +186,35 @@ Checks at `6cb83c6`:
   unset", each missing an optional ruler behind More measurements).
 - Device check (log, undo, early finish, TalkBack, reduced motion) open.
 
+Review 2026-11-09: PASS-WITH-FINDINGS. Fixes in `a33fb66`:
+
+- The Undo toasts (set logged, set removed) no longer outlive the screen:
+  back or minimize clears them as the route pops (`PopScope`
+  `onPopInvokedWithResult`); Finish and Discard already hid them.
+- Discard copy: "Your logged sets will be lost." only when a set is logged
+  (warm-ups included); otherwise "This workout and your changes will be lost."
+  (`sessionDiscardChangesOnlyMessage`, four locales, `discardDialogCopy`).
+- `undoLog` during a notification rest action queues a matching edit, so the
+  replayed rest (for example +30s) is stopped with the earlier "rested" mark
+  too; a skipped or replaced rest is left to the notification. `undoLog` while
+  a Finish is pending returns false and changes nothing (both tested).
+
+Checks at `a33fb66`: `make -C app analyze` → No issues found;
+`make -C app format` → 0 changed; `make -C app test TEST='--concurrency=2
+test/session test/widgets test/ui/exercise_editor_start_weight_test.dart
+test/ui/set_editor_sheet_test.dart test/shell test/l10n
+test/layout/live_layout_test.dart'` → +950 all pass.
+
+Follow-ups (no code here):
+
+- Android TalkBack may drop `SemanticsService` announcements (warm-up logged,
+  rest over); decide on the device check whether a live region replaces them.
+- P1's toast `persist: false` gives TalkBack users only 5 s to reach Undo.
+- Catalog typed entry has no new load or reps limits, to preserve exact
+  evidence; a literal gap against A6, which only the classic editor meets.
+- The launcher route now uses `Motion.slow`/`Motion.base` (300/200 ms, was
+  250/200 ms) for everyone, not only the reduced-motion change.
+
 ## Next
 
 Independent review, then delivery after P4, P5 and P6 merge.

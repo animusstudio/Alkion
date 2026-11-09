@@ -15,14 +15,17 @@ draft-file, outbox or derivation change.
 - Discard confirms only when a set is done, a value was touched (weight, reps,
   RIR or a catalog measurement) or sets or blocks were added, removed or moved;
   a pristine fresh workout discards silently. A restored draft always asks,
-  because those structural edits are not in the draft file. A refused discard
+  because those structural edits are not in the draft file. The confirm says
+  logged sets will be lost only when some are, otherwise "This workout and
+  your changes will be lost." A refused discard
   (pending notification action or Finish) shows the "busy, try again" message,
   never "Couldn't save" (A1). System back still minimizes, as before.
 - A newly logged working set shows "Set N logged · Undo" for 5 s. Undo, and
   "Mark as not done", make the set live and not done again, clear the
   confirmation line, and stop the rest only when that set's log started it
-  (an older or newer rest keeps running); the earlier "rested" mark returns.
-  Warm-ups get no Undo (A2).
+  (an older or newer rest keeps running); the earlier "rested" mark returns,
+  also while a notification rest action is saving. Warm-ups get no Undo, and
+  back or minimize takes an open Undo toast down with the screen (A2).
 - Finish from the workout menu asks "N sets not logged" when working sets are
   still open (warm-ups never count); Keep going keeps the workout. A retry of a
   failed Finish does not ask. The menu's Finish is always tappable and explains
@@ -38,7 +41,8 @@ draft-file, outbox or derivation change.
 - Typed weight over 500 kg (1100 lb) and reps outside 1 to 100 are refused in
   the open sheet with an inline message; unparseable text says "Enter a
   number". The reps ruler runs 1 to 100, the lb weight ruler ends at 1100 lb.
-  Duration rulers step 5 s and distance 10 m with no fine zoom (A6).
+  Duration rulers step 5 s and distance 10 m with no fine zoom. Catalog typed
+  entry keeps its exact-evidence rules and gains no new limits (A6).
 - In lb, suggested weights and warm-up ramps round to whole 5 lb (a 135 lb top
   set suggests 140 lb on a compound lift); the exercise editor's start weight
   steps 5 lb. Stored `plate_step_kg` and kg behaviour are unchanged (A7).
