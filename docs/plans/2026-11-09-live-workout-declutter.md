@@ -156,7 +156,31 @@ stays (the toast and History editor use it).
 
 ## Task state
 
-None started.
+- T2 — done on `947cf3c`: `b53f0f6` (read), `9f87b71` (prefill, tests).
+  `readCatalogLoadReference(includeLastSets: true)` returns `lastSets`
+  (`CatalogLastSet`: warm-up flag and verbatim metrics) from the same single
+  scan, for any profile; derivations leave the flag off. Pure
+  `catalogSetDefaults` in `session/catalog_set_defaults.dart`; only `valid`
+  metrics that pass `validate` are copied. Fixed reps (low == high) apply to
+  working sets only; slot targets still reach warm-ups as before, but an
+  invalid slot target now falls through instead of being copied.
+  `buildCatalogBlock(reference:)` prefills and calls the shared
+  `attachCatalogReference` (also used by `buildFromTemplate`, `addCatalogBlock`;
+  T3 should use it in `_changeSetup` before the append, reading with
+  `includeLastSets: true`). `appendCatalogSet` prefills by index among the
+  block's same-kind sets of that context. Draft key `catalogLastSets` (absent
+  reads as empty; refused in unversioned drafts). `resume.dart` fills it, never
+  rewriting sets. `useCatalogValues` left the class; a temporary
+  `UseLastValuesBridge` extension keeps the screen compiling until T3 removes
+  the button and the extension. P7's `hasEdits` already counts
+  `catalogTouched`; no change, now pinned for a prefilled draft.
+  - `make -C app analyze` → No issues found.
+  - `make -C app format` → 0 changed.
+  - `make -C app test TEST='--concurrency=2 test/session test/alkion/domains
+    test/catalog_ui'` → +963 -3; the three are the inherited
+    `catalog_metric_controls_test.dart` cases (`duration_distance_optional`,
+    `reps_distance_optional`, `reps_duration_optional_load` "mounts all
+    required and optional controls unset").
 
 ## Next
 
