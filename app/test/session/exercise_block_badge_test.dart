@@ -90,14 +90,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // Round 2 (A5): the all-done check is one of the live page's four accent
-  // marks; the running count stays neutral.
+  // Round 2 (A5): the all-done badge is one of the live page's four accent
+  // marks, an accent fill with an ink check; the running count stays neutral.
   for (final brightness in Brightness.values) {
     WorkoutTokens tokensFor(Color accent) => brightness == Brightness.dark
         ? WorkoutTokens.dark(accent)
         : WorkoutTokens.light(accent);
 
-    testWidgets('the all-done check uses the accent and the count stays '
+    testWidgets('the all-done badge fills with the accent and the count stays '
         'neutral in ${brightness.name}', (tester) async {
       const exercise = Exercise(
         id: 'e1',
@@ -169,22 +169,21 @@ void main() {
         find.descendant(of: badge, matching: find.byType(AlkionIcon)),
       );
       expect(check.glyph, AlkionGlyph.check);
-      expect(check.color, tokens.accentText);
+      expect(check.color, tokens.accentInk);
       final fill = tester.widget<Container>(badge).decoration! as BoxDecoration;
-      expect(fill.color, tokens.surface2);
+      expect(fill.color, tokens.accent);
     });
 
-    test('every accent check reads at 3:1 on the badge and block in '
+    test('the check reads at 3:1 on every accent fill in '
         '${brightness.name}', () {
+      expect(accents, hasLength(7));
       for (final accent in accents) {
         final t = tokensFor(accent);
-        for (final ground in [t.surface2, t.surface]) {
-          expect(
-            contrastRatio(t.accentText, ground),
-            greaterThanOrEqualTo(3),
-            reason: '$accent on $ground',
-          );
-        }
+        expect(
+          contrastRatio(t.accentInk, t.accent),
+          greaterThanOrEqualTo(3),
+          reason: '${t.accentInk} on $accent',
+        );
       }
     });
   }

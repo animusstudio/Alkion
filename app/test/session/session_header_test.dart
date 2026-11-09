@@ -95,6 +95,19 @@ void main() {
   late int adds, skips, menus, mins;
   setUp(() => adds = skips = menus = mins = 0);
 
+  // The remaining line is painted: read its fraction and fill from the
+  // painter rather than from a laid-out box.
+  final track = find.byKey(const Key('rest-remaining-track'));
+  RemainingLinePainter linePainter(WidgetTester tester) =>
+      tester
+              .widget<CustomPaint>(
+                find.descendant(of: track, matching: find.byType(CustomPaint)),
+              )
+              .painter!
+          as RemainingLinePainter;
+  double fillOf(WidgetTester tester) => linePainter(tester).fraction.value;
+  Color fillColorOf(WidgetTester tester) => linePainter(tester).fill;
+
   Widget header({
     DateTime? restStart,
     int restTotal = 0,
@@ -446,12 +459,8 @@ void main() {
         tester.widget<Text>(find.byKey(const Key('rest-total'))).data,
         endpoint,
       );
-      final track = find.byKey(const Key('rest-remaining-track'));
       expect(tester.getSize(track).height, 2);
-      final fill = tester.widget<FractionallySizedBox>(
-        find.descendant(of: track, matching: find.byType(FractionallySizedBox)),
-      );
-      expect(fill.widthFactor, closeTo(fraction, 0.01));
+      expect(fillOf(tester), closeTo(fraction, 0.01));
       final semantics = tester.widget<Semantics>(
         find.byKey(const Key('rest-remaining-value')),
       );
@@ -472,13 +481,7 @@ void main() {
   ) async {
     await tester.pumpWidget(header());
     expect(find.byKey(const Key('rest-scale')), findsNothing);
-    final fill = tester.widget<FractionallySizedBox>(
-      find.descendant(
-        of: find.byKey(const Key('rest-remaining-track')),
-        matching: find.byType(FractionallySizedBox),
-      ),
-    );
-    expect(fill.widthFactor, closeTo(1 / 14, 0.0001));
+    expect(fillOf(tester), closeTo(1 / 14, 0.0001));
   });
 
   for (final code in const ['en', 'de', 'es', 'it']) {
@@ -630,23 +633,6 @@ void main() {
 
   // ── Fluid rest line (round 2, A4) and the header accents (A5) ────────────
 
-  final track = find.byKey(const Key('rest-remaining-track'));
-  double fillOf(WidgetTester tester) => tester
-      .widget<FractionallySizedBox>(
-        find.descendant(of: track, matching: find.byType(FractionallySizedBox)),
-      )
-      .widthFactor!;
-  Color fillColorOf(WidgetTester tester) => tester
-      .widget<ColoredBox>(
-        find.descendant(
-          of: find.descendant(
-            of: track,
-            matching: find.byType(FractionallySizedBox),
-          ),
-          matching: find.byType(ColoredBox),
-        ),
-      )
-      .color;
   // Every frame callback still registered: a running ticker holds one.
   int frameCallbacks(WidgetTester tester) =>
       tester.binding.transientCallbackCount;
@@ -692,13 +678,24 @@ void main() {
     final clock = tester.widget<Text>(find.byKey(const Key('rest-clock'))).data;
     final first = fillOf(tester);
     expect(frameCallbacks(tester), greaterThan(0));
+    CustomPaint line() => tester.widget<CustomPaint>(
+      find.descendant(of: track, matching: find.byType(CustomPaint)),
+    );
+    final painted = line();
     await tester.pump(const Duration(milliseconds: 250));
     final quarter = fillOf(tester);
+    // A tick repaints the same painter; nothing was rebuilt.
+    expect(line(), same(painted));
     await tester.pump(const Duration(milliseconds: 250));
     final half = fillOf(tester);
     // A quarter second of a 90 s rest each, well inside one second.
     expect(first - quarter, closeTo(0.25 / 90, 0.001));
     expect(quarter - half, closeTo(0.25 / 90, 0.001));
+    // The line sits behind its own repaint boundary.
+    expect(
+      find.descendant(of: track, matching: find.byType(RepaintBoundary)),
+      findsOneWidget,
+    );
     // The countdown text keeps its once-per-second step.
     expect(
       tester.widget<Text>(find.byKey(const Key('rest-clock'))).data,
