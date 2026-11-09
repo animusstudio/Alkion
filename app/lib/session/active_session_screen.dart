@@ -433,6 +433,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       showWToast(
         context,
         l.sessionSetRemoved,
+        // Removal is the more destructive action: a longer Undo window than
+        // the 5 s logged-set toast.
+        duration: const Duration(seconds: 8),
         action: WToastAction(
           label: l.commonUndo,
           onPressed: () => c.restoreSet(b, s, index),
