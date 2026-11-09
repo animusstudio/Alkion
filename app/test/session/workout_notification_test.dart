@@ -18,7 +18,6 @@ void main() {
       now: now,
     );
     expect(p.title, 'Upper A');
-    expect(p.body, 'Workout in progress');
     expect(p.countdown, isFalse);
     expect(p.when, started);
   });
@@ -33,7 +32,6 @@ void main() {
       now: now, // 30s in, 60s remaining
     );
     expect(p.title, 'Upper A');
-    expect(p.body, 'Rest');
     expect(p.countdown, isTrue);
     expect(p.when, restStart.add(const Duration(seconds: 90)));
   });
@@ -49,7 +47,6 @@ void main() {
     );
     expect(p.countdown, isFalse);
     expect(p.when, started);
-    expect(p.body, 'Workout in progress');
   });
 
   test('restRevertAt = restStart + restTotal', () {
@@ -57,6 +54,54 @@ void main() {
       restRevertAt(DateTime(2026, 1, 1, 10, 0, 0), 90),
       DateTime(2026, 1, 1, 10, 1, 30),
     );
+  });
+
+  test('the body names the next exercise, else the given fallback', () {
+    expect(
+      notificationNextBody('en', 'Bench Press', 'Rest'),
+      'Next · Bench Press',
+    );
+    expect(notificationNextBody('it', 'Panca', 'x'), 'Dopo · Panca');
+    expect(
+      notificationNextBody('de', 'Bankdrücken', 'x'),
+      'Als Nächstes · Bankdrücken',
+    );
+    expect(
+      notificationNextBody('es', 'Press banca', 'x'),
+      'Siguiente · Press banca',
+    );
+    expect(notificationNextBody('en', null, 'Upper A'), 'Upper A');
+    expect(notificationNextBody('en', '  ', 'Upper A'), 'Upper A');
+    expect(notificationNextBody('zz', 'Row', 'x'), 'Next · Row');
+  });
+
+  test('rest-end details alert with vibration, no sound, not only once', () {
+    final details = buildRestEndAndroidDetails(
+      startedAt: started,
+      channelName: 'Rest end',
+      channelDescription: 'Synthetic',
+    );
+    expect(details.channelId, AlkionIdentity.restEndChannel);
+    expect(details.channelId, isNot(AlkionIdentity.notificationChannel));
+    expect(details.importance, Importance.high);
+    expect(details.priority, Priority.high);
+    expect(details.playSound, isFalse);
+    expect(details.enableVibration, isTrue);
+    expect(details.onlyAlertOnce, isFalse);
+    expect(details.ongoing, isTrue);
+    expect(details.usesChronometer, isTrue);
+    expect(details.chronometerCountDown, isFalse);
+    expect(details.when, started.millisecondsSinceEpoch);
+    expect(details.actions, isNull);
+    final quiet = buildWorkoutAndroidDetails(
+      countdown: false,
+      when: started,
+      withAction: false,
+      channelName: 'Workout session',
+    );
+    expect(quiet.importance, Importance.low);
+    expect(quiet.onlyAlertOnce, isTrue);
+    expect(quiet.playSound, isFalse);
   });
 
   group('installed plugin v21 method-channel contract', () {
@@ -124,13 +169,17 @@ void main() {
           .setMockMethodCallHandler(channel, null);
       debugDefaultTargetPlatformOverride = null;
     });
-    Future<void> show() => notifier.showFor(
+    Future<void> show({String? next, bool alert = false}) => notifier.showFor(
       name: 'Synthetic',
       startedAt: DateTime.now().subtract(const Duration(minutes: 5)),
       restStart: DateTime.parse(action.restStart!),
       restTotal: 600,
       action: action,
+      nextName: next,
+      alertAtRestEnd: alert,
     );
+    Map<dynamic, dynamic> last(String method) =>
+        calls.lastWhere((c) => c.method == method).arguments as Map;
 
     test(
       'cold response has fenced payload; visible action only; exact schedule and cancel',
@@ -175,10 +224,9 @@ void main() {
         await show();
         expect(notifier.limitation, NotificationLimitation.denied);
         expect(
-          calls
-              .where((c) => c.method == 'requestNotificationsPermission')
-              .length,
-          1,
+          calls.where((c) => c.method == 'requestNotificationsPermission'),
+          isEmpty,
+          reason: 'showFor never prompts; only the first-start explainer does',
         );
         expect(calls.last.method, 'cancel');
       },
@@ -228,5 +276,114 @@ void main() {
         expect(shown['platformSpecifics']['chronometerCountDown'], isFalse);
       },
     );
+
+    test('init creates both channels and uses the monochrome glyph', () async {
+      notifier.locale = 'de';
+      await notifier.init(onResponse: (_) {});
+      final init = last('initialize');
+      expect(init['defaultIcon'], '@drawable/ic_stat_alkion');
+      final channels = {
+        for (final c in calls.where(
+          (c) => c.method == 'createNotificationChannel',
+        ))
+          (c.arguments as Map)['id']: c.arguments as Map,
+      };
+      expect(channels.keys, {
+        AlkionIdentity.notificationChannel,
+        AlkionIdentity.restEndChannel,
+      });
+      final quiet = channels[AlkionIdentity.notificationChannel]!;
+      expect(quiet['importance'], Importance.low.value);
+      expect(quiet['playSound'], isFalse);
+      final alert = channels[AlkionIdentity.restEndChannel]!;
+      expect(alert['importance'], Importance.high.value);
+      expect(alert['playSound'], isFalse);
+      expect(alert['enableVibration'], isTrue);
+      expect(alert['name'], 'Pausenende');
+      expect(alert['description'], isNotEmpty);
+    });
+
+    test(
+      'rest end uses the alert channel only when the screen is not in front',
+      () async {
+        await notifier.init(onResponse: (_) {});
+        await show(next: 'Bench Press', alert: false);
+        var shown = last('show');
+        expect(shown['body'], 'Next · Bench Press');
+        expect(
+          shown['platformSpecifics']['channelId'],
+          AlkionIdentity.notificationChannel,
+        );
+        var scheduled = last('zonedSchedule');
+        expect(
+          scheduled['platformSpecifics']['channelId'],
+          AlkionIdentity.notificationChannel,
+        );
+        expect(scheduled['title'], 'Synthetic');
+        expect(scheduled['body'], 'Workout in progress');
+        expect(scheduled['platformSpecifics']['onlyAlertOnce'], isTrue);
+
+        // The screen closes: the same rest is rescheduled as the alert.
+        await show(next: 'Bench Press', alert: true);
+        expect(calls.where((c) => c.method == 'zonedSchedule').length, 2);
+        scheduled = last('zonedSchedule');
+        final details = scheduled['platformSpecifics'] as Map;
+        expect(details['channelId'], AlkionIdentity.restEndChannel);
+        expect(details['importance'], Importance.high.value);
+        expect(details['playSound'], isFalse);
+        expect(details['enableVibration'], isTrue);
+        expect(details['onlyAlertOnce'], isFalse);
+        expect(details['ongoing'], isTrue);
+        expect(scheduled['id'], 4101);
+        expect(scheduled['title'], 'Rest finished');
+        expect(scheduled['body'], 'Next · Bench Press');
+        expect(scheduled['payload'], action.encode());
+        // The live countdown keeps the quiet channel and its +30s action.
+        shown = last('show');
+        expect(
+          shown['platformSpecifics']['channelId'],
+          AlkionIdentity.notificationChannel,
+        );
+        expect(
+          (shown['platformSpecifics']['actions'] as List).single['id'],
+          AlkionIdentity.addRestAction,
+        );
+
+        // Nothing pending: the alert names the workout.
+        notifier.locale = 'it';
+        await show(alert: true);
+        scheduled = last('zonedSchedule');
+        expect(scheduled['title'], 'Recupero finito');
+        expect(scheduled['body'], 'Synthetic');
+        expect(last('show')['body'], 'Recupero');
+        expect(
+          calls.where((c) => c.method == 'requestNotificationsPermission'),
+          isEmpty,
+        );
+      },
+    );
+
+    test('permission is queried and requested only on demand', () async {
+      expect(
+        await notifier.notificationsEnabled(),
+        isNull,
+        reason: 'not ready',
+      );
+      expect(await notifier.requestPermission(), isFalse);
+      await notifier.init(onResponse: (_) {});
+      enabled = false;
+      expect(await notifier.notificationsEnabled(), isFalse);
+      expect(
+        calls.where((c) => c.method == 'requestNotificationsPermission'),
+        isEmpty,
+      );
+      expect(await notifier.requestPermission(), isTrue);
+      denyRequest = true;
+      expect(await notifier.requestPermission(), isFalse);
+      expect(
+        calls.where((c) => c.method == 'requestNotificationsPermission').length,
+        2,
+      );
+    });
   });
 }

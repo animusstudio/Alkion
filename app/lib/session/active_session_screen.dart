@@ -99,6 +99,14 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       if (!mounted) {
         return;
       }
+      // In the background the scheduled rest-end notification alerts
+      // instead: no haptics here (one buzz, not two), and the rest is left
+      // for the resume reconciliation, so stopping it cannot replace that
+      // alert. Guards consumed here re-arm if the rest is still running.
+      if (!(_manager?.appForeground ?? true)) {
+        _tickHapticFired = _buzzHapticFired = true;
+        return;
+      }
       _handleRestHaptics();
       // Screen-open rest revert: when remaining hits 0 while the screen is
       // open, stop the rest here (the OS alarm covers the backgrounded case;

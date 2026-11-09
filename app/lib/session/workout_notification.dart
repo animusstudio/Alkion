@@ -8,9 +8,25 @@ import 'notification_action.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
-/// Package-scoped notification identifiers for the selected runtime.
+/// Notification identifiers. Keep them stable: Android keys user channel
+/// settings by channel id, and later notification actions build on them.
+///
+/// - Notification id 4101: the single workout notification. The elapsed
+///   mirror, the rest countdown and the scheduled rest-end post all use it,
+///   so each one replaces the previous.
+/// - [AlkionIdentity.notificationChannel] (`<prefix>workout_session`): the
+///   quiet mirror channel, low importance, no sound.
+/// - [AlkionIdentity.restEndChannel] (`<prefix>rest_end`): the rest-end
+///   alert, high importance (heads-up), vibration, no sound. The user tunes
+///   or silences it in Android settings; the app has no switch for it.
+/// - [AlkionIdentity.addRestAction] (`<prefix>add_30s`): the +30s action on
+///   the rest countdown.
 const _kNotifId = 4101;
 final _kChannelId = AlkionIdentity.notificationChannel;
+final _kRestEndChannelId = AlkionIdentity.restEndChannel;
+
+/// The status-bar glyph: a monochrome vector in the Android drawables.
+const kNotificationSmallIcon = '@drawable/ic_stat_alkion';
 
 // Notification body strings keyed by locale. The notification is built with no
 // BuildContext, so
@@ -20,21 +36,41 @@ const _notifStrings = <String, Map<String, String>>{
     'rest': 'Rest',
     'inProgress': 'Workout in progress',
     'channel': 'Workout session',
+    'next': 'Next · {name}',
+    'restEnd': 'Rest finished',
+    'restEndChannel': 'Rest end',
+    'restEndChannelDescription':
+        'Heads-up with vibration when a rest ends while the workout is not on screen.',
   },
   'it': {
     'rest': 'Recupero',
     'inProgress': 'Allenamento in corso',
     'channel': 'Sessione di allenamento',
+    'next': 'Dopo · {name}',
+    'restEnd': 'Recupero finito',
+    'restEndChannel': 'Fine del recupero',
+    'restEndChannelDescription':
+        "Avviso con vibrazione quando un recupero finisce mentre l'allenamento non è sullo schermo.",
   },
   'de': {
     'rest': 'Pause',
     'inProgress': 'Training läuft',
     'channel': 'Trainingssitzung',
+    'next': 'Als Nächstes · {name}',
+    'restEnd': 'Pause vorbei',
+    'restEndChannel': 'Pausenende',
+    'restEndChannelDescription':
+        'Hinweis mit Vibration, wenn eine Pause endet, während das Training nicht angezeigt wird.',
   },
   'es': {
     'rest': 'Descanso',
     'inProgress': 'Entrenamiento en curso',
     'channel': 'Sesión de entrenamiento',
+    'next': 'Siguiente · {name}',
+    'restEnd': 'Descanso terminado',
+    'restEndChannel': 'Fin del descanso',
+    'restEndChannelDescription':
+        'Aviso con vibración cuando termina un descanso y el entrenamiento no está en pantalla.',
   },
 };
 
@@ -46,11 +82,19 @@ String notifString(String? locale, String key) {
   return table[key] ?? _notifStrings['en']![key]!;
 }
 
+/// "Next · name" for the next pending exercise, or [fallback] when nothing
+/// is pending. Names only: no weights or reps, so no unit formatting.
+String notificationNextBody(String? locale, String? nextName, String fallback) {
+  final name = nextName?.trim();
+  if (name == null || name.isEmpty) return fallback;
+  return notifString(locale, 'next').replaceFirst('{name}', name);
+}
+
 /// Pure payload mapping for the ongoing workout notification (testable, no
 /// plugin types). Elapsed mode: `when` = session start, Android chronometer
 /// counts up. Rest mode: `when` = rest END time, chronometer counts down.
-({String title, String body, bool countdown, DateTime when})
-notificationPayloadFor({
+/// The localized bodies are chosen by [WorkoutNotification].
+({String title, bool countdown, DateTime when}) notificationPayloadFor({
   required String sessionName,
   required DateTime startedAt,
   DateTime? restStart,
@@ -60,15 +104,10 @@ notificationPayloadFor({
   if (restStart != null) {
     final end = restStart.add(Duration(seconds: restTotal));
     if (end.isAfter(now)) {
-      return (title: sessionName, body: 'Rest', countdown: true, when: end);
+      return (title: sessionName, countdown: true, when: end);
     }
   }
-  return (
-    title: sessionName,
-    body: 'Workout in progress',
-    countdown: false,
-    when: startedAt,
-  );
+  return (title: sessionName, countdown: false, when: startedAt);
 }
 
 /// Absolute instant the rest countdown ends (used to schedule the OS-alarm
@@ -116,6 +155,34 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
   );
 }
 
+/// The rest-end alert, posted at the end of a rest when the workout screen is
+/// not in front of the user. It replaces the mirror under the same id, so it
+/// stays ongoing and keeps the elapsed chronometer; unlike the mirror it may
+/// alert (no `onlyAlertOnce`), on the high-importance vibrating channel.
+AndroidNotificationDetails buildRestEndAndroidDetails({
+  required DateTime startedAt,
+  required String channelName,
+  String? channelDescription,
+}) {
+  return AndroidNotificationDetails(
+    _kRestEndChannelId,
+    channelName,
+    channelDescription: channelDescription,
+    importance: Importance.high,
+    priority: Priority.high,
+    playSound: false,
+    enableVibration: true,
+    ongoing: true,
+    autoCancel: false,
+    onlyAlertOnce: false,
+    showWhen: true,
+    usesChronometer: true,
+    chronometerCountDown: false,
+    when: startedAt.millisecondsSinceEpoch,
+    category: AndroidNotificationCategory.stopwatch,
+  );
+}
+
 enum NotificationLimitation { denied, unavailable }
 
 /// Android OS mirrors only. No callback opens a profile or writes SQL.
@@ -130,7 +197,7 @@ class WorkoutNotification extends ChangeNotifier {
   final bool _isAndroid;
   bool get supported => _isAndroid;
   String? locale;
-  bool _ready = false, _closed = false, _permissionAsked = false;
+  bool _ready = false, _closed = false;
   String? _lastShown;
   Future<void> _tail = Future.value();
   NotificationLimitation? _limitation;
@@ -148,7 +215,7 @@ class WorkoutNotification extends ChangeNotifier {
     try {
       final initialized = await _plugin.initialize(
         settings: const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          android: AndroidInitializationSettings(kNotificationSmallIcon),
         ),
         onDidReceiveNotificationResponse: onResponse,
       );
@@ -162,6 +229,16 @@ class WorkoutNotification extends ChangeNotifier {
           notifString(locale, 'channel'),
           importance: Importance.low,
           playSound: false,
+        ),
+      );
+      await _android?.createNotificationChannel(
+        AndroidNotificationChannel(
+          _kRestEndChannelId,
+          notifString(locale, 'restEndChannel'),
+          description: notifString(locale, 'restEndChannelDescription'),
+          importance: Importance.high,
+          playSound: false,
+          enableVibration: true,
         ),
       );
       tzdata.initializeTimeZones();
@@ -187,20 +264,45 @@ class WorkoutNotification extends ChangeNotifier {
     return work;
   }
 
+  /// Whether Android currently allows notifications; null when that is
+  /// unknown (not Android, not initialized, closed, or the query failed).
+  Future<bool?> notificationsEnabled() async {
+    if (!_ready || _closed) return null;
+    try {
+      return await _android?.areNotificationsEnabled();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Asks Android for permission to notify (the system prompt on Android 13
+  /// and later). Only the first-start explainer calls this; [showFor] never
+  /// prompts, so the dialog cannot appear mid-workout.
+  Future<bool> requestPermission() async {
+    if (!_ready || _closed) return false;
+    try {
+      return await _android?.requestNotificationsPermission() == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Mirrors the workout. During a rest it counts down and schedules the
+  /// rest-end post: the alert variant ([buildRestEndAndroidDetails]) when
+  /// [alertAtRestEnd], otherwise the quiet elapsed mirror. [nextName] names
+  /// the next pending exercise (null when the plan is done).
   Future<void> showFor({
     required String name,
     required DateTime startedAt,
     DateTime? restStart,
     int restTotal = 0,
     NotificationAction? action,
+    String? nextName,
+    bool alertAtRestEnd = false,
   }) => _serialize(() async {
     if (!_ready || _closed) return;
     try {
-      var enabled = await _android?.areNotificationsEnabled() == true;
-      if (!enabled && !_permissionAsked) {
-        _permissionAsked = true;
-        enabled = await _android?.requestNotificationsPermission() == true;
-      }
+      final enabled = await _android?.areNotificationsEnabled() == true;
       if (!enabled) {
         await _plugin.cancel(id: _kNotifId);
         _lastShown = null;
@@ -215,27 +317,46 @@ class WorkoutNotification extends ChangeNotifier {
         now: DateTime.now(),
       );
       final exact = await _android?.canScheduleExactNotifications() == true;
+      final alert = payload.countdown && alertAtRestEnd;
       final key =
-          '$name|${payload.countdown}|${payload.when.toIso8601String()}|${action?.encode()}|$exact|$locale';
+          '$name|${payload.countdown}|${payload.when.toIso8601String()}|${action?.encode()}|$exact|$locale|$alert|$nextName';
       if (key == _lastShown) return;
       _status(null);
       // Remove a prior alarm as well as its displayed mirror before replacing it.
       await _plugin.cancel(id: _kNotifId);
-      await _show(name, startedAt, payload.countdown, payload.when, action);
+      await _show(
+        name,
+        startedAt,
+        payload.countdown,
+        payload.when,
+        action,
+        nextName,
+      );
       if (payload.countdown) {
         Future<void> schedule(AndroidScheduleMode mode) =>
             _plugin.zonedSchedule(
               id: _kNotifId,
-              title: name,
-              body: notifString(locale, 'inProgress'),
+              title: alert ? notifString(locale, 'restEnd') : name,
+              body: alert
+                  ? notificationNextBody(locale, nextName, name)
+                  : notifString(locale, 'inProgress'),
               scheduledDate: tz.TZDateTime.from(payload.when, tz.UTC),
               notificationDetails: NotificationDetails(
-                android: buildWorkoutAndroidDetails(
-                  countdown: false,
-                  when: startedAt,
-                  withAction: false,
-                  channelName: notifString(locale, 'channel'),
-                ),
+                android: alert
+                    ? buildRestEndAndroidDetails(
+                        startedAt: startedAt,
+                        channelName: notifString(locale, 'restEndChannel'),
+                        channelDescription: notifString(
+                          locale,
+                          'restEndChannelDescription',
+                        ),
+                      )
+                    : buildWorkoutAndroidDetails(
+                        countdown: false,
+                        when: startedAt,
+                        withAction: false,
+                        channelName: notifString(locale, 'channel'),
+                      ),
               ),
               payload: action?.encode(),
               androidScheduleMode: mode,
@@ -257,7 +378,7 @@ class WorkoutNotification extends ChangeNotifier {
       _status(NotificationLimitation.unavailable);
       // A failed alarm must not leave a countdown running below zero forever.
       try {
-        await _show(name, startedAt, false, startedAt, action);
+        await _show(name, startedAt, false, startedAt, action, nextName);
       } catch (_) {}
     }
   });
@@ -268,10 +389,13 @@ class WorkoutNotification extends ChangeNotifier {
     bool countdown,
     DateTime when,
     NotificationAction? action,
+    String? nextName,
   ) => _plugin.show(
     id: _kNotifId,
     title: name,
-    body: notifString(locale, countdown ? 'rest' : 'inProgress'),
+    body: countdown
+        ? notificationNextBody(locale, nextName, notifString(locale, 'rest'))
+        : notifString(locale, 'inProgress'),
     payload: action?.encode(),
     notificationDetails: NotificationDetails(
       android: buildWorkoutAndroidDetails(

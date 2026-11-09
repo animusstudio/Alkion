@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -1268,6 +1269,78 @@ void main() {
         findsOneWidget,
       );
       expect([a.toJson(), b.toJson()], before);
+      await _teardown(tester);
+    },
+  );
+
+  testWidgets(
+    'backgrounded, the open screen leaves the rest end to the notification',
+    (tester) async {
+      final haptics = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method.startsWith('HapticFeedback')) {
+            haptics.add(call.method);
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      final controller = ActiveSessionController();
+      addTearDown(controller.dispose);
+      final a = SetState(
+        id: 'a',
+        weightKg: 60,
+        reps: 8,
+        rir: 1,
+        isWarmup: false,
+        done: false,
+      );
+      controller.seedForTest(
+        _draftWith([
+          _block(warm: [], work: [a]),
+        ]),
+      );
+      await tester.pumpWidget(_harness(controller));
+      await tester.pump();
+      final manager = tester
+          .element(find.byType(ActiveSessionScreen))
+          .read<SessionManager>();
+      expect(manager.screenOpen, isTrue);
+
+      // Phone locked with the screen open: a rest that ends meanwhile neither
+      // buzzes here nor is stopped here, so the scheduled alert stands.
+      manager.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(manager.restEndAlertWanted, isTrue);
+      final start = DateTime.now().subtract(const Duration(seconds: 30));
+      controller.setRestRaw(start, 10);
+      await tester.pump(const Duration(seconds: 2));
+      expect(controller.restStart, start);
+      expect(haptics, isEmpty);
+
+      // Back in front: the over rest is stopped without a late second buzz.
+      manager.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      expect(manager.restEndAlertWanted, isFalse);
+      await tester.pump(const Duration(seconds: 1));
+      expect(controller.restStart, isNull);
+      expect(haptics, isEmpty);
+
+      // In the foreground the screen still marks the end itself.
+      controller.setRestRaw(DateTime.now(), 60);
+      await tester.pump(const Duration(seconds: 1));
+      controller.setRestRaw(
+        DateTime.now().subtract(const Duration(seconds: 30)),
+        10,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(haptics, contains('HapticFeedback.vibrate'));
+      expect(controller.restStart, isNull);
       await _teardown(tester);
     },
   );
