@@ -133,7 +133,41 @@ files are shared.
 
 ## Task state
 
-Implemented 2026-11-09, awaiting review. Code at `17a6eb9`; commits `76ab4fc`
+Review PASS-WITH-FINDINGS; fixes at `8383d29`
+(`fix(app): count catalog PRs per setup in History and keep Recent PRs past a
+corrupt row`). History `pr_count` counts distinct `prUnitSql` units: the
+exercise plus, for a catalog set, the `compatibilityKey` its derived result
+was computed for (read from the result's coverage, so pre-catalog stores need
+no `tracking_context_id` column; legacy sets key by exercise alone, so their
+counts are unchanged). `StatsRepository.recentPrFromRow` decodes each catalog
+row in a try/catch: corrupt bytes read as unavailable (null), other PRs still
+show. `catalogPrSql`, `setPrSql` and `prUnitSql` now live next to
+`legacySetOnlySql` in `catalog_load_history.dart`. `catalog_prs_test.dart` adds:
+plain-SQLite cases for the expressions (catalog result wins, a catalog set with
+no result falls back to its legacy flag, both flags count once, stale set or
+workout revisions do not count); a corrupt Recent PRs row; and a real-store
+test with two setups of one exercise that both PR (live `prCount` 2, History 2,
+Today 3 with the legacy PR), an edit of one PR set to 38 kg (History 1, Today
+2, the old-revision results kept and not counted) and a fixture corruption of
+the remaining catalog PR's bytes (that Recent PRs row unavailable, the legacy
+one still 105 kg). With `s.exercise_id` restored as the unit, the setups test
+fails (1 instead of 2).
+
+Fix checks at `8383d29`: `make -C app analyze` → No issues found;
+`make -C app format` → 0 changed; `make -C app test TEST='--concurrency=2
+test/data/catalog_prs_test.dart'` → +4 all pass; focused P4 + l10n + History
+(`test/ui/targets_tab_test.dart test/ui/progress_screen_target_test.dart
+test/ui/progress_change_test.dart test/session/controller_live_set_test.dart
+test/session/finish_workout_test.dart test/data test/l10n
+test/ui/today_stat_tiles_test.dart test/ui/progress_unavailable_test.dart
+test/ui/exercise_editor_muscle_test.dart test/ui/history_layout_test.dart
+test/ui/history_session_card_test.dart
+test/alkion/workflows/history_numeric_evidence_test.dart
+test/alkion/workflows/history_extreme_shell_test.dart
+test/alkion/workflows/weekly_volume_evidence_test.dart`) → +408 all pass. The
+full suite was not rerun for the fix.
+
+Implemented 2026-11-09. Code at `17a6eb9`; commits `76ab4fc`
 (T3), `52f5a75` (T4 and A9), `439d69f` (T5 strings), `9b13581` (T1),
 `a363fc7` and `9db1986` (T2), `17a6eb9` (a test pinning the old forearms
 label). Device check open.

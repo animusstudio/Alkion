@@ -26,7 +26,10 @@ Implements the approved [honest numbers and PRs plan](../plans/2026-11-08-honest
   count now agree with finish, the summary and History (A6).
 - Stored catalog PRs (existing derived results, read only) count in History
   (tile, week header, card badge, row glyph), Today's PRs tile and Recent PRs;
-  legacy PRs still count once (A7).
+  legacy PRs still count once. History counts a catalog PR once per setup,
+  so two setups of one exercise that both PR count twice, as Today and the
+  live count do. A catalog set whose bytes cannot be read shows its Recent
+  PR values as unavailable without hiding the others (A7).
 - Catalog Progress distinguishes never logged, unsupported and a load error
   with Retry (A8). An unused stats stream was removed (A9).
 - No stored data, schema, derivation or `derived_results` row changes.
