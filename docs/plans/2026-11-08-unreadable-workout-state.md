@@ -217,11 +217,14 @@ after T1 passes review.
   notifier with `acknowledgeWorkflowNotices`, the `KeptDataNotice` overlay
   (built only while no storage error holds the top slot), the read-only
   "Kept workout data" Backup section and the D7/D8 strings in en, it, de and
-  es. Deviation: a read-only pre-check with the shared classifiers runs first,
-  so `PackageInfo` is read only when there is damage; a clean launch still
-  calls no plugin channel (`test/animus/runtime_test.dart` and the acceptance
-  `PluginTrap` checks). Tests: `unreadable_state_launch_test.dart` (real
-  `AlkionRuntime.open` and the real app) and `test/layout/kept_data_layout_test.dart`.
+  es. A follow-up commit makes one coordinator-authorized change to the T1 API:
+  `quarantineUnreadableWorkflowState` takes `decoder` as
+  `Future<DecoderInfo> Function()?`, called only after damage is found and
+  before the write transaction. `main.dart` passes a closure that reads
+  `PackageInfo` (falling back to `unknown`), so a clean launch calls no plugin
+  channel. Tests: `unreadable_state_launch_test.dart` (real
+  `AlkionRuntime.open` and the real app), `test/layout/kept_data_layout_test.dart`,
+  and decoder-call counts in `workflow_state_quarantine_test.dart`.
 - T3 — not started.
 
 ## Next

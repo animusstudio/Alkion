@@ -160,12 +160,7 @@ class AlkionRuntime with WidgetsBindingObserver {
       // Before any controller, autosave or notification owns the rows: copy
       // unreadable saved workout state into reviews and retire it, so it can
       // neither lock launch nor be overwritten. Storage failures propagate.
-      if (await _workflowStateDamaged(store)) {
-        await quarantineUnreadableWorkflowState(
-          store,
-          decoder: await _decoderInfo(),
-        );
-      }
+      await quarantineUnreadableWorkflowState(store, decoder: _decoderInfo);
       final drafts = DraftStore.local(store);
       final sessions = SessionManager(
         draftStore: drafts,
@@ -393,31 +388,9 @@ class AlkionRuntime with WidgetsBindingObserver {
   }
 }
 
-/// Whether the launch quarantine has anything to keep: the same rows and
-/// shared classifiers it reads, in one read transaction. A clean launch then
-/// neither calls the quarantine nor asks the platform for the app version.
-Future<bool> _workflowStateDamaged(LocalStore store) => store.readTransaction((
-  tx,
-) async {
-  final draft = await tx.localState(LocalStateKind.draft, 'active');
-  if (draft != null && draft['status'] == 'active') {
-    final read = classifyDraftPayload(draft['payload_bytes']);
-    final timer = read.damage == null
-        ? await tx.localState(LocalStateKind.timer, 'active')
-        : null;
-    if (read.damage != null ||
-        classifyTimerRow(timer, read.value!.draftId) != null) {
-      return true;
-    }
-  }
-  final finished = await tx.localState(LocalStateKind.finishedRecovery, 'last');
-  return finished != null &&
-      finished['status'] == 'active' &&
-      classifyFinishedPayload(finished['payload_bytes']).damage != null;
-}, expected: store.token);
-
 /// The running build for the quarantine's decoder record. A version that
 /// cannot be read is recorded as `unknown`; it never fails the quarantine.
+/// Only called once damage is found, so a clean launch calls no plugin.
 Future<DecoderInfo> _decoderInfo() async {
   try {
     final info = await PackageInfo.fromPlatform();

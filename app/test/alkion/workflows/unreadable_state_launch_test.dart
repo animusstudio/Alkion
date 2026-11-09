@@ -67,15 +67,22 @@ void main() {
   late Directory temp;
   late Directory root;
   final versionCalls = <String>[];
+  // PackageInfo caches only a successful read, so the call-counting tests
+  // below (declared first) refuse it and are never masked by a cached value.
+  var versionAvailable = true;
   final opened = <AlkionRuntime>[];
 
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('alkion-workflow-unreadable-');
     root = Directory('${temp.path}/${AlkionIdentity.applicationId}');
     versionCalls.clear();
+    versionAvailable = true;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_packageInfo, (call) async {
           versionCalls.add(call.method);
+          if (!versionAvailable) {
+            throw PlatformException(code: 'synthetic_unavailable');
+          }
           return <String, dynamic>{
             'appName': 'Alkion Dev',
             'packageName': 'dev.animusstudio.alkion.dev',
@@ -124,6 +131,7 @@ void main() {
   }
 
   test('a clean launch quarantines nothing and asks for no version', () async {
+    versionAvailable = false;
     await seedStore((store) async {
       await _seedDraft(store, localBytes(_draftJson));
       await _seedFinished(store, localBytes(_finished()));
@@ -135,6 +143,30 @@ void main() {
     expect(runtime.workflowNotices.value, isEmpty);
     expect(versionCalls, isEmpty);
   });
+
+  test(
+    'a damaged launch asks for the version once and records unknown when unavailable',
+    () async {
+      versionAvailable = false;
+      await seedStore((store) async {
+        await _seedDraft(store, _text('not json'));
+        await _seedFinished(store, _text('not json'));
+      });
+      final runtime = await open();
+      expect(versionCalls, hasLength(1));
+      final kept = await reviews(runtime.store);
+      expect(kept, hasLength(2));
+      for (final review in kept) {
+        final decoder = evidence(review)['decoder'] as Map;
+        expect(decoder['app_version'], 'unknown');
+        expect(decoder['build_number'], 'unknown');
+      }
+      await close(runtime);
+      // A relaunch finds nothing left to keep and asks for nothing.
+      await close(await open());
+      expect(versionCalls, hasLength(1));
+    },
+  );
 
   group('A1 a malformed draft opens without the workout', () {
     final cases = <String, (Object, String)>{
