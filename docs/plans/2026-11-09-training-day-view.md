@@ -200,7 +200,7 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
     - the empty-day skeleton
     - an exercise rename not refreshing a mounted view (not reachable through navigation)
 
-- **T3 Navigation: done** in a separate worktree branch (pending review). Code `3e7c6c2` and
+- **T3 Navigation: done, review PASS** (Sonnet `high`); eyebrow fix `704c13b` re-check PASS. Code `3e7c6c2` and
   tests `508987e` are merged as `935ce9f`. A card tap opens the view; the menu's Edit and New
   day open the editor. Every mode change builds a fresh `_EditorRoute` and guard. Back from
   edit returns to the view; Save returns to the view. The header title is `planTabSplit`.
@@ -209,6 +209,17 @@ the agreed signature `DayView({id, onEdit, onClose, onStart})`; T4 (ARBs) last.
   - Coordinator, after the merge at `935ce9f`: `make -C app test TEST='--concurrency=2 test/ui
     test/shell test/layout test/data/planned_workload_test.dart test/l10n'` → +754 all passed;
     analyze → no issues.
+
+- T3 review minors:
+  - (2) The delete test called `onClose` by hand. Coordinator fix `83278713` makes the view close
+    itself; `plan_discard_test.dart` → +27 pass, analyze clean.
+  - PR follow-ups:
+    - (1) A test that taps Start in the view and expects `onStartDay` once.
+    - (3) System Back in view mode, and `requestClose` after Discard reaching the list.
+    - (4) A one-frame view flash after Delete.
+    - (5) Start from the view lands on Today. This is existing `_start` behaviour, and Plan
+      still holds the view.
+    - The "Weekday unavailable" chip ellipsizes at 320 dp and 2x.
 
 ## Next
 
