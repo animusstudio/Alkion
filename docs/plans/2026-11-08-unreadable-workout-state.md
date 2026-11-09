@@ -195,7 +195,7 @@ after T1 passes review.
 
 ## Task state
 
-- T1 — done, awaiting review. `555e7ea` adds
+- T1 — done, reviewed (PASS with findings; fixes `3b88197` re-checked PASS). `555e7ea` adds
   `lib/data/workflow_state_quarantine.dart` (shared classifiers, the
   quarantine with its checkpoints, `DecoderInfo` and
   `WorkflowStateQuarantine` for notices and kept reviews),
