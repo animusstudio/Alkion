@@ -495,6 +495,7 @@ class _DayEditorState extends State<DayEditor> {
       }
       await recovery?.recover();
       await repository.commitPrepared(_pendingSave!);
+      _saved = true;
       if (mounted) widget.onBack();
     } catch (e, st) {
       // Surface the failure instead of silently leaving the button disabled.
@@ -507,7 +508,10 @@ class _DayEditorState extends State<DayEditor> {
 
   /// A Save failed and its prepared write is still owed: the fields stay
   /// locked so Retry save commits exactly that write, once.
-  bool get _saveFailed => _pendingSave != null && !_saving;
+  bool get _saveFailed => _pendingSave != null && !_saving && !_saved;
+
+  /// The Save landed; the editor is closing (it may still fade out).
+  bool _saved = false;
 
   /// Leaves after a failed Save without writing. The prepared write was
   /// never registered as owed, so it is dropped; if its COMMIT did land, a
