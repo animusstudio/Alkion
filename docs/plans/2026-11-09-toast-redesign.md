@@ -96,7 +96,7 @@ Implementers Opus `high`, reviewers Sonnet `high`. T1 then T2 (T2's sweep needs 
 | Task | Owns | Acceptance | Class |
 | --- | --- | --- | --- |
 | T1 Look and dismissal | `theme/app_theme.dart` (`snackBarTheme` and the inverse palette only), `widgets/w_toast.dart`, `test/widgets/w_toast_test.dart`, `test/theme/snack_bar_theme_test.dart`, `test/shell/toast_clearance_test.dart` | A1, A2, A3, A5, A7 | UI |
-| T2 Placement and sweep | new `test/widgets/w_toast_log_bar_test.dart` (a Scaffold with a real `LogSetBar` as `bottomNavigationBar`), new `test/widgets/raw_snackbar_source_test.dart` (no `lib` SnackBar sets `backgroundColor`), and only if a danger-fill site is left after P5 and P7, that one line | A4, A6 | UI |
+| T2 Placement, sweep and motion | new `test/widgets/w_toast_log_bar_test.dart` (a Scaffold with a real `LogSetBar` as `bottomNavigationBar`); **every** remaining `lib` `showSnackBar` call converted to `showWToast` (call lines only, on the integrated audit branch); `snackBarAnimationStyle: Motion.sheet(context)` in `showWToast`, with the previous toast removed first if the style changed; new `test/widgets/raw_snackbar_source_test.dart` (no `lib` file but `w_toast.dart` calls `showSnackBar`) | A4, A5 (motion), A6 | UI |
 
 Regions: `app_theme.dart` is edited only in the `snackBarTheme` block and the `inverse`
 local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:` is additive.
@@ -144,6 +144,13 @@ local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:`
   → 0 changed. With the style in place the raw-then-toast test fails; without it a
   reduced-motion show/hide test fails (kept out of the commit).
 
+- **Coordinator decision (2026-11-09):** T2 takes the reduced-motion part of A5. Each
+  `showSnackBar` call passing a different animation style replaces the messenger's shared
+  controller, so motion is only safe once one helper owns every call. T2 converts all
+  remaining raw sites, which makes the style uniform, and removes the current toast before
+  showing one with a changed style (a reduced-motion toggle). T1 is otherwise complete,
+  pending review.
+
 ## Next
 
-Owner approval, then T1 after P1, P5 and P7 merge.
+T1 review; T2 on top of the integrated audit branch (P5 and P7 merged).
