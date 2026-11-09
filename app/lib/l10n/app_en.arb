@@ -274,6 +274,7 @@
   "sessionMinimize": "Minimize",
   "sessionWeight": "Weight",
   "sessionReps": "Reps",
+  "sessionRepsUnit": "reps",
   "sessionReorderExercises": "Reorder exercises",
   "sessionSearchExercises": "Search exercises…",
   "sessionNoExercisesFound": "No exercises found",

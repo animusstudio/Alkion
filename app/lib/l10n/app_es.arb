@@ -132,6 +132,7 @@
   "sessionMinimize": "Minimizar",
   "sessionWeight": "Peso",
   "sessionReps": "Repeticiones",
+  "sessionRepsUnit": "rep.",
   "sessionReorderExercises": "Reordenar ejercicios",
   "sessionSearchExercises": "Buscar ejercicios…",
   "sessionNoExercisesFound": "No se encontraron ejercicios",
