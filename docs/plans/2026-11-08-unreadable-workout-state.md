@@ -1,8 +1,7 @@
 # Unreadable workout state at launch
 
 Date: 2026-11-08, revised 2026-11-09 after design review. Lane: **Full**.
-Status: **Proposed**, design-reviewed with findings, now revised. It needs a
-re-review before implementation.
+Status: **Approved** by the owner on 2026-11-09, with the D7/D8 copy (OG2).
 Parent: [development](../alkion/development.md).
 Specification: [unreadable workout state](../specs/2026-11-08-unreadable-workout-state.md).
 Baseline: `458aac6`. Branch: `feat/unreadable-workout-state-20261108`.
@@ -40,8 +39,8 @@ decisions D1–D11 and the acceptance A1–A17.
 
 - **OG1:** confirmed 2026-11-09. Quarantine, not repair, for missing or
   mismatched timer evidence. Set aside an unreadable draft and record why.
-- **OG2:** approve the notice copy (three variants) and the Backup-section
-  copy (spec D7, D8) in English. The translations follow.
+- **OG2:** approved 2026-11-09: the notice copy (three variants) and the
+  Backup-section copy (spec D7, D8) in English. The translations follow.
 - **OG3 (device):** a regression check only, on the owner's phone with the
   private Dev APK: a normal resume, a finish and History undo, and no notice
   on a clean profile.
@@ -202,5 +201,4 @@ after T1 passes review.
 
 ## Next
 
-Re-review of the revised spec and plan, then the OG2 copy answer. T1 can
-start at once. T2 waits for P2.
+T1 starts now. T2 and T3 run in parallel after T1 passes review.

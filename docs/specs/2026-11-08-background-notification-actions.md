@@ -1,6 +1,6 @@
 # Background notification actions: +30s and Skip rest
 
-Date: 2026-11-08, revised 2026-11-09 after design review. Status: **Proposed**.
+Date: 2026-11-08, revised 2026-11-09 after design review. Status: **Approved** by the owner on 2026-11-09.
 Lane: **Full — background intent, timer evidence, native boundary.**
 Parent: [development](../alkion/development.md).
 Implementation: [plan](../plans/2026-11-08-background-notification-actions.md).
