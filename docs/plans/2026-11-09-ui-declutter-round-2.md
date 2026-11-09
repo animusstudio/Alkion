@@ -184,6 +184,10 @@ device measurement and needs the coordinator's phone access, so the coordinator 
       +30s, units) predate this plan.
     - The m2 re-anchor has no test, because the fake clock never lags.
 
+- **Integrated at `d2335d8`** (T1–T5): `make -C app test TEST=--concurrency=2` → +3567 ~3 −3.
+  The only failures are the three inherited `catalog_metric_controls_test.dart` ones. Analyze is
+  clean, and `format` reports 0 changed.
+
 ## Next
 
 T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
