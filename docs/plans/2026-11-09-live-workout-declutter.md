@@ -246,6 +246,23 @@ stays (the toast and History editor use it).
     ge|speichert"). The toast is outside T3, so the new test checks only the header and the
     bar.
 
+- **T1 review PASS** (Sonnet `high`; focused reruns +76 pass).
+  - **Coordinator fix `d528404f`.** A pending line no longer shows a different variant: the owner
+    wants pending sets blank. The variant shows on the live card and on the logged line. Also
+    corrects the stale `RirPicker.onClear` doc.
+  - **Checks:** `test/session test/widgets test/ui/training_prescriptions_test.dart
+    test/catalog_ui test/alkion` → +1837 −3 (the three inherited failures); analyze clean.
+  - **PR follow-ups:**
+    - Tapping the already-chosen RIR chip in the strip clears it, with no hint beyond
+      "selected".
+    - No 320 dp test for the summary's typed row.
+- **T2 fix re-check:** minors only.
+  - The decode guard covers non-load profiles. For load-progression profiles,
+    `catalogLoadObservations` still decodes unguarded, as at baseline. This is a follow-up,
+    because guarding it changes derivation reads.
+  - `catch (_)` is broad.
+  - A skipped row shifts the same-numbered index.
+
 ## Next
 
 Owner approval, then T1 and T2 after the toast plan and the audit-batch plans merge.
