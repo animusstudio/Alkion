@@ -836,9 +836,118 @@
   "alkionRestoreWorkoutActiveTitle": "Workout in progress",
   "alkionRestoreWorkoutActive": "Finish or discard your workout first, then restore.",
   "alkionRestoreHistory": "Restores",
+  "alkionRestoreHistoryRow": "Restored {date}",
+  "@alkionRestoreHistoryRow": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "alkionRestoreReviewsSection": "Work newer than a restored backup",
   "alkionRestoreNoReviews": "Nothing to review",
-  "alkionRestoreKeep": "Keep as evidence",
+  "alkionRestoreKeepAll": "Keep all as evidence",
+  "alkionRestoreKeepAllTitle": "Keep all as evidence?",
+  "alkionRestoreKeepAllMessage": "Every listed item is marked as kept. Nothing is replayed, changed or deleted, and the evidence stays exactly as it is.",
+  "alkionRestoreKeepAllConfirm": "Keep all",
+  "alkionRestoreTechnicalShow": "Show technical details",
+  "alkionRestoreTechnicalHide": "Hide technical details",
+  "alkionReviewNewer": "Newer than this backup: {things}",
+  "@alkionReviewNewer": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewChanged": "Changed since this backup: {things}",
+  "@alkionReviewChanged": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewRemoved": "Removed after this backup: {things}",
+  "@alkionReviewRemoved": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewOther": "Other differences: {things}",
+  "@alkionReviewOther": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewSets": "{count, plural, =1{1 set} other{{count} sets}}",
+  "@alkionReviewSets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewWorkouts": "{count, plural, =1{1 workout} other{{count} workouts}}",
+  "@alkionReviewWorkouts": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewExercises": "{count, plural, =1{1 exercise} other{{count} exercises}}",
+  "@alkionReviewExercises": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewTrainingDays": "{count, plural, =1{1 training day} other{{count} training days}}",
+  "@alkionReviewTrainingDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewPlannedExercises": "{count, plural, =1{1 planned exercise} other{{count} planned exercises}}",
+  "@alkionReviewPlannedExercises": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewBodyweight": "{count, plural, =1{1 bodyweight entry} other{{count} bodyweight entries}}",
+  "@alkionReviewBodyweight": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewMuscleTargets": "{count, plural, =1{1 muscle target} other{{count} muscle targets}}",
+  "@alkionReviewMuscleTargets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewRecords": "{count, plural, =1{1 internal record} other{{count} internal records}}",
+  "@alkionReviewRecords": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "alkionRestoreDoneTitle": "Restore selected",
   "alkionRestoreDoneBody": "The backup is now the selected local state. The previous state is preserved and fenced; newer work is listed for review. Reopen Alkion to continue.",
   "alkionRestoreReopen": "Reopen Alkion",

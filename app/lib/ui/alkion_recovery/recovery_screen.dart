@@ -37,7 +37,8 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
   late final DocumentAccess? _documents =
       widget.documents ?? platformDocumentAccess();
   List<Map<String, Object?>> _history = const [];
-  List<Map<String, Object?>> _pending = const [];
+  List<PendingReviewGroup> _reviews = const [];
+  bool _technical = false;
   DocumentFile? _selected;
 
   RecoveryHost? get _host => context.read<RecoveryHost?>();
@@ -58,11 +59,11 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     final reviews = RestoreReviews(context.read<LocalDatabase>());
     try {
       final history = await reviews.history();
-      final pending = await reviews.pending();
+      final pending = await reviews.pendingSummary();
       if (!mounted) return;
       setState(() {
         _history = history;
-        _pending = pending;
+        _reviews = pending;
       });
     } on StoreException {
       // A closed or fenced store (for example during restore) shows nothing.
@@ -227,9 +228,18 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
     });
   }
 
-  Future<void> _keep(String reviewId) => _run(
-    (host, l) => RestoreReviews(context.read<LocalDatabase>()).keep(reviewId),
-  );
+  /// One explicit decision for every undecided newer-work review, after a
+  /// confirmation. Nothing is replayed or deleted.
+  Future<void> _keepAll() => _run((host, l) async {
+    final confirmed = await showWConfirm(
+      context,
+      title: l.alkionRestoreKeepAllTitle,
+      message: l.alkionRestoreKeepAllMessage,
+      confirmLabel: l.alkionRestoreKeepAllConfirm,
+    );
+    if (confirmed != true || !mounted) return;
+    await RestoreReviews(context.read<LocalDatabase>()).keepAll();
+  }, flush: false);
 
   @override
   Widget build(BuildContext context) {
@@ -383,48 +393,76 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
                         header(l.alkionRestoreHistory),
                         for (final h in _history)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: metadata(
-                              '${h['restore_id']} · ${h['from_generation']} → ${h['to_generation']} · ${h['created_at']}',
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: line(
+                              l.alkionRestoreHistoryRow(
+                                fmtRecoveryInstant(
+                                  '${h['created_at']}',
+                                  l.localeName,
+                                ),
+                              ),
                             ),
                           ),
                       ],
                       header(l.alkionRestoreReviewsSection),
-                      if (_pending.isEmpty) line(l.alkionRestoreNoReviews),
-                      for (final r in _pending)
-                        ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 8,
-                          ),
-                          title: Text(
-                            (r['evidence'] as Map)['disposition'] ==
-                                    unknownNewerWork
-                                ? l.alkionRestoreUnknownNewerWork
-                                : '${(r['evidence'] as Map)['table']} · ${(r['evidence'] as Map)['disposition']}',
-                            style: WorkoutType.body(
-                              size: 14,
-                              color: tokens.text,
+                      if (_reviews.isEmpty)
+                        line(l.alkionRestoreNoReviews)
+                      else ...[
+                        for (final group in reviewGroupLabels(l, _reviews))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              group,
+                              style: WorkoutType.body(
+                                size: 14,
+                                color: tokens.text,
+                              ),
                             ),
                           ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              metadata(
-                                ((r['evidence'] as Map)['key'] as List).join(
-                                  ' · ',
-                                ),
-                              ),
-                              actions([
-                                TextButton(
-                                  onPressed: enabled
-                                      ? () => _keep(r['review_id'] as String)
-                                      : null,
-                                  child: Text(l.alkionRestoreKeep),
-                                ),
-                              ]),
-                            ],
+                        const SizedBox(height: 8),
+                        actions([
+                          OutlinedButton(
+                            key: const Key('restore-keep-all'),
+                            onPressed: enabled ? _keepAll : null,
+                            child: Text(l.alkionRestoreKeepAll),
+                          ),
+                        ]),
+                      ],
+                      if (_history.isNotEmpty || _reviews.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton(
+                            key: const Key('restore-technical'),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(48, 48),
+                            ),
+                            onPressed: () =>
+                                setState(() => _technical = !_technical),
+                            child: Text(
+                              _technical
+                                  ? l.alkionRestoreTechnicalHide
+                                  : l.alkionRestoreTechnicalShow,
+                            ),
                           ),
                         ),
+                        if (_technical) ...[
+                          for (final h in _history)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: metadata(
+                                '${h['restore_id']} · ${h['from_generation']} → ${h['to_generation']} · ${h['created_at']}',
+                              ),
+                            ),
+                          for (final group in _reviews)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: metadata(
+                                '${group.table ?? '—'} · ${group.disposition} · ${group.count}',
+                              ),
+                            ),
+                        ],
+                      ],
                     ],
                   ),
                 ),
@@ -435,4 +473,81 @@ class _AlkionRecoveryScreenState extends State<AlkionRecoveryScreen> {
       ),
     );
   }
+}
+
+/// What a newer-work review row is about, as the user names it.
+enum _ReviewKind {
+  sets,
+  workouts,
+  exercises,
+  trainingDays,
+  plannedExercises,
+  bodyweight,
+  muscleTargets,
+  records,
+}
+
+_ReviewKind _kindOf(String? table) => switch (table) {
+  'sets' => _ReviewKind.sets,
+  'sessions' => _ReviewKind.workouts,
+  'exercises' => _ReviewKind.exercises,
+  'day_templates' => _ReviewKind.trainingDays,
+  'day_template_items' => _ReviewKind.plannedExercises,
+  'bodyweight_logs' => _ReviewKind.bodyweight,
+  'muscle_targets' => _ReviewKind.muscleTargets,
+  _ => _ReviewKind.records,
+};
+
+String _things(AppLocalizations l, _ReviewKind kind, int count) =>
+    switch (kind) {
+      _ReviewKind.sets => l.alkionReviewSets(count),
+      _ReviewKind.workouts => l.alkionReviewWorkouts(count),
+      _ReviewKind.exercises => l.alkionReviewExercises(count),
+      _ReviewKind.trainingDays => l.alkionReviewTrainingDays(count),
+      _ReviewKind.plannedExercises => l.alkionReviewPlannedExercises(count),
+      _ReviewKind.bodyweight => l.alkionReviewBodyweight(count),
+      _ReviewKind.muscleTargets => l.alkionReviewMuscleTargets(count),
+      _ReviewKind.records => l.alkionReviewRecords(count),
+    };
+
+/// One localized line per kind and disposition of undecided newer work, for
+/// example "Newer than this backup: 12 sets". Internal tables share one
+/// "internal records" kind; table names and keys stay under the technical
+/// details. The unknown-loss review keeps its own sentence.
+@visibleForTesting
+List<String> reviewGroupLabels(
+  AppLocalizations l,
+  List<PendingReviewGroup> groups,
+) {
+  final counts = <(_ReviewKind, String), int>{};
+  var unknown = false;
+  for (final group in groups) {
+    if (group.disposition == unknownNewerWork) {
+      unknown = true;
+      continue;
+    }
+    final key = (_kindOf(group.table), group.disposition);
+    counts[key] = (counts[key] ?? 0) + group.count;
+  }
+  int rank(String disposition) => switch (disposition) {
+    'newer_than_backup' => 0,
+    'changed_since_backup' => 1,
+    'absent_from_previous' => 2,
+    _ => 3,
+  };
+  final keys = counts.keys.toList()
+    ..sort((a, b) {
+      final byDisposition = rank(a.$2).compareTo(rank(b.$2));
+      return byDisposition != 0 ? byDisposition : a.$1.index - b.$1.index;
+    });
+  return [
+    if (unknown) l.alkionRestoreUnknownNewerWork,
+    for (final key in keys)
+      switch (key.$2) {
+        'newer_than_backup' => l.alkionReviewNewer,
+        'changed_since_backup' => l.alkionReviewChanged,
+        'absent_from_previous' => l.alkionReviewRemoved,
+        _ => l.alkionReviewOther,
+      }(_things(l, key.$1, counts[key]!)),
+  ];
 }

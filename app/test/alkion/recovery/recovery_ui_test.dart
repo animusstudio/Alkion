@@ -79,6 +79,15 @@ Future<void> _tapDialogAction(WidgetTester tester, String label) async {
   await tester.tap(action);
 }
 
+Future<void> _keepAll(WidgetTester tester) async {
+  final button = find.byKey(const Key('restore-keep-all'));
+  await tester.ensureVisible(button);
+  await tester.pump();
+  await press(tester, button);
+  await settleUntil(tester, find.text('Keep all as evidence?'));
+  await _tapDialogAction(tester, 'Keep all');
+}
+
 void main() {
   testWidgets(
     'phone backup saves and fully checks a provider copy; cancelled/changed copies retain local backup and profile',
@@ -200,7 +209,13 @@ void main() {
             extra: [Provider<RecoveryHost?>.value(value: host)],
           ),
         );
-        await settleUntil(tester, find.text('operations · newer_than_backup'));
+        await settleUntil(
+          tester,
+          find.text('Newer than this backup: 1 internal record'),
+        );
+        // No table names, dispositions or keys on the surface.
+        expect(find.textContaining('op-after-backup'), findsNothing);
+        expect(find.textContaining('newer_than_backup'), findsNothing);
         await press(tester, find.byKey(const Key('backup-create')));
         await dismissDialog(tester, find.text('Backup saved and verified'));
         final published = out
@@ -239,9 +254,7 @@ void main() {
           tester,
           find.textContaining('This data is damaged or in a format'),
         );
-        await tester.ensureVisible(find.text('Keep as evidence'));
-        await tester.pump();
-        await press(tester, find.text('Keep as evidence'));
+        await _keepAll(tester);
         await settleUntil(tester, find.text('Nothing to review'));
         expect(tester.takeException(), isNull);
         await h.unmount(tester);
@@ -292,7 +305,7 @@ void main() {
         );
         await settleUntil(tester, find.textContaining('Newer work unknown'));
         expect(await gate(), 'blocked');
-        await press(tester, find.text('Keep as evidence'));
+        await _keepAll(tester);
         await settleUntil(tester, find.text('Nothing to review'));
         expect(await gate(), 'no_restore_review_blocking');
         await h.unmount(tester);

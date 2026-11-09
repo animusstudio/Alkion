@@ -136,6 +136,18 @@ reviews, records an explicit `kept_as_evidence` decision and reports a
 is undecided (that milestone predates the optional manual sender). Repeating a restore carries lineage
 and creates no duplicate operations or records.
 
+The Backup & restore screen shows undecided reviews as counts per kind and
+disposition (`pendingSummary`, over all of them), for example "Newer than this
+backup: 12 sets"; internal tables share one "internal records" kind and the
+unknown-loss review keeps its own sentence. Table names, dispositions, restore
+IDs and generations appear only under *Show technical details*; review keys are
+not shown. *Keep all as evidence* asks for confirmation, then `keepAll` writes
+the same `alkion-restore-decision/1` / `kept_as_evidence` decision row for every
+undecided `restore_newer_work` review in one write transaction. Reviews of any
+other category and reviews already decided are skipped, so a repeat writes
+nothing; review evidence rows are never changed, and nothing is replayed or
+deleted.
+
 ### Fencing
 
 * The previous generation's metadata is fenced (`write_state='fenced'`,
