@@ -182,6 +182,23 @@ stays (the toast and History editor use it).
     `reps_distance_optional`, `reps_duration_optional_load` "mounts all
     required and optional controls unset").
 
+- **T2 review PASS** (Sonnet `high`). The prefill stays standard lane: a logged prefilled set
+  stores the same bytes as typing, with no schema, outbox, derivation or backup change.
+  - **Coordinator fix `04e6c50f`:**
+    - (1) An unreadable history row is skipped instead of failing the workout start, with a
+      new unit test.
+    - **Coordinator decision:** slot-fixed values (targets, fixed reps) apply to **working sets
+      only**. A warm-up takes its own last-session warm-up, then nothing. This keeps U4's
+      Fixed load out of warm-ups, the same rule as the top set.
+  - **Checks:** `test/session test/alkion/domains test/catalog_ui` → +964 −3 (the three
+    inherited `catalog_metric_controls_test.dart` failures); analyze clean.
+  - **Note for T3:** `_changeSetup` must read with `includeLastSets: true` and call
+    `attachCatalogReference` before `appendCatalogSet`, then delete `UseLastValuesBridge` and
+    the `catalogUseLast` button.
+  - **PR follow-ups:**
+    - The restart test cannot tell the same-numbered rule from the top-set rule.
+    - No test covers two contexts in one block.
+
 ## Next
 
 Owner approval, then T1 and T2 after the toast plan and the audit-batch plans merge.
