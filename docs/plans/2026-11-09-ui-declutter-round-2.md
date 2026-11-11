@@ -193,6 +193,24 @@ device measurement and needs the coordinator's phone access, so the coordinator 
   the A024 with `adb install -r` → Success at 21:47:52. The owner's device check of T1–T5
   is pending, and T6 waits on the owner's choice of auto-rotation behaviour.
 
+- **T6 3D performance: done, review PASS** (Sonnet `high`). Code `da29768` and `ba37ed1`, docs
+  `a913252`, merged.
+  - **Root cause:** `motion.js` autoplayed a 52 s turn at 60 fps forever while the figure was
+    visible, and sent status reports at 1 Hz. Coordinator snapshot on the A024: 1 WebView, 1
+    renderer, no leak. Today was already gated by the shell's `visible`.
+  - **Fix (owner choice 1):** one 8 s sine ease-in-out intro turn per route, then frames only on
+    demand (drag, theme, scores, resize, visibility). `BodyFigure.introKey` keeps the turn from
+    replaying on a pager slide, tab switch or sheet close. Reduced motion skips the intro.
+    Explore is unchanged.
+  - **Checks:** `node tool/check_character_body.mjs` passes, including the new intro block, which
+    fails on the old `motion.js`. `test/ui test/catalog_ui test/widgets` → +1404 −3 (the
+    inherited failures). Analyze clean.
+  - **PR follow-ups:**
+    - Record the intro at the first drawn frame instead of at mount.
+    - Snap to the start yaw when a hide cancels the intro mid-turn.
+    - The preview harness's Rotate now plays one turn.
+  - **On-device idle-frame numbers:** pending.
+
 ## Next
 
 T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
