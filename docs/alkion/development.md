@@ -1,3 +1,5 @@
+2026-11-11 · [New exercise artwork and female edition selection](../plans/2026-11-11-new-exercise-artwork-and-female-selection.md) · Approved.
+
 2026-11-11 · [Latest artwork review filter](../plans/2026-11-11-artwork-library-latest-filter.md) · Done.
 
 # Alkion development and qualified driver handoff
