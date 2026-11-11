@@ -263,4 +263,4 @@ device measurement and needs the coordinator's phone access, so the coordinator 
 
 ## Next
 
-All tasks are done and integrated. The owner device check of the `651a882e` APK is pending, then publication.
+Done. Published to public main at `a3c3137` on 2026-11-11 after owner approval. The owner accepted the round on 2026-11-12. The T6 follow-ups listed above stay open as separate work.

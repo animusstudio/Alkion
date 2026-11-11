@@ -182,4 +182,4 @@ Implementers Opus `high`, reviewers Sonnet `high`. T1 first, then T2; T3 (ARBs) 
 
 ## Next
 
-Code-complete. The integrated full suite and device check run at delivery.
+Done. Published to public main at `a3c3137` on 2026-11-11 with [round 2](2026-11-09-ui-declutter-round-2.md), which records the integrated full suite, Dev APKs, idle-frame measurement and outgoing review. The owner accepted the round on 2026-11-12.

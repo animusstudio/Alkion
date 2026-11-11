@@ -217,4 +217,4 @@ local P1 added. `w_toast.dart` keeps `showWToast`'s existing signature; `glyph:`
 
 ## Next
 
-T1 and T2 done; T2 independent review, then the integrated full suite and device check.
+Done. Published to public main at `a3c3137` on 2026-11-11 with [round 2](2026-11-09-ui-declutter-round-2.md), which records the integrated full suite, Dev APKs, idle-frame measurement and outgoing review. The owner accepted the round on 2026-11-12.
