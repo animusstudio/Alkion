@@ -200,7 +200,7 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   root derivation, a title is never shortened to nothing, and the guard pins
   `dart:` imports and the pending background modules.
 - T1 — not started.
-- T2 — done, awaiting review. `2f9e9762` adds `notification_journal.dart`
+- T2 — done, reviewed (PASS with findings; fixes `acadcc2` re-checked PASS). `2f9e9762` adds `notification_journal.dart`
   (atomic `.partial` write, flush, rename and directory flush; 64-entry and
   8 KiB caps; bounds, kind/action and name checks before decoding, with exact
   bytes kept for unreadable entries; drain-ordered read; ENOENT-tolerant
@@ -228,8 +228,12 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   - entries match on the whole token JSON, not only the `token` string;
   - near the 4 KiB limit the mirror's title can differ from the shortened
     title in its payload;
-  - if the folded envelope can't fit, the tap stays journaled but nothing
-    renders.
+  - if the folded envelope can't fit, its view is dropped first; only when
+    even the action and step don't fit does the tap stay journaled with
+    nothing rendered;
+  - a render that times out isn't cancelled: if it completes after a later
+    delivery's render, it can briefly show an older mirror. The owner's
+    re-render from SQL corrects it (accepted risk, low).
 - T3 — not started.
 - T4 — not started.
 

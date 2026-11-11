@@ -133,7 +133,8 @@ int compareNotificationIntents(NotificationIntent a, NotificationIntent b) {
 
 /// Reads and writes the journal in [directory]. [checkpoint] is a crash-test
 /// seam called at `journal-partial-written` (flushed, before the rename) and
-/// `journal-renamed` (renamed and the directory flushed, before any render).
+/// `journal-renamed` (renamed; the directory flush was attempted, before any
+/// render).
 final class NotificationJournal {
   NotificationJournal(
     this.directory, {
