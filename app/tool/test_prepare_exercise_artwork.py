@@ -98,6 +98,76 @@ class ArtworkPreparationTest(unittest.TestCase):
         self.assertNotEqual(tool.normalized_registrations(generated),
                             tool.normalized_registrations(compact.replace("revision: 2", "revision: 3")))
 
+    def test_explicit_female_edition_and_quality_flags(self):
+        target = self.app / "assets/exercise_artwork/female/synthetic_press.webp"
+        target.parent.mkdir()
+        target.write_bytes(self.asset.read_bytes())
+        self.entry["asset"] = "assets/exercise_artwork/female/synthetic_press.webp"
+        with self.assertRaisesRegex(ValueError, "Invalid/duplicate asset"):
+            tool.validate(self.manifest, self.app)
+        self.manifest["edition"] = "female"
+        self.entry["quality_status"] = "agreed_defect"
+        receipt = tool.validate(self.manifest, self.app, self.catalog)
+        self.assertEqual(receipt["edition"], "female")
+        self.assertEqual(receipt["quality_status_counts"], {"agreed_defect": 1})
+        self.entry["quality_status"] = "invented_approval"
+        with self.assertRaisesRegex(ValueError, "Unknown quality"):
+            tool.validate(self.manifest, self.app)
+
+    def test_manifest_numbers_match_registry_for_both_editions(self):
+        registry = {"format": tool.REGISTRY_FORMAT, "next_number": 43,
+                    "entries": [{"variant_key": "synthetic_press", "number": 42}]}
+        self.entry["library_number"] = 42
+        tool.validate(self.manifest, self.app, self.catalog, registry)
+        self.entry["library_number"] = 1
+        with self.assertRaisesRegex(ValueError, "library number"):
+            tool.validate(self.manifest, self.app, self.catalog, registry)
+
+
+class LibraryNumberRegistryTest(unittest.TestCase):
+    def setUp(self):
+        self.registry = {"format": tool.REGISTRY_FORMAT, "next_number": 793,
+                         "entries": [{"variant_key": "first", "number": 1},
+                                     {"variant_key": "retired", "number": 792}]}
+
+    def test_reorder_removal_revision_and_reintroduction_keep_reservations(self):
+        removed = tool.reconcile_registry(self.registry, ["first"])
+        self.assertEqual(removed, self.registry)
+        reintroduced = tool.reconcile_registry(removed, ["retired", "first"])
+        self.assertEqual(reintroduced, self.registry)
+        # Only variant identity participates: revisions, names and source IDs do not.
+        self.assertEqual(tool.validate_registry(reintroduced), {"first": 1, "retired": 792})
+
+    def test_new_keys_append_after_reserved_gaps_independent_of_catalog_order(self):
+        updated = tool.reconcile_registry(self.registry, ["new_z", "first", "new_a"])
+        self.assertEqual(tool.validate_registry(updated, self.registry),
+                         {"first": 1, "retired": 792, "new_a": 793, "new_z": 794})
+        self.assertEqual(updated["next_number"], 795)
+        self.assertEqual(updated, tool.reconcile_registry(self.registry, ["new_a", "new_z", "first"]))
+
+    def test_previous_registry_rejects_removal_reassignment_compaction_and_gap_reuse(self):
+        for mutation in ("remove", "swap", "compact", "reuse_gap"):
+            changed = copy.deepcopy(self.registry)
+            if mutation == "remove":
+                changed["entries"].pop()
+            elif mutation == "swap":
+                changed["entries"][0]["number"], changed["entries"][1]["number"] = 792, 1
+            elif mutation == "compact":
+                changed["next_number"] = 792
+            else:
+                changed["entries"].append({"variant_key": "new", "number": 2})
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                tool.validate_registry(changed, self.registry)
+
+    def test_duplicate_keys_numbers_and_bool_numbers_are_rejected(self):
+        for entry in ({"variant_key": "first", "number": 2},
+                      {"variant_key": "new", "number": 1},
+                      {"variant_key": "new", "number": True}):
+            changed = copy.deepcopy(self.registry)
+            changed["entries"].append(entry)
+            with self.assertRaises(ValueError):
+                tool.validate_registry(changed)
+
 
 if __name__ == "__main__":
     unittest.main()

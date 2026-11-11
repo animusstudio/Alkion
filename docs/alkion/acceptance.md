@@ -1,10 +1,55 @@
 ---
 app: alkion
 stage: development
-observed: 2026-11-07
+observed: 2026-11-11
 ---
 
 # Alkion integrated acceptance
+
+## Updated artwork and stable numbered review library — 2026-11-11
+
+The [approved plan](../plans/2026-11-11-numbered-artwork-library.md) updates
+all 760 current catalog variants in both editions. The append-only registry
+reserves 760 stable numbers in the range 1–792, preserving gaps; male and female
+artwork and later revisions share a variant's number. The next number is 793.
+The import preserves 707 male WebPs byte-for-byte, replaces 53 male images and
+adds 760 female images. Preparation preserves source hashes and extraction
+evidence. The 110 hash-bound source annotations include the wrapped-caption fix;
+four qualified standalone-v2 sources retain their extraction evidence and
+explicit parent roles. Crop-safety checks remain unchanged.
+
+Only four preserved standalone-v2 sources passed supplemental native visual
+review; their source hashes, extraction evidence and parent roles are recorded.
+A separate review of 509 sheets recorded 40 agreed defects, 38 disputed or
+uncertain cases, and eight initially uncertain cases later cleared. These are
+separate categories, and all review flags remain. No pose corrections were
+generated in this import. Technical checks and these reviews do not imply
+blanket visual approval.
+
+The standalone offline review page at
+`tools/artwork-library/index.html` decodes all 1,520 640×640 images,
+with 760 unique IDs. Desktop edition views, narrow female layout and enlarged
+inspection were reviewed; synthetic browser checks passed search, deep links,
+missing-image handling, edition switching and keyboard controls. Independent
+review passed A1–A6 with no findings. The page is a local review tool, not part
+of the ordinary Flutter bundle or an app preference. Ordinary app screens
+continue using male artwork; no edition preference was added. The
+137,457,612-byte male library remains in the ordinary Flutter
+bundle; the 138,809,298-byte female library is outside it.
+
+Manifest SHA-256: male
+`e931581f901bb07a453bcea123acb282ac99a8d82c45df16795a93f7e0017a35`, female
+`bbe1b8320a52ad0fe86f87cfe1ced259c6429baeaa7fa519a35f50dbb3215d98`, registry
+`077543d032ff37166ee500b888878d0a9a44f0c73c80ed5cbe0480dda1412008`. The
+137,457,612-byte male library (+249,496 bytes over baseline) remains bundled;
+the female review library is 138,809,298 bytes and is not in the Flutter bundle.
+
+Preparation tests PASS (19); focused catalog/media tests PASS (20, no skips),
+including real asset decoding; analysis reports zero issues; named generated
+Dart formatting reports zero changes. Parent checks PASS (`make check`, 28
+packages; `make smoke`). No Android device check, installation, release or
+public publication was performed. Existing license grants were not expanded;
+public asset rights remain a separate decision.
 
 ## Explore smooth motion and inertia — 2026-11-07 (T4)
 

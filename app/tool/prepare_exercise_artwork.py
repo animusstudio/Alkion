@@ -8,6 +8,8 @@ An explicit catalog can additionally reconcile identity and emit coverage.
 from __future__ import annotations
 
 import argparse
+import copy
+from collections import Counter
 import hashlib
 import json
 from pathlib import Path
@@ -20,6 +22,57 @@ APP = Path(__file__).resolve().parents[1]
 FORMAT = "alkion-owner-exercise-artwork-v1"
 KEY = re.compile(r"[a-z0-9_]+\Z")
 SHA = re.compile(r"[0-9a-f]{64}\Z")
+REGISTRY_FORMAT = "alkion-exercise-library-numbers-v1"
+QUALITY_STATUSES = {"pass", "agreed_defect", "needs_manual_review", "secondary_cleared"}
+
+
+def validate_registry(registry: dict, previous: dict | None = None) -> dict[str, int]:
+    """Validate permanent reservations, optionally against an earlier registry.
+
+    Retired keys stay in entries. next_number also reserves historical gaps: a
+    new key can only consume a number at or above the earlier high-water mark.
+    """
+    if (not isinstance(registry, dict) or registry.get("format") != REGISTRY_FORMAT
+            or not isinstance(registry.get("entries"), list)
+            or type(registry.get("next_number")) is not int
+            or registry["next_number"] < 1):
+        raise ValueError("Invalid library number registry")
+    publishable(registry)
+    numbers, used = {}, set()
+    for entry in registry["entries"]:
+        if not isinstance(entry, dict):
+            raise ValueError("Invalid library reservation")
+        key, number = entry.get("variant_key"), entry.get("number")
+        if (not isinstance(key, str) or not KEY.fullmatch(key) or key in numbers
+                or type(number) is not int or number < 1 or number in used
+                or number >= registry["next_number"]):
+            raise ValueError("Invalid/duplicate library reservation")
+        numbers[key] = number
+        used.add(number)
+    if previous is not None:
+        old = validate_registry(previous)
+        if (registry["next_number"] < previous["next_number"]
+                or any(numbers.get(key) != number for key, number in old.items())
+                or any(number < previous["next_number"]
+                       for key, number in numbers.items() if key not in old)):
+            raise ValueError("Library reservations cannot be removed, reassigned or compacted")
+    return numbers
+
+
+def reconcile_registry(registry: dict, variant_keys, previous: dict | None = None) -> dict:
+    """Append new keys deterministically; preserve every existing reservation."""
+    numbers = validate_registry(registry, previous)
+    keys = list(variant_keys)
+    if (any(not isinstance(key, str) or not KEY.fullmatch(key) for key in keys)
+            or len(keys) != len(set(keys))):
+        raise ValueError("Invalid/duplicate catalog keys for library registry")
+    result = copy.deepcopy(registry)
+    for key in sorted(set(keys) - numbers.keys()):
+        result["entries"].append({"variant_key": key, "number": result["next_number"]})
+        result["next_number"] += 1
+    result["entries"].sort(key=lambda entry: entry["number"])
+    validate_registry(result, registry)
+    return result
 
 
 def digest(path: Path) -> str:
@@ -52,11 +105,18 @@ def publishable(value):
             raise ValueError("Manifest contains a private or traversing path")
 
 
-def validate(manifest: dict, app: Path, catalog: dict | None = None) -> dict:
+def validate(manifest: dict, app: Path, catalog: dict | None = None,
+             registry: dict | None = None) -> dict:
     if (not isinstance(manifest, dict) or manifest.get("format") != FORMAT
             or not isinstance(manifest.get("entries"), list)):
         raise ValueError("Unsupported artwork manifest format/entries")
     publishable(manifest)
+    edition = manifest.get("edition", "male")
+    if edition not in ("male", "female"):
+        raise ValueError("Unsupported artwork edition")
+    directory = "images" if edition == "male" else "female"
+    numbers = None if registry is None else validate_registry(registry)
+    seen_numbers = set()
     variants = None if catalog is None else {v["key"]: v for v in catalog["variants"]}
     admitted, seen, assets = [], set(), set()
     total_bytes, max_width, max_height = 0, 0, 0
@@ -67,6 +127,14 @@ def validate(manifest: dict, app: Path, catalog: dict | None = None) -> dict:
         if not isinstance(key, str) or not KEY.fullmatch(key) or key in seen:
             raise ValueError(f"Invalid/duplicate variant key: {key}")
         seen.add(key)
+        if "library_number" in entry or numbers is not None:
+            number = entry.get("library_number")
+            if (type(number) is not int or number < 1 or number in seen_numbers
+                    or (numbers is not None and numbers.get(key) != number)):
+                raise ValueError(f"Invalid/mismatched library number: {key}")
+            seen_numbers.add(number)
+        if "quality_status" in entry and entry["quality_status"] not in QUALITY_STATUSES:
+            raise ValueError(f"Unknown quality status: {key}")
         revision, equipment, facets = (entry.get("variant_revision"),
                                       entry.get("equipment_kind"), entry.get("facets"))
         if (type(revision) is not int or revision < 1 or not isinstance(equipment, str)
@@ -82,10 +150,13 @@ def validate(manifest: dict, app: Path, catalog: dict | None = None) -> dict:
                                       ("facets", facets))):
                 raise ValueError(f"Catalog identity mismatch: {key}")
         asset = entry.get("asset")
-        if asset != f"assets/exercise_artwork/images/{key}.webp" or asset in assets:
+        if asset != f"assets/exercise_artwork/{directory}/{key}.webp" or asset in assets:
             raise ValueError(f"Invalid/duplicate asset: {key}")
         assets.add(asset)
-        for field in ("sha256", "source_sheet_sha256"):
+        hash_fields = ["sha256", "source_sheet_sha256"]
+        if "source_image_sha256" in entry:
+            hash_fields.append("source_image_sha256")
+        for field in hash_fields:
             if not isinstance(entry.get(field), str) or not SHA.fullmatch(entry[field]):
                 raise ValueError(f"Invalid {field}: {key}")
         if (type(entry.get("illustration")) is not int or entry["illustration"] < 1
@@ -130,13 +201,16 @@ def validate(manifest: dict, app: Path, catalog: dict | None = None) -> dict:
             admitted.append(key)
         elif entry.get("review_status") not in ("pending", "excluded"):
             raise ValueError(f"Unknown review status: {key}")
-    actual = {p.relative_to(app).as_posix() for p in (app / "assets/exercise_artwork/images").glob("*") if p.is_file()}
+    actual = {p.relative_to(app).as_posix() for p in (app / f"assets/exercise_artwork/{directory}").glob("*") if p.is_file()}
     if actual != assets:
         raise ValueError("Declared image files differ from bundled image directory")
     return {"format": "alkion-owner-exercise-artwork-coverage-v1",
+            "edition": edition,
             "catalog_variants": None if variants is None else len(variants),
             "reviewed": len(admitted), "bundled_files": len(assets),
             "image_bytes": total_bytes, "max_width": max_width, "max_height": max_height,
+            "quality_status_counts": dict(Counter(e.get("quality_status", "unrecorded")
+                                                   for e in manifest["entries"])),
             "unresolved_variant_keys": [] if variants is None else sorted(set(variants) - set(admitted)),
             "complete": variants is not None and set(variants) == set(admitted)}
 
@@ -172,21 +246,31 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, default=APP / "assets/exercise_artwork/manifest.json")
     parser.add_argument("--catalog", type=Path)
     parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--registry", type=Path, default=APP / "assets/exercise_artwork/library-numbers.json")
+    parser.add_argument("--previous-registry", type=Path,
+                        help="Reject reservation changes against this earlier registry")
     parser.add_argument("--write", action="store_true", help="Write generated Dart; default verifies")
     args = parser.parse_args()
     try:
         manifest = json.loads(args.manifest.read_text())
         catalog = None if args.catalog is None else json.loads(args.catalog.read_text())
-        receipt = validate(manifest, APP, catalog)
+        registry = json.loads(args.registry.read_text())
+        previous = None if args.previous_registry is None else json.loads(args.previous_registry.read_text())
+        validate_registry(registry, previous)
+        receipt = validate(manifest, APP, catalog, registry)
+        receipt["registry_sha256"] = digest(args.registry)
         receipt["manifest_sha256"] = digest(args.manifest)
         if args.catalog:
             receipt["catalog_sha256"] = digest(args.catalog)
-        destination = APP / "lib/catalog/catalog_artwork_data.dart"
-        expected = registrations(manifest)
-        if args.write:
-            destination.write_text(expected)
-        elif normalized_registrations(destination.read_text()) != normalized_registrations(expected):
-            raise ValueError("Generated registrations differ; run with --write")
+        if manifest.get("edition", "male") == "male":
+            destination = APP / "lib/catalog/catalog_artwork_data.dart"
+            expected = registrations(manifest)
+            if args.write:
+                destination.write_text(expected)
+            elif normalized_registrations(destination.read_text()) != normalized_registrations(expected):
+                raise ValueError("Generated registrations differ; run with --write")
+        elif args.write:
+            raise ValueError("Only the default male edition generates app registrations")
         if args.receipt:
             args.receipt.write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt, sort_keys=True))

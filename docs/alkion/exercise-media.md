@@ -67,6 +67,105 @@ digests, lossless WebP format, dimensions, opaque still-image properties, exact
 asset inventory and generated registrations. These checks do not grant artwork
 rights or qualify visual appearance on a device.
 
+## Numbered local review library
+
+Open [`tools/artwork-library/index.html`](../../tools/artwork-library/index.html)
+directly in a browser. It works offline through `file://`; there is no fetch,
+server, CDN or app setting to configure. The page uses the bundled fonts and
+selected image files. Search by exact library number (with an optional `#`) or
+part of an English catalog name. Select an image to inspect it, switch editions,
+or open its full-size file. Escape closes inspection; Previous/Next and the left
+and right arrow keys move through the current search results.
+
+The permanent number comes from
+`app/assets/exercise_artwork/library-numbers.json`. Both editions share it;
+renames, source replacements and catalog ordering do not change it. Retired
+keys keep their reservations and new keys append after the registry high-water
+mark. The source illustration number is separate and appears only in inspection
+provenance. A link such as `index.html#edition=female&exercise=1` reopens that
+exercise and edition. Switching editions keeps the selected exercise and grid
+position.
+
+Artwork revisions and source replacements **do not rewrite the registry**. For
+an approved catalog addition, first save the existing public reservations, then
+use the preparation module’s pure `reconcile_registry` helper with the complete
+current catalog key list. It retains retired keys and appends genuinely new keys
+above the high-water mark:
+
+```sh
+cp app/assets/exercise_artwork/library-numbers.json /tmp/library-numbers.previous.json
+python3 - <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+sys.path.insert(0, "app/tool")
+from prepare_exercise_artwork import reconcile_registry
+
+path = Path("app/assets/exercise_artwork/library-numbers.json")
+previous = json.loads(Path("/tmp/library-numbers.previous.json").read_text())
+catalog = json.loads(Path("app/assets/catalog_trial/catalog.dev.json").read_text())
+updated = reconcile_registry(previous, [v["key"] for v in catalog["variants"]], previous=previous)
+if updated != previous:
+    path.write_text(json.dumps(updated, indent=2) + "\n")
+PYTHON
+```
+
+After updating the approved manifests and selected assets for those keys, verify
+both editions against that saved registry. The existing `--previous-registry`
+option rejects removed/reassigned reservations, compaction and a decreased
+high-water mark:
+
+```sh
+python3 app/tool/prepare_exercise_artwork.py \
+  --catalog app/assets/catalog_trial/catalog.dev.json \
+  --previous-registry /tmp/library-numbers.previous.json
+python3 app/tool/prepare_exercise_artwork.py \
+  --manifest app/assets/exercise_artwork/female-manifest.json \
+  --catalog app/assets/catalog_trial/catalog.dev.json \
+  --previous-registry /tmp/library-numbers.previous.json
+```
+
+The page consumes `manifest.json` and `female-manifest.json` through one generated
+`data.js`. The generator reuses the app preparation validator, requires exact
+catalog revision/equipment/facet admission and complete current coverage in both
+editions, and checks each number against the registry. An unavailable edition
+never substitutes the other edition. Review flags remain visible: **Agreed
+defect**, **Needs manual review**, and **Secondary review cleared**. An unflagged
+image is not a certification of technique or anatomical correctness.
+
+From the repository root, regenerate after an approved selection/catalog change:
+
+```sh
+python3 app/tool/prepare_artwork_library.py --write
+python3 app/tool/prepare_artwork_library.py
+```
+
+The default catalog is the explicitly named
+`app/assets/catalog_trial/catalog.dev.json`; use `--catalog /path/to/catalog.json`
+for another explicit input. The page data is public metadata only; it contains no
+source-sheet paths. Verification fails on missing or mismatched assets, identities,
+numbers, flags or coverage. No artwork is copied or changed by this generator.
+
+These selections are a **local review candidate**. Existing asset notices retain
+their existing scope; the review page does not broaden any license grant or
+approve publication of newly selected artwork. Its footer links to the existing
+media and asset notices.
+
+Focused checks:
+
+```sh
+python3 -m unittest discover -s app/tool -p test_prepare_artwork_library.py
+node tools/artwork-library/test-library.cjs
+```
+
+The browser check requires an existing Playwright installation with Chromium;
+installing it is optional development setup, not a gallery dependency. If needed,
+set `NODE_PATH` to that installation's module directory and `BROWSER_EXECUTABLE`
+to an explicitly selected Chromium executable. It opens a disposable `file://`
+fixture using the catalog names and baseline files, with synthetic edition URLs;
+it checks controls and error handling, not final artwork correctness. It retains
+its fixture and desktop/narrow screenshots in a temporary directory for review.
+
 ## Optional Workout Guide movement frames
 
 The app also retains an optional, separately credited Workout Guide movement

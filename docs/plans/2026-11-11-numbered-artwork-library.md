@@ -1,6 +1,6 @@
 # Updated artwork and a stable numbered review library
 
-Date: 2026-11-11. Lane: **Standard**. Status: **Approved** by the owner
+Date: 2026-11-11. Lane: **Standard**. Status: **Done**. Approved by the owner
 ("Approved", 2026-11-11).
 Parent: [development](../alkion/development.md).
 
@@ -26,7 +26,8 @@ a permanent exercise number and edition.
   individually inspected, hash-bound annotations; do not relax crop safeguards.
   Preserve original sheets and prior review evidence outside the public tree.
 - Keep exact catalog revision/equipment/facet admission and offline image
-  rendering. Keep existing default male selection in ordinary app screens.
+  rendering. Ordinary app screens continue using male artwork; no edition
+  preference is added.
   Both editions are available to the review page; no new app preference or
   workout behavior is included.
 - The plain HTML page uses the same asset selection as Alkion. Show a responsive
@@ -70,11 +71,49 @@ a permanent exercise number and edition.
    checks and named formatting. Record evidence, bundle size and limitations in
    this plan and [acceptance](../alkion/acceptance.md).
 
-## Task state
+## Task state and qualification
 
-T1/T2: in progress. T3: pending. Read-only mapping checks confirm 760 unique
-baseline numbers (1–792), 707 reusable male assets, 53 male replacements and
-760 female selections. Extraction API and historical annotations inspected;
-full crop replay is unrun and remains T1 work.
-Branch: `feat/numbered-artwork-library-20261111`.
-Next: implement import and review page, then independent review and qualification.
+T1, T2 and T3 are **Done**. The library maps all 760 male and 760 female
+current variants. It preserves 707 male WebPs byte-for-byte, replaces 53 male
+images and adds 760 female images. The append-only registry holds 760 reserved
+numbers (1–792, with gaps preserved); both editions and future revisions share
+each variant's number, and the next number is 793. Registry validation guards
+existing reservations before import.
+
+Only four preserved standalone-v2 sources passed supplemental native visual
+review; their source hashes, extraction evidence and parent roles are recorded.
+A separate review of 509 sheets recorded 40 agreed defects, 38 disputed or
+uncertain cases, and eight initially uncertain cases later cleared. These are
+separate categories, and all review flags remain. The 110 hash-bound source
+annotations include the wrapped-caption correction. No pose corrections were
+generated in this import. These reviews do not constitute blanket visual
+approval. Crop and safety guards remain unchanged.
+
+The local review library is `tools/artwork-library/index.html`. Its
+generated data and tool command documentation are public and contain no private
+source locations. Offline browser review decoded all 1,520 images at 640×640,
+with 760 unique IDs; desktop male/female, narrow female and inspection layouts
+were reviewed. Search, deep links, missing-image handling, edition switching
+and keyboard controls passed synthetic browser checks. Independent review
+passed A1–A6 and recommended shipping with no findings. One detector pass had
+three non-material warnings: the dynamic no-src dialog template, external CSS
+padding and the existing Space Grotesk font.
+
+Both manifests cover 760 assets. SHA-256: male
+`e931581f901bb07a453bcea123acb282ac99a8d82c45df16795a93f7e0017a35`, female
+`bbe1b8320a52ad0fe86f87cfe1ced259c6429baeaa7fa519a35f50dbb3215d98`, registry
+`077543d032ff37166ee500b888878d0a9a44f0c73c80ed5cbe0480dda1412008`.
+The male library is 137,457,612 bytes (+249,496 over baseline) and remains in
+the ordinary Flutter bundle. The 138,809,298-byte female library is outside
+that bundle and available in the local review library. The ordinary app
+continues using male artwork; no edition preference was added. Male image
+content was refreshed as described above.
+
+Qualification passed: artwork preparation unit tests (19); male, female,
+catalog and registry coverage (760 each); real-library generation and
+verification (760 each); focused catalog/media tests (20, zero skips),
+including decoding all 760 app assets; analysis (zero issues); named generated
+Dart formatting (zero changes); parent `make check` (28 packages) and `make
+smoke`. No Android device check, installation, release or public publication
+was performed. Existing license grants were not expanded; public asset rights
+remain separate from this local review qualification.
