@@ -1,7 +1,10 @@
 {
-  "id": "owner-marked-2026-11-11",
-  "label": "Latest regenerated",
-  "source_illustration_min": 2021,
-  "source_illustration_max": 2360,
-  "expected_counts": {"male": 77, "female": 93}
+  "id": "new-catalog-771-2026-11-11",
+  "label": "Latest generated",
+  "source_illustration_min": 2361,
+  "source_illustration_max": 2392,
+  "expected_counts": {
+    "male": 11,
+    "female": 11
+  }
 }

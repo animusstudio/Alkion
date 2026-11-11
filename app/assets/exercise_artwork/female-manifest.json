@@ -1,11 +1,11 @@
 {
   "format": "alkion-owner-exercise-artwork-v1",
-  "catalog_revision": "2026-11-03-expansion.1",
+  "catalog_revision": "2026-11-11-machine-synonyms.1",
   "catalog_path": "packages/exercise-catalog/catalog.json",
   "pending": [],
   "edition": "female",
   "review_status_scope": "Registration eligibility and extraction qualification; visual quality is recorded separately in quality_status.",
-  "quality_review": "2026-11-11-owner-marked-independent-regeneration",
+  "quality_review": "2026-11-11-new-catalog-771-independent",
   "entries": [
     {
       "variant_key": "air_bike_ergometer",
@@ -52254,6 +52254,1040 @@
       },
       "review_status": "reviewed",
       "quality_status": "pass"
+    },
+    {
+      "variant_key": "marble_pickup",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "position": "seated",
+        "support": "chair",
+        "laterality": "unilateral"
+      },
+      "asset": "assets/exercise_artwork/female/marble_pickup.webp",
+      "sha256": "f6f65fcee6d7d3864d3d189877f9bd2b6c6631bac1a8a07e7cb7f04315acb6f0",
+      "library_number": 793,
+      "illustration": 2373,
+      "source_sheet_sha256": "644fcf7dd7b2fd708816390e2c18f3aa66ecb24483169ac25a55c38de222ea54",
+      "source_cell": 1,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          622,
+          574
+        ],
+        "caption_box": [
+          0,
+          574,
+          622,
+          620
+        ],
+        "caption_rows": [
+          577,
+          593
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          3,
+          3,
+          625,
+          623
+        ],
+        "artwork_size": [
+          622,
+          574
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          17,
+          41
+        ],
+        "normalized_artwork_size": [
+          608,
+          561
+        ],
+        "normalized_offset": [
+          16,
+          39
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "dd60e5c9247d513fab3a51aefc41576ff441f0a8a30eca2aec1755f5223c7510",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "4f98558f625e4f3c11da63f7b12dcb16745c9b43d38b86a9396e76e5df213396",
+      "source_prompt_sha256": "82d06c64fa9584672d5c1351068468f3fba863301c99a9a3124dae0100f3ec23",
+      "source_generation_receipt_sha256": "554e763ceea2558581fb31255c4e57a339795f1c93c4ed0da3fe81cbb6e90515",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "ring_support_hold",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "support": "rings",
+        "arm_position": "straight",
+        "contraction": "isometric"
+      },
+      "asset": "assets/exercise_artwork/female/ring_support_hold.webp",
+      "sha256": "d1197c9305dab0f0558d356d67a00e073f050d1dd0f4bdf859f186c81fa7f619",
+      "library_number": 794,
+      "illustration": 2374,
+      "source_sheet_sha256": "644fcf7dd7b2fd708816390e2c18f3aa66ecb24483169ac25a55c38de222ea54",
+      "source_cell": 2,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          623,
+          573
+        ],
+        "caption_box": [
+          0,
+          573,
+          623,
+          620
+        ],
+        "caption_rows": [
+          576,
+          592
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          629,
+          3,
+          1252,
+          623
+        ],
+        "artwork_size": [
+          623,
+          573
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          16,
+          41
+        ],
+        "normalized_artwork_size": [
+          608,
+          559
+        ],
+        "normalized_offset": [
+          16,
+          40
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "dd60e5c9247d513fab3a51aefc41576ff441f0a8a30eca2aec1755f5223c7510",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "4f98558f625e4f3c11da63f7b12dcb16745c9b43d38b86a9396e76e5df213396",
+      "source_prompt_sha256": "82d06c64fa9584672d5c1351068468f3fba863301c99a9a3124dae0100f3ec23",
+      "source_generation_receipt_sha256": "554e763ceea2558581fb31255c4e57a339795f1c93c4ed0da3fe81cbb6e90515",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "seated_ankle_pump",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "position": "seated",
+        "support": "chair",
+        "knee_position": "straight",
+        "leg_support": "extended_off_floor",
+        "laterality": "unilateral"
+      },
+      "asset": "assets/exercise_artwork/female/seated_ankle_pump.webp",
+      "sha256": "a623c8c6fc1dc928d732b2eb97d1caf918cb32bebda814674b146cd198a56834",
+      "library_number": 795,
+      "illustration": 2375,
+      "source_sheet_sha256": "644fcf7dd7b2fd708816390e2c18f3aa66ecb24483169ac25a55c38de222ea54",
+      "source_cell": 3,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          622,
+          568
+        ],
+        "caption_box": [
+          0,
+          568,
+          622,
+          623
+        ],
+        "caption_rows": [
+          570,
+          586
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          3,
+          628,
+          625,
+          1251
+        ],
+        "artwork_size": [
+          622,
+          568
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          17,
+          44
+        ],
+        "normalized_artwork_size": [
+          608,
+          555
+        ],
+        "normalized_offset": [
+          16,
+          42
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp",
+        "annotation_sha256": "a75247421da3987dffee1c2f2d6ce98fb5bd3022ba32b175a27e0f41bbbd55df",
+        "reviewed_caption_adapter_sha256": "fc085d7a6591c2c79faca500f673644f93829c06d937d09d4dc800a9164fb924",
+        "original_frame_pixel_guard": {
+          "detected_source_cell_box": [
+            3,
+            627,
+            625,
+            1251
+          ],
+          "source_specific_inward_adjustment": [
+            0,
+            1,
+            0,
+            0
+          ],
+          "discarded_strips": [
+            {
+              "edge": "left",
+              "source_box": [
+                3,
+                627,
+                3,
+                1251
+              ],
+              "discarded_pixels": 0,
+              "foreground_pixels": 0,
+              "max_channel": 0,
+              "max_chroma": 0
+            },
+            {
+              "edge": "top",
+              "source_box": [
+                3,
+                627,
+                625,
+                628
+              ],
+              "discarded_pixels": 622,
+              "foreground_pixels": 0,
+              "max_channel": 5,
+              "max_chroma": 1
+            },
+            {
+              "edge": "right",
+              "source_box": [
+                625,
+                627,
+                625,
+                1251
+              ],
+              "discarded_pixels": 0,
+              "foreground_pixels": 0,
+              "max_channel": 0,
+              "max_chroma": 0
+            },
+            {
+              "edge": "bottom",
+              "source_box": [
+                3,
+                1251,
+                625,
+                1251
+              ],
+              "discarded_pixels": 0,
+              "foreground_pixels": 0,
+              "max_channel": 0,
+              "max_chroma": 0
+            }
+          ]
+        }
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "dd60e5c9247d513fab3a51aefc41576ff441f0a8a30eca2aec1755f5223c7510",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "4f98558f625e4f3c11da63f7b12dcb16745c9b43d38b86a9396e76e5df213396",
+      "source_prompt_sha256": "82d06c64fa9584672d5c1351068468f3fba863301c99a9a3124dae0100f3ec23",
+      "source_generation_receipt_sha256": "554e763ceea2558581fb31255c4e57a339795f1c93c4ed0da3fe81cbb6e90515",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "seated_band_ankle_plantarflexion",
+      "variant_revision": 1,
+      "equipment_kind": "band",
+      "facets": {
+        "position": "seated",
+        "support": "floor",
+        "knee_position": "straight",
+        "load_mode": "band_resistance",
+        "laterality": "unilateral"
+      },
+      "asset": "assets/exercise_artwork/female/seated_band_ankle_plantarflexion.webp",
+      "sha256": "109f69e386a862962dc1700466752c18591a7fee696b9a4c07aa143c866fbdf6",
+      "library_number": 796,
+      "illustration": 2388,
+      "source_sheet_sha256": "e7152a6a9352faa741c46907a6d8640b55c4d147d60a921f07d98ce6381c8ca3",
+      "source_cell": 4,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          623,
+          568
+        ],
+        "caption_box": [
+          0,
+          568,
+          623,
+          624
+        ],
+        "caption_rows": [
+          569,
+          587
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          629,
+          627,
+          1252,
+          1251
+        ],
+        "artwork_size": [
+          623,
+          568
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          16,
+          44
+        ],
+        "normalized_artwork_size": [
+          608,
+          554
+        ],
+        "normalized_offset": [
+          16,
+          43
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "86d2197fd46e9d794d46c7bd3fc1c0eb318882a419dc8c6cf99d9f1f1aed63e5",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "1a9fb66f344b0a0caf7f5a4fc62619a9f7a148c10e2388423f578e406a874758",
+      "source_prompt_sha256": "7d1d23f706f4f2b1014cf0ab5cd50ef9a30ba2a684956390b15e54594e9c0911",
+      "source_generation_receipt_sha256": "3109920ff10dd8af9960e0b0fe3749006e311aab016652e52a679377436576ff",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "644fcf7dd7b2fd708816390e2c18f3aa66ecb24483169ac25a55c38de222ea54",
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "seated_knee_extension_unloaded",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "position": "seated",
+        "support": "chair",
+        "laterality": "unilateral"
+      },
+      "asset": "assets/exercise_artwork/female/seated_knee_extension_unloaded.webp",
+      "sha256": "06722baa6927569ad40d592cad32378cbea9ce3ac6c349466904845d06f24e6d",
+      "library_number": 797,
+      "illustration": 2377,
+      "source_sheet_sha256": "05f6e5f38914123ccbfaa7d2ca597bb1057817d62e497c21c56b424e6c73f929",
+      "source_cell": 1,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          623,
+          573
+        ],
+        "caption_box": [
+          0,
+          573,
+          623,
+          620
+        ],
+        "caption_rows": [
+          575,
+          592
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          3,
+          3,
+          626,
+          623
+        ],
+        "artwork_size": [
+          623,
+          573
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          16,
+          41
+        ],
+        "normalized_artwork_size": [
+          608,
+          559
+        ],
+        "normalized_offset": [
+          16,
+          40
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "9909831129481efca3656d3ed276b658316071e4d01e1b071c96ac6662adcede",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "06614095c5ab3de7fbd57a55c33b1afd16cd35505292db71d7cf1fe74d7f97ac",
+      "source_prompt_sha256": "bd256e3b64debbd321e181e1c1b30f720835186bd1ab541362b35fbdc0959a2e",
+      "source_generation_receipt_sha256": "b520508b9a59414d359676f06d297979b93caa0233d1186554935f48d89298fc",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "seated_marching",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "position": "seated",
+        "support": "chair",
+        "knee_position": "bent",
+        "alternation": "alternating"
+      },
+      "asset": "assets/exercise_artwork/female/seated_marching.webp",
+      "sha256": "e4f6381950f9ae37537b42f9e20c1205e6963a68392edf3754723b19a124ba95",
+      "library_number": 798,
+      "illustration": 2378,
+      "source_sheet_sha256": "05f6e5f38914123ccbfaa7d2ca597bb1057817d62e497c21c56b424e6c73f929",
+      "source_cell": 2,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          622,
+          573
+        ],
+        "caption_box": [
+          0,
+          573,
+          622,
+          620
+        ],
+        "caption_rows": [
+          575,
+          592
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          630,
+          3,
+          1252,
+          623
+        ],
+        "artwork_size": [
+          622,
+          573
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          17,
+          41
+        ],
+        "normalized_artwork_size": [
+          608,
+          560
+        ],
+        "normalized_offset": [
+          16,
+          40
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "9909831129481efca3656d3ed276b658316071e4d01e1b071c96ac6662adcede",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "06614095c5ab3de7fbd57a55c33b1afd16cd35505292db71d7cf1fe74d7f97ac",
+      "source_prompt_sha256": "bd256e3b64debbd321e181e1c1b30f720835186bd1ab541362b35fbdc0959a2e",
+      "source_generation_receipt_sha256": "b520508b9a59414d359676f06d297979b93caa0233d1186554935f48d89298fc",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "seated_side_reach",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "position": "seated",
+        "support": "chair",
+        "alternation": "alternating"
+      },
+      "asset": "assets/exercise_artwork/female/seated_side_reach.webp",
+      "sha256": "3318295316905eef76704d503efccb9bf51dcbbdb43c01d0960e8dd7c4c33a20",
+      "library_number": 799,
+      "illustration": 2379,
+      "source_sheet_sha256": "05f6e5f38914123ccbfaa7d2ca597bb1057817d62e497c21c56b424e6c73f929",
+      "source_cell": 3,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          623,
+          567
+        ],
+        "caption_box": [
+          0,
+          567,
+          623,
+          624
+        ],
+        "caption_rows": [
+          569,
+          586
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          3,
+          628,
+          626,
+          1252
+        ],
+        "artwork_size": [
+          623,
+          567
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          16,
+          44
+        ],
+        "normalized_artwork_size": [
+          608,
+          553
+        ],
+        "normalized_offset": [
+          16,
+          43
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "9909831129481efca3656d3ed276b658316071e4d01e1b071c96ac6662adcede",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "06614095c5ab3de7fbd57a55c33b1afd16cd35505292db71d7cf1fe74d7f97ac",
+      "source_prompt_sha256": "bd256e3b64debbd321e181e1c1b30f720835186bd1ab541362b35fbdc0959a2e",
+      "source_generation_receipt_sha256": "b520508b9a59414d359676f06d297979b93caa0233d1186554935f48d89298fc",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "sit_to_stand",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "support": "chair"
+      },
+      "asset": "assets/exercise_artwork/female/sit_to_stand.webp",
+      "sha256": "70f8a25ef5c0070d81fb1552c12ebb56c33704c4aa8c9abbe988d03752fb5971",
+      "library_number": 800,
+      "illustration": 2380,
+      "source_sheet_sha256": "05f6e5f38914123ccbfaa7d2ca597bb1057817d62e497c21c56b424e6c73f929",
+      "source_cell": 4,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          622,
+          568
+        ],
+        "caption_box": [
+          0,
+          568,
+          622,
+          624
+        ],
+        "caption_rows": [
+          569,
+          586
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          630,
+          628,
+          1252,
+          1252
+        ],
+        "artwork_size": [
+          622,
+          568
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          17,
+          44
+        ],
+        "normalized_artwork_size": [
+          608,
+          555
+        ],
+        "normalized_offset": [
+          16,
+          42
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "9909831129481efca3656d3ed276b658316071e4d01e1b071c96ac6662adcede",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "06614095c5ab3de7fbd57a55c33b1afd16cd35505292db71d7cf1fe74d7f97ac",
+      "source_prompt_sha256": "bd256e3b64debbd321e181e1c1b30f720835186bd1ab541362b35fbdc0959a2e",
+      "source_generation_receipt_sha256": "b520508b9a59414d359676f06d297979b93caa0233d1186554935f48d89298fc",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "standing_hip_extension_supported",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "position": "standing",
+        "support": "chair",
+        "laterality": "unilateral",
+        "knee_position": "straight"
+      },
+      "asset": "assets/exercise_artwork/female/standing_hip_extension_supported.webp",
+      "sha256": "756879d847d9a99318344b4cd8519ae0b24f8299ff05b3af454acde34409f327",
+      "library_number": 801,
+      "illustration": 2381,
+      "source_sheet_sha256": "f5a30cf3f9d59affb0e67889f68b6c4c1183bb7e5961f0b6039c1df74048a157",
+      "source_cell": 1,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          623,
+          573
+        ],
+        "caption_box": [
+          0,
+          573,
+          623,
+          621
+        ],
+        "caption_rows": [
+          575,
+          591
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          3,
+          3,
+          626,
+          624
+        ],
+        "artwork_size": [
+          623,
+          573
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          16,
+          41
+        ],
+        "normalized_artwork_size": [
+          608,
+          559
+        ],
+        "normalized_offset": [
+          16,
+          40
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "41e85a10eab87c41b04f792eda0a00727ec16a8942bde8d2f2cc845b441a8983",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "f4b122eb326ec678882baef16e33b28617f8aa64427c528390deb6cadf1d6614",
+      "source_prompt_sha256": "80a73e7512a284cfebc801daebb71df8281c0d988531d727b5089f6074ecf9dc",
+      "source_generation_receipt_sha256": "614297d47175f76b10ff2253564e30118525fc6fc44af81feb913c4c1a673c1d",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "supported_single_leg_stand",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "position": "standing",
+        "support": "wall",
+        "laterality": "unilateral",
+        "contraction": "isometric"
+      },
+      "asset": "assets/exercise_artwork/female/supported_single_leg_stand.webp",
+      "sha256": "e54e01d0f913573288ed02cd6237ba84d1f1afe38a93ec22349723b4c01b7ee2",
+      "library_number": 802,
+      "illustration": 2390,
+      "source_sheet_sha256": "119cbcb9d66325eab71ee0a5f6bb7c0b37b2df2676812f655d5cb8d691cad118",
+      "source_cell": 2,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          622,
+          573
+        ],
+        "caption_box": [
+          0,
+          573,
+          622,
+          620
+        ],
+        "caption_rows": [
+          575,
+          591
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          630,
+          3,
+          1252,
+          623
+        ],
+        "artwork_size": [
+          622,
+          573
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          17,
+          41
+        ],
+        "normalized_artwork_size": [
+          608,
+          560
+        ],
+        "normalized_offset": [
+          16,
+          40
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "998e6f3b9baa4620e87106a06058a1d65393d7ef12e7970184aac134c422afca",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "f4684a2386d8fb8f12913953b28407254a0769ea330dbc4b60dd7293df055d3a",
+      "source_prompt_sha256": "8670c6433ff1b4eace86dced1b06a3d13d6de9246c703a6459b1248221fa8555",
+      "source_generation_receipt_sha256": "f673e5f69b990fa5c4c7aa720ea3e77ae0cd3e1168493a55a0ce81fe1d77c11e",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "f5a30cf3f9d59affb0e67889f68b6c4c1183bb7e5961f0b6039c1df74048a157",
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
+    },
+    {
+      "variant_key": "towel_curls",
+      "variant_revision": 1,
+      "equipment_kind": "bodyweight",
+      "facets": {
+        "position": "seated",
+        "support": "chair",
+        "laterality": "unilateral"
+      },
+      "asset": "assets/exercise_artwork/female/towel_curls.webp",
+      "sha256": "2cb325fdd1066bcdc9fb4932814fd3b99b908691b5208bd631bae2d016a54e0d",
+      "library_number": 803,
+      "illustration": 2383,
+      "source_sheet_sha256": "f5a30cf3f9d59affb0e67889f68b6c4c1183bb7e5961f0b6039c1df74048a157",
+      "source_cell": 3,
+      "extraction": {
+        "crop_box": [
+          0,
+          0,
+          623,
+          569
+        ],
+        "caption_box": [
+          0,
+          569,
+          623,
+          623
+        ],
+        "caption_rows": [
+          571,
+          587
+        ],
+        "method": "black-gap-above-caption",
+        "extractor_sha256": "ecd11850a73e5b28d30154ad9f6d468b0aa4a0d003d774344d626f6a1ac26ed7",
+        "source_size": [
+          1254,
+          1254
+        ],
+        "source_cell_box": [
+          3,
+          628,
+          626,
+          1251
+        ],
+        "artwork_size": [
+          623,
+          569
+        ],
+        "native_size": [
+          656,
+          656
+        ],
+        "native_offset": [
+          16,
+          43
+        ],
+        "normalized_artwork_size": [
+          608,
+          555
+        ],
+        "normalized_offset": [
+          16,
+          42
+        ],
+        "output_size": [
+          640,
+          640
+        ],
+        "encoding": "lossless-webp"
+      },
+      "review_status": "reviewed",
+      "quality_status": "pass",
+      "quality_review_sha256": "41e85a10eab87c41b04f792eda0a00727ec16a8942bde8d2f2cc845b441a8983",
+      "quality_review_scope": "Independent native review of this new exact canonical execution and neutral unknown-profile artwork",
+      "source_request_sha256": "f4b122eb326ec678882baef16e33b28617f8aa64427c528390deb6cadf1d6614",
+      "source_prompt_sha256": "80a73e7512a284cfebc801daebb71df8281c0d988531d727b5089f6074ecf9dc",
+      "source_generation_receipt_sha256": "614297d47175f76b10ff2253564e30118525fc6fc44af81feb913c4c1a673c1d",
+      "source_catalog_sha256": "e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb",
+      "source_projection_sha256": "08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a",
+      "definition_provenance_sha256": "43edc5b10f42b69a688946732d1c9880cf38421056a2de3fdf2ac72285e652c7",
+      "source_verification_sha256": "badf80cedfaa5a6c0cb8daf6185f447ba9079c21e922039ac21cf17e3e2b0435",
+      "reference_image_sha256": [
+        "37e51c2e29710ddf12cc13c5eea5c0f919919fb544a7c1b9393d2a40013006fa",
+        "f5498b907b719e6b89aa72dfa8bd991ea1cf6b9c20be5760d82dc6055206cd07"
+      ],
+      "source_muscle_coverage": "unknown"
     }
   ]
 }

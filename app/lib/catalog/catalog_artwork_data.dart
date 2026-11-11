@@ -4738,6 +4738,20 @@ const _artwork = <String, _ArtworkRegistration>{
           '0039671ceb26c8c5673eeadc9cd1e7785396b6b681ddfd0cc3bc2424423c9633',
     ),
   ),
+  'marble_pickup': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'laterality': 'unilateral',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/marble_pickup.webp',
+      sha256:
+          '289e2e9b5733d7fed12926534c45b43049077981f8fff8aa518c1867ccc77f65',
+    ),
+  ),
   'medicine_ball_backward_throw': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'medicine_ball',
@@ -5485,6 +5499,20 @@ const _artwork = <String, _ArtworkRegistration>{
           '09a7ea657f0447a7bda246d30e56090aeafaf51ef8b881ec5f84423de74cbe99',
     ),
   ),
+  'ring_support_hold': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'arm_position': 'straight',
+      'contraction': 'isometric',
+      'support': 'rings',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/ring_support_hold.webp',
+      sha256:
+          '0b6a29ed72425fa6fe31e0171ae676fbde9a0c1c51c7db4afd9459803ece44e2',
+    ),
+  ),
   'roller_thoracic_extension': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'bodyweight',
@@ -5643,6 +5671,22 @@ const _artwork = <String, _ArtworkRegistration>{
           '864571e61b631c070c3f54da982601d4758b064b1784a90ad2e0f2a57f7ca48b',
     ),
   ),
+  'seated_ankle_pump': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'knee_position': 'straight',
+      'laterality': 'unilateral',
+      'leg_support': 'extended_off_floor',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/seated_ankle_pump.webp',
+      sha256:
+          'a992da6cf716d767bedf697f57d4f1431acb1fa7f86b5782bc357920c4220dca',
+    ),
+  ),
   'seated_back_supported_leg_press': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'machine',
@@ -5652,6 +5696,23 @@ const _artwork = <String, _ArtworkRegistration>{
           'assets/exercise_artwork/images/seated_back_supported_leg_press.webp',
       sha256:
           'f41fa9f8eb86c226326868a38709e8000307be004a53ef115545c80126ca77ee',
+    ),
+  ),
+  'seated_band_ankle_plantarflexion': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'band',
+    facets: {
+      'knee_position': 'straight',
+      'laterality': 'unilateral',
+      'load_mode': 'band_resistance',
+      'position': 'seated',
+      'support': 'floor',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset:
+          'assets/exercise_artwork/images/seated_band_ankle_plantarflexion.webp',
+      sha256:
+          '8f6b1ba85375f7605a81becae6678774f3f606cb271f0be1512168242f105581',
     ),
   ),
   'seated_band_chest_press': _ArtworkRegistration(
@@ -5987,6 +6048,21 @@ const _artwork = <String, _ArtworkRegistration>{
           '2e4807a5383b99725fc1886b236d3be7c39721fc01fdb183185de88f138f6ed8',
     ),
   ),
+  'seated_knee_extension_unloaded': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'laterality': 'unilateral',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset:
+          'assets/exercise_artwork/images/seated_knee_extension_unloaded.webp',
+      sha256:
+          'b971638b501933b62fb7321de62aac7ed7a48fe644a62647db78315a071244a9',
+    ),
+  ),
   'seated_leg_curl': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'machine',
@@ -6005,6 +6081,35 @@ const _artwork = <String, _ArtworkRegistration>{
       asset: 'assets/exercise_artwork/images/seated_machine_calf_raise.webp',
       sha256:
           '33f5800d3bac937b52e054fc9eb44dfac08e25576dd73b9e9a16ef23d56ccabd',
+    ),
+  ),
+  'seated_marching': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'alternation': 'alternating',
+      'knee_position': 'bent',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/seated_marching.webp',
+      sha256:
+          'd3e6ac458540dc416e73622c2df2ef05bc4b5e933ddda6d003cf44a9b52514ec',
+    ),
+  ),
+  'seated_side_reach': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'alternation': 'alternating',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/seated_side_reach.webp',
+      sha256:
+          '1e2b3140fed268dd545fa4567e5a06b34e2a08ed1d7a28ec0e7340af3f2ad452',
     ),
   ),
   'seated_ski_ergometer': _ArtworkRegistration(
@@ -6587,6 +6692,16 @@ const _artwork = <String, _ArtworkRegistration>{
           '9d452f366d6219196277cda490934b6eae151b585354009f892b483a3379fba9',
     ),
   ),
+  'sit_to_stand': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {'support': 'chair'},
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/sit_to_stand.webp',
+      sha256:
+          'c8cc469fad45b2f4c356315cce510150a8fe48f9f87348209d4576540be3fd20',
+    ),
+  ),
   'ski_ergometer': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'cardio_machine',
@@ -7150,6 +7265,22 @@ const _artwork = <String, _ArtworkRegistration>{
           '5ad7457f8e12b40bfeba8fed463df30e21537c514ccd34b6ab2c8b23d019554f',
     ),
   ),
+  'standing_hip_extension_supported': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'knee_position': 'straight',
+      'laterality': 'unilateral',
+      'position': 'standing',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset:
+          'assets/exercise_artwork/images/standing_hip_extension_supported.webp',
+      sha256:
+          'f0067f00a41c741214436fde98809eccc78eb3c00d53a9c4a480d01d9736ac14',
+    ),
+  ),
   'standing_inchworm': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'bodyweight',
@@ -7484,6 +7615,21 @@ const _artwork = <String, _ArtworkRegistration>{
           'a6561e0335d986f4922a22fac2d3512e059ba9c76ddb04669b86e193db6eac6a',
     ),
   ),
+  'supported_single_leg_stand': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'contraction': 'isometric',
+      'laterality': 'unilateral',
+      'position': 'standing',
+      'support': 'wall',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/supported_single_leg_stand.webp',
+      sha256:
+          'aa0906c715ad7d535a998f20dc41e1a249fa0f84c7ac055c098d1367238ce096',
+    ),
+  ),
   'suspension_biceps_curl': _ArtworkRegistration(
     revision: 1,
     equipmentKind: 'bodyweight',
@@ -7673,6 +7819,20 @@ const _artwork = <String, _ArtworkRegistration>{
       asset: 'assets/exercise_artwork/images/tire_flip.webp',
       sha256:
           '81c7abd5e3257cfd0ca7b6acefedb1c830585d2b75e93552f0a6d133fc329ea7',
+    ),
+  ),
+  'towel_curls': _ArtworkRegistration(
+    revision: 1,
+    equipmentKind: 'bodyweight',
+    facets: {
+      'laterality': 'unilateral',
+      'position': 'seated',
+      'support': 'chair',
+    },
+    artwork: CatalogExerciseArtwork(
+      asset: 'assets/exercise_artwork/images/towel_curls.webp',
+      sha256:
+          'a8f7bd9486da69935b23b97194c87200e2f360fae89da1bd427cf2f16ad01535',
     ),
   ),
   'trap_bar_deadlift': _ArtworkRegistration(
