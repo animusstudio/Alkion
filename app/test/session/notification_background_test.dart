@@ -730,7 +730,7 @@ void main() {
           expect(outcome, NotificationBackgroundOutcome.rendered);
           expect(calls.map((c) => c.method), [
             'canScheduleExactNotifications',
-            'cancel',
+            'cancelAllPendingNotifications',
             'show',
             'zonedSchedule',
           ]);

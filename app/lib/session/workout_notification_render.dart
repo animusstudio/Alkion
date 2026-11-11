@@ -290,9 +290,11 @@ Future<void> postWorkoutMirror(
 );
 
 /// Posts the mirror and reschedules or cancels the rest-end post, and does
-/// nothing else: no permission prompt, no initialization, no storage. The
-/// prior post and its alarm are cancelled first (the plugin's cancel removes
-/// both); a countdown then schedules the post that follows the rest.
+/// nothing else: no permission prompt, no initialization, no storage. Only the
+/// pending rest-end alarm is cancelled first (it is the app's one scheduled
+/// post); the visible mirror is replaced in place under the same ID, so it
+/// never vanishes and reappears on an update. A countdown then schedules the
+/// post that follows the rest.
 Future<void> renderRestMirror(
   FlutterLocalNotificationsPlugin plugin,
   RestMirror state,
@@ -300,7 +302,7 @@ Future<void> renderRestMirror(
   final view = state.view, locale = view.locale;
   final mode = state.mode;
   final alert = mode.countdown && state.alertAtRestEnd;
-  await plugin.cancel(id: workoutNotificationId);
+  await plugin.cancelAllPendingNotifications();
   await postWorkoutMirror(
     plugin,
     view,

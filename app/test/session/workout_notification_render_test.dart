@@ -121,12 +121,17 @@ void main() {
         calls.singleWhere((c) => c.method == method).arguments as Map;
 
     test(
-      'a countdown cancels, posts with the actions, then schedules',
+      'a countdown cancels only the pending alarm, posts in place with the actions, then schedules',
       () async {
         final state = mirror(restStart: DateTime.now(), alert: true);
         await renderRestMirror(plugin, state);
-        expect(calls.map((c) => c.method), ['cancel', 'show', 'zonedSchedule']);
-        expect(args('cancel')['id'], workoutNotificationId);
+        // The visible mirror is never cancelled: it is replaced in place, so
+        // it doesn't vanish and reappear on an update.
+        expect(calls.map((c) => c.method), [
+          'cancelAllPendingNotifications',
+          'show',
+          'zonedSchedule',
+        ]);
         final shown = args('show');
         expect(shown['id'], workoutNotificationId);
         expect(shown['title'], 'Synthetic');
@@ -179,7 +184,10 @@ void main() {
       ]) {
         calls.clear();
         await renderRestMirror(plugin, state);
-        expect(calls.map((c) => c.method), ['cancel', 'show']);
+        expect(calls.map((c) => c.method), [
+          'cancelAllPendingNotifications',
+          'show',
+        ]);
         final shown = args('show');
         expect(shown['body'], 'Workout in progress');
         final details = shown['platformSpecifics'] as Map;
@@ -222,7 +230,7 @@ void main() {
         mirror(restStart: DateTime.now(), alert: true, exact: false),
       );
       expect(calls.map((c) => c.method).toSet(), {
-        'cancel',
+        'cancelAllPendingNotifications',
         'show',
         'zonedSchedule',
       });
