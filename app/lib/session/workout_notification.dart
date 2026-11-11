@@ -191,7 +191,7 @@ class WorkoutNotification extends ChangeNotifier {
           '$name|${payload.countdown}|${payload.when.toIso8601String()}|$posted|$exact|$locale|$alert|$nextName';
       if (key == _lastShown) return;
       _status(null);
-      // The renderer removes a prior alarm and its displayed mirror first.
+      // The renderer cancels only the pending alarm; the mirror updates in place.
       await renderRestMirror(_plugin, mirror);
       _lastShown = key;
       if (action != null) {
