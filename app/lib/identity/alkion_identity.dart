@@ -18,6 +18,7 @@ enum AlkionVariant {
   String get notificationChannel => '${preferencePrefix}workout_session';
   String get restEndChannel => '${preferencePrefix}rest_end';
   String get addRestAction => '${preferencePrefix}add_30s';
+  String get skipRestAction => '${preferencePrefix}skip_rest';
 
   void requireNativeIdentity(Map<String, dynamic>? native) {
     if (native == null ||
@@ -48,6 +49,7 @@ abstract final class AlkionIdentity {
   static String get notificationChannel => current.notificationChannel;
   static String get restEndChannel => current.restEndChannel;
   static String get addRestAction => current.addRestAction;
+  static String get skipRestAction => current.skipRestAction;
 
   static AlkionVariant forPlatform({required bool isAndroid, String? flavor}) {
     if (!isAndroid) return AlkionVariant.dev;

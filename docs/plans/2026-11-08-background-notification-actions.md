@@ -178,15 +178,146 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
 - **The secondary engine stays resident** for the life of the process once a
   background action has run.
 
+## Coordinator decisions
+
+- **2026-11-11, D1 amendment (T0 review).** The pure renderer
+  `workout_notification_render.dart` also imports `dart:ui`, for
+  `PlatformDispatcher`'s locale fallback when no locale is stored (a legacy or
+  view-less payload). The guard pins the allowed `dart:` imports of every
+  module in the background-safe closure, so any other `dart:` library (for
+  example `dart:ffi` or `dart:isolate`) fails until it is reviewed and listed.
+
+- **2026-11-11, T1 review.** Consumption decides in a fixed order, and every
+  refusal writes nothing:
+  - The step checks run before the basis check. A stale step-1 tap after an
+    in-app rest change, once step 1 has been applied, is therefore refused
+    `conflict` rather than `basis_changed`.
+  - A draft and timer that disagree on the rest refuse as `basis_changed`.
+  - A redelivery of an older applied step (below `consumed_step`) refuses as
+    `conflict`, because the receipt keeps only `last_intent_id`.
+  - A `duplicate` always hands back the draft row's current rest and
+    revision, even when the timer row disagrees. The draft is what the owner
+    saves against, so a reconciling owner never keeps a stale revision.
+  - A `duplicate` carries state to adopt, not attribution; callers (T3's
+    drain) must key on the outcome, never treat `change != null` as applied.
+- **2026-11-11, gate: T1 does not ship without T3.** Until T3 posts the step in
+  the payload, the notification carries the bare token, which decodes as
+  step 1. A second foreground +30s on the same notification is then refused
+  `conflict`.
+
 ## Task state
 
-- T0 — not started.
-- T1 — not started.
-- T2 — not started.
-- T3 — not started.
-- T4 — not started.
+- T0 — done, reviewed (PASS with findings; fixes `2d36824` re-checked PASS). `d6b7bf5d` adds the pure `notification_envelope.dart`
+  (action, view, envelope with the UTF-8 budget, intent record, journal
+  directory, port and wake constants) and `workout_notification_render.dart`
+  (builders, `_notifStrings`, `renderRestMirror`, fixed +30s index 0), which
+  `workout_notification.dart` delegates to and re-exports; `owns` is now
+  `ownsNotificationAction`. Guard, envelope and renderer tests added; the
+  existing notification tests pass unchanged. Review fixes: the owner view
+  stores a resolved locale, `notificationSupportRoot` mirrors the owner's
+  root derivation, a title is never shortened to nothing, and the guard pins
+  `dart:` imports and the pending background modules.
+- T1 — done, reviewed (PASS with findings; fixes `d938e7e` and `eba2431` re-checked; coordinator fix `1557ed4` reviewed with T3; a present non-integer draft rest total on a duplicate is refused as `malformed_draft_preserved`, never written as zero). `71b41c5b`: `issueNotificationToken` applies the
+  one token rule (issued basis or consumed post-step rest; a legacy issued
+  receipt gets its basis at first sight); `consumeNotificationIntent` decides
+  add and Skip with the step, duplicate, conflict, gap, basis and tap-time
+  rules and returns `applied`, `duplicate` or `refused(reason)`; the timer
+  revision is never compared. `CommittedRestChange` has nullable `restStart`
+  and `restEndedAt`; `DraftStore` retains the exact uncertain intent; the
+  controller's `applyNotificationIntent` adopts `endedAt` from the commit.
+  Kept for T3: `issueNotificationAction`/`notificationAction()` (token without
+  step), `applyNotificationAction` and `consumeNotificationAction` as the
+  legacy bare-token +30s (step 1, fresh intent). Review fixes: a test pins
+  `basis_changed` for a stale later step, and a duplicate now adopts the
+  draft row's current rest and revision, even when the timer row disagrees
+  (tested with out-of-band writes).
+- T2 — done, reviewed (PASS with findings; fixes `acadcc2` re-checked PASS). `2f9e9762` adds `notification_journal.dart`
+  (atomic `.partial` write, flush, rename and directory flush; 64-entry and
+  8 KiB caps; bounds, kind/action and name checks before decoding, with exact
+  bytes kept for unreadable entries; drain-ordered read; ENOENT-tolerant
+  delete; 60 s `.partial` cleanup; `journal-partial-written` and
+  `journal-renamed` checkpoints) and `notification_background.dart` (entry
+  point calling `DartPluginRegistrant` first, module tail, fold, port check
+  before and after the render, `exact` queried by the handler, trace markers).
+  Tests: journal, handler (fold, concurrency, mixed taps, 4096-byte boundary,
+  stale port, real store lock, plugin channel) and the crash child. Outside
+  the T2 row: `AlkionIdentity.skipRestAction` (`<prefix>skip_rest`) is added
+  for the handler; the guard lists `dart:ui` for the handler and `dart:ffi`
+  for `directory_durability.dart`, which spec D1 lets the journal import.
+  Review fixes: a failed directory flush after the rename counts as
+  journaled (traced `unflushed`); the exact-alarm query and the render are
+  bounded by a timeout so a hung call cannot stall the tail; a failed
+  exact-alarm query renders inexact; a directory or file that vanishes
+  during a read is skipped.
+  Fold choices where the spec is silent:
+  - a base with no rest folds as elapsed;
+  - `actionable` follows the token's `rest_start`;
+  - Skip, or a +30s at or after the folded rest end, gives elapsed mode;
+  - the next step is the last folded step + 1;
+  - the fold does not apply the owner's clock refusals: it is a provisional
+    mirror only, and the owner re-renders from SQL;
+  - entries match on the whole token JSON, not only the `token` string;
+  - near the 4 KiB limit the mirror's title can differ from the shortened
+    title in its payload;
+  - if the folded envelope can't fit, its view is dropped first; only when
+    even the action and step don't fit does the tap stay journaled with
+    nothing rendered;
+  - a render that times out isn't cancelled: if it completes after a later
+    delivery's render, it can briefly show an older mirror. The owner's
+    re-render from SQL corrects it (accepted risk, low).
+- T3 — done, reviewed (PASS with findings; fixes `a281745` re-checked, missing tests added in `1befdd7`, each proven by its mutation). `SessionManager` runs every drain, refresh,
+  foreground response and rest reconciliation on one tail; it registers the
+  `IsolateNameServer` port (opening → immediate after the owed-drain release,
+  closing ignores wake-ups, only its own mapping is removed), drains through
+  the live controller or in SQL alone (`intent-consume-open` inside the
+  consume transaction, `intent-committed` before the delete; skipped while a
+  launch holds the fence or a Finish is pending), copies an undecodable
+  entry's exact bytes into `reviews` (`notification_intent_unreadable`,
+  deterministic `rv-` ID) before deleting it, ends every decided intent with a
+  forced refresh (or the ghost rule without a workout) and keys on the
+  outcome, never on `change`. Refresh, flush, `init` and `resumed` drain
+  first; reconciliation skips stopping an elapsed rest only while a drain is
+  in flight. Only a body tap requests the open; a legacy bare-token +30s is
+  applied directly. `WorkoutNotification.init` registers the background
+  handler, `showFor` posts the envelope with the step and takes `force`, and
+  the renderer posts +30s then Skip rest, both `showsUserInterface: false`.
+  `AlkionRuntime.open` follows spec D6 steps 1–10 (port before drain #1,
+  failed-open catch unregisters it); `close()` puts the port in closing mode
+  first and unregisters it after the store closes, reopening it if the
+  barrier refused before teardown. The manifest declares the
+  `ActionBroadcastReceiver`. Deviation: "Skip rest" lives in `_notifStrings`
+  (all four languages) and not in the ARB files, because the renderer has no
+  `BuildContext` and an unused ARB key fails `unused_keys_test`. The two other
+  `WorkoutNotification` test fakes gained the `step`/`force` parameters.
+  Review (PASS with findings) fixes: every immediate-mode wake-up drains and
+  then always forces a mirror settle; a failed open also abandons its
+  `SessionManager` (no lifecycle observer or drains, OS mirror kept);
+  undecodable entries are not copied while a launch holds the fence;
+  `_enqueue` moves the tail before work starts; registering a port without a
+  journal throws; the dead drain guard in `_reconcileRest` is replaced by a
+  comment on the tail ordering. New tests pin the wake-up settle, the port
+  registered before drain #1, `init` draining before it reconciles, the
+  abandoned failed open, the required journal and the absent-total
+  duplicate; `RecordingNotification` moved to `test/support/`.
+- Device fixes after the first OG3 run: `0175b603` lets the private Dev
+  release APK route take `ALKION_NOTIFICATION_TRACE=1`; `9dc2fbac` pins both
+  actions in the identity tests; `b6f1fc04` updates the notification in place
+  (only the pending rest-end alarm is cancelled first), after the owner saw it
+  vanish and reappear on every tap.
+- OG3/OG4 — run on the owner's A024 (Android 17, patch 2026-09-01) on
+  2026-11-11: foreground (14/14, p90 402 ms), backgrounded (9/9, p90 172 ms)
+  and swiped from recents (2/2 applied at next open, which is also the OG4
+  killed-state row). No tap lost, no refusal, every p90 under 3 s: design (a)
+  stands. Deviation: latency runs from the `getevent` touch-down to the
+  system's `notification_enqueue`, not to a screen-recording frame. The owner
+  waived the other OG3 states and OG4 rows the same day.
+- T4 — docs written: `recovery.md` (new "Notification actions" section and
+  the two "background +30s" phrases), `acceptance.md` (dated F2 entry with
+  the device table and the waived states), `android-smoke.md` (the
+  notification-action step), `development.md`, and the trace flag in
+  `app/README.md`.
 
 ## Next
 
-Start after P8 and F1 merge. OG3
-decides whether design (a) stands or the fallback gets specified.
+Independent review of the device fixes and T4, then the outgoing-range review
+and delivery after owner approval.

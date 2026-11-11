@@ -21,8 +21,9 @@ selected until a restore completes. A restore stages
 lock stays `profiles/<profile>/.store-owner.lock` for every generation.
 Previous generations are never moved or deleted.
 
-`AlkionProfile.databasePath` resolves the selection for every opener (the app,
-the background +30s handler, tools). It refuses, before opening any store byte,
+`AlkionProfile.databasePath` resolves the selection for every opener (the app
+and tools). The background notification handler never opens the store; it only
+journals taps for the app ([notification actions](#notification-actions)). It refuses, before opening any store byte,
 with `GenerationSelectionException`:
 
 | Category | Meaning |
@@ -155,7 +156,8 @@ deleted.
   fence changes only `profile_state`; every other covered row stays exactly as
   reconciled, which the proof checks on a READONLY copy.
 * The selected generation's higher generation makes every older `StoreToken`,
-  autosave, background +30s payload and callback fail as `stale_generation`.
+  autosave and callback fail as `stale_generation`, and the next drain refuses
+  and removes a journaled notification tap from the old generation.
 * In the app, restore is refused with `workout_active` while a workout is
   running or starting: the screen asks before any picker opens, and
   `RuntimeRecoveryHost.restoreBackup` checks `hasActive` and takes the session
@@ -344,6 +346,52 @@ Evidence is host and real SQLite only (`test/data/workflow_state_quarantine_test
 launch tests). **The damaged-launch path is host-proven only**: damaged state
 can't be seeded on a release-mode APK, and the device check is a regression
 check on a clean profile.
+
+## Notification actions
+
+Since 2026-11-11 the workout notification's **+30s** and **Skip rest** act
+without opening the app ([plan](../plans/2026-11-08-background-notification-actions.md),
+[spec](../specs/2026-11-08-background-notification-actions.md)). SQLite stays
+the only rest truth and the app's main isolate its only writer.
+
+- **Background tap.** The plugin starts a secondary isolate. It writes one
+  entry `{format: 'alkion-notification-intent/1', intent_id, action_id, kind,
+  tapped_at, payload}` to the intent journal
+  `<parent of support root>/.<applicationId>-notification-intents/`, named
+  `<tapped_at µs>-<intent_id>.json`: written as `.partial`, flushed, renamed,
+  then the directory flushed. At most 64 entries of 8 KiB each; beyond that the
+  tap is refused and nothing is rendered. `.partial` files older than 60 s are
+  removed. If the app is running, the handler wakes it through an
+  `IsolateNameServer` port; otherwise it renders a provisional mirror folded
+  from the journal, so the tap is visible at once.
+- **Owner drain.** The app applies entries in order inside one store
+  transaction per intent, keyed by the rest's step receipt and its one token
+  rule. Each entry ends as applied, duplicate (the state already committed;
+  the draft adopts it) or refused with a reason: `stale_generation`,
+  `foreign`, `draft_not_active`, `token_superseded`, `basis_changed`,
+  `conflict`, `gap`, `late` or `clock`. A refusal writes nothing. The entry
+  is deleted only after its outcome commits; after a crash before that, the
+  entry is decided again from the receipt and never applies twice. Every decided intent forces a re-render from SQL.
+- **When it drains.** At runtime open (spec D6: the port is registered before
+  the first drain, after F1's quarantine), on every wake-up, resume, refresh
+  and flush, and before a backup, so a backup holds the applied rest and no
+  journal. With no active workout the open cancels a leftover notification
+  (ghost).
+- **Unreadable entries.** Their exact bytes are copied into a
+  `notification_intent_unreadable` review with a deterministic ID before the
+  file is deleted; if that write fails the file stays and counts toward the cap.
+- **Not stored or restored.** The journal sits beside the support root, so no
+  profile or restore inventory sees it, and backups exclude it like OS
+  notifications ([backup](backup.md)). After a restore, old-generation entries
+  are refused and removed.
+
+Device evidence (owner's phone, 2026-11-11): foreground, backgrounded and a
+swiped-away process; see [acceptance](acceptance.md#f2-background-notification-actions--2026-11-11).
+Lock screen, Doze, frozen and restricted-bucket processes, taps during a cold
+launch or a restore, and a tap after an app update before opening are not
+device-run (owner waiver). A frozen or cold process can lose a tap before it
+is journaled, because the plugin's receiver holds no `goAsync`; the loss is
+visible as no change on the notification.
 
 ## Limits
 

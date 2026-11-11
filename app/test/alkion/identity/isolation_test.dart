@@ -260,9 +260,11 @@ void main() {
       'android/app/src/main/AndroidManifest.xml',
     ).readAsStringSync();
     final cmake = File('linux/CMakeLists.txt').readAsStringSync();
-    final notification = File(
+    // The owner service and the pure renderer it delegates to.
+    final notification = [
       'lib/session/workout_notification.dart',
-    ).readAsStringSync();
+      'lib/session/workout_notification_render.dart',
+    ].map((path) => File(path).readAsStringSync()).join('\n');
     expect(gradle, contains('namespace = "dev.animusstudio.alkion"'));
     expect(gradle, contains('applicationId = "dev.animusstudio.alkion"'));
     expect(gradle, contains('create("dev")'));
@@ -281,6 +283,7 @@ void main() {
     );
     expect(notification, contains('AlkionIdentity.notificationChannel'));
     expect(notification, contains('AlkionIdentity.addRestAction'));
+    expect(notification, contains('AlkionIdentity.skipRestAction'));
     expect(notification, contains('AlkionIdentity.restEndChannel'));
   });
 }

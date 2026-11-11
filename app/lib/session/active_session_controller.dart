@@ -1110,10 +1110,9 @@ class ActiveSessionController extends ChangeNotifier {
   /// failed), so its save is still owed.
   bool _savePending = false;
   bool _notificationActionPending = false;
-  _RestState? _notificationRestBefore;
   List<_RestState Function(_RestState)>? _notificationRestEdits;
   bool get notificationActionUncertain =>
-      _draftStore?.pendingNotificationAction != null;
+      _draftStore?.pendingNotificationIntent != null;
 
   /// Whether autosave and rest changes wait: a prepared Finish has not
   /// committed yet (in flight, or failed and awaiting retry), or a
@@ -1166,20 +1165,17 @@ class ActiveSessionController extends ChangeNotifier {
       notificationActionUncertain;
 
   void _beginNotificationRest() {
-    _notificationRestBefore = (
-      start: restStart,
-      total: restTotal,
-      endedAt: restEndedAt,
-    );
     _notificationRestEdits = [];
   }
 
+  /// Adopts the committed rest, including its `restEndedAt`, then replays the
+  /// rest edits made while the intent was in flight.
   bool _adoptNotificationRest(CommittedRestChange? committed) {
     if (committed != null) {
       _RestState state = (
         start: committed.restStart,
         total: committed.restTotal,
-        endedAt: _notificationRestBefore?.endedAt,
+        endedAt: committed.restEndedAt,
       );
       for (final edit
           in _notificationRestEdits ?? <_RestState Function(_RestState)>[]) {
@@ -1189,22 +1185,27 @@ class ActiveSessionController extends ChangeNotifier {
       restTotal = state.total;
       restEndedAt = state.endedAt;
     }
-    final action = _draftStore?.pendingNotificationAction;
-    if (action != null) {
-      _draftStore!.acknowledgeNotificationAction(action);
+    final intent = _draftStore?.pendingNotificationIntent;
+    if (intent != null) {
+      _draftStore!.acknowledgeNotificationAction(intent);
     }
-    _notificationRestBefore = null;
     _notificationRestEdits = null;
     return committed != null;
   }
 
-  Future<bool> _reconcileNotificationAction(DraftStore store) async {
-    if (store.pendingNotificationAction == null) return false;
-    final adopted = _adoptNotificationRest(
-      await store.reconcileNotificationAction(),
-    );
+  Future<bool> _reconcileNotificationAction(DraftStore store) async =>
+      (await _reconcilePendingNotification(store))?.change != null;
+
+  /// Decides a retained uncertain intent, if any, and adopts what it
+  /// committed. Null when nothing was pending.
+  Future<NotificationConsumption?> _reconcilePendingNotification(
+    DraftStore store,
+  ) async {
+    if (store.pendingNotificationIntent == null) return null;
+    final outcome = await store.reconcileNotificationAction();
+    _adoptNotificationRest(outcome?.change);
     persistenceError = null;
-    return adopted;
+    return outcome;
   }
 
   SessionDraft snapshot() {
@@ -1314,41 +1315,55 @@ class ActiveSessionController extends ChangeNotifier {
     });
   }
 
-  /// Shares the autosave tail. Pending edits settle first; no older snapshot
-  /// may overwrite the action's committed rest, and finish cannot prepare from
-  /// the old revision while the action is in flight.
-  Future<bool> applyNotificationAction(NotificationAction action) {
+  /// An older build's +30s, tapped with a bare token (spec D2): step 1 of an
+  /// add under a fresh intent, decided like a journaled one. True when it
+  /// committed.
+  Future<bool> applyNotificationAction(NotificationAction action) async =>
+      (await applyNotificationIntent(
+        legacyNotificationIntent(action),
+      ))?.outcome ==
+      NotificationOutcome.applied;
+
+  /// Decides one notification intent through the autosave tail. Pending edits
+  /// settle first; no older snapshot may overwrite the committed rest, and
+  /// finish cannot prepare from the old revision while the intent is in
+  /// flight. Null when it was not attempted (no store or draft, callbacks
+  /// frozen, Finish pending): the intent waits. Throws when COMMIT is
+  /// uncertain; the exact intent is then retained until SQL answers it.
+  Future<NotificationConsumption?> applyNotificationIntent(
+    NotificationIntent intent,
+  ) {
     final store = _draftStore;
     if (store == null || _draft == null || callbacksFrozen) {
-      return Future.value(false);
+      return Future.value(null);
     }
     _notificationActionPending = true;
     _callbacksFrozen.value = true;
     _saveDebounce?.cancel();
     final epoch = ++_saveEpoch;
-    final previousAction = store.pendingNotificationAction;
-    if (previousAction == null) _beginNotificationRest();
+    final previous = store.pendingNotificationIntent;
+    if (previous == null) _beginNotificationRest();
     final work = _persistenceTail.then((_) async {
       var adopted = false;
       try {
-        adopted = await _reconcileNotificationAction(store);
+        final reconciled = await _reconcilePendingNotification(store);
+        adopted = reconciled?.change != null;
         if (_savePending || store.pending != null) {
           if (store.pending != null) await store.save(snapshot());
           await store.save(snapshot());
           if (epoch == _saveEpoch) _savePending = false;
         }
         if (finishPending || _draft == null) {
-          return false;
+          return null;
         }
-        if (previousAction?.encode() == action.encode()) return adopted;
+        if (previous?.encode() == intent.encode()) return reconciled;
         if (_notificationRestEdits == null) _beginNotificationRest();
-        final committed = await store.consumeAction(action);
-        adopted = _adoptNotificationRest(committed) || adopted;
-        if (committed == null) return false;
+        final outcome = await store.consumeAction(intent);
+        adopted = _adoptNotificationRest(outcome?.change) || adopted;
         persistenceError = null;
-        // This state is already durable. Ordinary listeners must not autosave
-        // the pre-action rest or create a second consumption.
-        return true;
+        // An applied rest is already durable. Ordinary listeners must not
+        // autosave the pre-action rest or create a second consumption.
+        return outcome;
       } catch (error) {
         persistenceError = error;
         rethrow;
@@ -1357,7 +1372,6 @@ class ActiveSessionController extends ChangeNotifier {
         _callbacksFrozen.value = callbacksFrozen;
         if (_savePending) _scheduleSave();
         if (!notificationActionUncertain) {
-          _notificationRestBefore = null;
           _notificationRestEdits = null;
         }
         if (adopted) super.notifyListeners();
