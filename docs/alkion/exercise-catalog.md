@@ -18,16 +18,21 @@ tests contain independently authored synthetic records only.
 
 The staging tool requires an explicit file and its reviewed SHA-256. The source
 digest admitted for the private catalog is
-`65ab456c9b13bac3aa49a13f7bec250f73524eb76503fa3d71bb65739879234d`.
+`e7fe48a5c4bd2852c35c89363eb28a03894ba08efe59288c9d7c0198686856bb`.
 Its allowlisted projection digest is
-`6be64405249e800cb9d793d2575ef0708ab5222aae606e98bf8555e4b7c643fb`:
+`08adcc0a2bead5ec734824f869b08d8089656b6f067e232fe70aca86a04a4a7a`:
 156 families, 771 variants, four collections, eight measurement profiles,
-436 aliases, 1,106 scoped terms, 99 abbreviations, 31 anatomy nodes and no
+436 aliases, 1,109 scoped terms, 99 abbreviations, 31 anatomy nodes and no
 equipment models. Catalog/search revisions are
-`2026-11-11-usability-additions.1` /
-`2026-11-11-usability-additions-search.1`.
+`2026-11-11-machine-synonyms.1` /
+`2026-11-11-machine-synonyms-search.1`.
 
-The 2026-11-11 refresh adds 11 variants and nine families while preserving all
+The latest naming pass adds machine-scoped Vertical Traction, seated-machine
+Delts Machine and machine leg curling retrieval in both English and Italian
+interfaces. All 771 definitions, canonical titles and muscle claims are preserved.
+Manufacturer model identity and ambiguous translations remain separate work.
+
+The earlier 2026-11-11 refresh adds 11 variants and nine families while preserving all
 760 existing variant identities and revisions. The additions retain unknown
 muscle coverage and use the existing missing-artwork fallback where needed.
 The authoritative v2 muscle bundle covers 771 variants: 741 partial and 30

@@ -14,6 +14,7 @@ import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/recovery_host.dart';
 import 'package:alkion/recovery/restore.dart';
 import 'package:alkion/session/active_session_screen.dart';
+import 'package:alkion/session/log_set_bar.dart';
 import 'package:alkion/session/session_summary_screen.dart';
 import 'package:alkion/shell/app_shell.dart';
 import 'package:alkion/shell/session_launcher.dart';
@@ -63,6 +64,22 @@ void main() {
         backupDirectory: () async => backups,
       );
       final evidence = <String, Object?>{};
+      Future<void> logLiveSet() async {
+        final controller = runtime!.sessions.active!;
+        final liveId = controller.liveSet!.set.id;
+        await settleUntil(
+          tester,
+          find.byWidgetPredicate(
+            (widget) => widget is LogSetBar && widget.live?.set.id == liveId,
+          ),
+        );
+        await act(
+          tester,
+          () => tester.tap(find.byKey(const Key('log-set-bar'))),
+        );
+        await settleWhile(tester, () => controller.liveSet?.set.id == liveId);
+      }
+
       phase('install traps');
       trap.install();
       plugins.install();
@@ -153,11 +170,7 @@ void main() {
         final templateId = runtime!.sessions.active!.draft.templateId;
         expect(templateId, anyOf(dayId, cloneId));
         for (var i = 0; i < 2; i++) {
-          await act(
-            tester,
-            () => tester.tap(find.byKey(const Key('log-set-bar'))),
-          );
-          await realSettle(tester, ticks: 6);
+          await logLiveSet();
         }
         final loggedIds = [
           for (final b in runtime!.sessions.active!.draft.blocks)
@@ -270,15 +283,15 @@ void main() {
         await realSettle(tester, ticks: 4);
         for (
           var i = 0;
-          i < 24 && find.byType(SessionSummaryScreen).evaluate().isEmpty;
+          i < 24 && runtime!.sessions.active!.liveSet != null;
           i++
         ) {
-          await act(
-            tester,
-            () => tester.tap(find.byKey(const Key('log-set-bar'))),
-          );
-          await realSettle(tester, ticks: 6);
+          await logLiveSet();
         }
+        expect(runtime!.sessions.active!.liveSet, isNull);
+        final finish = find.widgetWithText(FilledButton, 'Finish workout');
+        await settleUntil(tester, finish);
+        await act(tester, () => tester.tap(finish));
         await settleUntil(tester, find.byType(SessionSummaryScreen));
         expect(runtime!.sessions.hasActive, isFalse);
         late String sessionId;
