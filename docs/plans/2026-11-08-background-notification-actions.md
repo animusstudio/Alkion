@@ -200,7 +200,19 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   root derivation, a title is never shortened to nothing, and the guard pins
   `dart:` imports and the pending background modules.
 - T1 — not started.
-- T2 — not started.
+- T2 — done, awaiting review. `2f9e9762` adds `notification_journal.dart`
+  (atomic `.partial` write, flush, rename and directory flush; 64-entry and
+  8 KiB caps; bounds, kind/action and name checks before decoding, with exact
+  bytes kept for unreadable entries; drain-ordered read; ENOENT-tolerant
+  delete; 60 s `.partial` cleanup; `journal-partial-written` and
+  `journal-renamed` checkpoints) and `notification_background.dart` (entry
+  point calling `DartPluginRegistrant` first, module tail, fold, port check
+  before and after the render, `exact` queried by the handler, trace markers).
+  Tests: journal, handler (fold, concurrency, mixed taps, 4096-byte boundary,
+  stale port, real store lock, plugin channel) and the crash child. Outside
+  the T2 row: `AlkionIdentity.skipRestAction` (`<prefix>skip_rest`) is added
+  for the handler; the guard lists `dart:ui` for the handler and `dart:ffi`
+  for `directory_durability.dart`, which spec D1 lets the journal import.
 - T3 — not started.
 - T4 — not started.
 
