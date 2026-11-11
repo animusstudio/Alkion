@@ -727,6 +727,14 @@
   },
   "alkionLegacyFallback": "Unavailable evidence · legacy display fallback",
   "alkionRetry": "Retry local save",
+  "alkionKeptNoticeDraft": "Your unfinished workout couldn't be opened. Its saved data is kept and included in backups.",
+  "alkionKeptNoticeFinished": "Undo for your last finished workout couldn't be loaded. Its saved data is kept and included in backups. Workouts in History are not affected.",
+  "alkionKeptNoticeBoth": "Your unfinished workout and the undo for your last finished workout couldn't be opened. Their saved data is kept and included in backups. Workouts in History are not affected.",
+  "alkionKeptDataSection": "Kept workout data",
+  "alkionKeptDataDraft": "Unfinished workout",
+  "alkionKeptDataFinished": "Finish undo data",
+  "alkionKeptDataOther": "Workout data",
+  "alkionKeptDataExplain": "Kept as evidence and included in backups.",
   "alkionDateUnavailable": "Date unavailable · {raw}",
   "@alkionDateUnavailable": {
     "placeholders": {

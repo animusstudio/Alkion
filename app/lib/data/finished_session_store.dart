@@ -6,6 +6,7 @@ import '../session/active_session_controller.dart';
 import '../domain/evidence.dart';
 import '../store/local_store.dart';
 import 'json_file_store.dart';
+import 'workflow_state_quarantine.dart';
 
 /// Snapshot of the last workout finished on this device, kept so an
 /// accidental Finish can be undone from History.
@@ -108,13 +109,8 @@ class FinishedSessionStore {
       if (row == null || row['status'] != 'active') {
         return null;
       }
-      final value = FinishedSession.tryDecode(
-        utf8.decode((row['payload_bytes'] as List).cast<int>()),
-      );
-      if (value == null) {
-        throw const StoreException('malformed_recovery_preserved');
-      }
-      return value;
+      final read = classifyFinishedPayload(row['payload_bytes']);
+      return read.value ?? (throw StoreException(read.damage!.loaderCategory));
     });
   }
 
@@ -126,7 +122,12 @@ class FinishedSessionStore {
     if (db == null) throw const StoreException('local_store_required');
     await db.writeTransaction((tx) async {
       final row = await tx.localState(LocalStateKind.finishedRecovery, 'last');
-      if (row == null || row['status'] == 'expired') return;
+      // A quarantined snapshot is kept evidence: never decoded or flipped.
+      if (row == null ||
+          row['status'] == 'expired' ||
+          row['status'] == 'quarantined') {
+        return;
+      }
       final value = decodeBytes((row['payload_bytes'] as List).cast<int>());
       if (value == null) {
         throw const StoreException('malformed_recovery_preserved');

@@ -943,8 +943,8 @@ final class Qualification {
         'tampered.alkionbackup',
         tampered,
       ),
-      'unsupported_version': await refusal('version2.alkionbackup', [
-        ...utf8.encode('alkion-backup/2\n'),
+      'unsupported_version': await refusal('newer-version.alkionbackup', [
+        ...utf8.encode('alkion-backup/${backupVersion + 1}\n'),
         ...bytes.sublist(manifestStart),
       ]),
     };

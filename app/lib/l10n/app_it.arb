@@ -375,6 +375,14 @@
   },
   "alkionLegacyFallback": "Dati non disponibili · visualizzazione legacy",
   "alkionRetry": "Riprova salvataggio locale",
+  "alkionKeptNoticeDraft": "Non è stato possibile aprire il tuo allenamento non terminato. I suoi dati salvati sono conservati e inclusi nei backup.",
+  "alkionKeptNoticeFinished": "Non è stato possibile caricare l'annullamento del tuo ultimo allenamento terminato. I suoi dati salvati sono conservati e inclusi nei backup. Gli allenamenti nella Cronologia non sono interessati.",
+  "alkionKeptNoticeBoth": "Non è stato possibile aprire il tuo allenamento non terminato e l'annullamento del tuo ultimo allenamento terminato. I loro dati salvati sono conservati e inclusi nei backup. Gli allenamenti nella Cronologia non sono interessati.",
+  "alkionKeptDataSection": "Dati di allenamento conservati",
+  "alkionKeptDataDraft": "Allenamento non terminato",
+  "alkionKeptDataFinished": "Dati per annullare la fine dell'allenamento",
+  "alkionKeptDataOther": "Dati di allenamento",
+  "alkionKeptDataExplain": "Conservati come prova e inclusi nei backup.",
   "alkionDateUnavailable": "Data non disponibile · {raw}",
   "@alkionDateUnavailable": {
     "placeholders": {

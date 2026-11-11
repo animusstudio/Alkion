@@ -34,6 +34,8 @@ jobs:
       - name: Test
         working-directory: app
         env:
-          # Child Make CLI checks use the Dart shipped by flutter-action.
+          # Child Make CLI checks use the Dart and Flutter shipped by
+          # flutter-action instead of the Makefile's FVM defaults.
           ALKION_TEST_DART: dart
+          ALKION_TEST_FLUTTER: flutter
         run: flutter test

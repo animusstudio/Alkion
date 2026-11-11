@@ -1,8 +1,8 @@
 # Unreadable workout state at launch
 
 Date: 2026-11-08, revised 2026-11-09 after design review. Lane: **Full**.
-Status: **Proposed**, design-reviewed with findings, now revised. It needs a
-re-review before implementation.
+Status: **Done** (OG3 accepted on A024 2026-11-09); approved by the owner on
+2026-11-09, with the D7/D8 copy (OG2).
 Parent: [development](../alkion/development.md).
 Specification: [unreadable workout state](../specs/2026-11-08-unreadable-workout-state.md).
 Baseline: `458aac6`. Branch: `feat/unreadable-workout-state-20261108`.
@@ -40,9 +40,9 @@ decisions D1–D11 and the acceptance A1–A17.
 
 - **OG1:** confirmed 2026-11-09. Quarantine, not repair, for missing or
   mismatched timer evidence. Set aside an unreadable draft and record why.
-- **OG2:** approve the notice copy (three variants) and the Backup-section
-  copy (spec D7, D8) in English. The translations follow.
-- **OG3 (device):** a regression check only, on the owner's phone with the
+- **OG2:** approved 2026-11-09: the notice copy (three variants) and the
+  Backup-section copy (spec D7, D8) in English. The translations follow.
+- **OG3 (device):** passed on the A024 on 2026-11-09. A regression check only, on the owner's phone with the
   private Dev APK: a normal resume, a finish and History undo, and no notice
   on a clean profile.
   - Damaged state can't be seeded on a release-mode APK, which isn't
@@ -50,6 +50,16 @@ decisions D1–D11 and the acceptance A1–A17.
   - **The damaged-launch path is host-proven only.** No emulator check is
     planned, because that would need a synthetic damaged-backup fixture that
     no task owns.
+
+## Coordinator decisions
+
+- **2026-11-09, `KeptWorkflowKind.unknown`.** A kept review whose evidence
+  names a kind this build doesn't recognise has no approved notice copy. It
+  produces no notice on its own; pending beside known kinds, it is ignored
+  when choosing the variant, and OK does not acknowledge it. The Backup
+  "Kept workout data" section lists it with the generic kind label "Workout
+  data" (a new string in all four ARB files), the review date and the same
+  "Kept as evidence and included in backups." line.
 
 ## Tasks
 
@@ -196,11 +206,51 @@ after T1 passes review.
 
 ## Task state
 
-- T1 — not started.
-- T2 — not started.
-- T3 — not started.
+- T1 — done, reviewed (PASS with findings; fixes `3b88197` re-checked PASS). `555e7ea` adds
+  `lib/data/workflow_state_quarantine.dart` (shared classifiers, the
+  quarantine with its checkpoints, `DecoderInfo` and
+  `WorkflowStateQuarantine` for notices and kept reviews),
+  `LocalTransaction.retireLocalState`, uniform loader categories, and the
+  `clearForSession` and History delete guards. The crash child runs under the
+  Flutter tester, because the classifiers import Flutter code.
+- T2 — done, reviewed (PASS with findings; fixes re-checked). `b77c6f3` calls the quarantine in
+  `AlkionRuntime.open` before `resumeFromDraft`, adds the `workflowNotices`
+  notifier with `acknowledgeWorkflowNotices`, the `KeptDataNotice` overlay
+  (built only while no storage error holds the top slot), the read-only
+  "Kept workout data" Backup section and the D7/D8 strings in en, it, de and
+  es. A follow-up commit makes one coordinator-authorized change to the T1 API:
+  `quarantineUnreadableWorkflowState` takes `decoder` as
+  `Future<DecoderInfo> Function()?`, called only after damage is found and
+  before the write transaction. `main.dart` passes a closure that reads
+  `PackageInfo` (falling back to `unknown`), so a clean launch calls no plugin
+  channel. Tests: `unreadable_state_launch_test.dart` (real
+  `AlkionRuntime.open` and the real app), `test/layout/kept_data_layout_test.dart`,
+  and decoder-call counts in `workflow_state_quarantine_test.dart`. Review
+  (PASS with findings) fixes: the notice read at open is non-fatal, the version
+  read times out after 2 s to `unknown`, kept-data labels use `FitLabel`, and
+  tests pin quarantine-failure propagation, the acknowledgement join and close
+  during an acknowledgement. A coordinator fix keeps the Backup screen readable when a kept review row
+  cannot be read.
+- T3 — done, reviewed (PASS with findings; fixes re-checked PASS). `47f8e44` adds
+  `test/alkion/recovery/workflow_quarantine_backup_test.dart` (6 real-SQLite
+  cases: a backup after a quarantine carries and a restore reproduces the
+  reviews, `notice` decisions and retired rows; older clean and older damaged
+  backups keep them as exact `restore_newer_work` evidence, and restored
+  damaged active rows are quarantined again under new IDs; `keepAll` never
+  decides a `workflow_state_unreadable` review; a second profile and other
+  generation directories stay byte-identical; no gate blocks and no export
+  carries the review). `4dbcb7b` records the behaviour in `recovery.md`,
+  `storage.md` and a dated `acceptance.md` entry. Checks: focused T3 set 128
+  passed, `analyze` and `format` clean. The "next open" is the quarantine
+  function on a reopened store, since T2 wires `AlkionRuntime.open`.
+  `alkion-backup-recovery` didn't compile at first: `d8e4873` (P3) had
+  made `recovery_host.dart` import Flutter through `stored_copies.dart`. The
+  coordinator fixed this on the F1 branch: `6862fac` splits `stored_copies`
+  so `recovery_host` is Flutter-free, and `c422d62` updates the stale
+  `unsupported_version` case. The target now passes 26/26. Review findings
+  (vacuous export check, no `replayCompleteness` blocking control, no
+  post-backup newer-work assertion) were fixed in a follow-up commit.
 
 ## Next
 
-Re-review of the revised spec and plan, then the OG2 copy answer. T1 can
-start at once. T2 waits for P2.
+Done. The background notification actions plan starts after this merge.

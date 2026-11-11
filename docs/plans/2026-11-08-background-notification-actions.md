@@ -1,9 +1,8 @@
 # Background notification actions: +30s and Skip rest
 
 Date: 2026-11-08, revised 2026-11-09 after design review. Lane: **Full**.
-Status: **Proposed**. The first design review failed with four blocking
-findings. The re-check passed with findings, and this revision addresses
-them.
+Status: **Approved** by the owner on 2026-11-09, after a design review,
+fixes and a re-check.
 Parent: [development](../alkion/development.md).
 Specification: [background notification actions](../specs/2026-11-08-background-notification-actions.md).
 Baseline: `458aac6`. Branch: `feat/background-notification-actions-20261108`.
@@ -189,5 +188,5 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
 
 ## Next
 
-Owner approval of the spec and plan. Start after P8 and F1 merge. OG3
+Start after P8 and F1 merge. OG3
 decides whether design (a) stands or the fallback gets specified.

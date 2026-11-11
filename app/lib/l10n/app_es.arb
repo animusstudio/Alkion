@@ -375,6 +375,14 @@
   },
   "alkionLegacyFallback": "Datos no disponibles · vista heredada",
   "alkionRetry": "Reintentar guardado local",
+  "alkionKeptNoticeDraft": "No se pudo abrir tu entrenamiento sin terminar. Sus datos guardados se conservan y se incluyen en las copias de seguridad.",
+  "alkionKeptNoticeFinished": "No se pudo cargar la opción de deshacer tu último entrenamiento terminado. Sus datos guardados se conservan y se incluyen en las copias de seguridad. Los entrenamientos del Historial no se ven afectados.",
+  "alkionKeptNoticeBoth": "No se pudieron abrir tu entrenamiento sin terminar ni la opción de deshacer tu último entrenamiento terminado. Sus datos guardados se conservan y se incluyen en las copias de seguridad. Los entrenamientos del Historial no se ven afectados.",
+  "alkionKeptDataSection": "Datos de entrenamiento conservados",
+  "alkionKeptDataDraft": "Entrenamiento sin terminar",
+  "alkionKeptDataFinished": "Datos para deshacer la finalización",
+  "alkionKeptDataOther": "Datos de entrenamiento",
+  "alkionKeptDataExplain": "Conservados como prueba e incluidos en las copias de seguridad.",
   "alkionDateUnavailable": "Fecha no disponible · {raw}",
   "@alkionDateUnavailable": {
     "placeholders": {

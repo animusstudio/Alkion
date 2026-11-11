@@ -1,6 +1,6 @@
 # Unreadable workout state at launch
 
-Date: 2026-11-08, revised 2026-11-09 after design review. Status: **Proposed**.
+Date: 2026-11-08, revised 2026-11-09 after design review. Status: **Done**; approved by the owner on 2026-11-09, accepted on the A024 the same day.
 Lane: **Full — stored recovery evidence.**
 Parent: [development](../alkion/development.md).
 Implementation: [plan](../plans/2026-11-08-unreadable-workout-state.md).

@@ -6,6 +6,47 @@ observed: 2026-11-09
 
 # Alkion integrated acceptance
 
+## F1 unreadable workout state at launch — 2026-11-09
+
+Implements the approved [unreadable workout state plan](../plans/2026-11-08-unreadable-workout-state.md)
+(audit item 1.1; [spec](../specs/2026-11-08-unreadable-workout-state.md)).
+Contract: [recovery](recovery.md#unreadable-workout-state-at-launch) and
+[storage](storage.md#quarantined-workflow-state).
+
+- A saved in-progress workout or "undo finish" snapshot that this build can't
+  read no longer locks the user out at every launch. Before resume, one write
+  transaction copies the exact rows (every column, payload value and SQLite
+  type) into a `workflow_state_unreadable` review with the reason and a
+  decoder record, and retires them in place as `quarantined`. The app then
+  opens without that workout or undo option (A1–A5).
+- Accepted draft and snapshot shapes, rows that aren't active and storage
+  failures are never quarantined; storage failures keep the launch failure
+  screen with the bytes untouched (A6–A8).
+- Replays, process death and an uncertain COMMIT end in exactly one review and
+  one retired row; the review ID covers only `{format, kind, rows}`, and a
+  conflicting ID uses a deterministic fallback, never changing the existing
+  review (A9–A12).
+- A later workout saves and finishes over the retired rows; History delete
+  never decodes a quarantined snapshot (A13).
+- A one-time notice says what happened and that the data is kept; OK records a
+  `notice` acknowledgement once. The Backup screen lists the kept data
+  read-only under "Kept workout data" (A16, T2).
+- A backup after a quarantine carries the reviews, notice decisions and
+  retired rows, and restoring it reproduces them (the local-state generation
+  stamp aside). An older backup leaves them as exact `restore_newer_work`
+  evidence; a restored damaged active row is quarantined at the next open
+  under a new ID. `keepAll` never decides a kept review (A14).
+- Quarantine and backup leave a second profile and the other generation
+  directories byte-identical. The review blocks neither `transportGate`, the
+  manual-send recovery gate nor `replayCompleteness`, and no export carries it
+  (A15).
+- No schema migration; the store stays at schema 6.
+
+All of this is host and real SQLite evidence on synthetic disposable stores.
+**The damaged-launch path is host-proven only**: damaged state can't be seeded
+on a release-mode APK. The device check (OG3), a regression check on a clean
+profile, passed on the A024 on 2026-11-09. Host checks are listed in the plan's task state.
+
 ## P3 backup and restore flow — 2026-11-09
 
 Implements the approved [backup and restore flow plan](../plans/2026-11-08-backup-and-restore-flow.md)
