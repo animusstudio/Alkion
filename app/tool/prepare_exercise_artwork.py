@@ -100,7 +100,7 @@ def publishable(value):
         for child in value:
             publishable(child)
     elif isinstance(value, str):
-        if (re.search(r"(?:/home/|/Users/|/tmp/|file://|[A-Za-z]:[\\/])", value)
+        if (re.search(r"(?:/home/|/Users/|/tmp/|file://|(?<![A-Za-z0-9_])[A-Za-z]:[\\/])", value)
                 or ".." in value.split("/")):
             raise ValueError("Manifest contains a private or traversing path")
 

@@ -182,6 +182,30 @@ class ArtworkPreparationTest(unittest.TestCase):
         self.assertEqual(tool.registrations(female), tool.registrations(copy.deepcopy(female)))
 
 
+class PublishablePathsTest(unittest.TestCase):
+    def test_http_sources_and_embedded_links_are_publishable(self):
+        tool.publishable({"sources": [
+            {"url": "https://example.invalid/exercise?variant=synthetic"},
+            {"url": "http://example.invalid/guide#exercise"},
+            {"evidence": "Source: https://example.invalid/guide (reviewed)."},
+        ]})
+
+    def test_windows_absolute_drives_are_rejected_at_token_boundaries(self):
+        for drive in ("C:/private/source.png", r"D:\private\source.png"):
+            for prefix in ("", "source=", "Source: ", "(", '\"', "["):
+                with self.subTest(path=prefix + drive):
+                    with self.assertRaisesRegex(ValueError, "private or traversing"):
+                        tool.publishable({"source": prefix + drive})
+
+    def test_existing_private_and_traversing_paths_stay_rejected(self):
+        for value in ("/home/synthetic/source.png", "/Users/synthetic/source.png",
+                      "/tmp/source.png", "file://synthetic.invalid/private.png",
+                      "../source.png", "assets/../source.png"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "private or traversing"):
+                    tool.publishable({"nested": [{"source": value}]})
+
+
 class LibraryNumberRegistryTest(unittest.TestCase):
     def setUp(self):
         self.registry = {"format": tool.REGISTRY_FORMAT, "next_number": 793,
