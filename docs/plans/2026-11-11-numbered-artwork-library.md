@@ -73,6 +73,22 @@ a permanent exercise number and edition.
 
 ## Task state and qualification
 
+### T4 — Saved regeneration marks
+
+Approved owner extension, 2026-11-11: "add to the library a marker that saves
+the image number in a file for regen". Status: **In progress**.
+
+Add an edition-specific mark/unmark control to cards and inspection. A local
+loopback review helper saves an explicit JSON queue file atomically; retain
+stable number, variant key, edition and selected image provenance. Restore
+marks on reload, report save failures honestly, and preserve corrupt/newer
+queue files. Keep the static offline viewer usable, with an explicit file-export
+fallback if direct saving is unavailable. No artwork generation is triggered.
+Standard scripts/HTML task: Sol high implementation, Sol medium independent
+review. Check persistent reload/unmark, male/female separation, concurrent
+updates, invalid identities/files, save failures and desktop/narrow controls
+using disposable queues. Root coordinates the existing local preview switch.
+
 Implementation tree: `1100a62`; the checks below qualify that tree.
 
 T1, T2 and T3 are **Done**. The library maps all 760 male and 760 female
