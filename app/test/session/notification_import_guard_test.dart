@@ -5,14 +5,15 @@ import 'package:path/path.dart' as p;
 
 /// The plugin's background engine may load only modules that never open the
 /// profile: no store, SQL or Flutter UI code anywhere in their transitive
-/// `package:alkion/` closure. The background handler and journal join
-/// [backgroundSafe] when they exist.
+/// `package:alkion/` closure.
 const backgroundSafe = <String>[
+  'session/notification_background.dart',
+  'session/notification_journal.dart',
   'session/notification_envelope.dart',
   'session/workout_notification_render.dart',
 ];
 
-/// Background modules that must join [backgroundSafe] once they exist.
+/// Background modules that must be in [backgroundSafe] whenever they exist.
 const pendingBackgroundModules = <String>[
   'session/notification_background.dart',
   'session/notification_journal.dart',
@@ -26,6 +27,13 @@ const allowedDartImports = <String, Set<String>>{
   // Coordinator decision 2026-11-11: PlatformDispatcher's locale fallback.
   'session/workout_notification_render.dart': {'dart:ui'},
   'identity/alkion_identity.dart': {'dart:io'},
+  // The background handler: Directory, and DartPluginRegistrant plus
+  // IsolateNameServer from dart:ui.
+  'session/notification_background.dart': {'dart:io', 'dart:ui'},
+  'session/notification_journal.dart': {'dart:convert', 'dart:io'},
+  // Spec D1: the journal flushes its directory through the libc fsync
+  // binding, which needs dart:ffi. It imports no store code.
+  'identity/directory_durability.dart': {'dart:convert', 'dart:ffi', 'dart:io'},
 };
 
 /// Paths under `lib/` that must never be reachable.
@@ -147,6 +155,43 @@ void main() {
       '../identity/alkion_identity.dart',
       'notification_envelope.dart',
     });
+    expect(direct('session/notification_journal.dart'), {
+      'dart:convert',
+      'dart:io',
+      'package:path/path.dart',
+      '../identity/alkion_identity.dart',
+      '../identity/directory_durability.dart',
+      'notification_envelope.dart',
+    });
+    expect(direct('session/notification_background.dart'), {
+      'dart:io',
+      'dart:ui',
+      'package:flutter_local_notifications/flutter_local_notifications.dart',
+      'package:path_provider/path_provider.dart',
+      'package:uuid/uuid.dart',
+      'notification_envelope.dart',
+      'notification_journal.dart',
+      'workout_notification_render.dart',
+    });
+  });
+
+  test('the background handler never initializes or prompts', () {
+    final source = _readLib('session/notification_background.dart');
+    for (final call in [
+      '.initialize(',
+      'requestNotificationsPermission',
+      'requestExactAlarmsPermission',
+      'requestFullScreenIntentPermission',
+      'getNotificationAppLaunchDetails',
+    ]) {
+      expect(source, isNot(contains(call)), reason: call);
+    }
+    final entry = RegExp(
+      r"@pragma\('vm:entry-point'\)\s*void onBackgroundNotificationResponse\("
+      r'NotificationResponse response\) \{\s*'
+      r'DartPluginRegistrant\.ensureInitialized\(\);',
+    );
+    expect(entry.hasMatch(source), isTrue);
   });
 
   test('the walker follows transitive imports, exports and parts', () {

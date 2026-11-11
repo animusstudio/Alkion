@@ -200,7 +200,40 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   root derivation, a title is never shortened to nothing, and the guard pins
   `dart:` imports and the pending background modules.
 - T1 — not started.
-- T2 — not started.
+- T2 — done, reviewed (PASS with findings; fixes `acadcc2` re-checked PASS). `2f9e9762` adds `notification_journal.dart`
+  (atomic `.partial` write, flush, rename and directory flush; 64-entry and
+  8 KiB caps; bounds, kind/action and name checks before decoding, with exact
+  bytes kept for unreadable entries; drain-ordered read; ENOENT-tolerant
+  delete; 60 s `.partial` cleanup; `journal-partial-written` and
+  `journal-renamed` checkpoints) and `notification_background.dart` (entry
+  point calling `DartPluginRegistrant` first, module tail, fold, port check
+  before and after the render, `exact` queried by the handler, trace markers).
+  Tests: journal, handler (fold, concurrency, mixed taps, 4096-byte boundary,
+  stale port, real store lock, plugin channel) and the crash child. Outside
+  the T2 row: `AlkionIdentity.skipRestAction` (`<prefix>skip_rest`) is added
+  for the handler; the guard lists `dart:ui` for the handler and `dart:ffi`
+  for `directory_durability.dart`, which spec D1 lets the journal import.
+  Review fixes: a failed directory flush after the rename counts as
+  journaled (traced `unflushed`); the exact-alarm query and the render are
+  bounded by a timeout so a hung call cannot stall the tail; a failed
+  exact-alarm query renders inexact; a directory or file that vanishes
+  during a read is skipped.
+  Fold choices where the spec is silent:
+  - a base with no rest folds as elapsed;
+  - `actionable` follows the token's `rest_start`;
+  - Skip, or a +30s at or after the folded rest end, gives elapsed mode;
+  - the next step is the last folded step + 1;
+  - the fold does not apply the owner's clock refusals: it is a provisional
+    mirror only, and the owner re-renders from SQL;
+  - entries match on the whole token JSON, not only the `token` string;
+  - near the 4 KiB limit the mirror's title can differ from the shortened
+    title in its payload;
+  - if the folded envelope can't fit, its view is dropped first; only when
+    even the action and step don't fit does the tap stay journaled with
+    nothing rendered;
+  - a render that times out isn't cancelled: if it completes after a later
+    delivery's render, it can briefly show an older mirror. The owner's
+    re-render from SQL corrects it (accepted risk, low).
 - T3 — not started.
 - T4 — not started.
 
