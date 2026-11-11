@@ -217,7 +217,7 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   stores a resolved locale, `notificationSupportRoot` mirrors the owner's
   root derivation, a title is never shortened to nothing, and the guard pins
   `dart:` imports and the pending background modules.
-- T1 — done, awaiting review. `71b41c5b`: `issueNotificationToken` applies the
+- T1 — done, reviewed (PASS with findings; fixes `d938e7e`, `eba2431` and a coordinator fix re-checked; a present non-integer draft rest total on a duplicate is refused as `malformed_draft_preserved`, never written as zero). `71b41c5b`: `issueNotificationToken` applies the
   one token rule (issued basis or consumed post-step rest; a legacy issued
   receipt gets its basis at first sight); `consumeNotificationIntent` decides
   add and Skip with the step, duplicate, conflict, gap, basis and tap-time

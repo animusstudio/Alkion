@@ -369,7 +369,13 @@ Future<NotificationConsumption> consumeNotificationIntent(
       return NotificationConsumption.duplicate(
         CommittedRestChange(
           _instant(d['restStart']),
-          total is int ? total : 0,
+          // An absent total reads as 0, as SessionDraft.fromJson does; a
+          // present non-integer is damage and is never replaced with zero.
+          switch (total) {
+            null => 0,
+            final int value => value,
+            _ => throw const StoreException('malformed_draft_preserved'),
+          },
           draft['revision'] as int,
           restEndedAt: _instant(d['restEndedAt']),
         ),

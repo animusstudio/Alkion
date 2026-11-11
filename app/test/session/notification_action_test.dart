@@ -683,6 +683,43 @@ void main() {
     },
   );
 
+  test(
+    'reconciling against a non-integer draft rest total refuses and never writes zero',
+    () async {
+      final issued = await token();
+      final intent = intentFor(issued.action, 1);
+      actions.fail = actions.afterCommit = true;
+      await expectLater(c.applyNotificationIntent(intent), throwsStateError);
+      actions.fail = false;
+      await actions.writeTransaction((tx) async {
+        final row = (await tx.localState(LocalStateKind.draft, 'active'))!;
+        final value = Map<String, Object?>.from(
+          jsonDecode(utf8.decode((row['payload_bytes'] as List).cast<int>()))
+              as Map,
+        )..['restTotal'] = 'not-a-number';
+        await tx.putLocalState(
+          LocalStateKind.draft,
+          'active',
+          localBytes(value),
+          expectedRevision: row['revision'] as int,
+        );
+      });
+      final before = await db.store.inventory();
+      await expectLater(
+        c.applyNotificationIntent(intent),
+        throwsA(
+          isA<StoreException>().having(
+            (e) => e.category,
+            'category',
+            'malformed_draft_preserved',
+          ),
+        ),
+      );
+      expect(await db.store.inventory(), before);
+      expect(drafts.pendingNotificationIntent, isNotNull);
+    },
+  );
+
   for (final after in [false, true]) {
     test(
       'intent ${after ? 'forwarded' : 'refused'} COMMIT retains the exact intent and never applies it twice',
