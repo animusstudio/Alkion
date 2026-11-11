@@ -253,6 +253,14 @@ device measurement and needs the coordinator's phone access, so the coordinator 
     ticker. The nits are applied in a follow-up commit: a stronger post-trough assertion, the test
     name, the six-frame comment, and the `app/AGENTS.md` ambient test guidance.
 
+- **Outgoing-range review** `e355efb..b9d6e4a` (Sonnet): PASS with nits.
+  - `scripts/outgoing` passes: 139 commits, fast-forward, 0 leak findings, no tags.
+  - Public-tree hygiene, licensing, both main merges, U2 × F1/F2 drafts and l10n (732 keys ×
+    4 locales) are clean.
+  - Doc-state nits are fixed in `fc919ea`.
+  - Known pre-1.0 limit: a draft carrying `catalogLastSets` is quarantined if an older build is
+    sideloaded over a live workout.
+
 ## Next
 
 All tasks are done and integrated. The owner device check of the `651a882e` APK is pending, then publication.
