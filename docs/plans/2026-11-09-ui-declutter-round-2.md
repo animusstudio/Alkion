@@ -67,7 +67,7 @@ editor. Everything else here comes from that review.
 - **Exercise details from the day view.** Tapping a row opens the existing details sheet with the
   bigger image: `showCatalogChoiceDetails` for catalog exercises, `showExerciseSheet` for owned or
   legacy ones. The sheet is read-only.
-- **3D performance: measure first.** Record on the A024 with `adb shell dumpsys gfxinfo …
+- **3D performance (owner choice 1, 2026-11-11): one slow intro turn, then still.** Measure first. Record on the A024 with `adb shell dumpsys gfxinfo …
   framestats` and `dumpsys meminfo` on Today, the Split card, the day view and Explore, before and
   after each change:
   - Gate Today's figure on `Visibility.of`, as the Split card and day view already are.
