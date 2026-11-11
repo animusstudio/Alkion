@@ -70,12 +70,48 @@ rights or qualify visual appearance on a device.
 ## Numbered local review library
 
 Open [`tools/artwork-library/index.html`](../../tools/artwork-library/index.html)
-directly in a browser. It works offline through `file://`; there is no fetch,
-server, CDN or app setting to configure. The page uses the bundled fonts and
+directly in a browser. It works offline through `file://`; no CDN or app setting
+is required. The page uses the bundled fonts and
 selected image files. Search by exact library number (with an optional `#`) or
 part of an English catalog name. Select an image to inspect it, switch editions,
 or open its full-size file. Escape closes inspection; Previous/Next and the left
 and right arrow keys move through the current search results.
+
+Use **Mark for regen** on a card or in inspection to flag the current edition.
+Male and female marks are separate; pressing a marked control removes its mark.
+To save each change automatically to a JSON file, run the local helper from the
+repository root with an explicit queue path outside this public repository
+(the parent directory must already exist):
+
+```sh
+python3 app/tool/serve_artwork_library.py --queue /path/to/regeneration-queue.json --port 8766
+```
+
+Open `http://127.0.0.1:8766/tools/artwork-library/`. The helper binds only to
+loopback and initializes an empty file only when absent. **Saved in queue file**
+confirms the latest acknowledged file contents; failures show **Save not
+confirmed** and a Retry action. A lost response may have followed a successful
+write: the viewer reconciles the file, and retrying the same desired change is
+idempotent. Concurrent tabs update one mark at a time without replacing each
+other's entries. Unknown, corrupt or newer queue files are preserved and block
+writes until the owner resolves them. A regular static HTTP server can display
+the gallery, but marking requires this helper; its unavailable API shows Retry.
+
+The queue format is `alkion-artwork-regeneration-v1`, with an `entries` array.
+Each entry records the stable `number`, `variant_key`, `edition`, catalog variant
+`revision`, image `sha256`, source `illustration`, `source_sheet_sha256` and
+`source_cell`. These are the selected image's provenance at marking time.
+Later artwork revisions retain that snapshot and stable identity; retired
+reserved identities remain in the queue. Removing then marking again captures
+the new selection. No source-sheet paths or image generation are included.
+
+Through `file://`, marks persist in this browser's local storage and the status
+says **Browser only**. **Download regen JSON** requests a file download; save it
+through the browser, and download again after changing marks. The viewer cannot
+confirm the browser's final save location. Browser-only marks are separate from
+the helper's file and are not automatically imported. The same download button
+also provides a backup of the last confirmed helper queue. Neither mode starts
+regeneration or changes the artwork.
 
 The permanent number comes from
 `app/assets/exercise_artwork/library-numbers.json`. Both editions share it;
@@ -155,7 +191,9 @@ Focused checks:
 
 ```sh
 python3 -m unittest discover -s app/tool -p test_prepare_artwork_library.py
+python3 -m unittest discover -s app/tool -p test_serve_artwork_library.py
 node tools/artwork-library/test-library.cjs
+node tools/artwork-library/test-regeneration.cjs
 ```
 
 The browser check requires an existing Playwright installation with Chromium;
@@ -165,6 +203,10 @@ to an explicitly selected Chromium executable. It opens a disposable `file://`
 fixture using the catalog names and baseline files, with synthetic edition URLs;
 it checks controls and error handling, not final artwork correctness. It retains
 its fixture and desktop/narrow screenshots in a temporary directory for review.
+The regeneration check starts a fresh loopback helper on an available port and
+uses only a temporary queue. It verifies real file persistence, edition-specific
+reload/unmark, concurrent tabs, provenance snapshots, idempotent retry after
+failed/lost responses, JSON download, corrupt-file preservation and narrow UI.
 
 ## Optional Workout Guide movement frames
 

@@ -28,6 +28,11 @@
       </div>
     </div>
     <p id="summary" class="summary" role="status" aria-live="polite">Loading artwork library…</p>
+    <div class="regeneration-toolbar" aria-label="Regeneration queue">
+      <p id="regeneration-status" role="status" aria-live="polite">Loading regeneration marks…</p>
+      <button id="regeneration-retry" type="button" hidden>Retry save</button>
+      <button id="regeneration-download" type="button">Download regen JSON</button>
+    </div>
     <p id="notice" class="notice" hidden></p>
     <p id="empty" class="empty" hidden>No exercises match. Try another name or number, or <button id="clear" type="button">clear search</button>.</p>
     <div id="gallery" class="gallery" aria-label="Numbered exercise artwork"></div>
@@ -54,6 +59,9 @@
       </div>
     </div>
     <p id="inspection-status" class="inspection-status"></p>
+    <button id="inspection-regeneration" class="regeneration-button" type="button" aria-pressed="false">Mark for regen</button>
+    <p id="inspection-regeneration-status" class="inspection-status" role="status" aria-live="polite"></p>
+    <button id="inspection-regeneration-retry" type="button" hidden>Retry save</button>
     <div class="inspection-image"><img id="full-image" width="640" height="640" alt=""><p class="image-loading" aria-hidden="true">Loading image…</p><p id="image-error" role="status" hidden>Image unavailable. Rebuild the library data and check the bundled asset.</p></div>
     <a id="original" target="_blank" rel="noopener">Open full-size image</a>
     <details>
