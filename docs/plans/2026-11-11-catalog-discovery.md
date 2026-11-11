@@ -80,8 +80,12 @@ inputs remain unchanged.
 
 ## Task state
 
-T1–T3: approved; implementation starting. Target 771 executions/156 families,
-with existing identities and historical data preserved. New unknown muscle
-coverage and missing artwork use existing honest fallbacks. Build a private
-Dev APK with an explicit disposable debug signer; do not install it on an owner
-device. Public publication remains a separately reviewed exact-range decision.
+T1: staged 771 executions/156 families with all 760 existing identities
+preserved; loader admission and actual-bundle proof are being finalized.
+T2: bilingual matching and canonical titles implemented; focused catalog,
+selection, history and provenance checks plus static analysis passed. Independent
+review is in progress. T3: isolated Android 16 emulator and disposable debug
+signer prepared; integrated host checks, private APK and interactive evidence
+are pending. Unknown muscle coverage and missing artwork retain the existing
+honest fallbacks. No owner-device installation or public publication is included;
+publication remains a separately reviewed exact-range decision.
