@@ -6,6 +6,39 @@ observed: 2026-11-11
 
 # Alkion integrated acceptance
 
+## New exercises and selectable artwork editions — 2026-11-11
+
+The [approved plan](../plans/2026-11-11-new-exercise-artwork-and-female-selection.md)
+is implemented locally through `95afbecc`. Both editions now cover all 771
+catalog executions. Eleven additions receive 22 independently reviewed,
+strictly extracted recognition images; all 1,520 previous image bytes remain
+unchanged. Permanent numbers append 793–803, preserving all 760 previous
+mappings and the saved regeneration queue. Next permanent number: 804.
+
+The existing Appearance artwork setting now selects male or female exercise
+images throughout picker rows, navigation previews and open details. Changes
+are reactive and retain exercise selection, favorites and recents. Both editions
+are bundled; exact revision/equipment/facet matching remains required, and a
+missing selected-edition image fails closed. This supersedes the earlier
+male-only runtime and unbundled-female scope below. All eleven new canonical
+muscle profiles remain unknown; their artwork uses neutral silver without
+invented target overlays.
+
+Independent code and final artifact reviews PASS. Forty-three focused Flutter
+tests PASS, including hash/decode of all 1,542 bundled images; analysis reports
+zero issues. Two additional exact-identity checks prove non-null resolution for
+all 771 executions and all nine new family previews in both editions.
+Preparation tests (18), library generator tests (10), and final
+771-item deterministic artwork/library checks PASS. Parent `make check` and
+`make smoke` PASS. A read-only desktop browser check shows exactly eleven new
+images per edition with the same numbers, matching served hashes/versioned URLs
+and all 170 saved marks unchanged. Host evidence does not establish Android
+device qualification; no installation, release or public push was performed.
+
+Selected manifest SHA-256: male
+`631933fa16b3c526969f844bf716fb2b1b32f6a34021fee53bc5ab82f2d82e3e`, female
+`7bb2f97cf590bfd2e035fa3aeac44630ee43c736a22175e34e563250e30cc77a`.
+
 ## Saved artwork regeneration marks — 2026-11-11
 
 The numbered library now marks/unmarks each edition independently and saves

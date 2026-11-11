@@ -1,7 +1,7 @@
 # New exercise artwork and female edition selection
 
-Date: 2026-11-11. Lane: Standard. Status: Approved by the owner's direct
-request to generate both editions for the new exercises and honor Female artwork.
+Date: 2026-11-11. Lane: Standard. Status: Done locally. Approved by the owner's
+direct request to generate both editions and honor Female artwork.
 
 ## Outcome and inputs
 
@@ -64,13 +64,23 @@ reviews code and import; coordinator records checks and local commits.
 No device installation, release, raw private-catalog publication, public push,
 new muscle facts or account/profile changes are included.
 
-State: reviewed dependency integrated locally at `1e668236`; documentation
-conflicts retained both histories and the current source-only frame contract.
-Six source batches591–596/2361–2384 are reserved and generating; registry now
-reserves793–803 with next804, preserving its760-entry prefix.
+Completed: reviewed dependency integrated at `1e668236`; edition setting code
+at `61069b2c`; bounded source-URL validation correction at `30d86028`; qualified
+artwork and registrations at `95afbecc`. Documentation conflicts retained both
+histories and the current source-only frame contract.
 
-T3 code is implemented and independently reviewed at the760-asset baseline.
-Fifteen generator tests,43 focused Flutter tests and analysis (zero issues)
-passed; both existing editions hash/decode through the Flutter asset bundle.
-Nine new family representatives are explicit; their non-null coverage waits for
-the final771 import. Final artwork/import qualification remains pending.
+Eight immutable sources (591–598 / 2361–2392) include two bounded retries.
+All 22 selected targets pass independent visual and strict crop review; context
+copies and superseded attempts remain excluded from current selections. Both
+manifests now cover 771 variants; registry appends only 793–803 with next 804.
+Existing 1,520 image bytes, 760 mappings and 170 owner marks remain unchanged.
+
+Independent code, helper and exact final artifact reviews PASS. Checks PASS:
+18 preparation tests, 10 library generator tests, deterministic 771-item artwork
+and library validation, 43 focused Flutter tests (all 1,542 bundled images hashed
+and decoded), two exact checks covering all 771 executions in both editions and
+all nine new family previews,
+analysis with zero issues, parent `make check`/`make smoke`, and read-only live
+desktop library checks showing 11 latest images per edition with matching hashes.
+Current scoped evidence and runtime/device limits are in
+[integrated acceptance](../alkion/acceptance.md#new-exercises-and-selectable-artwork-editions--2026-11-11).
