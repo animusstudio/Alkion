@@ -1,6 +1,6 @@
 # Alkion development and qualified driver handoff
 
-2026-11-11 · [Bilingual catalog discovery](../plans/2026-11-11-catalog-discovery.md) · Approved.
+2026-11-11 · [Bilingual catalog discovery](../plans/2026-11-11-catalog-discovery.md) · Done.
 
 2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Done.
 

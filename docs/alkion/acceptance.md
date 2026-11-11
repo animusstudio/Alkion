@@ -1,10 +1,50 @@
 ---
 app: alkion
 stage: development
-observed: 2026-11-09
+observed: 2026-11-11
 ---
 
 # Alkion integrated acceptance
+
+## Bilingual catalog discovery — 2026-11-11
+
+Implements the approved [catalog discovery plan](../plans/2026-11-11-catalog-discovery.md).
+The private Dev catalog admits 771 executions in 156 families, preserving all
+760 existing identities. Supported English and Italian vocabulary works in every
+interface locale; localized canonical titles stay stable across synonyms and
+explicit personal names retain precedence. The 11 additions keep unknown muscle
+coverage. No catalog corpus or private qualification inputs are published.
+
+Focused catalog, selection, history/provenance and v2-loader checks passed,
+along with 512 actual-corpus query probes across all four interface locales.
+The full helper recorded 3,299 passing tests, three skips and the three documented
+inherited failures in `catalog_metric_controls_test.dart`
+(`duration_distance_optional`, `reps_distance_optional`,
+`reps_duration_optional_load`); its raw result remains FAIL. Analysis reported
+zero issues. Formatting initially flagged only an ignored qualification proof;
+after formatting that proof, the check passed with zero changed files. The normal
+Linux build, driver/store/transfer/backup recovery proofs, and private ARM64/x64
+Dev APK builds with exact packaged catalog/native-library guards passed. The x64
+ABI-switch guard first rejected stale ARM64 packaging; removing only generated
+packaging outputs produced a passing guarded rebuild.
+
+Interactive evidence uses the real Linux application at 412×844 on an isolated
+display with a fresh synthetic profile, exact staged Dev assets and a private
+harness injecting a synthetic Dev platform identity through existing test seams.
+The picker showed 771 executions; `ercolina` and `cable` each showed 92 results
+with unchanged per-locale titles in English and Italian. An apostrophe action
+query found cable curls in Italian. A newly added exercise's detail identified
+its equipment/setup/measurements and explicitly reported unavailable muscle
+information and unassessed omissions. Italian History rendered its empty state;
+no completed-history preservation claim follows from that screen.
+
+Android 16 software-emulator startup, catalog loading and Today were observed,
+but two attempts exited with native SIGTRAP during WebView initialization. The
+second attempted to disable WebView, yet its logs showed WebView still loading.
+Android picker/detail/History interaction and owner-device behavior remain
+**UNRUN**. No source workaround, owner-device installation, release signing or
+publication is qualified by this evidence. Public publication remains pending
+separate exact-range review and owner approval.
 
 ## F1 unreadable workout state at launch — 2026-11-09
 

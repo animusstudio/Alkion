@@ -1,6 +1,6 @@
 ---
 type: plan
-status: approved
+status: done
 created: 2026-11-11
 updated: 2026-11-11
 tags: [alkion, catalog, search, usability]
@@ -8,7 +8,8 @@ tags: [alkion, catalog, search, usability]
 
 # Alkion bilingual catalog discovery
 
-Status: **Approved** on 2026-11-11: the owner requested “update Alkion also”
+Status: **Done** for local implementation and bounded qualification. Approved on
+2026-11-11: the owner requested “update Alkion also”
 after accepting the catalog upgrade and this app follow-up. Lane: **Standard**.
 Base: published `f919aea1d0986692361e9f677f829e5d30ce3728`; isolated branch
 `feat/catalog-discovery-20261111`.
@@ -80,12 +81,26 @@ inputs remain unchanged.
 
 ## Task state
 
-T1: staged 771 executions/156 families with all 760 existing identities
-preserved; loader admission and actual-bundle proof are being finalized.
-T2: bilingual matching and canonical titles implemented; focused catalog,
-selection, history and provenance checks plus static analysis passed. Independent
-review is in progress. T3: isolated Android 16 emulator and disposable debug
-signer prepared; integrated host checks, private APK and interactive evidence
-are pending. Unknown muscle coverage and missing artwork retain the existing
-honest fallbacks. No owner-device installation or public publication is included;
-publication remains a separately reviewed exact-range decision.
+T1: done. The staged bundle admits 771 executions/156 families, preserves all
+760 existing identities, and retains unknown coverage for the 11 additions.
+Actual-bundle loader admission and digest/coverage regressions passed.
+
+T2: done. Bilingual matching and canonical titles passed focused catalog,
+selection, history/provenance and loader checks, static analysis and independent
+task review. Actual-corpus discovery proof passed 512 queries across four locales.
+
+T3: done with bounded platform evidence. Analysis, corrected formatting, normal
+Linux build, four recovery proofs and guarded private ARM64/x64 Dev APK builds
+passed. Full tests recorded 3,299 PASS, three documented inherited metric-control
+failures and three skips; the raw helper result remains FAIL. Real Linux app
+interaction covered English/Italian picker searches and stable titles, an added
+exercise's detail/unknown evidence notice, and empty synthetic History. The
+private harness used existing startup/loader seams and a synthetic Dev identity;
+no public source guard changed. See [acceptance](../alkion/acceptance.md).
+
+Android software-emulator catalog startup/Today were observed, but native SIGTRAP
+during WebView initialization prevented picker/detail/History interaction in two
+bounded attempts. Those Android interactions and owner-device behavior remain
+UNRUN. No owner-device installation or public publication is included. Final
+review and any separately approved exact-range publication remain coordination
+steps; no release or publication is implied by local completion.

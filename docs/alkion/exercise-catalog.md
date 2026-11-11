@@ -204,6 +204,10 @@ personal names stay verbatim. Execution qualifiers remain part of the identity
 and matching contract. Search/index caches retain bundle, locale and profile
 identity.
 
+The 2026-11-11 [acceptance record](acceptance.md) separates interactive Linux
+qualification from the Android software-emulator limitation. Guarded private APK
+builds do not establish owner-device behavior or authorize publication.
+
 Staging regression tests cover admitted projection, digest mismatch, newer
 schema, excluded nested data, unknown muscle claims, symlinks, tampering, stale
 staging and extra asset inventory.
