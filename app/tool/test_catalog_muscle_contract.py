@@ -133,6 +133,73 @@ class MuscleStageTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 contract.validate_inputs(f['catalog'], f['bundle'], f['scopes'], raw)
 
+    def test_new_execution_can_start_unknown_without_revising_existing_profile(self):
+        f = self.fixture()
+        old_profile = copy.deepcopy(f['bundle']['profiles'][0])
+        old_assessment = copy.deepcopy(f['bundle']['assessments'][0])
+        variant = copy.deepcopy(f['catalog']['variants'][0])
+        variant.update(id='10000000-0000-4000-8000-000000000011',
+                       key='synthetic-added-execution')
+        f['catalog']['variants'].append(variant)
+        f['catalog']['catalog_revision'] = 'synthetic.2'
+        executions = sorted([
+            {'variant_id': v['id'], 'variant_revision': v['revision'],
+             **{k: v[k] for k in ('family_id', 'equipment_kind', 'facets', 'measurement_profile')}}
+            for v in f['catalog']['variants']], key=lambda v: v['variant_id'])
+        execution_hash = contract.digest(executions[-1])
+        catalog_hash = contract.digest({
+            'namespace': 'alkion-exercises', 'executions': executions,
+            'measurement_definitions': sorted(f['catalog']['measurement_profiles'], key=lambda v: v['key'])})
+        f['bundle']['catalog_binding'].update(catalog_revision='synthetic.2',
+                                               execution_catalog_sha256=catalog_hash)
+        profile = copy.deepcopy(old_profile)
+        profile.update(id='synthetic_added_profile', revision=1,
+                       variant_id=variant['id'], execution_sha256=execution_hash,
+                       assessment_id='synthetic_added_assessment', coverage='unknown',
+                       relationships=[], previous_profile=None,
+                       coverage_note='No reviewed relationships for this new execution.',
+                       change_rationale='Birth of an explicitly unknown synthetic profile.')
+        assessment = copy.deepcopy(old_assessment)
+        assessment.update(id=profile['assessment_id'], variant_id=variant['id'],
+                          execution_sha256=execution_hash, profile_id=profile['id'],
+                          profile_revision=1, profile_sha256=contract.digest(profile),
+                          catalog_revision='synthetic.2', execution_catalog_sha256=catalog_hash,
+                          assessment_status='pending', dispositions=[], closure_rationale=None,
+                          unresolved=[{'reason': 'New synthetic execution.',
+                                       'next_evidence_needed': 'Execution-specific evidence.'}])
+        f['bundle']['profiles'].append(profile)
+        f['bundle']['assessments'].append(assessment)
+        self.admit(f)
+        self.assertEqual(f['bundle']['profiles'][0], old_profile)
+        self.assertEqual(f['bundle']['assessments'][0], old_assessment)
+        self.assertEqual(f['bundle']['profiles'][1]['coverage'], 'unknown')
+        self.assertEqual(f['bundle']['profiles'][1]['relationships'], [])
+        profile['relationships'] = copy.deepcopy(old_profile['relationships'])
+        with self.assertRaises(ValueError):
+            self.admit(f)
+
+    def test_explicit_catalog_muscle_and_scope_digest_mismatches_write_nothing(self):
+        f = self.fixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            paths = [root / name for name in ['catalog.json', 'muscles.json', 'scopes.json']]
+            hashes = []
+            for path, value in zip(paths, [f['catalog'], f['bundle'], f['scopes']]):
+                data = stager.encode(value)
+                path.write_bytes(data)
+                hashes.append(stager.sha256(data))
+            for index in range(3):
+                with self.subTest(input=paths[index].name):
+                    expected = hashes.copy()
+                    expected[index] = '0' * 64
+                    with patch.object(stager, 'APP', root), patch.object(stager, 'ASSETS', root/'assets'), patch.object(stager, 'ANDROID_ASSETS', root/'mirror'):
+                        with self.assertRaisesRegex(ValueError, 'SHA'):
+                            stager.stage(paths[0], expected[0], muscle_path=paths[1],
+                                         muscle_sha256=expected[1], scopes_path=paths[2],
+                                         scopes_sha256=expected[2])
+                    self.assertFalse((root/'assets').exists())
+                    self.assertFalse((root/'mirror').exists())
+
 
 if __name__ == '__main__':
     unittest.main()
