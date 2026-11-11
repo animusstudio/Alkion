@@ -7,7 +7,7 @@ import {loadMesh,pickSurfaceRegion,VolumeRenderer,orbitFrame} from '../assets/ch
 import {fullerMesh} from '../assets/character_body/geometry.js';
 import {posedMesh} from '../assets/character_body/pose-geometry.js';
 import {surfaceRegions,surfaceProjectionRevision,regionProjectionGLSL} from '../assets/character_body/regions.js';
-import {MotionLoop} from '../assets/character_body/motion.js';
+import {MotionLoop,INTRO_MS,introYaw} from '../assets/character_body/motion.js';
 
 assert.equal(protocolVersion,5);assert.equal(maxPitch,Math.PI/4);
 const display={version:5,style:'male',scores:Object.fromEntries(regions.map(k=>[k,0])),neutral:[240,240,245],accent:[255,104,53],background:[12,12,14],theme:'dark',visible:true,reduced:false,compact:true,paused:true,yaw:0,turn:0,command:0,revision:0,retry:0};
@@ -211,6 +211,62 @@ console.log('PASS: protocol v5, exact style dispatch, one latest draw/frame, no 
  assert.equal(timers.length,0);assert.equal(raf.size,0,'At most one redraw per published frame');
  pending=true;resized();frame();ready=true;runTimers();assert.deepEqual(tokens(),[1,3,5,6,8,11],'Normal readback resumes');
  console.log('PASS: async readback publishes only the latest landed frame; invalidation, stalls and fence-less frames handled');
+}
+
+// One slow intro turn per lease, then still: idle artwork requests no frames.
+{
+ assert.equal(INTRO_MS,8000);near(introYaw(.5,0),.5);assert.equal(introYaw(.5,1),.5);near(introYaw(0,.5),Math.PI);
+ // Sine ease-in-out: monotonic, at rest at both ends, peak speed π/2 × mean.
+ let last=-1,peak=0;for(let i=0;i<=800;i++){const at=Math.PI*(1-Math.cos(Math.PI*i/800));assert.ok(at>=last);if(i)peak=Math.max(peak,at-last);last=at;}
+ assert.ok(Math.abs(peak*800/(Math.PI*2)-Math.PI/2)<.01,'Peak speed is π/2 × the mean');
+ const events=[],raf=new Map();let counter=0,draws=0,now=0,lastYaw=null;
+ const window={AlkionNative:{postMessage:json=>events.push(JSON.parse(json))},addEventListener(){}};
+ const canvas={getContext:()=>({clearRect(){}}),addEventListener(){}};
+ const document={getElementById:()=>canvas,fonts:{load:async()=>[{}]},addEventListener(){},hidden:false};
+ let resized;
+ runInNewContext(runtime,{window,document,performance:{now:()=>now},AbortController,
+  ResizeObserver:class{constructor(callback){resized=callback;}observe(){}},
+  MotionLoop:class extends MotionLoop{constructor(state,draw){super(state,draw,{request:cb=>{const id=++counter;raf.set(id,cb);return id;},cancel:id=>raf.delete(id)});}},
+  VolumeRenderer:class{draw(yaw){draws++;lastYaw=yaw;}dispose(){}},
+  loadMesh:async()=>({}),colors:{},validateDisplay,validatePick,protocolVersion,regions});
+ const frame=(step=16)=>{now+=step;const callbacks=[...raf];raf.clear();for(const [,callback] of callbacks)callback(now);};
+ const run=ms=>{const before=draws;for(let t=0;t<ms;t+=16)frame();return draws-before;};
+ let current={...display,paused:false,yaw:.5};
+ const update=patch=>window.AlkionBody.update(current={...current,...patch});
+ // A fresh view that asks for autoplay turns once from its current yaw, then stops.
+ update({});await flush();frame();assert.equal(draws,1);near(lastYaw,.5);
+ const yaws=[];for(let t=0;t<INTRO_MS;t+=16){frame();yaws.push(lastYaw);}
+ assert.ok(yaws.some(yaw=>Math.abs(yaw-(.5+Math.PI))<.01),'Half way the figure faces away');
+ assert.equal(lastYaw,.5,'The intro ends exactly where it started');assert.equal(raf.size,0,'No frame after the intro');
+ assert.equal(events.at(-1).yaw,.5,'The intro end reports the resting yaw');
+ const settledDraws=draws;assert.equal(run(5000),0,'Idle requests no frames');assert.equal(draws,settledDraws);
+ // Identical displays, as each Flutter rebuild sends, stay idle.
+ for(let i=0;i<60;i++)update({});assert.equal(raf.size,0);
+ // Drag turns redraw once per frame of change and then idle again.
+ update({turn:.1,revision:1});update({turn:.2,revision:2});assert.equal(raf.size,1);frame();assert.equal(draws,settledDraws+1);near(lastYaw,.7);
+ assert.equal(run(1000),0,'A manual turn does not restart motion');
+ // Hidden and shown again (pager, route, lifecycle): one redraw, no second intro.
+ update({visible:false});assert.equal(raf.size,0);update({visible:true});assert.equal(run(2000),1);
+ window.AlkionBody.hostPaused(true);window.AlkionBody.hostPaused(false);assert.equal(run(2000),1);
+ resized();assert.equal(run(2000),1,'A resize draws once');
+ // A new lease (fresh mount, retry) re-arms; hiding mid-intro ends it for good.
+ window.AlkionBody.reset(1);update({revision:3});await flush();const leaseStart=lastYaw;
+ assert.ok(run(1000)>30,'The new lease turns');assert.ok(lastYaw!==leaseStart);
+ update({visible:false});update({visible:true});assert.equal(run(INTRO_MS),1,'An interrupted intro never resumes');
+ // A pause (drag start) ends the intro too; the drag then turns on demand only.
+ window.AlkionBody.reset(2);update({revision:4});await flush();run(1000);
+ update({paused:true,revision:5});assert.equal(raf.size,0);update({turn:.4,revision:6});assert.equal(run(INTRO_MS),1);
+ // An explicit resume asks for one more turn; it still ends on its own.
+ update({paused:false,revision:7});assert.ok(run(INTRO_MS+100)>INTRO_MS/16-10);assert.equal(raf.size,0);
+ // Reduced motion: the new lease draws once and gets no intro, not even later.
+ window.AlkionBody.reset(3);update({reduced:true,revision:8});await flush();assert.equal(run(INTRO_MS),1);
+ update({reduced:false,revision:9});assert.equal(run(INTRO_MS),0,'A dropped intro is not replayed');
+ // Paused at mount (Explore): no intro, frames only on demand.
+ window.AlkionBody.reset(4);update({paused:true,revision:10});await flush();assert.equal(run(INTRO_MS),1);
+ // An intro armed while hidden waits for the first appearance.
+ window.AlkionBody.reset(5);update({paused:false,visible:false,revision:11});await flush();assert.equal(run(1000),0);
+ update({visible:true});await flush();assert.ok(run(1000)>30,'The intro starts when the view first appears');
+ console.log('PASS: one eased intro turn per lease, then no idle frames; drags draw on demand; hide/show, pause and reduced motion never replay it');
 }
 
 // Exact retained-pixel addressing (WebGL bottom-up), including neutral and
