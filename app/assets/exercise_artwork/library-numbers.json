@@ -1,6 +1,6 @@
 {
   "format": "alkion-exercise-library-numbers-v1",
-  "next_number": 793,
+  "next_number": 804,
   "entries": [
     {
       "variant_key": "machine_flat_press",
@@ -3041,6 +3041,50 @@
     {
       "variant_key": "floor_angel",
       "number": 792
+    },
+    {
+      "variant_key": "marble_pickup",
+      "number": 793
+    },
+    {
+      "variant_key": "ring_support_hold",
+      "number": 794
+    },
+    {
+      "variant_key": "seated_ankle_pump",
+      "number": 795
+    },
+    {
+      "variant_key": "seated_band_ankle_plantarflexion",
+      "number": 796
+    },
+    {
+      "variant_key": "seated_knee_extension_unloaded",
+      "number": 797
+    },
+    {
+      "variant_key": "seated_marching",
+      "number": 798
+    },
+    {
+      "variant_key": "seated_side_reach",
+      "number": 799
+    },
+    {
+      "variant_key": "sit_to_stand",
+      "number": 800
+    },
+    {
+      "variant_key": "standing_hip_extension_supported",
+      "number": 801
+    },
+    {
+      "variant_key": "supported_single_leg_stand",
+      "number": 802
+    },
+    {
+      "variant_key": "towel_curls",
+      "number": 803
     }
   ]
 }

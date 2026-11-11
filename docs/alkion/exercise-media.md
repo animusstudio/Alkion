@@ -30,7 +30,13 @@ licensing does not authorize a public push or establish muscle evidence.
 
 `app/lib/catalog/catalog_artwork.dart` resolves an image only when the catalog
 variant has the exact registered key, revision, equipment and complete facet
-map. Missing or additional facets, changed equipment or revision, unknown
+map in the selected artwork edition. Settings → Artwork reuses the existing
+Male/Female preference; it describes the illustrations, not profile gender.
+Rows, navigation previews and an already open details sheet update when it
+changes, preserving exercise choices, favorites and history. A missing selected
+edition never substitutes an image from the other edition.
+
+Missing or additional facets, changed equipment or revision, unknown
 variants, and custom choices fail closed; names, family IDs and fuzzy matches
 do not participate. The catalog still supplies exercise identity and behavior.
 
@@ -45,13 +51,17 @@ preserving exercise selection and detail actions.
 
 The preparation tool uses Pillow only outside the app runtime and does not
 download sources or modify images. From the Alkion repository root, verify the
-manifest, files and generated registrations with:
+male/female manifests, files and generated registrations with:
 
 ```sh
 python3 app/tool/prepare_exercise_artwork.py
 ```
 
-Regenerate registrations with `--write`. To reconcile against an explicit
+Both editions are bundled for offline use. Their separate generated Dart tables
+contain reviewed registrations only. Regenerate both with `--write`;
+`--manifest app/assets/exercise_artwork/female-manifest.json` limits validation
+and generation to that edition. The default validates both editions before
+writing either table. To reconcile against an explicit
 catalog file and write a coverage receipt, use:
 
 ```sh

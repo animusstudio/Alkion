@@ -64,4 +64,13 @@ reviews code and import; coordinator records checks and local commits.
 No device installation, release, raw private-catalog publication, public push,
 new muscle facts or account/profile changes are included.
 
-State: dependency integration and packet preparation pending.
+State: reviewed dependency integrated locally at `1e668236`; documentation
+conflicts retained both histories and the current source-only frame contract.
+Six source batches591–596/2361–2384 are reserved and generating; registry now
+reserves793–803 with next804, preserving its760-entry prefix.
+
+T3 code is implemented and independently reviewed at the760-asset baseline.
+Fifteen generator tests,43 focused Flutter tests and analysis (zero issues)
+passed; both existing editions hash/decode through the Flutter asset bundle.
+Nine new family representatives are explicit; their non-null coverage waits for
+the final771 import. Final artwork/import qualification remains pending.

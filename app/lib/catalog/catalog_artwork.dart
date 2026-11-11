@@ -1,6 +1,13 @@
 import 'catalog_bundle.dart';
 
 part 'catalog_artwork_data.dart';
+part 'catalog_artwork_female_data.dart';
+
+enum CatalogArtworkEdition { male, female }
+
+Map<String, _ArtworkRegistration> _registrations(
+  CatalogArtworkEdition edition,
+) => edition == CatalogArtworkEdition.female ? _femaleArtwork : _artwork;
 
 /// A reviewed recognition illustration, separate from muscle/technique evidence.
 class CatalogExerciseArtwork {
@@ -12,9 +19,12 @@ class CatalogExerciseArtwork {
 
 /// Only an exact admitted catalog identity can resolve an owner illustration.
 /// Custom choices, future revisions and missing/extra facets fail closed.
-CatalogExerciseArtwork? catalogArtworkForVariant(CatalogVariant? variant) {
+CatalogExerciseArtwork? catalogArtworkForVariant(
+  CatalogVariant? variant, {
+  CatalogArtworkEdition edition = CatalogArtworkEdition.male,
+}) {
   if (variant == null) return null;
-  final entry = _artwork[variant.key];
+  final entry = _registrations(edition)[variant.key];
   if (entry == null ||
       entry.revision != variant.revision ||
       entry.equipmentKind != variant.equipmentKind ||
@@ -30,9 +40,13 @@ CatalogExerciseArtwork? catalogArtworkForVariant(CatalogVariant? variant) {
 /// Recognition previews belong to the family/collection, not an exact variant.
 /// The explicit table is stable across sorting, locale and catalog row order.
 /// Unknown groups fail closed. Never use this path for a chosen execution.
-CatalogExerciseArtwork? catalogArtworkForNavigation(String kind, String key) {
+CatalogExerciseArtwork? catalogArtworkForNavigation(
+  String kind,
+  String key, {
+  CatalogArtworkEdition edition = CatalogArtworkEdition.male,
+}) {
   final representative = catalogRepresentativeVariantKeys['$kind:$key'];
-  return _artwork[representative]?.artwork;
+  return _registrations(edition)[representative]?.artwork;
 }
 
 /// Reviewed existing illustrations chosen for each current navigation group.
@@ -45,6 +59,8 @@ const catalogRepresentativeVariantKeys = <String, String>{
   'family:ab_rollout': 'kneeling_ab_wheel',
   'family:adductor_stretch': 'quadruped_frog_stretch',
   'family:ankle_circle': 'unloaded_ankle_circle',
+  'family:ankle_plantarflexion': 'seated_band_ankle_plantarflexion',
+  'family:ankle_pump': 'seated_ankle_pump',
   'family:ankle_rock': 'half_kneeling_ankle_rock',
   'family:back_extension': 'bodyweight_back_extension',
   'family:back_lever': 'back_lever_hold',
@@ -64,6 +80,7 @@ const catalogRepresentativeVariantKeys = <String, String>{
   'family:calf_stretch': 'standing_wall_calf_stretch',
   'family:carry': 'dumbbell_farmer_carry',
   'family:cat_cow': 'quadruped_cat_cow',
+  'family:chair_transfer': 'sit_to_stand',
   'family:chest_fly': 'flat_dumbbell_fly',
   'family:chest_press': 'barbell_bench_press',
   'family:child_pose': 'kneeling_child_pose',
@@ -147,6 +164,7 @@ const catalogRepresentativeVariantKeys = <String, String>{
   'family:rear_delt_fly': 'bent_over_dumbbell_reverse_fly',
   'family:reverse_hyperextension': 'bench_reverse_hyperextension',
   'family:reverse_nordic': 'kneeling_reverse_nordic',
+  'family:ring_support_hold': 'ring_support_hold',
   'family:romanian_deadlift': 'barbell_rdl',
   'family:rope_climb': 'rope_ascent',
   'family:row': 'barbell_row',
@@ -155,11 +173,14 @@ const catalogRepresentativeVariantKeys = <String, String>{
   'family:scaption': 'dumbbell_scaption',
   'family:scapular_pull_up': 'hanging_scapular_pull_up',
   'family:scapular_push_up': 'high_plank_scapular_push_up',
+  'family:seated_hip_march': 'seated_marching',
+  'family:seated_lateral_reach': 'seated_side_reach',
   'family:shoulder_pass_through': 'dowel_shoulder_pass_through',
   'family:shoulder_press': 'standing_barbell_press',
   'family:shrug': 'dumbbell_shrug',
   'family:side_bend': 'dumbbell_side_bend',
   'family:side_plank': 'side_plank',
+  'family:single_leg_balance': 'supported_single_leg_stand',
   'family:sit_through': 'sit_through',
   'family:sit_up': 'floor_sit_up',
   'family:ski_ergometer': 'ski_ergometer',
@@ -176,6 +197,8 @@ const catalogRepresentativeVariantKeys = <String, String>{
   'family:thoracic_rotation': 'side_lying_open_book',
   'family:tibialis_raise': 'bodyweight_tibialis_raise',
   'family:tire_flip': 'tire_flip',
+  'family:toe_object_transfer': 'marble_pickup',
+  'family:toe_towel_curl': 'towel_curls',
   'family:triceps_kickback': 'dumbbell_kickback',
   'family:triceps_pushdown': 'rope_pushdown',
   'family:triceps_stretch': 'standing_triceps_stretch',
