@@ -1,3 +1,5 @@
+2026-11-11 · [Latest artwork review filter](../plans/2026-11-11-artwork-library-latest-filter.md) · Approved.
+
 # Alkion development and qualified driver handoff
 
 2026-11-11 · [Owner-marked artwork regeneration](../plans/2026-11-11-owner-marked-male-artwork-regeneration.md) · Complete (local qualification).
