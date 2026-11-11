@@ -232,6 +232,22 @@ device measurement and needs the coordinator's phone access, so the coordinator 
     cleared first) and installed in place on the A024.
   - The first idle-frame read (0 frames in 10 s) is void: the phone was dozing behind the lock
     screen, so nothing was on screen.
+- **A8 measurement on the A024, Today idle, screen awake.** `gfxinfo` counts only the HWUI side
+  (the WebView), so Flutter frames were counted from SurfaceFlinger `--latency` on the
+  `SurfaceView(BLAST)` layer.
+  - At `45da70a`: the 3D renderer was idle after the intro (0 HWUI frames, renderer process 0 %
+    CPU), but the Flutter surface drew a continuous 60 fps. Profile and History drew 1 frame per
+    6 s. The cause is the ambient ASCII canvas on Today and Plan: a repeating vsync
+    `AnimationController` breathing opacity .018 → .032 over 16 s, which is only about four 8-bit
+    alpha levels per half cycle. Each of those frames also recomposited the WebView platform view,
+    which is the most likely source of the owner's "less fluid where the 3D is".
+  - Fix `d3e8cb3` (coordinator): a 250 ms timer advances the phase and requests a frame only when
+    the composited alpha changes, so the look is unchanged. A new test fails against a vsync
+    ticker. Canvas tests +9, analyze clean.
+  - After, private Dev APK `651a882e…` (catalog hashes `4ff35c33…`, `3a3d197d…`): Today idle
+    9 frames in 30 s (single steps 1.2–5.7 s apart), Profile 1; app process about 1 % CPU. Two
+    windows just after the reinstall showed one-off bursts of about 34 frames, which did not
+    recur.
 
 ## Next
 
