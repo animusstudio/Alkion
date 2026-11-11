@@ -189,7 +189,7 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
 
 ## Task state
 
-- T0 — done, awaiting review. `d6b7bf5d` adds the pure `notification_envelope.dart`
+- T0 — done, reviewed (PASS with findings; fixes `2d36824` re-checked PASS). `d6b7bf5d` adds the pure `notification_envelope.dart`
   (action, view, envelope with the UTF-8 budget, intent record, journal
   directory, port and wake constants) and `workout_notification_render.dart`
   (builders, `_notifStrings`, `renderRestMirror`, fixed +30s index 0), which
