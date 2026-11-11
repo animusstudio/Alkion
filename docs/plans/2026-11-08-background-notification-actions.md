@@ -199,7 +199,17 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   stores a resolved locale, `notificationSupportRoot` mirrors the owner's
   root derivation, a title is never shortened to nothing, and the guard pins
   `dart:` imports and the pending background modules.
-- T1 — not started.
+- T1 — done, awaiting review. `71b41c5b`: `issueNotificationToken` applies the
+  one token rule (issued basis or consumed post-step rest; a legacy issued
+  receipt gets its basis at first sight); `consumeNotificationIntent` decides
+  add and Skip with the step, duplicate, conflict, gap, basis and tap-time
+  rules and returns `applied`, `duplicate` or `refused(reason)`; the timer
+  revision is never compared. `CommittedRestChange` has nullable `restStart`
+  and `restEndedAt`; `DraftStore` retains the exact uncertain intent; the
+  controller's `applyNotificationIntent` adopts `endedAt` from the commit.
+  Kept for T3: `issueNotificationAction`/`notificationAction()` (token without
+  step), `applyNotificationAction` and `consumeNotificationAction` as the
+  legacy bare-token +30s (step 1, fresh intent).
 - T2 — not started.
 - T3 — not started.
 - T4 — not started.
