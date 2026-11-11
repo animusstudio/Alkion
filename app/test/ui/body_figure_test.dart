@@ -285,6 +285,9 @@ void main() {
       await tester.tap(find.byTooltip('Done'));
       await tester.pumpAndSettle();
       expect(art().compact, isTrue);
+      // The remounted compact artwork is the same figure: it does not turn again.
+      expect(art().controller, isNot(same(compact)));
+      expect(art().controller.paused, isTrue);
 
       // The split pager remains available when the drag starts outside artwork.
       final pagerBounds = tester.getRect(find.byType(PageView));
@@ -299,6 +302,58 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+  testWidgets('one intro turn per figure host, not per remount', (
+    tester,
+  ) async {
+    var shown = true;
+    var host = 0;
+    late StateSetter setScene;
+    await tester.pumpWidget(
+      wrapL10n(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setScene = setState;
+            // Hidden hosts unmount their figure, as Today and Plan do.
+            if (!shown) return const SizedBox();
+            return Column(
+              children: [
+                BodyFigure(
+                  key: ValueKey(host),
+                  introKey: host < 2 ? 'today' : null,
+                  workload: _workload(),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    CharacterBodyController controller() =>
+        tester.widget<CharacterBody>(find.byType(CharacterBody)).controller;
+    final first = controller();
+    expect(first.paused, isFalse, reason: 'the first appearance turns once');
+
+    // Shown again after a tab switch: a new mount under the same key holds.
+    setScene(() => shown = false);
+    await tester.pumpAndSettle();
+    setScene(() => shown = true);
+    await tester.pumpAndSettle();
+    expect(controller(), isNot(same(first)));
+    expect(controller().paused, isTrue);
+
+    // Another slide under the same key holds too.
+    setScene(() => host = 1);
+    await tester.pumpAndSettle();
+    expect(controller().paused, isTrue);
+
+    // A figure with no shared key is its own view and turns once.
+    setScene(() => host = 2);
+    await tester.pumpAndSettle();
+    expect(controller().paused, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('loading and read failure never appear as zero counts', (
     tester,
   ) async {

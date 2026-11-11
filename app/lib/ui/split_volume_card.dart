@@ -114,7 +114,11 @@ class SplitVolumeCard extends StatelessWidget {
                 child: WorkloadTopMuscles(workload: workload, limit: topLimit),
               );
               final figure = shown
-                  ? BodyFigure(width: width, workload: workload)
+                  ? BodyFigure(
+                      introKey: SplitVolumeCard,
+                      width: width,
+                      workload: workload,
+                    )
                   : SizedBox(
                       key: const Key('split-volume-figure-hidden'),
                       width: width,
