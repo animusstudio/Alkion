@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -21,8 +22,34 @@ class WorkoutCanvas extends StatefulWidget {
 
 class _WorkoutCanvasState extends State<WorkoutCanvas>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  /// How often the ambient phase advances. The breath spans about four 8-bit
+  /// alpha levels per half cycle, so a coarse step is visually identical.
+  static const _step = Duration(milliseconds: 250);
+
+  static final Animatable<double> _breath = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: .018,
+        end: .032,
+      ).chain(CurveTween(curve: Motion.ambientCurve)),
+      weight: 1,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: .032,
+        end: .018,
+      ).chain(CurveTween(curve: Motion.ambientCurve)),
+      weight: 1,
+    ),
+  ]);
+
+  // Holds the shown phase only; it never ticks. A vsync ticker would draw
+  // every frame of the 16 s cycle (and recomposite any platform view on the
+  // page) for an opacity change of a few alpha levels.
   late final AnimationController _cycle;
   late final Animation<double> _opacity;
+  Timer? _timer;
+  double _phase = 0;
   _AsciiPainter? _ascii;
   bool _motionEnabled = false;
   bool _visible = true;
@@ -32,24 +59,7 @@ class _WorkoutCanvasState extends State<WorkoutCanvas>
   void initState() {
     super.initState();
     _cycle = AnimationController(vsync: this, duration: Motion.ambientCycle);
-    _opacity = _cycle.drive(
-      TweenSequence<double>([
-        TweenSequenceItem(
-          tween: Tween(
-            begin: .018,
-            end: .032,
-          ).chain(CurveTween(curve: Motion.ambientCurve)),
-          weight: 1,
-        ),
-        TweenSequenceItem(
-          tween: Tween(
-            begin: .032,
-            end: .018,
-          ).chain(CurveTween(curve: Motion.ambientCurve)),
-          weight: 1,
-        ),
-      ]),
-    );
+    _opacity = _cycle.drive(_breath);
     _visible = _isVisible(WidgetsBinding.instance.lifecycleState);
     WidgetsBinding.instance.addObserver(this);
   }
@@ -93,15 +103,29 @@ class _WorkoutCanvasState extends State<WorkoutCanvas>
         _visible &&
         _routeCurrent &&
         TickerMode.valuesOf(context).enabled) {
-      if (!_cycle.isAnimating) _cycle.repeat();
+      _timer ??= Timer.periodic(_step, _advance);
     } else {
-      _cycle.stop();
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  /// Advances the phase and requests a frame only when the composited alpha
+  /// would change: about eight frames per cycle instead of one per vsync.
+  void _advance(Timer _) {
+    _phase =
+        (_phase + _step.inMicroseconds / Motion.ambientCycle.inMicroseconds) %
+        1;
+    if (ui.Color.getAlphaFromOpacity(_breath.transform(_phase)) !=
+        ui.Color.getAlphaFromOpacity(_opacity.value)) {
+      _cycle.value = _phase;
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
     _ascii?.dispose();
     _cycle.dispose();
     super.dispose();

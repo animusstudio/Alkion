@@ -44,6 +44,9 @@ double opacity(WidgetTester tester) => tester
     .opacity
     .value;
 
+/// The canvas shows its phase in whole 8-bit alpha steps.
+const alphaStep = 1 / 255;
+
 void main() {
   for (final brightness in Brightness.values) {
     testWidgets('$brightness: default hosts keep static square dots', (
@@ -97,9 +100,9 @@ void main() {
     expect(paint, paintsExactlyCountTimes(#drawPicture, 1));
     expect(opacity(tester), closeTo(.018, .0001));
     await tester.pump(const Duration(seconds: 4));
-    expect(opacity(tester), closeTo(.025, .0001));
+    expect(opacity(tester), closeTo(.025, alphaStep));
     await tester.pump(const Duration(seconds: 4));
-    expect(opacity(tester), closeTo(.032, .0001));
+    expect(opacity(tester), closeTo(.032, alphaStep));
     expect(
       tester.widget<CustomPaint>(find.byType(CustomPaint)).painter,
       same(painter),
@@ -108,7 +111,10 @@ void main() {
     expect(opacity(tester), .25);
     expect(tester.binding.transientCallbackCount, 0);
     await tester.pumpWidget(canvas());
-    expect(tester.binding.transientCallbackCount, 1);
+    final resumed = opacity(tester);
+    await tester.pump(const Duration(seconds: 4));
+    expect(opacity(tester), lessThan(resumed));
+    expect(tester.binding.transientCallbackCount, 0);
     await tester.pumpWidget(const SizedBox());
     expect(tester.takeException(), isNull);
   });
@@ -137,7 +143,7 @@ void main() {
     expect(opacity(tester), phase);
     navigator.currentState!.pop();
     await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 3));
     expect(opacity(tester), greaterThan(phase));
     await tester.pumpWidget(const SizedBox());
   });
@@ -161,7 +167,7 @@ void main() {
       expect(opacity(tester), .018);
       await tester.pumpWidget(canvas());
       expect(opacity(tester), closeTo(phase, 0.001));
-      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 3));
       expect(opacity(tester), greaterThan(phase));
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
@@ -188,7 +194,7 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
       expect(opacity(tester), closeTo(phase, 0.001));
-      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 4));
       expect(opacity(tester), lessThan(phase));
 
       await tester.pumpWidget(canvas(ticking: false));
@@ -198,13 +204,36 @@ void main() {
       expect(opacity(tester), mutedPhase);
       await tester.pumpWidget(canvas());
       expect(opacity(tester), closeTo(mutedPhase, 0.001));
-      await tester.pump(const Duration(seconds: 1));
-      expect(opacity(tester), lessThan(mutedPhase));
+      // Muted near the trough: the next visible step comes after the wrap.
+      await tester.pump(const Duration(seconds: 6));
+      expect(opacity(tester), isNot(mutedPhase));
       await tester.pumpWidget(const SizedBox());
       expect(tester.binding.transientCallbackCount, 0);
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('one breath requests a frame only per visible alpha step', (
+    tester,
+  ) async {
+    await tester.pumpWidget(canvas());
+    expect(tester.binding.transientCallbackCount, 0);
+    var requested = 0;
+    // 16 s at a 100 ms cadence, elapsing time without drawing so each
+    // canvas request is seen before the next frame consumes it.
+    for (var i = 0; i < 160; i++) {
+      await tester.binding.delayed(const Duration(milliseconds: 100));
+      if (tester.binding.hasScheduledFrame) {
+        requested++;
+        await tester.pump();
+      }
+    }
+    // .018 -> .032 -> .018 crosses about four alpha levels each way.
+    expect(requested, inInclusiveRange(4, 12));
+    expect(opacity(tester), closeTo(.018, alphaStep));
+    await tester.pumpWidget(const SizedBox());
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'ambient frames preserve foreground build, paint, input and semantics',
