@@ -143,6 +143,16 @@ class Handler(SimpleHTTPRequestHandler):
     def origin(self):
         return f"http://127.0.0.1:{self.server.server_port}"
 
+    def end_headers(self):
+        # Revalidate the review entry point and metadata after local updates.
+        # Artwork itself has a content-versioned URL; queue responses keep no-store.
+        path = urlsplit(self.path).path
+        base = "/tools/artwork-library/"
+        if path in {base.rstrip("/"), base, *(base + name for name in
+                    ("index.html", "data.js", "library.js", "library.css"))}:
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def trusted(self, write=False):
         if self.headers.get("Host") != self.origin()[7:]:
             return False

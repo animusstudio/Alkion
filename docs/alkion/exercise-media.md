@@ -197,6 +197,13 @@ only with an approved regeneration; queue marks never determine membership.
 An explicit `--latest-regeneration /path/to/metadata.json` can select another
 declaration for verification. No artwork is copied or changed by this generator.
 
+Generated image URLs include the full selected SHA-256 as `?v=…`, so replacing
+an image at the same filename requests its new revision for thumbnails,
+inspection and full-size links. The local helper sends `Cache-Control: no-cache`
+for review HTML, data, scripts and styles, allowing revalidation on reload;
+queue API responses remain `no-store`. After updating this helper code, restart
+the helper and reload the page to receive those headers.
+
 These selections are a **local review candidate**. Existing asset notices retain
 their existing scope; the review page does not broaden any license grant or
 approve publication of newly selected artwork. Its footer links to the existing

@@ -159,6 +159,28 @@ class HTTPTests(QueueFixture):
         for path in ("/.git/config", "/%2egit/config", "/git-alias/config", "/escape/queue.json", "/escape/", "/index-escape/", "/../queue.json"):
             self.assertEqual(self.request(path=path)[0], 404)
 
+    def test_review_files_revalidate_for_get_head_and_not_modified(self):
+        review = self.public / "tools/artwork-library"
+        review.mkdir(parents=True)
+        for name in ("index.html", "data.js", "library.js", "library.css"):
+            (review / name).write_text("synthetic public review file")
+            path = "/tools/artwork-library/" + name
+            for method in ("GET", "HEAD"):
+                status, body, headers = self.request(method, path=path + "?v=synthetic")
+                self.assertEqual(status, 200)
+                self.assertEqual(headers["Cache-Control"], "no-cache")
+                self.assertEqual(body, b"" if method == "HEAD" else b"synthetic public review file")
+            status, body, headers = self.request(path=path, headers={"If-Modified-Since": headers["Last-Modified"]})
+            self.assertEqual(status, 304)
+            self.assertEqual(headers["Cache-Control"], "no-cache")
+        self.assertEqual(self.request(path="/tools/artwork-library/")[2]["Cache-Control"], "no-cache")
+        # Query versions select the same file and retain the existing path guard.
+        image = self.public / "image.webp"
+        image.write_bytes(b"synthetic selected image")
+        self.assertEqual(self.request(path="/image.webp?v=" + "a" * 64)[:2], (200, image.read_bytes()))
+        self.assertEqual(self.request(path="/escape/queue.json?v=version")[0], 404)
+        self.assertEqual(self.request()[2]["Cache-Control"], "no-store")
+
     def test_corrupt_queue_get_and_post_return_error_preserving_bytes(self):
         self.path.write_bytes(b"{broken")
         self.assertEqual(self.request()[0], 409)

@@ -6,6 +6,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const {spawn} = require('node:child_process');
+const http = require('node:http');
+const {createHash} = require('node:crypto');
 
 (async () => {
   const root = path.resolve(__dirname, '../..');
@@ -13,6 +15,7 @@ const {spawn} = require('node:child_process');
   const queuePath = path.join(temporary, 'queue.json');
   const helper = spawn('python3', ['app/tool/serve_artwork_library.py', '--queue', queuePath, '--port', '0'], {cwd: root});
   let browser;
+  let cacheFixture;
   let helperErrors = '';
   helper.stderr.on('data', chunk => { helperErrors += chunk; });
   try {
@@ -40,6 +43,48 @@ const {spawn} = require('node:child_process');
     };
     await page.goto(url);
     await ready(0);
+    // The current URL resolves to the selected bytes, including both lever fixes.
+    const selectedImages = await page.evaluate(() => [771, 772].map(number =>
+      window.ALKION_ARTWORK_LIBRARY.items.find(item => item.number === number).editions.male));
+    for (const image of selectedImages) {
+      const address = new URL(image.asset, url);
+      assert.equal(address.searchParams.get('v'), image.sha256);
+      const response = await context.request.get(address.href);
+      assert.equal(response.status(), 200);
+      assert.equal(createHash('sha256').update(await response.body()).digest('hex'), image.sha256);
+    }
+    // Reproduce a cached prior revision at an unchanged filename in disposable HTTP.
+    const selected = selectedImages[0];
+    const imagePath = new URL(selected.asset, url).pathname;
+    const currentBytes = await fs.readFile(path.join(root, imagePath));
+    const priorBytes = await fs.readFile(path.join(root, new URL(selectedImages[1].asset, url).pathname));
+    let replaced = false;
+    let imageRequests = 0;
+    cacheFixture = http.createServer((request, response) => {
+      if (new URL(request.url, 'http://fixture').pathname === imagePath) {
+        imageRequests++;
+        response.writeHead(200, {'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=3600'});
+        response.end(replaced ? currentBytes : priorBytes);
+      } else { response.writeHead(200, {'Content-Type': 'text/html'}); response.end('<!doctype html><title>Disposable cache fixture</title>'); }
+    });
+    await new Promise(resolve => cacheFixture.listen(0, '127.0.0.1', resolve));
+    const cacheOrigin = `http://127.0.0.1:${cacheFixture.address().port}`;
+    const cachedPage = await context.newPage();
+    await cachedPage.goto(cacheOrigin);
+    const fetchBytes = address => cachedPage.evaluate(async address => [...new Uint8Array(await (await fetch(address)).arrayBuffer())], address);
+    const priorURL = cacheOrigin + imagePath;
+    assert.deepEqual(Buffer.from(await fetchBytes(priorURL)), priorBytes);
+    replaced = true;
+    assert.deepEqual(Buffer.from(await fetchBytes(priorURL)), priorBytes);
+    assert.equal(imageRequests, 1); // Confirm a real browser cache hit for old bytes.
+    const revisionURL = new URL(selected.asset, cacheOrigin + '/tools/artwork-library/').href;
+    assert.deepEqual(Buffer.from(await fetchBytes(revisionURL)), currentBytes);
+    assert.equal(imageRequests, 2);
+    await cachedPage.evaluate(async address => {
+      const image = new Image(); image.src = address; await image.decode();
+      if (image.naturalWidth !== 640) throw new Error('Versioned image did not decode');
+    }, revisionURL);
+    await cachedPage.close();
     // Current generated data: filters and navigation never modify queue bytes.
     const emptyQueueBytes = await fs.readFile(queuePath, 'utf8');
     const visibleNumbers = () => page.locator('.exercise:visible').evaluateAll(nodes => nodes.map(node => Number(node.id.slice(9))));
@@ -208,6 +253,7 @@ const {spawn} = require('node:child_process');
     console.log(JSON.stringify({result: 'PASS', mode: 'real HTTP + disposable queue file', screenshots: temporary, checks: 'edition persistence, concurrency, idempotency, revision snapshot, failed/lost writes, export, corrupt queue, responsive controls'}));
   } finally {
     if (browser) await browser.close();
+    if (cacheFixture) { cacheFixture.closeAllConnections(); await new Promise(resolve => cacheFixture.close(resolve)); }
     helper.kill('SIGTERM');
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

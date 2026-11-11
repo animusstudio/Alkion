@@ -79,7 +79,7 @@ def build_data(catalog: dict, registry: dict, manifests: dict, app: Path, cohort
         for edition, entries in editions.items():
             entry = entries[key]
             item["editions"][edition] = {
-                "asset": "../../app/" + entry["asset"],
+                "asset": "../../app/" + entry["asset"] + "?v=" + entry["sha256"],
                 "quality_status": entry["quality_status"],
                 "illustration": entry["illustration"],
                 "source_sheet_sha256": entry["source_sheet_sha256"],

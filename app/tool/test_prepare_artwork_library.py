@@ -4,6 +4,7 @@ import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
 
 import prepare_artwork_library as library
 
@@ -56,6 +57,18 @@ class ArtworkLibraryTest(unittest.TestCase):
         self.manifests["female"]["entries"][0]["illustration"] = 1202
         with self.assertRaisesRegex(ValueError, "count mismatch: female"):
             self.build()
+
+    def test_asset_url_tracks_selected_content_without_changing_file_path(self):
+        before = self.build()["items"][1]["editions"]["male"]["asset"]
+        self.assertEqual(before, self.build()["items"][1]["editions"]["male"]["asset"])
+        parsed = urlsplit(before)
+        self.assertEqual(parsed.path, "../../app/assets/exercise_artwork/male/exercise_b.webp")
+        self.assertEqual(parse_qs(parsed.query), {"v": ["b" * 64]})
+        self.manifests["male"]["entries"][0]["sha256"] = "c" * 64
+        after = self.build()["items"][1]["editions"]["male"]["asset"]
+        self.assertNotEqual(before, after)
+        self.assertEqual(urlsplit(after).path, parsed.path)
+        self.assertEqual(parse_qs(urlsplit(after).query), {"v": ["c" * 64]})
 
     def test_stale_counts_and_invalid_cohort_fail_closed(self):
         for field, value in (("expected_counts", {"male": 2, "female": 1}),

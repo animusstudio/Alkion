@@ -33,7 +33,10 @@ numbers, edition comparison, search, source provenance and regeneration marks.
    exercise numbers, image files and saved queue bytes remain unchanged.
 3. Search, clear/empty states, edition switching and URL reload/deep links work
    with each view. Mobile controls remain readable and operable.
-4. Gallery data remains deterministically generated and validated. Source
+4. Image URLs include the selected content hash so a browser cannot reuse a
+   cached older revision at the same filename. Review HTML/data/scripts/styles
+   revalidate on the local helper. Saved marks and image bytes stay unchanged.
+5. Gallery data remains deterministically generated and validated. Source
    metadata is explicit; stale/inconsistent cohort declarations fail safely.
 
 ## Task and checks
@@ -44,11 +47,11 @@ Run focused Python generator tests and existing offline/queue browser suites,
 then inspect desktop and narrow screenshots in one batched pass. No asset
 regeneration, queue writes, runtime app changes, public push or installation.
 
-State: Done. Implementation and independent review passed.
+State: Done. Filter/order and cache-revision correction independently reviewed.
 
 Qualification:
 
-- Nine generator tests and nine helper tests passed; deterministic generation
+- Ten generator tests and ten helper tests passed; deterministic generation
   validates 760 exercises and 1,520 edition selections.
 - Offline and disposable-queue browser suites passed, including composed
   search/filter/order, 77/93 membership, DOM/navigation ordering, reload/deep
@@ -57,3 +60,14 @@ Qualification:
   pair. Live verification used GET only and preserved all 170 saved marks.
 - Existing artwork item data is unchanged beyond the explicit cohort metadata;
   no image, manifest, registry or app-runtime changes are included.
+
+Cache diagnosis: the owner tab loaded male #771/#772 resources with the exact
+old byte sizes (174,402 / 169,536) and old Last-Modified metadata. Installed
+regenerated files are 163,084 / 160,022 bytes. Fix cache addressing, then verify
+the actual owner tab; do not regenerate artwork to repair a delivery issue.
+
+Cache correction passed the warm-browser regression (old filename stays cached;
+a new SHA URL fetches current bytes), GET/HEAD/304 header checks and independent
+review. The actual owner Brave tab was refreshed and verified: #771/#772 now
+load the versioned new resources at 163,084 / 160,022 bytes. Queue bytes remained
+unchanged; no persistent browser cache override was left enabled.
