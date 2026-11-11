@@ -248,6 +248,10 @@ device measurement and needs the coordinator's phone access, so the coordinator 
     9 frames in 30 s (single steps 1.2–5.7 s apart), Profile 1; app process about 1 % CPU. Two
     windows just after the reinstall showed one-off bursts of about 34 frames, which did not
     recur.
+  - Full suite at `d3e8cb3` → +3811 ~3 −3 (inherited only). Independent review (Sonnet): PASS
+    with nits. It confirmed that both the new test and the breath test fail against the old
+    ticker. The nits are applied in a follow-up commit: a stronger post-trough assertion, the test
+    name, the six-frame comment, and the `app/AGENTS.md` ambient test guidance.
 
 ## Next
 
