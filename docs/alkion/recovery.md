@@ -370,8 +370,8 @@ the only rest truth and the app's main isolate its only writer.
   the draft adopts it) or refused with a reason: `stale_generation`,
   `foreign`, `draft_not_active`, `token_superseded`, `basis_changed`,
   `conflict`, `gap`, `late` or `clock`. A refusal writes nothing. The entry
-  is deleted only after its outcome commits; a crash before that replays it
-  as a duplicate of the committed state, never a second change. Every decided intent forces a re-render from SQL.
+  is deleted only after its outcome commits; after a crash before that, the
+  entry is decided again from the receipt and never applies twice. Every decided intent forces a re-render from SQL.
 - **When it drains.** At runtime open (spec D6: the port is registered before
   the first drain, after F1's quarantine), on every wake-up, resume, refresh
   and flush, and before a backup, so a backup holds the applied rest and no

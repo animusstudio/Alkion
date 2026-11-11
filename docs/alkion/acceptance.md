@@ -36,12 +36,13 @@ Contract: [recovery](recovery.md#notification-actions).
   rest-end alarm is cancelled before an update, so the visible notification no
   longer vanishes and reappears (owner device report, fixed in `b6f1fc04`).
 - The private Dev release APK route accepts `ALKION_NOTIFICATION_TRACE=1`,
-  which compiles in `alkion-notif` logcat markers; without it no marker code
-  ships.
+  which turns on the `alkion-notif` logcat markers; without it no marker is
+  printed.
 - No schema migration; the store stays at schema 6.
 
 **Device (OG3/OG4), owner's A024, Android 17, patch 2026-09-01, private Dev
-release APK with the trace flag (`c268ca50`), 2026-11-11.** Latency was taken
+release APK with the trace flag, built from `b6f1fc04` (APK SHA-256 prefix
+`c268ca50`), 2026-11-11.** Latency was taken
 from the touch-down (`getevent`) to the system's `notification_enqueue` for id
 4101, both on the phone's monotonic clock, instead of screen-recording frames.
 
@@ -51,13 +52,16 @@ from the touch-down (`getevent`) to the system's `notification_enqueue` for id
 | Backgrounded | 9 (8 +30s, 1 Skip) | 9/9 applied | 0 | 172 ms |
 | Swiped from recents (process killed) | 2 +30s | 2/2 applied at next open | 0 | provisional render 27–40 ms after `received` |
 
-An earlier foreground run on the cancel-then-post build (10 taps, 10/10, p90
-205 ms) showed the vanish-and-reappear flicker that `b6f1fc04` fixes. The
+An earlier foreground run on the previous trace build (the same tree before
+`b6f1fc04`), which cancelled and then posted (10 taps, 10/10, p90 205 ms), showed the vanish-and-reappear flicker
+that `b6f1fc04` fixes; the in-place run is slower but well inside the bar. The
 killed run is also the OG4 killed-state row: the first tap cold-started the
 process through the plugin's receiver, both taps were journaled and rendered
-without the app, and the next open applied them in order. Every tap was
-journaled and decided, and every p90 is under the 3 s bar, so design (a)
-stands without the fallback.
+without the app, and the next open applied them in order. No tap was lost or
+refused, and both measured p90s are under the 3 s bar, so design (a) stands
+without the fallback. The backgrounded (9) and killed (2) rows are below the
+plan's 10 taps per state, and the killed row has no touch-to-post p90; the
+owner accepted them as they are.
 
 **Not device-run (owner waiver, 2026-11-11):** lock screen, Doze, a frozen
 cached process, battery saver with the restricted bucket, taps during a cold
