@@ -119,7 +119,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('an obscured route stops the ambient controller', (tester) async {
+  testWidgets('an obscured route stops the ambient timer', (tester) async {
     final navigator = GlobalKey<NavigatorState>();
     await tester.pumpWidget(
       MaterialApp(
@@ -206,7 +206,7 @@ void main() {
       expect(opacity(tester), closeTo(mutedPhase, 0.001));
       // Muted near the trough: the next visible step comes after the wrap.
       await tester.pump(const Duration(seconds: 6));
-      expect(opacity(tester), isNot(mutedPhase));
+      expect(opacity(tester), greaterThan(mutedPhase));
       await tester.pumpWidget(const SizedBox());
       expect(tester.binding.transientCallbackCount, 0);
       expect(tester.takeException(), isNull);

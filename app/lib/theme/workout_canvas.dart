@@ -111,7 +111,8 @@ class _WorkoutCanvasState extends State<WorkoutCanvas>
   }
 
   /// Advances the phase and requests a frame only when the composited alpha
-  /// would change: about eight frames per cycle instead of one per vsync.
+  /// would change: about six frames per cycle (alpha 5 to 8 and back) instead
+  /// of one per vsync.
   void _advance(Timer _) {
     _phase =
         (_phase + _step.inMicroseconds / Motion.ambientCycle.inMicroseconds) %
