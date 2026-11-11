@@ -682,7 +682,7 @@ class _BodyArtworkState extends State<_BodyArtwork> {
     );
     // A horizontal-only recognizer wins the enclosing split pager when the
     // gesture starts on artwork, while leaving vertical scrolling to the list.
-    // Both sizes use the same native controller; rotateBy also pauses autoplay.
+    // Both sizes use the same native controller; rotateBy also ends the intro turn.
     final interactiveArt = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragStart: (_) => _controller.pause(),
