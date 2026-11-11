@@ -22,14 +22,20 @@ import 'notification_envelope.dart';
 /// - [AlkionIdentity.restEndChannel] (`<prefix>rest_end`): the rest-end
 ///   alert, high importance (heads-up), vibration, no sound. The user tunes
 ///   or silences it in Android settings; the app has no switch for it.
-/// - [AlkionIdentity.addRestAction] (`<prefix>add_30s`): the +30s action on
-///   the rest countdown.
+/// - [AlkionIdentity.addRestAction] (`<prefix>add_30s`) and
+///   [AlkionIdentity.skipRestAction] (`<prefix>skip_rest`): the +30s and Skip
+///   rest actions on the rest countdown. Both are background actions: the
+///   plugin's `ActionBroadcastReceiver` hands them to the headless messenger
+///   (`notification_background.dart`), which journals them; the app never
+///   comes forward.
 const workoutNotificationId = 4101;
 
 /// Fixed action order. A tap delivers the payload last posted for its action
 /// *index* (the plugin's request code is `id * 16 + index`), so an action
-/// never moves to another index between renders: +30s is always index 0.
+/// never moves to another index between renders: +30s is always index 0 and
+/// Skip rest index 1.
 const addRestActionIndex = 0;
+const skipRestActionIndex = 1;
 
 // Notification body strings keyed by locale. The notification is built with no
 // BuildContext, so
@@ -42,6 +48,7 @@ const _notifStrings = <String, Map<String, String>>{
     'next': 'Next · {name}',
     'restEnd': 'Rest finished',
     'restEndChannel': 'Rest end',
+    'skipRest': 'Skip rest',
     'restEndChannelDescription':
         'Heads-up with vibration when a rest ends while the workout is not on screen.',
   },
@@ -52,6 +59,7 @@ const _notifStrings = <String, Map<String, String>>{
     'next': 'Dopo · {name}',
     'restEnd': 'Recupero finito',
     'restEndChannel': 'Fine del recupero',
+    'skipRest': 'Salta recupero',
     'restEndChannelDescription':
         "Avviso con vibrazione quando un recupero finisce mentre l'allenamento non è sullo schermo.",
   },
@@ -62,6 +70,7 @@ const _notifStrings = <String, Map<String, String>>{
     'next': 'Als Nächstes · {name}',
     'restEnd': 'Pause vorbei',
     'restEndChannel': 'Pausenende',
+    'skipRest': 'Pause überspringen',
     'restEndChannelDescription':
         'Hinweis mit Vibration, wenn eine Pause endet, während das Training nicht angezeigt wird.',
   },
@@ -72,6 +81,7 @@ const _notifStrings = <String, Map<String, String>>{
     'next': 'Siguiente · {name}',
     'restEnd': 'Descanso terminado',
     'restEndChannel': 'Fin del descanso',
+    'skipRest': 'Saltar descanso',
     'restEndChannelDescription':
         'Aviso con vibración cuando termina un descanso y el entrenamiento no está en pantalla.',
   },
@@ -147,13 +157,21 @@ NotificationView workoutNotificationView({
 DateTime restRevertAt(DateTime restStart, int restTotal) =>
     restStart.add(Duration(seconds: restTotal));
 
-/// The rest countdown's actions, in the fixed order ([addRestActionIndex]).
-List<AndroidNotificationAction> workoutNotificationActions() =>
+/// The rest countdown's actions, in the fixed order ([addRestActionIndex],
+/// [skipRestActionIndex]). Neither shows the app: each is a broadcast to the
+/// plugin's receiver, and neither dismisses the notification.
+List<AndroidNotificationAction> workoutNotificationActions([String? locale]) =>
     <AndroidNotificationAction>[
       AndroidNotificationAction(
         AlkionIdentity.addRestAction,
         '+30s',
-        showsUserInterface: true,
+        showsUserInterface: false,
+        cancelNotification: false,
+      ),
+      AndroidNotificationAction(
+        AlkionIdentity.skipRestAction,
+        notifString(locale, 'skipRest'),
+        showsUserInterface: false,
         cancelNotification: false,
       ),
     ];
@@ -162,7 +180,8 @@ List<AndroidNotificationAction> workoutNotificationActions() =>
 /// runtime mirror. [countdown] chooses chronometer
 /// direction (true = rest countdown, false = elapsed); [when] anchors the
 /// chronometer (rest end for countdown, session start for elapsed);
-/// [withAction] adds the "+30s" action chip (only on the live rest countdown);
+/// [withAction] adds the +30s and Skip rest actions (only on the live rest
+/// countdown), labelled for [locale];
 /// [channelName] is the localized channel display name (resolved by the caller,
 /// which has the SharedPreferences this builder lacks).
 AndroidNotificationDetails buildWorkoutAndroidDetails({
@@ -170,6 +189,7 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
   required DateTime when,
   required bool withAction,
   required String channelName,
+  String? locale,
 }) {
   return AndroidNotificationDetails(
     AlkionIdentity.notificationChannel,
@@ -185,7 +205,7 @@ AndroidNotificationDetails buildWorkoutAndroidDetails({
     chronometerCountDown: countdown,
     when: when.millisecondsSinceEpoch,
     category: AndroidNotificationCategory.stopwatch,
-    actions: withAction ? workoutNotificationActions() : null,
+    actions: withAction ? workoutNotificationActions(locale) : null,
   );
 }
 
@@ -264,6 +284,7 @@ Future<void> postWorkoutMirror(
       when: when,
       withAction: countdown && actionable,
       channelName: notifString(view.locale, 'channel'),
+      locale: view.locale,
     ),
   ),
 );

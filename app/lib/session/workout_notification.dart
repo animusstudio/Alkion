@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../identity/alkion_identity.dart';
+import 'notification_background.dart';
 import 'notification_envelope.dart';
 import 'workout_notification_render.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -18,13 +19,24 @@ const kNotificationSmallIcon = '@drawable/ic_stat_alkion';
 
 enum NotificationLimitation { denied, unavailable }
 
-/// Android OS mirrors only. No callback opens a profile or writes SQL.
+/// The owner's Android OS mirror. It posts the payload envelope (token, next
+/// step and view) and registers the background handler; it never writes SQL.
+/// +30s and Skip rest are background actions: the plugin hands them to
+/// [onBackgroundNotificationResponse] in its secondary engine, a headless
+/// messenger that only journals the tap. The `SessionManager` that owns this
+/// mirror is the only SQL writer and applies journaled taps.
 class WorkoutNotification extends ChangeNotifier {
   WorkoutNotification({
     @visibleForTesting FlutterLocalNotificationsPlugin? plugin,
     @visibleForTesting bool? isAndroid,
+    @visibleForTesting void Function(String marker)? trace,
   }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
-       _isAndroid = isAndroid ?? Platform.isAndroid;
+       _isAndroid = isAndroid ?? Platform.isAndroid,
+       _trace = trace ?? (notificationTraceEnabled ? _print : null);
+
+  // ignore: avoid_print
+  static void _print(String marker) => print(marker);
+  final void Function(String marker)? _trace;
 
   final FlutterLocalNotificationsPlugin _plugin;
   final bool _isAndroid;
@@ -51,6 +63,9 @@ class WorkoutNotification extends ChangeNotifier {
           android: AndroidInitializationSettings(kNotificationSmallIcon),
         ),
         onDidReceiveNotificationResponse: onResponse,
+        // +30s and Skip rest arrive here, in the plugin's secondary engine.
+        onDidReceiveBackgroundNotificationResponse:
+            onBackgroundNotificationResponse,
       );
       if (initialized != true) {
         _status(NotificationLimitation.unavailable);
@@ -124,15 +139,24 @@ class WorkoutNotification extends ChangeNotifier {
   /// rest-end post: the alert variant ([buildRestEndAndroidDetails]) when
   /// [alertAtRestEnd], otherwise the quiet elapsed mirror. [nextName] names
   /// the next pending exercise (null when the plan is done).
+  ///
+  /// The payload is the envelope for [action]'s token with [step], the step
+  /// its next tap carries, and the mirror's view ([workoutNotificationPayload]).
+  /// An unchanged mirror is not posted again unless [force]: the owner forces
+  /// a render after every decided intent and at open, so a provisional
+  /// mirror the background posted is always replaced.
   Future<void> showFor({
     required String name,
     required DateTime startedAt,
     DateTime? restStart,
     int restTotal = 0,
     NotificationAction? action,
+    int step = 1,
     String? nextName,
     bool alertAtRestEnd = false,
+    bool force = false,
   }) => _serialize(() async {
+    if (force) _lastShown = null;
     if (!_ready || _closed) return;
     try {
       final enabled = await _android?.areNotificationsEnabled() == true;
@@ -143,16 +167,18 @@ class WorkoutNotification extends ChangeNotifier {
         return;
       }
       final now = DateTime.now();
+      final view = workoutNotificationView(
+        name: name,
+        startedAt: startedAt,
+        restStart: restStart,
+        restTotal: restTotal,
+        nextName: nextName,
+        locale: locale,
+      );
+      final posted = workoutNotificationPayload(action, step, view);
       final mirror = RestMirror(
-        view: workoutNotificationView(
-          name: name,
-          startedAt: startedAt,
-          restStart: restStart,
-          restTotal: restTotal,
-          nextName: nextName,
-          locale: locale,
-        ),
-        payload: action?.encode(),
+        view: view,
+        payload: posted,
         actionable: action?.restStart != null,
         alertAtRestEnd: alertAtRestEnd,
         exact: await _android?.canScheduleExactNotifications() == true,
@@ -162,12 +188,17 @@ class WorkoutNotification extends ChangeNotifier {
       final exact = mirror.exact;
       final alert = payload.countdown && alertAtRestEnd;
       final key =
-          '$name|${payload.countdown}|${payload.when.toIso8601String()}|${action?.encode()}|$exact|$locale|$alert|$nextName';
+          '$name|${payload.countdown}|${payload.when.toIso8601String()}|$posted|$exact|$locale|$alert|$nextName';
       if (key == _lastShown) return;
       _status(null);
       // The renderer removes a prior alarm and its displayed mirror first.
       await renderRestMirror(_plugin, mirror);
       _lastShown = key;
+      if (action != null) {
+        _trace?.call(
+          'alkion-notif re-rendered ${action.token.length < 8 ? action.token : action.token.substring(0, 8)} $step',
+        );
+      }
     } catch (_) {
       _lastShown = null;
       _status(NotificationLimitation.unavailable);
@@ -183,7 +214,9 @@ class WorkoutNotification extends ChangeNotifier {
           ),
           countdown: false,
           when: startedAt,
-          payload: action?.encode(),
+          payload: action == null
+              ? null
+              : workoutNotificationPayload(action, step, null),
           actionable: action?.restStart != null,
         );
       } catch (_) {}
@@ -209,3 +242,18 @@ class WorkoutNotification extends ChangeNotifier {
     return cancel();
   }
 }
+
+/// The payload the owner posts for [action]'s token: the envelope with the
+/// next [step] and [view], fitted to [notificationPayloadByteLimit] UTF-8
+/// bytes. Null without a token.
+String? workoutNotificationPayload(
+  NotificationAction? action,
+  int step,
+  NotificationView? view,
+) => action == null
+    ? null
+    : NotificationEnvelope(
+        action: action,
+        step: step,
+        view: view,
+      ).encodeWithinBudget();

@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 
 import '../domain/evidence.dart';
@@ -311,10 +313,14 @@ DateTime? _instant(Object? value) =>
 /// rest must have been running at the tap. Draft, timer and receipt commit
 /// together; a duplicate or a refusal writes nothing. No domain row,
 /// operation or outbox entry is written.
+///
+/// [checkpoint] is a crash-test seam: `intent-consume-open` runs inside the
+/// transaction, after an applied intent's writes and before COMMIT.
 Future<NotificationConsumption> consumeNotificationIntent(
   LocalDatabase db,
   NotificationIntent intent, {
   DateTime? now,
+  Future<void> Function(String phase)? checkpoint,
 }) async {
   final action = intent.payload.action;
   if (action.applicationId != AlkionIdentity.applicationId ||
@@ -452,6 +458,7 @@ Future<NotificationConsumption> consumeNotificationIntent(
       expectedRevision: row!['revision'] as int,
       status: 'consumed',
     );
+    await checkpoint?.call('intent-consume-open');
     return NotificationConsumption.applied(
       CommittedRestChange(restStart, total, revision, restEndedAt: endedAt),
     );
@@ -460,13 +467,55 @@ Future<NotificationConsumption> consumeNotificationIntent(
 
 /// An older build's +30s tap at the database: [legacyNotificationIntent]
 /// decided by [consumeNotificationIntent]. Returns the committed rest, or
-/// null when SQL refused it.
+/// null unless it applied (a duplicate carries state, not attribution).
 Future<CommittedRestChange?> consumeNotificationAction(
   LocalDatabase db,
   NotificationAction action, {
   DateTime? now,
-}) async => (await consumeNotificationIntent(
-  db,
-  legacyNotificationIntent(action, now: now),
-  now: now,
-)).change;
+}) async {
+  final result = await consumeNotificationIntent(
+    db,
+    legacyNotificationIntent(action, now: now),
+    now: now,
+  );
+  return result.outcome == NotificationOutcome.applied ? result.change : null;
+}
+
+/// The review category for a journal entry the owner could not decode.
+const notificationIntentUnreadableCategory = 'notification_intent_unreadable';
+
+/// The deterministic review ID for an unreadable journal entry's [bytes].
+String notificationIntentReviewId(List<int> bytes) =>
+    'rv-${sha256.convert([...utf8.encode('$notificationIntentUnreadableCategory|'), ...bytes]).toString().substring(0, 40)}';
+
+/// Copies an unreadable journal entry's exact [bytes] into `reviews` (spec
+/// D4), so the owner can delete the file. A review that already holds the
+/// same bytes (a crash after this commit, before the delete) counts as kept.
+/// Any other existing review under the ID is never overwritten: it throws
+/// and the file stays. Returns the review ID.
+Future<String> keepUnreadableNotificationIntent(
+  LocalDatabase db,
+  List<int> bytes,
+) {
+  final id = notificationIntentReviewId(bytes);
+  return db.writeTransaction((tx) async {
+    final existing = await tx.getOptional(
+      'SELECT category,evidence_bytes FROM reviews WHERE profile_id=? AND review_id=?',
+      [tx.profileId, id],
+    );
+    if (existing != null) {
+      final kept = (existing['evidence_bytes'] as List).cast<int>();
+      if (existing['category'] == notificationIntentUnreadableCategory &&
+          base64Encode(kept) == base64Encode(bytes)) {
+        return id;
+      }
+      throw const StoreException('notification_review_conflict_preserved');
+    }
+    await tx.addReview(
+      id: id,
+      category: notificationIntentUnreadableCategory,
+      evidence: Uint8List.fromList(bytes),
+    );
+    return id;
+  }, expected: db.token);
+}

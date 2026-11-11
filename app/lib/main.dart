@@ -28,6 +28,8 @@ import 'recovery/backup.dart' as backup;
 import 'recovery/recovery_host.dart';
 import 'recovery/restore.dart';
 import 'recovery/stored_copies.dart';
+import 'session/notification_envelope.dart' show notificationJournalDirectory;
+import 'session/notification_journal.dart';
 import 'session/session_manager.dart';
 import 'session/workout_notification.dart';
 import 'shell/session_launcher.dart';
@@ -110,6 +112,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     CatalogBundle? catalogBundle,
     Future<CatalogDevelopmentInput> Function()? catalogLoader,
     void Function(SettingsService settings)? onCatalogLoading,
+    @visibleForTesting Future<void> Function(String phase)? openCheckpoint,
   }) async {
     GoogleFonts.config.allowRuntimeFetching = false;
     late final AlkionProfile profile;
@@ -131,6 +134,7 @@ class AlkionRuntime with WidgetsBindingObserver {
       rethrow;
     }
     final store = preparedStore ?? await openAlkionStore(profile);
+    SessionManager? opening;
     try {
       final settings = SettingsService.local(store),
           units = UnitService.local(store),
@@ -161,11 +165,24 @@ class AlkionRuntime with WidgetsBindingObserver {
       // unreadable saved workout state into reviews and retire it, so it can
       // neither lock launch nor be overwritten. Storage failures propagate.
       await quarantineUnreadableWorkflowState(store, decoder: _decoderInfo);
+      await openCheckpoint?.call('quarantined');
       final drafts = DraftStore.local(store);
-      final sessions = SessionManager(
+      final sessions = opening = SessionManager(
         draftStore: drafts,
         finishedStore: FinishedSessionStore.local(store),
+        notificationJournal: NotificationJournal(
+          notificationJournalDirectory(supportRoot),
+        ),
+        notificationCheckpoint: openCheckpoint,
       );
+      // The port exists before the first drain, so from here on the
+      // background hands taps off instead of rendering; a wake-up during the
+      // open only records an owed drain (spec D6).
+      sessions.registerNotificationPort();
+      // Drain #1, SQL only: taps journaled while no owner ran apply before
+      // the draft is resumed.
+      await sessions.drainNotificationIntents();
+      await openCheckpoint?.call('drained');
       await sessions.resumeFromDraft();
       await sessions.loadLastFinished();
       sessions.init();
@@ -189,6 +206,10 @@ class AlkionRuntime with WidgetsBindingObserver {
       sessions
         ..onPersistenceError = runtime._reportPersistenceFailure
         ..onPersistenceCleared = runtime._clearPersistenceFailure;
+      // A drain failure before the banner existed is shown now.
+      if (sessions.persistenceError case final error?) {
+        runtime._reportPersistenceFailure(error);
+      }
       try {
         runtime.workflowNotices.value = await WorkflowStateQuarantine(
           store,
@@ -202,9 +223,21 @@ class AlkionRuntime with WidgetsBindingObserver {
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
       await sessions.initializeNotifications(notifier);
+      await openCheckpoint?.call('notifications-initialized');
+      // Drain #2, through the controller if a workout was resumed.
+      await sessions.drainNotificationIntents();
+      // No workout: cancel any ghost mirror and its alert; otherwise
+      // re-render from SQL, replacing any provisional mirror.
+      await sessions.settleNotificationMirror();
+      // Drain what was handed off during the open, then wake-ups drain
+      // directly.
+      await sessions.releaseOwedNotificationDrains();
       WidgetsBinding.instance.addObserver(runtime);
       return runtime;
     } catch (_) {
+      // No owner port may outlive a failed open: the background then keeps
+      // rendering provisionally behind the launch failure screen.
+      opening?.unregisterNotificationPort();
       await store.close();
       rethrow;
     }
@@ -355,11 +388,18 @@ class AlkionRuntime with WidgetsBindingObserver {
       await _closeNow(closeStore);
     } catch (_) {
       _closing = false;
+      // The barrier refused before teardown: this runtime keeps running, so
+      // its port listens again.
+      if (!_teardownBegan) sessions.reopenNotificationPort();
       rethrow;
     }
   }
 
   Future<void> _closeNow(Future<void> Function()? closeStore) async {
+    // The port stays registered, ignoring wake-ups, until the mirror is
+    // cancelled and the store is closed: meanwhile the background never
+    // renders, and taps wait in the journal for the next open.
+    sessions.closeNotificationPort();
     // Fence remote callbacks synchronously, before any local barrier yields.
     // Drain covered API evidence before SQLite; provider cleanup is separate.
     final senderClose = workoutSender.close();
@@ -382,6 +422,7 @@ class AlkionRuntime with WidgetsBindingObserver {
       _ownersDisposed = true;
     }
     await (closeStore ?? store.close)();
+    sessions.unregisterNotificationPort();
     settings.dispose();
     units.dispose();
     identity.dispose();
