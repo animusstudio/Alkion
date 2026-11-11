@@ -356,6 +356,7 @@ final class SyntheticMuscleCatalog {
     refreshPointer();
   }
   static const variantId = '10000000-0000-4000-8000-000000000010';
+  static const addedVariantId = '10000000-0000-4000-8000-000000000011';
   static const familyId = '10000000-0000-4000-8000-000000000001';
   final SyntheticMuscleCatalog? previous;
   late Map<String, dynamic> catalog, bundle, scopes;
@@ -366,6 +367,92 @@ final class SyntheticMuscleCatalog {
     'revision': bundle['revision'],
     'sha256': catalogHash(utf8.decode(bundleBytes)),
   };
+  void addUnknownExecution() {
+    Map<String, dynamic> clone(Object value) =>
+        jsonDecode(jsonEncode(value)) as Map<String, dynamic>;
+    final variant = clone((catalog['variants'] as List).single)
+      ..addAll({
+        'id': addedVariantId,
+        'key': 'synthetic_added_curl',
+        'names': {'en': 'Synthetic added curl'},
+        'facets': {'grip': 'supinated'},
+      });
+    (catalog['variants'] as List).add(variant);
+    catalog['catalog_revision'] = 'synthetic.2';
+    final executionHash = catalogHash(
+      catalogCanonicalJson(catalogExecutionSnapshot(variant)),
+    );
+    final scope = clone((scopes['scopes'] as List).single)
+      ..addAll({
+        'id': 'synthetic_added_scope',
+        'execution_bindings': [
+          {
+            'variant_id': addedVariantId,
+            'variant_revision': 1,
+            'execution_sha256': executionHash,
+          },
+        ],
+      });
+    (scopes['scopes'] as List).add(scope);
+    final scopeRef = {
+      'id': scope['id'],
+      'revision': 1,
+      'sha256': catalogHash(catalogCanonicalJson(scope)),
+    };
+    final profile = clone((bundle['profiles'] as List).single)
+      ..addAll({
+        'id': 'synthetic_added_profile',
+        'revision': 1,
+        'variant_id': addedVariantId,
+        'execution_sha256': executionHash,
+        'scope_ref': scopeRef,
+        'assessment_id': 'synthetic_added_assessment',
+        'coverage': 'unknown',
+        'relationships': <dynamic>[],
+        'previous_profile': null,
+        'coverage_note': 'New synthetic execution awaits evidence.',
+      });
+    final assessment = clone((bundle['assessments'] as List).single)
+      ..addAll({
+        'id': profile['assessment_id'],
+        'variant_id': addedVariantId,
+        'execution_sha256': executionHash,
+        'scope_ref': scopeRef,
+        'profile_id': profile['id'],
+        'profile_revision': 1,
+        'profile_sha256': catalogHash(catalogCanonicalJson(profile)),
+        'assessment_status': 'pending',
+        'reconciler_id': null,
+        'reconciliation': {
+          'status': 'pending',
+          'reviewed_on': null,
+          'rationale': 'New synthetic execution awaits reconciliation.',
+        },
+        'dispositions': <dynamic>[],
+        'closure_rationale': null,
+        'unresolved': [
+          {
+            'reason': 'New synthetic execution.',
+            'next_evidence_needed': 'Execution-specific evidence.',
+          },
+        ],
+      });
+    (bundle['profiles'] as List).add(profile);
+    (bundle['assessments'] as List).add(assessment);
+    final executionCatalogHash = catalogExecutionCatalogHash(catalog);
+    for (final a in bundle['assessments'] as List) {
+      a['catalog_revision'] = catalog['catalog_revision'];
+      a['execution_catalog_sha256'] = executionCatalogHash;
+    }
+    bundle['catalog_binding']['catalog_revision'] = catalog['catalog_revision'];
+    bundle['catalog_binding']['execution_catalog_sha256'] =
+        executionCatalogHash;
+    bundle['scope_registry_ref']['sha256'] = catalogHash(
+      catalogCanonicalJson(scopes),
+    );
+    refreshPointer();
+  }
+
   CatalogBundle load() => CatalogBundle.fromBytes(
     utf8.encode(jsonEncode(catalog)),
     muscleBundleBytes: bundleBytes,
