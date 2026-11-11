@@ -265,8 +265,9 @@ final class NotificationConsumption {
     : outcome = NotificationOutcome.applied,
       reason = null;
 
-  /// [change] is the committed rest while SQL still holds exactly what that
-  /// step committed, so an uncertain COMMIT can adopt it.
+  /// [change] is the rest and draft revision SQL durably holds now, so an
+  /// uncertain COMMIT can adopt them. Null only when the draft and timer rows
+  /// disagree on the rest.
   const NotificationConsumption.duplicate([this.change])
     : outcome = NotificationOutcome.duplicate,
       reason = null;
@@ -358,17 +359,19 @@ Future<NotificationConsumption> consumeNotificationIntent(
           receipt.evidence['kind'] != intent.kind.wire) {
         return refused(NotificationRefusal.conflict);
       }
-      final post = receipt.postStep;
-      final revision = receipt.evidence['draft_revision'];
+      // A reconciling owner adopts what SQL durably holds now. That is the
+      // committed step unless something wrote the draft since; no owner path
+      // does while the intent is uncertain, but adopting the current rest and
+      // revision keeps the next save from failing on a stale revision.
       return NotificationConsumption.duplicate(
-        post != null && post == current && draft['revision'] == revision
-            ? CommittedRestChange(
-                _instant(post.restStart),
-                post.restTotal,
-                revision as int,
-                restEndedAt: _instant(receipt.evidence['rest_ended_at']),
-              )
-            : null,
+        current == null
+            ? null
+            : CommittedRestChange(
+                _instant(current.restStart),
+                current.restTotal,
+                draft['revision'] as int,
+                restEndedAt: _instant(t['restEndedAt']),
+              ),
       );
     }
     if (step > consumed + 1) return refused(NotificationRefusal.gap);

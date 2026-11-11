@@ -579,6 +579,72 @@ void main() {
     },
   );
 
+  test(
+    'a stale later step is refused basis_changed after an in-app change, with no token refresh',
+    () async {
+      final issued = await token();
+      expect(
+        (await c.applyNotificationIntent(intentFor(issued.action, 1)))!.outcome,
+        NotificationOutcome.applied,
+      );
+      c.addRestTime(1);
+      await c.flushPersistence();
+      expect((await payload('timer', 'active'))['restTotal'], 631);
+      for (final kind in NotificationIntentKind.values) {
+        expect(
+          (await decide(intentFor(issued.action, 2, kind: kind))).marker,
+          'refused basis_changed',
+          reason: kind.wire,
+        );
+      }
+      expect(c.restTotal, 631);
+      expect((await drafts.load())!.restTotal, 631);
+      expect(c.resting, isTrue);
+    },
+  );
+
+  test(
+    'reconciling a committed intent after SQL moved on adopts the durable rest and revision',
+    () async {
+      final issued = await token();
+      final intent = intentFor(issued.action, 1);
+      actions.fail = actions.afterCommit = true;
+      await expectLater(c.applyNotificationIntent(intent), throwsStateError);
+      actions.fail = false;
+      expect(c.restTotal, 600);
+      // No owner path writes the draft while the intent is uncertain; an
+      // out-of-band writer stands in for one, so the duplicate's committed
+      // step is no longer what SQL holds.
+      await actions.writeTransaction((tx) async {
+        for (final kind in [LocalStateKind.draft, LocalStateKind.timer]) {
+          final row = (await tx.localState(kind, 'active'))!;
+          final value = Map<String, Object?>.from(
+            jsonDecode(utf8.decode((row['payload_bytes'] as List).cast<int>()))
+                as Map,
+          )..['restTotal'] = 700;
+          await tx.putLocalState(
+            kind,
+            'active',
+            localBytes(value),
+            expectedRevision: row['revision'] as int,
+          );
+        }
+      });
+      final outcome = (await c.applyNotificationIntent(intent))!;
+      expect(outcome.outcome, NotificationOutcome.duplicate);
+      expect(drafts.pendingNotificationIntent, isNull);
+      expect(c.restTotal, 700);
+      expect(
+        drafts.persistedRevision,
+        (await row('draft', 'active'))['revision'],
+      );
+      c.addRestTime(1);
+      await c.flushPersistence();
+      expect(c.persistenceError, isNull);
+      expect((await drafts.load())!.restTotal, 701);
+    },
+  );
+
   for (final after in [false, true]) {
     test(
       'intent ${after ? 'forwarded' : 'refused'} COMMIT retains the exact intent and never applies it twice',

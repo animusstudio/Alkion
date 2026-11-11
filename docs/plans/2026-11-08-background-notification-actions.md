@@ -187,6 +187,21 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   module in the background-safe closure, so any other `dart:` library (for
   example `dart:ffi` or `dart:isolate`) fails until it is reviewed and listed.
 
+- **2026-11-11, T1 review.** Consumption decides in a fixed order, and every
+  refusal writes nothing:
+  - The step checks run before the basis check. A stale step-1 tap after an
+    in-app rest change, once step 1 has been applied, is therefore refused
+    `conflict` rather than `basis_changed`.
+  - A draft and timer that disagree on the rest refuse as `basis_changed`.
+  - A redelivery of an older applied step (below `consumed_step`) refuses as
+    `conflict`, because the receipt keeps only `last_intent_id`.
+  - A `duplicate` hands back the rest and draft revision SQL holds now, so a
+    reconciling owner never keeps a stale revision.
+- **2026-11-11, gate: T1 does not ship without T3.** Until T3 posts the step in
+  the payload, the notification carries the bare token, which decodes as
+  step 1. A second foreground +30s on the same notification is then refused
+  `conflict`.
+
 ## Task state
 
 - T0 — done, reviewed (PASS with findings; fixes `2d36824` re-checked PASS). `d6b7bf5d` adds the pure `notification_envelope.dart`
@@ -209,7 +224,9 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   controller's `applyNotificationIntent` adopts `endedAt` from the commit.
   Kept for T3: `issueNotificationAction`/`notificationAction()` (token without
   step), `applyNotificationAction` and `consumeNotificationAction` as the
-  legacy bare-token +30s (step 1, fresh intent).
+  legacy bare-token +30s (step 1, fresh intent). Review fixes: a test pins
+  `basis_changed` for a stale later step, and a duplicate now adopts the
+  current SQL rest and draft revision (tested with an out-of-band write).
 - T2 — not started.
 - T3 — not started.
 - T4 — not started.
