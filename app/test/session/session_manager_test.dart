@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
@@ -716,4 +717,50 @@ void main() {
     expect(m.registerNotificationPort, throwsStateError);
     expect(m.notificationPortMode, NotificationPortMode.unregistered);
   });
+
+  test('work queued synchronously from inside queued work runs after it and '
+      'is waited for', () async {
+    final temp = await Directory.systemTemp.createTemp('alkion-notif-tail-');
+    addTearDown(() => temp.delete(recursive: true));
+    final log = <String>[];
+    late SessionManager m;
+    final notifier = _ReentrantNotification(
+      onCancel: () {
+        // Before the settle's first await: queue a drain from inside it.
+        unawaited(m.drainNotificationIntents());
+      },
+      cancelled: () => log.add('outer done'),
+    );
+    m = SessionManager(
+      notificationJournal: NotificationJournal(
+        Directory('${temp.path}/journal'),
+      ),
+      notificationCheckpoint: (phase) async {
+        if (phase == 'drain-read') log.add('inner ran');
+      },
+    );
+    addTearDown(m.dispose);
+    await m.initializeNotifications(notifier);
+    final settle = m.settleNotificationMirror();
+    await m.notificationWorkIdle();
+    await settle;
+    expect(log, ['outer done', 'inner ran']);
+  });
+}
+
+/// A mirror whose cancel calls back into its owner before returning, then
+/// completes later.
+class _ReentrantNotification extends WorkoutNotification {
+  _ReentrantNotification({required this.onCancel, required this.cancelled})
+    : super(isAndroid: true);
+  final void Function() onCancel, cancelled;
+  @override
+  Future<NotificationResponse?> init({
+    required void Function(NotificationResponse) onResponse,
+  }) async => null;
+  @override
+  Future<void> cancel() {
+    onCancel();
+    return Future<void>.delayed(const Duration(milliseconds: 50), cancelled);
+  }
 }

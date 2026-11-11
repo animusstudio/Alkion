@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' show AppLifecycleState, IsolateNameServer;
 
+import 'package:alkion/data/active_session_draft.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/identity/alkion_profile.dart';
 import 'package:alkion/main.dart';
@@ -879,6 +880,83 @@ void main() {
       final runtime = await open();
       await settled(runtime);
       expect(runtime.sessions.active!.restTotal, 630);
+    });
+  });
+
+  group('owner without a runtime', () {
+    /// The selected profile's store, opened directly with no runtime and no
+    /// port, and a manager that owns it and the journal.
+    Future<(LocalStore, SessionManager)> bareOwner() async {
+      final profile = await AlkionProfile.open(supportRoot: root);
+      final store = await openAlkionStore(profile);
+      final sessions = SessionManager(
+        draftStore: DraftStore.local(store),
+        notificationJournal: NotificationJournal(journalDirectory),
+      );
+      addTearDown(() async {
+        final owner = sessions.active;
+        sessions.dispose();
+        owner?.dispose();
+        await store.close();
+      });
+      return (store, sessions);
+    }
+
+    test('init drains on its own before it reconciles: a journaled +30s '
+        'extends an elapsed rest', () async {
+      final notifier = RecordingNotification();
+      final runtime = await open(notifications: notifier);
+      final start = DateTime.now().subtract(const Duration(seconds: 70));
+      await startResting(runtime, restStart: start, total: 60);
+      final payload = notifier.payload!;
+      await runtime.close();
+      final (_, sessions) = await bareOwner();
+      expect(await sessions.resumeFromDraft(), isTrue);
+      // The register-triggered refresh has drained an empty journal.
+      await sessions.notificationWorkIdle();
+      final owner = sessions.active!;
+      expect(owner.restStart, start, reason: 'elapsed, not yet reconciled');
+      // Journaled now, with no wake-up: only init's own drain can apply it
+      // before init reconciles.
+      expect(
+        await add(
+          payload,
+          at: start.add(const Duration(seconds: 50)),
+          wake: false,
+        ),
+        NotificationBackgroundOutcome.rendered,
+      );
+      sessions.init();
+      await sessions.notificationWorkIdle();
+      expect(owner.restStart, start);
+      expect(owner.restTotal, 90);
+      expect(owner.restEndedAt, isNull);
+      expect(await journal(), isEmpty);
+    });
+
+    test('an undecodable entry is neither copied nor deleted while a launch '
+        'holds the fence', () async {
+      final (store, sessions) = await bareOwner();
+      await journalDirectory.create(recursive: true);
+      final bytes = utf8.encode('{"format":"alkion-notification-intent/1",');
+      final entry = File(
+        p.join(
+          journalDirectory.path,
+          '1-00000000-0000-4000-8000-0000000000cc.json',
+        ),
+      )..writeAsBytesSync(bytes);
+      Future<List<Map<String, Object?>>> kept() => store.getAll(
+        'SELECT review_id FROM reviews WHERE category=?',
+        [notificationIntentUnreadableCategory],
+      );
+      expect(sessions.tryBeginLaunch(), isTrue);
+      await sessions.drainNotificationIntents();
+      expect(entry.readAsBytesSync(), bytes);
+      expect(await kept(), isEmpty);
+      sessions.endLaunch();
+      await sessions.drainNotificationIntents();
+      expect(entry.existsSync(), isFalse);
+      expect(await kept(), hasLength(1));
     });
   });
 }
