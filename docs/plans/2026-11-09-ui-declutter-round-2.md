@@ -224,6 +224,14 @@ device measurement and needs the coordinator's phone access, so the coordinator 
   - The first two builds failed the APK verifier with "stale merged JNI libapp.so": Gradle
     reused `merged_jni_libs`/`merged_native_libs` from the earlier build.
   - Removing those `devRelease` intermediates fixed it.
+- **Aligned with published main `e355efb`** (F2 background notification actions) at merge
+  `45da70a`. No conflicts; `active_session_controller.dart` and `development.md` auto-merged.
+  - `make -C app test TEST=--concurrency=2` → +3810 ~3 −3 (the three inherited
+    `catalog_metric_controls_test` failures only). Analyze clean.
+  - Private Dev APK `2f19677e…` built at `45da70a` (stale `devRelease` native intermediates
+    cleared first) and installed in place on the A024.
+  - The first idle-frame read (0 frames in 10 s) is void: the phone was dozing behind the lock
+    screen, so nothing was on screen.
 
 ## Next
 
