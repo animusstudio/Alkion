@@ -265,7 +265,7 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   - a render that times out isn't cancelled: if it completes after a later
     delivery's render, it can briefly show an older mirror. The owner's
     re-render from SQL corrects it (accepted risk, low).
-- T3 — done, awaiting review. `SessionManager` runs every drain, refresh,
+- T3 — done, reviewed (PASS with findings; fixes `a281745` re-checked, missing tests added in `1befdd7`, each proven by its mutation). `SessionManager` runs every drain, refresh,
   foreground response and rest reconciliation on one tail; it registers the
   `IsolateNameServer` port (opening → immediate after the owed-drain release,
   closing ignores wake-ups, only its own mapping is removed), drains through
