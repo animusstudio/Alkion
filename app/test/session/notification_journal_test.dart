@@ -111,7 +111,7 @@ void main() {
         final intent = _intent(1);
         final name = notificationJournalEntryName(intent);
         expect(name, '${_t0.microsecondsSinceEpoch}-${_id(1)}.json');
-        final file = await journal(
+        final appended = await journal(
           checkpoint: (phase) async {
             phases.add(phase);
             final names = journalDir.listSync().map((e) => p.basename(e.path));
@@ -124,6 +124,8 @@ void main() {
             }
           },
         ).append(intent);
+        final file = appended.file;
+        expect(appended.directoryFlushed, isTrue);
         expect(phases, ['journal-partial-written', 'journal-renamed']);
         expect(p.basename(file.path), name);
         expect(file.readAsStringSync(), intent.encode());
@@ -133,6 +135,26 @@ void main() {
         expect(entries.single.intent!.encode(), intent.encode());
         expect(entries.single.problem, isNull);
         expect(entries.single.bytes, utf8.encode(intent.encode()));
+      },
+    );
+
+    test(
+      'a failed directory flush after the rename still commits the entry',
+      () async {
+        final phases = <String>[];
+        final appended = await NotificationJournal(
+          journalDir,
+          clock: () => now,
+          checkpoint: (phase) async => phases.add(phase),
+          flushDirectory: (path) {
+            if (path == journalDir.path) {
+              throw const FileSystemException('synthetic fsync failure');
+            }
+          },
+        ).append(_intent(1));
+        expect(appended.directoryFlushed, isFalse);
+        expect(phases, ['journal-partial-written', 'journal-renamed']);
+        expect((await journal().read()).single.intent!.intentId, _id(1));
       },
     );
 
@@ -369,6 +391,42 @@ void main() {
       },
     );
 
+    test('a file that vanishes while being read is skipped', () async {
+      await journal().append(_intent(1));
+      await journal().append(_intent(2, after: const Duration(seconds: 1)));
+      // read() lists both files and yields at its first read; the owner then
+      // deletes both. Files are read in turn, so at least the second one is
+      // already gone when its read starts.
+      final reading = journal().read();
+      for (final file in journalDir.listSync()) {
+        file.deleteSync();
+      }
+      final entries = await reading;
+      expect(entries.length, lessThanOrEqualTo(1));
+      expect(entries.every((e) => e.readable), isTrue);
+    });
+
+    test(
+      'a directory that vanishes after the existence check reads as empty',
+      () async {
+        expect(journalDir.existsSync(), isFalse);
+        final overrides = _VanishedDirectory(journalDir.path);
+        final entries = await IOOverrides.runWithIOOverrides(
+          () => journal().read(),
+          overrides,
+        );
+        expect(overrides.reported, isTrue);
+        expect(entries, isEmpty);
+        expect(
+          IOOverrides.runWithIOOverrides(
+            () => journal().removeStalePartials(),
+            overrides,
+          ),
+          0,
+        );
+      },
+    );
+
     test('an entry that cannot be read is reported without bytes', () async {
       if (Platform.isWindows) return;
       final file = write(notificationJournalEntryName(_intent(1)), [1]);
@@ -463,4 +521,20 @@ void main() {
       expect(p.isWithin(owner.path, ownerJournal.path), isFalse);
     },
   );
+}
+
+/// Reports a missing [path] as a directory once, so the listing that follows
+/// finds it gone.
+final class _VanishedDirectory extends IOOverrides {
+  _VanishedDirectory(this.path);
+  final String path;
+  bool reported = false;
+  @override
+  FileSystemEntityType fseGetTypeSync(String path, bool followLinks) {
+    if (path == this.path) {
+      reported = true;
+      return FileSystemEntityType.directory;
+    }
+    return super.fseGetTypeSync(path, followLinks);
+  }
 }

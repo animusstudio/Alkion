@@ -54,6 +54,9 @@ NotificationEnvelope? foldNotificationIntents(
   Iterable<NotificationIntent> intents,
   NotificationAction token,
 ) {
+  // Matching on the whole encoded action is deliberate: the owner reuses a
+  // token only with its issue-time fields unchanged, so while those fields
+  // are constant this is the same as matching on the token (spec D5).
   final key = token.encode();
   final matching = [
     for (final intent in intents)
@@ -120,6 +123,8 @@ final class NotificationBackground {
     String Function()? newIntentId,
     this.checkpoint,
     void Function(String marker)? trace,
+    this.platformTimeout = const Duration(seconds: 10),
+    this.flushDirectory,
   }) : clock = clock ?? (() => DateTime.now().toUtc()),
        newIntentId = newIntentId ?? const Uuid().v4,
        trace = trace ?? (notificationTraceEnabled ? _print : null);
@@ -166,6 +171,15 @@ final class NotificationBackground {
   final Future<void> Function(String phase)? checkpoint;
   final void Function(String marker)? trace;
 
+  /// The bound on each platform await after the entry is journaled (the
+  /// exact-alarm query and the render), so one hung call cannot stall the
+  /// module tail and the taps queued behind it. The port wake-up is a
+  /// synchronous `IsolateNameServer` lookup and send, so it needs no bound.
+  final Duration platformTimeout;
+
+  /// The journal's directory flush; null uses `flushDirectory`.
+  final void Function(String path)? flushDirectory;
+
   // ignore: avoid_print
   static void _print(String marker) => print(marker);
 
@@ -207,8 +221,12 @@ final class NotificationBackground {
         await journalDirectory(),
         checkpoint: checkpoint,
         clock: clock,
+        flushDirectory: flushDirectory,
       );
-      await journal.append(intent);
+      final appended = await journal.append(intent);
+      // The rename committed the entry; a failed directory flush after it
+      // only weakens durability across power loss.
+      if (!appended.directoryFlushed) _mark('unflushed', intent);
     } catch (_) {
       return NotificationBackgroundOutcome.notJournaled;
     }
@@ -226,16 +244,22 @@ final class NotificationBackground {
       ], envelope.action);
       final payload = folded?.encodeWithinBudget();
       if (folded != null && payload != null) {
+        bool exactAlarms;
+        try {
+          exactAlarms = await exact().timeout(platformTimeout);
+        } catch (_) {
+          exactAlarms = false;
+        }
         await render(
           RestMirror(
             view: folded.view!,
             payload: payload,
             actionable: envelope.action.restStart != null,
             alertAtRestEnd: true,
-            exact: await exact(),
+            exact: exactAlarms,
             now: clock(),
           ),
-        );
+        ).timeout(platformTimeout);
         _mark('rendered', intent);
         outcome = NotificationBackgroundOutcome.rendered;
       }

@@ -213,6 +213,23 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   the T2 row: `AlkionIdentity.skipRestAction` (`<prefix>skip_rest`) is added
   for the handler; the guard lists `dart:ui` for the handler and `dart:ffi`
   for `directory_durability.dart`, which spec D1 lets the journal import.
+  Review fixes: a failed directory flush after the rename counts as
+  journaled (traced `unflushed`); the exact-alarm query and the render are
+  bounded by a timeout so a hung call cannot stall the tail; a failed
+  exact-alarm query renders inexact; a directory or file that vanishes
+  during a read is skipped.
+  Fold choices where the spec is silent:
+  - a base with no rest folds as elapsed;
+  - `actionable` follows the token's `rest_start`;
+  - Skip, or a +30s at or after the folded rest end, gives elapsed mode;
+  - the next step is the last folded step + 1;
+  - the fold does not apply the owner's clock refusals: it is a provisional
+    mirror only, and the owner re-renders from SQL;
+  - entries match on the whole token JSON, not only the `token` string;
+  - near the 4 KiB limit the mirror's title can differ from the shortened
+    title in its payload;
+  - if the folded envelope can't fit, the tap stays journaled but nothing
+    renders.
 - T3 — not started.
 - T4 — not started.
 

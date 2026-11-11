@@ -90,6 +90,9 @@ final class _Harness {
   final renders = <RestMirror>[];
   final traces = <String>[];
   Future<void> Function(RestMirror mirror)? onRender;
+  Future<bool> Function()? onExact;
+  void Function(String path)? flushDirectory;
+  Duration platformTimeout = const Duration(seconds: 10);
 
   NotificationBackground get background => NotificationBackground(
     journalDirectory: () async => journalDirectory,
@@ -102,11 +105,13 @@ final class _Harness {
       await onRender?.call(mirror);
       renders.add(mirror);
     },
-    exact: () async => exact,
+    exact: () => onExact?.call() ?? Future.value(exact),
     clock: () => now,
     newIntentId: () =>
         '00000000-0000-4000-8000-${(++_ids).toRadixString(16).padLeft(12, '0')}',
     trace: traces.add,
+    platformTimeout: platformTimeout,
+    flushDirectory: flushDirectory,
   );
 
   Future<NotificationBackgroundOutcome> deliver(NotificationResponse r) =>
@@ -300,6 +305,70 @@ void main() {
         'journaled',
         'woke',
       ]);
+    });
+  });
+
+  group('after the journal write', () {
+    for (final port in [false, true]) {
+      test(
+        'a failed directory flush after the rename still counts as journaled '
+        '(port: $port)',
+        () async {
+          h.port = port;
+          h.flushDirectory = (path) {
+            if (path == h.journalDirectory.path) {
+              throw const FileSystemException('synthetic fsync failure');
+            }
+          };
+          expect(
+            await h.deliver(_add(_payload())),
+            port
+                ? NotificationBackgroundOutcome.handedOff
+                : NotificationBackgroundOutcome.rendered,
+          );
+          expect((await h.entries()).single.intent!.payload.step, 1);
+          expect(h.traces.map((t) => t.split(' ')[1]), [
+            'received',
+            'unflushed',
+            'journaled',
+            port ? 'woke' : 'rendered',
+          ]);
+        },
+      );
+    }
+
+    test('a hung render cannot stall the taps queued behind it', () async {
+      h.platformTimeout = const Duration(milliseconds: 50);
+      h.onRender = (_) => Completer<void>().future;
+      final first = h.deliver(_add(_payload()));
+      h.now = _t0.add(const Duration(seconds: 1));
+      final second = h.deliver(_add(_payload()));
+      expect(await Future.wait([first, second]), [
+        NotificationBackgroundOutcome.unrendered,
+        NotificationBackgroundOutcome.unrendered,
+      ]);
+      expect(await h.entries(), hasLength(2));
+      expect(h.traces.where((t) => t.contains(' journaled ')), hasLength(2));
+    });
+
+    test('a failing exact-alarm query renders with inexact alarms', () async {
+      h.onExact = () async =>
+          throw PlatformException(code: 'synthetic_exact_failure');
+      expect(
+        await h.deliver(_add(_payload())),
+        NotificationBackgroundOutcome.rendered,
+      );
+      expect(h.renders.single.exact, isFalse);
+    });
+
+    test('a hung exact-alarm query renders with inexact alarms', () async {
+      h.platformTimeout = const Duration(milliseconds: 50);
+      h.onExact = () => Completer<bool>().future;
+      expect(
+        await h.deliver(_add(_payload())),
+        NotificationBackgroundOutcome.rendered,
+      );
+      expect(h.renders.single.exact, isFalse);
     });
   });
 

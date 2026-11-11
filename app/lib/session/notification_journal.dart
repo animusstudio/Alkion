@@ -162,17 +162,29 @@ final class NotificationJournal {
   }
 
   /// Regular files only: links and directories are ignored, never followed.
-  List<File> _files() => [
-    for (final entity in directory.listSync(followLinks: false))
-      if (entity is File) entity,
-  ];
+  /// A directory that vanished after the existence check lists as empty.
+  List<File> _files() {
+    try {
+      return [
+        for (final entity in directory.listSync(followLinks: false))
+          if (entity is File) entity,
+      ];
+    } on PathNotFoundException {
+      return const [];
+    }
+  }
 
   /// Appends [intent] atomically: written as `.partial` and flushed, renamed,
   /// then the directory is flushed. Refuses when
   /// [notificationJournalMaxEntries] committed entries already exist or the
-  /// encoded entry exceeds [notificationJournalMaxEntryBytes]. Returns the
-  /// committed file.
-  Future<File> append(NotificationIntent intent) async {
+  /// encoded entry exceeds [notificationJournalMaxEntryBytes].
+  ///
+  /// Once the rename has succeeded the entry is committed: a failed directory
+  /// flush after it is reported as `directoryFlushed: false`, never thrown,
+  /// and the `journal-renamed` checkpoint still runs.
+  Future<({File file, bool directoryFlushed})> append(
+    NotificationIntent intent,
+  ) async {
     final bytes = utf8.encode(intent.encode());
     if (bytes.length > notificationJournalMaxEntryBytes) {
       throw const NotificationJournalRefused('entry_oversize');
@@ -195,9 +207,14 @@ final class NotificationJournal {
     await partial.writeAsBytes(bytes, flush: true);
     await checkpoint?.call('journal-partial-written');
     await partial.rename(target.path);
-    _flush(directory.path);
+    var flushed = true;
+    try {
+      _flush(directory.path);
+    } catch (_) {
+      flushed = false;
+    }
     await checkpoint?.call('journal-renamed');
-    return target;
+    return (file: target, directoryFlushed: flushed);
   }
 
   /// Every committed entry: unreadable ones first in name order, then the
@@ -240,6 +257,9 @@ final class NotificationJournal {
   }
 
   /// Removes [entry]'s file. A file that is already gone counts as removed.
+  /// The directory is not flushed: an entry that reappears after a crash is
+  /// decided again from the receipt (`duplicate`, `conflict` or
+  /// `token_superseded`), so it never applies twice.
   Future<void> delete(NotificationJournalEntry entry) async {
     try {
       await entry.file.delete();
