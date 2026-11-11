@@ -113,6 +113,7 @@ class AlkionRuntime with WidgetsBindingObserver {
     Future<CatalogDevelopmentInput> Function()? catalogLoader,
     void Function(SettingsService settings)? onCatalogLoading,
     @visibleForTesting Future<void> Function(String phase)? openCheckpoint,
+    @visibleForTesting void Function(SessionManager sessions)? onSessions,
   }) async {
     GoogleFonts.config.allowRuntimeFetching = false;
     late final AlkionProfile profile;
@@ -175,6 +176,7 @@ class AlkionRuntime with WidgetsBindingObserver {
         ),
         notificationCheckpoint: openCheckpoint,
       );
+      onSessions?.call(sessions);
       // The port exists before the first drain, so from here on the
       // background hands taps off instead of rendering; a wake-up during the
       // open only records an owed drain (spec D6).
@@ -237,7 +239,10 @@ class AlkionRuntime with WidgetsBindingObserver {
     } catch (_) {
       // No owner port may outlive a failed open: the background then keeps
       // rendering provisionally behind the launch failure screen.
+      // It drains nothing more and stops observing the lifecycle, so it never
+      // reaches the closed store; the OS mirror stays posted.
       opening?.unregisterNotificationPort();
+      opening?.abandonAfterFailedOpen();
       await store.close();
       rethrow;
     }

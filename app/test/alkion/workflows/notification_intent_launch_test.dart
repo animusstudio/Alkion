@@ -17,98 +17,15 @@ import 'package:alkion/session/notification_journal.dart';
 import 'package:alkion/session/session_manager.dart';
 import 'package:alkion/session/workout_notification.dart';
 import 'package:alkion/store/local_store.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 import '../../data/workflow_state_quarantine_test.dart' show seed;
+import '../../support/recording_notification.dart';
 import '../../support/notification_intent_crash.dart'
     show notificationIntentCrashCuts;
-
-/// One `showFor` the owner made, with the payload the real mirror posts.
-final class ShownMirror {
-  ShownMirror({
-    required this.restStart,
-    required this.restTotal,
-    required this.action,
-    required this.step,
-    required this.alert,
-    required this.force,
-    required this.payload,
-  });
-  final DateTime? restStart;
-  final int restTotal, step;
-  final NotificationAction? action;
-  final bool alert, force;
-  final String? payload;
-}
-
-/// The owner's mirror without a platform: records every render request and
-/// computes the exact payload [WorkoutNotification] would post. Hooks let a
-/// test tap at the open's phases.
-class RecordingNotification extends WorkoutNotification {
-  RecordingNotification({this.onInit, this.onShow, this.onClose})
-    : super(isAndroid: true);
-  Future<void> Function()? onInit, onClose;
-  Future<void> Function(ShownMirror mirror)? onShow;
-  final mirrors = <ShownMirror>[];
-  int cancels = 0, closes = 0;
-
-  String? get payload => mirrors.last.payload;
-
-  @override
-  Future<NotificationResponse?> init({
-    required void Function(NotificationResponse) onResponse,
-  }) async {
-    await onInit?.call();
-    return null;
-  }
-
-  @override
-  Future<void> showFor({
-    required String name,
-    required DateTime startedAt,
-    DateTime? restStart,
-    int restTotal = 0,
-    NotificationAction? action,
-    int step = 1,
-    String? nextName,
-    bool alertAtRestEnd = false,
-    bool force = false,
-  }) async {
-    final mirror = ShownMirror(
-      restStart: restStart,
-      restTotal: restTotal,
-      action: action,
-      step: step,
-      alert: alertAtRestEnd,
-      force: force,
-      payload: workoutNotificationPayload(
-        action,
-        step,
-        workoutNotificationView(
-          name: name,
-          startedAt: startedAt,
-          restStart: restStart,
-          restTotal: restTotal,
-          nextName: nextName,
-          locale: 'en',
-        ),
-      ),
-    );
-    mirrors.add(mirror);
-    await onShow?.call(mirror);
-  }
-
-  @override
-  Future<void> cancel() async => cancels++;
-
-  @override
-  Future<void> close() async {
-    closes++;
-    await onClose?.call();
-  }
-}
 
 NotificationResponse actionTap(String actionId, String? payload) =>
     NotificationResponse(
@@ -199,11 +116,13 @@ void main() {
   Future<AlkionRuntime> open({
     WorkoutNotification? notifications,
     Future<void> Function(String phase)? openCheckpoint,
+    void Function(SessionManager sessions)? onSessions,
   }) async {
     final runtime = await AlkionRuntime.open(
       root,
       notifications: notifications ?? RecordingNotification(),
       openCheckpoint: openCheckpoint,
+      onSessions: onSessions,
     );
     runtimes.add(runtime);
     final owner = runtime.sessions.active;
@@ -842,5 +761,124 @@ void main() {
         expect((await receipt(runtime.store))['consumed_step'], 1);
       }, timeout: const Timeout(Duration(minutes: 6)));
     }
+  });
+
+  group('review fixes', () {
+    test('in immediate mode a wake-up with an empty journal still forces one '
+        'settle of the live mirror', () async {
+      final notifier = RecordingNotification();
+      final runtime = await open(notifications: notifier);
+      await startResting(runtime);
+      await runtime.sessions.notificationWorkIdle();
+      final before = notifier.mirrors.length;
+      expect(await journal(), isEmpty);
+      expect(wakeNotificationOwner(), isTrue);
+      await until(
+        () => notifier.mirrors.length > before,
+        reason: 'the settle after the wake-up',
+      );
+      await runtime.sessions.notificationWorkIdle();
+      final after = notifier.mirrors.sublist(before);
+      expect(after, hasLength(1));
+      expect(after.single.force, isTrue);
+      expect(after.single.restTotal, 600);
+    });
+
+    test('the port is registered before drain #1: a tap at its read is '
+        'handed off, renders nothing and owes a drain', () async {
+      final payload = await postedThenClosed();
+      late SessionManager sessions;
+      var reads = 0;
+      NotificationBackgroundOutcome? outcome;
+      final runtime = await AlkionRuntime.open(
+        root,
+        notifications: RecordingNotification(),
+        onSessions: (value) => sessions = value,
+        openCheckpoint: (phase) async {
+          if (phase == 'drain-read' && reads++ == 0) {
+            expect(sessions.notificationPortMode, NotificationPortMode.opening);
+            outcome = await add(payload);
+          }
+          if (phase == 'drained') {
+            await until(() => sessions.drainOwed, reason: 'an owed drain');
+          }
+        },
+      );
+      runtimes.add(runtime);
+      controllers.add(runtime.sessions.active!);
+      expect(outcome, NotificationBackgroundOutcome.handedOff);
+      expect(renders, isEmpty);
+      await settled(runtime);
+      expect(runtime.sessions.active!.restTotal, 630);
+      expect(runtime.sessions.drainOwed, isFalse);
+      expect(
+        runtime.sessions.notificationPortMode,
+        NotificationPortMode.immediate,
+      );
+    });
+
+    test('init drains before it reconciles: a +30s journaled after drain #1 '
+        'extends an elapsed rest instead of being stopped', () async {
+      final notifier = RecordingNotification();
+      var runtime = await open(notifications: notifier);
+      final start = DateTime.now().subtract(const Duration(seconds: 70));
+      await startResting(runtime, restStart: start, total: 60);
+      final payload = notifier.payload!;
+      await runtime.close();
+      runtime = await open(
+        openCheckpoint: (phase) async {
+          if (phase != 'drained') return;
+          // After drain #1 and before resume and init; no wake-up arrives.
+          await add(
+            payload,
+            at: start.add(const Duration(seconds: 50)),
+            wake: false,
+          );
+        },
+      );
+      await settled(runtime);
+      final owner = runtime.sessions.active!;
+      expect(owner.restStart, start);
+      expect(owner.restTotal, 90);
+      expect(owner.restEndedAt, isNull);
+    });
+
+    test('a failed open after init abandons its owner: no port, no lifecycle '
+        'observer, no drains, and the OS mirror stays', () async {
+      final payload = await postedThenClosed();
+      late SessionManager sessions;
+      final notifier = RecordingNotification();
+      await expectLater(
+        open(
+          notifications: notifier,
+          onSessions: (value) => sessions = value,
+          openCheckpoint: (phase) async {
+            if (phase == 'notifications-initialized') {
+              throw const StoreException('synthetic_open_failure');
+            }
+          },
+        ),
+        throwsA(isA<StoreException>()),
+      );
+      expect(IsolateNameServer.lookupPortByName(notificationPortName), isNull);
+      expect(sessions.notificationPortMode, NotificationPortMode.unregistered);
+      expect(
+        WidgetsBinding.instance.removeObserver(sessions),
+        isFalse,
+        reason: 'no longer a lifecycle observer',
+      );
+      expect(notifier.closes, 0, reason: 'the OS mirror stays posted');
+      expect(notifier.cancels, 0);
+      final owner = sessions.active;
+      if (owner != null) controllers.add(owner);
+      // A tap now renders provisionally and waits; the abandoned owner never
+      // drains it against the closed store.
+      expect(await add(payload), NotificationBackgroundOutcome.rendered);
+      await sessions.drainNotificationIntents();
+      expect(await journal(), hasLength(1));
+      final runtime = await open();
+      await settled(runtime);
+      expect(runtime.sessions.active!.restTotal, 630);
+    });
   });
 }

@@ -126,14 +126,19 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Runs [work] after everything already queued. With nothing queued it
   /// starts at once, in the caller's zone, so an idle tail never makes a
-  /// caller wait on another zone's microtasks.
+  /// caller wait on another zone's microtasks. The tail moves on before
+  /// [work] starts, so work it queues synchronously still runs after it.
   Future<T> _enqueue<T>(Future<T> Function() work) {
     final idle = _queued == 0;
     _queued++;
-    final result = idle ? Future<T>.sync(work) : _tail.then((_) => work());
-    _tail = result
-        .then<void>((_) {}, onError: (Object _) {})
-        .whenComplete(() => _queued--);
+    final previous = _tail;
+    final done = Completer<void>();
+    _tail = done.future;
+    final result = idle ? Future<T>.sync(work) : previous.then((_) => work());
+    result.then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
+      _queued--;
+      done.complete();
+    });
     return result;
   }
 
@@ -147,11 +152,6 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       await Future<void>.delayed(Duration.zero);
     } while (!identical(seen, _tail));
   }
-
-  int _draining = 0;
-
-  /// Whether a drain is reading or deciding journal entries right now.
-  bool get draining => _draining > 0;
 
   /// A wake-up arrived while the port was in opening mode.
   bool get drainOwed => _drainOwed;
@@ -167,7 +167,13 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   /// only records that a drain is owed until [releaseOwedNotificationDrains]
   /// switches to immediate mode. While the port exists the background never
   /// renders. False if the name could not be registered.
+  ///
+  /// Throws a [StateError] without a [notificationJournal]: a registered
+  /// owner that cannot drain would swallow every tap the background hands it.
   bool registerNotificationPort() {
+    if (notificationJournal == null) {
+      throw StateError('An owner port needs a notification journal');
+    }
     if (_disposed || _notificationsClosed) return false;
     _receivePort?.close();
     final port = ReceivePort();
@@ -195,7 +201,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       case NotificationPortMode.opening:
         _drainOwed = true;
       case NotificationPortMode.immediate:
-        unawaited(drainNotificationIntents());
+        unawaited(_drainOnWake());
       case NotificationPortMode.closing:
       case NotificationPortMode.unregistered:
         break;
@@ -224,7 +230,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     }
     if (registerNotificationPort()) {
       _portMode = NotificationPortMode.immediate;
-      unawaited(drainNotificationIntents());
+      unawaited(_drainOnWake());
     }
   }
 
@@ -340,6 +346,11 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   /// to [onPersistenceError] and the entries stay for a later drain.
   Future<void> drainNotificationIntents() => _enqueue(_drainNow);
 
+  /// A wake-up in immediate mode: drains, then always settles the mirror
+  /// (spec D3 step 6), even with nothing decided, so a provisional render
+  /// the background posted before it saw this port is replaced.
+  Future<void> _drainOnWake() => _enqueue(() => _drainNow(settleAlways: true));
+
   /// Decides [intent]: through the live controller (owed saves settle first,
   /// the committed rest is adopted with queued edits, and an uncertain
   /// COMMIT is retained until its receipt answers), else in SQL alone. Null
@@ -373,13 +384,13 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
   /// one is first copied into `reviews`. Stops at the first entry that waits
   /// or fails, keeping it and every later one. Every decided intent ends with
   /// a forced refresh (or the ghost rule without a workout) once the mirror
-  /// is initialized. Never throws.
-  Future<void> _drainNow() async {
+  /// is initialized; with [settleAlways] the mirror is settled even when
+  /// nothing was decided. Never throws.
+  Future<void> _drainNow({bool settleAlways = false}) async {
     final journal = notificationJournal;
     if (journal == null || _notificationsClosed || _disposed) return;
     // While a prepared Finish has not committed, entries wait.
     if (callbacksFrozen) return;
-    _draining++;
     var decided = false;
     try {
       try {
@@ -405,10 +416,8 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       }
     } catch (error) {
       _reportPersistence(error);
-    } finally {
-      _draining--;
     }
-    if (decided && notifier != null) {
+    if ((decided || settleAlways) && notifier != null) {
       try {
         await _settleMirror();
       } catch (error) {
@@ -424,6 +433,8 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     NotificationJournal journal,
     NotificationJournalEntry entry,
   ) async {
+    // Like _decide: no SQL write while a launch or restore holds the fence.
+    if (_launching) return;
     try {
       final bytes = entry.bytes;
       final db = draftStore?.database;
@@ -612,13 +623,13 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Stops an elapsed rest. Skipped only while a drain is in flight (and
-  /// while an intent or Finish is unsettled): once the drain has finished,
-  /// whatever entries remain, an elapsed rest is stopped as usual.
+  /// Stops an elapsed rest, unless an intent or Finish is unsettled. Only
+  /// [init] and `resumed` call it, on the tail and right after their own
+  /// drain: that ordering keeps a journaled +30s from being stopped as
+  /// elapsed, and once the drain has finished, whatever entries remain, an
+  /// elapsed rest is stopped as usual (spec D6, A17).
   void _reconcileRest() {
-    if (draining ||
-        callbacksFrozen ||
-        (_active?.notificationActionUncertain ?? false)) {
+    if (callbacksFrozen || (_active?.notificationActionUncertain ?? false)) {
       return;
     }
     final c = _active;
@@ -793,6 +804,17 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
+  bool _keepMirror = false;
+
+  /// Disposes an owner whose runtime failed to open, after its port was
+  /// unregistered: it stops observing the lifecycle and drains nothing more,
+  /// but leaves the OS mirror posted, so the workout stays visible and the
+  /// background renders provisionally until the next open.
+  void abandonAfterFailedOpen() {
+    _keepMirror = true;
+    dispose();
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -805,7 +827,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
     onPersistenceError = null;
     onPersistenceCleared = null;
     notifier?.removeListener(_notificationStatusChanged);
-    unawaited(notifier?.close() ?? Future.value());
+    if (!_keepMirror) unawaited(notifier?.close() ?? Future.value());
     // The mapping, if any, stays for unregisterNotificationPort; a wake-up
     // sent to the closed port is dropped and its entry waits for a drain.
     _receivePort?.close();

@@ -708,4 +708,12 @@ void main() {
     m.unregisterNotificationPort();
     expect(IsolateNameServer.lookupPortByName(notificationPortName), isNull);
   });
+
+  test('an owner port needs a journal: registering without one throws '
+      'instead of silently skipping drains', () {
+    final m = SessionManager();
+    addTearDown(m.dispose);
+    expect(m.registerNotificationPort, throwsStateError);
+    expect(m.notificationPortMode, NotificationPortMode.unregistered);
+  });
 }

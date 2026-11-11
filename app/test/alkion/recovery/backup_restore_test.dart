@@ -22,8 +22,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
-import '../workflows/notification_intent_launch_test.dart'
-    show RecordingNotification;
+import '../../support/recording_notification.dart';
 
 import '../../../tool/alkion_backup_recovery.dart' as proof;
 

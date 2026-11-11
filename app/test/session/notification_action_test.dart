@@ -720,6 +720,37 @@ void main() {
     },
   );
 
+  test(
+    'reconciling against an absent draft rest total adopts 0 as a duplicate',
+    () async {
+      final issued = await token();
+      final intent = intentFor(issued.action, 1);
+      actions.fail = actions.afterCommit = true;
+      await expectLater(c.applyNotificationIntent(intent), throwsStateError);
+      actions.fail = false;
+      await actions.writeTransaction((tx) async {
+        final row = (await tx.localState(LocalStateKind.draft, 'active'))!;
+        final value = Map<String, Object?>.from(
+          jsonDecode(utf8.decode((row['payload_bytes'] as List).cast<int>()))
+              as Map,
+        )..remove('restTotal');
+        await tx.putLocalState(
+          LocalStateKind.draft,
+          'active',
+          localBytes(value),
+          expectedRevision: row['revision'] as int,
+        );
+      });
+      final before = await db.store.inventory();
+      final retried = (await c.applyNotificationIntent(intent))!;
+      expect(retried.outcome, NotificationOutcome.duplicate);
+      expect(retried.change!.restTotal, 0);
+      expect(c.restTotal, 0);
+      expect(drafts.pendingNotificationIntent, isNull);
+      expect(await db.store.inventory(), before, reason: 'nothing written');
+    },
+  );
+
   for (final after in [false, true]) {
     test(
       'intent ${after ? 'forwarded' : 'refused'} COMMIT retains the exact intent and never applies it twice',

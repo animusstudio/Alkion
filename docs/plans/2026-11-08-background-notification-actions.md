@@ -289,6 +289,16 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   (all four languages) and not in the ARB files, because the renderer has no
   `BuildContext` and an unused ARB key fails `unused_keys_test`. The two other
   `WorkoutNotification` test fakes gained the `step`/`force` parameters.
+  Review (PASS with findings) fixes: every immediate-mode wake-up drains and
+  then always forces a mirror settle; a failed open also abandons its
+  `SessionManager` (no lifecycle observer or drains, OS mirror kept);
+  undecodable entries are not copied while a launch holds the fence;
+  `_enqueue` moves the tail before work starts; registering a port without a
+  journal throws; the dead drain guard in `_reconcileRest` is replaced by a
+  comment on the tail ordering. New tests pin the wake-up settle, the port
+  registered before drain #1, `init` draining before it reconciles, the
+  abandoned failed open, the required journal and the absent-total
+  duplicate; `RecordingNotification` moved to `test/support/`.
 - T4 — not started.
 
 ## Next
