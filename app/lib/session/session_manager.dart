@@ -121,7 +121,7 @@ class SessionManager extends ChangeNotifier with WidgetsBindingObserver {
       if (action == null ||
           c == null ||
           db == null ||
-          !action.owns(db, c.draft.draftId)) {
+          !ownsNotificationAction(action, db, c.draft.draftId)) {
         return;
       }
       if (response.actionId == AlkionIdentity.addRestAction) {
