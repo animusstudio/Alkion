@@ -104,3 +104,26 @@ bounded attempts. Those Android interactions and owner-device behavior remain
 UNRUN. No owner-device installation or public publication is included. Final
 review and any separately approved exact-range publication remain coordination
 steps; no release or publication is implied by local completion.
+
+## Publication follow-up — 2026-11-11
+
+Owner instruction: “publish and update also alkion.” Approved continuation of
+this standard-lane plan: integrate current public main, resolve the existing CI
+failures, independently review the exact outgoing patch, publish this PR and
+merge only with green exact-head checks. Rebuild the private Dev APK with the
+latest reviewed catalog; update the parent pin after the public merge.
+
+Acceptance: required/optional metric controls remain truthful before and after
+opening More measurements; integrated workflow tests wait for observed UI state
+without weakening assertions; bilingual lookup and saved-selection behavior pass
+on the integrated tree. Test-only fixes are preferred when product behavior is
+already correct. Preserve existing main features and all private-input gates.
+No new data redistribution, license grant, release tag or owner-device install.
+
+Tasks: T4 standard-code worker fixes/reproduces metric-control and integrated
+acceptance failures; T5 reviewer checks fixes and outgoing public range; coordinator
+publishes, verifies CI/merge, rebuilds the private Dev APK and updates the parent
+pin. Full app tests, analysis/format, focused catalog/binding checks and packaged
+asset/native-library guards are required. Previous evidence remains dated.
+
+T4–T5 pending. Publication approval covers this bounded continuation.

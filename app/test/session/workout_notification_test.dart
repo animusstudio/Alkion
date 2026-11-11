@@ -1,6 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:ui' show PluginUtilities;
+
+import 'package:alkion/session/notification_background.dart'
+    show onBackgroundNotificationResponse;
+import 'package:alkion/session/notification_envelope.dart';
 import 'package:alkion/session/workout_notification.dart';
-import 'package:alkion/session/notification_action.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -169,36 +173,66 @@ void main() {
           .setMockMethodCallHandler(channel, null);
       debugDefaultTargetPlatformOverride = null;
     });
-    Future<void> show({String? next, bool alert = false}) => notifier.showFor(
+    final workoutStart = DateTime.now().subtract(const Duration(minutes: 5));
+    Future<void> show({
+      String? next,
+      bool alert = false,
+      int step = 1,
+      bool force = false,
+    }) => notifier.showFor(
       name: 'Synthetic',
-      startedAt: DateTime.now().subtract(const Duration(minutes: 5)),
+      startedAt: workoutStart,
       restStart: DateTime.parse(action.restStart!),
       restTotal: 600,
       action: action,
+      step: step,
       nextName: next,
       alertAtRestEnd: alert,
+      force: force,
     );
+    NotificationEnvelope posted(Map<dynamic, dynamic> arguments) =>
+        NotificationEnvelope.decode(arguments['payload'] as String)!;
     Map<dynamic, dynamic> last(String method) =>
         calls.lastWhere((c) => c.method == method).arguments as Map;
 
     test(
-      'cold response has fenced payload; visible action only; exact schedule and cancel',
+      'cold response keeps its payload; the background handler is registered; '
+      'two background actions in fixed order; exact schedule and cancel',
       () async {
         final launch = await notifier.init(onResponse: (_) {});
         expect(launch!.payload, action.encode());
         final init =
             calls.firstWhere((c) => c.method == 'initialize').arguments as Map;
-        expect(init, isNot(contains('dispatcher_handle')));
-        expect(init, isNot(contains('callback_handle')));
+        // The plugin's dispatcher and the handler's callback handle: the
+        // secondary engine runs onBackgroundNotificationResponse.
+        expect(init['dispatcher_handle'], isA<int>());
+        expect(init['callback_handle'], isA<int>());
+        expect(
+          init['callback_handle'],
+          PluginUtilities.getCallbackHandle(
+            onBackgroundNotificationResponse,
+          )!.toRawHandle(),
+        );
         await show();
         final shown =
             calls.firstWhere((c) => c.method == 'show').arguments as Map;
-        expect(shown['payload'], action.encode());
+        final envelope = posted(shown);
+        expect(envelope.action.encode(), action.encode());
+        expect(envelope.step, 1);
+        expect(envelope.view!.restTotal, 600);
+        expect(envelope.view!.title, 'Synthetic');
         final details = shown['platformSpecifics'] as Map;
+        final actions = details['actions'] as List;
         expect(
-          (details['actions'] as List).single['showsUserInterface'],
-          isTrue,
+          [for (final a in actions) a['id']],
+          [AlkionIdentity.addRestAction, AlkionIdentity.skipRestAction],
         );
+        expect(actions[addRestActionIndex]['title'], '+30s');
+        expect(actions[skipRestActionIndex]['title'], 'Skip rest');
+        for (final a in actions) {
+          expect(a['showsUserInterface'], isFalse);
+          expect(a['cancelNotification'], isFalse);
+        }
         expect(calls.where((c) => c.method == 'zonedSchedule').length, 1);
         await notifier.close();
         final count = calls.length;
@@ -337,16 +371,20 @@ void main() {
         expect(scheduled['id'], 4101);
         expect(scheduled['title'], 'Rest finished');
         expect(scheduled['body'], 'Next · Bench Press');
-        expect(scheduled['payload'], action.encode());
-        // The live countdown keeps the quiet channel and its +30s action.
+        expect(scheduled['payload'], last('show')['payload']);
+        expect(posted(scheduled).action.encode(), action.encode());
+        // The live countdown keeps the quiet channel and both actions.
         shown = last('show');
         expect(
           shown['platformSpecifics']['channelId'],
           AlkionIdentity.notificationChannel,
         );
         expect(
-          (shown['platformSpecifics']['actions'] as List).single['id'],
-          AlkionIdentity.addRestAction,
+          [
+            for (final a in shown['platformSpecifics']['actions'] as List)
+              a['id'],
+          ],
+          [AlkionIdentity.addRestAction, AlkionIdentity.skipRestAction],
         );
 
         // Nothing pending: the alert names the workout.
@@ -357,11 +395,60 @@ void main() {
         expect(scheduled['body'], 'Synthetic');
         expect(last('show')['body'], 'Recupero');
         expect(
+          (last('show')['platformSpecifics']['actions']
+              as List)[skipRestActionIndex]['title'],
+          'Salta recupero',
+        );
+        expect(
           calls.where((c) => c.method == 'requestNotificationsPermission'),
           isEmpty,
         );
       },
     );
+
+    test(
+      'the payload carries the next step; force re-posts an unchanged mirror',
+      () async {
+        final markers = <String>[];
+        await notifier.close();
+        notifier = WorkoutNotification(isAndroid: true, trace: markers.add);
+        await notifier.init(onResponse: (_) {});
+        await show();
+        expect(calls.where((c) => c.method == 'show').length, 1);
+        await show();
+        expect(
+          calls.where((c) => c.method == 'show').length,
+          1,
+          reason: 'an unchanged mirror is not posted again',
+        );
+        await show(force: true);
+        expect(calls.where((c) => c.method == 'show').length, 2);
+        await show(step: 2);
+        expect(calls.where((c) => c.method == 'show').length, 3);
+        expect(posted(last('show')).step, 2);
+        expect(posted(last('zonedSchedule')).step, 2);
+        expect(markers, [
+          'alkion-notif re-rendered issued-s 1',
+          'alkion-notif re-rendered issued-s 1',
+          'alkion-notif re-rendered issued-s 2',
+        ]);
+      },
+    );
+
+    test('labels Skip rest in all four languages', () {
+      final labels = {
+        for (final language in ['en', 'it', 'de', 'es'])
+          language: workoutNotificationActions(
+            language,
+          )[skipRestActionIndex].title,
+      };
+      expect(labels, {
+        'en': 'Skip rest',
+        'it': 'Salta recupero',
+        'de': 'Pause überspringen',
+        'es': 'Saltar descanso',
+      });
+    });
 
     test('permission is queried and requested only on demand', () async {
       expect(

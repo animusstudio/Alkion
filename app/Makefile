@@ -194,7 +194,7 @@ build-catalog-dev-local-test-release:
 	@test -n "$${CATALOG_DEV_NDK}" || (echo 'Set CATALOG_DEV_NDK to the explicit Flutter-pinned NDK 28.2.13676358 directory.' >&2; exit 2)
 	$(MAKE) stage-catalog-dev
 	@if test "$${ALKION_PRIVATE_BODY_ASSETS}" = 1; then $(MAKE) verify-character-body; fi
-	ALKION_PRIVATE_CATALOG_DEV=1 $(FLUTTER) build apk --release --no-pub --flavor dev --target-platform android-arm64 --target lib/main.dart --dart-define=ALKION_CATALOG_DEV=true
+	ALKION_PRIVATE_CATALOG_DEV=1 $(FLUTTER) build apk --release --no-pub --flavor dev --target-platform android-arm64 --target lib/main.dart --dart-define=ALKION_CATALOG_DEV=true$(if $(filter 1,$(ALKION_NOTIFICATION_TRACE)), --dart-define=ALKION_NOTIFICATION_TRACE=true)
 	python3 tool/verify_catalog_apk.py --apk build/app/outputs/flutter-apk/app-dev-release.apk --platform android-arm64 --generated-jni-dir build/app/intermediates/flutter/devRelease/jniLibs --catalog-assets-dir build/private-catalog-dev/assets --development --build-mode release --ndk-dir "$${CATALOG_DEV_NDK}"
 	cp -- build/app/outputs/flutter-apk/app-dev-release.apk build/app/outputs/flutter-apk/alkion-catalog-dev-android-arm64-release.apk
 verify-no-catalog-apk:

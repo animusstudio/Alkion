@@ -292,8 +292,10 @@ final class _ThrowingCloseNotification extends WorkoutNotification {
     DateTime? restStart,
     int restTotal = 0,
     NotificationAction? action,
+    int step = 1,
     String? nextName,
     bool alertAtRestEnd = false,
+    bool force = false,
   }) async {}
   @override
   Future<void> cancel() async {}

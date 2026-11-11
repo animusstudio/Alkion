@@ -103,7 +103,10 @@ void main() {
       channelName: 'Synthetic workout',
     );
     expect(details.channelId, AlkionIdentity.notificationChannel);
-    expect(details.actions!.single.id, AlkionIdentity.addRestAction);
+    expect(details.actions!.map((a) => a.id), [
+      AlkionIdentity.addRestAction,
+      AlkionIdentity.skipRestAction,
+    ]);
   });
 
   test(

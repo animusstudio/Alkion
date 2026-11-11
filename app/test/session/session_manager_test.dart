@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
@@ -11,7 +12,14 @@ import '../alkion/acceptance/acceptance_support.dart'
     show act, mountReal, realSettle, settleUntil, settleWhile, startWorkout;
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui' show IsolateNameServer;
 import 'package:alkion/main.dart';
+import 'package:alkion/session/notification_background.dart'
+    show wakeNotificationOwner;
+import 'package:alkion/session/notification_envelope.dart'
+    show notificationPortName;
+import 'package:alkion/session/notification_journal.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/session/notification_action.dart';
 import 'package:alkion/session/workout_notification.dart';
@@ -57,8 +65,10 @@ class FakeWorkoutNotification extends WorkoutNotification {
     DateTime? restStart,
     int restTotal = 0,
     NotificationAction? action,
+    int step = 1,
     String? nextName,
     bool alertAtRestEnd = false,
+    bool force = false,
   }) async {
     shown.add(restTotal);
     next.add(nextName);
@@ -167,7 +177,8 @@ void main() {
         expect(owner.restTotal, 630);
         expect(notifier.shown, isNotEmpty);
         expect(notifier.shown.every((value) => value == 630), isTrue);
-        expect(runtime.sessions.takeNotificationOpenRequest(), isTrue);
+        // An older build's +30s applies directly and never opens the app.
+        expect(runtime.sessions.takeNotificationOpenRequest(), isFalse);
         final committed = await runtime.store.inventory();
         await runtime.sessions.handleNotificationResponse(response);
         expect(runtime.sessions.active, same(owner));
@@ -566,12 +577,16 @@ void main() {
 
   group('ghost notification cleanup at runtime open', () {
     test('no active workout: cancels the notification and its alarm', () async {
-      final m = SessionManager();
+      final markers = <String>[];
+      final m = SessionManager(notificationTrace: markers.add);
       addTearDown(m.dispose);
       final notifier = FakeWorkoutNotification();
       await m.initializeNotifications(notifier);
+      expect(notifier.cancels, 0, reason: 'step 9 settles the mirror');
+      await m.settleNotificationMirror();
       expect(notifier.cancels, 1);
       expect(notifier.shown, isEmpty);
+      expect(markers, ['alkion-notif ghost-cancelled']);
     });
 
     test('an active workout is never cancelled', () async {
@@ -583,6 +598,7 @@ void main() {
       m.register(c);
       final notifier = FakeWorkoutNotification();
       await m.initializeNotifications(notifier);
+      await m.settleNotificationMirror();
       expect(notifier.cancels, 0);
       m.clear();
     });
@@ -593,6 +609,7 @@ void main() {
       expect(m.tryBeginLaunch(), isTrue);
       final notifier = FakeWorkoutNotification();
       await m.initializeNotifications(notifier);
+      await m.settleNotificationMirror();
       expect(notifier.cancels, 0);
       m.endLaunch();
     });
@@ -630,4 +647,120 @@ void main() {
       }
     });
   });
+
+  test('the wake-up port: opening owes a drain, immediate drains, closing '
+      'ignores; a reopened port listens again; only its own mapping is '
+      'removed', () async {
+    final temp = await Directory.systemTemp.createTemp('alkion-notif-port-');
+    addTearDown(() => temp.delete(recursive: true));
+    IsolateNameServer.removePortNameMapping(notificationPortName);
+    addTearDown(
+      () => IsolateNameServer.removePortNameMapping(notificationPortName),
+    );
+    final m = SessionManager(
+      notificationJournal: NotificationJournal(
+        Directory('${temp.path}/journal'),
+      ),
+    );
+    addTearDown(m.dispose);
+    expect(m.notificationPortMode, NotificationPortMode.unregistered);
+    expect(m.registerNotificationPort(), isTrue);
+    expect(m.notificationPortMode, NotificationPortMode.opening);
+    expect(wakeNotificationOwner(), isTrue);
+    for (var i = 0; i < 100 && !m.drainOwed; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(m.drainOwed, isTrue);
+    await m.releaseOwedNotificationDrains();
+    expect(m.drainOwed, isFalse);
+    expect(m.notificationPortMode, NotificationPortMode.immediate);
+
+    m.closeNotificationPort();
+    expect(m.notificationPortMode, NotificationPortMode.closing);
+    expect(
+      IsolateNameServer.lookupPortByName(notificationPortName),
+      isNotNull,
+      reason: 'still registered, so the background never renders',
+    );
+    expect(wakeNotificationOwner(), isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(m.drainOwed, isFalse);
+
+    m.reopenNotificationPort();
+    expect(m.notificationPortMode, NotificationPortMode.immediate);
+    await m.notificationWorkIdle();
+
+    // Another owner's mapping is never removed.
+    final other = ReceivePort();
+    addTearDown(other.close);
+    IsolateNameServer.removePortNameMapping(notificationPortName);
+    IsolateNameServer.registerPortWithName(
+      other.sendPort,
+      notificationPortName,
+    );
+    m.unregisterNotificationPort();
+    expect(m.notificationPortMode, NotificationPortMode.unregistered);
+    expect(
+      IsolateNameServer.lookupPortByName(notificationPortName),
+      other.sendPort,
+    );
+    IsolateNameServer.removePortNameMapping(notificationPortName);
+    expect(m.registerNotificationPort(), isTrue);
+    m.unregisterNotificationPort();
+    expect(IsolateNameServer.lookupPortByName(notificationPortName), isNull);
+  });
+
+  test('an owner port needs a journal: registering without one throws '
+      'instead of silently skipping drains', () {
+    final m = SessionManager();
+    addTearDown(m.dispose);
+    expect(m.registerNotificationPort, throwsStateError);
+    expect(m.notificationPortMode, NotificationPortMode.unregistered);
+  });
+
+  test('work queued synchronously from inside queued work runs after it and '
+      'is waited for', () async {
+    final temp = await Directory.systemTemp.createTemp('alkion-notif-tail-');
+    addTearDown(() => temp.delete(recursive: true));
+    final log = <String>[];
+    late SessionManager m;
+    final notifier = _ReentrantNotification(
+      onCancel: () {
+        // Before the settle's first await: queue a drain from inside it.
+        unawaited(m.drainNotificationIntents());
+      },
+      cancelled: () => log.add('outer done'),
+    );
+    m = SessionManager(
+      notificationJournal: NotificationJournal(
+        Directory('${temp.path}/journal'),
+      ),
+      notificationCheckpoint: (phase) async {
+        if (phase == 'drain-read') log.add('inner ran');
+      },
+    );
+    addTearDown(m.dispose);
+    await m.initializeNotifications(notifier);
+    final settle = m.settleNotificationMirror();
+    await m.notificationWorkIdle();
+    await settle;
+    expect(log, ['outer done', 'inner ran']);
+  });
+}
+
+/// A mirror whose cancel calls back into its owner before returning, then
+/// completes later.
+class _ReentrantNotification extends WorkoutNotification {
+  _ReentrantNotification({required this.onCancel, required this.cancelled})
+    : super(isAndroid: true);
+  final void Function() onCancel, cancelled;
+  @override
+  Future<NotificationResponse?> init({
+    required void Function(NotificationResponse) onResponse,
+  }) async => null;
+  @override
+  Future<void> cancel() {
+    onCancel();
+    return Future<void>.delayed(const Duration(milliseconds: 50), cancelled);
+  }
 }

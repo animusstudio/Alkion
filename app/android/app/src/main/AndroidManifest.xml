@@ -43,7 +43,12 @@
             android:value="2" />
         <!-- Posts the scheduled rest-end notification (reverts countdown → elapsed). -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
-        <!-- Visible actions use the existing singleTop activity; no headless writer. -->
+        <!-- +30s and Skip rest: the plugin's action receiver starts a headless
+             messenger that only journals the tap (and, with no owner running,
+             renders a provisional mirror). Headless messenger; no headless
+             SQL writer: the app's main isolate alone applies journaled taps.
+             Body taps still use the existing singleTop activity. -->
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
