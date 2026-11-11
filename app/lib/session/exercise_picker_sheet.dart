@@ -1,7 +1,6 @@
 import 'package:provider/provider.dart';
 import '../catalog_ui/catalog_picker.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
-import '../catalog_ui/catalog_runtime_state.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../data/catalog_execution_repository.dart';
 import '../domain/catalog_execution.dart';
 import '../widgets/w_action_sheet.dart';
@@ -16,6 +15,7 @@ import '../theme/alkion_icon.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
+import '../widgets/w_toast.dart';
 
 /// Shows a modal bottom sheet that lets the user search and pick an exercise.
 ///
@@ -36,36 +36,35 @@ Future<Exercise?> showExercisePicker(
   ValueChanged<CatalogSelectionEvidence>? onExecutionSelection,
   Set<String> inDayChoiceKeys = const {},
 }) async {
-  final trial = CatalogTrialScope.maybeOf(context);
-  if (trial != null) {
+  final catalog = CatalogScope.maybeOf(context);
+  if (catalog != null) {
     final locale = Localizations.localeOf(context).languageCode;
     final repo = ExerciseRepository.local(context.read<LocalDatabase>());
     final picked = await showCatalogPicker(
       context,
-      state: trial,
+      state: catalog,
       immediateSelection: true,
       inDayChoiceKeys: inDayChoiceKeys,
     );
     if (picked == null || picked.isEmpty) return null;
     onCatalogChoice?.call(picked.single);
     try {
-      final exercise = await trial.materialize(
+      final exercise = await catalog.materialize(
         picked.single,
         repo,
         locale: locale,
       );
-      if (!context.mounted || !trial.active) return null;
-      if (trial is CatalogRuntimeState &&
-          trial.selectionFor(picked.single) != null) {
-        onExecutionSelection?.call(trial.selectionFor(picked.single)!);
+      if (!context.mounted || !catalog.active) return null;
+      if (catalog.selectionFor(picked.single) case final selection?) {
+        onExecutionSelection?.call(selection);
       }
       return exercise;
     } catch (_) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(AppLocalizations.of(context).catalogSaveFailed),
-          ),
+        showWToast(
+          context,
+          AppLocalizations.of(context).catalogSaveFailed,
+          error: true,
         );
       }
       return null;

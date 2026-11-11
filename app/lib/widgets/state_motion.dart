@@ -14,10 +14,14 @@ class EventProgress extends StatefulWidget {
     required this.builder,
     this.duration = Motion.base,
     this.onMount = false,
+    this.curve = Motion.curve,
   });
   final Object? event;
   final Duration duration;
   final bool onMount;
+
+  /// Applied to the linear progress before [builder] sees it.
+  final Curve curve;
   final Widget Function(BuildContext context, double progress) builder;
   @override
   State<EventProgress> createState() => _EventProgressState();
@@ -52,6 +56,9 @@ class _EventProgressState extends State<EventProgress>
   }
 
   void _play() {
+    // Measure again: a box first laid out off screen (a sheet still sliding
+    // in) may be in view by the time its event plays.
+    _viewport = _inViewport();
     _controller.duration = Motion.of(context, widget.duration);
     if (!_enabled || _controller.duration == Duration.zero) {
       _finish();
@@ -90,22 +97,26 @@ class _EventProgressState extends State<EventProgress>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _queued = false;
       if (!mounted) return;
-      final box = context.findRenderObject();
-      if (box is! RenderBox || !box.hasSize) return;
-      var viewport = Offset.zero & MediaQuery.sizeOf(context);
-      for (final scroll in _scrollables) {
-        final render = scroll.context.findRenderObject();
-        if (render is RenderBox && render.hasSize) {
-          viewport = viewport.intersect(
-            render.localToGlobal(Offset.zero) & render.size,
-          );
-        }
-      }
-      _viewport = (box.localToGlobal(Offset.zero) & box.size).overlaps(
-        viewport,
-      );
+      _viewport = _inViewport();
       if (!_viewport) _finish();
     });
+  }
+
+  /// Whether the last layout put this box inside the screen and every
+  /// enclosing scroll viewport; the last answer while it has no layout yet.
+  bool _inViewport() {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize || !box.attached) return _viewport;
+    var viewport = Offset.zero & MediaQuery.sizeOf(context);
+    for (final scroll in _scrollables) {
+      final render = scroll.context.findRenderObject();
+      if (render is RenderBox && render.hasSize) {
+        viewport = viewport.intersect(
+          render.localToGlobal(Offset.zero) & render.size,
+        );
+      }
+    }
+    return (box.localToGlobal(Offset.zero) & box.size).overlaps(viewport);
   }
 
   @override
@@ -124,7 +135,7 @@ class _EventProgressState extends State<EventProgress>
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _controller,
     builder: (context, _) =>
-        widget.builder(context, Motion.curve.transform(_controller.value)),
+        widget.builder(context, widget.curve.transform(_controller.value)),
   );
 
   @override

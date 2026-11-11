@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:alkion/data/day_template_repository.dart';
 import 'package:alkion/data/exercise_repository.dart';
@@ -11,7 +12,14 @@ import '../alkion/acceptance/acceptance_support.dart'
     show act, mountReal, realSettle, settleUntil, settleWhile, startWorkout;
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui' show IsolateNameServer;
 import 'package:alkion/main.dart';
+import 'package:alkion/session/notification_background.dart'
+    show wakeNotificationOwner;
+import 'package:alkion/session/notification_envelope.dart'
+    show notificationPortName;
+import 'package:alkion/session/notification_journal.dart';
 import 'package:alkion/identity/alkion_identity.dart';
 import 'package:alkion/session/notification_action.dart';
 import 'package:alkion/session/workout_notification.dart';
@@ -43,6 +51,8 @@ class FakeWorkoutNotification extends WorkoutNotification {
   @override
   NotificationLimitation? get limitation => problem;
   final shown = <int>[];
+  final next = <String?>[];
+  final alerts = <bool>[];
   int cancels = 0, closes = 0;
   @override
   Future<NotificationResponse?> init({
@@ -55,8 +65,14 @@ class FakeWorkoutNotification extends WorkoutNotification {
     DateTime? restStart,
     int restTotal = 0,
     NotificationAction? action,
+    int step = 1,
+    String? nextName,
+    bool alertAtRestEnd = false,
+    bool force = false,
   }) async {
     shown.add(restTotal);
+    next.add(nextName);
+    alerts.add(alertAtRestEnd);
   }
 
   @override
@@ -161,7 +177,8 @@ void main() {
         expect(owner.restTotal, 630);
         expect(notifier.shown, isNotEmpty);
         expect(notifier.shown.every((value) => value == 630), isTrue);
-        expect(runtime.sessions.takeNotificationOpenRequest(), isTrue);
+        // An older build's +30s applies directly and never opens the app.
+        expect(runtime.sessions.takeNotificationOpenRequest(), isFalse);
         final committed = await runtime.store.inventory();
         await runtime.sessions.handleNotificationResponse(response);
         expect(runtime.sessions.active, same(owner));
@@ -424,19 +441,14 @@ void main() {
         await mountReal(tester, AlkionApp(runtime: runtime!));
         await realSettle(tester, ticks: 5);
         final l = AppLocalizations.of(appNavigatorKey.currentContext!);
-        expect(find.text(l.alkionNotificationsInexact), findsNothing);
-        if (problem == NotificationLimitation.inexact) {
-          expect(find.byType(SnackBar), findsNothing);
-        } else {
-          expect(
-            find.text(
-              problem == NotificationLimitation.denied
-                  ? l.alkionNotificationsDenied
-                  : l.alkionNotificationsUnavailable,
-            ),
-            findsOneWidget,
-          );
-        }
+        expect(
+          find.text(
+            problem == NotificationLimitation.denied
+                ? l.alkionNotificationsDenied
+                : l.alkionNotificationsUnavailable,
+          ),
+          findsOneWidget,
+        );
         expect(runtime!.sessions.notificationLimitation, problem);
       } finally {
         await mountReal(tester, const SizedBox());
@@ -459,4 +471,296 @@ void main() {
     m.screenOpen = false;
     expect(notifies, 2);
   });
+
+  test(
+    'the rest-end alert follows the open screen and app lifecycle; the next exercise is named',
+    () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'alkion-notification-alert-',
+      );
+      final root = Directory('${temp.path}/${AlkionIdentity.applicationId}');
+      final notifier = FakeWorkoutNotification();
+      final runtime = await AlkionRuntime.open(root, notifications: notifier);
+      final m = runtime.sessions;
+      final exercise = Exercise(
+        id: 'synthetic-row',
+        name: 'Synthetic row',
+        slug: 'synthetic-row',
+        muscleGroup: 'back',
+        compound: true,
+        plateStepKg: 2.5,
+        isTemplate: false,
+      );
+      final c = ActiveSessionController.fromDraft(
+        SessionDraft(
+          templateId: null,
+          name: 'Synthetic workout',
+          focus: '',
+          startedAt: DateTime.now().subtract(const Duration(minutes: 5)),
+          blocks: [
+            BlockState(
+              exercise: exercise,
+              resolved: ResolvedSlot(
+                exercise: exercise,
+                workSets: 1,
+                warmupSets: 0,
+                repLow: 5,
+                repHigh: 8,
+                rirLow: 1,
+                rirHigh: 2,
+              ),
+              warmupSets: [],
+              workingSets: [
+                SetState(
+                  id: 'synthetic-set',
+                  weightKg: 40,
+                  reps: 5,
+                  rir: 1,
+                  isWarmup: false,
+                  done: false,
+                ),
+              ],
+              expanded: true,
+            ),
+          ],
+        ),
+        draftStore: m.draftStore,
+      );
+      try {
+        expect(notificationNextName(c), 'Synthetic row');
+        c.startRest(600);
+        m.register(c);
+        await m.flushPersistence();
+        expect(notifier.next.last, 'Synthetic row');
+        expect(notifier.alerts.last, isTrue, reason: 'screen closed');
+
+        // Opening the screen in front of the user refreshes to the quiet
+        // variant: its haptics mark the end, so only one buzz.
+        var count = notifier.alerts.length;
+        m.screenOpen = true;
+        await m.flushPersistence();
+        expect(notifier.alerts.length, greaterThan(count));
+        expect(notifier.alerts.last, isFalse);
+        expect(m.restEndAlertWanted, isFalse);
+
+        // Locking the phone with the screen open schedules the alert.
+        m.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        m.didChangeAppLifecycleState(AppLifecycleState.paused);
+        await m.flushPersistence();
+        expect(m.appForeground, isFalse);
+        expect(notifier.alerts.last, isTrue);
+        m.didChangeAppLifecycleState(AppLifecycleState.resumed);
+        await m.flushPersistence();
+        await m.reconcileForTest();
+        expect(notifier.alerts.last, isFalse);
+
+        // Closing the screen refreshes back to the alert.
+        count = notifier.alerts.length;
+        m.screenOpen = false;
+        await m.flushPersistence();
+        expect(notifier.alerts.length, greaterThan(count));
+        expect(notifier.alerts.last, isTrue);
+
+        // A finished plan names nothing; the notification shows the workout.
+        c.draft.blocks.single.workingSets.single.done = true;
+        expect(notificationNextName(c), isNull);
+        await m.flushPersistence();
+        expect(notifier.next.last, isNull);
+      } finally {
+        m.clear();
+        c.dispose();
+        await runtime.close();
+        await temp.delete(recursive: true);
+      }
+    },
+  );
+
+  group('ghost notification cleanup at runtime open', () {
+    test('no active workout: cancels the notification and its alarm', () async {
+      final markers = <String>[];
+      final m = SessionManager(notificationTrace: markers.add);
+      addTearDown(m.dispose);
+      final notifier = FakeWorkoutNotification();
+      await m.initializeNotifications(notifier);
+      expect(notifier.cancels, 0, reason: 'step 9 settles the mirror');
+      await m.settleNotificationMirror();
+      expect(notifier.cancels, 1);
+      expect(notifier.shown, isEmpty);
+      expect(markers, ['alkion-notif ghost-cancelled']);
+    });
+
+    test('an active workout is never cancelled', () async {
+      final m = SessionManager();
+      addTearDown(m.dispose);
+      final c = ActiveSessionController();
+      addTearDown(c.dispose);
+      c.seedEmpty(name: 'Synthetic workout', focus: '');
+      m.register(c);
+      final notifier = FakeWorkoutNotification();
+      await m.initializeNotifications(notifier);
+      await m.settleNotificationMirror();
+      expect(notifier.cancels, 0);
+      m.clear();
+    });
+
+    test('a workout being resumed is never cancelled', () async {
+      final m = SessionManager();
+      addTearDown(m.dispose);
+      expect(m.tryBeginLaunch(), isTrue);
+      final notifier = FakeWorkoutNotification();
+      await m.initializeNotifications(notifier);
+      await m.settleNotificationMirror();
+      expect(notifier.cancels, 0);
+      m.endLaunch();
+    });
+
+    test('real runtime: cleanup with no draft, none with a draft', () async {
+      final temp = await Directory.systemTemp.createTemp('alkion-ghost-');
+      final root = Directory('${temp.path}/${AlkionIdentity.applicationId}');
+      final empty = FakeWorkoutNotification();
+      var runtime = await AlkionRuntime.open(root, notifications: empty);
+      try {
+        expect(runtime.sessions.active, isNull);
+        expect(empty.cancels, 1);
+        final c = ActiveSessionController(
+          draftStore: runtime.sessions.draftStore,
+        );
+        c.seedEmpty(name: 'Synthetic workout', focus: '');
+        c.startRest(600);
+        runtime.sessions.register(c);
+        await runtime.flushPersistence();
+        await runtime.close();
+        c.dispose();
+        final resumed = FakeWorkoutNotification();
+        runtime = await AlkionRuntime.open(root, notifications: resumed);
+        expect(runtime.sessions.active, isNotNull);
+        expect(resumed.cancels, 0);
+        expect(resumed.shown, isNotEmpty, reason: 'the workout is mirrored');
+        final owner = runtime.sessions.active!;
+        runtime.sessions.clear();
+        owner.dispose();
+      } finally {
+        if (runtime.store.admission != StoreAdmission.closed) {
+          await runtime.close();
+        }
+        await temp.delete(recursive: true);
+      }
+    });
+  });
+
+  test('the wake-up port: opening owes a drain, immediate drains, closing '
+      'ignores; a reopened port listens again; only its own mapping is '
+      'removed', () async {
+    final temp = await Directory.systemTemp.createTemp('alkion-notif-port-');
+    addTearDown(() => temp.delete(recursive: true));
+    IsolateNameServer.removePortNameMapping(notificationPortName);
+    addTearDown(
+      () => IsolateNameServer.removePortNameMapping(notificationPortName),
+    );
+    final m = SessionManager(
+      notificationJournal: NotificationJournal(
+        Directory('${temp.path}/journal'),
+      ),
+    );
+    addTearDown(m.dispose);
+    expect(m.notificationPortMode, NotificationPortMode.unregistered);
+    expect(m.registerNotificationPort(), isTrue);
+    expect(m.notificationPortMode, NotificationPortMode.opening);
+    expect(wakeNotificationOwner(), isTrue);
+    for (var i = 0; i < 100 && !m.drainOwed; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(m.drainOwed, isTrue);
+    await m.releaseOwedNotificationDrains();
+    expect(m.drainOwed, isFalse);
+    expect(m.notificationPortMode, NotificationPortMode.immediate);
+
+    m.closeNotificationPort();
+    expect(m.notificationPortMode, NotificationPortMode.closing);
+    expect(
+      IsolateNameServer.lookupPortByName(notificationPortName),
+      isNotNull,
+      reason: 'still registered, so the background never renders',
+    );
+    expect(wakeNotificationOwner(), isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(m.drainOwed, isFalse);
+
+    m.reopenNotificationPort();
+    expect(m.notificationPortMode, NotificationPortMode.immediate);
+    await m.notificationWorkIdle();
+
+    // Another owner's mapping is never removed.
+    final other = ReceivePort();
+    addTearDown(other.close);
+    IsolateNameServer.removePortNameMapping(notificationPortName);
+    IsolateNameServer.registerPortWithName(
+      other.sendPort,
+      notificationPortName,
+    );
+    m.unregisterNotificationPort();
+    expect(m.notificationPortMode, NotificationPortMode.unregistered);
+    expect(
+      IsolateNameServer.lookupPortByName(notificationPortName),
+      other.sendPort,
+    );
+    IsolateNameServer.removePortNameMapping(notificationPortName);
+    expect(m.registerNotificationPort(), isTrue);
+    m.unregisterNotificationPort();
+    expect(IsolateNameServer.lookupPortByName(notificationPortName), isNull);
+  });
+
+  test('an owner port needs a journal: registering without one throws '
+      'instead of silently skipping drains', () {
+    final m = SessionManager();
+    addTearDown(m.dispose);
+    expect(m.registerNotificationPort, throwsStateError);
+    expect(m.notificationPortMode, NotificationPortMode.unregistered);
+  });
+
+  test('work queued synchronously from inside queued work runs after it and '
+      'is waited for', () async {
+    final temp = await Directory.systemTemp.createTemp('alkion-notif-tail-');
+    addTearDown(() => temp.delete(recursive: true));
+    final log = <String>[];
+    late SessionManager m;
+    final notifier = _ReentrantNotification(
+      onCancel: () {
+        // Before the settle's first await: queue a drain from inside it.
+        unawaited(m.drainNotificationIntents());
+      },
+      cancelled: () => log.add('outer done'),
+    );
+    m = SessionManager(
+      notificationJournal: NotificationJournal(
+        Directory('${temp.path}/journal'),
+      ),
+      notificationCheckpoint: (phase) async {
+        if (phase == 'drain-read') log.add('inner ran');
+      },
+    );
+    addTearDown(m.dispose);
+    await m.initializeNotifications(notifier);
+    final settle = m.settleNotificationMirror();
+    await m.notificationWorkIdle();
+    await settle;
+    expect(log, ['outer done', 'inner ran']);
+  });
+}
+
+/// A mirror whose cancel calls back into its owner before returning, then
+/// completes later.
+class _ReentrantNotification extends WorkoutNotification {
+  _ReentrantNotification({required this.onCancel, required this.cancelled})
+    : super(isAndroid: true);
+  final void Function() onCancel, cancelled;
+  @override
+  Future<NotificationResponse?> init({
+    required void Function(NotificationResponse) onResponse,
+  }) async => null;
+  @override
+  Future<void> cancel() {
+    onCancel();
+    return Future<void>.delayed(const Duration(milliseconds: 50), cancelled);
+  }
 }

@@ -1,12 +1,9 @@
-import 'dart:async';
-
-import 'package:alkion/catalog_trial.dart';
 import 'package:alkion/catalog_ui/catalog_loading.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/widgets/state_motion.dart';
+import 'package:alkion/theme/motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:alkion/theme/typography.dart';
@@ -54,7 +51,7 @@ void main() {
           theme.color!.resolve({WidgetState.selected}),
           isNot(context.tokens.accent),
         );
-        expect(find.byType(CatalogGlyphSkeleton), findsNothing);
+        expect(find.byType(CatalogStartupMark), findsNothing);
         await openChoice(tester, state, fixtureId(10));
         await tester.tap(
           find.descendant(
@@ -75,10 +72,12 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('Favorite / unfavorite'));
-        await tester.tap(find.text('Favorite / unfavorite'));
+        // The header star toggles in place; Done closes the open sheet.
+        await tester.tap(find.byTooltip('Favorite / unfavorite'));
         await tester.pumpAndSettle();
         expect(state.favorites, contains('variant:${fixtureId(10)}@default'));
+        await tester.tap(find.byTooltip('Done'));
+        await tester.pumpAndSettle();
         expect(
           tester.widget<CatalogPickerRow>(choice(fixtureId(10))).favorite,
           isTrue,
@@ -86,15 +85,19 @@ void main() {
         expect(
           find.descendant(
             of: choice(fixtureId(10)),
-            matching: findGlyph(AlkionGlyph.favorite),
+            matching: findGlyph(AlkionGlyph.favoriteFilled),
           ),
           findsOneWidget,
         );
         final favorite = find.descendant(
           of: choice(fixtureId(10)),
-          matching: findGlyph(AlkionGlyph.favorite),
+          matching: findGlyph(AlkionGlyph.favoriteFilled),
         );
         expect(tester.getRect(favorite).size, const Size(18, 18));
+        expect(
+          tester.widget<AlkionIcon>(favorite).color,
+          tester.element(favorite).tokens.accentText,
+        );
         await captureCatalog(tester, 'catalog-neutral-${brightness.name}');
         await tester.pumpWidget(const SizedBox());
       },
@@ -142,12 +145,14 @@ void main() {
             const Duration(milliseconds: 60),
           ]) {
             await tester.pump(elapsed);
-            final bounds = tester.getRect(findGlyph(AlkionGlyph.favorite));
+            final bounds = tester.getRect(
+              findGlyph(AlkionGlyph.favoriteFilled),
+            );
             expect(bounds.width, greaterThanOrEqualTo(16));
             expect(bounds.height, greaterThanOrEqualTo(16));
           }
           expect(
-            tester.getRect(findGlyph(AlkionGlyph.favorite)).size,
+            tester.getRect(findGlyph(AlkionGlyph.favoriteFilled)).size,
             const Size(18, 18),
           );
           for (final glyph in [AlkionGlyph.current, AlkionGlyph.inDay]) {
@@ -164,7 +169,7 @@ void main() {
     }
   }
 
-  testWidgets('paused body controls and list keep region selection immediate', (
+  testWidgets('paused body controls and chips keep region selection instant', (
     tester,
   ) async {
     phone(tester, 412, 1);
@@ -183,14 +188,14 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 60));
     await captureCatalog(tester, 'body-turn-60ms');
-    await tester.tap(find.byKey(const Key('catalog-muscle-list-link')));
-    await tester.pump();
     await tester.ensureVisible(find.byKey(const Key('catalog-muscle-triceps')));
     await tester.tap(find.byKey(const Key('catalog-muscle-triceps')));
     await tester.pump();
     expect(
       tester
-          .widget<ChoiceChip>(find.byKey(const Key('catalog-muscle-triceps')))
+          .widget<CatalogMuscleChip>(
+            find.byKey(const Key('catalog-muscle-triceps')),
+          )
           .selected,
       isTrue,
     );
@@ -206,10 +211,7 @@ void main() {
       await tester.pumpWidget(
         RepaintBoundary(
           key: const Key('catalog-capture'),
-          child: const CatalogLoadingApp(
-            brightness: Brightness.dark,
-            accent: Colors.orange,
-          ),
+          child: const CatalogLoadingApp(accent: Colors.orange),
         ),
       );
       await tester.pump();
@@ -255,73 +257,43 @@ void main() {
     },
   );
 
-  testWidgets('decode preserves immediate input and completes within 200ms', (
-    tester,
-  ) async {
-    var taps = 0;
-    await tester.pumpWidget(
-      discoveryApp(
-        CatalogReadyReveal(
-          enabled: true,
-          child: GestureDetector(
-            onTap: () => taps++,
-            child: const Text('Ready'),
+  testWidgets(
+    'decode preserves immediate input and completes in Motion.reveal',
+    (tester) async {
+      expect(Motion.reveal, const Duration(milliseconds: 500));
+      var taps = 0;
+      await tester.pumpWidget(
+        discoveryApp(
+          CatalogReadyReveal(
+            enabled: true,
+            child: GestureDetector(
+              onTap: () => taps++,
+              child: const Text('Ready'),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.tap(find.text('Ready'));
-    expect(taps, 1);
-    await tester.pump(const Duration(milliseconds: 200));
-    final motion =
-        tester
-                .widget<AnimatedBuilder>(
-                  find
-                      .descendant(
-                        of: find.byType(EventProgress),
-                        matching: find.byType(AnimatedBuilder),
-                      )
-                      .first,
-                )
-                .animation
-            as AnimationController;
-    expect(motion.value, 1);
-    await tester.pump(
-      const Duration(milliseconds: 16),
-    ); // Retire the final frame.
-    expect(motion.isAnimating, isFalse);
-    await tester.pumpWidget(const SizedBox());
-  });
-
-  testWidgets(
-    'trial actual pending load shows stable glyphs then ready, failure has no success decode',
-    (tester) async {
-      final state = discoveryState();
-      addTearDown(state.dispose);
-      final pending = Completer<CatalogBundle>();
-      await tester.pumpWidget(
-        CatalogTrialBootstrap(loader: () => pending.future),
       );
       await tester.pump();
-      expect(find.byType(CatalogGlyphSkeleton), findsOneWidget);
-      expect(tester.binding.transientCallbackCount, 0);
-      pending.complete(state.bundle);
-      await tester.pump();
-      await tester.pump();
-      expect(find.byType(CatalogGlyphSkeleton), findsNothing);
-      expect(find.byType(CatalogReadyReveal), findsOneWidget);
-      await tester.pumpAndSettle();
-      await tester.pumpWidget(const SizedBox());
-      await tester.pumpWidget(
-        CatalogTrialBootstrap(
-          loader: () async => throw const FormatException('synthetic failure'),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(CatalogGlyphSkeleton), findsNothing);
-      expect(find.byType(CatalogReadyReveal), findsNothing);
-      expect(find.byType(FilledButton), findsNothing);
+      await tester.tap(find.text('Ready'));
+      expect(taps, 1);
+      await tester.pump(Motion.reveal);
+      final motion =
+          tester
+                  .widget<AnimatedBuilder>(
+                    find
+                        .descendant(
+                          of: find.byType(EventProgress),
+                          matching: find.byType(AnimatedBuilder),
+                        )
+                        .first,
+                  )
+                  .animation
+              as AnimationController;
+      expect(motion.value, 1);
+      await tester.pump(
+        const Duration(milliseconds: 16),
+      ); // Retire the final frame.
+      expect(motion.isAnimating, isFalse);
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -371,21 +343,19 @@ void main() {
   );
 
   testWidgets(
-    'reduced load handoff is static and retains loading theme/locale',
+    'reduced load handoff is static, in the system theme and stored locale',
     (tester) async {
       tester.platformDispatcher.accessibilityFeaturesTestValue =
           FakeAccessibilityFeatures.allOn;
       addTearDown(
         tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
       );
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       await tester.pumpWidget(
-        const CatalogLoadingApp(
-          brightness: Brightness.light,
-          accent: Colors.orange,
-          locale: Locale('it'),
-        ),
+        const CatalogLoadingApp(accent: Colors.orange, locale: Locale('it')),
       );
-      final context = tester.element(find.byType(CatalogGlyphSkeleton));
+      final context = tester.element(find.byType(CatalogStartupMark));
       expect(Theme.of(context).brightness, Brightness.light);
       expect(Localizations.localeOf(context), const Locale('it'));
       expect(tester.binding.transientCallbackCount, 0);

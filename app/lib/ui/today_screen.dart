@@ -10,16 +10,16 @@ import '../data/body_workload_adapters.dart';
 import '../data/body_workload_projection.dart';
 import '../data/catalog_execution_repository.dart';
 import '../catalog/catalog.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
 import '../data/muscle_target_repository.dart';
-import '../data/muscles.dart';
 import '../data/session_repository.dart';
 import '../data/stats_repository.dart';
 import '../l10n/app_localizations.dart';
 import '../session/active_session_controller.dart';
+import '../session/live_weekly_volume.dart';
 import '../session/session_manager.dart';
 import '../settings/settings_service.dart';
 import '../store/local_store.dart';
@@ -37,10 +37,13 @@ import '../widgets/prescription_controls.dart';
 import '../widgets/section_label.dart';
 import '../widgets/sparkline.dart';
 import '../widgets/split_card.dart';
+import 'body_figure.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/volume_bars.dart';
 import '../widgets/week_strip.dart';
+import '../widgets/glyph_loading.dart';
 import 'today_labels.dart';
+import 'today_stat_tiles.dart';
 
 /// Resolves the title shown for the active workout: the live day name when
 /// the draft is bound to a template (so a since-renamed day stays current),
@@ -160,7 +163,7 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final bundle = CatalogTrialScope.maybeOf(context)?.bundle;
+    final bundle = CatalogScope.maybeOf(context)?.bundle;
     final database = Provider.of<LocalDatabase>(context);
     if (!identical(database, _workloadDatabase) ||
         database.token.profileId != _workloadToken.profileId ||
@@ -228,10 +231,7 @@ class _TodayScreenState extends State<TodayScreen> {
   late final Stream<({int known, int total})> _dateCoverageStream;
   late final Stream<int> _setsLastWeekStream;
   late final Stream<int> _prsWeekStream;
-  late final Stream<
-    List<({String exerciseId, double? weight, int? reps, String date})>
-  >
-  _recentPrsStream;
+  late final Stream<List<TodayRecentPr>> _recentPrsStream;
   late final Stream<List<Exercise>> _catalogStream;
   late final Stream<WeeklyMuscleVolume> _volumeStream;
   late final Stream<List<MuscleTarget>> _targetsStream;
@@ -437,12 +437,14 @@ class _TodayScreenState extends State<TodayScreen> {
                   dayList: _allDays,
                   onResume: widget.onResume,
                 )
-              else if (_rotationLoaded) ...[
-                _buildSplitCard(),
-                const SizedBox(height: 24),
-              ] else ...[
-                // Loading placeholder — avoids layout jump when data arrives.
-                const SizedBox(height: 290),
+              else ...[
+                // The card-shaped skeleton holds the card's height, so there
+                // is no layout jump when the rotation arrives.
+                GlyphReveal.builder(
+                  loading: !_rotationLoaded,
+                  skeleton: const _SplitCardSkeleton(),
+                  builder: (_) => _buildSplitCard(),
+                ),
                 const SizedBox(height: 24),
               ],
             ],
@@ -523,7 +525,7 @@ class _TodayScreenState extends State<TodayScreen> {
           index: 5,
           child: ColoredBox(
             color: tokens.bg,
-            child: _buildWeeklyVolume(tokens),
+            child: _buildWeeklyVolume(tokens, manager.active),
           ),
         ),
       ],
@@ -731,50 +733,19 @@ class _TodayScreenState extends State<TodayScreen> {
           ),
           StreamBuilder<int>(
             stream: _setsWeekStream,
-            builder: (context, setsSnap) {
-              return StreamBuilder<int>(
-                stream: _setsLastWeekStream,
-                builder: (context, lastWeekSnap) {
-                  final sets = setsSnap.data ?? 0;
-                  final lastWeek = lastWeekSnap.data ?? 0;
-                  return StatTile(
-                    label: l.todaySetsThisWeek,
-                    value: '$sets',
-                    sub: setsVsLastWeek(l, sets, lastWeek),
-                  );
-                },
-              );
-            },
+            builder: (context, setsSnap) => StreamBuilder<int>(
+              stream: _setsLastWeekStream,
+              builder: (context, lastWeekSnap) =>
+                  TodaySetsTile(thisWeek: setsSnap, lastWeek: lastWeekSnap),
+            ),
           ),
           StreamBuilder<int>(
             stream: _prsWeekStream,
-            builder: (context, prsSnap) {
-              final prs = prsSnap.data ?? 0;
-              return StreamBuilder<
-                List<
-                  ({String exerciseId, double? weight, int? reps, String date})
-                >
-              >(
-                stream: _recentPrsStream,
-                builder: (context, recentSnap) {
-                  final recent = recentSnap.data ?? [];
-                  final sub = recent.isEmpty
-                      ? l.todayNoPrsShort
-                      : l.todayLastPrDate(
-                          fmtDate(
-                            recent.first.date,
-                            Localizations.localeOf(context).toLanguageTag(),
-                          ),
-                        );
-                  return StatTile(
-                    label: l.todayPrsThisWeek,
-                    value: '$prs',
-                    sub: sub,
-                    fitSub: true,
-                  );
-                },
-              );
-            },
+            builder: (context, prsSnap) => StreamBuilder<List<TodayRecentPr>>(
+              stream: _recentPrsStream,
+              builder: (context, recentSnap) =>
+                  TodayPrsTile(prs: prsSnap, recent: recentSnap),
+            ),
           ),
         ];
         return LayoutBuilder(
@@ -810,14 +781,14 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Widget _buildRecentPrs(UnitService units, WorkoutTokens tokens) {
-    return StreamBuilder<
-      List<({String exerciseId, double? weight, int? reps, String date})>
-    >(
+    return StreamBuilder<List<TodayRecentPr>>(
       stream: _recentPrsStream,
       builder: (context, prsSnap) {
         final l = AppLocalizations.of(context);
-        final allPrs = prsSnap.data ?? [];
-        final displayPrs = allPrs.take(4).toList();
+        final placeholder = todayRecentPrsPlaceholder(context, prsSnap);
+        final displayPrs = (prsSnap.data ?? const <TodayRecentPr>[])
+            .take(4)
+            .toList();
 
         return StreamBuilder<List<Exercise>>(
           stream: _catalogStream,
@@ -828,9 +799,9 @@ class _TodayScreenState extends State<TodayScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SectionLabel(label: l.todayRecentPrs),
-                if (displayPrs.isEmpty) ...[
+                if (placeholder != null) ...[
                   const SizedBox(height: 10),
-                  _EmptyState(tokens: tokens, message: l.todayNoPrsYet),
+                  placeholder,
                 ] else ...[
                   const SizedBox(height: 10),
                   Column(
@@ -857,59 +828,110 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  Widget _buildWeeklyVolume(WorkoutTokens tokens) {
+  /// Weekly volume vs targets. While a workout is in progress ([active]),
+  /// its sets show as live segments and the bars follow its changes; with
+  /// none running the card keeps its single fill.
+  Widget _buildWeeklyVolume(
+    WorkoutTokens tokens,
+    ActiveSessionController? active,
+  ) {
     return StreamBuilder<WeeklyMuscleVolume>(
       stream: _volumeStream,
       builder: (context, volSnap) {
         return StreamBuilder<List<MuscleTarget>>(
           stream: _targetsStream,
-          builder: (context, targetSnap) {
-            final l = AppLocalizations.of(context);
-            final unavailable = volSnap.hasError || targetSnap.hasError;
-            final loading = !volSnap.hasData || !targetSnap.hasData;
-            final volume = volSnap.data;
-            final volRows = volume?.groups ?? [];
-            final targetList = targetSnap.data ?? [];
-
-            final targetMap = {
-              for (final t in targetList) t.muscle: t.targetSets,
-            };
-            final rows = [
-              for (final r in weeklyVolumeRows(volRows, targetMap))
-                (
-                  muscle: localizedMuscle(context, r.muscle),
-                  sets: r.sets,
-                  target: r.target,
-                ),
-            ];
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SectionLabel(label: l.todayWeeklyVolume),
-                const SizedBox(height: 10),
-                if (unavailable)
-                  _EmptyState(tokens: tokens, message: l.todayVolumeUnavailable)
-                else if (loading)
-                  _EmptyState(tokens: tokens, message: l.todayVolumeLoading)
-                else ...[
-                  if (volume!.unknownSets > 0) ...[
-                    _EmptyState(
-                      tokens: tokens,
-                      message: l.todayVolumeUnknown(volume.unknownSets),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  if (rows.isNotEmpty)
-                    VolumeBars(rows: rows)
-                  else if (volume.unknownSets == 0)
-                    _EmptyState(tokens: tokens, message: l.todayNoSetsLogged),
-                ],
-              ],
-            );
-          },
+          // Always a ListenableBuilder (empty merge with no workout), so the
+          // bars keep their state when a workout starts or ends.
+          builder: (context, targetSnap) => ListenableBuilder(
+            listenable: Listenable.merge([?active]),
+            builder: (context, _) => _weeklyVolumeContent(
+              context,
+              tokens,
+              volSnap,
+              targetSnap,
+              active,
+            ),
+          ),
         );
       },
+    );
+  }
+
+  Widget _weeklyVolumeContent(
+    BuildContext context,
+    WorkoutTokens tokens,
+    AsyncSnapshot<WeeklyMuscleVolume> volSnap,
+    AsyncSnapshot<List<MuscleTarget>> targetSnap,
+    ActiveSessionController? active,
+  ) {
+    final l = AppLocalizations.of(context);
+    final unavailable = volSnap.hasError || targetSnap.hasError;
+    final loading = !volSnap.hasData || !targetSnap.hasData;
+    final volume = volSnap.data;
+    final catalog = catalogVolumeAttribution(context);
+    final attributed = volume?.attribute(catalog.targets);
+    final volRows = attributed?.groups ?? [];
+    final targetList = targetSnap.data ?? [];
+
+    final targetMap = {for (final t in targetList) t.muscle: t.targetSets};
+    final draft = active?.draftOrNull;
+    final combined = LiveWeeklyVolume.combine(
+      volume: volRows,
+      unknownSets: attributed?.unknownSets ?? 0,
+      targets: targetMap,
+      draft: draft == null
+          ? null
+          : DraftVolume.of(
+              draft,
+              weekStart: _weekStart,
+              now: DateTime.now(),
+              targets: catalog.targets,
+            ),
+    );
+    final unknownSets = combined.unknownSets;
+    final rows = [
+      for (final r in combined.rows)
+        (
+          muscle: volumeGroupLabel(context, r.muscle, catalog.browse),
+          sets: r.sets,
+          target: r.target,
+        ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionLabel(label: l.todayWeeklyVolume),
+        const SizedBox(height: 10),
+        if (unavailable)
+          _EmptyState(tokens: tokens, message: l.todayVolumeUnavailable)
+        else if (loading)
+          Semantics(
+            key: const Key('today-volume-loading'),
+            label: l.todayVolumeLoading,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: GlyphSkeleton.lines(
+                widths: const [.9, .72, .8, .5],
+                lineHeight: 10,
+                gap: 10,
+              ),
+            ),
+          )
+        else ...[
+          if (unknownSets > 0) ...[
+            _EmptyState(
+              tokens: tokens,
+              message: l.todayVolumeUnknown(unknownSets),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (rows.isNotEmpty)
+            VolumeBars(rows: rows, live: combined.live)
+          else if (unknownSets == 0)
+            _EmptyState(tokens: tokens, message: l.todayNoSetsLogged),
+        ],
+      ],
     );
   }
 }
@@ -1003,7 +1025,7 @@ class _PrRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final ({String exerciseId, double? weight, int? reps, String date}) pr;
+  final TodayRecentPr pr;
   final Exercise? exercise;
   final UnitService units;
   final WorkoutTokens tokens;
@@ -1130,6 +1152,56 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The split card's shape while the rotation loads: the day text beside the
+/// body figure, at the height [splitCardLoadingHeight] measures for the card.
+class _SplitCardSkeleton extends StatelessWidget {
+  const _SplitCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      // Card padding and border, as in SplitCard.
+      final inner = box.maxWidth - 34;
+      final figureWidth = splitFigureWidth(context, inner);
+      final stacked = splitOverviewStacked(context, inner);
+      final text = GlyphSkeleton.blocks(const [
+        GlyphBlock(12, widthFactor: .4),
+        GlyphBlock(22, widthFactor: .85, gap: 12),
+        GlyphBlock(14, widthFactor: .6, gap: 10),
+        GlyphBlock(12, widthFactor: .7, gap: 24),
+        GlyphBlock(12, widthFactor: .5, gap: 8),
+      ]);
+      final figure = GlyphSkeleton.box(
+        width: figureWidth,
+        height: BodyFigure.artHeightFor(figureWidth),
+      );
+      return SizedBox(
+        height: splitCardLoadingHeight(context, box.maxWidth),
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    text,
+                    const SizedBox(height: 24),
+                    Center(child: figure),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: text),
+                    const SizedBox(width: 12),
+                    figure,
+                  ],
+                ),
+        ),
+      );
+    },
+  );
 }
 
 // ── Resume hero ─────────────────────────────────────────────────────────────
@@ -1260,6 +1332,7 @@ class _ResumeHeroState extends State<_ResumeHero> {
                 l.todayResumeWorkout,
                 enabled: true,
                 onTap: widget.onResume,
+                glitch: true,
               ),
             ],
           ),

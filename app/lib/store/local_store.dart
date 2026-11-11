@@ -1044,6 +1044,40 @@ final class LocalTransaction extends LocalRead {
     return revision;
   }
 
+  /// Retires one row in place: only its status, revision and time change.
+  /// `payload_bytes` keeps its exact value and SQLite type (a TEXT payload
+  /// stays TEXT), so the stored evidence is never rewritten.
+  Future<int> retireLocalState(
+    LocalStateKind kind,
+    String key, {
+    required int expectedRevision,
+  }) async {
+    const status = 'quarantined';
+    final updatedAt = OperationInstant.now().text;
+    await execute(
+      'UPDATE local_state SET revision=revision+1,status=?,updated_at=? WHERE profile_id=? AND state_kind=? AND state_key=? AND revision=? AND generation=?',
+      [
+        status,
+        updatedAt,
+        profileId,
+        kind.name,
+        key,
+        expectedRevision,
+        token.generation,
+      ],
+    );
+    final row = await localState(kind, key);
+    final revision = expectedRevision + 1;
+    if (row == null ||
+        row['revision'] != revision ||
+        row['status'] != status ||
+        row['updated_at'] != updatedAt ||
+        row['generation'] != token.generation) {
+      throw const StoreException('stale_local_state');
+    }
+    return revision;
+  }
+
   Future<void> addReview({
     required String id,
     required String category,

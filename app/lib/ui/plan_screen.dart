@@ -12,8 +12,8 @@ import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
-import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
+import '../widgets/text_motion.dart';
 import '../widgets/w_dialog.dart';
 import 'day_editor.dart';
 import 'editor_guard.dart';
@@ -429,31 +429,38 @@ class _SegBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Semantics(
-        button: true,
-        selected: active,
-        child: Material(
-          color: active ? tokens.surface2 : tokens.sunken,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.control),
-            side: BorderSide(color: active ? tokens.lineStrong : tokens.line),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            focusColor: tokens.focus.withValues(alpha: .16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 48),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Center(
-                  child: FitLabel(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: WorkoutType.body(
-                      size: 14,
-                      weight: FontWeight.w500,
-                      color: active ? tokens.text : tokens.dim,
+      child: GlitchTap(
+        enabled: !active,
+        child: Semantics(
+          button: true,
+          selected: active,
+          child: Material(
+            color: active ? tokens.surface2 : tokens.sunken,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.control),
+              side: BorderSide(color: active ? tokens.lineStrong : tokens.line),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              focusColor: tokens.focus.withValues(alpha: .16),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  child: Center(
+                    child: GlitchLabel(
+                      label,
+                      fit: true,
+                      textAlign: TextAlign.center,
+                      style: WorkoutType.body(
+                        size: 14,
+                        weight: FontWeight.w500,
+                        color: active ? tokens.text : tokens.dim,
+                      ),
                     ),
                   ),
                 ),

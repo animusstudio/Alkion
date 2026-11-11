@@ -9,29 +9,27 @@ void main() {
   final harness = ScreenHarness();
   tearDown(harness.close);
 
-  Future<void> openProfile(
-    WidgetTester tester, {
-    VoidCallback? onImportReps,
-  }) async {
+  Future<void> openProfile(WidgetTester tester) async {
     await harness.open(tester);
     setPhone(tester, width: 320, textScale: 2);
-    await tester.pumpWidget(
-      harness.wrap(ProfileScreen(onClose: () {}, onImportReps: onImportReps)),
-    );
+    await tester.pumpWidget(harness.wrap(ProfileScreen(onClose: () {})));
     await settleReal(tester);
   }
 
-  testWidgets('Data opens ordinary Reps import without workspace actions', (
+  testWidgets('Data offers backup and history sharing, with no Reps import', (
     tester,
   ) async {
-    var imports = 0;
-    await openProfile(tester, onImportReps: () => imports++);
-    final action = find.text('Import Reps data');
-    await scrollIntoView(tester, find.byType(ProfileScreen), action);
-    expect(find.textContaining('test profile'), findsNothing);
-    expect(find.textContaining('workspace'), findsNothing);
-    await tester.tap(action);
-    expect(imports, 1);
+    await openProfile(tester);
+    final share = find.text('Share workout history');
+    await scrollIntoView(tester, find.byType(ProfileScreen), share);
+    final data = find.byKey(const Key('profile-data-actions'));
+    expect(
+      find.descendant(of: data, matching: find.text('Backup & restore')),
+      findsOneWidget,
+    );
+    expect(find.descendant(of: data, matching: share), findsOneWidget);
+    expect(find.textContaining('Import'), findsNothing);
+    expect(find.textContaining('Reps'), findsNothing);
     expect(tester.takeException(), isNull);
     await harness.unmount(tester);
   });

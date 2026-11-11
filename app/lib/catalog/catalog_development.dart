@@ -7,6 +7,10 @@ import 'package:flutter/services.dart';
 import '../identity/alkion_identity.dart';
 import 'catalog.dart';
 
+/// The private staged catalog's asset directory. It keeps its historical name
+/// because owner-staged inputs and packaged Dev APKs already use this path.
+const _assets = 'assets/catalog_trial';
+
 /// Explicitly enabled private content in the ordinary Dev application. The
 /// application identity and selected profile are never changed by this loader.
 class CatalogDevelopmentInput {
@@ -43,7 +47,7 @@ Future<CatalogDevelopmentInput> loadDevelopmentCatalog({
     }
 
     final manifest = jsonDecode(
-      utf8.decode(await asset('assets/catalog_trial/manifest.dev.json')),
+      utf8.decode(await asset('$_assets/manifest.dev.json')),
     );
     if (manifest is! Map<String, dynamic> ||
         manifest['format'] != 'alkion-catalog-development-manifest' ||
@@ -59,7 +63,7 @@ Future<CatalogDevelopmentInput> loadDevelopmentCatalog({
     List<int>? browseBytes;
     if (browse is Map<String, dynamic>) {
       try {
-        browseBytes = await asset('assets/catalog_trial/browse.dev.json');
+        browseBytes = await asset('$_assets/browse.dev.json');
       } on Object {
         // Classification is optional; name search remains usable.
       }
@@ -71,10 +75,10 @@ Future<CatalogDevelopmentInput> loadDevelopmentCatalog({
       if (muscle is! Map || scopes is! Map) {
         throw const FormatException('Missing muscle manifest');
       }
-      muscleBytes = await asset('assets/catalog_trial/muscles.dev.json');
-      scopeBytes = await asset('assets/catalog_trial/muscle-scopes.dev.json');
+      muscleBytes = await asset('$_assets/muscles.dev.json');
+      scopeBytes = await asset('$_assets/muscle-scopes.dev.json');
     }
-    final catalogBytes = await asset('assets/catalog_trial/catalog.dev.json');
+    final catalogBytes = await asset('$_assets/catalog.dev.json');
     // Hashing and validating the large muscle bundle takes seconds on a phone;
     // keep it off the UI thread so startup frames still draw.
     final bundle = await Isolate.run(

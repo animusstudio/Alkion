@@ -50,6 +50,7 @@
     "error": "warning-circle",
     "undo": "undo",
     "favorite": "star",
+    "favoriteFilled": "star-solid",
     "info": "info-circle",
     "list": "list",
     "imageUnavailable": "media-image-xmark",
@@ -354,6 +355,12 @@
       "source": "sources/star.svg",
       "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/regular/star.svg",
       "sha256": "fffdc43c1eee0a907426666f8914bae04aa6f60ac59335a92d301b0b3cd44262"
+    },
+    {
+      "name": "star-solid",
+      "source": "sources/star-solid.svg",
+      "url": "https://raw.githubusercontent.com/iconoir-icons/iconoir/39834e3f193bc0cca2c36bebb6a650471977433d/icons/solid/star.svg",
+      "sha256": "981daeb9a40c7a71d5733b4fab3694b6149d24c9de816f2e8dbbd687e75fcb02"
     },
     {
       "name": "timer",

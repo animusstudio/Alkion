@@ -167,7 +167,7 @@ void main() {
 
       walk(tester.getSemantics(find.byType(RirPicker)));
       expect(taps, hasLength(rirMax - rirMin + 1));
-      expect(taps, [for (var n = rirMin; n <= rirMax; n++) '$n']);
+      expect(taps, [for (var n = rirMin; n <= rirMax; n++) 'RIR $n']);
       semantics.dispose();
     },
   );

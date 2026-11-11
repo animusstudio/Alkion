@@ -43,17 +43,11 @@ class CatalogLabels {
     'Übungen anzeigen',
     'Mostrar ejercicios',
   ][_language];
-  String get muscleList => [
-    'Muscle list',
-    'Elenco muscoli',
-    'Muskelliste',
-    'Lista de músculos',
-  ][_language];
   String get modelMuscleHint => [
-    'Tap a muscle or use the list. Drag to rotate, pinch to zoom.',
-    'Tocca un muscolo o usa l’elenco. Trascina per ruotare, pizzica per ingrandire.',
-    'Tippe auf einen Muskel oder nutze die Liste. Zum Drehen ziehen, zum Zoomen Finger spreizen.',
-    'Toca un músculo o usa la lista. Arrastra para girar y pellizca para ampliar.',
+    'Tap a muscle or pick one below. Drag to rotate, pinch to zoom.',
+    'Tocca un muscolo o sceglilo qui sotto. Trascina per ruotare, pizzica per ingrandire.',
+    'Tippe auf einen Muskel oder wähle ihn unten aus. Zum Drehen ziehen, zum Zoomen Finger spreizen.',
+    'Toca un músculo o elígelo abajo. Arrastra para girar y pellizca para ampliar.',
   ][_language];
   String get targetExplanation => [
     'Target muscles are the reviewed catalog’s main exercise groups. Secondary muscles support the movement; include them in Filters.',

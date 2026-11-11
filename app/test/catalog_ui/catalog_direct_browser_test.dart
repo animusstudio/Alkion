@@ -6,7 +6,9 @@ import 'dart:ui' show SemanticsAction;
 
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
+import 'package:alkion/catalog_ui/catalog_runtime_state.dart';
+import '../support/memory_catalog_state.dart';
 import 'package:alkion/data/exercise_repository.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/main.dart';
@@ -46,7 +48,7 @@ Future<void> browserTop(WidgetTester tester) async {
 }
 
 Widget browser(
-  CatalogTrialState state, {
+  CatalogRuntimeState state, {
   CatalogBrowserController? controller,
   List<Exercise> owned = const [],
   void Function(String)? onEdit,
@@ -88,7 +90,7 @@ Future<({AlkionRuntime runtime, RealZoneDatabase database})> openDurableBrowser(
   return (runtime: runtime, database: database);
 }
 
-CatalogTrialState largeBrowserState() {
+CatalogRuntimeState largeBrowserState() {
   final source = syntheticCatalog();
   for (var i = 200; i < 700; i++) {
     source['families'].add({
@@ -114,10 +116,10 @@ CatalogTrialState largeBrowserState() {
       'relationships': <Map<String, String>>[],
     });
   }
-  return CatalogTrialState(CatalogBundle.fromJsonString(jsonEncode(source)));
+  return MemoryCatalogState(CatalogBundle.fromJsonString(jsonEncode(source)));
 }
 
-CatalogTrialState wideEquipmentState() {
+CatalogRuntimeState wideEquipmentState() {
   const kinds = [
     'barbell',
     'dumbbell',
@@ -220,7 +222,7 @@ CatalogTrialState wideEquipmentState() {
         },
     ],
   });
-  return CatalogTrialState(
+  return MemoryCatalogState(
     CatalogBundle.fromBytes(
       bytes,
       browseBytes: utf8.encode(browse),
@@ -248,7 +250,7 @@ void main() {
         greaterThanOrEqualTo(30),
       );
       await tester.pumpWidget(
-        CatalogTrialScope(
+        CatalogScope(
           state: state,
           child: h.wrap(const Scaffold(body: PlanScreen())),
         ),
@@ -331,22 +333,28 @@ void main() {
       await tester.tap(row);
       await tester.pumpAndSettle();
       expect(find.text('Load (kg)'), findsOneWidget);
+      // The coverage note now lives in the evidence dialog over the sheet.
+      await tester.tap(find.byTooltip('Muscle evidence'));
+      await tester.pumpAndSettle();
       expect(
-        find.text(
+        find.textContaining(
           state.bundle.variants[fixtureId(10)]!.muscleCoverage == 'partial'
               ? CatalogLabels('en').partialMuscles
               : CatalogLabels('en').unknownMuscles,
         ),
         findsOneWidget,
       );
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
       expect(state.exercises, isEmpty);
       expect(state.recents, isEmpty);
       expect(state.choices, isEmpty);
-      await tester.ensureVisible(find.text('Favorite / unfavorite'));
-      await tester.tap(find.text('Favorite / unfavorite'));
+      await tester.tap(find.byTooltip('Favorite / unfavorite'));
       await tester.pumpAndSettle();
       expect(identical(state.index('en'), index), isTrue);
       expect(state.favorites, {'variant:${fixtureId(10)}@default'});
+      await tester.tap(find.byTooltip('Done'));
+      await tester.pumpAndSettle();
       expect(
         tester.state<ScrollableState>(browserScroll()).position.pixels,
         before,
@@ -512,7 +520,9 @@ void main() {
       await showRow(tester, variant);
       await tester.tap(variant);
       await tester.pumpAndSettle();
-      Navigator.of(tester.element(find.text('Favorite / unfavorite'))).pop();
+      Navigator.of(
+        tester.element(find.byTooltip('Favorite / unfavorite')),
+      ).pop();
       await tester.pumpAndSettle();
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(browser(state, controller: controller));
@@ -577,7 +587,8 @@ void main() {
             expectNoSplitWords(tester);
             await tester.tap(row);
             await tester.pumpAndSettle();
-            expect(find.text(l.catalogFavorite), findsOneWidget);
+            expect(find.byTooltip(l.catalogFavorite), findsOneWidget);
+            expect(find.byTooltip(l.catalogMuscleEvidence), findsOneWidget);
             expectNoSplitWords(tester);
             expect(tester.takeException(), isNull);
             await tester.pumpWidget(const SizedBox());
@@ -631,7 +642,9 @@ void main() {
       await showRow(tester, variantRow);
       await tester.runAsync(() => tester.tap(variantRow));
       await settleReal(tester, ticks: 6);
-      Navigator.of(tester.element(find.text('Favorite / unfavorite'))).pop();
+      Navigator.of(
+        tester.element(find.byTooltip('Favorite / unfavorite')),
+      ).pop();
       await settleReal(tester, ticks: 6);
       await tester.runAsync(() async {
         expect(

@@ -4,15 +4,25 @@ import 'dart:typed_data';
 
 import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/domain/local_action.dart';
+import 'package:alkion/identity/alkion_identity.dart';
+import 'package:alkion/identity/alkion_profile.dart';
+import 'package:alkion/main.dart';
 import 'package:alkion/recovery/backup.dart';
 import 'package:alkion/recovery/recovery_host.dart';
 import 'package:alkion/recovery/restore.dart';
+import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/notification_action.dart';
+import 'package:alkion/session/notification_background.dart';
+import 'package:alkion/session/notification_envelope.dart'
+    show notificationJournalDirectory;
 import 'package:alkion/store/generation_selection.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/transfer/incoming_quarantine.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+
+import '../../support/recording_notification.dart';
 
 import '../../../tool/alkion_backup_recovery.dart' as proof;
 
@@ -35,6 +45,7 @@ FileSystemException diskFull() => const FileSystemException(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
   setUp(() async {
     temp = await Directory.systemTemp.createTemp('alkion-recovery-test-');
@@ -597,4 +608,179 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 60)),
   );
+
+  group('notification intent journal', () {
+    Map<String, List<int>> journalBytes(Directory directory) => {
+      for (final entity in directory.listSync())
+        if (entity is File) p.basename(entity.path): entity.readAsBytesSync(),
+    };
+
+    Future<NotificationBackgroundOutcome> tapAdd(
+      Directory journal,
+      String? payload, {
+      required bool wake,
+    }) => deliverNotificationResponse(
+      NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        id: 4101,
+        actionId: AlkionIdentity.addRestAction,
+        payload: payload,
+      ),
+      background: NotificationBackground(
+        journalDirectory: () async => journal,
+        wakeOwner: wake ? wakeNotificationOwner : () => false,
+        render: (_) async {},
+        exact: () async => true,
+      ),
+    );
+
+    test(
+      'A23 a flush drains before backup, so the backup holds the applied rest '
+      'and no journal; after a restore old-generation entries are refused '
+      'and removed',
+      () async {
+        final support = Directory(
+          p.join(temp.path, 'live', AlkionIdentity.applicationId),
+        );
+        final journal = notificationJournalDirectory(support);
+        final notifier = RecordingNotification();
+        var runtime = await AlkionRuntime.open(
+          support,
+          notifications: notifier,
+        );
+        final controllers = <ActiveSessionController>[];
+        try {
+          final c = ActiveSessionController(
+            draftStore: runtime.sessions.draftStore,
+          );
+          controllers.add(c);
+          c.seedEmpty(name: 'Synthetic workout', focus: '');
+          c.startRest(600);
+          runtime.sessions.register(c);
+          await runtime.flushPersistence();
+          // A tap whose wake-up never arrived waits in the journal.
+          expect(
+            await tapAdd(journal, notifier.payload, wake: false),
+            NotificationBackgroundOutcome.rendered,
+          );
+          final dest = await destination();
+          final host = RuntimeRecoveryHost(
+            runtime,
+            relaunch: () async {},
+            backupDirectory: () async => dest,
+          );
+          final receipt = await host.createBackup();
+          expect(c.restTotal, 630);
+          expect(journalBytes(journal), isEmpty);
+          expect(
+            dest.listSync().map((e) => p.basename(e.path)),
+            [p.basename(receipt.path)],
+            reason: 'the backup is one file; the journal is not in it',
+          );
+          final schema = runtime.store.schema;
+          final stale = notifier.payload;
+          await runtime.close();
+          // A tap after close, on the old generation's token.
+          expect(
+            await tapAdd(journal, stale, wake: true),
+            NotificationBackgroundOutcome.rendered,
+          );
+          expect(journalBytes(journal), hasLength(1));
+          await RestoreService(
+            support,
+            schema: schema,
+            workDirectory: temp,
+          ).restore(File(receipt.path));
+          runtime = await AlkionRuntime.open(
+            support,
+            notifications: RecordingNotification(),
+          );
+          await runtime.sessions.notificationWorkIdle();
+          final owner = runtime.sessions.active!;
+          controllers.add(owner);
+          expect(owner.restTotal, 630, reason: 'the backup held the +30s');
+          expect(journalBytes(journal), isEmpty);
+          final timer = await runtime.store.readTransaction(
+            (tx) => tx.localState(LocalStateKind.timer, 'active'),
+          );
+          expect(
+            jsonDecode(
+              utf8.decode((timer!['payload_bytes'] as List).cast<int>()),
+            )['restTotal'],
+            630,
+            reason: 'the refused old-generation tap wrote nothing',
+          );
+        } finally {
+          if (runtime.store.admission != StoreAdmission.closed) {
+            await runtime.close();
+          }
+          for (final c in controllers) {
+            c.dispose();
+          }
+        }
+      },
+      timeout: const Timeout(Duration(seconds: 120)),
+    );
+
+    test('a populated journal changes neither the fresh-start nor the restore '
+        'inventory checks, and they leave its bytes alone', () async {
+      Directory populated(String name) {
+        final support = proof.supportRootOf(Directory(p.join(temp.path, name)));
+        final journal = notificationJournalDirectory(support)
+          ..createSync(recursive: true);
+        File(
+          p.join(journal.path, '1-00000000-0000-4000-8000-000000000001.json'),
+        ).writeAsStringSync('{"synthetic":"intent"}');
+        File(
+          p.join(journal.path, '2-x.json.partial'),
+        ).writeAsBytesSync([0, 1, 2]);
+        return support;
+      }
+
+      // Fresh start: no profile, only a sibling journal.
+      final fresh = populated('fresh');
+      final freshJournal = notificationJournalDirectory(fresh);
+      final before = journalBytes(freshJournal);
+      final state = (await RestoreService(fresh).freshState())!;
+      expect(state.canStartLocal, isTrue);
+      expect(state.pending, isNull);
+      final profile = await AlkionProfile.open(supportRoot: fresh);
+      expect(profile.profileId, isNotEmpty);
+      expect(await RestoreService(fresh).freshState(), isNull);
+      expect(journalBytes(freshJournal), before);
+
+      // First-start restore into a target that holds only a journal.
+      final source = await seeded('source');
+      final receipt = await backupOf(source);
+      final target = populated('target');
+      final targetJournal = notificationJournalDirectory(target);
+      final kept = journalBytes(targetJournal);
+      expect(
+        (await RestoreService(target).freshState())!.canStartLocal,
+        isTrue,
+      );
+      final outcome = await RestoreService(
+        target,
+        workDirectory: temp,
+      ).restore(File(receipt.path));
+      expect(outcome.selectedGeneration, greaterThan(0));
+      expect(await RestoreService(target).freshState(), isNull);
+      expect(journalBytes(targetJournal), kept);
+
+      // Replacing restore over an existing profile with a journal.
+      final existingJournal = notificationJournalDirectory(
+        proof.supportRootOf(source),
+      )..createSync(recursive: true);
+      File(
+        p.join(existingJournal.path, 'unrelated.json'),
+      ).writeAsStringSync('kept');
+      final existing = journalBytes(existingJournal);
+      await RestoreService(
+        proof.supportRootOf(source),
+        workDirectory: temp,
+      ).restore(File(receipt.path));
+      expect(journalBytes(existingJournal), existing);
+    }, timeout: const Timeout(Duration(seconds: 120)));
+  });
 }

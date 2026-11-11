@@ -186,6 +186,81 @@ void main() {
   for (final key in ['settings', 'units']) {
     for (final kind in PreferenceFault.values) {
       test(
+        '$key next change after a failed ${kind.name} saves the latest payload with no revision gap or duplicate row',
+        () async {
+          final root = await Directory.systemTemp.createTemp(
+            'alkion-preferences-next-',
+          );
+          final store = await openDomainStore(root);
+          try {
+            await seedPreferences(store);
+            final original = await store.get(
+              "SELECT * FROM local_state WHERE state_key=?",
+              [key],
+            );
+            final operations = await store.getAll('SELECT * FROM operations');
+            final fault = PreferenceFaultDatabase(store, kind: kind);
+            final settings = SettingsService.local(fault),
+                units = UnitService.local(fault);
+            await settings.load();
+            await units.load();
+            if (key == 'settings') {
+              await expectLater(
+                settings.setProfileName('Owed athlete'),
+                throwsA(anything),
+              );
+              // The next change saves: it first lands the owed snapshot
+              // (or reconciles one whose COMMIT did land), then its own.
+              await settings.setRestCompoundSeconds(165);
+            } else {
+              await expectLater(units.setUnit(Unit.lb), throwsA(anything));
+              await units.setUnit(Unit.kg);
+            }
+            await (key == 'settings'
+                ? settings.flushPersistence()
+                : units.flushPersistence());
+            final rows = await store.getAll(
+              'SELECT * FROM local_state WHERE state_key=?',
+              [key],
+            );
+            expect(rows, hasLength(1), reason: 'no duplicate row');
+            expect(
+              rows.single['revision'],
+              (original['revision'] as int) + 2,
+              reason: 'the owed and the new snapshot, one revision each',
+            );
+            expect(
+              rows.single['payload_bytes'],
+              localBytes(
+                key == 'settings'
+                    ? settingsSnapshot(settings)
+                    : <String, Object?>{'unit': 'kg'},
+              ),
+            );
+            if (key == 'settings') {
+              expect(settings.profileName, 'Owed athlete');
+              expect(settings.restCompoundSeconds, 165);
+            }
+            expect(
+              fault.writeTokens.every((token) => identical(token, store.token)),
+              isTrue,
+            );
+            expect(await store.getAll('SELECT * FROM operations'), operations);
+            final reopened = SettingsService.local(store),
+                reopenedUnits = UnitService.local(store);
+            await reopened.load();
+            await reopenedUnits.load();
+            expect(settingsSnapshot(reopened), settingsSnapshot(settings));
+            expect(reopenedUnits.unit, units.unit);
+          } finally {
+            await store.close();
+            await root.delete(recursive: true);
+          }
+        },
+      );
+    }
+    for (final kind in PreferenceFault.values) {
+      test(
         '$key flush retries ${kind.name} without setter, counts once and preserves exact state across two reopens',
         () async {
           final root = await Directory.systemTemp.createTemp(
@@ -348,13 +423,13 @@ void main() {
                 units = UnitService.local(fault);
             await settings.load();
             await units.load();
-            Future<void>? first, newer;
+            final Future<void> first;
             if (key == 'settings') {
               first = settings.setProfileName('First owed');
             } else {
-              units.setUnit(Unit.lb);
+              first = units.setUnit(Unit.lb);
             }
-            final firstOutcome = first?.then<Object?>(
+            final firstOutcome = first.then<Object?>(
               (_) => null,
               onError: (Object error) => error,
             );
@@ -362,33 +437,24 @@ void main() {
             final oldBytes = localBytes(
               key == 'settings' ? settingsSnapshot(settings) : {'unit': 'lb'},
             );
+            final Future<void> newer;
             if (key == 'settings') {
               newer = settings.setRestCompoundSeconds(211);
             } else {
-              units.setUnit(Unit.kg);
+              newer = units.setUnit(Unit.kg);
             }
-            final newerOutcome = newer?.then<Object?>(
+            final newerOutcome = newer.then<Object?>(
               (_) => null,
               onError: (Object error) => error,
             );
             gate.complete();
             await fault.firstFinished.future;
-            if (firstOutcome != null) expect(await firstOutcome, isNotNull);
-            if (newerOutcome != null) expect(await newerOutcome, isNotNull);
-            final flush = key == 'settings'
-                ? settings.flushPersistence
-                : units.flushPersistence;
-            // Only the injected fault is expected. A failed pool recovery must
-            // report its original error/stack here, before a later read obscures
-            // it with recovery_required. Units' setter intentionally returns void.
-            (Object, StackTrace)? retryFailure;
-            try {
-              await flush();
-            } catch (error, stack) {
-              retryFailure = (error, stack);
-            }
+            expect(await firstOutcome, isNotNull);
+            // The queued newer change retries the owed older snapshot first,
+            // with its retained base, and meets the second failure there.
+            final newerError = await newerOutcome;
             expect(
-              retryFailure?.$1,
+              newerError,
               kind == PreferenceFault.commit
                   ? isA<sqlite.SqliteException>().having(
                       (e) => e.extendedResultCode,
@@ -396,8 +462,11 @@ void main() {
                       787,
                     )
                   : isA<StateError>(),
-              reason: '${fault.failureReason}\nretry: ${retryFailure?.$2}',
+              reason: fault.failureReason,
             );
+            final flush = key == 'settings'
+                ? settings.flushPersistence
+                : units.flushPersistence;
             expect(fault.writeTokens, hasLength(2));
             expect(
               store.admission,
@@ -610,7 +679,18 @@ void main() {
           throwsStateError,
         );
         fault.reportedToken = const StoreToken('foreign', 1);
-        await expectLater(settings.setMode('light'), throwsStateError);
+        // The next change first lands the owned older snapshot with its own
+        // token, then its foreign snapshot is refused.
+        await expectLater(
+          settings.setMode('light'),
+          throwsA(
+            isA<StoreException>().having(
+              (e) => e.category,
+              'category',
+              'foreign_profile',
+            ),
+          ),
+        );
         await expectLater(
           settings.flushPersistence(),
           throwsA(

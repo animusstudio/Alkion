@@ -13,7 +13,8 @@ pipeline in one Android system WebView. No new package is required.
   `pause()`, `retry()`; readable `yaw` and `pitch` (radians), `zoom`, `pan` and
   `paused`. Default is paused at front, level. Manual turns pause. `pitch` is
   camera elevation (positive looks down from above), clamped to ±45°
-  (`maxPitch`). Front, Back, Side and Reset return it to 0 and advance
+  (`maxPitch`); Explore keeps it at 0 (see Camera pitch). Front, Back, Side
+  and Reset return it to 0 and advance
   `viewCommand`, which callers that animate the view (orbit inertia) watch to
   stop. Own/dispose the controller with the native controls.
 - Required widget fields: `style`, `scores: Map<WorkloadMuscle,double>`,
@@ -34,12 +35,12 @@ pipeline in one Android system WebView. No new package is required.
 - Optional `onStatus` receives `loading`, `ready`, `unavailable`, `error`;
   `fallback` is native Flutter UI shown whenever artwork is not ready. Localize
   that content in the caller. Unsupported platforms return `unavailable`.
-- Caller supplies bounded dimensions: compact 128×212; enlarged retains the
-  same aspect ratio. `compact` selects the approved optical sampling pitch.
+- Caller supplies bounded dimensions at the artwork's 4:7 aspect: the Today
+  figure is 176×308 (128×224 at its narrowest); enlarged keeps the aspect. `compact` selects the approved optical sampling pitch.
 - Artwork ignores pointer input and is excluded from semantics. Native outer
-  controls/gestures own input: horizontal delta × .009 radians matches the study;
-  Explore applies the same rate to vertical delta as pitch. Caller owns
-  pager/scroll arbitration, route/sheet/viewport visibility and
+  controls/gestures own input: horizontal delta × .009 radians matches the
+  study. Explore never changes pitch from a gesture; vertical delta pans.
+  Caller owns pager/scroll arbitration, route/sheet/viewport visibility and
   reduced-motion preference. Widget and Android host also observe app lifecycle.
   Mount only the selected card's renderer; destroy compact while enlarged is open.
 
@@ -150,33 +151,42 @@ then do the two hip fields claim surface the masks leave unpainted:
 - adductors: the inner thigh from the groin toward mid-thigh, front and back,
   beside but not on the midline.
 
-Older regions retain their original mask outside the code-defined fields. Deep anatomy and unsupported semantic mappings remain named
-text; a catalog label never selects pixels by itself. This is a coarse display
+Older regions retain their original mask outside the code-defined fields. Deep anatomy and unsupported semantic mappings claim no
+pixels; a catalog label never selects pixels by itself. This is a coarse display
 projection, not a precise anatomical segmentation.
 
-The body sheet separates strength (all roles, primary, secondary, stabilizer),
-stretch targets, mobility targets, conditioning participation and coarse legacy
-groups. Each view uses the same distinct physical-set region counts as its text
-list. Fixed bins are `0`, `1`, `2–3`, `4–6`, `7–10`, `11+`, with respective
-renderer values `0`, `.2`, `.4`, `.6`, `.8`, `1`. No per-workout normalization or
-fractional credit is used. Region and role totals are not additive. Zero means
-no documented sets in the selected view; evidence gaps remain unknown.
+The workload counts keep separate strength (all roles, primary, secondary,
+stabilizer), stretch-target, mobility-target, conditioning-participation and
+coarse legacy views. Each view uses distinct physical-set region counts. Fixed
+bins are `0`, `1`, `2–3`, `4–6`, `7–10`, `11+`, with respective renderer values
+`0`, `.2`, `.4`, `.6`, `.8`, `1`. No per-workout normalization or fractional
+credit is used. Region and role totals are not additive. Zero means no
+documented sets in the shown view; evidence gaps remain unknown. Unknown side
+uses the labelled combined surface without asserting either side's
+participation.
 
-Whole-workout coverage remains visible alongside the selected view, including
-partial/unknown profiles, legacy attribution, unmapped anatomy and excluded
-sets. Unknown side uses the labelled combined surface without asserting either
-side's participation. A partly mapped node is distinguished from a node with no
-supported surface. Automatic initial selection follows loaded evidence,
-including deep-only participation, until the person explicitly chooses a view.
+The body sheet was trimmed by owner decision on 2026-11-07. It shows only:
 
-Saved views default to recorded assessment; the explicitly selected current view
-uses only the resolver's matching execution and does not rewrite observations.
-Expandable details distinguish assessment status, scoped completeness,
-relationship confidence, declared human review and this app's lack of verified
-human qualification. They retain recorded/current profile and bundle provenance,
-semantic-map revision and installed display projection separately. Inference is
-labelled with its supplied rationale. Legacy pins without historical semantic
-mapping remain text-only; no historical pixels are claimed.
+- a header with the title and close;
+- a one-line mode subtitle: planned, completed or saved working sets;
+- the close-up body, at least 420 dp high, turned by horizontal drag, with
+  Reload only after an artwork failure;
+- the six-bin legend in one row;
+- the 13 region set counts, in two columns where they fit.
+
+The view follows the automatic selection from loaded evidence: strength, then
+stretch, mobility, conditioning and legacy, including deep-only participation.
+Stretch-only work therefore shows stretch targets. There is no manual view
+choice. Saved workouts show the recorded assessment, and the resolver's current
+assessment is not offered. The view chips, Front/Back/Pause, the meaning
+paragraphs, whole-workout coverage, documented anatomy and the assessment and
+display details are no longer shown.
+
+Only the display was reduced. Counts, bins, coverage, the recorded/current
+resolution and the profile, bundle, semantic-map and display-projection
+provenance are computed and retained as before. The Today card and the session
+summary open the sheet through a 48 dp workload button, which is the accessible
+entry. The compact Today art also opens it on tap, but is not announced.
 
 ## Camera pitch
 
@@ -191,16 +201,27 @@ below the level frame's. The body therefore never grows on tilt and shrinks a
 few percent only where it would otherwise leave the canvas. A wider depth range
 slightly coarsens the material's depth input at a tilt.
 
+Explore keeps pitch fixed at 0 (owner decision, 2026-11-07): no gesture tilts
+or coasts it, and Front, Back, Side and Reset hold it at 0. The controller's
+`pitch` and `orbitBy` pitch argument, the renderer's camera orbit and protocol
+5's `pitch` field remain, so the bridge, Android host and JavaScript are
+unchanged; Explore always sends 0.
+
 ## Explore gestures
 
 Explore muscles has one recognizer on the canvas,
 `BodyManipulationGestureRecognizer`. It accepts each pointer that lands on the
 canvas at pointer down, so neither the page scroll nor the sheet drag can claim
-it. Pointers outside the canvas never reach it; the page scrolls as before.
+it. Pointers outside the canvas never reach it; the strip or page scrolls as before.
 
 - One pointer released within touch slop is a tap and picks.
-- One pointer past slop orbits: dx turns, dy tilts. Movement before slop is
-  not applied.
+- One pointer past slop turns and pans: dx turns, and dy pans the body
+  vertically by the finger's distance, within the two-finger pan bound
+  ±(zoom − 1)/2 of the canvas height. At 1× that bound is 0, so dy does
+  nothing there. It never tilts: pitch stays 0 (owner, 2026-11-07, superseding
+  the earlier tilt at 1× and the 1.02× pan threshold). Movement before slop is
+  not applied. The mapping does not depend on zoom, so nothing changes when a
+  pinch crosses 1×.
 - Two or more pointers pinch-zoom (1–3×) around their focal point and pan. Each
   change in the pointer set re-bases focal point, span, zoom and pan, so adding
   or lifting a finger never jumps, and a clamped zoom never drifts. The finger
@@ -212,21 +233,31 @@ it. Pointers outside the canvas never reach it; the page scrolls as before.
   pinch/pan state wins, applied at the frame's start. Re-bases, releases and
   taps apply it first, so nothing reads a view that lags the fingers.
 
-A one-finger orbit release coasts; for two-finger inertia see below. The recognizer
+A one-finger release coasts; for two-finger inertia see below. The recognizer
 measures release velocity over the final one-finger segment only; pinches,
 cancellations and a settling finger never coast, and a finger held still
 releases at rest. The coast decays exponentially with time constant
 τ = 325 ms: each τ covers 63% of the remaining travel, the body settles in
 about 3τ, and the total coast is velocity × .009 rad/px × τ. A release slower
 than 50 px/s does not coast; faster flicks are capped at 1,500 px/s (about two
-thirds of a turn). Pitch velocity is limited so its coast ends exactly at ±45°,
-arriving with no speed. A touch on the canvas stops the coast and does not
-select; the next tap picks. Front, Back, Side, Reset and a list choice that
-opens a held view cancel it. Picks are refused while it runs. Reduced motion,
-a hidden surface or closing the explorer stop it; under reduced motion it never
-starts. The ticker is created in `initState` and disposed with the explorer.
-The explorer rebuilds only when Front/Back selection or the zoom bounds change,
-not on every orbit frame.
+thirds of a turn). The release coasts its dominant axis alone when the other
+axis is at most a third of it (within about 18° of the axis): a vertical flick
+with a few px/s of sideways wobble coasts no yaw, and a near-horizontal one
+coasts no pan. A clearer diagonal, such as 2:1, coasts both. Movement during
+the drag always applies on both axes. Pitch never coasts. A touch on the
+canvas stops the coast and does not select; the next tap picks. Front, Back,
+Side, Reset and a chip choice that opens a held view cancel it. Picks are
+refused while it runs. Reduced motion, a hidden surface or closing the
+explorer stop it; under reduced motion it never starts. The ticker is created
+in `initState` and disposed with the explorer. The explorer rebuilds only when
+Front/Back selection or the zoom bounds change, not on every orbit frame.
+
+The same release coasts the vertical pan by the two-finger pan rules below
+(the same τ, 50 px/s threshold and 1,500 px/s cap): the pan travel is
+velocity × τ, cut to ease into the pan bound at the current zoom, landing on it
+at rest; at 1× there is no room, so only yaw coasts. A touch, Front, Back,
+Side, Reset, the zoom buttons, leaving the foreground and reduced motion stop
+or prevent it as they do every coast.
 
 A two-finger release coasts too (T6), with the same τ. The lift that leaves
 two-finger mode decides it, measured over that two-finger segment: the focal
@@ -244,6 +275,44 @@ The zoom −/+ buttons are an overlay at the canvas's bottom-right, shown with
 ready artwork. They are siblings above the recognizer, inside an opaque
 listener, so their taps (even on a disabled button) never reach the canvas.
 Front, Back, Reset and Retry stay in the row above.
+
+By default (T8) the view controls sit above a canvas that spans the sheet
+inside 16 dp insets and fills the height down to the selected-muscle label
+(a live region, reserving the height of its longest group name so a choice
+never resizes the canvas) and one horizontal strip of 48 dp pill chips, glyph
+and name, above the pinned button. Nothing but the strip scrolls. The chips
+follow the index's alphabetical order (the browse index has no body-area
+grouping), then Unclassified, which closes straight to its results. Chip
+widths are measured from their labels at both weights, so every chip's centre
+is known before layout and a selection never moves a chip; the strip's ends
+are padded so the first and last chip can centre, and fade over 24 dp. A
+release projects where a clamping fling would rest and springs, without
+bounce, to the nearest chip centre, so a chip always settles centred.
+Scrolling only browses. A chip choice of another group turns to the view it
+faces, from the same table as the opening view; choosing the selected chip
+again keeps the view. A canvas pick never turns. Either way, and for the
+opening selection, the selected chip moves to the centre. Each chip is one
+button node with its label and selected state. Implicit scrolling stays
+on, so focus or an assistive `showOnScreen` brings a chip into view, and that
+move also ends by settling a chip at the centre. Chips are measured again
+when the text size, locale or system fonts change. The info notes cover the
+canvas while open, and the canvas, its fallback and the zoom buttons leave
+the semantics tree until they close. When that canvas would be under 300 dp (short and
+landscape viewports, large text on small phones; estimated without the
+selection or artwork status, so neither switches layout), it stacks instead:
+a canvas 55% of the sheet's height (300–420 dp), then the label, the strip
+and the notes, in one scrolling page: full width with 64 dp of the page left
+in view beneath it, or square and up to the page's height where the page is
+at least 96 dp wider. The canvas and the strip each keep one element across
+the switch. On phones the canvas is uncapped, so the body is as large as its
+layout allows; from a 600 dp sheet it stays within 170,000 dp², narrowing to
+0.6 of its height before it shortens, a pick readback of at most about
+127,000 px. The readback is three samples per cell side, cells of 3.2 dp
+across and 3.765 dp down (`renderer.js` `resize()`): at 411×911 dp the canvas
+is 379×567 dp, a 354×453 pick surface (160,362 px), and at 412×900 dp
+380×557 dp, 357×444 (158,508 px), against 357×240 (85,680 px) for the old
+380×300 canvas. A frame-time measurement on the A024 decides whether phones
+need a cap.
 
 ## Visible-surface picking
 

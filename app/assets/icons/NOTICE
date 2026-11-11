@@ -1,4 +1,4 @@
-Iconoir regular SVG subset
+Iconoir regular SVG subset, plus the solid star (star-solid.svg)
 Source: https://github.com/iconoir-icons/iconoir
 Revision: 39834e3f193bc0cca2c36bebb6a650471977433d
 Derivative changes: stroke widths normalized to 1.25 / 1.0 viewBox units.

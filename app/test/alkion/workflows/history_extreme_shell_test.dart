@@ -326,7 +326,7 @@ void expectExtremeTile(AppLocalizations l, Unit unit) {
   // The four-week line and the card header both read History evidence.
   expect(inHistory(find.text(l.alkionKnownSubtotal(5, 11))), findsNWidgets(2));
   expect(inHistory(find.text(l.alkionKnownSubtotal(4, 11))), findsNothing);
-  expect(inHistory(find.text(l.alkionCompatibility)), findsOneWidget);
+  expect(find.textContaining('reps-compat'), findsNothing);
   expect(inHistory(find.text(l.alkionLegacyFallback)), findsNothing);
 }
 

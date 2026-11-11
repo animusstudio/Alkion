@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/active_session_draft.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/models.dart';
@@ -15,9 +15,12 @@ import '../session/active_session_controller.dart';
 import '../session/active_session_screen.dart';
 import '../session/resume.dart';
 import '../session/session_manager.dart';
+import '../settings/settings_service.dart';
 import '../store/local_store.dart';
 import '../theme/motion.dart';
+import '../units/unit_service.dart';
 import '../widgets/w_dialog.dart';
+import 'notification_explainer.dart';
 
 /// Starts an active session, optionally pre-loaded from a [DayTemplate].
 ///
@@ -32,10 +35,13 @@ Future<void> startSession(
 }) async {
   final manager = context.read<SessionManager>();
   final database = context.read<LocalDatabase>();
-  final currentBundle = CatalogTrialScope.maybeOf(context)?.bundle;
+  final currentBundle = CatalogScope.maybeOf(context)?.bundle;
   // Read before any await so the context is still valid (used for the
   // localized custom-session name below).
   final customName = AppLocalizations.of(context).todayCustomSession;
+  // Suggested weights round on the grid the user sees (5 lb in lb).
+  final unit = context.read<UnitService?>()?.unit ?? Unit.kg;
+  final settings = context.read<SettingsService?>();
 
   // A workout is already running → resume it instead of starting a new one.
   if (manager.hasActive) {
@@ -88,6 +94,7 @@ Future<void> startSession(
             exerciseRepo: ExerciseRepository.local(database),
             sessionRepo: sessionRepo,
             currentBundle: currentBundle,
+            unit: unit,
           );
           break;
         } on HistoryOrderReview catch (review) {
@@ -109,6 +116,15 @@ Future<void> startSession(
       return;
     }
     if (!context.mounted) return;
+    // Admitted and built, not yet registered: the one-time notification
+    // explainer (and any permission prompt) comes before the workout opens,
+    // never in the middle of it.
+    await explainNotificationsOnce(
+      context,
+      notifier: manager.notifier,
+      settings: settings,
+    );
+    if (manager.hasActive || !context.mounted) return;
     await controller.flushPersistence();
     manager.register(controller);
     unregisteredController = null; // SessionManager now owns the controller.
@@ -219,16 +235,19 @@ Future<void> openActiveSession(
     return;
   }
 
+  // Reduced motion opens and closes the workout at once: zero durations
+  // and, should a frame still run the transition, no fade or slide.
   await Navigator.of(context, rootNavigator: true).push<void>(
     PageRouteBuilder<void>(
-      transitionDuration: const Duration(milliseconds: 250),
-      reverseTransitionDuration: const Duration(milliseconds: 200),
+      transitionDuration: Motion.of(context, Motion.slow),
+      reverseTransitionDuration: Motion.of(context, Motion.base),
       pageBuilder: (_, __, ___) =>
           ChangeNotifierProvider<ActiveSessionController>.value(
             value: controller,
             child: const ActiveSessionScreen(),
           ),
-      transitionsBuilder: (_, anim, __, child) {
+      transitionsBuilder: (context, anim, __, child) {
+        if (MediaQuery.disableAnimationsOf(context)) return child;
         final curved = CurvedAnimation(parent: anim, curve: Motion.curve);
         return FadeTransition(
           opacity: curved,
@@ -376,24 +395,4 @@ Future<String?> chooseHistoryOrder(
         ),
     ],
   );
-}
-
-/// While a data capture holds the source (its callbacks are frozen) a new
-/// workout would live in memory only: refuse it with the hold's copy and
-/// return true. Otherwise false.
-Future<bool> refusedDuringCaptureHold(
-  BuildContext context,
-  SessionManager manager,
-) async {
-  if (!manager.callbacksFrozen) {
-    return false;
-  }
-  final l = AppLocalizations.of(context);
-  await showWDialog<void>(
-    context,
-    title: l.captureWritesPausedTitle,
-    message: l.captureNewWorkoutRefused,
-    actions: [WDialogAction(label: l.commonOk, value: null)],
-  );
-  return true;
 }

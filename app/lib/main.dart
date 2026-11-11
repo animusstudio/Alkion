@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path/path.dart' as paths;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,6 +16,7 @@ import 'animus/recovery_review.dart';
 import 'data/active_session_draft.dart';
 import 'data/finished_session_store.dart';
 import 'data/session_writer.dart';
+import 'data/workflow_state_quarantine.dart';
 import 'data/exercise_repository.dart' show DomainRecovery;
 import 'identity/alkion_identity.dart';
 import 'identity/alkion_flutter_identity.dart';
@@ -25,6 +27,9 @@ import 'l10n/app_localizations.dart';
 import 'recovery/backup.dart' as backup;
 import 'recovery/recovery_host.dart';
 import 'recovery/restore.dart';
+import 'recovery/stored_copies.dart';
+import 'session/notification_envelope.dart' show notificationJournalDirectory;
+import 'session/notification_journal.dart';
 import 'session/session_manager.dart';
 import 'session/workout_notification.dart';
 import 'shell/session_launcher.dart';
@@ -36,19 +41,22 @@ import 'store/schema.dart';
 import 'theme/app_theme.dart';
 import 'ui/alkion_recovery/recovery_app.dart';
 import 'ui/alkion_recovery/first_start_screen.dart';
+import 'ui/launch_failure_app.dart';
+import 'util/error_surface.dart';
 import 'units/unit_service.dart';
+import 'widgets/kept_data_notice.dart';
 import 'widgets/pending_input.dart';
+import 'widgets/storage_recovery_banner.dart';
+import 'widgets/w_toast.dart';
 import 'catalog/catalog.dart';
 import 'catalog/catalog_development.dart';
 import 'catalog_ui/catalog_runtime_state.dart';
 import 'catalog_ui/catalog_loading.dart';
-import 'catalog_ui/catalog_trial_scope.dart';
-import 'history_test/history_mapping.dart';
-import 'history_test/history_mapping_label.dart';
-import 'ui/reps_import_screen.dart';
-import 'transfer/reps_import.dart';
-import 'transfer/transfer_service.dart' show ImportStatus;
-import 'history_test/retired_history_workspace.dart';
+import 'catalog_ui/catalog_scope.dart';
+import 'history_mapping/history_mapping.dart';
+import 'history_mapping/history_mapping_label.dart';
+
+export 'ui/launch_failure_app.dart' show AlkionPreflightApp;
 
 Future<LocalStore> openAlkionStore(AlkionProfile profile) => LocalStore.open(
   profile: profile,
@@ -104,6 +112,8 @@ class AlkionRuntime with WidgetsBindingObserver {
     CatalogBundle? catalogBundle,
     Future<CatalogDevelopmentInput> Function()? catalogLoader,
     void Function(SettingsService settings)? onCatalogLoading,
+    @visibleForTesting Future<void> Function(String phase)? openCheckpoint,
+    @visibleForTesting void Function(SessionManager sessions)? onSessions,
   }) async {
     GoogleFonts.config.allowRuntimeFetching = false;
     late final AlkionProfile profile;
@@ -125,6 +135,7 @@ class AlkionRuntime with WidgetsBindingObserver {
       rethrow;
     }
     final store = preparedStore ?? await openAlkionStore(profile);
+    SessionManager? opening;
     try {
       final settings = SettingsService.local(store),
           units = UnitService.local(store),
@@ -151,11 +162,29 @@ class AlkionRuntime with WidgetsBindingObserver {
         catalog = null;
         catalogUnavailable = true;
       }
+      // Before any controller, autosave or notification owns the rows: copy
+      // unreadable saved workout state into reviews and retire it, so it can
+      // neither lock launch nor be overwritten. Storage failures propagate.
+      await quarantineUnreadableWorkflowState(store, decoder: _decoderInfo);
+      await openCheckpoint?.call('quarantined');
       final drafts = DraftStore.local(store);
-      final sessions = SessionManager(
+      final sessions = opening = SessionManager(
         draftStore: drafts,
         finishedStore: FinishedSessionStore.local(store),
+        notificationJournal: NotificationJournal(
+          notificationJournalDirectory(supportRoot),
+        ),
+        notificationCheckpoint: openCheckpoint,
       );
+      onSessions?.call(sessions);
+      // The port exists before the first drain, so from here on the
+      // background hands taps off instead of rendering; a wake-up during the
+      // open only records an owed drain (spec D6).
+      sessions.registerNotificationPort();
+      // Drain #1, SQL only: taps journaled while no owner ran apply before
+      // the draft is resumed.
+      await sessions.drainNotificationIntents();
+      await openCheckpoint?.call('drained');
       await sessions.resumeFromDraft();
       await sessions.loadLastFinished();
       sessions.init();
@@ -176,125 +205,218 @@ class AlkionRuntime with WidgetsBindingObserver {
         catalog,
         catalogUnavailable,
       );
-      runtime.historyMappings.value = await HistoryMappingStore(
-        store,
-      ).byExerciseId();
+      sessions
+        ..onPersistenceError = runtime._reportPersistenceFailure
+        ..onPersistenceCleared = runtime._clearPersistenceFailure;
+      // A drain failure before the banner existed is shown now.
+      if (sessions.persistenceError case final error?) {
+        runtime._reportPersistenceFailure(error);
+      }
+      try {
+        runtime.workflowNotices.value = await WorkflowStateQuarantine(
+          store,
+        ).pendingNotices();
+      } on Object {
+        // Informational, like the catalog above: a notice that cannot be
+        // read never blocks launch. Nothing was acknowledged, so it comes
+        // back at the next launch.
+      }
+      runtime.historyMappings = await HistoryMappingStore(store).byExerciseId();
       final notifier = notifications ?? WorkoutNotification();
       notifier.locale = settings.locale?.languageCode;
       await sessions.initializeNotifications(notifier);
+      await openCheckpoint?.call('notifications-initialized');
+      // Drain #2, through the controller if a workout was resumed.
+      await sessions.drainNotificationIntents();
+      // No workout: cancel any ghost mirror and its alert; otherwise
+      // re-render from SQL, replacing any provisional mirror.
+      await sessions.settleNotificationMirror();
+      // Drain what was handed off during the open, then wake-ups drain
+      // directly.
+      await sessions.releaseOwedNotificationDrains();
       WidgetsBinding.instance.addObserver(runtime);
       return runtime;
     } catch (_) {
+      // No owner port may outlive a failed open: the background then keeps
+      // rendering provisionally behind the launch failure screen.
+      // It drains nothing more and stops observing the lifecycle, so it never
+      // reaches the closed store; the OS mirror stays posted.
+      opening?.unregisterNotificationPort();
+      opening?.abandonAfterFailedOpen();
       await store.close();
       rethrow;
     }
   }
 
   final persistenceFailure = ValueNotifier<Object?>(null);
-  final historyMappings = ValueNotifier<Map<String, HistoryMapping>>(const {});
-  final contentRevision = ValueNotifier<int>(0);
 
-  /// Import into the open profile. Fence workout launches before flushing owed
-  /// edits, then refresh caches and one-shot screen reads without changing roots.
-  Future<void> importReps(
-    RepsImportPreview preview,
-    HistoryMappingReview review, {
-    bool applySettings = false,
-  }) async {
-    if (sessions.active != null || !sessions.tryBeginLaunch()) {
-      throw StateError('reps_import_active_workout');
-    }
+  /// Kept unreadable workout state whose one-time notice is not acknowledged
+  /// yet; set once at open.
+  final workflowNotices = ValueNotifier<List<KeptWorkflowState>>(const []);
+  Future<void>? _acknowledging;
+
+  /// The notice's OK: records that [reviewIds] were seen, then drops them
+  /// from [workflowNotices]. A call while one is running joins it. A failed
+  /// write drops them too, for this run only: nothing was recorded, so the
+  /// notice shows again at the next launch. Never throws.
+  Future<void> acknowledgeWorkflowNotices(Iterable<String> reviewIds) =>
+      _acknowledging ??= _acknowledgeNow(
+        reviewIds.toSet(),
+      ).whenComplete(() => _acknowledging = null);
+
+  Future<void> _acknowledgeNow(Set<String> shown) async {
     try {
-      await flushPersistence();
-      final service = RepsImportService(store, profileId: store.profileId);
-      final result = await service.importPreview(preview);
-      if (result.status != ImportStatus.selected &&
-          result.status != ImportStatus.alreadySelected) {
-        throw StateError(result.category ?? result.status.name);
-      }
-      await service.selectMappings(preview, review);
-      if (applySettings && preview.hasImportedSettings) {
-        await service.applySettings(preview);
-      }
-      await settings.load();
-      await units.load();
-      await identity.load();
-      await catalog?.initialize();
-      historyMappings.value = await HistoryMappingStore(store).byExerciseId();
-      contentRevision.value++;
-      if (preview.kind == 'full') {
-        await RetiredHistoryWorkspace.backupAndRemove(store.profile);
-      }
-    } finally {
-      sessions.endLaunch();
+      await WorkflowStateQuarantine(store).acknowledge(shown);
+    } on Object {
+      // The notice never blocks the app.
     }
+    if (_closed) return;
+    workflowNotices.value = [
+      for (final notice in workflowNotices.value)
+        if (!shown.contains(notice.reviewId)) notice,
+    ];
   }
 
+  /// Mapping rows already stored in the profile; display only.
+  Map<String, HistoryMapping> historyMappings = const {};
+
   Future<void> _flushTail = Future.value();
+  Future<void>? _retry;
   bool _closing = false;
   bool _ownersDisposed = false, _closed = false;
+
+  bool _teardownBegan = false;
+
+  /// Whether [close] got past its flush barrier and disposed the sessions,
+  /// notifications and catalog owners.
+  bool get ownersDisposed => _ownersDisposed;
+
+  /// Whether [close] got past its flush barrier and began tearing down: the
+  /// lifecycle observer, the persistence callbacks and possibly notifications
+  /// are gone. While false after a failed [close] (the barrier itself
+  /// refused), the runtime still works and can be shown again.
+  bool get teardownBegan => _teardownBegan;
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_closing) {
       return;
     }
     unawaited(
-      flushPersistence().catchError((Object error) {
+      // An open editor (a History set card under a pulled-down shade) owes
+      // nothing yet, so only a write that failed to land fails this flush.
+      flushPersistence(includeOpenForms: false).catchError((Object error) {
         // The barrier retains owed input; the visible failure remains reviewable
         // on resume. A lifecycle callback is never a successful export boundary.
       }),
     );
   }
 
-  Future<void> flushPersistence() {
+  /// Flushes every owner's owed writes in order. The strict default, used by
+  /// backup, restore and [close], also refuses with `unsaved_editor_input`
+  /// while an open form holds unsaved input; that refusal is not a storage
+  /// failure, so it leaves the storage banner as it was. Every other failure
+  /// raises the banner, and a clean flush clears it.
+  Future<void> flushPersistence({bool includeOpenForms = true}) {
     commitPendingInput();
-    final result = _flushTail.then((_) => _flushNow());
+    final result = _flushTail.then((_) => _flushNow(includeOpenForms));
     _flushTail = result.then<void>((_) {}, onError: (Object error) {});
     return result;
   }
 
-  Future<void> _flushNow() async {
+  Future<void> _flushNow(bool includeOpenForms) async {
+    // An owed editor write that keeps failing must not hold back the other
+    // owners: record its failure, flush them anyway, then report the first.
+    (Object, StackTrace)? failure;
     try {
-      await UnsavedEditors.instance.drainOrThrow();
+      await UnsavedEditors.instance.drainOrThrow(includeOpenForms: false);
+    } catch (error, stack) {
+      failure = (error, stack);
+    }
+    try {
       await sessions.flushPersistence();
       await settings.flushPersistence();
       await units.flushPersistence();
       await identity.flushPersistence();
       await catalog?.flushPersistence();
+    } catch (error, stack) {
+      failure ??= (error, stack);
+    }
+    if (failure != null) {
+      _reportPersistenceFailure(failure.$1);
+      Error.throwWithStackTrace(failure.$1, failure.$2);
+    }
+    if (!_closed) persistenceFailure.value = null;
+    // Strict barriers also refuse while a form holds unsaved input. Nothing
+    // is owed, so this refusal leaves the (now clear) banner alone.
+    if (includeOpenForms) await UnsavedEditors.instance.drainOrThrow();
+  }
+
+  void _reportPersistenceFailure(Object error) {
+    if (!_closed) persistenceFailure.value = error;
+  }
+
+  /// A later successful autosave clears the banner only while it still shows
+  /// the autosave failure it replaces; any other failure stays visible.
+  void _clearPersistenceFailure(Object error) {
+    if (!_closed && identical(persistenceFailure.value, error)) {
       persistenceFailure.value = null;
-    } catch (error) {
-      persistenceFailure.value = error;
-      rethrow;
     }
   }
 
-  Future<void> retryPersistence() async {
+  /// The banner's Retry: recovers the store, then re-runs the lenient flush.
+  /// A call while one is running joins it, so a double tap recovers once.
+  Future<void> retryPersistence() =>
+      _retry ??= _retryNow().whenComplete(() => _retry = null);
+
+  Future<void> _retryNow() async {
+    // Once close() has begun, its own barrier owns the final flush.
+    if (_closing) return;
     try {
       await store.recover();
-      await flushPersistence();
+      if (_closing) return;
+      await flushPersistence(includeOpenForms: false);
     } catch (error) {
-      persistenceFailure.value = error;
+      _reportPersistenceFailure(error);
     }
   }
 
+  /// Flushes, disposes every owner and closes the store. A failure clears
+  /// [_closing] on every path, so a later call retries the remaining steps:
+  /// a flush that failed runs again, owners already disposed are not
+  /// disposed twice.
   Future<void> close({
     @visibleForTesting Future<void> Function()? closeStore,
   }) async {
     if (_closed) return;
     _closing = true;
+    try {
+      await _closeNow(closeStore);
+    } catch (_) {
+      _closing = false;
+      // The barrier refused before teardown: this runtime keeps running, so
+      // its port listens again.
+      if (!_teardownBegan) sessions.reopenNotificationPort();
+      rethrow;
+    }
+  }
+
+  Future<void> _closeNow(Future<void> Function()? closeStore) async {
+    // The port stays registered, ignoring wake-ups, until the mirror is
+    // cancelled and the store is closed: meanwhile the background never
+    // renders, and taps wait in the journal for the next open.
+    sessions.closeNotificationPort();
     // Fence remote callbacks synchronously, before any local barrier yields.
     // Drain covered API evidence before SQLite; provider cleanup is separate.
     final senderClose = workoutSender.close();
     final reviewClose = recoveryReview.close();
     unawaited(animus.close());
     final apiDrain = animus.drainApi();
-    try {
-      if (!_ownersDisposed) await flushPersistence();
-    } catch (_) {
-      _closing = false;
-      rethrow;
-    }
+    if (!_ownersDisposed) await flushPersistence();
+    _teardownBegan = true;
     WidgetsBinding.instance.removeObserver(this);
+    sessions
+      ..onPersistenceError = null
+      ..onPersistenceCleared = null;
     await senderClose;
     await reviewClose;
     await apiDrain;
@@ -305,12 +427,12 @@ class AlkionRuntime with WidgetsBindingObserver {
       _ownersDisposed = true;
     }
     await (closeStore ?? store.close)();
+    sessions.unregisterNotificationPort();
     settings.dispose();
     units.dispose();
     identity.dispose();
     persistenceFailure.dispose();
-    historyMappings.dispose();
-    contentRevision.dispose();
+    workflowNotices.dispose();
     workoutSender.dispose();
     recoveryReview.dispose();
     animus.dispose();
@@ -318,13 +440,55 @@ class AlkionRuntime with WidgetsBindingObserver {
   }
 }
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+const _decoderTimeout = Duration(seconds: 2);
+
+/// The running build for the quarantine's decoder record. A version that
+/// cannot be read is recorded as `unknown`; it never fails the quarantine.
+/// Only called once damage is found, so a clean launch calls no plugin; a
+/// platform that does not answer within [_decoderTimeout] counts as unknown.
+Future<DecoderInfo> _decoderInfo() async {
   try {
-    final root = await checkedAlkionSupportRoot();
-    await launchAlkion(root);
+    final info = await PackageInfo.fromPlatform().timeout(_decoderTimeout);
+    return DecoderInfo(
+      appVersion: info.version.isEmpty ? 'unknown' : info.version,
+      buildNumber: info.buildNumber.isEmpty ? 'unknown' : info.buildNumber,
+    );
+  } on Object {
+    return DecoderInfo();
+  }
+}
+
+Future<void> main() async {
+  // First, so even a failure while starting never shows the bare gray box.
+  installReleaseErrorSurface();
+  WidgetsFlutterBinding.ensureInitialized();
+  // Before anything renders, including the launch failure screen.
+  GoogleFonts.config.allowRuntimeFetching = false;
+  await startAlkion();
+}
+
+/// The body of [main]: finds the checked support root and launches. A failure
+/// before [launchAlkion] can present its own screen shows the launch failure
+/// screen, whose Try again re-runs this whole body.
+Future<void> startAlkion({
+  @visibleForTesting Future<Directory> Function()? supportRoot,
+  @visibleForTesting Future<void> Function(Directory root)? launch,
+  @visibleForTesting void Function(Widget app) present = runApp,
+}) async {
+  try {
+    final root = await (supportRoot ?? checkedAlkionSupportRoot)();
+    await (launch ?? launchAlkion)(root);
   } catch (error) {
-    runApp(AlkionPreflightApp(error: error));
+    present(
+      AlkionPreflightApp(
+        error: error,
+        relaunch: () => startAlkion(
+          supportRoot: supportRoot,
+          launch: launch,
+          present: present,
+        ),
+      ),
+    );
   }
 }
 
@@ -448,7 +612,7 @@ Future<void> _presentLaunchFailure(
       ),
     );
   } else {
-    present(AlkionPreflightApp(error: error));
+    present(AlkionPreflightApp(error: error, relaunch: relaunch));
   }
 }
 
@@ -467,12 +631,11 @@ Future<void> _launchAlkionRuntime(
       root,
       onCatalogLoading: (settings) {
         displayedCatalogLoad = true;
+        // The real root's first frame waits (briefly) for the arm artwork,
+        // so the native splash hands over to the same mark without a gap.
+        if (identical(present, runApp)) holdFirstFrameForStartupMark();
         present(
-          CatalogLoadingApp(
-            brightness: settings.brightness,
-            accent: settings.accent,
-            locale: settings.locale,
-          ),
+          CatalogLoadingApp(accent: settings.accent, locale: settings.locale),
         );
       },
       connectionFactory: connection == null ? null : (_, _) => connection,
@@ -495,17 +658,6 @@ Future<void> _launchAlkionRuntime(
     AlkionApp(
       runtime: runtime,
       revealCatalog: displayedCatalogLoad && runtime.catalog != null,
-      onImportReps: () {
-        appNavigatorKey.currentState?.push<void>(
-          MaterialPageRoute(
-            builder: (_) => RepsImportScreen(
-              database: runtime.store,
-              catalog: runtime.catalog?.bundle,
-              onImport: runtime.importReps,
-            ),
-          ),
-        );
-      },
       recovery: RuntimeRecoveryHost(
         runtime,
         relaunch: relaunch,
@@ -525,11 +677,25 @@ final class RuntimeRecoveryHost implements RecoveryHost {
     required this.relaunch,
     this.present = runApp,
     Future<Directory> Function()? backupDirectory,
-  }) : backupDirectory = backupDirectory ?? _privateBackupDirectory;
+    Future<StoredCopyRoots> Function()? copyRoots,
+    @visibleForTesting this.closeStore,
+  }) : backupDirectory = backupDirectory ?? _privateBackupDirectory,
+       copyRoots =
+           copyRoots ??
+           (backupDirectory == null
+               ? platformStoredCopyRoots
+               : () async => StoredCopyRoots(backups: await backupDirectory()));
   final AlkionRuntime runtime;
   final Future<void> Function() relaunch;
   final void Function(Widget app) present;
   final Future<Directory> Function() backupDirectory;
+
+  /// Where the private copies are, for the read-only last-backup date and
+  /// stored-copy sizes. Resolving them creates nothing.
+  final Future<StoredCopyRoots> Function() copyRoots;
+
+  /// Test seam for [AlkionRuntime.close]'s store step; null in the app.
+  final Future<void> Function()? closeStore;
 
   static Future<Directory> _privateBackupDirectory() async {
     if (!Platform.isAndroid) return getApplicationDocumentsDirectory();
@@ -550,18 +716,70 @@ final class RuntimeRecoveryHost implements RecoveryHost {
       backup.verifyBackupFile(File(path), schema: runtime.store.schema);
 
   @override
+  Future<DateTime?> lastBackupCreated() async =>
+      newestBackupCreated((await copyRoots()).backups, profileId);
+
+  @override
+  Future<StoredCopySizes> storedCopies() async =>
+      measureStoredCopies(await copyRoots());
+
+  @override
+  bool get workoutActive =>
+      runtime.sessions.hasActive || runtime.sessions.launching;
+
+  @override
   Future<void> restoreBackup(String path) async {
+    final sessions = runtime.sessions;
+    // Synchronously, before the first await: a running workout refuses the
+    // restore, and holding the launch fence keeps one from starting or
+    // resuming while the backup is verified. Released on every path.
+    if (sessions.hasActive || !sessions.tryBeginLaunch()) {
+      throw const StoreException('workout_active');
+    }
+    try {
+      await _restoreHoldingLaunch(path);
+    } finally {
+      sessions.endLaunch();
+    }
+  }
+
+  Future<void> _restoreHoldingLaunch(String path) async {
     final verified = await verifyBackup(path);
     verified.requireWriterVariant();
     if (verified.profileId != profileId) {
       throw const StoreException('foreign_profile');
     }
+    if (runtime.sessions.hasActive) {
+      throw const StoreException('workout_active');
+    }
     await runtime.flushPersistence();
-    present(const AlkionRestoringApp());
+    // Read before close() disposes the settings owner.
+    final (locale, brightness, accent) = (
+      runtime.settings.locale,
+      runtime.settings.brightness,
+      runtime.settings.accent,
+    );
+    present(
+      AlkionRestoringApp(
+        locale: locale,
+        brightness: brightness,
+        accent: accent,
+      ),
+    );
     try {
-      await runtime.close();
+      await runtime.close(closeStore: closeStore);
     } catch (error) {
-      present(AlkionRecoveryApp.failed(relaunch: relaunch, error: error));
+      // Relaunching now would meet this runtime's still-open store as
+      // `profile_in_use`; Reopen first resolves the failed close.
+      present(
+        AlkionRecoveryApp.failed(
+          relaunch: _reopenAfterFailedClose,
+          error: error,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
+        ),
+      );
       return;
     }
     try {
@@ -569,10 +787,41 @@ final class RuntimeRecoveryHost implements RecoveryHost {
         runtime.supportRoot,
         schema: runtime.store.schema,
       ).restore(File(path));
-      present(AlkionRecoveryApp.restored(relaunch: relaunch));
+      present(
+        AlkionRecoveryApp.restored(
+          relaunch: relaunch,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
+        ),
+      );
     } catch (error) {
-      present(AlkionRecoveryApp.failed(relaunch: relaunch, error: error));
+      present(
+        AlkionRecoveryApp.failed(
+          relaunch: relaunch,
+          error: error,
+          locale: locale,
+          brightness: brightness,
+          accent: accent,
+        ),
+      );
     }
+  }
+
+  /// Reopen after the runtime failed to close for a restore (nothing was
+  /// restored). When the flush barrier itself refused, before any teardown,
+  /// the same runtime still works and is shown again (its Animus connection,
+  /// workout sender and recovery review stay closed until the next launch).
+  /// Once teardown began, the close is retried and the app relaunched; a
+  /// retry that fails again throws, which the screen shows as a retryable
+  /// error. Never relaunches over a store this runtime still holds.
+  Future<void> _reopenAfterFailedClose() async {
+    if (!runtime.teardownBegan) {
+      present(AlkionApp(runtime: runtime, recovery: this));
+      return;
+    }
+    await runtime.close(closeStore: closeStore);
+    await relaunch();
   }
 }
 
@@ -582,13 +831,11 @@ class AlkionApp extends StatelessWidget {
     required this.runtime,
     this.revealCatalog = false,
     this.recovery,
-    this.onImportReps,
     @visibleForTesting this.databaseOverride,
   });
   final AlkionRuntime runtime;
   final bool revealCatalog;
   final RecoveryHost? recovery;
-  final VoidCallback? onImportReps;
   final LocalDatabase? databaseOverride;
   @override
   Widget build(BuildContext context) {
@@ -626,67 +873,47 @@ class AlkionApp extends StatelessWidget {
             navigatorKey: appNavigatorKey,
             scaffoldMessengerKey: appScaffoldMessengerKey,
             title: AlkionIdentity.displayName,
-            builder: (context, child) => ValueListenableBuilder<Object?>(
-              valueListenable: runtime.persistenceFailure,
-              builder: (context, error, _) => _RuntimeNotificationNavigation(
-                runtime: runtime,
-                child: ValueListenableBuilder<Map<String, HistoryMapping>>(
-                  valueListenable: runtime.historyMappings,
-                  builder: (context, mappings, _) => HistoryMappingScope(
-                    mappings: mappings,
-                    child: Stack(
-                      children: [
-                        if (child != null)
-                          CatalogReadyReveal(
-                            enabled: revealCatalog,
-                            child: child,
-                          ),
-                        if (error != null)
-                          Positioned(
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            child: SafeArea(
-                              child: Material(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.errorContainer,
-                                elevation: 4,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        AppLocalizations.of(
-                                          context,
-                                        ).alkionStoreRecoveryTitle,
-                                      ),
-                                      Text(
-                                        AppLocalizations.of(
-                                          context,
-                                        ).alkionStoreRecoveryBody,
-                                      ),
-                                      TextButton(
-                                        style: TextButton.styleFrom(
-                                          minimumSize: const Size(48, 48),
-                                        ),
-                                        onPressed: runtime.retryPersistence,
-                                        child: Text(
-                                          AppLocalizations.of(
-                                            context,
-                                          ).alkionRetry,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+            builder: (context, child) => _RuntimeNotificationNavigation(
+              runtime: runtime,
+              child: HistoryMappingScope(
+                mappings: runtime.historyMappings,
+                child: Stack(
+                  children: [
+                    if (child != null)
+                      CatalogReadyReveal.startup(
+                        enabled: revealCatalog,
+                        child: child,
+                      ),
+                    // One self-contained notice child; later notices are
+                    // siblings here, never folded into this banner.
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: StorageRecoveryBanner(
+                        failure: runtime.persistenceFailure,
+                        onRetry: runtime.retryPersistence,
+                      ),
                     ),
-                  ),
+                    // Built only while no storage error holds the top slot:
+                    // the banner takes it, and the notice stays pending
+                    // until Retry clears the error. Never two overlays.
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: ValueListenableBuilder<Object?>(
+                        valueListenable: runtime.persistenceFailure,
+                        builder: (context, failure, _) => failure != null
+                            ? const SizedBox.shrink()
+                            : KeptDataNotice(
+                                notices: runtime.workflowNotices,
+                                onAcknowledge:
+                                    runtime.acknowledgeWorkflowNotices,
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -699,18 +926,14 @@ class AlkionApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: AppLocalizations.supportedLocales,
-            home: ValueListenableBuilder<int>(
-              valueListenable: runtime.contentRevision,
-              builder: (context, revision, _) =>
-                  AppShell(key: ValueKey(revision), onImportReps: onImportReps),
-            ),
+            home: const AppShell(),
           );
         },
       ),
     );
     return runtime.catalog == null
         ? app
-        : CatalogTrialScope(state: runtime.catalog!, child: app);
+        : CatalogScope(state: runtime.catalog!, child: app);
   }
 }
 
@@ -765,19 +988,15 @@ class _RuntimeNotificationNavigationState
         final l = AppLocalizations.of(navigation);
         final message = switch (limitation) {
           NotificationLimitation.denied => l.alkionNotificationsDenied,
-          NotificationLimitation.inexact => null,
           NotificationLimitation.unavailable =>
             l.alkionNotificationsUnavailable,
         };
-        if (message != null) {
-          appScaffoldMessengerKey.currentState?.showSnackBar(
-            SnackBar(
-              content: Text(message),
-              duration: const Duration(seconds: 8),
-              action: SnackBarAction(label: l.commonOk, onPressed: () {}),
-            ),
-          );
-        }
+        showWToast(
+          navigation,
+          message,
+          duration: const Duration(seconds: 8),
+          action: WToastAction(label: l.commonOk, onPressed: () {}),
+        );
       } else if (limitation == null) {
         _shown = null;
       }
@@ -803,28 +1022,6 @@ class _RuntimeNotificationNavigationState
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-class AlkionPreflightApp extends StatelessWidget {
-  const AlkionPreflightApp({super.key, this.error});
-  final Object? error;
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: AlkionIdentity.displayName,
-    home: Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              '${AlkionIdentity.displayName}\nLocal storage is unavailable. Your existing files are preserved.\n${error ?? ''}',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 Future<void> logOutAndForget({

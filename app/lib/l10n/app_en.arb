@@ -5,6 +5,25 @@
   "commonCancel": "Cancel",
   "commonOk": "OK",
   "editorSaveFailed": "Couldn't save",
+  "errorConflict": "This changed since you opened it. Go back, open it again and retry.",
+  "errorBusy": "Alkion is still finishing another step. Wait a moment, then try again.",
+  "errorFile": "The file couldn't be read or written. Check the file and where it is stored, then try again.",
+  "errorForeignBackup": "This backup can't be used here. It belongs to another profile or changed during the restore.",
+  "errorDamaged": "This data is damaged or in a format this version can't read. It was left unchanged.",
+  "errorTooLarge": "The file is too large to process.",
+  "errorUnexpected": "Something went wrong. Try again.",
+  "launchFailureTitle": "{app} couldn't start",
+  "@launchFailureTitle": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "launchFailureStorage": "Local storage couldn't be opened.",
+  "launchFailurePreserved": "Your existing files are preserved.",
+  "launchFailureTryAgain": "Try again",
+  "launchFailureDetails": "Technical details",
   "todayGreeting": "Ready to train",
   "todayThisWeek": "This week",
   "todayBodyweight": "Bodyweight",
@@ -127,20 +146,11 @@
   "sessionFinishWorkout": "Finish workout",
   "sessionEmptyTitle": "Empty session",
   "sessionEmptySubtitle": "Add your first exercise to begin.",
-  "sessionSaveFailed": "Failed to save session: {error}",
-  "@sessionSaveFailed": {
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
   "sessionColWeight": "WEIGHT",
   "sessionColReps": "REPS",
   "sessionColRir": "RIR",
   "sessionAddSet": "Add set",
   "sessionRemoveExercise": "Remove exercise",
-  "sessionNoPreviousData": "No previous data",
   "sessionToday": "today",
   "sessionYesterday": "yesterday",
   "sessionDaysAgo": "{count}d ago",
@@ -310,14 +320,7 @@
   "restRestedLabel": "RESTED",
   "restAdd30s": "+30s",
   "summarySessionNotFound": "Session not found.",
-  "summaryLoadFailed": "Failed to load session: {error}",
-  "@summaryLoadFailed": {
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
+  "summaryLoadFailed": "Couldn't load this session.",
   "summaryTopSets": "TOP SETS",
   "summaryDuration": "Duration",
   "summarySets": "Sets",
@@ -440,10 +443,8 @@
   "exerciseEditorStartWeight": "Start weight",
   "exerciseEditorStartWeightHint": "Top-set seed for the first session — history drives suggestions after that.",
   "exerciseEditorDefaultPrescription": "Default prescription",
-  "exerciseEditorDefaultPrescriptionHint": "Pre-fills a day's slot when you add this exercise. Tune the real sets/reps per day in the Split.",
   "exerciseEditorRest": "Rest",
   "exerciseEditorRestHint": "Rest between sets. Default inherits the global rest setting.",
-  "exerciseEditorRestDefault": "Default",
   "exerciseEditorRestSeconds": "{count}s",
   "@exerciseEditorRestSeconds": {
     "placeholders": {
@@ -532,7 +533,6 @@
       }
     }
   },
-  "progressProgression": "PROGRESSION",
   "progressMetricTopSet": "Top set",
   "progressMetricEst1rm": "Est. 1RM",
   "progressMetricVolume": "Volume",
@@ -607,8 +607,6 @@
   "bodyweightEmpty": "No bodyweight entries yet",
   "bodyweightLogTitle": "Log bodyweight",
   "bodyweightSaveEntry": "Save entry",
-  "exportAllData": "Export all data",
-  "exportFullBackup": "Full backup · JSON",
   "exportHistory": "Share workout history",
   "exportHistorySub": "Choose dates and save a JSON file to share.",
   "exportSavedTitle": "Export saved",
@@ -645,7 +643,6 @@
   "profileStatSessions": "Sessions",
   "profileStatPrs": "PRs",
   "profileStatBodyweight": "Bodyweight",
-  "profileGroupUnits": "Units",
   "profileWeightUnit": "Weight unit",
   "profileWeightUnitSub": "Applies everywhere",
   "profileGroupBodyweight": "Bodyweight",
@@ -667,114 +664,8 @@
       }
     }
   },
-  "profileGroupRest": "Rest",
   "profileCompoundRest": "Compound rest",
-  "profileCompoundRestSub": "Default between compound sets",
   "profileIsolationRest": "Isolation rest",
-  "profileIsolationRestSub": "Default between isolation sets",
-  "profileGroupSync": "Sync & Backend",
-  "profileSyncServer": "Sync server",
-  "profileServerPlaceholder": "https://sync.example.dev",
-  "profileLocalFirstHint": "Local-first · data stays on device · syncs when connected",
-  "profileApplyServer": "Apply / Switch server",
-  "profileSignInToSync": "Sign in to sync",
-  "profileGroupAccount": "Account",
-  "profileSignedIn": "Signed in",
-  "profileSignOut": "Sign out",
-  "profileSwitchServerTitle": "Switch server?",
-  "profileSwitchServerMessage": "This signs you out and clears local data on this device.",
-  "profileSwitchServerConfirm": "Switch",
-  "profileReconcileTitle": "You have local data",
-  "profileReconcileMessage": "This device already has workout data. Keep it and merge with your account, or replace it with the account's data?",
-  "profileReconcileUseAccount": "Use the account's data",
-  "profileReconcileKeep": "Keep my data",
-  "profileSignOutTitle": "Sign out?",
-  "profileSignOutMessage": "You will need to sign in again to access your data.",
-  "profileReconcileUnsyncedWarning": "{count} workout changes on this device haven't synced yet and would be deleted.",
-  "@profileReconcileUnsyncedWarning": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "profileSignOutUnsyncedMessage": "{count} changes on this device haven't synced. Signing out deletes them. Use \"Sign in again\" instead to keep them.",
-  "@profileSignOutUnsyncedMessage": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "onboardingWelcome": "Welcome",
-  "loginTitle": "Login",
-  "loginEmailLabel": "email",
-  "loginPasswordLabel": "password",
-  "loginBusy": "...",
-  "loginCreateAccount": "Create account",
-  "loginLogIn": "Log in",
-  "loginHaveAccount": "Have an account? Sign in",
-  "syncSyncing": "Syncing…",
-  "syncError": "Sync error",
-  "syncSessionExpired": "Session expired",
-  "todaySyncPaused": "Sync paused · Sign in again",
-  "todaySyncAtRisk": "Not synced since {date} · changes are on this phone only",
-  "@todaySyncAtRisk": {
-    "placeholders": {
-      "date": {
-        "type": "String"
-      }
-    }
-  },
-  "todaySyncAtRiskNever": "Not synced yet · changes are on this phone only",
-  "profileSessionExpiredSub": "Sign in again to resume sync. Your data stays on this device.",
-  "syncOffline": "Offline",
-  "syncOfflineSince": "Offline · synced {time}",
-  "@syncOfflineSince": {
-    "placeholders": {
-      "time": {
-        "type": "String"
-      }
-    }
-  },
-  "syncSynced": "Synced",
-  "syncSyncedAt": "Synced · {time}",
-  "@syncSyncedAt": {
-    "placeholders": {
-      "time": {
-        "type": "String"
-      }
-    }
-  },
-  "syncNotConnected": "Not connected",
-  "syncJustNow": "just now",
-  "syncMinutesAgo": "{count, plural, other{{count}m ago}}",
-  "@syncMinutesAgo": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "syncHoursAgo": "{count, plural, other{{count}h ago}}",
-  "@syncHoursAgo": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "syncDateShort": "{day}/{month}",
-  "@syncDateShort": {
-    "placeholders": {
-      "day": {
-        "type": "int"
-      },
-      "month": {
-        "type": "int"
-      }
-    }
-  },
   "muscleChest": "Chest",
   "muscleBack": "Back",
   "muscleShoulders": "Shoulders",
@@ -789,226 +680,49 @@
   "navPlan": "Plan",
   "profileGroupData": "Data",
   "progressChange": "CHANGE",
-  "notifChannelName": "Workout session",
-  "updatesGroup": "Updates",
-  "updatesVersion": "Version {v}",
-  "@updatesVersion": {
+  "restUnavailableUntilSaved": "Unavailable until the workout is saved",
+  "restChangesWaitForSave": "Rest changes wait until the workout is saved",
+  "finishNotSavedBanner": "This workout isn't saved yet and is kept as it is. Tap Finish workout to try again.",
+  "bodyweightChooseEntry": "Choose the measurement to edit",
+  "bodyweightUnavailable": "Measurement unavailable",
+  "bodyweightEditTitle": "Edit entry",
+  "bodyweightDeleteEntry": "Delete entry",
+  "bodyweightDeleteTitle": "Delete this entry?",
+  "bodyweightDeleteMessage": "It's removed from your history, chart and stats.",
+  "bodyweightDiscardMessage": "The weight you entered won't be saved.",
+  "bodyweightRangeHint": "Enter a weight from {min} to {max} {unit}",
+  "@bodyweightRangeHint": {
     "placeholders": {
-      "v": {
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      },
+      "unit": {
         "type": "String"
       }
     }
   },
-  "updatesCheck": "Check for updates",
-  "updatesChecking": "Checking…",
-  "updatesUpToDate": "You're on the latest version",
-  "updatesError": "Couldn't check for updates",
-  "updatesAutoCheck": "Check automatically",
-  "updatesAvailableTitle": "Update available · v{v}",
-  "@updatesAvailableTitle": {
+  "bodyweightEntryPosition": "Entry {position} of {count}",
+  "@bodyweightEntryPosition": {
     "placeholders": {
-      "v": {
-        "type": "String"
-      }
-    }
-  },
-  "updatesInstall": "Download & install",
-  "updatesLater": "Later",
-  "updatesDownloading": "Downloading… {percent}%",
-  "@updatesDownloading": {
-    "placeholders": {
-      "percent": {
+      "position": {
+        "type": "int"
+      },
+      "count": {
         "type": "int"
       }
     }
   },
-  "updatesInstalling": "Installing…",
-  "updatesPermissionTitle": "Allow updates",
-  "updatesPermissionMessage": "Reps needs permission to install app updates. Enable it on the next screen, then tap Install again.",
-  "updatesOpenSettings": "Open settings",
-  "captureRecoveryTitle": "Capture not finished",
-  "captureRecoveryPreservationTitle": "Workouts not opened",
-  "captureRecoveryBody": "Reps found a data capture on this device that is not finished, or could not check whether one is. Until that is resolved, Reps does not open your workouts or sync, so nothing changes.",
-  "captureRecoveryPreservationBody": "Reps could not make a safety copy of a stored workout file, so it has not opened your workouts or synced. Opening them now could overwrite that file.",
-  "captureRecoveryKept": "Your workouts are still on this device. Reps did not delete or change them.",
-  "captureRecoveryCode": "Status: {code}",
-  "@captureRecoveryCode": {
+  "bodyweightShowAll": "Show all {count}",
+  "@bodyweightShowAll": {
     "placeholders": {
-      "code": {
-        "type": "String"
+      "count": {
+        "type": "int"
       }
     }
   },
-  "captureRecoveryRetry": "Try again",
-  "@captureRecoveryRetry": {
-    "description": "Startup recovery screen: runs startup again, without a confirmation, after a transient gate failure or a failed safety copy."
-  },
-  "captureRowTitle": "Data capture",
-  "captureRowSub": "Checked local copy · no account",
-  "captureScreenTitle": "Data capture",
-  "captureIntro": "A capture is a copy of the workout data Reps stores on this device, checked after it is written and kept privately here. Sign-in credentials are deliberately left out, and anything that can't be read is listed instead of copied. It works offline and without an account, and nothing is sent anywhere.",
-  "captureChecking": "Checking for captures…",
-  "captureIdleTitle": "No capture yet",
-  "captureIdleBody": "Nothing has been captured on this device yet.",
-  "captureStart": "Capture now",
-  "captureStartHold": "Capture and hold",
-  "captureStartConfirmTitle": "Capture your data now?",
-  "captureStartConfirmBody": "Reps briefly pauses saving and sync, copies what it stores on this device into a private folder (except sign-in credentials; anything unreadable is listed) and checks the copy. Nothing is deleted or sent. Then Reps carries on as before.",
-  "captureStartConfirm": "Capture",
-  "captureHoldConfirmTitle": "Capture and keep holding?",
-  "captureHoldConfirmBody": "Reps captures your data, then keeps saving and sync paused, even after a restart, until you release the hold here. While held, changes can't be saved and rest can't be extended.",
-  "captureHoldConfirm": "Capture and hold",
-  "captureRunning": "Capturing… Saving and sync are paused until it finishes.",
-  "captureResuming": "Resuming…",
-  "captureSavedTitle": "Capture saved on this device",
-  "captureSavedBody": "It was checked after it was written and stays in Reps' private storage. It has not been copied anywhere else.",
-  "captureHeldTitle": "Local hold",
-  "captureHeldBody": "A capture is saved and Reps is keeping your data unchanged: saving, sync and rest extensions are paused until you release the hold.",
-  "captureAwaitingTitle": "Capture saved, still paused",
-  "captureAwaitingBody": "The capture is saved and checked. Saving and sync stay paused until you resume original use.",
-  "captureInterruptedTitle": "Capture interrupted",
-  "captureInterruptedBody": "The last capture did not finish, so it is not a usable capture. Its partial files are kept privately for review. Saving and sync stay paused until you decide.",
-  "captureProblemTitle": "Capture needs a decision",
-  "captureProblemBody": "Reps could not finish or confirm the last capture. Everything it wrote is kept and nothing was deleted. Saving and sync stay paused until you decide.",
-  "captureReviewTitle": "Needs a closer look",
-  "captureReviewBody": "Reps can't safely decide this on its own, so it changes nothing. Keep the status below for whoever looks into it.",
-  "captureUnsupportedTitle": "Not available on this device",
-  "captureUnsupportedBody": "Data capture and export can't run in this version of Reps on this device. Your data stays as it is.",
-  "captureBlockedTitle": "Capture not made",
-  "captureBlockedBody": "No usable capture was made. Your data on this device was not changed.",
-  "captureBlockedHeldBody": "No usable capture was made. Everything written so far is kept, and saving and sync stay paused until you decide below.",
-  "captureBlockedForms": "Save or cancel your open edits in Plan or History first. Reps never saves an unfinished form for you.",
-  "captureBlockedSpace": "There isn't enough free space on this device.",
-  "captureBlockedRetry": "Try again in a moment.",
-  "captureBlockedKept": "A diagnostic copy was kept privately on this device, but it is not a usable capture and can't be copied out.",
-  "captureBlockedReasons": "Reasons: {codes}",
-  "@captureBlockedReasons": {
-    "placeholders": {
-      "codes": {
-        "type": "String"
-      }
-    }
-  },
-  "captureResumeFailedTitle": "Not resumed",
-  "captureResumeFailedBody": "Nothing was released; saving and sync stay paused.",
-  "captureCoverageTitle": "What the capture holds",
-  "captureCoverageNote": "Files are kept exactly as stored, including any Reps itself can't read. A separate review checks them later; a capture doesn't convert or move your data.",
-  "captureStoreCaptured": "captured",
-  "captureStoreReview": "captured for later review",
-  "captureStoreAbsent": "not present",
-  "captureStoreExcluded": "left out · {reason}",
-  "@captureStoreExcluded": {
-    "placeholders": {
-      "reason": {
-        "type": "String"
-      }
-    }
-  },
-  "captureStoreUnreadable": "couldn't be read · {detail}",
-  "@captureStoreUnreadable": {
-    "placeholders": {
-      "detail": {
-        "type": "String"
-      }
-    }
-  },
-  "captureStoreUnavailable": "unavailable · {detail}",
-  "@captureStoreUnavailable": {
-    "placeholders": {
-      "detail": {
-        "type": "String"
-      }
-    }
-  },
-  "captureDetails": "Captured {time} · digest {digest}",
-  "@captureDetails": {
-    "placeholders": {
-      "time": {
-        "type": "String"
-      },
-      "digest": {
-        "type": "String"
-      }
-    }
-  },
-  "captureResume": "Resume original use",
-  "captureResumeTitle": "Resume original use?",
-  "captureResumeInterruptedBody": "The interrupted capture stays unusable and its partial files stay kept. Saving and sync start again as before. You can start a new capture afterwards.",
-  "captureResumeSavedBody": "The capture stays saved on this device. Saving and sync start again as before; changes from now on are not in this capture.",
-  "captureResumeProblemBody": "Whatever the last capture wrote stays kept, but it is not used. Saving and sync start again as before.",
-  "captureRelease": "Release hold",
-  "captureReleaseTitle": "Release the local hold?",
-  "captureReleaseBody": "The capture stays saved on this device. Saving, sync and rest extensions work again; changes from now on are not in this capture.",
-  "captureResumeAndCapture": "Resume and capture again",
-  "captureResumeAndCaptureTitle": "Resume and capture again?",
-  "captureResumeAndCaptureBody": "The interrupted capture stays unusable and its files stay kept. Saving and sync start again, then a new capture starts.",
-  "captureResumeAndCaptureConfirm": "Resume and capture",
-  "captureCheckAgain": "Check again",
-  "captureExportTitle": "Copy to a folder",
-  "captureExportBody": "Copies this capture into a new folder inside the folder you enter. Nothing there is replaced, and the copy is checked against the one on this device.",
-  "captureExportPath": "Destination folder",
-  "captureExportPathHint": "Full path of an existing folder",
-  "captureExportAction": "Copy capture",
-  "captureExportConfirmTitle": "Copy the capture here?",
-  "captureExportConfirmBody": "Reps creates the new folder {folder} inside {path}. If it already exists, nothing is copied. The capture on this device stays as it is.",
-  "@captureExportConfirmBody": {
-    "placeholders": {
-      "folder": {
-        "type": "String"
-      },
-      "path": {
-        "type": "String"
-      }
-    }
-  },
-  "captureExportConfirm": "Copy",
-  "captureExportCopying": "Copying…",
-  "captureExportCancel": "Stop copying",
-  "captureExportDone": "Copy checked: it matches the capture on this device.",
-  "captureExportDoneAt": "In {path}",
-  "@captureExportDoneAt": {
-    "placeholders": {
-      "path": {
-        "type": "String"
-      }
-    }
-  },
-  "captureExportDoneNote": "This is only a local copy. It doesn't show that anything else has read or imported it.",
-  "captureExportCancelled": "Copy cancelled. Nothing was finished at the destination, and the capture on this device is unchanged.",
-  "captureExportFailed": "Copy not finished ({code}). The capture on this device is unchanged.",
-  "@captureExportFailed": {
-    "placeholders": {
-      "code": {
-        "type": "String"
-      }
-    }
-  },
-  "captureExportUnavailable": "Copying a capture out isn't available on this device.",
-  "captureWritesPausedTitle": "Paused for data capture",
-  "captureWritesPausedBody": "A data capture is holding your data, so this change wasn't saved. Nothing else changed. Release or resume it in Profile → Data capture.",
-  "captureRestUnavailable": "+30s unavailable during data capture",
-  "captureNoneUsableTitle": "No capture to show",
-  "captureNoneUsableBody": "The last capture attempt didn't produce a capture that can be shown here. Anything it or an earlier capture wrote stays privately on this device.",
-  "captureDivergedBody": "The saved capture no longer matches what was checked when it was written, so Reps won't show or copy it. Its files stay privately on this device.",
-  "captureExportChanged": "The capture on this device no longer matches what was checked when it was saved, so nothing was copied. Don't rely on it.",
-  "captureExportUnverified": "A folder was created at {path}, but it did not pass the check there. Don't rely on it. The capture on this device was only read.",
-  "@captureExportUnverified": {
-    "placeholders": {
-      "path": {
-        "type": "String"
-      }
-    }
-  },
-  "captureExportExists": "That folder already exists there. Nothing was copied or replaced, and the capture on this device was only read.",
-  "captureHoldWorkoutBanner": "Data capture is holding your data: changes to this workout aren't being saved. They are lost if the app closes before the hold ends.",
-  "captureHoldWorkoutWarning": "A workout is open. While the hold lasts, its changes aren't saved and are lost if the app closes. Finish or discard it first if you want to keep them.",
-  "captureNewWorkoutRefused": "A data capture is holding your data, so a new workout can't start now. Release or resume it in Profile → Data capture.",
-  "bodyweightChooseEntry": "Choose the measurement to edit",
-  "targetsKeepEmpty": "Keep goals empty",
-  "bodyweightUnavailable": "Measurement unavailable",
-  "alkionLocalOnly": "Local profile",
-  "alkionAccountUnavailable": "Account connection is unavailable in this development build.",
-  "alkionExportUnavailable": "Versioned export is being prepared. Export is currently unavailable.",
   "alkionOrderChoiceTitle": "Choose a baseline",
   "alkionOrderChoiceBody": "History has an uncertain order. Choose which workout to use for this action. This records a preference, not a historical fact.",
   "alkionUnavailableOn": "Unavailable · {date}",
@@ -1030,7 +744,6 @@
   },
   "alkionStoreRecoveryTitle": "Local storage needs recovery",
   "alkionStoreRecoveryBody": "This change has not been saved. Recover local storage, then retry the same change. Your draft and prior recovery are preserved.",
-  "alkionCompatibility": "Legacy compatibility · reps-compat/1",
   "alkionKnownSubtotal": "Known subtotal · {known}/{total} working sets",
   "@alkionKnownSubtotal": {
     "placeholders": {
@@ -1044,6 +757,14 @@
   },
   "alkionLegacyFallback": "Unavailable evidence · legacy display fallback",
   "alkionRetry": "Retry local save",
+  "alkionKeptNoticeDraft": "Your unfinished workout couldn't be opened. Its saved data is kept and included in backups.",
+  "alkionKeptNoticeFinished": "Undo for your last finished workout couldn't be loaded. Its saved data is kept and included in backups. Workouts in History are not affected.",
+  "alkionKeptNoticeBoth": "Your unfinished workout and the undo for your last finished workout couldn't be opened. Their saved data is kept and included in backups. Workouts in History are not affected.",
+  "alkionKeptDataSection": "Kept workout data",
+  "alkionKeptDataDraft": "Unfinished workout",
+  "alkionKeptDataFinished": "Finish undo data",
+  "alkionKeptDataOther": "Workout data",
+  "alkionKeptDataExplain": "Kept as evidence and included in backups.",
   "alkionDateUnavailable": "Date unavailable · {raw}",
   "@alkionDateUnavailable": {
     "placeholders": {
@@ -1086,13 +807,22 @@
   "alkionLoadUnavailable": "A weight shown as — is unavailable: invalid, or outside the displayable range.",
   "alkionLoadUnavailableLabel": "Weight unavailable",
   "alkionRepsUnavailableLabel": "Reps unavailable",
-  "alkionDomainExportSub": "Versioned Alkion domain export · JSON",
   "alkionBackupRestore": "Backup & restore",
   "alkionBackupRestoreSub": "Save a backup or restore your Alkion data.",
+  "alkionBackupLast": "Last backup created: {date}",
+  "@alkionBackupLast": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionBackupNone": "No backup yet",
   "alkionBackupTitle": "Backup & restore",
   "alkionBackupSection": "Manual backup",
   "alkionBackupExplain": "A backup counts only once it is verified. Copy the file off this device and check it there; sharing or copying alone is not proof. Alkion never schedules or reminds, so work after your last verified backup can be lost.",
   "alkionBackupCreate": "Create backup",
+  "alkionBackupCreating": "Creating and verifying the backup…",
   "alkionBackupCreated": "Backup saved and verified",
   "alkionBackupCreatedMessage": "{path}\nSHA-256 {digest}…\nCopy it off this device, then check the copy with “Check backup”.",
   "@alkionBackupCreatedMessage": {
@@ -1107,7 +837,20 @@
   },
   "alkionBackupFileSection": "Backup file",
   "alkionBackupPathLabel": "Backup file path",
+  "alkionBackupChoose": "Choose backup file",
+  "alkionBackupChosen": "Chosen: {name} · {size}",
+  "@alkionBackupChosen": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "alkionBackupCheck": "Check backup",
+  "alkionBackupChecking": "Checking the backup…",
   "alkionBackupCheckOk": "Backup verified",
   "alkionBackupCheckOkMessage": "Created {created}. All {rows} covered rows match the manifest; schema and integrity checks passed.",
   "@alkionBackupCheckOkMessage": {
@@ -1120,42 +863,177 @@
       }
     }
   },
-  "alkionBackupForeignProfile": "This verified backup belongs to another Alkion profile. It is never merged here; it can only be restored onto separate, empty storage.",
+  "alkionBackupForeignTitle": "Backup from another profile",
+  "alkionBackupForeignProfile": "This backup belongs to another Alkion profile, so it can't be restored into this one. To use it:\n1. Back up this profile first.\n2. Clear Alkion's storage in Android settings.\n3. Open Alkion, choose Go fully offline, then Restore backup.",
   "alkionBackupFailed": "Backup action failed",
-  "alkionBackupFailedMessage": "Reason: {category}. Your current data, the backup file and any staging copy are kept.",
+  "alkionBackupFailedMessage": "{reason}\nYour current data, the backup file and any staging copy are kept.",
   "@alkionBackupFailedMessage": {
     "placeholders": {
-      "category": {
+      "reason": {
         "type": "String"
       }
     }
   },
+  "alkionBackupCloseEditor": "An open editor has unsaved changes. Save or discard them and close the editor, then try again.",
   "alkionRestoreAction": "Restore from this backup",
   "alkionRestoreConfirmTitle": "Restore this backup?",
   "alkionRestoreConfirmMessage": "The backup becomes the selected local state. The current state is kept and fenced, never deleted, and work newer than the backup is listed for review. Alkion closes and must be reopened.",
+  "alkionRestoreConfirmFile": "{name}\nCreated {date}",
+  "@alkionRestoreConfirmFile": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "alkionRestoreConfirm": "Restore",
+  "alkionRestorePreparing": "Preparing the restore…",
+  "alkionRestoreWorkoutActiveTitle": "Workout in progress",
+  "alkionRestoreWorkoutActive": "Finish or discard your workout first, then restore.",
   "alkionRestoreHistory": "Restores",
+  "alkionRestoreHistoryRow": "Restored {date}",
+  "@alkionRestoreHistoryRow": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "alkionRestoreReviewsSection": "Work newer than a restored backup",
   "alkionRestoreNoReviews": "Nothing to review",
-  "alkionRestoreKeep": "Keep as evidence",
+  "alkionRestoreKeepAll": "Keep all as evidence",
+  "alkionRestoreKeepAllTitle": "Keep all as evidence?",
+  "alkionRestoreKeepAllMessage": "Every listed item is marked as kept. Nothing is replayed, changed or deleted, and the evidence stays exactly as it is.",
+  "alkionRestoreKeepAllConfirm": "Keep all",
+  "alkionRestoreKeeping": "Saving your decisions…",
+  "alkionRestoreTechnicalShow": "Show technical details",
+  "alkionRestoreTechnicalHide": "Hide technical details",
+  "alkionReviewNewer": "Newer than this backup: {things}",
+  "@alkionReviewNewer": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewChanged": "Changed since this backup: {things}",
+  "@alkionReviewChanged": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewRemoved": "Removed after this backup: {things}",
+  "@alkionReviewRemoved": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewOther": "Other differences: {things}",
+  "@alkionReviewOther": {
+    "placeholders": {
+      "things": {
+        "type": "String"
+      }
+    }
+  },
+  "alkionReviewSets": "{count, plural, =1{1 set} other{{count} sets}}",
+  "@alkionReviewSets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewWorkouts": "{count, plural, =1{1 workout} other{{count} workouts}}",
+  "@alkionReviewWorkouts": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewExercises": "{count, plural, =1{1 exercise} other{{count} exercises}}",
+  "@alkionReviewExercises": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewTrainingDays": "{count, plural, =1{1 training day} other{{count} training days}}",
+  "@alkionReviewTrainingDays": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewPlannedExercises": "{count, plural, =1{1 planned exercise} other{{count} planned exercises}}",
+  "@alkionReviewPlannedExercises": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewBodyweight": "{count, plural, =1{1 bodyweight entry} other{{count} bodyweight entries}}",
+  "@alkionReviewBodyweight": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewMuscleTargets": "{count, plural, =1{1 muscle target} other{{count} muscle targets}}",
+  "@alkionReviewMuscleTargets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "alkionReviewRecords": "{count, plural, =1{1 internal record} other{{count} internal records}}",
+  "@alkionReviewRecords": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "alkionRestoreDoneTitle": "Restore selected",
   "alkionRestoreDoneBody": "The backup is now the selected local state. The previous state is preserved and fenced; newer work is listed for review. Reopen Alkion to continue.",
   "alkionRestoreReopen": "Reopen Alkion",
   "alkionRestoreFailedTitle": "Restore not completed",
-  "alkionRestoreFailedBody": "Reason: {category}. The backup file, the staging copy and the current state are kept.",
+  "alkionRestoreFailedBody": "{reason}\nThe backup file, the staging copy and the current state are kept.",
   "@alkionRestoreFailedBody": {
     "placeholders": {
-      "category": {
+      "reason": {
         "type": "String"
       }
     }
   },
+  "alkionRestoreInterruptedError": "The restore was interrupted before it finished. The backup file is fine; try again.",
+  "alkionRestoreTargetNotEmpty": "This profile already has data, so the backup can't be restored onto it. Nothing was changed.",
+  "alkionRestoreStagingChanged": "The staging copy of the backup changed during the restore. Choose the backup file again and retry.",
   "alkionRestoreInterruptedTitle": "A restore was interrupted",
   "alkionRestoreInterruptedBody": "Local storage stays closed until you choose. Completing selects the verified staged backup; keeping the current state leaves the staged copy in place.",
   "alkionRestoreComplete": "Complete restore",
   "alkionRestoreKeepCurrent": "Keep current state",
   "alkionRestoreRunning": "Restoring the verified backup. Local storage stays closed until the restore is selected.",
   "alkionRestoreUnknownNewerWork": "Newer work unknown: the previous local state could not be read. Its bytes are kept unchanged.",
+  "alkionStoredCopies": "Stored copies",
+  "alkionStoredCopiesExplain": "Private copies Alkion keeps on this device. Nothing here deletes them.",
+  "alkionStoredBackups": "Backups",
+  "alkionStoredExports": "Exports",
+  "alkionStoredStaging": "Picked and saved file copies",
+  "alkionStoredUnavailable": "Sizes are not available on this device.",
   "todayVolumeLoading": "Loading weekly volume…",
   "todayVolumeUnavailable": "Weekly volume unavailable. Current totals could not be loaded.",
   "todayVolumeUnknown": "{count} working sets have no muscle label; labeled totals are partial.",
@@ -1247,50 +1125,38 @@
   "alkionFirstResumeBody": "This restore has complete verified staging. Complete it to recover the same profile. Your previous attempt is kept.",
   "alkionFirstReselectBody": "This restore needs the same backup again. Choose it to retry; earlier staging is kept. Starting an unrelated profile is unavailable.",
   "alkionNotificationsDenied": "Notifications are off. Workout logging and your saved rest deadline still work. You can enable notifications in Android settings.",
-  "alkionNotificationsInexact": "Background rest notifications may be delayed. Your saved deadline is unchanged and reconciles when you reopen Alkion.",
   "alkionNotificationsUnavailable": "Workout notifications are unavailable. Logging and your saved rest deadline still work; reopen Alkion to check your rest.",
+  "alkionNotificationsExplainTitle": "Rest timer notifications",
+  "@alkionNotificationsExplainTitle": {
+    "description": "Title of the one-time dialog shown before the first notification permission prompt."
+  },
+  "alkionNotificationsExplainBody": "Alkion shows your rest timer in a notification and vibrates when rest ends.",
+  "@alkionNotificationsExplainBody": {
+    "description": "One-line reason shown before the notification permission prompt."
+  },
+  "alkionNotificationsExplainLater": "Not now",
+  "@alkionNotificationsExplainLater": {
+    "description": "Declines the notification explainer without asking for permission."
+  },
+  "alkionNotificationsExplainContinue": "Continue",
+  "@alkionNotificationsExplainContinue": {
+    "description": "Continues to the Android notification permission prompt."
+  },
   "sessionSaveFailedMessage": "Could not save your workout. Please try again.",
   "bodyViewFront": "Front",
   "bodyViewBack": "Back",
-  "sessionTapValueToType": "Tap value to type",
   "bodyWorkload": "Workout workload",
+  "bodyWorkloadEntry": "Workload",
   "bodyPlanned": "Planned working sets",
   "bodyCompleted": "Completed working sets",
   "bodySaved": "Saved working sets",
-  "bodyRelative": "Documented sets · counts across regions and roles are not additive.",
   "bodyLoading": "Loading workout counts…",
   "bodyReadUnavailable": "Workout counts could not be read. Close this view and try again.",
   "bodyArtworkUnavailable": "Artwork unavailable",
   "bodyEmpty": "No working sets to map yet.",
-  "bodyMapped": "Mapped working sets: {count}",
-  "@bodyMapped": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "bodyUnmapped": "Unmapped working sets: {count}",
-  "@bodyUnmapped": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "bodyUnknownKind": "Sets with unknown type: {count}",
-  "@bodyUnknownKind": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "bodyArtworkStyle": "Artwork style",
   "bodyMaleArtwork": "Male artwork",
   "bodyFemaleArtwork": "Female artwork",
-  "bodyPause": "Pause rotation",
-  "bodyResume": "Resume rotation",
   "bodyRetryArtwork": "Reload artwork",
   "bodyLoadingArtwork": "Loading artwork…",
   "animusConnect": "Connect to Animus",
@@ -1323,10 +1189,7 @@
   "animusReadOnly": "Send one selected workout from History after confirming its account, data space and included exercises. Sending is manual; local workouts and backups remain available.",
   "alkionEntryBody": "Sign in with Animus, or train fully offline.",
   "alkionEntrySignIn": "Sign in to Animus",
-  "alkionEntryNoAccount": "Don’t have an account?",
-  "alkionEntryCreateAccount": "Create one",
   "alkionEntryOffline": "Go fully offline",
-  "alkionEntryConnectLater": "Connect later in Profile.",
   "alkionEntryUnavailable": "Animus sign-in isn’t set up in this build.",
   "alkionEntrySignupUnavailable": "Account creation is unavailable in this setup.",
   "alkionEntryFailed": "Could not finish this step. Try again or go fully offline.",
@@ -1335,8 +1198,9 @@
   "alkionEntryTitle": "Make every workout count.",
   "alkionEntryJoin": "Don’t have an account? Join now",
   "trainingPreferences": "Training preferences",
-  "importRepsData": "Import Reps data",
-  "importRepsDataSub": "Preview a Reps export and import it into this profile.",
+  "historyMappingExact": "Reviewed exact mapping",
+  "historyMappingApproximate": "Approximate mapping",
+  "historyMappingUnresolved": "Unresolved · legacy history",
   "trainingPreferencesHint": "Rep style and RIR update the active workout. Rest defaults apply to the next timer; saved targets stay unchanged.",
   "trainingRepEntry": "Rep entry",
   "trainingFixedReps": "Fixed reps",
@@ -1394,7 +1258,6 @@
       }
     }
   },
-  "trainingDayStatusSaved": "Training day status saved",
   "trainingSaving": "Saving…",
   "trainingRetryStatus": "Status not saved. Retry the same change.",
   "trainingRetry": "Retry",
@@ -1462,24 +1325,15 @@
   "catalogRequired": "Enter the required measurements",
   "catalogAddAgain": "Add again",
   "catalogAddSelected": "Add selected",
-  "catalogSelected": "Selected",
   "catalogChangeSetup": "Change execution/equipment",
   "catalogNewMachine": "New machine",
   "catalogNickname": "Nickname (optional)",
   "catalogUpcoming": "Add one new set",
   "catalogRoutineUse": "Use in this routine",
   "catalogRoutineNotice": "Routine unchanged. Save setup in the routine editor.",
-  "catalogNoCarryover": "No previous load for this setup",
-  "catalogTrialFinish": "This trial keeps measurements in memory. Reset or discard when finished.",
   "catalogSuggested": "Suggested matches — check the choice",
   "catalogNoResults": "No exact match. Try another name or create your exercise.",
-  "catalogSetup": "Setup",
-  "catalogChoose": "Choose an execution",
   "catalogSaveFailed": "Could not add exercise. Try again.",
-  "catalogTrialTitle": "Exercise catalog trial",
-  "catalogTrialNotice": "This disposable trial resets when the app restarts. Measurements and setup choices stay in memory. Finishing and restoring workouts are unavailable.",
-  "catalogTrialStart": "Start trial",
-  "catalogTrialUnavailable": "The trial catalog could not be loaded. Rebuild it with a valid staged catalog.",
   "catalogLogSet": "Log set",
   "catalogAdd": "Add",
   "catalogBrowseMuscles": "Browse by muscle",
@@ -1567,7 +1421,6 @@
   "catalogProgressUnsupported": "Load progression is unavailable for this measurement profile or setup.",
   "catalogSelectSetup": "Choose setup",
   "catalogUseLast": "Use last values",
-  "catalogMarkPending": "Mark as not logged",
   "catalogCustomExercise": "Custom exercise",
   "catalogLegacyExercise": "Legacy exercise",
   "animusSavedLocally": "Saved locally",
@@ -1642,26 +1495,7 @@
     }
   },
   "catalogArtworkDescription": "Exercise illustration",
-  "catalogMovementFrames": "Movement frames (Workout Guide)",
-  "catalogMediaPosition": "Position {number}",
-  "catalogMediaCredit": "Artwork: {attribution} · CC BY-SA 4.0",
-  "catalogMediaLicense": "Artwork license",
-  "catalogMediaLicenseSummary": "CC BY-SA 4.0: you may share and adapt this artwork with attribution and under the same license. The artwork license is separate from the app license. Illustration colors follow the app theme; original assets are unchanged.",
   "catalogMediaUnavailable": "Image unavailable",
-  "@catalogMediaPosition": {
-    "placeholders": {
-      "number": {
-        "type": "int"
-      }
-    }
-  },
-  "@catalogMediaCredit": {
-    "placeholders": {
-      "attribution": {
-        "type": "String"
-      }
-    }
-  },
   "animusRecoveryTitle": "Server history needs review",
   "animusRecoveryOpen": "Review connection",
   "animusRecoveryHide": "Hide review",
@@ -1713,55 +1547,110 @@
   "sessionSetOptions": "{set} options",
   "@sessionSetOptions": {"placeholders": {"set": {"type": "String"}}},
   "catalogMoreMeasurements": "More measurements",
-  "bodyStrength": "Strength",
-  "bodyAllRoles": "All roles",
-  "bodyPrimary": "Primary",
-  "bodySecondary": "Secondary",
-  "bodyStabilizer": "Stabilizer",
-  "bodyStretch": "Stretch targets",
-  "bodyMobility": "Mobility targets",
-  "bodyConditioning": "Conditioning participation",
-  "bodyLegacy": "Legacy groups (coarse)",
-  "bodyRecorded": "Recorded assessment",
-  "bodyCurrent": "Current assessment",
-  "bodyCountMeaning": "Documented sets · counts across regions and roles are not additive.",
-  "bodyZeroMeaning": "0 = no documented sets in this view. Missing evidence remains unknown.",
-  "bodySideMeaning": "Side unspecified: the combined surface does not establish left or right participation.",
-  "bodyEligible": "Eligible sets",
-  "bodyPartialProfiles": "Sets with partial profiles",
-  "bodyUnknownProfiles": "Sets with unknown profiles",
-  "bodyLegacySets": "Sets with coarse legacy groups",
-  "bodyUnmappedAnatomy": "Sets with unmapped anatomy",
-  "bodyExcluded": "Excluded: warmup / pending / deleted",
-  "bodyAnatomy": "Documented anatomy",
-  "bodyNoSurface": "No supported surface",
-  "bodyEvidenceDetails": "Assessment and display details",
-  "bodyUnknownEvidence": "Assessment unavailable",
-  "bodyAssessmentStatus": "Assessment status",
-  "bodyCompleteness": "Scoped completeness",
-  "bodyConfidence": "Relationship confidence",
-  "bodyHumanReview": "Human review: qualification not verified by this app",
-  "bodyScope": "Declared scope",
-  "bodySemanticMap": "Semantic map",
-  "bodySurfaceProjection": "Installed display projection",
-  "bodyHistoricalMapUnavailable": "Historical semantic map unavailable; anatomy remains text-only.",
-  "bodyAssessed": "Assessed",
-  "bodyPartial": "Partial",
-  "bodyComplete": "Complete within scope",
-  "bodyUnknown": "Unknown",
-  "bodyHigh": "High",
-  "bodyModerate": "Moderate",
-  "bodyLow": "Low",
   "bodyGlutes": "Glutes",
   "bodyCore": "Core",
   "bodyForearms": "Forearms",
   "bodyAdductors": "Adductors",
   "bodyAbductors": "Abductors",
-  "bodyDeclaredReview": "Declared human review",
-  "bodyPendingReview": "Pending",
-  "bodyDeclaredReviewed": "Declared reviewed",
-  "bodyDirect": "Direct evidence",
-  "bodyInference": "Editorial biomechanical inference",
-  "bodyIncompleteSurface": "Incomplete surface mapping",
-  "bodyWorkoutCoverage": "Whole-workout coverage"
+  "volumeLegendDone": "Done this week",
+  "volumeLegendLive": "This workout",
+  "volumeLegendPlanned": "Planned",
+  "volumeLiveSemantics": "{muscle}: {done} sets done this week, {live} this workout, {planned} planned, target {target}",
+  "@volumeLiveSemantics": {
+    "placeholders": {
+      "muscle": {
+        "type": "String"
+      },
+      "done": {
+        "type": "int"
+      },
+      "live": {
+        "type": "int"
+      },
+      "planned": {
+        "type": "int"
+      },
+      "target": {
+        "type": "int"
+      }
+    }
+  },
+  "exerciseEditorCatalogGroups": "Muscle groups for this exercise come from the catalog.",
+  "todayStatLoading": "Loading",
+  "todayStatUnavailable": "Unavailable",
+  "todayRecentPrsLoading": "Loading recent PRs…",
+  "todayRecentPrsUnavailable": "Recent PRs unavailable. They could not be loaded.",
+  "catalogProgressNeverLogged": "Log this exercise to see progress.",
+  "catalogProgressLoadFailed": "Progress couldn’t be loaded.",
+  "planEditorRetrySave": "Retry save",
+  "planEditorNotSaved": "Not saved. The fields stay locked so Retry save saves exactly these values once. Discard to leave without saving.",
+  "planEditorDiscardChanges": "Discard changes",
+  "historyNotSavedWillRetry": "Not saved · will retry",
+  "commonSave": "Save",
+  "historySetsNotSaved": "Sets not saved",
+  "historySetsRequired": "Enter the required values for each set before saving.",
+  "historyDiscardSetsTitle": "Discard set changes?",
+  "historyDiscardSetsMessage": "Your unsaved changes to these sets will be lost.",
+  "historySetRemoved": "Set removed",
+  "historyDeletedExercise": "Deleted exercise",
+  "historyNoSetupToLog": "This exercise has no setup to log yet.",
+  "historyDiscardSetChanges": "Discard set changes",
+  "historyDiscardOwedMessage": "These set changes can't be saved. Discarding drops only them; the stored sets stay as they are.",
+  "historyEarlierNotSaved": "Earlier changes in History are not saved yet.",
+  "targetsNotSaved": "Not saved",
+  "historyDiscardUnsaved": "Discard unsaved changes",
+  "historyDiscardUnsavedTitle": "Discard unsaved changes?",
+  "historyDiscardUnsavedMessage": "These History changes can't be saved. Discarding drops only them; what is stored stays as it is.",
+  "sessionSetLogged": "Set {index} logged",
+  "@sessionSetLogged": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionWarmupLogged": "Warm-up logged",
+  "sessionRestOver": "Rest over",
+  "sessionUnloggedSetsTitle": "{count, plural, =1{1 set not logged} other{{count} sets not logged}}",
+  "@sessionUnloggedSetsTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionUnloggedSetsMessage": "Sets you haven't logged won't be saved. Finish anyway?",
+  "sessionFinishAnyway": "Finish anyway",
+  "sessionFinishNeedsSet": "Log at least one set to finish",
+  "sessionFinishSaving": "Saving workout…",
+  "sessionSetSpoken": "Set {index}",
+  "@sessionSetSpoken": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionWarmupSpoken": "Warm-up",
+  "sessionSetStateDone": "done",
+  "sessionSetStateNotDone": "not done",
+  "sessionSetNoValue": "no value",
+  "numberEntryInvalid": "Enter a number",
+  "numberEntryMax": "Enter {max} or less",
+  "@numberEntryMax": {
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "numberEntryMin": "Enter {min} or more",
+  "@numberEntryMin": {
+    "placeholders": {
+      "min": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionDiscardChangesOnlyMessage": "This workout and your changes will be lost."
 }

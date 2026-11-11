@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:alkion/data/body_workload.dart';
 import 'package:alkion/l10n/app_localizations.dart';
+import 'package:alkion/theme/alkion_icon.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/body_figure.dart';
 import 'package:alkion/ui/character_body.dart';
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
+import '../support/body_sheet_expect.dart';
+import '../support/icon_finders.dart';
 
 WorkoutWorkload _workload() => calculateWorkoutWorkload(
   mode: WorkoutWorkloadMode.planned,
@@ -67,7 +70,7 @@ void main() {
   });
   for (final code in ['en', 'de', 'es', 'it']) {
     testWidgets(
-      'workload sheet has native counts and controls at 320dp 2x in $code',
+      'workload sheet keeps only body, legend and counts at 320dp 2x in $code',
       (tester) async {
         tester.view.physicalSize = const Size(320, 900);
         tester.view.devicePixelRatio = 1;
@@ -91,29 +94,75 @@ void main() {
           ),
         );
         await tester.pump();
-        await tester.tap(find.text(l.bodyWorkload));
+        expect(find.text(l.bodyWorkloadEntry), findsOneWidget);
+        await tester.tap(find.byKey(const Key('body-workload-entry')));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         expect(find.byType(CharacterBody), findsOneWidget);
         final body = tester.widget<CharacterBody>(find.byType(CharacterBody));
         expect(body.compact, isFalse);
-        expect(find.text(l.bodyMapped(2)), findsOneWidget);
-        expect(find.text(l.bodyUnmapped(1)), findsOneWidget);
-        expect(find.text(l.bodyUnknownKind(1)), findsOneWidget);
+        expect(
+          tester.getSize(find.byType(CharacterBody)).height,
+          greaterThanOrEqualTo(420),
+        );
         expect(
           tester
               .widget<Text>(find.byKey(const ValueKey('body-count-chest')))
               .data,
           '2',
         );
-        for (final label in [l.bodyViewFront, l.bodyViewBack, l.bodyPause]) {
-          final control = find.widgetWithText(TextButton, label);
-          expect(tester.getSize(control).width, greaterThanOrEqualTo(48));
-          expect(tester.getSize(control).height, greaterThanOrEqualTo(48));
-        }
+        expectWorkloadSheetSections(tester, l, mode: l.bodyPlanned);
         await tester.pumpWidget(const SizedBox());
       },
     );
+  }
+  for (final brightness in Brightness.values) {
+    testWidgets('workload entry is a 48dp pill speaking the sheet title '
+        '(${brightness.name})', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        wrapL10n(
+          Theme(
+            data: buildTheme(brightness, defaultWorkoutAccent),
+            child: Center(child: BodyFigure(workload: _workload())),
+          ),
+        ),
+      );
+      await tester.pump();
+      final entry = find.byKey(const Key('body-workload-entry'));
+      expect(tester.getSize(entry).height, 48);
+      expect(
+        tester.getSize(find.byType(BodyFigure)),
+        Size(
+          BodyFigure.largeWidth,
+          BodyFigure.heightFor(BodyFigure.largeWidth),
+        ),
+      );
+      for (final glyph in [AlkionGlyph.wholeBody, AlkionGlyph.chevronRight]) {
+        expect(
+          find.descendant(of: entry, matching: findGlyph(glyph)),
+          findsOneWidget,
+        );
+      }
+      expect(find.text('Workload'), findsOneWidget);
+      expect(
+        tester.getSemantics(entry),
+        matchesSemantics(
+          label: 'Workout workload',
+          isButton: true,
+          hasTapAction: true,
+          hasFocusAction: true,
+          isFocusable: true,
+          hasEnabledState: true,
+          isEnabled: true,
+        ),
+      );
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsOneWidget);
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    });
   }
   for (final reduced in [false, true]) {
     testWidgets('artwork drag owns horizontal pager gestures (reduced: $reduced)', (
@@ -136,7 +185,7 @@ void main() {
             controller: scroll,
             children: [
               SizedBox(
-                height: 320,
+                height: 400,
                 child: PageView(
                   controller: pages,
                   children: [
@@ -309,7 +358,7 @@ void main() {
     expect(art().visible, isTrue);
     await tester.pumpWidget(const SizedBox());
   });
-  testWidgets('reduced motion is explicit and keeps manual view controls', (
+  testWidgets('reduced motion is explicit and the sheet has no view buttons', (
     tester,
   ) async {
     tester.platformDispatcher.accessibilityFeaturesTestValue =
@@ -324,11 +373,20 @@ void main() {
       tester.widget<CharacterBody>(find.byType(CharacterBody)).reducedMotion,
       isTrue,
     );
-    await tester.tap(find.text('Workout workload'));
+    await tester.tap(find.byKey(const Key('body-workload-entry')));
     await tester.pumpAndSettle();
+    expect(
+      tester.widget<CharacterBody>(find.byType(CharacterBody)).reducedMotion,
+      isTrue,
+    );
     expect(find.text('Pause rotation'), findsNothing);
-    expect(find.text('Front'), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Back'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Front'), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Back'), findsNothing);
+    expectWorkloadSheetSections(
+      tester,
+      lookupAppLocalizations(const Locale('en')),
+      mode: 'Planned working sets',
+    );
     await tester.pumpWidget(const SizedBox());
   });
 }

@@ -13,15 +13,21 @@ class IconoirAssetsTest(unittest.TestCase):
         self.manifest = json.loads((generator.INPUT / 'manifest.json').read_text())
 
     def test_reproducible_subset_and_pinned_source_hashes(self):
-        self.assertEqual(len(self.manifest['assets']), 48)
+        self.assertEqual(len(self.manifest['assets']), 49)
         self.assertEqual(len(self.manifest['custom_assets']), 42)
-        self.assertEqual(generator.generate(check=True), 180)
+        self.assertEqual(generator.generate(check=True), 182)
         self.assertEqual(generator.outputs(), generator.outputs())
         self.assertEqual(self.manifest['revision'], '39834e3f193bc0cca2c36bebb6a650471977433d')
         self.assertEqual(self.manifest['license']['spdx'], 'MIT')
         for asset in self.manifest['assets']:
-            self.assertTrue(asset['url'].endswith('/icons/regular/' + asset['name'] + '.svg'))
+            # The filled favourite is the only original from the solid set.
+            name = asset['name']
+            path = ('/icons/solid/' + name.removesuffix('-solid') if name.endswith('-solid')
+                    else '/icons/regular/' + name)
+            self.assertTrue(asset['url'].endswith(path + '.svg'))
             self.assertIn(self.manifest['revision'], asset['url'])
+        self.assertEqual([a['name'] for a in self.manifest['assets'] if a['name'].endswith('-solid')],
+                         ['star-solid'])
         notice = (generator.OUTPUT / 'NOTICE').read_text()
         self.assertIn('Copyright (c) 2021 Luca Burgio', notice)
         self.assertIn('Permission is hereby granted', notice)

@@ -1,6 +1,9 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:alkion/data/active_session_draft.dart';
+import 'package:alkion/data/session_writer.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/active_session_screen.dart';
 import 'package:alkion/settings/settings_service.dart';
@@ -56,17 +59,22 @@ void main() {
       await harness.unmount(tester);
     });
 
-    // While a data capture holds the source: the hold banner under the
-    // header, and +30s drawn unavailable on a running rest row.
-    testWidgets('the live workout held by a capture holds at $name', (
+    // After a Finish failed and awaits a retry: the not-saved banner under
+    // the header, and +30s and Skip drawn unavailable on a running rest row.
+    testWidgets('the live workout awaiting a Finish retry holds at $name', (
       tester,
     ) async {
       await harness.open(tester);
       setPhone(tester, width: c.width, textScale: c.textScale);
-      final controller = ActiveSessionController()..seedForTest(longDraft());
+      final drafts = DraftStore.local(harness.database);
+      await tester.runAsync(drafts.load);
+      final controller = ActiveSessionController(draftStore: drafts)
+        ..seedForTest(longDraft());
       controller.logLiveSet();
       controller.startRest(180);
-      controller.freezeCallbacks(1);
+      // Prepared but never committed: the state a failed Finish leaves.
+      controller.prepareFinish(WorkoutRepository.local(harness.database));
+      expect(controller.callbacksFrozen, isTrue);
       await tester.pumpWidget(
         harness.wrap(
           const ActiveSessionScreen(),
@@ -80,9 +88,14 @@ void main() {
       );
       await settleUntilFound(
         tester,
-        find.byKey(const Key('capture-hold-banner')),
+        find.byKey(const Key('finish-not-saved-banner')),
         where: 'Live held $name',
       );
+      final l = AppLocalizations.of(
+        tester.element(find.byType(ActiveSessionScreen)),
+      );
+      expect(find.text(l.finishNotSavedBanner), findsOneWidget);
+      expect(find.text(l.restChangesWaitForSave), findsOneWidget);
       await expectLayoutHoldsWhileScrolling(
         tester,
         find.byType(ActiveSessionScreen),

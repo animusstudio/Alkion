@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:provider/provider.dart';
@@ -12,20 +14,18 @@ import '../theme/app_theme.dart';
 import '../theme/motion.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
+import '../widgets/glyph_loading.dart';
 import 'character_body.dart';
 
 /// The caller supplies authoritative values; artwork never owns workout data.
+/// Saved workouts show their recorded assessment.
 Future<void> showBodyWorkloadSheet(
   BuildContext context, {
   required WorkoutWorkload Function() workload,
-  WorkoutWorkload Function()? currentWorkload,
   Listenable? changes,
 }) async {
   final settings = context.read<SettingsService?>();
-  Widget content() => _WorkloadSheet(
-    workload: workload(),
-    currentWorkload: currentWorkload?.call(),
-  );
+  Widget content() => _WorkloadSheet(workload: workload());
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -45,10 +45,79 @@ Future<void> showBodyWorkloadSheet(
   );
 }
 
+/// The workload entry: a 48 dp tonal pill with the body glyph, a short label
+/// and a chevron. It speaks the full sheet title.
+class BodyWorkloadButton extends StatelessWidget {
+  const BodyWorkloadButton({super.key, required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context), t = context.tokens;
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        backgroundColor: t.surface2,
+        foregroundColor: t.text,
+        side: BorderSide(color: t.line),
+        shape: const StadiumBorder(),
+      ),
+      child: Row(
+        children: [
+          AlkionIcon(AlkionGlyph.wholeBody, size: 18, color: t.text),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Semantics(
+              label: l.bodyWorkload,
+              child: ExcludeSemantics(
+                child: FitLabel(
+                  l.bodyWorkloadEntry,
+                  maxLines: 1,
+                  style: WorkoutType.body(
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: t.text,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          AlkionIcon(AlkionGlyph.chevronRight, size: 16, color: t.dim),
+        ],
+      ),
+    );
+  }
+}
+
 class BodyFigure extends StatefulWidget {
-  const BodyFigure({super.key, required this.workload, this.visible = true});
+  const BodyFigure({
+    super.key,
+    required this.workload,
+    this.visible = true,
+    this.width = largeWidth,
+  });
   final WorkoutWorkload workload;
   final bool visible;
+
+  /// Figure width; the artwork height follows [artHeightFor].
+  final double width;
+
+  /// The Today card's narrowest side-by-side figure and its full size: the
+  /// full figure's 176×308 artwork is over 1.35× the old 128×212 both ways.
+  static const double compactWidth = 128;
+  static const double largeWidth = 176;
+
+  /// The gap and 48 dp entry below the artwork.
+  static const double entryHeight = 8 + 48;
+
+  /// Every width keeps the artwork's 4:7 aspect.
+  static double artHeightFor(double width) => (width * 1.75).roundToDouble();
+
+  /// The whole figure: artwork plus entry.
+  static double heightFor(double width) => artHeightFor(width) + entryHeight;
 
   @override
   State<BodyFigure> createState() => _BodyFigureState();
@@ -94,19 +163,20 @@ class _BodyFigureState extends State<BodyFigure> {
 
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
+    final width = widget.width;
+    final artHeight = BodyFigure.artHeightFor(width);
     return SizedBox(
-      width: 128,
-      height: 260,
+      width: width,
+      height: BodyFigure.heightFor(width),
       child: Column(
         children: [
           SizedBox(
-            height: 212,
+            height: artHeight,
             child: _expanded
                 ? const SizedBox.expand()
-                : Semantics(
-                    button: true,
-                    label: l.bodyWorkload,
+                // The pill below is the accessible entry; the art's tap is a
+                // shortcut for sighted users and is not announced twice.
+                : ExcludeSemantics(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: _open,
@@ -114,24 +184,18 @@ class _BodyFigureState extends State<BodyFigure> {
                         workload: widget.workload,
                         visible: widget.visible,
                         compact: true,
+                        size: Size(width, artHeight),
                       ),
                     ),
                   ),
           ),
+          const SizedBox(height: 8),
           SizedBox(
+            width: width,
             height: 48,
-            width: 128,
-            child: TextButton(
+            child: BodyWorkloadButton(
+              key: const Key('body-workload-entry'),
               onPressed: _open,
-              style: TextButton.styleFrom(
-                minimumSize: const Size(128, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-              ),
-              child: FitLabel(
-                l.bodyWorkload,
-                maxLines: 1,
-                style: WorkoutType.body(size: 12, color: context.tokens.text),
-              ),
             ),
           ),
         ],
@@ -146,46 +210,33 @@ const bodySurfaceProjectionRevision = 'alkion-surface-3';
 class _WorkloadView {
   const _WorkloadView({
     this.kind = CatalogMuscleKind.strength,
-    this.role,
     this.legacy = false,
   });
   final CatalogMuscleKind kind;
-  final CatalogMuscleRole? role;
   final bool legacy;
   Map<WorkloadMuscle, MuscleWorkload> counts(WorkoutWorkload w) =>
-      w.regionCounts(kind: kind, role: role, legacy: legacy);
+      w.regionCounts(kind: kind, legacy: legacy);
 }
 
+// Tested in order: the first view with loaded evidence is shown, including
+// deep-only participation, so stretch-only work shows stretch targets.
 const _views = [
   _WorkloadView(),
-  _WorkloadView(role: CatalogMuscleRole.primary),
-  _WorkloadView(role: CatalogMuscleRole.secondary),
-  _WorkloadView(role: CatalogMuscleRole.stabilizer),
   _WorkloadView(kind: CatalogMuscleKind.stretchTarget),
   _WorkloadView(kind: CatalogMuscleKind.mobilityTarget),
   _WorkloadView(kind: CatalogMuscleKind.conditioningParticipation),
   _WorkloadView(legacy: true),
 ];
-int _defaultView(WorkoutWorkload w) {
-  for (final i in [0, 4, 5, 6, 7]) {
-    if (_views[i].counts(w).values.any((v) => v.count > 0) ||
-        (!_views[i].legacy && w.anatomy.any((a) => a.kind == _views[i].kind))) {
-      return i;
+_WorkloadView _defaultView(WorkoutWorkload w) {
+  for (final view in _views) {
+    if (view.counts(w).values.any((v) => v.count > 0) ||
+        (!view.legacy && w.anatomy.any((a) => a.kind == view.kind))) {
+      return view;
     }
   }
-  return 0;
+  return _views.first;
 }
 
-String _viewLabel(AppLocalizations l, int index) => [
-  '${l.bodyStrength} · ${l.bodyAllRoles}',
-  '${l.bodyStrength} · ${l.bodyPrimary}',
-  '${l.bodyStrength} · ${l.bodySecondary}',
-  '${l.bodyStrength} · ${l.bodyStabilizer}',
-  l.bodyStretch,
-  l.bodyMobility,
-  l.bodyConditioning,
-  l.bodyLegacy,
-][index];
 String _regionLabel(BuildContext context, WorkloadMuscle muscle) {
   final l = AppLocalizations.of(context);
   return switch (muscle) {
@@ -198,115 +249,20 @@ String _regionLabel(BuildContext context, WorkloadMuscle muscle) {
   };
 }
 
-String _evidenceValue(AppLocalizations l, Object? value) => switch (value) {
-  'assessed' => l.bodyAssessed,
-  'partial' => l.bodyPartial,
-  'complete' => l.bodyComplete,
-  'high' => l.bodyHigh,
-  'moderate' => l.bodyModerate,
-  'low' => l.bodyLow,
-  'pending' => l.bodyPendingReview,
-  'reviewed' => l.bodyDeclaredReviewed,
-  _ => l.bodyUnknown,
-};
-
-// Native buttons let every label determine its height at large system type.
-class _WorkloadChoice extends StatelessWidget {
-  const _WorkloadChoice({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    return Semantics(
-      selected: selected,
-      child: TextButton(
-        onPressed: onPressed,
-        style: TextButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.all(12),
-          foregroundColor: selected ? t.accentText : t.text,
-          side: BorderSide(color: selected ? t.accentText : t.line),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (selected) ...[
-              const AlkionIcon(AlkionGlyph.check, size: 18),
-              const SizedBox(width: 8),
-            ],
-            Flexible(
-              child: Text(
-                label,
-                softWrap: true,
-                style: WorkoutType.body(
-                  size: 14,
-                  color: selected ? t.accentText : t.text,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WorkloadSheet extends StatefulWidget {
-  const _WorkloadSheet({required this.workload, this.currentWorkload});
+class _WorkloadSheet extends StatelessWidget {
+  const _WorkloadSheet({required this.workload});
   final WorkoutWorkload workload;
-  final WorkoutWorkload? currentWorkload;
-  @override
-  State<_WorkloadSheet> createState() => _WorkloadSheetState();
-}
 
-class _WorkloadSheetState extends State<_WorkloadSheet> {
-  bool _current = false;
-  bool _viewChosen = false;
-  late int _view;
-  @override
-  void initState() {
-    super.initState();
-    _view = _defaultView(widget.workload);
-  }
-
-  @override
-  void didUpdateWidget(_WorkloadSheet oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.currentWorkload == null) _current = false;
-    if (!_viewChosen) {
-      _view = _defaultView(
-        _current ? widget.currentWorkload! : widget.workload,
-      );
-    }
-  }
-
-  void _assessment(bool current) => setState(() {
-    _current = current;
-    if (!_viewChosen) {
-      _view = _defaultView(
-        _current ? widget.currentWorkload! : widget.workload,
-      );
-    }
-  });
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context), t = context.tokens;
-    final workload = _current ? widget.currentWorkload! : widget.workload;
-    final view = _views[_view];
+    final height = MediaQuery.sizeOf(context).height * .9;
     return SizedBox(
-      height: MediaQuery.sizeOf(context).height * .9,
+      height: height,
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -330,98 +286,27 @@ class _WorkloadSheetState extends State<_WorkloadSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(switch (workload.mode) {
-                WorkoutWorkloadMode.planned => l.bodyPlanned,
-                WorkoutWorkloadMode.active => l.bodyCompleted,
-                WorkoutWorkloadMode.saved => l.bodySaved,
-              }, style: WorkoutType.body(size: 16, color: t.text)),
-              if (widget.currentWorkload != null) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _WorkloadChoice(
-                      key: const Key('body-recorded'),
-                      label: l.bodyRecorded,
-                      selected: !_current,
-                      onPressed: () => _assessment(false),
-                    ),
-                    _WorkloadChoice(
-                      key: const Key('body-current'),
-                      label: l.bodyCurrent,
-                      selected: _current,
-                      onPressed: () => _assessment(true),
-                    ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 16),
-              // Wrap preserves native touch targets and readable labels at large type.
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (var i = 0; i < _views.length; i++)
-                    _WorkloadChoice(
-                      key: ValueKey('body-view-$i'),
-                      label: _viewLabel(l, i),
-                      selected: _view == i,
-                      onPressed: () => setState(() {
-                        _viewChosen = true;
-                        _view = i;
-                      }),
-                    ),
-                ],
+              FitLabel(
+                switch (workload.mode) {
+                  WorkoutWorkloadMode.planned => l.bodyPlanned,
+                  WorkoutWorkloadMode.active => l.bodyCompleted,
+                  WorkoutWorkloadMode.saved => l.bodySaved,
+                },
+                key: const Key('body-workload-mode'),
+                maxLines: 2,
+                style: WorkoutType.body(size: 14, color: t.dim),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               _BodyArtwork(
                 workload: workload,
-                counts: view.counts(workload),
                 visible: true,
                 compact: false,
+                size: Size(double.infinity, math.max(420, height * .5)),
               ),
               const SizedBox(height: 16),
-              Text(
-                l.bodyCountMeaning,
-                style: WorkoutType.body(size: 14, color: t.dim),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 16,
-                runSpacing: 12,
-                children: [
-                  for (var i = 0; i < workloadCountBins.length; i++)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 16,
-                          height: 16,
-                          color: Color.lerp(t.text, t.accentText, i / 5),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          workloadCountBins[i],
-                          style: WorkoutType.mono(size: 14, color: t.text),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                l.bodyZeroMeaning,
-                style: WorkoutType.body(size: 14, color: t.dim),
-              ),
+              const _WorkloadLegend(key: Key('body-legend')),
               const SizedBox(height: 24),
-              BodyWorkloadCounts(
-                workload: workload,
-                kind: view.kind,
-                role: view.role,
-                legacy: view.legacy,
-              ),
+              BodyWorkloadCounts(workload: workload),
             ],
           ),
         ),
@@ -430,164 +315,157 @@ class _WorkloadSheetState extends State<_WorkloadSheet> {
   }
 }
 
+/// The six fixed count bins as one scale row, in the renderer's ink ramp.
+/// When the widest label cannot fit a sixth of the row at the current text
+/// size, the scale wraps into two rows of three so every label stays whole.
+class _WorkloadLegend extends StatelessWidget {
+  const _WorkloadLegend({super.key});
+
+  static const _gap = 4.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final style = WorkoutType.mono(size: 12, color: t.text);
+    final scaler = MediaQuery.textScalerOf(context);
+    double widest = 0;
+    for (final bin in workloadCountBins) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: bin,
+          style: DefaultTextStyle.of(context).style.merge(style),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      widest = math.max(widest, painter.width);
+      painter.dispose();
+    }
+    Widget cell(int i) => Expanded(
+      child: Column(
+        children: [
+          Container(height: 8, color: Color.lerp(t.text, t.accentText, i / 5)),
+          const SizedBox(height: 4),
+          FitLabel(
+            workloadCountBins[i],
+            maxLines: 1,
+            textAlign: TextAlign.center,
+            style: style,
+          ),
+        ],
+      ),
+    );
+    Widget row(int from, int to) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = from; i < to; i++) ...[
+          if (i > from) const SizedBox(width: _gap),
+          cell(i),
+        ],
+      ],
+    );
+    return LayoutBuilder(
+      builder: (context, box) {
+        const count = 6;
+        final sixth = (box.maxWidth - _gap * (count - 1)) / count;
+        if (widest <= sixth) return row(0, count);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [row(0, 3), const SizedBox(height: 8), row(3, count)],
+        );
+      },
+    );
+  }
+}
+
 /// Native readable values remain available without a supported renderer.
+/// The view follows the same automatic selection as the artwork.
 class BodyWorkloadCounts extends StatelessWidget {
-  const BodyWorkloadCounts({
-    super.key,
-    required this.workload,
-    this.kind = CatalogMuscleKind.strength,
-    this.role,
-    bool? legacy,
-  }) : _legacy = legacy;
+  const BodyWorkloadCounts({super.key, required this.workload});
   final WorkoutWorkload workload;
-  final CatalogMuscleKind kind;
-  final CatalogMuscleRole? role;
-  final bool? _legacy;
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context), t = context.tokens;
+    if (workload.availability == WorkloadAvailability.loading) {
+      // Static: a real wait, but the sheet never sweeps over its counts.
+      return GlyphSkeleton.lines(
+        key: const Key('body-workload-read-state'),
+        widths: const [.9, .7, .8, .6],
+        active: false,
+        semanticLabel: l.bodyLoading,
+      );
+    }
     if (workload.availability != WorkloadAvailability.ready) {
       return Text(
-        workload.availability == WorkloadAvailability.loading
-            ? l.bodyLoading
-            : l.bodyReadUnavailable,
+        l.bodyReadUnavailable,
         key: const Key('body-workload-read-state'),
         style: WorkoutType.body(size: 14, color: t.dim),
       );
     }
-    final legacy = _legacy ?? _defaultView(workload) == 7;
-    final counts = workload.regionCounts(
-      kind: kind,
-      role: role,
-      legacy: legacy,
-    );
-    final coverage = workload.coverage!;
-    Widget note(String value) => Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(value, style: WorkoutType.body(size: 14, color: t.dim)),
-    );
-    String anatomyName(WorkloadAnatomyCount a) =>
-        a.names[Localizations.localeOf(context).languageCode] ??
-        a.names['en'] ??
-        a.id;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (coverage.status == WorkloadCoverageStatus.empty) note(l.bodyEmpty),
-        for (final muscle in WorkloadMuscle.values)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _regionLabel(context, muscle),
-                    style: WorkoutType.body(size: 16, color: t.text),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Text(
-                  '${counts[muscle]?.count ?? 0}',
-                  key: ValueKey('body-count-${muscle.name}'),
-                  style: WorkoutType.mono(size: 16, color: t.text),
-                ),
-              ],
+    final counts = _defaultView(workload).counts(workload);
+    Widget cell(WorkloadMuscle muscle) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: FitLabel(
+              _regionLabel(context, muscle),
+              maxLines: 2,
+              style: WorkoutType.body(size: 14, color: t.text),
             ),
           ),
-        const SizedBox(height: 16),
-        Text(
-          l.bodyWorkoutCoverage,
-          style: WorkoutType.body(size: 18, color: t.text),
-        ),
-        const SizedBox(height: 8),
-        note('${l.bodyEligible}: ${coverage.eligibleSets}'),
-        note(l.bodyMapped(coverage.mappedSets)),
-        if (coverage.unmappedSets > 0)
-          note(l.bodyUnmapped(coverage.unmappedSets)),
-        if (coverage.partialProfileSets > 0)
-          note('${l.bodyPartialProfiles}: ${coverage.partialProfileSets}'),
-        if (coverage.unknownProfileSets > 0)
-          note('${l.bodyUnknownProfiles}: ${coverage.unknownProfileSets}'),
-        if (coverage.legacySets > 0)
-          note('${l.bodyLegacySets}: ${coverage.legacySets}'),
-        if (coverage.unmappedAnatomySets > 0)
-          note('${l.bodyUnmappedAnatomy}: ${coverage.unmappedAnatomySets}'),
-        if (coverage.unknownKindSets > 0)
-          note(l.bodyUnknownKind(coverage.unknownKindSets)),
-        if (coverage.sideUnspecifiedSets > 0)
-          note('${l.bodySideMeaning} (${coverage.sideUnspecifiedSets})'),
-        note(
-          '${l.bodyExcluded}: ${coverage.warmupSets} / ${coverage.pendingSets} / ${coverage.deletedSets}',
-        ),
-        if (!legacy &&
-            workload.anatomy.any(
-              (a) => a.kind == kind && (role == null || a.role == role),
-            )) ...[
-          const SizedBox(height: 16),
-          Text(l.bodyAnatomy, style: WorkoutType.body(size: 18, color: t.text)),
-          for (final a in workload.anatomy.where(
-            (a) => a.kind == kind && (role == null || a.role == role),
-          ))
-            note(
-              '${anatomyName(a)}${a.role == null ? '' : ' · ${[l.bodyPrimary, l.bodySecondary, l.bodyStabilizer][a.role!.index]}'}: ${a.count}${a.unmappedReason == null ? '' : ' · ${a.mappedRegions.isEmpty ? l.bodyNoSurface : l.bodyIncompleteSurface}'}',
-            ),
+          const SizedBox(width: 8),
+          Text(
+            '${counts[muscle]?.count ?? 0}',
+            key: ValueKey('body-count-${muscle.name}'),
+            style: WorkoutType.mono(size: 14, color: t.text),
+          ),
         ],
-        const SizedBox(height: 16),
-        ExpansionTile(
-          title: Text(l.bodyEvidenceDetails),
-          tilePadding: EdgeInsets.zero,
+      ),
+    );
+    const muscles = WorkloadMuscle.values;
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Two columns while a column keeps room for a readable label.
+        final columns =
+            box.maxWidth >= MediaQuery.textScalerOf(context).scale(14) * 20
+            ? 2
+            : 1;
+        final rows = (muscles.length / columns).ceil();
+        return Column(
+          key: const Key('body-workload-counts'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            note('${l.bodySurfaceProjection}: $bodySurfaceProjectionRevision'),
-            for (final resolution in workload.profiles) ...[
-              if (resolution.profile == null) note(l.bodyUnknownEvidence),
-              if (resolution.profile case final profile?) ...[
-                note(
-                  '${resolution.currentAssessment ? l.bodyCurrent : l.bodyRecorded}: ${profile.id ?? l.bodyUnknown} / ${profile.revision ?? l.bodyUnknown}',
+            if (workload.coverage?.status == WorkloadCoverageStatus.empty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  l.bodyEmpty,
+                  style: WorkoutType.body(size: 14, color: t.dim),
                 ),
-                note(
-                  '${l.bodyAssessmentStatus}: ${_evidenceValue(l, profile.assessmentStatus)}',
+              ),
+            for (var row = 0; row < rows; row++)
+              if (columns == 1)
+                cell(muscles[row])
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: cell(muscles[row])),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      child: row + rows < muscles.length
+                          ? cell(muscles[row + rows])
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
                 ),
-                note(
-                  '${l.bodyCompleteness}: ${_evidenceValue(l, profile.coverage)}',
-                ),
-                note(
-                  '${l.bodyConfidence}: ${profile.relationships.map((r) => _evidenceValue(l, r.confidence)).toSet().join(', ')}',
-                ),
-                note(
-                  '${l.bodyDeclaredReview}: ${_evidenceValue(l, profile.humanReview?['status'])}',
-                ),
-                note(l.bodyHumanReview),
-                note(
-                  '${l.bodyScope}: ${profile.scopeDefinition?['rationale'] ?? l.bodyUnknown}',
-                ),
-                note(
-                  '${l.bodySemanticMap}: ${profile.semanticMapRevision ?? l.bodyUnknown}',
-                ),
-                if (profile.isLegacy) note(l.bodyHistoricalMapUnavailable),
-                for (final relationship in profile.relationships) ...[
-                  note(
-                    '${profile.anatomy[relationship.anatomyNodeId]?.names[Localizations.localeOf(context).languageCode] ?? profile.anatomy[relationship.anatomyNodeId]?.names['en'] ?? relationship.anatomyNodeId}: ${relationship.basis == CatalogMuscleEvidenceBasis.biomechanicalInference
-                        ? l.bodyInference
-                        : relationship.basis == CatalogMuscleEvidenceBasis.direct
-                        ? l.bodyDirect
-                        : l.bodyUnknown} · ${_evidenceValue(l, relationship.confidence)}',
-                  ),
-                  if (relationship.rationale case final rationale?)
-                    note(rationale),
-                ],
-                note(
-                  '${profile.sourceNamespace} · ${profile.sourceRevision}\n${profile.sourceBundleDigest}',
-                ),
-              ],
-              if (resolution.recordedProfile case final recorded?
-                  when resolution.currentAssessment)
-                note(
-                  '${l.bodyRecorded}: ${recorded.id ?? l.bodyUnknown} / ${recorded.revision ?? l.bodyUnknown}\n${recorded.sourceRevision} · ${recorded.sourceBundleDigest}',
-                ),
-            ],
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -597,12 +475,12 @@ class _BodyArtwork extends StatefulWidget {
     required this.workload,
     required this.visible,
     required this.compact,
-    this.counts,
+    required this.size,
   });
   final WorkoutWorkload workload;
   final bool visible;
   final bool compact;
-  final Map<WorkloadMuscle, MuscleWorkload>? counts;
+  final Size size;
 
   @override
   State<_BodyArtwork> createState() => _BodyArtworkState();
@@ -727,19 +605,16 @@ class _BodyArtworkState extends State<_BodyArtwork> {
     );
     final art = SizedBox(
       key: _artKey,
-      width: widget.compact ? 128 : double.infinity,
-      height: widget.compact ? 212 : 340,
+      width: widget.size.width,
+      height: widget.size.height,
       child: CharacterBody(
         style: settings?.bodyStyle == 'female'
             ? CharacterBodyStyle.female
             : CharacterBodyStyle.male,
         scores: {
-          for (final entry
-              in (widget.counts ??
-                      _views[_defaultView(widget.workload)].counts(
-                        widget.workload,
-                      ))
-                  .entries)
+          for (final entry in _defaultView(
+            widget.workload,
+          ).counts(widget.workload).entries)
             entry.key: entry.value.score,
         },
         neutral: t.text,
@@ -767,51 +642,22 @@ class _BodyArtworkState extends State<_BodyArtwork> {
       child: art,
     );
     if (widget.compact) return interactiveArt;
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          interactiveArt,
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: [
-              _control(
-                l.bodyViewFront,
-                _controller.front,
-                selected: _controller.paused && _controller.yaw.abs() < .01,
-              ),
-              _control(
-                l.bodyViewBack,
-                _controller.back,
-                selected:
-                    _controller.paused &&
-                    (_controller.yaw - 3.141592653589793).abs() < .01,
-              ),
-              if (!reduced)
-                _control(
-                  _controller.paused ? l.bodyResume : l.bodyPause,
-                  _controller.paused ? _controller.resume : _controller.pause,
-                ),
-              if (_status == CharacterBodyStatus.error ||
-                  _status == CharacterBodyStatus.unavailable)
-                _control(l.bodyRetryArtwork, _controller.retry),
-            ],
+    // Drag turns the close-up; the only control is Reload after a failure.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        interactiveArt,
+        if (_status == CharacterBodyStatus.error ||
+            _status == CharacterBodyStatus.unavailable)
+          Center(
+            child: TextButton(
+              key: const Key('body-artwork-retry'),
+              onPressed: _controller.retry,
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              child: Text(l.bodyRetryArtwork, textAlign: TextAlign.center),
+            ),
           ),
-        ],
-      ),
+      ],
     );
   }
-
-  Widget _control(String label, VoidCallback action, {bool? selected}) =>
-      Semantics(
-        selected: selected,
-        child: TextButton(
-          onPressed: action,
-          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-          child: Text(label, textAlign: TextAlign.center),
-        ),
-      );
 }

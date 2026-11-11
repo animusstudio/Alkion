@@ -53,6 +53,8 @@ main without conflicts; runtime/assets matched main exactly. Preserve its schema
   requires matching namespace/revision/signature and discloses both provenances without
   modifying saved rows. Planned uses exact current profiles; launch pins active choice.
   Current definition tombstones do not erase readable historical revisions or switch pins.
+  (The current-assessment view is superseded by
+  [2026-11-07-ux-polish](2026-11-07-ux-polish.md): the trimmed sheet shows recorded only.)
 - Retain semantic map content in v2 snapshots. Surface geometry is independently
   versioned: display uses the installed current surface projection and labels it alongside
   the recorded semantic map, never claiming historical pixels. Missing/unsupported maps

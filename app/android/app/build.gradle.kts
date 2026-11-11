@@ -83,8 +83,6 @@ if (animusPrivateHttp || privateHttpDart) {
 // A one-off synthetic device artifact, never a product flavor or release identity.
 val isolatedBodyPreview =
     providers.environmentVariable("ALKION_ISOLATED_BODY_PREVIEW").orNull == "1"
-val isolatedCatalogTrial =
-    providers.environmentVariable("ALKION_ISOLATED_CATALOG_TRIAL").orNull == "1"
 val privateCatalogDev =
     providers.environmentVariable("ALKION_PRIVATE_CATALOG_DEV").orNull == "1"
 val catalogDevDefined = providers.gradleProperty("dart-defines").orNull
@@ -95,25 +93,20 @@ val catalogDevDefined = providers.gradleProperty("dart-defines").orNull
 require(catalogDevDefined == privateCatalogDev) {
     "Private Dev catalog requires matching native and Dart opt-ins"
 }
-val catalogTrialAssets = file(if (privateCatalogDev)
-    "../../build/private-catalog-dev/assets" else "../../build/private-catalog-trial/assets")
-val catalogTrialTarget = file("../../lib/catalog_trial.dart").canonicalFile
+val privateCatalogAssets = file("../../build/private-catalog-dev/assets")
 val catalogDevTarget = file("../../lib/main.dart").canonicalFile
 val configuredTarget = providers.gradleProperty("target").orNull?.let {
     val candidate = File(it)
     (if (candidate.isAbsolute) candidate else File(file("../.."), it)).canonicalFile
 }
-require(!animusEnabled || (!isolatedBodyPreview && !isolatedCatalogTrial &&
+require(!animusEnabled || (!isolatedBodyPreview &&
     providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull != "1")) {
-    "An offline preview or catalog trial cannot enable an Animus connection"
+    "An offline preview cannot enable an Animus connection"
 }
-require(!(isolatedBodyPreview && isolatedCatalogTrial)) {
-    "Select only one isolated development target"
+require(!privateCatalogDev || !isolatedBodyPreview) {
+    "Normal Dev catalog cannot use an isolated preview"
 }
-require(!privateCatalogDev || (!isolatedBodyPreview && !isolatedCatalogTrial)) {
-    "Normal Dev catalog cannot use an isolated preview or trial"
-}
-if (isolatedCatalogTrial || privateCatalogDev || configuredTarget == catalogTrialTarget) {
+if (privateCatalogDev) {
     val requestedTasks = gradle.startParameter.taskNames
     val onlyDebugApk = requestedTasks.size == 1 && requestedTasks.single() in
         setOf("assembleDevDebug", ":app:assembleDevDebug")
@@ -121,36 +114,31 @@ if (isolatedCatalogTrial || privateCatalogDev || configuredTarget == catalogTria
         setOf("assembleDevRelease", ":app:assembleDevRelease") && localReleaseTest
     val signerHome = providers.environmentVariable("ANDROID_USER_HOME").orNull
     require(
-        ((isolatedCatalogTrial && onlyDebugApk && configuredTarget == catalogTrialTarget &&
-            !localReleaseTest) ||
-            (privateCatalogDev && (onlyDebugApk || onlyLocalReleaseApk) &&
-                configuredTarget == catalogDevTarget)) &&
-            (!animusEnabled || (privateCatalogDev && onlyDebugApk)) &&
+        (onlyDebugApk || onlyLocalReleaseApk) && configuredTarget == catalogDevTarget &&
+            (!animusEnabled || onlyDebugApk) &&
             providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull != "1" &&
-            (privateCatalogDev ||
-                providers.environmentVariable("ALKION_PRIVATE_BODY_ASSETS").orNull != "1") &&
             !signerHome.isNullOrBlank() && File(signerHome, "debug.keystore").isFile
     ) {
         "Private catalog requires its exact Dev target/task, compatible assets " +
             "and an existing explicit disposable debug signer"
     }
-    require(catalogTrialAssets.isDirectory &&
-        generateSequence(catalogTrialAssets) { it.parentFile }
+    require(privateCatalogAssets.isDirectory &&
+        generateSequence(privateCatalogAssets) { it.parentFile }
             .none { Files.isSymbolicLink(it.toPath()) } &&
-        catalogTrialAssets.walkTopDown().none { Files.isSymbolicLink(it.toPath()) }
-    ) { "Stage the private catalog trial assets without redirected paths first" }
+        privateCatalogAssets.walkTopDown().none { Files.isSymbolicLink(it.toPath()) }
+    ) { "Stage the private catalog assets without redirected paths first" }
     val manifest = JsonSlurper().parse(
-        File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/manifest.dev.json")
+        File(privateCatalogAssets, "flutter_assets/assets/catalog_trial/manifest.dev.json")
     ) as? Map<*, *>
     val browseMetadata = manifest?.get("browse") as? Map<*, *>
     // Schema 4 (Dev only) adds the versioned muscle bundle and its trusted scope registry.
     val muscleMetadata = manifest?.get("muscle_bundle") as? Map<*, *>
     val scopeMetadata = manifest?.get("scope_registry") as? Map<*, *>
-    val muscleSchema = privateCatalogDev && manifest?.get("schema_version") == 4 &&
+    val muscleSchema = manifest?.get("schema_version") == 4 &&
         muscleMetadata != null && scopeMetadata != null
     val stagedDigest = { name: String ->
         MessageDigest.getInstance("SHA-256").digest(
-            File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/$name").readBytes()
+            File(privateCatalogAssets, "flutter_assets/assets/catalog_trial/$name").readBytes()
         ).joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
     val relativeFiles = setOf(
@@ -162,23 +150,22 @@ if (isolatedCatalogTrial || privateCatalogDev || configuredTarget == catalogTria
             "flutter_assets/assets/catalog_trial/muscles.dev.json",
             "flutter_assets/assets/catalog_trial/muscle-scopes.dev.json",
         ) else emptySet()
-    require(catalogTrialAssets.walkTopDown().filter { it.isFile }
-            .map { it.relativeTo(catalogTrialAssets).invariantSeparatorsPath }.toSet() == relativeFiles
-    ) { "Stage and verify the exact private catalog trial assets first" }
-    val payload = File(catalogTrialAssets, "flutter_assets/assets/catalog_trial/catalog.dev.json")
+    require(privateCatalogAssets.walkTopDown().filter { it.isFile }
+            .map { it.relativeTo(privateCatalogAssets).invariantSeparatorsPath }.toSet() == relativeFiles
+    ) { "Stage and verify the exact private catalog assets first" }
+    val payload = File(privateCatalogAssets, "flutter_assets/assets/catalog_trial/catalog.dev.json")
     val payloadDigest = MessageDigest.getInstance("SHA-256").digest(payload.readBytes())
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-    val admittedScope = manifest != null && if (privateCatalogDev)
+    // The staged input manifest's private_trial_only key must never ship.
+    val admittedScope = manifest != null &&
         manifest["format"] == "alkion-catalog-development-manifest" &&
-            (manifest["schema_version"] == 3 || muscleSchema) &&
-            manifest["private_development_only"] == true &&
-            !manifest.containsKey("private_trial_only")
-        else manifest["format"] == "alkion-catalog-trial-manifest" &&
-            manifest["schema_version"] in setOf(1, 2) && manifest["private_trial_only"] == true
+        (manifest["schema_version"] == 3 || muscleSchema) &&
+        manifest["private_development_only"] == true &&
+        !manifest.containsKey("private_trial_only")
     require(manifest != null && admittedScope &&
         manifest["redistribution_cleared"] == false && manifest["media_included"] == false &&
         manifest["projection_sha256"] == payloadDigest
-    ) { "Private catalog trial admission manifest or projection digest is invalid" }
+    ) { "Private catalog admission manifest or projection digest is invalid" }
     require((manifest["schema_version"] in setOf(1, 3, 4) && browseMetadata == null) ||
         (manifest["schema_version"] in setOf(2, 3, 4) && browseMetadata != null &&
             browseMetadata["projection_sha256"] == stagedDigest("browse.dev.json"))
@@ -275,11 +262,11 @@ android {
     if (providers.environmentVariable("ALKION_BODY_PREVIEW_OFFLINE").orNull == "1") {
         sourceSets.getByName("debug").manifest.srcFile("src/bodyPreview/AndroidManifest.xml")
     }
-    if (isolatedCatalogTrial || privateCatalogDev) {
+    if (privateCatalogDev) {
         if (!animusEnabled) {
-            sourceSets.getByName("debug").manifest.srcFile("src/catalogTrial/AndroidManifest.xml")
+            sourceSets.getByName("debug").manifest.srcFile("src/privateCatalog/AndroidManifest.xml")
         }
-        sourceSets.getByName("main").assets.srcDir(catalogTrialAssets)
+        sourceSets.getByName("main").assets.srcDir(privateCatalogAssets)
         // Exact JNI hash admission compares the generated and packaged bytes.
         if (!localReleaseTest) {
             packaging.jniLibs.keepDebugSymbols.addAll(setOf(
@@ -313,10 +300,7 @@ android {
             dimension = "installation"
             applicationIdSuffix = ".dev"
             manifestPlaceholders["oidcRedirectScheme"] = "dev.animusstudio.alkion.dev"
-            if (isolatedCatalogTrial) {
-                applicationId = "dev.animusstudio.alkion.catalogtrial"
-                manifestPlaceholders["alkionLabel"] = "Alkion Exercise Trial"
-            } else if (isolatedBodyPreview) {
+            if (isolatedBodyPreview) {
                 applicationId = "dev.animusstudio.alkion.bodypreview"
                 manifestPlaceholders["alkionLabel"] = "Body renderer preview"
             } else {

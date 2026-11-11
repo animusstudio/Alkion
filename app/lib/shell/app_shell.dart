@@ -14,6 +14,7 @@ import '../ui/today_screen.dart';
 import '../session/session_manager.dart';
 import '../theme/motion.dart';
 import '../theme/workout_canvas.dart';
+import '../widgets/w_toast.dart';
 import 'back_dispatch.dart';
 import 'session_launcher.dart' as launcher;
 import 'session_indicator.dart';
@@ -22,8 +23,7 @@ import 'w_tab_bar.dart';
 /// The five destination shell. Today remains the home index so Android Back
 /// and the Plan editor guard retain their existing priority.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, this.onLogout, this.auth, this.onImportReps});
-  final VoidCallback? onImportReps;
+  const AppShell({super.key, this.onLogout, this.auth});
 
   /// Called (awaited) when the user logs out via the Profile screen.
   final Future<void> Function()? onLogout;
@@ -87,8 +87,12 @@ class _AppShellState extends State<AppShell> {
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
+  // Toasts this Scaffold shows float above the tab bar.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ToastTabBarClearance(child: _buildShell(context));
+
+  Widget _buildShell(BuildContext context) {
     final manager = context.watch<SessionManager>();
     final reserveIndicator =
         manager.active != null && !manager.screenOpen && _index != 0;
@@ -161,7 +165,6 @@ class _AppShellState extends State<AppShell> {
                           onClose: () => _selectTab(0),
                           onLogout: widget.onLogout,
                           auth: widget.auth,
-                          onImportReps: widget.onImportReps,
                         )
                       else
                         const SizedBox.shrink(),

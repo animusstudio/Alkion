@@ -3,7 +3,9 @@ import 'dart:ui' show Tristate;
 
 import 'package:alkion/catalog/catalog.dart';
 import 'package:alkion/catalog_ui/catalog_picker.dart';
-import 'package:alkion/catalog_ui/catalog_trial_scope.dart';
+import 'package:alkion/catalog_ui/catalog_scope.dart';
+import 'package:alkion/catalog_ui/catalog_runtime_state.dart';
+import '../support/memory_catalog_state.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
@@ -20,7 +22,7 @@ String fixtureId(int n) =>
 
 /// Authored navigation fixtures. These artificial memberships exercise role
 /// partitions; they are not imported candidate IDs or biomechanical evidence.
-CatalogTrialState discoveryState({
+CatalogRuntimeState discoveryState({
   bool browse = true,
   bool sharedFamiliar = false,
 }) {
@@ -64,7 +66,7 @@ CatalogTrialState discoveryState({
   add(93, 103, 'synthetic_triceps', 'Synthetic triceps press', 'cable');
   final bytes = utf8.encode(jsonEncode(source));
   final original = CatalogBundle.fromBytes(bytes);
-  if (!browse) return CatalogTrialState(original);
+  if (!browse) return MemoryCatalogState(original);
   final groupNames = <String, List<String>>{
     'chest': ['Chest', 'Petto', 'Brust', 'Pecho'],
     'back': ['Back', 'Schiena', 'Rücken', 'Espalda'],
@@ -142,7 +144,7 @@ CatalogTrialState discoveryState({
     ],
   };
   final text = jsonEncode(sidecar);
-  return CatalogTrialState(
+  return MemoryCatalogState(
     CatalogBundle.fromBytes(
       bytes,
       browseBytes: utf8.encode(text),
@@ -205,32 +207,10 @@ Future<void> finishFilters(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> openMuscleList(WidgetTester tester) async {
-  final disclosure = find.byKey(const Key('catalog-muscle-list-link'));
-  final anyChip = find.byWidgetPredicate(
-    (widget) =>
-        widget is ChoiceChip &&
-        widget.key is ValueKey<String> &&
-        (widget.key as ValueKey<String>).value.startsWith('catalog-muscle-'),
-  );
-  if (anyChip.evaluate().isEmpty) {
-    await tester.ensureVisible(disclosure);
-    await tester.tap(disclosure);
-    await tester.pump(const Duration(milliseconds: 400));
-  }
-}
-
+/// The explorer's strip always builds every chip, under the canvas.
 Future<void> selectMuscle(WidgetTester tester, String key) async {
-  await openMuscleList(tester);
   final chip = find.byKey(ValueKey('catalog-muscle-$key'));
-  await tester.scrollUntilVisible(
-    chip,
-    160,
-    scrollable: find.descendant(
-      of: find.byKey(const Key('catalog-muscle-explorer-scroll')),
-      matching: find.byType(Scrollable),
-    ),
-  );
+  await tester.ensureVisible(chip);
   await tester.tap(chip);
   await tester.pump(const Duration(milliseconds: 400));
   await tester.tap(find.byKey(const Key('catalog-muscle-show-exercises')));
@@ -239,7 +219,7 @@ Future<void> selectMuscle(WidgetTester tester, String key) async {
 
 Future<void> openChoice(
   WidgetTester tester,
-  CatalogTrialState state,
+  CatalogRuntimeState state,
   String id,
 ) async {
   if (choice(id).evaluate().isEmpty) {
@@ -539,7 +519,7 @@ void main() {
   });
 
   testWidgets(
-    'family-open typo suggestions retain shared familiar-name distinctions',
+    'family-open alias typo suggestions retain canonical execution distinctions',
     (tester) async {
       final state = discoveryState(sharedFamiliar: true);
       addTearDown(state.dispose);
@@ -571,8 +551,8 @@ void main() {
       await tester.pumpAndSettle();
       final standing = tester.widget<CatalogPickerRow>(choice(fixtureId(14)));
       final seated = tester.widget<CatalogPickerRow>(choice(fixtureId(15)));
-      expect(standing.label, 'Lento avanti');
-      expect(seated.label, 'Lento avanti');
+      expect(standing.label, 'Distensioni in piedi con bilanciere');
+      expect(seated.label, 'Distensioni sedute con manubri');
       expect(standing.subtitle, contains('Bilanciere'));
       expect(seated.subtitle, contains('Manubri'));
       expect(standing.subtitle, isNot(seated.subtitle));
@@ -682,7 +662,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Muscle evidence'));
+      await tester.tap(find.byTooltip('Muscle evidence'));
       await tester.pumpAndSettle();
       expect(
         find.textContaining('Detailed muscle evidence may be incomplete'),

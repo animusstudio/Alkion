@@ -133,6 +133,7 @@ class RepControls extends StatelessWidget {
         Field(
           label: l.trainingRepEntry,
           child: ChipSelect<bool>(
+            enabled: enabled,
             items: const [false, true],
             selected: range,
             labelOf: (v) => v ? l.trainingRepRange : l.trainingFixedReps,

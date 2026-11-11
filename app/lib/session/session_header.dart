@@ -80,8 +80,9 @@ class SessionHeader extends StatelessWidget {
   final VoidCallback onAdd30s;
   final VoidCallback onSkip;
 
-  /// False while a data capture holds the source: +30s is shown as
-  /// unavailable, does nothing, and the line under the row says why.
+  /// False while the workout waits for a save (a Finish not yet committed,
+  /// or a notification's rest action being saved): +30s and Skip are shown
+  /// as unavailable, do nothing, and the line under the row says why.
   final bool restExtensionAvailable;
 
   /// The rested count-up stops here.
@@ -327,7 +328,7 @@ class SessionHeader extends StatelessWidget {
                                         ? onAdd30s
                                         : null,
                                     unavailableLabel:
-                                        l.alkionStoreRecoveryTitle,
+                                        l.restUnavailableUntilSaved,
                                   ),
                                   const SizedBox(width: 6),
                                   Flexible(
@@ -340,7 +341,7 @@ class SessionHeader extends StatelessWidget {
                                           ? onSkip
                                           : null,
                                       unavailableLabel:
-                                          l.alkionStoreRecoveryTitle,
+                                          l.restUnavailableUntilSaved,
                                     ),
                                   ),
                                 ],
@@ -354,7 +355,7 @@ class SessionHeader extends StatelessWidget {
                   const SizedBox(height: 4),
                   FitLabel(
                     resting && !restExtensionAvailable
-                        ? l.captureRestUnavailable
+                        ? l.restChangesWaitForSave
                         : nextLabel,
                     maxLines: 2,
                     style: WorkoutType.body(size: 12, color: tokens.dim),

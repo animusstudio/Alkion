@@ -114,7 +114,8 @@ void main() {
   testWidgets('tied top sets: only the first one carries the PR badge', (
     tester,
   ) async {
-    final b = _block(firstDone: true); // no history → the top set is a PR
+    // A previous best below the tie makes the top set a PR.
+    final b = _block(firstDone: true)..bestKg = 50;
     b.workingSets[1].done = true;
     await tester.pumpWidget(host(b, live: null));
     await tester.pumpAndSettle();

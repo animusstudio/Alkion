@@ -10,7 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../support/app_fonts.dart';
+import '../support/body_sheet_expect.dart';
 import '../support/l10n_harness.dart';
+import '../support/layout_expect.dart';
 
 // Deliberately synthetic display fixture; parser/pin admission is tested separately.
 CatalogMuscleProfile _profile(int revision) =>
@@ -80,51 +82,48 @@ CatalogMuscleProfile _profile(int revision) =>
       'claims': <dynamic>[],
       'sources': <dynamic>[],
     });
-WorkoutWorkload _workload({int count = 1, bool current = false}) =>
-    calculateWorkoutWorkload(
-      mode: WorkoutWorkloadMode.saved,
-      exercises: [
-        WorkloadExerciseInput(
-          muscleGroup: '',
-          catalogBacked: true,
-          resolution: CatalogMuscleResolution(
-            profile: _profile(current ? 3 : 2),
-            recordedProfile: _profile(2),
-            currentAssessment: current,
-          ),
-          sets: [
-            for (var i = 0; i < count; i++)
-              WorkloadSetInput(
-                physicalId: 'synthetic-$i',
-                completed: true,
-                isWarmup: false,
-              ),
-          ],
-        ),
-        const WorkloadExerciseInput(
-          muscleGroup: '',
-          catalogBacked: true,
-          resolution: CatalogMuscleResolution(reason: 'synthetic_missing'),
-          sets: [
-            WorkloadSetInput(
-              physicalId: 'unknown',
-              completed: true,
-              isWarmup: false,
-            ),
-          ],
-        ),
-        const WorkloadExerciseInput(
-          muscleGroup: 'chest',
-          sets: [
-            WorkloadSetInput(
-              physicalId: 'legacy',
-              completed: true,
-              isWarmup: false,
-            ),
-          ],
+WorkoutWorkload _workload() => calculateWorkoutWorkload(
+  mode: WorkoutWorkloadMode.saved,
+  exercises: [
+    WorkloadExerciseInput(
+      muscleGroup: '',
+      catalogBacked: true,
+      resolution: CatalogMuscleResolution(
+        profile: _profile(2),
+        recordedProfile: _profile(2),
+      ),
+      sets: const [
+        WorkloadSetInput(
+          physicalId: 'synthetic-0',
+          completed: true,
+          isWarmup: false,
         ),
       ],
-    );
+    ),
+    const WorkloadExerciseInput(
+      muscleGroup: '',
+      catalogBacked: true,
+      resolution: CatalogMuscleResolution(reason: 'synthetic_missing'),
+      sets: [
+        WorkloadSetInput(
+          physicalId: 'unknown',
+          completed: true,
+          isWarmup: false,
+        ),
+      ],
+    ),
+    const WorkloadExerciseInput(
+      muscleGroup: 'chest',
+      sets: [
+        WorkloadSetInput(
+          physicalId: 'legacy',
+          completed: true,
+          isWarmup: false,
+        ),
+      ],
+    ),
+  ],
+);
 
 CatalogMuscleProfile _onlyProfile(
   String node,
@@ -174,11 +173,23 @@ WorkoutWorkload _singleProfile(CatalogMuscleProfile profile) =>
       ],
     );
 
+WorkoutWorkload _legacyOnly() => calculateWorkoutWorkload(
+  mode: WorkoutWorkloadMode.saved,
+  exercises: const [
+    WorkloadExerciseInput(
+      muscleGroup: 'chest',
+      sets: [WorkloadSetInput(completed: true, isWarmup: false)],
+    ),
+  ],
+);
+
 void main() {
   setUpAll(preloadAppFonts);
   Future<void> open(
     WidgetTester tester, {
     Locale locale = const Locale('en'),
+    WorkoutWorkload Function() workload = _workload,
+    Listenable? changes,
   }) async {
     await tester.pumpWidget(
       wrapL10n(
@@ -186,8 +197,8 @@ void main() {
           builder: (context) => TextButton(
             onPressed: () => showBodyWorkloadSheet(
               context,
-              workload: () => _workload(),
-              currentWorkload: () => _workload(count: 3, current: true),
+              workload: workload,
+              changes: changes,
             ),
             child: const Text('Open synthetic body'),
           ),
@@ -199,305 +210,181 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets(
-    'recorded default, explicit current, roles, participation and legacy stay separate',
-    (tester) async {
-      await open(tester);
-      CharacterBody art() =>
-          tester.widget<CharacterBody>(find.byType(CharacterBody));
-      expect(art().scores[WorkloadMuscle.glutes], .2);
-      expect(
-        tester
-                .getSemantics(find.byKey(const Key('body-recorded')))
-                .flagsCollection
-                .isSelected ==
-            ui.Tristate.isTrue,
-        isTrue,
-      );
-      for (final (view, region) in [
-        (1, WorkloadMuscle.glutes),
-        (2, WorkloadMuscle.core),
-        (3, WorkloadMuscle.forearms),
-        (4, WorkloadMuscle.core),
-        (5, WorkloadMuscle.glutes),
-        (6, WorkloadMuscle.forearms),
-        (7, WorkloadMuscle.chest),
-      ]) {
-        await tester.ensureVisible(find.byKey(ValueKey('body-view-$view')));
-        await tester.tap(find.byKey(ValueKey('body-view-$view')));
-        await tester.pumpAndSettle();
-        expect(art().scores[region], .2);
-        expect(
-          art().scores[region == WorkloadMuscle.chest
-              ? WorkloadMuscle.glutes
-              : WorkloadMuscle.chest],
-          0,
-        );
-      }
-      await tester.ensureVisible(find.byKey(const Key('body-view-1')));
-      await tester.tap(find.byKey(const Key('body-view-1')));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.byKey(const Key('body-current')));
-      await tester.tap(find.byKey(const Key('body-current')));
-      await tester.pumpAndSettle();
-      expect(art().scores[WorkloadMuscle.glutes], .4);
-      expect(_workload().muscles[WorkloadMuscle.glutes]!.count, 1);
-      await tester.ensureVisible(find.byKey(const Key('body-recorded')));
-      await tester.tap(find.byKey(const Key('body-recorded')));
-      await tester.pumpAndSettle();
-      expect(art().scores[WorkloadMuscle.glutes], .2);
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
+  CharacterBody art(WidgetTester tester) =>
+      tester.widget<CharacterBody>(find.byType(CharacterBody));
+  String? count(WidgetTester tester, WorkloadMuscle muscle) => tester
+      .widget<Text>(find.byKey(ValueKey('body-count-${muscle.name}')))
+      .data;
 
-  for (final (kind, view) in [
-    ('stretch_target', 4),
-    ('conditioning_participation', 6),
-  ]) {
-    testWidgets(
-      'async deep $kind selects its text view until an explicit choice',
-      (tester) async {
-        final source = ValueNotifier(
-          WorkoutWorkload.loading(WorkoutWorkloadMode.saved),
-        );
-        addTearDown(source.dispose);
-        await tester.pumpWidget(
-          wrapL10n(
-            Builder(
-              builder: (context) => TextButton(
-                onPressed: () => showBodyWorkloadSheet(
-                  context,
-                  workload: () => source.value,
-                  changes: source,
-                ),
-                child: const Text('Open'),
-              ),
-            ),
-          ),
-        );
-        await tester.tap(find.text('Open'));
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const Key('body-workload-read-state')),
-          findsOneWidget,
-        );
-        source.value = _singleProfile(_onlyProfile('deep', kind));
-        await tester.pumpAndSettle();
-        expect(
-          tester
-                  .getSemantics(find.byKey(ValueKey('body-view-$view')))
-                  .flagsCollection
-                  .isSelected ==
-              ui.Tristate.isTrue,
-          isTrue,
-        );
-        expect(find.textContaining('Synthetic deep'), findsOneWidget);
-        expect(find.textContaining('No supported surface'), findsOneWidget);
-        await tester.ensureVisible(find.byKey(const Key('body-view-0')));
-        await tester.tap(find.byKey(const Key('body-view-0')));
-        await tester.pumpAndSettle();
-        source.value = _singleProfile(_onlyProfile('deep', kind));
-        await tester.pumpAndSettle();
-        expect(
-          tester
-                  .getSemantics(find.byKey(const Key('body-view-0')))
-                  .flagsCollection
-                  .isSelected ==
-              ui.Tristate.isTrue,
-          isTrue,
-        );
-        await tester.pumpWidget(const SizedBox());
-      },
-    );
-  }
-  testWidgets(
-    'async legacy default and recorded/current automatic defaults follow selected snapshot',
-    (tester) async {
-      final source = ValueNotifier(
-        WorkoutWorkload.loading(WorkoutWorkloadMode.saved),
-      );
-      addTearDown(source.dispose);
-      await tester.pumpWidget(
-        wrapL10n(
-          Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showBodyWorkloadSheet(
-                context,
-                workload: () => source.value,
-                currentWorkload: () => _singleProfile(
-                  _onlyProfile('deep', 'conditioning_participation'),
-                ),
-                changes: source,
-              ),
-              child: const Text('Open'),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('Open'));
-      await tester.pumpAndSettle();
-      source.value = calculateWorkoutWorkload(
-        mode: WorkoutWorkloadMode.saved,
-        exercises: const [
-          WorkloadExerciseInput(
-            muscleGroup: 'chest',
-            sets: [WorkloadSetInput(completed: true, isWarmup: false)],
-          ),
-        ],
-      );
-      await tester.pumpAndSettle();
-      expect(
-        tester
-                .getSemantics(find.byKey(const Key('body-view-7')))
-                .flagsCollection
-                .isSelected ==
-            ui.Tristate.isTrue,
-        isTrue,
-      );
-      source.value = _singleProfile(_onlyProfile('deep', 'stretch_target'));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-                .getSemantics(find.byKey(const Key('body-view-4')))
-                .flagsCollection
-                .isSelected ==
-            ui.Tristate.isTrue,
-        isTrue,
-      );
-      await tester.ensureVisible(find.byKey(const Key('body-current')));
-      await tester.tap(find.byKey(const Key('body-current')));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-                .getSemantics(find.byKey(const Key('body-view-6')))
-                .flagsCollection
-                .isSelected ==
-            ui.Tristate.isTrue,
-        isTrue,
-      );
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
-  testWidgets('a partially mapped anatomy node does not claim no surface', (
+  testWidgets('saved sheet shows the recorded strength view without choices', (
     tester,
   ) async {
-    final workload = calculateWorkoutWorkload(
-      mode: WorkoutWorkloadMode.saved,
-      exercises: [
-        for (final (index, mapped) in [true, false].indexed)
-          WorkloadExerciseInput(
-            muscleGroup: '',
-            catalogBacked: true,
-            resolution: CatalogMuscleResolution(
-              profile: _onlyProfile('glutes', 'strength', mapped: mapped),
-            ),
-            sets: [
-              WorkloadSetInput(
-                physicalId: 'mixed-$index',
-                completed: true,
-                isWarmup: false,
-              ),
-            ],
-          ),
-      ],
+    await open(tester);
+    // All strength roles of the recorded profile; legacy chest is not mixed in.
+    for (final region in [
+      WorkloadMuscle.glutes,
+      WorkloadMuscle.core,
+      WorkloadMuscle.forearms,
+    ]) {
+      expect(art(tester).scores[region], .2);
+      expect(count(tester, region), '1');
+    }
+    expect(art(tester).scores[WorkloadMuscle.chest], 0);
+    expect(count(tester, WorkloadMuscle.chest), '0');
+    // At 1x the legend is one row of six.
+    final legend = find.byKey(const Key('body-legend'));
+    expect(
+      tester
+          .getTopLeft(find.descendant(of: legend, matching: find.text('11+')))
+          .dy,
+      tester
+          .getTopLeft(find.descendant(of: legend, matching: find.text('0')))
+          .dy,
     );
-    await tester.pumpWidget(
-      wrapL10n(
-        SingleChildScrollView(child: BodyWorkloadCounts(workload: workload)),
-      ),
+    for (final removed in [
+      'body-recorded',
+      'body-current',
+      for (var i = 0; i < 8; i++) 'body-view-$i',
+    ]) {
+      expect(find.byKey(ValueKey(removed)), findsNothing);
+    }
+    expectWorkloadSheetSections(
+      tester,
+      lookupAppLocalizations(const Locale('en')),
+      mode: 'Saved working sets',
     );
-    expect(find.textContaining('Incomplete surface mapping'), findsOneWidget);
-    expect(find.textContaining('No supported surface'), findsNothing);
-    expect(find.text('Whole-workout coverage'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
-  for (final language in ['en', 'it', 'de', 'es']) {
-    testWidgets(
-      'catalog coverage and provenance wrap at 320dp 2x in $language',
-      (tester) async {
-        tester.view.physicalSize = const Size(320, 900);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        tester.platformDispatcher.textScaleFactorTestValue = 2;
-        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-        await open(tester, locale: Locale(language));
-        final l = lookupAppLocalizations(Locale(language));
-        for (final key in [
-          'body-recorded',
-          'body-current',
-          for (var i = 0; i < 8; i++) 'body-view-$i',
-        ]) {
-          final control = find.byKey(ValueKey(key));
-          final text = find
-              .descendant(of: control, matching: find.byType(Text))
-              .first;
-          final bounds = tester.getRect(control).inflate(.1);
-          final label = tester.getRect(text);
-          expect(
-            bounds.contains(label.topLeft) &&
-                bounds.contains(label.bottomRight),
-            isTrue,
-            reason: '$language $key must contain every line',
-          );
-          expect(tester.getSize(control).height, greaterThanOrEqualTo(48));
-          expect(
-            tester.renderObject<RenderParagraph>(text).didExceedMaxLines,
-            isFalse,
-          );
-        }
-        expect(find.text('${l.bodyPartialProfiles}: 1'), findsOneWidget);
-        expect(find.text('${l.bodyUnknownProfiles}: 1'), findsOneWidget);
-        expect(find.text('${l.bodyLegacySets}: 1'), findsOneWidget);
-        expect(find.textContaining(l.bodySideMeaning), findsOneWidget);
-        expect(find.textContaining('deep'), findsOneWidget);
-        expect(find.textContaining(l.bodyNoSurface), findsOneWidget);
-        await tester.ensureVisible(find.text(l.bodyEvidenceDetails));
-        await tester.tap(find.text(l.bodyEvidenceDetails));
-        await tester.pumpAndSettle();
-        expect(
-          find.text('${l.bodySurfaceProjection}: alkion-surface-3'),
-          findsOneWidget,
-        );
-        expect(find.textContaining(l.bodyHumanReview), findsOneWidget);
-        expect(find.textContaining(l.bodyInference), findsNWidgets(7));
-        expect(tester.takeException(), isNull);
-        // Optional disposable visual proof, never writes to application storage.
-        final capture = Platform.environment['ALKION_BODY_UI_CAPTURES'];
-        if (capture != null) {
-          for (final (stage, target) in [
-            ('controls', find.byKey(const Key('body-recorded'))),
-            ('artwork', find.byType(CharacterBody)),
-            ('coverage', find.text('${l.bodyPartialProfiles}: 1')),
-            (
-              'evidence',
-              find.text('${l.bodySurfaceProjection}: alkion-surface-3'),
-            ),
-          ]) {
-            await tester.ensureVisible(target);
-            await tester.pumpAndSettle();
-            RenderObject? object = tester.renderObject(
-              find.byType(BottomSheet),
-            );
-            while (object is! RenderRepaintBoundary) {
-              object = object!.parent;
-            }
-            final boundary = object;
-            await tester.runAsync(() async {
-              final image = await boundary.toImage();
-              final bytes = await image.toByteData(
-                format: ui.ImageByteFormat.png,
-              );
-              await Directory(capture).create(recursive: true);
-              await File(
-                '$capture/body-$language-$stage.png',
-              ).writeAsBytes(bytes!.buffer.asUint8List());
-              image.dispose();
-            });
-          }
-        }
-        await tester.pumpWidget(const SizedBox());
-      },
+
+  for (final (kind, region) in [
+    ('strength', WorkloadMuscle.glutes),
+    ('stretch_target', WorkloadMuscle.core),
+    ('mobility_target', WorkloadMuscle.glutes),
+    ('conditioning_participation', WorkloadMuscle.forearms),
+  ]) {
+    testWidgets('$kind-only work selects its own view automatically', (
+      tester,
+    ) async {
+      await open(
+        tester,
+        workload: () => _singleProfile(_onlyProfile(region.name, kind)),
+      );
+      expect(art(tester).scores[region], .2);
+      expect(count(tester, region), '1');
+      for (final other in WorkloadMuscle.values.where((m) => m != region)) {
+        expect(count(tester, other), '0');
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('legacy-only work selects the coarse legacy view', (
+    tester,
+  ) async {
+    await open(tester, workload: _legacyOnly);
+    expect(art(tester).scores[WorkloadMuscle.chest], .2);
+    expect(count(tester, WorkloadMuscle.chest), '1');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('async loads keep following the automatic view', (tester) async {
+    final source = ValueNotifier(
+      WorkoutWorkload.loading(WorkoutWorkloadMode.saved),
     );
+    addTearDown(source.dispose);
+    await open(tester, workload: () => source.value, changes: source);
+    // The counts placeholder is a static line skeleton that still settles.
+    expect(find.byKey(const Key('body-workload-read-state')), findsOneWidget);
+    expect(find.bySemanticsLabel('Loading workout counts…'), findsOneWidget);
+    expect(find.byKey(const ValueKey('body-count-chest')), findsNothing);
+    source.value = _legacyOnly();
+    await tester.pumpAndSettle();
+    expect(count(tester, WorkloadMuscle.chest), '1');
+    source.value = _singleProfile(_onlyProfile('core', 'stretch_target'));
+    await tester.pumpAndSettle();
+    expect(count(tester, WorkloadMuscle.core), '1');
+    expect(count(tester, WorkloadMuscle.chest), '0');
+    source.value = _singleProfile(
+      _onlyProfile('forearms', 'conditioning_participation'),
+    );
+    await tester.pumpAndSettle();
+    expect(count(tester, WorkloadMuscle.forearms), '1');
+    expect(count(tester, WorkloadMuscle.core), '0');
+    // Deep-only participation still selects its kind: no region is claimed.
+    source.value = _singleProfile(_onlyProfile('deep', 'stretch_target'));
+    await tester.pumpAndSettle();
+    for (final muscle in WorkloadMuscle.values) {
+      expect(count(tester, muscle), '0');
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final language in ['en', 'it', 'de', 'es']) {
+    testWidgets('trimmed sheet fits at 320dp 2x in $language', (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await open(tester, locale: Locale(language));
+      final l = lookupAppLocalizations(Locale(language));
+      expect(tester.takeException(), isNull);
+      expectWorkloadSheetSections(tester, l, mode: l.bodySaved);
+      expectNoSplitWords(tester, within: find.byType(BottomSheet));
+      // Every bin label is whole: the legend wraps rather than ellipsizing.
+      for (final bin in workloadCountBins) {
+        final label = find.descendant(
+          of: find.byKey(const Key('body-legend')),
+          matching: find.text(bin),
+        );
+        expect(
+          tester
+              .renderObject<RenderParagraph>(
+                find.descendant(of: label, matching: find.byType(RichText)),
+              )
+              .didExceedMaxLines,
+          isFalse,
+          reason: '$language legend $bin',
+        );
+      }
+      Finder bin(int i) => find.descendant(
+        of: find.byKey(const Key('body-legend')),
+        matching: find.text(workloadCountBins[i]),
+      );
+      expect(
+        tester.getTopLeft(bin(3)).dy,
+        greaterThan(tester.getTopLeft(bin(0)).dy),
+        reason: 'two rows of three at 2x',
+      );
+      // Optional disposable visual proof, never writes to application storage.
+      final capture = Platform.environment['ALKION_BODY_UI_CAPTURES'];
+      if (capture != null) {
+        for (final (stage, target) in [
+          ('artwork', find.byType(CharacterBody)),
+          ('counts', find.byKey(const Key('body-workload-counts'))),
+        ]) {
+          await tester.ensureVisible(target);
+          await tester.pumpAndSettle();
+          RenderObject? object = tester.renderObject(find.byType(BottomSheet));
+          while (object is! RenderRepaintBoundary) {
+            object = object!.parent;
+          }
+          final boundary = object;
+          await tester.runAsync(() async {
+            final image = await boundary.toImage();
+            final bytes = await image.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+            await Directory(capture).create(recursive: true);
+            await File(
+              '$capture/body-$language-$stage.png',
+            ).writeAsBytes(bytes!.buffer.asUint8List());
+            image.dispose();
+          });
+        }
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
   }
 }

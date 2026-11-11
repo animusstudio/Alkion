@@ -1,8 +1,8 @@
 import '../catalog_ui/catalog_picker.dart';
-import '../history_test/history_mapping_label.dart';
+import '../history_mapping/history_mapping_label.dart';
 import '../catalog/catalog.dart';
 import '../catalog/catalog_development.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_scope.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,6 +19,7 @@ import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
+import '../widgets/w_toast.dart';
 
 /// The Exercises sub-tab: a catalog of all exercises grouped by muscle.
 ///
@@ -76,35 +77,33 @@ class _LibraryTabState extends State<LibraryTab> {
     return StreamBuilder<List<Exercise>>(
       stream: _catalogStream,
       builder: (context, snap) {
-        final trial = CatalogTrialScope.maybeOf(context);
+        final catalog = CatalogScope.maybeOf(context);
         final exercises = HistoryMappingScope.selectable(
           context,
           snap.data ?? const <Exercise>[],
-          catalog: trial?.bundle,
+          catalog: catalog?.bundle,
         );
         final prMap = _prMap ?? {};
 
-        if (trial != null) {
+        if (catalog != null) {
           return CatalogBrowser(
-            state: trial,
+            state: catalog,
             ownedExercises: exercises,
             controller: _browserController,
             onEditOwned: widget.onOpenEditor,
             onCreateChoice: (choice) async {
               try {
-                await trial.materialize(
+                await catalog.materialize(
                   choice,
                   _repo,
                   locale: Localizations.localeOf(context).languageCode,
                 );
               } catch (_) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        AppLocalizations.of(context).catalogSaveFailed,
-                      ),
-                    ),
+                  showWToast(
+                    context,
+                    AppLocalizations.of(context).catalogSaveFailed,
+                    error: true,
                   );
                 }
               }
@@ -212,11 +211,12 @@ class _NewExerciseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     return PrimaryBtn(
-      CatalogTrialScope.maybeOf(context) == null
+      CatalogScope.maybeOf(context) == null
           ? l.planNewExercise
           : l.catalogBrowse,
       enabled: true,
       onTap: onTap,
+      glitch: true,
     );
   }
 }
@@ -241,12 +241,12 @@ class _ExerciseRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final trial = CatalogTrialScope.maybeOf(context);
-    final choice = trial?.exercises[exercise.id];
+    final catalog = CatalogScope.maybeOf(context);
+    final choice = catalog?.exercises[exercise.id];
     final locale = Localizations.localeOf(context).languageCode;
     final name = choice == null
         ? exercise.name
-        : trial!.identifyingLabel(choice, locale);
+        : catalog!.identifyingLabel(choice, locale);
     // Sub-label: '{equip ?? localizedMuscle(muscleGroup)}{ · compound}'
     final subParts = <String>[
       exercise.equip?.isNotEmpty == true
@@ -258,9 +258,9 @@ class _ExerciseRow extends StatelessWidget {
         ? subParts.join(' ')
         : choice.variantId == null
         ? CatalogLabels(locale).unknownMuscles
-        : CatalogLabels(
-            locale,
-          ).equipment(trial!.bundle.variants[choice.variantId]!.equipmentKind);
+        : CatalogLabels(locale).equipment(
+            catalog!.bundle.variants[choice.variantId]!.equipmentKind,
+          );
 
     return Semantics(
       button: true,

@@ -31,6 +31,14 @@ neither. Record the source revision, APK, Android version and observed results.
   and confirm the saved history remains.
 - Check rest notifications and their actions with permission granted; deny
   permission and confirm the app remains usable with an honest capability state.
+- Notification actions: during a rest, tap +30s and Skip rest from the shade
+  with Alkion in the foreground, backgrounded and swiped from recents. Each tap
+  changes the notification in place without opening the app; after the
+  swiped-away taps, opening Alkion shows the rest they produced. For timing,
+  build the private Dev release APK with `ALKION_NOTIFICATION_TRACE=1` and read
+  only `alkion-notif` markers and Alkion's own notification events from logcat
+  (never clear the log buffer). The 2026-11-11 run and its unrun states are in
+  [acceptance](acceptance.md#f2-background-notification-actions--2026-11-11).
 - Save a synthetic backup through the system picker; cancel once without a change.
   Open/restore that backup into a disposable profile and check the visible result.
 - Relaunch and confirm the selected profile and saved workout remain available.

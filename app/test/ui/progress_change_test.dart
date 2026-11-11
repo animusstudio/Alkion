@@ -15,6 +15,21 @@ Exercise _exercise(String id) => Exercise(
   isTemplate: false,
 );
 
+/// [values] as points one week apart, the first with [first] reps, the rest
+/// with [last].
+List<ProgressDeltaPoint> _weekly(
+  List<double> values, {
+  int first = 5,
+  int last = 5,
+}) => [
+  for (var i = 0; i < values.length; i++)
+    (
+      date: '2026-01-${(1 + 7 * i).toString().padLeft(2, '0')}',
+      value: values[i],
+      reps: i == 0 ? first : last,
+    ),
+];
+
 void main() {
   final l = AppLocalizationsEn();
   String f(double v) => v == v.roundToDouble() ? '${v.toInt()}' : '$v';
@@ -130,10 +145,8 @@ void main() {
       String unit = 'kg',
     }) => progressDeltaStat(
       l,
-      series: series,
+      points: _weekly(series, first: first, last: last),
       reps: reps,
-      firstTopReps: first,
-      topReps: last,
       unit: unit,
       fmtVal: f,
     );
@@ -156,10 +169,8 @@ void main() {
       expect(
         progressDeltaStat(
           l,
-          series: [100, 100.2],
+          points: _weekly([100, 100.2]),
           reps: true,
-          firstTopReps: 5,
-          topReps: 5,
           unit: 'lb',
           fmtVal: (v) => v.round().toString(),
         ),
@@ -169,6 +180,76 @@ void main() {
     test('fewer than two points shows a dash with the unit', () {
       expect(stat([100]), (value: '—', unit: 'kg'));
       expect(stat([100], unit: ''), (value: '—', unit: null));
+    });
+
+    ({String value, String? unit}) dated(
+      List<(String, double)> points, {
+      bool reps = false,
+    }) => progressDeltaStat(
+      l,
+      points: [for (final (d, v) in points) (date: d, value: v, reps: 5)],
+      reps: reps,
+      unit: 'kg',
+      fmtVal: f,
+    );
+
+    test('the baseline is the earliest point within 84 days of the latest', () {
+      // 2025-11-01 is 91 days before 2026-01-31: outside the window. The
+      // first-ever point is not the baseline; 2025-11-08 (84 days) is.
+      expect(
+        dated([('2025-11-01', 50), ('2025-11-08', 90), ('2026-01-31', 100)]),
+        (value: '+10', unit: 'kg'),
+      );
+      expect(
+        dated([
+          ('2025-11-01', 50),
+          ('2025-11-07', 70),
+          ('2025-11-20', 95),
+          ('2026-01-31', 100),
+        ]),
+        (value: '+5', unit: 'kg'),
+      );
+    });
+
+    test('no earlier point in the window shows a dash', () {
+      expect(dated([('2025-10-01', 50), ('2026-01-31', 100)]), (
+        value: '—',
+        unit: 'kg',
+      ));
+      expect(dated([('2025-10-01', 50), ('2026-01-31', 100)], reps: true), (
+        value: '—',
+        unit: 'kg',
+      ));
+    });
+
+    test('points without a qualified day are skipped', () {
+      // The undated last point is not the latest; the window is measured
+      // from 2026-01-31, and the invalid rollover day never counts.
+      expect(
+        dated([
+          ('2026-01-10', 80),
+          ('2026-02-30', 10),
+          ('2026-01-31', 100),
+          ('', 200),
+        ]),
+        (value: '+20', unit: 'kg'),
+      );
+      expect(dated([('2026-01-10', 80), ('', 100)]), (value: '—', unit: 'kg'));
+    });
+
+    test('the window follows the data, not the clock', () {
+      // Years in the past: still compared within its own 84 days.
+      expect(dated([('2019-03-01', 60), ('2019-04-01', 62.5)]), (
+        value: '+2.5',
+        unit: 'kg',
+      ));
+    });
+
+    test('a same-day earlier session can be the baseline', () {
+      expect(dated([('2026-01-31', 95), ('2026-01-31', 100)]), (
+        value: '+5',
+        unit: 'kg',
+      ));
     });
   });
 
@@ -185,10 +266,8 @@ void main() {
       bool reps = false,
     }) => progressDeltaStat(
       l,
-      series: [shown(fromKg), shown(toKg)],
+      points: _weekly([shown(fromKg), shown(toKg)]),
       reps: reps,
-      firstTopReps: 5,
-      topReps: 5,
       unit: 'lb',
       fmtVal: fmtLb,
     );

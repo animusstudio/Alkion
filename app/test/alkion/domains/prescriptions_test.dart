@@ -353,10 +353,8 @@ void main() {
           settings.setRepEntry(RepEntry.range),
           throwsA(anything),
         );
-        await expectLater(
-          settings.setRirControls(RirControls.show),
-          throwsA(anything),
-        );
+        // The next change first lands the owed one, then saves itself.
+        await settings.setRirControls(RirControls.show);
         await settings.flushPersistence();
         final otherRoot = await Directory.systemTemp.createTemp(
           'alkion-preferences-other-',

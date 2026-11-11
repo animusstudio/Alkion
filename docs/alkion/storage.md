@@ -202,6 +202,34 @@ fence/archive writes cannot reopen remote work, while offline authored editing
 keeps its existing transaction rules. Manual backup/restore covers these records
 and all prior archive references. See [server recovery](recovery.md#animus-server-recovery).
 
+## Quarantined workflow state
+
+Added 2026-11-09 by the [unreadable workout state spec](../specs/2026-11-08-unreadable-workout-state.md),
+without a migration: the store stays at schema 6. `local_state.status` and
+`reviews.category` are free `TEXT` with no CHECK, and `review_decisions`
+already exists, so these are content:
+
+| Value | Where | Meaning |
+| --- | --- | --- |
+| `quarantined` | `local_state.status` of `draft/active`, `timer/active` or `finishedRecovery/last` | Retired at launch because this build couldn't read it; payload kept in place |
+| `workflow_state_unreadable` | `reviews.category`, ID `wq-<40 hex>` | Exact copy of the damaged rows with the decoder record |
+| `alkion-workflow-quarantine/1` | review evidence format | `{format, kind, reason, rows, decoder}`, plus `conflicts_with` on a fallback ID |
+| `notice` | `review_decisions.decision_id` | `{format: 'alkion-workflow-quarantine-decision/1', decision: 'notice_acknowledged'}`; the notice was seen, nothing was decided |
+
+`LocalTransaction.retireLocalState(kind, key, expectedRevision:)` is the only
+writer of `quarantined`. It runs a status-only `UPDATE` (`revision+1`, new
+`updated_at`) guarded by profile, revision and generation, then re-reads the
+row and throws `stale_local_state` unless exactly that change happened. It
+never rewrites `payload_bytes`, so a TEXT payload stays TEXT; `putLocalState`
+is not used because it would store a `Uint8List`. Every other reader already
+treats a non-`active` status as inactive: both loaders,
+`issueNotificationAction`/`consumeNotificationAction` and the finish
+transaction. `FinishedSessionStore.clearForSession` and History delete check
+for `quarantined` before any cast or decode. Backups carry all of this in the
+covered `local_state`, `reviews` and `review_decisions` tables; see
+[recovery](recovery.md#unreadable-workout-state-at-launch) for the
+classification, ID, notice and restore behaviour.
+
 ## Verification and sequential harness extension
 
 Run through normal pinned FVM:

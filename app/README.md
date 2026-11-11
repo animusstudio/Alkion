@@ -66,6 +66,27 @@ supported-flavor release builds and bundles remain blocked. Without the opt-in,
 all release tasks remain blocked. Builds never read inherited `key.properties`;
 final release identity/signing remain separate owner decisions.
 
+The exercise catalog is a private, unredistributable input, so it ships only in
+an explicitly staged Dev build. Stage the reviewed input once, then build and
+verify the Dev APK with the same disposable signer:
+
+```sh
+CATALOG_INPUT=/explicit/private/catalog.json CATALOG_SHA256=<reviewed-sha256> \
+  make -C app stage-catalog
+ANDROID_USER_HOME=/tmp/alkion-debug-user make -C app build-catalog-dev
+```
+
+`build-catalog-dev-local-test-release` (with `ALKION_LOCAL_RELEASE_TEST=1` and
+an explicit `CATALOG_DEV_NDK`) is the optimized ARM64 variant. Adding
+`ALKION_NOTIFICATION_TRACE=1` to that route turns on the `alkion-notif`
+logcat markers used for the notification-action device check; no other route
+sets it. Before
+2026-11-08 the staging step was `stage-catalog-trial` with
+`CATALOG_TRIAL_INPUT`/`CATALOG_TRIAL_SHA256`; existing staging under
+`assets/catalog_trial/` and `build/private-catalog-trial/` stays valid and
+needs no restaging. See [catalog staging](../docs/alkion/exercise-catalog.md)
+for browse/muscle inputs and the APK guard.
+
 ## Source map
 
 - `lib/main.dart`, `lib/identity/`: profile identity and selected-generation startup.

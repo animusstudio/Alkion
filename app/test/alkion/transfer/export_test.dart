@@ -7,11 +7,9 @@ import 'package:alkion/domain/local_action.dart';
 import 'package:alkion/export/alkion_exports.dart';
 import 'package:alkion/export/export_service.dart';
 import 'package:alkion/files/document_access.dart';
-import 'package:alkion/settings/settings_service.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/transfer/json_span_reader.dart';
 import 'package:alkion/transfer/transfer_service.dart';
-import 'package:alkion/units/unit_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'import_test.dart' show authorNote, domainRow, localId, withoutRow;
@@ -330,15 +328,18 @@ void main() {
         final bad = await t.importArtifact(badBytes, namespace: 'a');
         expect(await t.originalBytes(good.artifactId!), fixture(rich));
         expect(await t.originalBytes(bad.artifactId!), badBytes);
-        final service = ExportService(
-          h.store,
-          delivery: DirectoryExportDelivery(out),
-        );
-        final saved = await service.exportOriginal(good.artifactId!);
+        final service = ExportService(h.store);
+        final delivery = DirectoryExportDelivery(out);
+        Future<ExportResult> original(String artifactId) async =>
+            delivery.deliver(
+              await t.originalBytes(artifactId),
+              'alkion-original-${artifactId.substring(4, 20)}.bin',
+            );
+        final saved = await original(good.artifactId!);
         expect(saved.outcome, ExportOutcome.saved);
         expect(await File(saved.path!).readAsBytes(), fixture(rich));
         await expectLater(
-          service.exportOriginal(good.artifactId!),
+          original(good.artifactId!),
           throwsA(
             isA<StoreException>().having(
               (e) => e.category,
@@ -354,7 +355,7 @@ void main() {
         );
         await occupied.writeAsString('pre-existing user file', flush: true);
         await expectLater(
-          service.exportOriginal(bad.artifactId!),
+          original(bad.artifactId!),
           throwsA(
             isA<StoreException>().having(
               (e) => e.category,
@@ -365,15 +366,18 @@ void main() {
         );
         expect(await occupied.readAsString(), 'pre-existing user file');
         await occupied.delete();
-        final full = await service.exportFull(
-          settings: SettingsService(),
-          units: UnitService(),
+        final full = await delivery.deliver(
+          await service.domainBytes(),
+          'alkion-domain.json',
         );
         expect(
           decode(await File(full.path!).readAsBytes())['format'],
           domainExportFormat,
         );
-        final transfer = await service.exportTransfer();
+        final transfer = await delivery.deliver(
+          await service.transferBytes(),
+          'alkion-transfer-reps-compat.json',
+        );
         expect(
           decode(await File(transfer.path!).readAsBytes())['format'],
           'reps-export',

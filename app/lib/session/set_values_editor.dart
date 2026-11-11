@@ -18,6 +18,11 @@ import '../widgets/fit_label.dart';
 /// (0.25 kg / 1 lb). [onWeight] converts back to kg through
 /// [UnitService.toKg]; typed input does the same (see the stepper rules in
 /// app/CLAUDE.md).
+///
+/// Limits: weight up to [maxWeightKg] (shown as 500 kg or 1100 lb), reps
+/// [minReps] to [maxReps]. Typed text outside them is refused in the sheet
+/// with a message; a stored value outside them still shows and is never
+/// rewritten unless edited.
 class SetValuesEditor extends StatelessWidget {
   const SetValuesEditor({
     super.key,
@@ -36,6 +41,15 @@ class SetValuesEditor extends StatelessWidget {
   final UnitService unit;
   final ValueChanged<double> onWeight;
   final ValueChanged<int> onReps;
+
+  static const double maxWeightKg = 500;
+  static const double maxWeightLb = 1100;
+  static const int minReps = 1;
+  static const int maxReps = 100;
+
+  /// The weight limit in the display [unit]: a round 1100 lb, not 1102.3.
+  static double maxWeightIn(Unit unit) =>
+      unit == Unit.lb ? maxWeightLb : maxWeightKg;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +79,7 @@ class SetValuesEditor extends StatelessWidget {
           value: UnitService.fromKg(weightKg, unit.unit),
           step: unit.unit == Unit.lb ? 5 : 1,
           fineStep: unit.unit == Unit.lb ? 1 : 0.25,
-          max: UnitService.fromKg(500, unit.unit),
+          max: maxWeightIn(unit.unit),
           format: (v) =>
               !weightAvailable && v == UnitService.fromKg(weightKg, unit.unit)
               ? '—'
@@ -89,7 +103,8 @@ class SetValuesEditor extends StatelessWidget {
           unitLabel: l.sessionReps,
           value: reps.toDouble(),
           step: 1,
-          max: 50,
+          min: minReps.toDouble(),
+          max: maxReps.toDouble(),
           itemExtent: 47.6,
           format: (v) =>
               !repsAvailable && v == reps ? '—' : v.toInt().toString(),
@@ -102,11 +117,21 @@ class SetValuesEditor extends StatelessWidget {
   }
 
   Future<void> _typeWeight(BuildContext context, AppLocalizations l) async {
+    final max = maxWeightIn(unit.unit);
     final v = await showNumberEntrySheet(
       context,
       title: '${l.sessionColWeight} · ${unit.uLabel.toUpperCase()}',
       initialText: weightAvailable ? unit.fmtWt(weightKg) : '',
       allowDecimal: true,
+      // The limit is checked in display units, before converting to kg.
+      validate: (text) {
+        final typed = parseNumberInput(text, min: double.negativeInfinity);
+        return typed != null && typed > max
+            ? l.numberEntryMax(
+                '${UnitService.fmtDisplay(max, unit.unit)} ${unit.uLabel}',
+              )
+            : null;
+      },
       parse: (text) => parseNumberInput(
         text,
         min: 0,
@@ -123,7 +148,18 @@ class SetValuesEditor extends StatelessWidget {
       title: l.sessionColReps,
       initialText: repsAvailable ? '$reps' : '',
       allowDecimal: false,
-      parse: (text) => parseNumberInput(text, min: 0),
+      validate: (text) {
+        final typed = parseNumberInput(text, min: double.negativeInfinity);
+        if (typed == null) return null;
+        if (typed < minReps) return l.numberEntryMin('$minReps');
+        if (typed > maxReps) return l.numberEntryMax('$maxReps');
+        return null;
+      },
+      parse: (text) => parseNumberInput(
+        text,
+        min: minReps.toDouble(),
+        max: maxReps.toDouble(),
+      ),
     );
     if (v == null || repsAvailable && v.toInt() == reps) return;
     onReps(v.toInt());

@@ -142,8 +142,10 @@ Future<void> assertVolume(
   await settleReal(tester, ticks: 4);
   final bars = tester.widget<VolumeBars>(find.byType(VolumeBars));
   expect(bars.rows.singleWhere((r) => r.muscle == l.muscleChest).sets, known);
-  expect(bars.rows.singleWhere((r) => r.muscle == 'Forearms').sets, 1);
-  expect(bars.rows.singleWhere((r) => r.muscle == '').sets, 1);
+  // A custom 'forearms' label is the catalog group, named in the UI language.
+  expect(bars.rows.singleWhere((r) => r.muscle == l.bodyForearms).sets, 1);
+  // An empty label is not a group: its set joins the unknown note.
+  expect(bars.rows.where((r) => r.muscle.trim().isEmpty), isEmpty);
   expect(find.text(l.todayVolumeUnknown(unknown)), findsOneWidget);
   expect(find.text(l.todayNoSetsLogged), findsNothing);
   expectLayoutHolds(tester, 'weekly volume');
@@ -160,7 +162,7 @@ Future<void> changeParent(LocalDatabase db, bool restore) async {
 
 void main() {
   test(
-    'real full import emits unknown coverage; preserves empty/custom labels and re-listens',
+    'real full import emits unknown coverage; preserves custom labels, empty joins unknown, re-listens',
     () async {
       final h = await TransferHarness.open('weekly-volume');
       try {
@@ -178,9 +180,9 @@ void main() {
           expect(value.groups.toSet(), {
             (muscle: 'chest', sets: 1),
             (muscle: 'forearms', sets: 1),
-            (muscle: '', sets: 1),
           });
-          expect(value.unknownSets, 2);
+          // Null, missing and empty labels are all unknown (no blank row).
+          expect(value.unknownSets, 3);
         }
         final before = await h.store.inventory();
         expect(await h.reopenTwice(), before);
@@ -191,7 +193,7 @@ void main() {
                   )
                   .first)
               .unknownSets,
-          2,
+          3,
         );
       } finally {
         await h.close();
@@ -269,7 +271,19 @@ void main() {
               find.byType(TodayScreen),
               find.text(l.todayWeeklyVolume.toUpperCase()),
             );
-            expect(find.text(l.todayVolumeLoading), findsOneWidget);
+            expect(
+              find.byKey(const Key('today-volume-loading')),
+              findsOneWidget,
+            );
+            expect(
+              tester
+                  .widget<Semantics>(
+                    find.byKey(const Key('today-volume-loading')),
+                  )
+                  .properties
+                  .label,
+              l.todayVolumeLoading,
+            );
             expect(find.text(l.todayNoSetsLogged), findsNothing);
             faults.faults.add(null);
             await settleReal(tester, ticks: 2);
@@ -282,7 +296,7 @@ void main() {
             await settleReal(tester, ticks: 5);
             expect(find.text(l.todayNoSetsLogged), findsOneWidget);
             await tester.runAsync(() => changeParent(h.localDatabase, true));
-            await assertVolume(tester, 1, 2, l);
+            await assertVolume(tester, 1, 3, l);
             final state = tester.state(find.byType(TodayScreen));
             // A real set tombstone changes a known group; later error must hide stale bars.
             await tester.runAsync(() async {
@@ -310,7 +324,7 @@ void main() {
               value!.groups.map((r) => r.muscle),
               isNot(contains('chest')),
             );
-            expect(value.unknownSets, 2);
+            expect(value.unknownSets, 3);
             expect(tester.state(find.byType(TodayScreen)), same(state));
             faults.faults.add(null);
             await settleReal(tester, ticks: 2);
@@ -323,7 +337,7 @@ void main() {
             expect(find.text(l.todayNoSetsLogged), findsOneWidget);
             await tester.runAsync(() => changeParent(h.localDatabase, true));
             await settleReal(tester, ticks: 5);
-            expect(find.text(l.todayVolumeUnknown(2)), findsOneWidget);
+            expect(find.text(l.todayVolumeUnknown(3)), findsOneWidget);
             for (var reopen = 1; reopen <= 2; reopen++) {
               await h.reopen(tester, reopen);
               final reopened = WeeklyFaultDatabase(h.database, h.owner);
@@ -334,11 +348,10 @@ void main() {
                 find.byType(TodayScreen),
                 find.text(l.todayWeeklyVolume.toUpperCase()),
               );
-              expect(find.text(l.todayVolumeUnknown(2)), findsOneWidget);
+              expect(find.text(l.todayVolumeUnknown(3)), findsOneWidget);
               final bars = tester.widget<VolumeBars>(find.byType(VolumeBars));
               expect(bars.rows.toSet(), {
-                (muscle: 'Forearms', sets: 1, target: 1),
-                (muscle: '', sets: 1, target: 1),
+                (muscle: l.bodyForearms, sets: 1, target: 1),
               });
               reopened.faults.add(null);
               await settleReal(tester, ticks: 2);

@@ -85,8 +85,41 @@ application ID, newer (`backup_newer_schema`) or unknown schema and migration
 history, `integrity_check`, `foreign_key_check`, uncovered tables, single
 writable profile metadata, and finally that profile, schema and the complete
 recomputed inventory equal the manifest (`backup_inventory_mismatch`). The
-check screen reports a verified backup of another profile without offering to
-restore it here. Verification evidence and restore evidence are separate.
+check screen reports a verified backup of another profile under its own title,
+"Backup from another profile", with the steps to use it (back up this profile,
+clear Alkion's storage in Android settings, choose Restore backup at first
+start); there is no in-app replace. Verification evidence and restore evidence
+are separate.
+
+## Backup screen
+
+- **One pick.** On Android, *Choose backup file* (or the first Check or
+  Restore) opens the Files picker once; the private copy's name and size are
+  shown and reused by Check and Restore until another file is chosen. A
+  cancelled picker changes nothing. Linux development keeps the path field.
+  Restore's confirmation names the file and its creation date. Check, the
+  screen's Restore and `RuntimeRecoveryHost.restoreBackup` each still verify.
+- **Progress.** Create, Check, Restore and Keep all show a progress row with a
+  live-region label while they run; it is a still line under reduced motion
+  and disappears when the step ends. The restoring screen and the first-start
+  restore show the same row.
+- **Last backup.** "Last backup created: <date>" (or "No backup yet") at the
+  top of the screen and in the Profile row comes from the newest
+  `alkion-backup-<profile8>-<stamp>Z-<nonce>.alkionbackup` name of this profile
+  in the private backup directory (`stored_copies.dart`). Other profiles'
+  backups, unparseable names, partial files and links are ignored. Nothing is
+  written to the database. A backup still counts only once copied off the
+  device and checked there.
+- **Stored copies.** A read-only section lists the sizes of the private
+  backups (only Alkion backup names and the writer's leftovers count, since the
+  Linux backup directory is the documents folder), exports and, on Android,
+  picked and saved document staging. A size Dart cannot read is omitted, links
+  are never followed and nothing is deleted.
+- **Errors.** Every failure goes through the shared error mapper: a localized
+  sentence with the stable category as a small details line, never exception
+  text. An open editor (`unsaved_editor_input`) says to save or discard and
+  close the editor; `restore_interrupted`, `restore_target_not_empty` and
+  `restore_staging_*` have their own sentences.
 
 ## Verification
 

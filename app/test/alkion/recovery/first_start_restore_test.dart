@@ -138,7 +138,7 @@ void main() {
           await tester.pumpWidget(presented.last);
           await tester.pump();
           expect(find.byType(FirstStartScreen), findsNothing);
-          expect(find.byType(CatalogGlyphSkeleton), findsOneWidget);
+          expect(find.byType(CatalogStartupMark), findsOneWidget);
 
           // Fail only after first-start is disposed: its mounted-guarded
           // catch cannot rescue a launcher that leaves the loading root up.
@@ -153,15 +153,23 @@ void main() {
           expect(presented.last, isA<AlkionPreflightApp>());
           await tester.pumpWidget(presented.last);
           await tester.pump();
-          expect(find.byType(CatalogGlyphSkeleton), findsNothing);
+          expect(find.byType(CatalogStartupMark), findsNothing);
           expect(
             find.textContaining('Your existing files are preserved'),
             findsOneWidget,
           );
+          // A non-storage error is not described as a storage failure, and
+          // its raw text stays off screen; only its type sits behind the
+          // collapsed technical details.
+          expect(find.textContaining('Local storage'), findsNothing);
           expect(
             find.textContaining('synthetic catalog failure'),
-            findsOneWidget,
+            findsNothing,
           );
+          expect(find.byKey(const Key('launch-failure-retry')), findsOneWidget);
+          await tester.tap(find.byKey(const Key('launch-failure-details')));
+          await tester.pump();
+          expect(find.text('FormatException'), findsOneWidget);
           expect(tester.takeException(), isNull);
           // The failure also releases its store; the same admitted profile can
           // be reopened without a destructive recovery or profile replacement.
@@ -391,6 +399,16 @@ void main() {
           tester,
           find.textContaining('fresh_restore_interrupted'),
         );
+        // The retryable interrupted-restore sentence, not the foreign-backup
+        // one; the category is only the small details line.
+        expect(
+          find.textContaining(
+            'The restore was interrupted before it finished. The backup file is fine; try again.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('another profile'), findsNothing);
+        expect(find.text('fresh_restore_interrupted'), findsOneWidget);
         expect(localCalls, 0);
         expect(root.existsSync(), isFalse);
         expect(find.byKey(const Key('first-start-local')), findsNothing);

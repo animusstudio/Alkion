@@ -21,6 +21,20 @@ class Motion {
   static const ambientCycle = Duration(seconds: 16);
   static const ambientCurve = Curves.easeInOutSine;
 
+  /// One pass of the glyph skeleton's loading band. It runs only while a real
+  /// load is pending; the dissolve into content uses [reveal].
+  static const glyphSweep = Duration(milliseconds: 1400);
+
+  /// The glyph dissolve from a finished load into its content, owner-slowed
+  /// from [slow] so the reveal reads as one unhurried wave.
+  static const reveal = Duration(milliseconds: 500);
+
+  /// The [reveal] dissolve's own curve, owner-directed 2026-11-07: [curve]
+  /// front-loads the wave so it looked finished by about 200 ms. This one
+  /// starts at once but keeps about half the travel for after 200 ms, so the
+  /// wave visibly crosses the whole 500 ms. [curve] is unchanged elsewhere.
+  static const revealCurve = Cubic(0.3, 0.2, 0.5, 1);
+
   static AnimationStyle sheet(BuildContext context) => AnimationStyle(
     duration: of(context, base),
     reverseDuration: of(context, base),

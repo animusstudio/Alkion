@@ -8,6 +8,10 @@
 
 2026-11-11 · [Updated artwork and stable numbered library](../plans/2026-11-11-numbered-artwork-library.md) · Done; see acceptance limits.
 
+2026-11-11 · [Bilingual catalog discovery](../plans/2026-11-11-catalog-discovery.md) · Done.
+
+2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Done.
+
 2026-11-05 · [Artwork, discovery and live-workout refinement](../plans/2026-11-05-ui-performance-refinement.md) · Implemented locally; see acceptance limits.
 
 2026-11-04 · [Iconoir glyph system](../plans/2026-11-04-iconoir-glyph-system.md) · Done.
@@ -30,8 +34,7 @@
 
 2026-11-01 · [Usability and history preservation design](../specs/2026-11-01-usability-and-history-test.md) · Approved.
 
-Usage: [Import Reps data](reps-import.md),
-[workout interaction brief](workout-usability-brief.md), and
+Usage: [workout interaction brief](workout-usability-brief.md), and
 [catalog gap review](catalog-gap-review.md).
 
 2026-11-01 · [Animus generation recovery](../plans/2026-10-30-animus-recovery.md) · Approved.
@@ -115,9 +118,9 @@ explicit `ANIMUS_CONFIG` JSON, and run `build-apk-animus` with
 catalog APK verifier with `--development --build-mode debug` against that exact
 APK, staged mirror and current generated JNI directory. Keep the current private
 body-assets opt-in and verification when those assets are required. No extra
-build route or catalog redistribution grant is introduced. The isolated catalog
-trial and body-preview builds still cannot enable Animus; this combination is
-restricted to the ordinary Dev debug target.
+build route or catalog redistribution grant is introduced. The isolated
+body-preview build still cannot enable Animus; this combination is restricted to
+the ordinary Dev debug target.
 
 ## Current standalone development
 
@@ -129,6 +132,30 @@ standalone SQLite with account-free local use and an optional explicitly configu
 debug `build-apk` through pinned FVM. Normal Android builds use an explicit
 isolated debug user directory, existing SDK and Java21; no inherited signing
 configuration is read. Builds do not install or launch a device.
+
+The app has no in-app Reps importer since 2026-11-08 ([retired guide](reps-import.md)).
+Until the planned external migration tool exists, the host-side
+`make -C app alkion-import-history` route builds a fresh profile and verified
+backup from an explicit history file and optional reviewed mapping
+([transfer](transfer.md)). Profiles that already hold mapped history display it
+unchanged.
+
+The disposable catalog trial (its isolated APK, entry point and in-memory
+workout path) is removed since 2026-11-08. The exercise catalog runs only in the
+normal app, from the private Dev build: stage once with
+`make -C app stage-catalog`, then build with `make -C app build-catalog-dev`
+([catalog staging](exercise-catalog.md), [app README](../../app/README.md)).
+
+Since 2026-11-08, History and Progress show no `reps-compat/1` compatibility
+caption; the derivation, its numbers and its exports are unchanged. When exact
+alarms are not allowed, rest notifications fall back to inexact scheduling
+without a separate "may be delayed" notice. Since 2026-11-11 the rest
+notification's +30s and Skip rest act in the background through a durable
+intent journal that the app applies at its next drain
+([notification actions](recovery.md#notification-actions)); the private Dev
+release APK accepts `ALKION_NOTIFICATION_TRACE=1` for `alkion-notif` logcat
+markers. Every ARB key must be used by app
+code in all four locales (`test/l10n/unused_keys_test.dart`).
 
 Capture evidence checkers remain available; old capture-production and release
 routes remain disabled. The bespoke Android campaign framework is retired;

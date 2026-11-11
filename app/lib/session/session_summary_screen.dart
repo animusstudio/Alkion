@@ -7,7 +7,7 @@ import '../data/models.dart';
 import '../data/body_workload.dart';
 import '../data/body_workload_projection.dart';
 import '../catalog/catalog.dart';
-import '../catalog_ui/catalog_trial_scope.dart';
+import '../catalog_ui/catalog_scope.dart';
 import '../ui/body_figure.dart';
 import '../data/session_repository.dart';
 import '../l10n/app_localizations.dart';
@@ -17,9 +17,11 @@ import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
+import '../util/error_message.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/state_motion.dart';
 import '../widgets/pr_badge.dart';
+import '../widgets/glyph_loading.dart';
 import '../widgets/tag.dart';
 import '../widgets/plan_form.dart';
 import '../catalog_ui/catalog_evidence_widgets.dart';
@@ -55,9 +57,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     WorkoutWorkloadMode.saved,
   );
 
-  WorkoutWorkload _currentWorkload = WorkoutWorkload.loading(
-    WorkoutWorkloadMode.saved,
-  );
   CatalogBundle? _bundle;
   bool _started = false;
   int _loadEpoch = 0;
@@ -65,7 +64,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final bundle = CatalogTrialScope.maybeOf(context)?.bundle;
+    final bundle = CatalogScope.maybeOf(context)?.bundle;
     final database = Provider.of<LocalDatabase>(context);
     final token = database.token;
     if (!_started ||
@@ -82,10 +81,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   /// Error state: [_notFound] means the session row was missing; otherwise
-  /// [_loadError] (when non-null) carries the raw exception detail. Resolved to
-  /// a localized message at build time so the locale is fully available.
+  /// [_loadError] (when non-null) carries the failure. It is mapped to a
+  /// localized message at build time so the locale is fully available; the
+  /// exception text itself is never shown.
   bool _notFound = false;
-  String? _loadError;
+  Object? _loadError;
 
   Future<void> _load() async {
     final epoch = ++_loadEpoch;
@@ -97,7 +97,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     _loadError = null;
     _notFound = false;
     _workload = WorkoutWorkload.loading(WorkoutWorkloadMode.saved);
-    _currentWorkload = WorkoutWorkload.loading(WorkoutWorkloadMode.saved);
     try {
       // Read the session summary row
       final rows = await database.getAll(
@@ -142,7 +141,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       }
       setState(() {
         _workload = views.recorded;
-        _currentWorkload = views.current;
         _session = session;
         _blocks = blocks;
         _exerciseNames = names;
@@ -156,10 +154,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       }
       setState(() {
         _workload = WorkoutWorkload.unavailable(WorkoutWorkloadMode.saved);
-        _currentWorkload = WorkoutWorkload.unavailable(
-          WorkoutWorkloadMode.saved,
-        );
-        _loadError = '$e';
+        _loadError = e;
         _loading = false;
       });
     }
@@ -171,42 +166,64 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final unit = context.watch<UnitService>();
     final l = AppLocalizations.of(context);
 
+    final loadFailure = _loadError == null ? null : userMessage(l, _loadError!);
     final errorMessage = _notFound
         ? l.summarySessionNotFound
-        : _loadError != null
-        ? l.summaryLoadFailed(_loadError!)
+        : loadFailure != null
+        ? '${l.summaryLoadFailed}\n${loadFailure.message}'
         : null;
 
     return Scaffold(
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : errorMessage != null
-          ? _ErrorState(
-              onWorkload: () => showBodyWorkloadSheet(
-                context,
-                workload: () => _workload,
-                currentWorkload: () => _currentWorkload,
+      body: GlyphReveal.builder(
+        loading: _loading,
+        skeleton: const _SummarySkeleton(),
+        builder: (context) => errorMessage != null
+            ? _ErrorState(
+                onWorkload: () =>
+                    showBodyWorkloadSheet(context, workload: () => _workload),
+                error: errorMessage,
+                details: _notFound ? null : loadFailure?.details,
+                doneLabel: l.commonDone,
+                tokens: tokens,
+                onDone: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
+              )
+            : _SummaryBody(
+                onWorkload: () =>
+                    showBodyWorkloadSheet(context, workload: () => _workload),
+                session: _session!,
+                blocks: _blocks!,
+                exerciseNames: _exerciseNames,
+                unit: unit,
+                tokens: tokens,
+                onDone: () =>
+                    Navigator.of(context).popUntil((route) => route.isFirst),
               ),
-              error: errorMessage,
-              doneLabel: l.commonDone,
-              tokens: tokens,
-              onDone: () =>
-                  Navigator.of(context).popUntil((route) => route.isFirst),
-            )
-          : _SummaryBody(
-              onWorkload: () => showBodyWorkloadSheet(
-                context,
-                workload: () => _workload,
-                currentWorkload: () => _currentWorkload,
-              ),
-              session: _session!,
-              blocks: _blocks!,
-              exerciseNames: _exerciseNames,
-              unit: unit,
-              tokens: tokens,
-              onDone: () =>
-                  Navigator.of(context).popUntil((route) => route.isFirst),
-            ),
+      ),
+    );
+  }
+}
+
+/// The summary's shape while the finished session loads: the mark, title and
+/// date, the stat tiles, then exercise rows.
+class _SummarySkeleton extends StatelessWidget {
+  const _SummarySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final padding = MediaQuery.paddingOf(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, padding.top + 24, 16, 0),
+      child: GlyphSkeleton.blocks(const [
+        GlyphBlock(72, width: 72, align: 0),
+        GlyphBlock(22, widthFactor: .6, gap: 20, align: 0),
+        GlyphBlock(12, widthFactor: .3, gap: 6, align: 0),
+        GlyphBlock(64, gap: 24),
+        GlyphBlock(14, widthFactor: .55, gap: 24),
+        GlyphBlock(12, widthFactor: .8, gap: 10),
+        GlyphBlock(14, widthFactor: .48, gap: 20),
+        GlyphBlock(12, widthFactor: .72, gap: 10),
+      ]),
     );
   }
 }
@@ -371,17 +388,20 @@ class _SummaryBody extends StatelessWidget {
                 ),
               const SizedBox(height: 32),
 
-              TextButton(
+              BodyWorkloadButton(
                 key: const Key('summary-workload'),
                 onPressed: onWorkload,
-                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-                child: Text(l.bodyWorkload),
               ),
               const SizedBox(height: 16),
               // ── Done button ──────────────────────────────────────────
               StaggeredEntrance(
                 index: 3,
-                child: PrimaryBtn(l.commonDone, enabled: true, onTap: onDone),
+                child: PrimaryBtn(
+                  l.commonDone,
+                  enabled: true,
+                  onTap: onDone,
+                  glitch: true,
+                ),
               ),
             ]),
           ),
@@ -628,6 +648,7 @@ class _ErrorState extends StatelessWidget {
   const _ErrorState({
     required this.onWorkload,
     required this.error,
+    required this.details,
     required this.doneLabel,
     required this.tokens,
     required this.onDone,
@@ -635,6 +656,7 @@ class _ErrorState extends StatelessWidget {
 
   final VoidCallback onWorkload;
   final String error;
+  final String? details;
   final String doneLabel;
   final WorkoutTokens tokens;
   final VoidCallback onDone;
@@ -654,14 +676,22 @@ class _ErrorState extends StatelessWidget {
               style: WorkoutType.body(size: 14, color: tokens.dim),
               textAlign: TextAlign.center,
             ),
+            if (details case final code?) ...[
+              const SizedBox(height: 6),
+              Text(
+                code,
+                key: const Key('summary-error-details'),
+                style: WorkoutType.mono(size: 11, color: tokens.faint),
+                textAlign: TextAlign.center,
+              ),
+            ],
             const SizedBox(height: 24),
-            TextButton(
+            BodyWorkloadButton(
               key: const Key('summary-workload'),
               onPressed: onWorkload,
-              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              child: Text(AppLocalizations.of(context).bodyWorkload),
             ),
-            PrimaryBtn(doneLabel, enabled: true, onTap: onDone),
+            const SizedBox(height: 16),
+            PrimaryBtn(doneLabel, enabled: true, onTap: onDone, glitch: true),
           ],
         ),
       ),

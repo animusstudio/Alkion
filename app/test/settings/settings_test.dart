@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:alkion/store/local_store.dart';
 import '../alkion/domains/local_screen_harness.dart' show openDomainStore;
@@ -22,6 +23,37 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('SettingsService', () {
+    test(
+      'notification explainer key: absent reads unexplained, then round-trips',
+      () async {
+        final svc = SettingsService.local(database);
+        await svc.load();
+        expect(svc.notificationsExplained, isFalse);
+        await svc.setMode('light');
+        await svc.flushPersistence();
+        final row = await database.readTransaction(
+          (tx) => tx.localState(LocalStateKind.semanticSetting, 'settings'),
+        );
+        expect(
+          utf8.decode((row!['payload_bytes'] as List).cast<int>()),
+          isNot(contains('notifications_explained')),
+          reason: 'the optional key stays absent until the explainer shows',
+        );
+        await svc.setNotificationsExplained();
+        await svc.flushPersistence();
+        final reloaded = SettingsService.local(database);
+        await reloaded.load();
+        expect(reloaded.notificationsExplained, isTrue);
+        expect(reloaded.mode, 'light');
+        // Another setting written later keeps the key.
+        await reloaded.setMode('dark');
+        await reloaded.flushPersistence();
+        final again = SettingsService.local(database);
+        await again.load();
+        expect(again.notificationsExplained, isTrue);
+      },
+    );
+
     test('defaults: dark mode, accents[0], Athlete, no connection', () async {
       final svc = SettingsService.local(database);
       await svc.load();

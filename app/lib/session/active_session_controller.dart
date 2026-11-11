@@ -17,6 +17,8 @@ import '../data/session_writer.dart';
 import '../util/calendar_keys.dart';
 import '../util/prescription_format.dart';
 import '../store/local_store.dart';
+import '../units/unit_service.dart';
+import '../util/number_input.dart' show clampRound2;
 import '../domain/catalog_execution.dart';
 import '../domain/local_action.dart';
 import '../domain/evidence.dart';
@@ -124,6 +126,34 @@ void _validateFreshCounts(ResolvedSlot resolved) {
 /// Example: `roundTo(38.75, 2.5) == 40.0`.
 double roundTo(double v, double step) => (v / step).round() * step;
 
+/// The plate step suggestions round to in lb: whole 5 lb, whatever the
+/// stored `plate_step_kg` (which stays unchanged).
+const double lbSuggestionStep = 5;
+
+/// Rounds a suggested weight [kg] to the grid the user sees: [stepKg] in kg,
+/// [lbSuggestionStep] in lb, converted back to kg so it displays as a
+/// multiple of 5 lb.
+double roundSuggestion(double kg, double stepKg, Unit unit) {
+  if (unit != Unit.lb) return roundTo(kg, stepKg);
+  final lb = roundTo(UnitService.fromKg(kg, Unit.lb), lbSuggestionStep);
+  return clampRound2(UnitService.toKg(lb, Unit.lb));
+}
+
+/// The suggested working weight from [seedKg]: one plate up for a compound
+/// exercise (2.5 kg on a 2.5 kg step, 5 lb in lb), on the [unit]'s grid.
+double suggestedWeightKg(double seedKg, Exercise exercise, Unit unit) {
+  final step = exercise.plateStepKg;
+  if (unit != Unit.lb) {
+    return roundTo(seedKg + (exercise.compound ? step : 0), step);
+  }
+  final lb = roundTo(
+    UnitService.fromKg(seedKg, Unit.lb) +
+        (exercise.compound ? lbSuggestionStep : 0),
+    lbSuggestionStep,
+  );
+  return clampRound2(UnitService.toKg(lb, Unit.lb));
+}
+
 /// Builds a [BlockState] from a fully-resolved slot, seeding weights from
 /// [lastTopKg] (or the exercise's base weight, or 20 as a last-resort floor
 /// for custom exercises that have no base weight yet).
@@ -133,12 +163,16 @@ double roundTo(double v, double step) => (v / step).round() * step;
 ///   reps_i   = max(1, 8 − 2*i)
 ///
 /// Working sets use [suggested] weight and [repLow] reps; actual RIR is absent.
+///
+/// In lb ([unit]) the suggestion and the ramp round to whole 5 lb instead of
+/// the kg plate step (see [roundSuggestion]); weights stay stored in kg.
 BlockState buildBlock({
   required ResolvedSlot resolved,
   RepPair? repRange,
   double? lastTopKg,
   String? originSlotId,
   int? originSlotRevision,
+  Unit unit = Unit.kg,
 }) {
   _validateFreshCounts(resolved);
   final exercise = resolved.exercise;
@@ -150,7 +184,7 @@ BlockState buildBlock({
 
   // Compound exercises bump one plate on top of the seed to encourage
   // progressive overload; isolation exercises stay at the seed.
-  final suggested = roundTo(seed + (exercise.compound ? step : 0), step);
+  final suggested = suggestedWeightKg(seed, exercise, unit);
 
   // Warm-up ramp
   final warmups = <SetState>[];
@@ -158,7 +192,7 @@ BlockState buildBlock({
     warmups.add(
       SetState(
         id: uuid.v4(),
-        weightKg: roundTo(suggested * (0.5 + 0.18 * i), step),
+        weightKg: roundSuggestion(suggested * (0.5 + 0.18 * i), step, unit),
         reps: max(1, 8 - 2 * i),
         rir: null,
         isWarmup: true,
@@ -258,8 +292,9 @@ BlockState buildCatalogBlock({
 typedef LiveSet = ({BlockState block, SetState set});
 
 /// The heaviest done working set in [block] and whether it beats the
-/// block's all-time best (no history counts as a PR). The same rule the
-/// block header and the finish-time PR flag use.
+/// block's all-time best. A PR needs a previous best: a first-ever lift is
+/// not one. The same rule the block header, the finish-time PR flag and the
+/// catalog derivation use.
 ({double topKg, bool isPr}) liveTopOf(BlockState block) {
   if (block.catalogSelection != null) {
     final selection = block.catalogSelection!;
@@ -291,7 +326,7 @@ typedef LiveSet = ({BlockState block, SetState set});
       .where((s) => s.done)
       .fold<double>(0, (m, s) => s.weightKg > m ? s.weightKg : m);
   final best = block.bestKg;
-  return (topKg: top, isPr: top > 0 && (best == null || top > best));
+  return (topKg: top, isPr: best != null && top > best);
 }
 
 /// A fresh workout opens with only its first exercise expanded; the live set
@@ -959,6 +994,9 @@ class ActiveSessionController extends ChangeNotifier {
     restEndedAt = draft.restEndedAt;
     _focusedSetId = draft.focusedSetId;
     _rirPromptSetId = draft.rirPromptSetId;
+    // Whether blocks or sets were added, removed or moved is not in the
+    // draft file, so an adopted draft counts as edited: Discard asks first.
+    _structureEdited = true;
   }
 
   final DraftStore? _draftStore;
@@ -972,33 +1010,30 @@ class ActiveSessionController extends ChangeNotifier {
 
   SessionDraft? _draft;
 
-  /// Fences autosaves: each scheduling, finish, discard and freeze moves it
-  /// on, and an autosave whose epoch is no longer current never writes —
+  /// Fences autosaves: each scheduling, flush, finish, discard and
+  /// notification action moves it on, and an autosave whose epoch is no longer current never writes —
   /// not even one whose timer already fired and is waiting for admission.
   int _saveEpoch = 0;
 
-  /// Generation of the capture that froze this controller's callbacks.
-  int? _frozenGeneration;
-
-  /// A mutation happened while frozen, so its autosave is still owed.
+  /// A mutation happened while callbacks were frozen (or an autosave
+  /// failed), so its save is still owed.
   bool _savePending = false;
   bool _notificationActionPending = false;
-  _RestState? _notificationRestBefore;
   List<_RestState Function(_RestState)>? _notificationRestEdits;
   bool get notificationActionUncertain =>
-      _draftStore?.pendingNotificationAction != null;
+      _draftStore?.pendingNotificationIntent != null;
 
-  /// Whether a capture froze autosave and rest auto-stop.
+  /// Whether autosave and rest changes wait: a prepared Finish has not
+  /// committed yet (in flight, or failed and awaiting retry), or a
+  /// notification's rest action is being saved.
   bool get callbacksFrozen =>
-      _frozenGeneration != null ||
-      _pendingFinish != null ||
-      _notificationActionPending;
+      _pendingFinish != null || _notificationActionPending;
 
   /// [callbacksFrozen] as a listenable, for what the screen shows as
-  /// unavailable while a capture holds the source (the +30s rest chip).
+  /// unavailable meanwhile (the +30s and Skip rest chips).
   /// Kept apart from [notifyListeners], which schedules an autosave.
-  ValueListenable<bool> get captureFrozen => _captureFrozen;
-  final _captureFrozen = ValueNotifier<bool>(false);
+  ValueListenable<bool> get callbacksFrozenListenable => _callbacksFrozen;
+  final _callbacksFrozen = ValueNotifier<bool>(false);
 
   @override
   void notifyListeners() {
@@ -1024,6 +1059,14 @@ class ActiveSessionController extends ChangeNotifier {
   }
 
   Object? persistenceError;
+
+  /// Hears a failed debounced autosave, which has no caller to rethrow to.
+  /// The owning `SessionManager` sets it while this controller is active.
+  void Function(Object error)? onAutosaveError;
+
+  /// Hears a debounced autosave that landed, so a failure reported through
+  /// [onAutosaveError] can be withdrawn.
+  void Function()? onAutosaveSaved;
   Future<void> _persistenceTail = Future.value();
   bool get persistenceOwed =>
       _savePending ||
@@ -1031,20 +1074,17 @@ class ActiveSessionController extends ChangeNotifier {
       notificationActionUncertain;
 
   void _beginNotificationRest() {
-    _notificationRestBefore = (
-      start: restStart,
-      total: restTotal,
-      endedAt: restEndedAt,
-    );
     _notificationRestEdits = [];
   }
 
+  /// Adopts the committed rest, including its `restEndedAt`, then replays the
+  /// rest edits made while the intent was in flight.
   bool _adoptNotificationRest(CommittedRestChange? committed) {
     if (committed != null) {
       _RestState state = (
         start: committed.restStart,
         total: committed.restTotal,
-        endedAt: _notificationRestBefore?.endedAt,
+        endedAt: committed.restEndedAt,
       );
       for (final edit
           in _notificationRestEdits ?? <_RestState Function(_RestState)>[]) {
@@ -1054,22 +1094,27 @@ class ActiveSessionController extends ChangeNotifier {
       restTotal = state.total;
       restEndedAt = state.endedAt;
     }
-    final action = _draftStore?.pendingNotificationAction;
-    if (action != null) {
-      _draftStore!.acknowledgeNotificationAction(action);
+    final intent = _draftStore?.pendingNotificationIntent;
+    if (intent != null) {
+      _draftStore!.acknowledgeNotificationAction(intent);
     }
-    _notificationRestBefore = null;
     _notificationRestEdits = null;
     return committed != null;
   }
 
-  Future<bool> _reconcileNotificationAction(DraftStore store) async {
-    if (store.pendingNotificationAction == null) return false;
-    final adopted = _adoptNotificationRest(
-      await store.reconcileNotificationAction(),
-    );
+  Future<bool> _reconcileNotificationAction(DraftStore store) async =>
+      (await _reconcilePendingNotification(store))?.change != null;
+
+  /// Decides a retained uncertain intent, if any, and adopts what it
+  /// committed. Null when nothing was pending.
+  Future<NotificationConsumption?> _reconcilePendingNotification(
+    DraftStore store,
+  ) async {
+    if (store.pendingNotificationIntent == null) return null;
+    final outcome = await store.reconcileNotificationAction();
+    _adoptNotificationRest(outcome?.change);
     persistenceError = null;
-    return adopted;
+    return outcome;
   }
 
   SessionDraft snapshot() {
@@ -1110,9 +1155,11 @@ class ActiveSessionController extends ChangeNotifier {
             _savePending = false;
           }
           persistenceError = null;
+          onAutosaveSaved?.call();
         } catch (e) {
           persistenceError = e;
           _savePending = true;
+          onAutosaveError?.call(e);
         } finally {
           if (reconciled) super.notifyListeners();
         }
@@ -1177,50 +1224,63 @@ class ActiveSessionController extends ChangeNotifier {
     });
   }
 
-  /// Shares the autosave tail. Pending edits settle first; no older snapshot
-  /// may overwrite the action's committed rest, and finish cannot prepare from
-  /// the old revision while the action is in flight.
-  Future<bool> applyNotificationAction(NotificationAction action) {
+  /// An older build's +30s, tapped with a bare token (spec D2): step 1 of an
+  /// add under a fresh intent, decided like a journaled one. True when it
+  /// committed.
+  Future<bool> applyNotificationAction(NotificationAction action) async =>
+      (await applyNotificationIntent(
+        legacyNotificationIntent(action),
+      ))?.outcome ==
+      NotificationOutcome.applied;
+
+  /// Decides one notification intent through the autosave tail. Pending edits
+  /// settle first; no older snapshot may overwrite the committed rest, and
+  /// finish cannot prepare from the old revision while the intent is in
+  /// flight. Null when it was not attempted (no store or draft, callbacks
+  /// frozen, Finish pending): the intent waits. Throws when COMMIT is
+  /// uncertain; the exact intent is then retained until SQL answers it.
+  Future<NotificationConsumption?> applyNotificationIntent(
+    NotificationIntent intent,
+  ) {
     final store = _draftStore;
     if (store == null || _draft == null || callbacksFrozen) {
-      return Future.value(false);
+      return Future.value(null);
     }
     _notificationActionPending = true;
-    _captureFrozen.value = true;
+    _callbacksFrozen.value = true;
     _saveDebounce?.cancel();
     final epoch = ++_saveEpoch;
-    final previousAction = store.pendingNotificationAction;
-    if (previousAction == null) _beginNotificationRest();
+    final previous = store.pendingNotificationIntent;
+    if (previous == null) _beginNotificationRest();
     final work = _persistenceTail.then((_) async {
       var adopted = false;
       try {
-        adopted = await _reconcileNotificationAction(store);
+        final reconciled = await _reconcilePendingNotification(store);
+        adopted = reconciled?.change != null;
         if (_savePending || store.pending != null) {
           if (store.pending != null) await store.save(snapshot());
           await store.save(snapshot());
           if (epoch == _saveEpoch) _savePending = false;
         }
-        if (_frozenGeneration != null || finishPending || _draft == null) {
-          return false;
+        if (finishPending || _draft == null) {
+          return null;
         }
-        if (previousAction?.encode() == action.encode()) return adopted;
+        if (previous?.encode() == intent.encode()) return reconciled;
         if (_notificationRestEdits == null) _beginNotificationRest();
-        final committed = await store.consumeAction(action);
-        adopted = _adoptNotificationRest(committed) || adopted;
-        if (committed == null) return false;
+        final outcome = await store.consumeAction(intent);
+        adopted = _adoptNotificationRest(outcome?.change) || adopted;
         persistenceError = null;
-        // This state is already durable. Ordinary listeners must not autosave
-        // the pre-action rest or create a second consumption.
-        return true;
+        // An applied rest is already durable. Ordinary listeners must not
+        // autosave the pre-action rest or create a second consumption.
+        return outcome;
       } catch (error) {
         persistenceError = error;
         rethrow;
       } finally {
         _notificationActionPending = false;
-        _captureFrozen.value = callbacksFrozen;
+        _callbacksFrozen.value = callbacksFrozen;
         if (_savePending) _scheduleSave();
         if (!notificationActionUncertain) {
-          _notificationRestBefore = null;
           _notificationRestEdits = null;
         }
         if (adopted) super.notifyListeners();
@@ -1230,74 +1290,11 @@ class ActiveSessionController extends ChangeNotifier {
     return work;
   }
 
-  /// Moves on whenever the draft's persisted state may become stale; the
-  /// capture compares it to know whether its flush covered every change.
-  int get saveEpoch => _saveEpoch;
-
-  /// Stops autosave and rest auto-stop for capture [generation]: the pending
-  /// debounce is cancelled and already scheduled callbacks are fenced. Later
-  /// mutations stay in memory until [resumeCallbacks].
-  void freezeCallbacks(int generation) {
-    if (_saveDebounce?.isActive ?? false) {
-      _savePending = true;
-    }
-    _saveDebounce?.cancel();
-    _saveDebounce = null;
-    _saveEpoch++;
-    _frozenGeneration = generation;
-    _captureFrozen.value = true;
-  }
-
-  /// The capture's flush of the draft as it was at [epoch] landed: nothing
-  /// is owed unless the draft was scheduled for saving again since.
-  void markFlushed(int epoch) {
-    if (epoch == _saveEpoch) {
-      _savePending = false;
-    }
-  }
-
-  /// Ends a freeze (or, unfrozen, settles what a refused autosave still
-  /// owes): a rest whose countdown ran out meanwhile ends at its due time
-  /// (no silent extension, no timer continuity), and an owed save or a
-  /// mutation made while frozen is autosaved.
-  void resumeCallbacks(DateTime now) {
-    _frozenGeneration = null;
-    _captureFrozen.value = _pendingFinish != null;
-    if (_pendingFinish != null) {
-      return;
-    }
-    if (notificationActionUncertain) {
-      unawaited(
-        flushPersistence().then((_) => resumeCallbacks(now)).catchError((
-          Object error,
-        ) {
-          persistenceError = error;
-        }),
-      );
-      return;
-    }
-    final start = restStart;
-    var changed = false;
-    if (start != null) {
-      final due = start.add(Duration(seconds: restTotal));
-      if (!now.isBefore(due)) {
-        restEndedAt = due;
-        restStart = null;
-        restTotal = 0;
-        changed = true;
-      }
-    }
-    if (changed || _savePending) {
-      _savePending = false;
-      notifyListeners();
-    }
-  }
-
   @override
   void dispose() {
     _saveDebounce?.cancel();
     _saveEpoch++;
-    _captureFrozen.dispose();
+    _callbacksFrozen.dispose();
     super.dispose();
   }
 
@@ -1331,6 +1328,7 @@ class ActiveSessionController extends ChangeNotifier {
     required ExerciseRepository exerciseRepo,
     required SessionRepository sessionRepo,
     CatalogBundle? currentBundle,
+    Unit unit = Unit.kg,
   }) async {
     // Count all slots, including unresolved references, before any lookup.
     if (template.slots.length > freshTemplateSlotLimit) {
@@ -1463,6 +1461,7 @@ class ActiveSessionController extends ChangeNotifier {
         lastTopKg: lastTop?.weight,
         originSlotId: originSlotIds[i],
         originSlotRevision: originSlotRevisions[i],
+        unit: unit,
       );
       block.bestKg = bestKg;
       block.lastTop = lastTop;
@@ -1534,8 +1533,8 @@ class ActiveSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Extends the running rest. Refused while a capture froze the callbacks:
-  /// the extension is shown as unavailable then, never applied silently.
+  /// Extends the running rest. Refused while [callbacksFrozen]: the
+  /// extension is shown as unavailable then, never applied silently.
   void addRestTime(int seconds) {
     if (finishPending) {
       throw const StoreException('finish_retry_required');
@@ -1717,12 +1716,72 @@ class ActiveSessionController extends ChangeNotifier {
     return (block: live.block, set: live.set, newlyDone: newlyDone);
   }
 
-  /// Un-logs [set] and makes it the live set.
+  /// Un-logs [set] and makes it the live set. Use [undoLog] for a user's
+  /// Undo or "Mark as not done": it also stops the rest that log started.
   void markNotDone(SetState set) {
     set.done = false;
     _focusedSetId = set.id;
     _closeRirPrompt();
     notifyListeners();
+  }
+
+  /// The rest the last log started: which set, its start, and the "rested"
+  /// mark it replaced. In memory only, like the live set.
+  ({String setId, DateTime start, DateTime? endedBefore})? _logRest;
+
+  /// Starts the rest after [set] was newly logged, remembering that this log
+  /// started it so [undoLog] can stop exactly this rest.
+  void startRestAfterLog(SetState set, int seconds) {
+    final endedBefore = restEndedAt;
+    startRest(seconds);
+    _logRest = (setId: set.id, start: restStart!, endedBefore: endedBefore);
+  }
+
+  /// Whether the running rest is the one logging [set] started: an older
+  /// rest, or one started (or restarted) since, is not.
+  bool restStartedBy(SetState set) {
+    final owner = _logRest;
+    final start = restStart;
+    return owner != null &&
+        start != null &&
+        owner.setId == set.id &&
+        owner.start == start;
+  }
+
+  /// Undo of a log: [set] is not done again and becomes the live set, and
+  /// the rest stops only if this set's log started it ([restStartedBy]),
+  /// with the header's previous "rested" mark back — also when a
+  /// notification rest action is still saving. False, with nothing
+  /// changed, when [set] is no longer a logged set of this workout or a
+  /// Finish is pending (a late toast action after the workout moved on).
+  bool undoLog(SetState set) {
+    final d = _draft;
+    if (d == null ||
+        finishPending ||
+        !set.done ||
+        !d.blocks.any((b) => b.allSets.contains(set))) {
+      return false;
+    }
+    final owner = _logRest;
+    final stop = restStartedBy(set);
+    if (owner?.setId == set.id) _logRest = null;
+    if (stop) {
+      final start = owner!.start;
+      final endedBefore = owner.endedBefore;
+      // A notification rest action in flight replays its queued edits on its
+      // committed rest: stop that rest the same way, if it is still this one
+      // (+30s keeps the start; a skip or a new rest does not).
+      _notificationRestEdits?.add(
+        (state) => state.start == start
+            ? (start: null, total: 0, endedAt: endedBefore)
+            : state,
+      );
+      restStart = null;
+      restTotal = 0;
+      restEndedAt = endedBefore;
+    }
+    markNotDone(set);
+    return true;
   }
 
   /// A tap on the RIR strip: stores [rir]; the strip stays open.
@@ -1744,6 +1803,31 @@ class ActiveSessionController extends ChangeNotifier {
   /// Total number of working sets (done + not done).
   int get totalWork => draft.blocks.fold(0, (n, b) => n + b.workingSets.length);
 
+  /// Working sets not logged yet; warm-ups never count. Finishing leaves
+  /// these out of the saved workout, so Finish asks first while any remain.
+  int get unloggedWorkingSets => totalWork - doneWork;
+
+  /// Whether discarding would lose anything the user did: a set is done or
+  /// one of its values was touched, or blocks or sets were added, removed
+  /// or moved. A pristine fresh draft discards without asking.
+  bool get hasEdits {
+    final d = _draft;
+    if (d == null) return false;
+    return _structureEdited ||
+        d.blocks.any(
+          (b) => b.allSets.any(
+            (s) =>
+                s.done ||
+                s.weightTouched ||
+                s.repsTouched ||
+                s.rirTouched ||
+                s.catalogTouched,
+          ),
+        );
+  }
+
+  bool _structureEdited = false;
+
   /// Whether the session can be finished (at least one working set done).
   bool get canFinish =>
       doneWork >= 1 &&
@@ -1758,7 +1842,8 @@ class ActiveSessionController extends ChangeNotifier {
           );
 
   /// Number of exercise blocks that have beaten their all-time best in this
-  /// session, using the current local best evidence.
+  /// session, using the current local best evidence. As in [liveTopOf], a
+  /// block with no previous best has no PR.
   int get prCount {
     var count = 0;
     for (final block in draft.blocks) {
@@ -1786,11 +1871,7 @@ class ActiveSessionController extends ChangeNotifier {
           .where((s) => s.done)
           .fold<double>(0, (m, s) => s.weightKg > m ? s.weightKg : m);
       final best = block.bestKg;
-      if (best == null || (maxDoneWorking > 0 && maxDoneWorking > best)) {
-        if (maxDoneWorking > 0) {
-          count++;
-        }
-      }
+      if (best != null && maxDoneWorking > best) count++;
     }
     return count;
   }
@@ -1868,6 +1949,7 @@ class ActiveSessionController extends ChangeNotifier {
       }
     }
     (isWarmup ? block.warmupSets : block.workingSets).add(added);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
     return added;
@@ -1887,18 +1969,15 @@ class ActiveSessionController extends ChangeNotifier {
 
   /// Appends a new working set to [block] (cloning weight/reps from the last
   /// working set in the block, or using the block's default suggested weight).
-  void addSet(BlockState block) {
+  /// In lb ([unit]) the default suggestion rounds to whole 5 lb.
+  void addSet(BlockState block, {Unit unit = Unit.kg}) {
     if (block.catalogSelection case final selection?) {
       appendCatalogSet(block, selection);
       return;
     }
     final last = block.workingSets.isNotEmpty ? block.workingSets.last : null;
-    final step = block.exercise.plateStepKg;
     final seed = block.resolved.exercise.baseWeightKg ?? 20.0;
-    final suggested = roundTo(
-      seed + (block.exercise.compound ? step : 0),
-      step,
-    );
+    final suggested = suggestedWeightKg(seed, block.exercise, unit);
     block.workingSets.add(
       SetState(
         id: uuid.v4(),
@@ -1909,6 +1988,7 @@ class ActiveSessionController extends ChangeNotifier {
         done: false,
       ),
     );
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -1922,6 +2002,7 @@ class ActiveSessionController extends ChangeNotifier {
     if (_focusedSetId == set.id) {
       _focusedSetId = null;
     }
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
     return index;
@@ -1945,8 +2026,8 @@ class ActiveSessionController extends ChangeNotifier {
   /// [buildBlock] uses: the i-th warm-up is `(0.5 + 0.18 * i)` of the first
   /// working set's weight (or, with no working set, the block's suggested
   /// weight), rounded to the plate step and never above it; reps
-  /// `max(1, 8 - 2 * i)`.
-  void addWarmupSet(BlockState block) {
+  /// `max(1, 8 - 2 * i)`. In lb ([unit]) both round to whole 5 lb.
+  void addWarmupSet(BlockState block, {Unit unit = Unit.kg}) {
     if (block.catalogSelection case final selection?) {
       appendCatalogSet(block, selection, isWarmup: true);
       return;
@@ -1955,9 +2036,9 @@ class ActiveSessionController extends ChangeNotifier {
     final seed = block.exercise.baseWeightKg ?? 20.0;
     final reference = block.workingSets.isNotEmpty
         ? block.workingSets.first.weightKg
-        : roundTo(seed + (block.exercise.compound ? step : 0), step);
+        : suggestedWeightKg(seed, block.exercise, unit);
     final i = block.warmupSets.length;
-    final weight = roundTo(reference * (0.5 + 0.18 * i), step);
+    final weight = roundSuggestion(reference * (0.5 + 0.18 * i), step, unit);
     block.warmupSets.add(
       SetState(
         id: uuid.v4(),
@@ -1968,6 +2049,7 @@ class ActiveSessionController extends ChangeNotifier {
         done: false,
       ),
     );
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -1987,6 +2069,7 @@ class ActiveSessionController extends ChangeNotifier {
     blocks
       ..removeAt(from)
       ..insert(to, block);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -2007,6 +2090,7 @@ class ActiveSessionController extends ChangeNotifier {
       return;
     }
     blocks.insert(to, blocks.removeAt(from));
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -2017,6 +2101,7 @@ class ActiveSessionController extends ChangeNotifier {
       throw const StoreException('finish_retry_required');
     }
     draft.blocks.remove(block);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -2039,6 +2124,7 @@ class ActiveSessionController extends ChangeNotifier {
     required SessionRepository sessionRepo,
     bool allowRepeat = false,
     CatalogSelectionEvidence? catalogSelection,
+    Unit unit = Unit.kg,
   }) async {
     if (catalogSelection != null) {
       await addCatalogBlock(
@@ -2095,11 +2181,13 @@ class ActiveSessionController extends ChangeNotifier {
         Slot(exerciseId: exercise.id, position: draft.blocks.length),
         exercise,
       ),
+      unit: unit,
     );
     block.bestKg = bestKg;
     block.lastTop = lastTop;
     block.lastTopUnavailable = reference.unavailable;
     draft.blocks.add(block);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -2152,6 +2240,7 @@ class ActiveSessionController extends ChangeNotifier {
         ? null
         : (weight: last.weightKg, reps: last.reps, date: last.date);
     current.blocks.add(block);
+    _structureEdited = true;
     _closeRirPrompt();
     notifyListeners();
   }
@@ -2326,7 +2415,7 @@ class ActiveSessionController extends ChangeNotifier {
     );
     _saveDebounce?.cancel();
     _saveEpoch++;
-    _captureFrozen.value = true;
+    _callbacksFrozen.value = true;
     super.notifyListeners();
     return _pendingFinish!;
   }
@@ -2369,7 +2458,7 @@ class ActiveSessionController extends ChangeNotifier {
     _draftStore?.completed();
     _pendingFinish = null;
     _pendingRecovery = null;
-    _captureFrozen.value = _frozenGeneration != null;
+    _callbacksFrozen.value = false;
     _saveDebounce?.cancel();
     _saveEpoch++;
     _savePending = false;
@@ -2377,6 +2466,7 @@ class ActiveSessionController extends ChangeNotifier {
     restStart = null;
     restTotal = 0;
     restEndedAt = null;
+    _logRest = null;
     _focusedSetId = null;
     _rirPromptSetId = null;
     super.notifyListeners();
@@ -2411,6 +2501,7 @@ class ActiveSessionController extends ChangeNotifier {
     restStart = null;
     restTotal = 0;
     restEndedAt = null;
+    _logRest = null;
     _focusedSetId = null;
     _rirPromptSetId = null;
     _savePending = false;

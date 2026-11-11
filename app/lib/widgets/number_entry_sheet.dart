@@ -11,39 +11,47 @@ import 'fit_label.dart';
 /// path). Modal on purpose: nothing else on screen can act while the typed
 /// value is uncommitted, which rules out the act-while-editing bug class.
 ///
-/// Resolves to [parse] of the typed text, or null when dismissed, when the
-/// text is unparseable, or when it is unchanged from [initialText] — the last
-/// guards a lossy seed (lb shown as whole pounds) from being written back as
-/// if it were a real edit.
+/// Resolves to [parse] of the typed text, or null when dismissed or when it
+/// is unchanged from [initialText] — the last guards a lossy seed (lb shown
+/// as whole pounds) from being written back as if it were a real edit.
+///
+/// Typed text that is refused stays in the open sheet with an inline error:
+/// [validate]'s message (for example over a limit), or "Enter a number" when
+/// [parse] returns null.
 Future<double?> showNumberEntrySheet(
   BuildContext context, {
   required String title,
   required String initialText,
   required bool allowDecimal,
   required double? Function(String text) parse,
+  String? Function(String text)? validate,
 }) => _showNumberEntrySheet<double>(
   context,
   title: title,
   initialText: initialText,
   allowDecimal: allowDecimal,
   parse: parse,
+  validate: validate,
 );
 
 /// The same protected modal interaction for exact, typed quantity evidence.
 /// Callers validate the text without converting its original decimal spelling
-/// through a double. An unchanged Done or dismissal produces no edit.
+/// through a double. An unchanged Done or dismissal produces no edit; refused
+/// text keeps the sheet open with an inline error, as above.
 Future<String?> showExactNumberEntrySheet(
   BuildContext context, {
   required String title,
   required String initialText,
   required bool allowDecimal,
   required String? Function(String text) parse,
+  String? Function(String text)? validate,
 }) => _showNumberEntrySheet<String>(
   context,
   title: title,
   initialText: initialText,
   allowDecimal: allowDecimal,
   parse: parse,
+  validate: validate,
 );
 
 Future<T?> _showNumberEntrySheet<T>(
@@ -52,6 +60,7 @@ Future<T?> _showNumberEntrySheet<T>(
   required String initialText,
   required bool allowDecimal,
   required T? Function(String text) parse,
+  String? Function(String text)? validate,
 }) {
   return showModalBottomSheet<T>(
     context: context,
@@ -67,6 +76,7 @@ Future<T?> _showNumberEntrySheet<T>(
       initialText: initialText,
       allowDecimal: allowDecimal,
       parse: parse,
+      validate: validate,
     ),
   );
 }
@@ -77,12 +87,14 @@ class _NumberEntrySheet<T> extends StatefulWidget {
     required this.initialText,
     required this.allowDecimal,
     required this.parse,
+    this.validate,
   });
 
   final String title;
   final String initialText;
   final bool allowDecimal;
   final T? Function(String) parse;
+  final String? Function(String)? validate;
 
   @override
   State<_NumberEntrySheet<T>> createState() => _NumberEntrySheetState<T>();
@@ -102,11 +114,25 @@ class _NumberEntrySheetState<T> extends State<_NumberEntrySheet<T>> {
     super.dispose();
   }
 
+  /// Why the typed text was refused, shown under the field until it changes.
+  String? _error;
+
   void _submit() {
     final text = _ctrl.text;
-    Navigator.of(
-      context,
-    ).pop(text == widget.initialText ? null : widget.parse(text));
+    if (text == widget.initialText) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final refused = widget.validate?.call(text);
+    final value = refused == null ? widget.parse(text) : null;
+    if (value == null) {
+      setState(
+        () =>
+            _error = refused ?? AppLocalizations.of(context).numberEntryInvalid,
+      );
+      return;
+    }
+    Navigator.of(context).pop(value);
   }
 
   @override
@@ -168,6 +194,9 @@ class _NumberEntrySheetState<T> extends State<_NumberEntrySheet<T>> {
                             return ok ? newValue : oldValue;
                           }),
                         ],
+                        onChanged: (_) {
+                          if (_error != null) setState(() => _error = null);
+                        },
                         onSubmitted: (_) => _submit(),
                         style:
                             WorkoutType.mono(
@@ -187,14 +216,20 @@ class _NumberEntrySheetState<T> extends State<_NumberEntrySheet<T>> {
                             borderRadius: BorderRadius.circular(
                               AppRadius.control,
                             ),
-                            borderSide: BorderSide(color: tokens.lineStrong),
+                            borderSide: BorderSide(
+                              color: _error == null
+                                  ? tokens.lineStrong
+                                  : tokens.danger,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(
                               AppRadius.control,
                             ),
                             borderSide: BorderSide(
-                              color: tokens.focus,
+                              color: _error == null
+                                  ? tokens.focus
+                                  : tokens.danger,
                               width: 2,
                             ),
                           ),
@@ -233,6 +268,20 @@ class _NumberEntrySheetState<T> extends State<_NumberEntrySheet<T>> {
                   ),
                 ],
               ),
+              // Under the row, so the field and Done keep their alignment;
+              // a live region, so a screen reader hears why Done refused.
+              if (_error case final error?) ...[
+                const SizedBox(height: 8),
+                Semantics(
+                  liveRegion: true,
+                  child: FitLabel(
+                    error,
+                    key: const Key('number-entry-error'),
+                    maxLines: 3,
+                    style: WorkoutType.body(size: 13, color: tokens.danger),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

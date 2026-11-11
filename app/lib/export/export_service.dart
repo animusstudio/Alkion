@@ -13,9 +13,6 @@ import '../files/document_access.dart';
 import '../files/publication_directory.dart';
 import '../identity/directory_durability.dart';
 import '../store/local_store.dart';
-import '../settings/settings_service.dart';
-import '../transfer/transfer_service.dart';
-import '../units/unit_service.dart';
 import 'alkion_exports.dart';
 import 'exclusive_publish.dart';
 
@@ -192,15 +189,6 @@ class ExportService {
     );
   }
 
-  /// Settings live in SQLite; the services are only flushed by the caller.
-  Future<ExportResult> exportFull({
-    required SettingsService settings,
-    required UnitService units,
-  }) async => delivery.deliver(
-    await domainBytes(),
-    'alkion-domain-${_stamp(OperationInstant.now().text)}Z.json',
-  );
-
   Future<ExportResult> exportHistory({
     required DateTime from,
     required DateTime to,
@@ -212,19 +200,6 @@ class ExportService {
     return delivery.deliver(
       bytes,
       'alkion-history-${day(from)}_${day(to)}-${_stamp(OperationInstant.now().text)}Z.json',
-    );
-  }
-
-  Future<ExportResult> exportTransfer() async => delivery.deliver(
-    await transferBytes(),
-    'alkion-transfer-reps-compat-${_stamp(OperationInstant.now().text)}Z.json',
-  );
-
-  Future<ExportResult> exportOriginal(String artifactId) async {
-    final bytes = await TransferService(database).originalBytes(artifactId);
-    return delivery.deliver(
-      bytes,
-      'alkion-original-${artifactId.replaceFirst('art-', '').substring(0, 16)}.bin',
     );
   }
 }

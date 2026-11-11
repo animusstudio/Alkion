@@ -103,4 +103,27 @@ void main() {
     expect(await _editSeed(tester, '1.25kg'), '1.25');
     await harness.unmount(tester);
   });
+
+  for (final lb in [true, false]) {
+    testWidgets(
+      'the start weight steps ${lb ? 'a whole 5 lb in lb' : 'the kg plate step in kg'}',
+      (tester) async {
+        // seedLong's ex3 starts at 20 kg = 44.09 lb, plate step 2.5 kg.
+        await harness.open(
+          tester,
+          withWorkoutHistory: true,
+          prefs: {if (lb) 'unit': 'lb'},
+        );
+        await _openEditor(tester, harness);
+        await tester.tap(_startWeight(find.byKey(const Key('stepper-inc'))));
+        await tester.pump();
+        expect(
+          _startWeight(find.text(lb ? '49lb' : '22.5kg')),
+          findsOneWidget,
+          reason: lb ? 'not 5.51 lb (the 2.5 kg plate in lb)' : null,
+        );
+        await harness.unmount(tester);
+      },
+    );
+  }
 }

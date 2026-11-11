@@ -17,7 +17,9 @@ import '../theme/app_theme.dart';
 import '../theme/typography.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pending_input.dart';
+import '../util/error_message.dart';
 import '../widgets/w_dialog.dart';
+import 'set_editor_sheet.dart' show historyWriteIsPermanent;
 
 /// Typed History corrections use the same metric form and prepared workout
 /// action as logging. Untouched raw quantities are never rebuilt from display.
@@ -48,13 +50,35 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
       ),
   ];
   late int? _revision = widget.block.sets.first.workoutRevision;
-  final _pending = <String, PreparedDomainAction>{};
+
+  /// Per row, the prepared write not yet acknowledged and the row's edit
+  /// count when it was prepared. A failed one is retried with its own
+  /// identity before anything newer is prepared; it stays owed in
+  /// [UnsavedEditors] after the editor closes.
+  final _pending = <String, ({PreparedDomainAction intent, int edits})>{};
   bool _saving = false, _allowPop = false, _confirming = false;
-  bool get _locked => _saving || _pending.isNotEmpty;
+
+  /// A save failed and a write is still owed: the editor says it will retry.
+  bool _failed = false;
+
+  /// The last failure, when it can never land ([historyWriteIsPermanent]):
+  /// the editor shows its mapped message instead of "will retry". Its owed
+  /// write can be discarded from History once the editor is closed.
+  Object? _permanent;
+
+  /// Save found a row without its required values; nothing was written.
+  bool _invalid = false;
   late final Object _barrier = UnsavedEditors.instance.register(
     'catalog_history',
-    () => _rows.any((row) => row.changed || row.deleted),
+    () => _rows.any(_unsaved),
   );
+
+  /// Whether [row] holds an edit no prepared write covers yet.
+  bool _unsaved(_CatalogEditedRow row) =>
+      !row.removed &&
+      (row.changed || row.deleted) &&
+      _pending[row.id]?.edits != row.edits;
+
   @override
   void initState() {
     super.initState();
@@ -67,18 +91,28 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
     super.dispose();
   }
 
+  void _edit(_CatalogEditedRow row, void Function() change) => setState(() {
+    change();
+    row.edits++;
+    _invalid = false;
+  });
+
+  /// Close is always allowed once nothing is running. Edits no write covers
+  /// are discarded after a destructive prompt; a write that failed stays
+  /// owed and retries on the next flush.
   Future<void> _close() async {
-    if (_locked || _confirming) return;
+    if (_saving || _confirming) return;
     commitPendingInput();
-    if (_rows.any((row) => row.changed || row.deleted)) {
+    if (_rows.any(_unsaved)) {
       _confirming = true;
       final l = AppLocalizations.of(context);
       final discard = await showWConfirm(
         context,
-        title: l.planDiscardTitle,
-        message: l.planDiscardExerciseMessage,
-        cancelLabel: l.commonCancel,
+        title: l.historyDiscardSetsTitle,
+        message: l.historyDiscardSetsMessage,
+        cancelLabel: l.commonKeepEditing,
         confirmLabel: l.commonDiscard,
+        destructive: true,
       );
       _confirming = false;
       if (!mounted || discard != true) return;
@@ -89,99 +123,127 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
     });
   }
 
+  bool _rowInvalid(_CatalogEditedRow row) =>
+      !row.deleted &&
+      !row.removed &&
+      ((row.revision == null && !row.evidence.validForLogging) ||
+          row.touched.any((metric) {
+            final value = row.evidence.metrics[metric]!;
+            return value.state != ValueState.valid &&
+                !(value.state == ValueState.empty &&
+                    row.evidence.selection.profile.optionalMetrics.contains(
+                      metric,
+                    ));
+          }));
+
+  /// Commits [row]'s prepared write, owed until it lands.
+  Future<void> _commit(
+    _CatalogEditedRow row,
+    ({PreparedDomainAction intent, int edits}) pending,
+  ) async {
+    final intent = pending.intent;
+    final key =
+        'catalog-history:${intent.token.profileId}:${intent.action.operationId}';
+    late Future<void> Function() write;
+    write = () async {
+      final outcome = await widget.repository.commitPrepared(intent);
+      final result = jsonDecode(utf8.decode(outcome.bytes)) as Map;
+      _revision = result['revision'] as int;
+      final sets = result['sets'] as Map?;
+      if (sets?[row.id] is int) row.revision = sets![row.id] as int;
+      if (intent.input['mode'] == 'delete') row.removed = true;
+      // An edit made after this write was prepared is still unsaved.
+      if (row.edits == pending.edits) row.changed = row.deleted = false;
+      if (identical(_pending[row.id], pending)) _pending.remove(row.id);
+      UnsavedEditors.instance.paid(key, write);
+      if (mounted) setState(() {});
+    };
+    UnsavedEditors.instance.owe(key, 'catalog_history', write);
+    await write();
+  }
+
   Future<void> _save() async {
     commitPendingInput();
     if (_saving) return;
-    final l = AppLocalizations.of(context);
-    if (_rows.any(
-      (row) =>
-          !row.deleted &&
-          ((row.revision == null && !row.evidence.validForLogging) ||
-              row.touched.any((metric) {
-                final value = row.evidence.metrics[metric]!;
-                return value.state != ValueState.valid &&
-                    !(value.state == ValueState.empty &&
-                        row.evidence.selection.profile.optionalMetrics.contains(
-                          metric,
-                        ));
-              })),
-    )) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l.catalogRequired)));
+    if (_rows.any(_rowInvalid)) {
+      setState(() => _invalid = true);
       return;
     }
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _invalid = false;
+    });
     try {
-      if (_revision == null) {
-        throw const StoreException('observed_revision_required');
-      }
-      for (final row in _rows.where((row) => row.changed || row.deleted)) {
+      for (final row in _rows) {
+        // An owed write first, with its own identity, then any newer edit.
+        if (_pending[row.id] case final owed?) await _commit(row, owed);
+        if (row.removed || !(row.changed || row.deleted)) continue;
         if (row.deleted && row.revision == null) {
+          // Never saved: removing it writes nothing.
+          row.removed = true;
           row.changed = row.deleted = false;
           continue;
         }
+        if (_revision == null) {
+          throw const StoreException('observed_revision_required');
+        }
         final origin = widget.block.sets.first;
-        final intent = _pending.putIfAbsent(
-          row.id,
-          () => row.deleted
-              ? widget.repository.prepareHistoryEdit(
-                  widget.sessionId,
-                  _revision!,
-                  {
-                    'catalog_contract': 1,
-                    'mode': 'delete',
-                    'set': {'id': row.id, 'base': row.revision},
-                  },
-                )
-              : row.revision == null
-              ? widget.repository.prepareCatalogSetAdd(
-                  sessionId: widget.sessionId,
-                  workoutRevision: _revision!,
-                  setId: row.id,
-                  evidence: row.evidence,
-                  blockId: origin.blockId!,
-                  originSlotId: origin.originSlotId,
-                  originSlotRevision: origin.originSlotRevision,
-                  isWarmup: row.isWarmup,
-                  rir: row.rir,
-                )
-              : widget.repository.prepareCatalogSetEdit(
-                  sessionId: widget.sessionId,
-                  workoutRevision: _revision!,
-                  setId: row.id,
-                  setRevision: row.revision!,
-                  evidence: row.evidence,
-                ),
-        );
-        final key =
-            'catalog-history:${intent.token.profileId}:${intent.action.operationId}';
-        late Future<void> Function() write;
-        write = () async {
-          final outcome = await widget.repository.commitPrepared(intent);
-          final result = jsonDecode(utf8.decode(outcome.bytes)) as Map;
-          _revision = result['revision'] as int;
-          final sets = result['sets'] as Map?;
-          if (sets?[row.id] is int) row.revision = sets![row.id] as int;
-          row.changed = row.deleted = false;
-          _pending.remove(row.id);
-          UnsavedEditors.instance.paid(key, write);
-          if (mounted) setState(() {});
-        };
-        UnsavedEditors.instance.owe(key, 'catalog_history', write);
-        await write();
+        final intent = row.deleted
+            ? widget.repository.prepareHistoryEdit(
+                widget.sessionId,
+                _revision!,
+                {
+                  'catalog_contract': 1,
+                  'mode': 'delete',
+                  'set': {'id': row.id, 'base': row.revision},
+                },
+              )
+            : row.revision == null
+            ? widget.repository.prepareCatalogSetAdd(
+                sessionId: widget.sessionId,
+                workoutRevision: _revision!,
+                setId: row.id,
+                evidence: row.evidence,
+                blockId: origin.blockId!,
+                originSlotId: origin.originSlotId,
+                originSlotRevision: origin.originSlotRevision,
+                isWarmup: row.isWarmup,
+                rir: row.rir,
+              )
+            : widget.repository.prepareCatalogSetEdit(
+                sessionId: widget.sessionId,
+                workoutRevision: _revision!,
+                setId: row.id,
+                setRevision: row.revision!,
+                evidence: row.evidence,
+              );
+        final pending = (intent: intent, edits: row.edits);
+        _pending[row.id] = pending;
+        await _commit(row, pending);
       }
       if (!mounted) return;
-      setState(() => _allowPop = true);
+      setState(() {
+        _failed = false;
+        _permanent = null;
+        _allowPop = true;
+      });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) Navigator.pop(context);
       });
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
+        setState(() {
+          _failed = true;
+          _permanent = historyWriteIsPermanent(e) ? e : null;
+        });
+        final l = AppLocalizations.of(context);
+        final mapped = userMessage(l, e);
+        final recovery = mapped.bucket == ErrorBucket.recovery;
         await showWDialog<void>(
           context,
-          title: l.editorSaveFailed,
-          message: l.catalogSaveFailed,
+          title: recovery ? l.alkionStoreRecoveryTitle : l.historySetsNotSaved,
+          message: mapped.message,
+          details: recovery ? null : mapped.details,
           actions: [WDialogAction(label: l.commonOk, value: null)],
         );
       }
@@ -224,7 +286,7 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
                       ),
                     ),
                     IconButton(
-                      onPressed: _locked ? null : _close,
+                      onPressed: _saving ? null : _close,
                       tooltip: MaterialLocalizations.of(
                         context,
                       ).closeButtonTooltip,
@@ -240,76 +302,122 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
                       color: context.tokens.dim,
                     ),
                   ),
+                if (_failed && _pending.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: FitLabel(
+                        _permanent == null
+                            ? l.historyNotSavedWillRetry
+                            : userMessage(l, _permanent!).message,
+                        key: Key(
+                          _permanent == null
+                              ? 'history-not-saved'
+                              : 'history-not-saved-permanent',
+                        ),
+                        maxLines: 6,
+                        style: WorkoutType.body(
+                          size: 12,
+                          color: context.tokens.danger,
+                        ),
+                      ),
+                    ),
+                  ),
                 Expanded(
                   child: ListView(
                     children: [
                       for (final row in _rows)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      l.sessionLiveSet(_rows.indexOf(row) + 1),
-                                      style: WorkoutType.body(
-                                        size: 16,
-                                        color: context.tokens.text,
+                        if (!row.removed)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        // Numbered among the sets that stay,
+                                        // so removing one leaves no gap.
+                                        row.deleted
+                                            ? l.historySetRemoved
+                                            : l.sessionLiveSet(
+                                                _rows
+                                                        .where(
+                                                          (r) =>
+                                                              !r.deleted &&
+                                                              !r.removed,
+                                                        )
+                                                        .toList()
+                                                        .indexOf(row) +
+                                                    1,
+                                              ),
+                                        style: WorkoutType.body(
+                                          size: 16,
+                                          color: row.deleted
+                                              ? context.tokens.dim
+                                              : context.tokens.text,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  IconButton(
-                                    onPressed: _locked
-                                        ? null
-                                        : () => setState(
-                                            () => row.deleted = !row.deleted,
-                                          ),
-                                    tooltip: row.deleted
-                                        ? l.commonUndo
-                                        : l.commonRemove,
-                                    icon: AlkionIcon(
-                                      row.deleted
-                                          ? AlkionGlyph.undo
-                                          : AlkionGlyph.delete,
+                                    IconButton(
+                                      // An owed delete cannot be undone.
+                                      onPressed:
+                                          _saving ||
+                                              _pending[row.id]
+                                                      ?.intent
+                                                      .input['mode'] ==
+                                                  'delete'
+                                          ? null
+                                          : () => _edit(
+                                              row,
+                                              () => row.deleted = !row.deleted,
+                                            ),
+                                      tooltip: row.deleted
+                                          ? l.commonUndo
+                                          : l.commonRemove,
+                                      icon: AlkionIcon(
+                                        row.deleted
+                                            ? AlkionGlyph.undo
+                                            : AlkionGlyph.delete,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              if (!row.deleted)
-                                CatalogSetValuesEditor(
-                                  key: ValueKey(row.id),
-                                  evidence: row.evidence,
-                                  unit: context.watch<UnitService>(),
-                                  enabled: !_locked,
-                                  onMetricChanged:
-                                      (
-                                        metric,
-                                        text,
-                                        quantityUnit,
-                                      ) => setState(() {
-                                        row.evidence = CatalogSetEvidence(
-                                          selection: row.evidence.selection,
-                                          metrics: {
-                                            ...row.evidence.metrics,
-                                            metric:
-                                                CatalogMetricEvidence.fromInput(
-                                                  text,
-                                                  metric: metric,
-                                                  unit: quantityUnit,
-                                                ),
-                                          },
-                                        );
-                                        row.changed = true;
-                                        row.touched.add(metric);
-                                      }),
+                                  ],
                                 ),
-                            ],
+                                if (!row.deleted)
+                                  CatalogSetValuesEditor(
+                                    key: ValueKey(row.id),
+                                    evidence: row.evidence,
+                                    unit: context.watch<UnitService>(),
+                                    enabled: !_saving,
+                                    onMetricChanged:
+                                        (
+                                          metric,
+                                          text,
+                                          quantityUnit,
+                                        ) => _edit(row, () {
+                                          row.evidence = CatalogSetEvidence(
+                                            selection: row.evidence.selection,
+                                            metrics: {
+                                              ...row.evidence.metrics,
+                                              metric:
+                                                  CatalogMetricEvidence.fromInput(
+                                                    text,
+                                                    metric: metric,
+                                                    unit: quantityUnit,
+                                                  ),
+                                            },
+                                          );
+                                          row.changed = true;
+                                          row.touched.add(metric);
+                                        }),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
                       TextButton.icon(
-                        onPressed: _locked
+                        onPressed: _saving
                             ? null
                             : () => setState(
                                 () => _rows.add(
@@ -332,12 +440,28 @@ class _CatalogHistoryEditorState extends State<CatalogHistoryEditor> {
                     ],
                   ),
                 ),
+                if (_invalid)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: FitLabel(
+                        l.historySetsRequired,
+                        key: const Key('history-sets-required'),
+                        maxLines: 3,
+                        style: WorkoutType.body(
+                          size: 13,
+                          color: context.tokens.danger,
+                        ),
+                      ),
+                    ),
+                  ),
                 FilledButton(
                   onPressed: _saving ? null : _save,
                   style: FilledButton.styleFrom(
                     minimumSize: const Size(48, 48),
                   ),
-                  child: Text(l.dayEditorSaveChanges),
+                  child: Text(l.commonSave),
                 ),
               ],
             ),
@@ -361,6 +485,13 @@ class _CatalogEditedRow {
   CatalogSetEvidence evidence;
   int? revision;
   bool changed, deleted = false;
+
+  /// The row's delete landed: it is gone from the session.
+  bool removed = false;
+
+  /// Counts local edits, so a write that lands knows whether a newer edit
+  /// is still unsaved.
+  int edits = 0;
   final bool isWarmup;
   final int? rir;
   final touched = <String>{};

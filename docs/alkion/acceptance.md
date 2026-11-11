@@ -63,6 +63,657 @@ packages; `make smoke`). No Android device check, installation, release or
 public publication was performed. Existing license grants were not expanded;
 public asset rights remain a separate decision.
 
+## Catalog publication qualification — 2026-11-11
+
+The integrated catalog branch includes current public main and the latest private
+naming bundle: 771 executions and 1,109 scoped terms. Vertical Traction, Delts
+Machine and leg curling are available in both English and Italian interfaces.
+The earlier metric-control failures were stale expectations for optional fields;
+tests now exercise More measurements and preserve unset evidence. The integrated
+workflow test waits for the rendered live set and explicit Finish/Summary states.
+No product behavior changed for those fixes.
+
+At `1f84ba4a`, the full app suite passes **3,441 tests, zero failures and three
+existing skips**. Focused checks pass 49 tests; analysis reports zero issues.
+Ignored private proof harnesses were temporarily isolated for analysis and then
+restored. This supersedes the earlier full-suite failure for the integrated tree;
+the earlier device evidence and its limits remain unchanged. Publication proceeds
+through the reviewed PR with green exact-head checks; no catalog redistribution
+or owner-device qualification is implied.
+
+Nine actual-bundle tests also pass on `1f84ba4a`: 242 machine-name/control
+queries, 512 prior discovery probes, loader admission and four saved bindings
+with byte-identical completed history. All 771 execution definitions and canonical
+labels remain compatible. Exact private receipts bind the tested source hashes.
+
+## Bilingual catalog discovery — 2026-11-11
+
+Implements the approved [catalog discovery plan](../plans/2026-11-11-catalog-discovery.md).
+The private Dev catalog admits 771 executions in 156 families, preserving all
+760 existing identities. Supported English and Italian vocabulary works in every
+interface locale; localized canonical titles stay stable across synonyms and
+explicit personal names retain precedence. The 11 additions keep unknown muscle
+coverage. No catalog corpus or private qualification inputs are published.
+
+Focused catalog, selection, history/provenance and v2-loader checks passed,
+along with 512 actual-corpus query probes across all four interface locales.
+The full helper recorded 3,299 passing tests, three skips and the three documented
+inherited failures in `catalog_metric_controls_test.dart`
+(`duration_distance_optional`, `reps_distance_optional`,
+`reps_duration_optional_load`); its raw result remains FAIL. Analysis reported
+zero issues. Formatting initially flagged only an ignored qualification proof;
+after formatting that proof, the check passed with zero changed files. The normal
+Linux build, driver/store/transfer/backup recovery proofs, and private ARM64/x64
+Dev APK builds with exact packaged catalog/native-library guards passed. The x64
+ABI-switch guard first rejected stale ARM64 packaging; removing only generated
+packaging outputs produced a passing guarded rebuild.
+
+Interactive evidence uses the real Linux application at 412×844 on an isolated
+display with a fresh synthetic profile, exact staged Dev assets and a private
+harness injecting a synthetic Dev platform identity through existing test seams.
+The picker showed 771 executions; `ercolina` and `cable` each showed 92 results
+with unchanged per-locale titles in English and Italian. An apostrophe action
+query found cable curls in Italian. A newly added exercise's detail identified
+its equipment/setup/measurements and explicitly reported unavailable muscle
+information and unassessed omissions. Italian History rendered its empty state;
+no completed-history preservation claim follows from that screen.
+
+Android 16 software-emulator startup, catalog loading and Today were observed,
+but two attempts exited with native SIGTRAP during WebView initialization. The
+second attempted to disable WebView, yet its logs showed WebView still loading.
+Android picker/detail/History interaction and owner-device behavior remain
+**UNRUN**. No source workaround, owner-device installation, release signing or
+publication is qualified by this evidence. Public publication remains pending
+separate exact-range review and owner approval.
+
+## F2 background notification actions — 2026-11-11
+
+Implements the approved [background notification actions plan](../plans/2026-11-08-background-notification-actions.md)
+([spec](../specs/2026-11-08-background-notification-actions.md)). Before it,
++30s brought the app forward and there was no Skip.
+Contract: [recovery](recovery.md#notification-actions).
+
+- The rest countdown notification offers **+30s** and **Skip rest** (that
+  order, in en, it, de and es). Neither opens the app; a body tap still opens
+  the workout, and legacy `/1` body payloads keep working (A21).
+- A tap is journaled durably by a background handler that never opens the
+  store, then applied by the app's main isolate through step receipts and one
+  token rule: applied, duplicate (adopted state, no second change) or refused
+  with a reason, writing nothing (A5–A12, A20).
+- Each visible tap counts once, with no debounce; double and mixed taps fold
+  in order. With the app running, the handler wakes it and the app
+  re-renders from SQL; otherwise the handler renders a provisional mirror from
+  the journal (A7, A10, A19, A22).
+- Runtime open follows spec D6: the port is registered before the first drain,
+  drains run after F1's quarantine, a failed open unregisters it, and with no
+  active workout a leftover notification is cancelled. Close stops wake-ups
+  before teardown (A1–A4, A13–A19).
+- A backup drains first and holds no journal; after a restore, old-generation
+  entries are refused and removed; a populated journal changes neither the
+  fresh-start nor the restore inventory. Undecodable entries are kept as
+  `notification_intent_unreadable` reviews (A20, A23).
+- The notification is updated in place under id 4101. Only the pending
+  rest-end alarm is cancelled before an update, so the visible notification no
+  longer vanishes and reappears (owner device report, fixed in `b6f1fc04`).
+- The private Dev release APK route accepts `ALKION_NOTIFICATION_TRACE=1`,
+  which turns on the `alkion-notif` logcat markers; without it no marker is
+  printed.
+- No schema migration; the store stays at schema 6.
+
+**Device (OG3/OG4), owner's A024, Android 17, patch 2026-09-01, private Dev
+release APK with the trace flag, built from `b6f1fc04` (APK SHA-256 prefix
+`c268ca50`), 2026-11-11.** Latency was taken
+from the touch-down (`getevent`) to the system's `notification_enqueue` for id
+4101, both on the phone's monotonic clock, instead of screen-recording frames.
+
+| State | Taps | Journaled → decided | Refused | Touch → post p90 |
+| --- | --- | --- | --- | --- |
+| Foreground, shade down (in-place build) | 14 (13 +30s, 1 Skip) | 14/14 applied | 0 | 402 ms |
+| Backgrounded | 9 (8 +30s, 1 Skip) | 9/9 applied | 0 | 172 ms |
+| Swiped from recents (process killed) | 2 +30s | 2/2 applied at next open | 0 | provisional render 27–40 ms after `received` |
+
+An earlier foreground run on the previous trace build (the same tree before
+`b6f1fc04`), which cancelled and then posted (10 taps, 10/10, p90 205 ms), showed the vanish-and-reappear flicker
+that `b6f1fc04` fixes; the in-place run is slower but well inside the bar. The
+killed run is also the OG4 killed-state row: the first tap cold-started the
+process through the plugin's receiver, both taps were journaled and rendered
+without the app, and the next open applied them in order. No tap was lost or
+refused, and both measured p90s are under the 3 s bar, so design (a) stands
+without the fallback. The backgrounded (9) and killed (2) rows are below the
+plan's 10 taps per state, and the killed row has no touch-to-post p90; the
+owner accepted them as they are.
+
+**Not device-run (owner waiver, 2026-11-11):** lock screen, Doze, a frozen
+cached process, battery saver with the restricted bucket, taps during a cold
+launch or a restore, and the OG4 rows for the alert at the new end after +30s
+and never after Skip, ghost cancel, `profile_in_use` during a background tap,
+a tap after an app update before opening, and nothing pending after a
+force-stop. Those paths are host-proven only. Host checks are listed in the
+plan's task state.
+
+## F1 unreadable workout state at launch — 2026-11-09
+
+Implements the approved [unreadable workout state plan](../plans/2026-11-08-unreadable-workout-state.md)
+(audit item 1.1; [spec](../specs/2026-11-08-unreadable-workout-state.md)).
+Contract: [recovery](recovery.md#unreadable-workout-state-at-launch) and
+[storage](storage.md#quarantined-workflow-state).
+
+- A saved in-progress workout or "undo finish" snapshot that this build can't
+  read no longer locks the user out at every launch. Before resume, one write
+  transaction copies the exact rows (every column, payload value and SQLite
+  type) into a `workflow_state_unreadable` review with the reason and a
+  decoder record, and retires them in place as `quarantined`. The app then
+  opens without that workout or undo option (A1–A5).
+- Accepted draft and snapshot shapes, rows that aren't active and storage
+  failures are never quarantined; storage failures keep the launch failure
+  screen with the bytes untouched (A6–A8).
+- Replays, process death and an uncertain COMMIT end in exactly one review and
+  one retired row; the review ID covers only `{format, kind, rows}`, and a
+  conflicting ID uses a deterministic fallback, never changing the existing
+  review (A9–A12).
+- A later workout saves and finishes over the retired rows; History delete
+  never decodes a quarantined snapshot (A13).
+- A one-time notice says what happened and that the data is kept; OK records a
+  `notice` acknowledgement once. The Backup screen lists the kept data
+  read-only under "Kept workout data" (A16, T2).
+- A backup after a quarantine carries the reviews, notice decisions and
+  retired rows, and restoring it reproduces them (the local-state generation
+  stamp aside). An older backup leaves them as exact `restore_newer_work`
+  evidence; a restored damaged active row is quarantined at the next open
+  under a new ID. `keepAll` never decides a kept review (A14).
+- Quarantine and backup leave a second profile and the other generation
+  directories byte-identical. The review blocks neither `transportGate`, the
+  manual-send recovery gate nor `replayCompleteness`, and no export carries it
+  (A15).
+- No schema migration; the store stays at schema 6.
+
+All of this is host and real SQLite evidence on synthetic disposable stores.
+**The damaged-launch path is host-proven only**: damaged state can't be seeded
+on a release-mode APK. The device check (OG3), a regression check on a clean
+profile, passed on the A024 on 2026-11-09. Host checks are listed in the plan's task state.
+
+## P3 backup and restore flow — 2026-11-09
+
+Implements the approved [backup and restore flow plan](../plans/2026-11-08-backup-and-restore-flow.md)
+(audit items 5.1 to 5.7 and 1.7, plus the backup-dialog issues found with
+them).
+
+- Restore while a workout is running or starting is refused with "Finish or
+  discard your workout first, then restore." before any file picker opens and
+  before anything is flushed or closed. The host checks again under the session
+  launch fence, which it holds while verifying and releases on every path.
+  After the workout ends, restore works as before (A1).
+- The backup file is picked once: Check and Restore reuse the chosen private
+  copy, whose name and size are shown. A cancelled picker does nothing. The
+  restore confirmation names the file and its creation date (A2).
+- Restore reviews read as counts per kind, for example "Newer than this backup:
+  12 sets", with no IDs or keys on the surface; table names and restore IDs sit
+  under "Show technical details". "Keep all as evidence" asks first, then
+  writes the existing `alkion-restore-decision/1` / `kept_as_evidence` row for
+  every undecided `restore_newer_work` review in one transaction (all of them,
+  not only the first 200). Other review categories and already decided reviews
+  are skipped, a repeat writes nothing, and review evidence stays
+  byte-identical (A3).
+- A backup of another profile gets its own title and the three steps to use
+  it; "Backup verified" is never shown for it, and there is no in-app replace
+  (A4).
+- Create, Check, Restore and Keep all show a progress row with a live-region
+  label, also on the restoring screen and the first-start restore. It goes away
+  when the step ends; under reduced motion it is a still line (A5).
+- A read-only "Stored copies" section lists the sizes of private backups,
+  exports and picker staging; nothing is deleted and unreadable sizes are
+  omitted. "Last backup created" (or "No backup yet"), on the Backup screen and
+  the Profile row, comes from the newest backup file name of this profile; no
+  database write (A6).
+- If the runtime fails to close for a restore, Reopen shows the same working
+  runtime only when the flush barrier itself refused (its Animus connection,
+  workout sender and recovery review stay closed until the next launch). Once
+  teardown began it retries the close and relaunches; a failed retry stays a
+  retryable error, never `profile_in_use` (A7).
+- Backup, restore and first-start errors use the shared mapper: a sentence and
+  at most a small category line, never exception text. An open editor gets
+  "close the editor" guidance; an interrupted restore, a profile that already
+  has data and a changed staging copy get their own sentences; an interrupted
+  fresh restore at first start reads as the retryable interrupted restore, not
+  a foreign backup. New strings exist in en, it, de and es; parity and
+  unused-key tests pass, and the Backup screen holds at 320 dp and 2x text in
+  all four (A8). Explicit exception to A8's "no raw code": by the P1 decision
+  the stable category stays visible as a small mono details line under the
+  sentence; it is never the message and never exception text.
+- Restore re-verifies the chosen file at every step, so a copy that changed
+  after Check is checked again; damaged bytes are refused with a mapped
+  sentence before the confirmation.
+- No backup, evidence, schema or restore-semantics change; restore still
+  re-verifies the backup.
+
+Host checks are listed in the plan's task state. The device check (refused
+restore mid-workout, restore of a fresh backup, Keep all) is open.
+
+## P8 rest alerts and notifications — 2026-11-09
+
+Implements the approved [rest-end alert and notification plan](../plans/2026-11-08-rest-alerts-and-notifications.md)
+(audit items 6.3, 6.5 and 6.6, the next-set body and the dead English bodies).
+The only stored change is one optional settings key; no schema, store,
+backup or draft format change.
+
+- When a rest ends while the workout screen is not in front of the user (app
+  in the background, phone locked, or another tab), the scheduled rest-end
+  notification posts on its own channel `<prefix>rest_end`: high importance
+  (heads-up), vibration, no sound, titled "Rest finished" with the next
+  exercise as body. It replaces the workout notification under the same id
+  (4101) and stays ongoing with the elapsed chronometer. The user tunes or
+  silences it per channel in Android settings; there is no in-app switch (A1).
+- With the workout screen open in the foreground the alert is not scheduled
+  (the quiet mirror is used) and the screen's own haptics mark the end: one
+  buzz. Opening or closing the screen and leaving or returning to the app
+  reschedule the matching variant. In the background the open screen neither
+  buzzes nor stops the rest; the resume reconciliation stops it. A rest that
+  ended more than 2 s before the screen's first foreground tick (timers frozen
+  while locked, or the screen opened late) gets no buzz or "Rest over"
+  announcement, since the notification already marked it. A screen visible
+  but not resumed (shade, split screen) keeps rebuilding its timers (A1).
+- Ghost cleanup (owner decision 2026-11-09): at runtime open, after the draft
+  is loaded, when no workout is active and no start or resume is running,
+  Alkion cancels its workout notification id 4101, which also cancels any
+  scheduled rest-end alert. An active or resuming workout is never cancelled.
+- The rest countdown and the rest-end post name the next exercise, "Next ·
+  name" (catalog display label or exercise name, no weights), in en, it, de
+  and es. With nothing pending the countdown says "Rest" and the rest-end post
+  shows the workout name (A2).
+- Notifications use a monochrome 24 dp vector glyph,
+  `drawable/ic_stat_alkion.xml`, traced from the approved character icon, with
+  a resource keep rule so release shrinking cannot drop it (A3).
+- The workout notification never asks for permission. At the first workout
+  start, after admission and before the workout opens, a one-line explainer
+  appears when notifications are off; Continue shows the Android prompt, Not
+  now starts the workout normally (the existing "notifications are off" toast
+  follows). The answer is remembered in the optional settings key
+  `notifications_explained` (absent means not yet explained). A user who
+  already allowed notifications sees nothing (A4).
+- The payload mapping no longer carries English body strings (A5).
+- The +30s action, its id `<prefix>add_30s` and its wiring are unchanged; the
+  quiet mirror channel `<prefix>workout_session` is unchanged. Arb parity and
+  unused-key tests pass (A6).
+- The inexact-alarm notice stays removed: exact scheduling when allowed,
+  `inexactAllowWhileIdle` otherwise (the alert may then be late).
+
+Host checks are listed in the plan's task state. Native rendering (heads-up,
+vibration, channel settings, glyph, release resources) is not provable on the
+host; the device check is open.
+
+## P7 live workout flow — 2026-11-09
+
+Implements the approved [live workout flow plan](../plans/2026-11-08-live-workout-flow.md)
+(audit items 2.4, 6.1, 6.2 and 6.7 to 6.13). Draft-only: no stored-data,
+draft-file, outbox or derivation change.
+
+- Discard confirms only when a set is done, a value was touched (weight, reps,
+  RIR or a catalog measurement) or sets or blocks were added, removed or moved;
+  a pristine fresh workout discards silently. A restored draft always asks,
+  because those structural edits are not in the draft file. The confirm says
+  logged sets will be lost only when some are, otherwise "This workout and
+  your changes will be lost." A refused discard
+  (pending notification action or Finish) shows the "busy, try again" message,
+  never "Couldn't save" (A1). System back still minimizes, as before.
+- A newly logged working set shows "Set N logged · Undo" for 5 s. Undo, and
+  "Mark as not done", make the set live and not done again, clear the
+  confirmation line, and stop the rest only when that set's log started it
+  (an older or newer rest keeps running); the earlier "rested" mark returns,
+  also while a notification rest action is saving. Warm-ups get no Undo, and
+  back or minimize takes an open Undo toast down with the screen (A2).
+- Finish from the workout menu asks "N sets not logged" when working sets are
+  still open (warm-ups never count); Keep going keeps the workout. A retry of a
+  failed Finish does not ask. The menu's Finish is always tappable and explains
+  "Log at least one set to finish" (or the missing measurements) (A3).
+- Screen readers: a set line reads "Set 2, 140 kg × 6, RIR 1, done"; RIR
+  chips read "RIR 2"; the Undo toast is a live region, a warm-up log announces
+  "Warm-up logged" and the end of rest announces "Rest over" once. The
+  2 px success line stays decorative (A4).
+- While a Finish is saving, the bar is disabled and reads "Saving workout…"
+  (live region) with a small spinner, none under reduced motion; back and
+  minimize cannot leave until the summary opens. A failed Finish awaiting a
+  retry can still be left (A5).
+- Typed weight over 500 kg (1100 lb) and reps outside 1 to 100 are refused in
+  the open sheet with an inline message; unparseable text says "Enter a
+  number". The reps ruler runs 1 to 100, the lb weight ruler ends at 1100 lb.
+  Duration rulers step 5 s and distance 10 m with no fine zoom. Catalog typed
+  entry keeps its exact-evidence rules and gains no new limits (A6).
+- In lb, suggested weights and warm-up ramps round to whole 5 lb (a 135 lb top
+  set suggests 140 lb on a compound lift); the exercise editor's start weight
+  steps 5 lb. Stored `plate_step_kg` and kg behaviour are unchanged (A7).
+- Opening the live workout uses `Motion.of` durations and no fade or slide
+  under reduced motion (A8).
+
+Host checks are listed in the plan's task state. The device check (log, undo,
+early finish, TalkBack, reduced motion) is open.
+
+## P6 bodyweight editing — 2026-11-09
+
+Implements the approved [bodyweight editing plan](../plans/2026-11-08-bodyweight-editing.md)
+(audit items 4.1 to 4.5 and 3.6).
+
+- Every history row with an available date opens the sheet as "Edit entry"
+  with that date, pre-filled. Save stores one new revision with the same date
+  and source revision; "Delete entry" asks first and soft-deletes (the row
+  stays in the store, hidden from the history, chart and stats). Both reuse
+  `prepareMeasurement` with one outbox entry per action; no schema change.
+  Undated rows stay read-only; an unreadable weight can be corrected, and an
+  untouched save keeps the original evidence (A1 to A3). An edit shows its
+  weight from the first frame. While a failed Save waits for its retry, Delete
+  is off, and the other way round; a retry reuses the same prepared action.
+- The sheet accepts 20–500 kg or 44–1100 lb; Save is disabled with a hint when
+  the value is empty or out of range, and a minus sign cannot be typed. A first
+  entry starts empty: no 70 kg default and no write before a value exists.
+  Stored out-of-range rows are never rewritten (A4, A5).
+- History shows 24 rows, then "Show all N"; header and selector count the same
+  entries, unreadable ones included as ordinary rows (A6).
+- A changed sheet asks "Discard changes?" on back, scrim or drag (A7). The
+  sheet's drag is hidden from screen readers, which dismiss it with back or the
+  barrier. The
+  chooser for several entries on one day is labelled by position, and the
+  title and date follow the mode (A8).
+- The 30-day change starts from the earliest entry in the last 30 days other
+  than the current one, and reads "—" without one (A9).
+
+Host checks are listed in the plan's task state. The device check is open.
+
+## P5 failed saves and History editing — 2026-11-09
+
+Implements the approved [failed saves and History editing plan](../plans/2026-11-08-failed-saves-and-history-editing.md)
+(audit items 2.2, 2.5 to 2.8, 3.4 and 4.6 to 4.10).
+
+- Plan editors: after a failed Save the fields stay locked, a "Not saved"
+  note explains why, the button reads "Retry save" and commits the same
+  prepared write once, and "Discard changes" leaves after the destructive
+  discard prompt without a write (A1). Targets lock per muscle: a tap during
+  a write is queued, and a new value after a failure replaces the failed
+  write, prepared against the stored row (A3).
+- History editors can be closed after a failed save and say "Not saved ·
+  will retry"; the owed write keeps its identity and lands once on the next
+  flush. Later edits are queued behind it, never dropped (A2). The catalog
+  editor names sets in its failure, discard and validation messages, uses
+  the error mapper and a neutral Save label, shows validation inline above
+  Save and numbers rows without gaps (A6, A10).
+- RIR can be cleared in History by tapping the selected chip (stored as
+  NULL, other fields keep their raw text); the live workout keeps "a tap
+  never un-logs". Added sets start without RIR (A7). Delete set is a button,
+  the chevron follows the open card and unknown reps are not seeded (A10).
+- History: an exercise no longer in the catalog reads "Deleted exercise"
+  with no chevron or tap, and rows stay a skeleton until the catalog loads
+  (A8). Add exercise on a classic exercise opens an empty set editor that
+  writes nothing until Add set; a catalog exercise with no setup says so
+  (A9). The resume failure toast uses the mapper.
+- Preferences: the next change after a failed save retries the owed one
+  first, with no revision gap or duplicate row; a failed unit write shows
+  the write-failed dialog (A4). Rest steppers queue every tap, read
+  "{count}s" from the ARBs, stop at 900 s and are disabled after an error
+  (A5).
+- Review fixes: History lands an earlier editor's owed write before opening
+  another editor, re-reads the block and session revision when it landed,
+  and opens nothing while a write stays owed (the mapped failure is shown).
+  In the set editor, Add set and a confirmed Delete behind a failing write
+  are queued and land in order; the failure dialog shows once per failed
+  state, then the inline note carries it. Targets rebuild only the row being
+  written and mark a value whose write failed "Not saved".
+- Coordinator decision, permanent History failures: a write that can never
+  land (a conflict, a missing set or workout, a base never observed) stops
+  retrying. The set editor, or History when the editor was closed, shows
+  the mapped message and an explicit, confirmed "Discard set changes" that
+  drops only those owed History writes; transient failures keep "will
+  retry". A set with no observed base fails alone; the others are written.
+  Only owed History editor writes block opening another editor (an owed
+  delete blocks only its own session); a permanently failing owed delete
+  gets the same confirmed discard. The catalog editor shows the mapped
+  message for a permanent failure. Add exercise reads the session revision
+  fresh, and a double tap opens one editor.
+- No schema change, migration or new write path. Nothing owed is abandoned
+  except by an explicit, confirmed Discard (Plan editors; permanently
+  failed History set changes).
+
+Host checks are listed in the plan's task state. The device check is open.
+
+## P4 honest numbers and PRs — 2026-11-09
+
+Implements the approved [honest numbers and PRs plan](../plans/2026-11-08-honest-numbers-and-prs.md)
+(audit items 3.1–3.3, 3.5, 3.7, 3.8, 3.11).
+
+- Targets offers all 13 groups (8 legacy, then forearms, glutes, core,
+  adductors, abductors, then stored custom keys) in the UI language. A
+  catalog exercise's editor shows a note that its groups come from the
+  catalog instead of chips, and Save leaves `muscle_group` as stored; no chip
+  has an empty label (A1, A2).
+- Today's sets and PRs tiles and Recent PRs show "—" while loading and an
+  "unavailable" state on error, never "0" or "No PRs yet" (A3).
+- Progress leaves unavailable top sets out of the chart, Current, Best and the
+  12wk change for top, e1RM and reps; the log shows them as "—" and volume
+  keeps them. The 12wk change compares with the earliest point within 84 days
+  before the latest dated point, or shows "—" (A4, A5).
+- A PR needs a previous best everywhere: the live badge, haptic and header
+  count now agree with finish, the summary and History (A6).
+- Stored catalog PRs (existing derived results, read only) count in History
+  (tile, week header, card badge, row glyph), Today's PRs tile and Recent PRs;
+  legacy PRs still count once. History counts a catalog PR once per setup,
+  so two setups of one exercise that both PR count twice, as Today and the
+  live count do. A catalog set whose bytes cannot be read shows its Recent
+  PR values as unavailable without hiding the others (A7).
+- Catalog Progress distinguishes never logged, unsupported and a load error
+  with Retry (A8). An unused stats stream was removed (A9).
+- No stored data, schema, derivation or `derived_results` row changes.
+
+Host checks are listed in the plan's task state. The device check is open.
+
+## P2 storage banner and launch screens — 2026-11-09
+
+Implements the approved [storage banner and launch screens plan](../plans/2026-11-08-storage-banner-and-launch-screens.md)
+(audit items 1.2 to 1.6, 5.8 and the `main()` retry gap).
+
+- Backgrounding or resuming with an editor merely open (a History set card
+  under the pulled-down shade) no longer shows "Local storage needs recovery".
+  The lifecycle flush and Retry ignore open forms but still fail, and show the
+  banner, when a write is genuinely owed. Backup, restore and close still
+  refuse while a form holds unsaved input; that refusal no longer raises the
+  banner (A1).
+- A failed workout autosave, notification action or post-resume refresh now
+  raises the same banner; Retry recovers and flushes, and clears it once the
+  fault is gone (A4).
+- The banner is one self-contained overlay child with Alkion tokens and type.
+  It fits 320 dp at 2x text in all four languages, and Retry is disabled while
+  its run is in flight, so a double tap recovers once (A5).
+- A launch failure, from `main()` or the launcher, shows a themed, localized
+  screen in the system theme with "Try again", which re-runs the launch. The
+  message comes from the shared error mapper; a non-storage error is not called
+  a storage failure, and the stable category (or only the error type) sits
+  behind a collapsed "Technical details" line. "Your existing files are
+  preserved" is kept (A2).
+- Release builds install the error card first in `main()`. It shows a generic,
+  localized title; the raw error and stack are copied on tap, with a "Copied"
+  confirmation and a button role (A3).
+- The restoring and restore result screens use the user's language, theme and
+  accent; the interrupted-restore screen found at launch follows the system
+  (A6). New strings exist in en, it, de and es; parity and unused-key tests
+  pass (A7).
+- After review: a failing owed editor write no longer holds back the other
+  owners' flushes; a later successful autosave withdraws only its own banner;
+  the restore screens read the settings before the runtime closes; fonts are
+  never fetched at launch; Retry after close begins does nothing.
+- No stored data, backup format or recovery semantics change; owed writes are
+  never dropped.
+
+Host checks are listed in the plan's task state. The device check is open.
+
+## P1 error messages and toasts — 2026-11-09
+
+Implements the approved [error-messages and toasts plan](../plans/2026-11-08-error-messages-and-toasts.md)
+(audit items 2.1 and 2.3).
+
+- One pure mapper, `util/error_message.dart`, turns store, document and
+  generation-selection categories into a localized sentence in eight buckets
+  (conflict, recovery, busy, file, wrong or foreign backup, damaged, too large,
+  unexpected). The stable category shows only as a small mono details line.
+  Unknown and non-store errors read as unexpected with no details, so exception
+  text and file paths never reach the user (A1, A2).
+- `showWriteFailed` (every caller), the day and exercise editor save dialogs,
+  the session summary load failure and the export failure dialog use it in all
+  four languages. Recovery-refusal wording is unchanged (A1, A3).
+- Every SnackBar now floats as a flat inverse Alkion toast from the app theme.
+  `showWToast` adds the danger style, an optional action that runs once, and a
+  duration after which an action toast still ends. Toasts that AppShell's
+  Scaffold shows, from tab pages or the notification-limitation message, sit
+  above the tab bar at 320 dp and 1× or 2× text; pushed routes keep the normal
+  inset (A4, A5).
+- The toast sites in History, the live workout and the catalog History editor
+  are left to their own plans; they already pick up the theme.
+- No stored data, backup format or recovery semantics change.
+
+Host checks are listed in the plan's task state. The device check is open.
+
+## Impeller renderer — 2026-11-08
+
+Android uses Flutter's default Impeller renderer again: the manifest no longer
+opts out to Skia. The opt-out was added for a stale gray box over the Profile
+list; the Profile card already avoids the offscreen clip layer behind it
+(`profile_screen.dart`). Owner device check 2026-11-08 on a private Dev APK
+with this change and the legacy removal: no gray box when scrolling Profile past
+the accent selector, and Explore and the ordinary flows behave normally. The
+release build logs no renderer line, so the evidence is the APK manifest
+carrying no `EnableImpeller` entry.
+
+## Legacy removal T3 — 2026-11-08
+
+Implements T3 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).
+Earlier sections that mention the removed caption, notice, files or strings stay
+as recorded.
+
+- History and Progress no longer show the "Legacy compatibility ·
+  reps-compat/1" caption. Their numbers, the `reps-compat/1` derivation and the
+  export formats are unchanged.
+- The unused "rest notifications may be delayed" notice and the
+  `NotificationLimitation.inexact` status are gone. When exact alarms are not
+  allowed, or an exact schedule fails, rest notifications still fall back to
+  `inexactAllowWhileIdle` (`workout_notification_test.dart`).
+- Unreachable code is gone: `ui/body_contours.dart`,
+  `widgets/dashed_border.dart`, `export/export_builder.dart` and its test,
+  `data/template_absorb.dart` and its test, `data/is_template_backfill.dart`,
+  `CatalogEvidenceCard`, `test/support/zip_writer.dart`, and the undelivered
+  `exportFull`/`exportTransfer`/`exportOriginal` paths. Export tests now deliver
+  the same bytes through `DirectoryExportDelivery`, so the AC-16 evidence is
+  unchanged.
+- The synthetic transfer seams stay, each with a recorded use:
+  `transfer/correspondence.dart` is the documented
+  [`alkion-correspondence/1`](correspondence.md) contract and AC-14 evidence,
+  and the input for the [Animus follow-on](animus-follow-on.md);
+  `transfer/incoming_quarantine.dart` is the gate that any future legacy draft or
+  queue loader must call ([owner gates](owner-gates.md#incoming-quarantine-wiring-t5t6-carry), AC-15);
+  `transfer/historical_measurements.dart` is the selected-ID seam for
+  measurements without a qualified date ([transfer](transfer.md#historical-measurement-seam), AC-10).
+  The external migration tool's plan decides whether they stay.
+- The day editor no longer keeps editor-local catalog targets for slots without
+  selection evidence. Those targets were never saved; such a slot now shows its
+  measurement fields read-only. Slots with selection evidence save and reopen as
+  before.
+- 184 unused ARB keys are gone from all four locales, including the six
+  capture-hold keys left by T1 (capture 95, profile 25, updates 15, sync 12,
+  alkion 9, login 7, catalog 5, today 3, session 3, export 2, exercise 2, and
+  one each of body, notif, onboarding, progress, targets and training).
+  `test/l10n/unused_keys_test.dart` fails on any key that app code does not
+  use and on a locale key-set mismatch.
+- New durable-runtime widget tests (`catalog_durable_workout_menu_test.dart`)
+  cover the block menu "again" and "setup", the setup sheet at 320 dp and 2×
+  text, cancelling the execution choice with the draft and rest timer intact,
+  and day-editor save and reopen with catalog slots.
+- No schema change, migration or stored-data change.
+
+Host checks are listed in the plan's task state.
+
+## Legacy removal T2 — 2026-11-08
+
+Implements T2 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).
+This supersedes the isolated catalog trial described in the 2026-10-29 and later
+sections below, which stay as recorded.
+
+- The disposable catalog trial is gone: its `catalog_trial.dart` entry point and
+  sandbox storage, `make build-catalog-trial`, the `ALKION_ISOLATED_CATALOG_TRIAL`
+  Gradle path and `dev.animusstudio.alkion.catalogtrial` package, its strings,
+  its startup screen and button skeleton, and the in-memory branches in the live
+  workout (trial set form, in-memory log, blocked Finish), routine editor save and
+  picker.
+- The normal app's catalog behaves as before. `CatalogTrialState` folds into
+  `CatalogRuntimeState`, and `CatalogTrialScope` is now `CatalogScope`
+  (`catalog_scope.dart`). Picker and browser tests use a test-only in-memory
+  state (`test/support/memory_catalog_state.dart`).
+- The staging tools and their Make targets drop "trial": `stage-catalog`,
+  `verify-catalog`, `test-catalog-staging` and `test-catalog-apk`, with
+  `tool/stage_catalog.py` and `tool/verify_catalog_apk.py`. The private Dev
+  route keeps its targets, inputs and checks. The staged input keeps its
+  historical names (`assets/catalog_trial/`, `build/private-catalog-trial/`, the
+  `alkion-catalog-trial-manifest` format and `private_trial_only`), so existing
+  staging verifies unchanged and needs no restaging.
+- No schema change, migration or stored-data change.
+
+Host checks are listed in the plan's task state. The private Dev APK build (A6),
+the full suite and device checks are recorded with T3.
+
+## Legacy removal T1 — 2026-11-08
+
+Implements T1 of the approved [legacy removal plan](../plans/2026-11-08-legacy-removal.md).
+This supersedes the in-app import described in the 2026-11-01 sections below,
+which stay as recorded.
+
+- Profile → Data has no Import Reps data entry. The import screen, the
+  `reps_import` facade, its strings and the in-app mapping review/apply path
+  are gone, as is the one-time retirement of the former separate history
+  profile. The [import guide](reps-import.md) is retired with a pointer to the
+  planned external migration tool.
+- The host-side `alkion-import-history` and `alkion-history-recovery` routes
+  stay, with the mapping model moved to `app/lib/history_mapping/`. Profiles
+  that already hold mapped history open and show it unchanged: the app still
+  reads stored mappings for History attribution and the catalog picker.
+- The unused data-capture hold (`freezeCallbacks`/`resumeCallbacks`,
+  `markFlushed`, `saveEpoch`) is gone. A pending Finish or a notification rest
+  action still blocks double actions. A failed Finish now shows a "not saved
+  yet, tap Finish workout to try again" notice, and the disabled +30s/Skip
+  chips say rest changes wait until the workout is saved, instead of storage
+  recovery or data capture copy.
+- No schema change, migration or stored-data deletion.
+
+Host checks are listed in the plan's task state. The full suite and device
+checks are recorded with T3.
+
+## Polish: text motion, live weekly volume, details, search — 2026-11-08
+
+Implements the approved [polish plan](../plans/2026-11-08-alkion-polish.md):
+- a specimen-style text reveal and a press glitch on chips, toggles, segmented
+  controls and primary actions;
+- three-segment weekly volume (done, this workout, planned) on Today during a
+  workout and in a new live-workout sheet, with catalog exercises counted under
+  their reviewed target groups;
+- an exercise details page with the favourite star (filled in primary when
+  saved) and the muscle "i" in place, neither closing the page, and without
+  movement frames or the bottom prose;
+- a catalog search bar that floats back on scroll-up;
+- the Workout Guide frames no longer bundled (about 32 MiB of source images
+  leave the APK; the files and their notices stay in the repo).
+
+Device checks on A024 (`df33bfae`, then `f18073be`): the owner accepted the
+polish. The clipped `x+y/z → n` count
+was fixed (`2dc9acb`, `18b609d`). A trial 1.25× motion pace (`c161300`) was
+reverted at the owner's choice, keeping the original tokens. Host checks at
+`2aba977`: analyze clean, tests +2915 ~3 -3 (only the 3 inherited
+`catalog_metric_controls` failures).
+
+## UX polish — 2026-11-07
+
+Implements the approved [UX polish plan](../plans/2026-11-07-ux-polish.md) with
+its owner device amendments: a larger Today body with a 48 dp Workload entry; a
+workload sheet trimmed to the body, legend and region counts; feathered glyph
+loaders with a 500 ms reveal; a logo startup mark; Explore as a full-width body
+over a snapping muscle chip strip, with no tilt (drag turns and pans, pinch
+zooms); and a flat, equal-height History band. Host checks at `1403800`:
+analyze clean, tests +2820 ~3 -3 (only the 3 inherited `catalog_metric_controls`
+failures). The owner approved the workload sheet, loaders and reveal on A024.
+Open: the owner check of the `5d59379` build, Explore frame time on A024 and
+whether the Android splash stays up during the first-frame hold.
+
 ## Explore smooth motion and inertia — 2026-11-07 (T4)
 
 Implements the T4 amendment of the [Explore gestures plan](../plans/2026-11-07-explore-gestures.md),
@@ -136,8 +787,10 @@ starts: before T5 the first frame took 9.9 s, with 562 skipped main-thread
 frames. With T5 it took 0.56–0.64 s, with no skipped-frame or long-frame
 report. Home replaced the catalog loading screen about 3–4 s after launch.
 
-Device checks of the normal build at `478d0bb` and of the T6 feel remain
-open.
+The normal `478d0bb` build was installed in place on A024 on 2026-11-07: the
+hash `15e211ff…` matched, the cold launch took 0.58 s, and the first-install
+identity was kept. The owner's T6 feel check passed the same day ("feels
+good").
 
 ## Explore muscles 3D gestures — 2026-11-07
 
@@ -149,7 +802,8 @@ two-pointer recognizer and the page scroll; the owner's phone check (A3) is
 what confirms it. Explore now has one recognizer on
 the canvas that wins each pointer landing there at pointer down and arbitrates
 internally. A tap within slop picks. One finger orbits: sideways turns, vertical
-tilts. Two fingers pinch-zoom (1–3×) around their focal point and pan. Adding
+tilts (later replaced: vertical pans and Explore no longer tilts, owner
+2026-11-07, UX polish T9). Two fingers pinch-zoom (1–3×) around their focal point and pan. Adding
 or lifting a finger re-bases without a jump; the finger left after a pinch
 orbits only once it moves past slop again. Drags and pinches never select.
 Outside the canvas the page still scrolls.
@@ -195,7 +849,7 @@ files). The full suite runs 2,675 tests: 2,669 pass, three expected optional
 skips and the three known `catalog_metric_controls_test.dart` failures. Body
 protocol/loader/picking/orbit, material (12,248 cases) and native bridge checks
 pass, as do 65 tool Python tests. No APK was built and no device was used.
-Native pinch, pan and tilt on Nothing A024 remained the owner's check (A3, A6); the owner later confirmed gestures work (plan T3), and the T6 feel check stays open (see T4 above).
+Native pinch, pan and tilt on Nothing A024 remained the owner's check (A3, A6); the owner later confirmed gestures work (plan T3), and the T6 feel check passed on 2026-11-07 on the installed normal `478d0bb` build: "feels good" (see T4 above).
 
 ## Thirteen Explore and heatmap regions — 2026-11-06
 
@@ -469,6 +1123,7 @@ at `7c7348c`. All **760 current catalog variants** resolve to one technically
 reviewed, locally bundled owner illustration, guarded by exact revision,
 equipment and facets. Original silver/coral colors and black backgrounds remain
 intact. Optional Workout Guide positions retain their separate credits/license.
+(Superseded 2026-11-08: Workout Guide positions are no longer shown or bundled.)
 Custom or incompatible identities keep the existing fallback.
 
 All 760 lossless WebPs decode at 640×640, totaling **137,208,116 bytes**.

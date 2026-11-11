@@ -47,6 +47,8 @@ enum AlkionGlyph {
   error('warning-circle'),
   undo('undo', mirrorsInRtl: true),
   favorite('star'),
+  // The pinned Iconoir solid star: a saved favourite reads as filled.
+  favoriteFilled('star-solid'),
   info('info-circle'),
   list('list'),
   imageUnavailable('media-image-xmark'),

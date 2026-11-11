@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/alkion_icon.dart';
 import '../data/models.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -36,6 +37,7 @@ class RirPicker extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    this.onClear,
     this.height = 48,
   });
 
@@ -43,6 +45,12 @@ class RirPicker extends StatelessWidget {
   final int? value;
 
   final ValueChanged<int> onChanged;
+
+  /// Opt-in clear: when set, tapping the selected chip calls this instead
+  /// of [onChanged], so a host can store "no RIR". History's set editor
+  /// opts in; the live workout leaves it null, so a tap there never
+  /// un-logs.
+  final VoidCallback? onClear;
 
   /// Chip height. Defaults to 48, the height every host uses.
   final double height;
@@ -65,7 +73,12 @@ class RirPicker extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: () {
             HapticFeedback.lightImpact();
-            onChanged(r);
+            final clear = onClear;
+            if (selected && clear != null) {
+              clear();
+            } else {
+              onChanged(r);
+            }
           },
           child: Container(
             height: height,
@@ -80,6 +93,8 @@ class RirPicker extends StatelessWidget {
               children: [
                 Text(
                   '$r',
+                  // "RIR 2" to a screen reader, not a bare digit.
+                  semanticsLabel: AppLocalizations.of(context).sessionRir(r),
                   style: WorkoutType.mono(
                     size: 12,
                     weight: FontWeight.w400,

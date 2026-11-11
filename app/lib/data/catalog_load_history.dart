@@ -8,6 +8,26 @@ import 'models.dart' show hasQualifiedCalendarDay;
 const legacySetOnlySql =
     "NOT EXISTS (SELECT 1 FROM record_revisions catalog_revision WHERE catalog_revision.profile_id=s.profile_id AND catalog_revision.kind='workoutSet' AND catalog_revision.record_id=s.id AND catalog_revision.revision=s.revision AND json_type(CAST(catalog_revision.payload_bytes AS TEXT),'\$.catalog_set_bytes')='array')";
 
+/// The stored catalog PR flag of set `s` in its session `se`'s current
+/// revision, read from that set's existing `catalog-workout:` derived result
+/// (`catalog-load/1`), or NULL for a set with none (every legacy set, or a set
+/// whose revision no longer matches a stored result). Read only: nothing here
+/// writes or recomputes a derived result.
+const catalogPrSql =
+    "(SELECT json_extract(CAST(d.result_bytes AS TEXT),'\$.is_pr') FROM derived_results d WHERE d.profile_id=s.profile_id AND d.result_id='catalog-workout:'||s.session_id||':'||se.revision||':set:'||s.id||':'||s.revision)";
+
+/// Whether set `s` (in session `se`) is a stored PR: its catalog PR flag when
+/// it has one, else its legacy local flag. Each set counts once either way.
+const setPrSql = 'COALESCE($catalogPrSql, s.legacy_local_pr)';
+
+/// The unit a stored PR counts once per session: the exercise, plus for a
+/// catalog set the comparable setup (`compatibilityKey`) its derived result
+/// was computed for. Legacy sets have none, so they key by exercise alone.
+/// Read from the derived result rather than a sets column, so pre-catalog
+/// stores need no column they lack.
+const prUnitSql =
+    "s.exercise_id||':'||COALESCE((SELECT json_extract(CAST(d.coverage_bytes AS TEXT),'\$.compatibilityKey') FROM derived_results d WHERE d.profile_id=s.profile_id AND d.result_id='catalog-workout:'||s.session_id||':'||se.revision||':set:'||s.id||':'||s.revision),'')";
+
 final class CatalogLoadReference {
   const CatalogLoadReference({
     this.last,

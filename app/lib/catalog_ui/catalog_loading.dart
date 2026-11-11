@@ -1,28 +1,30 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../catalog/catalog_labels.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
-import '../theme/typography.dart';
-import '../widgets/state_motion.dart';
+import '../widgets/alkion_brand.dart';
+import '../widgets/glyph_loading.dart';
 
 /// Only the actual asset/runtime await presents this surface. Cached catalog
 /// pickers never mount it. It reads no profile or storage of its own.
+///
+/// It takes over from the native launch splash, which follows the system
+/// theme, so it follows the system theme too ([ThemeMode.system]) rather
+/// than the app's stored mode; the app's theme arrives with Home's reveal.
 class CatalogLoadingApp extends StatelessWidget {
-  const CatalogLoadingApp({
-    super.key,
-    required this.brightness,
-    required this.accent,
-    this.locale,
-  });
-  final Brightness brightness;
+  const CatalogLoadingApp({super.key, required this.accent, this.locale});
   final Color accent;
   final Locale? locale;
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
-    theme: buildTheme(brightness, accent),
+    theme: buildTheme(Brightness.light, accent),
+    darkTheme: buildTheme(Brightness.dark, accent),
+    themeMode: ThemeMode.system,
     locale: locale,
     supportedLocales: AppLocalizations.supportedLocales,
     localizationsDelegates: const [
@@ -33,138 +35,130 @@ class CatalogLoadingApp extends StatelessWidget {
     ],
     home: Builder(
       builder: (context) => Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 400),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      CatalogLabels(
-                        Localizations.localeOf(context).languageCode,
-                      ).catalog,
-                      style: WorkoutType.display(
-                        size: 22,
-                        color: context.tokens.text,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    const CatalogGlyphSkeleton(),
-                  ],
-                ),
-              ),
-            ),
+        backgroundColor: AlkionSplash.of(context).background,
+        body: const CatalogStartupMark(),
+      ),
+    ),
+  );
+}
+
+/// The startup wait: the launcher arm exactly as the native splash drew it
+/// for the system theme ([AlkionSplashMark]), with a slim feathered glyph
+/// band under it that sweeps while the catalog loads (static under reduced
+/// motion). Speaks the catalog loading label once, as a live region.
+/// [CatalogReadyReveal.startup] dissolves the same composition, still in the
+/// system theme's colours, into the app in its own theme.
+class CatalogStartupMark extends StatelessWidget {
+  const CatalogStartupMark({super.key});
+
+  /// The band's height under the arm.
+  static const bandHeight = 14.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final splash = AlkionSplash.of(context);
+    return Semantics(
+      container: true,
+      label: CatalogLabels(
+        Localizations.localeOf(context).languageCode,
+      ).loading,
+      liveRegion: true,
+      child: ExcludeSemantics(
+        child: AlkionSplashMark(
+          below: GlyphSkeleton.box(
+            key: const Key('catalog-startup-band'),
+            height: bandHeight,
+            ink: splash.bandInk,
+            highlight: splash.bandHighlight,
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
-/// Static while waiting: no fake progress, repeating ticker or changing labels.
-class CatalogGlyphSkeleton extends StatelessWidget {
-  const CatalogGlyphSkeleton({super.key});
-  @override
-  Widget build(BuildContext context) => Semantics(
-    label: CatalogLabels(Localizations.localeOf(context).languageCode).loading,
-    liveRegion: true,
-    child: ExcludeSemantics(
-      child: SizedBox(
-        height: 156,
-        width: double.infinity,
-        child: RepaintBoundary(
-          child: CustomPaint(painter: _GlyphPainter(context.tokens.dim)),
-        ),
-      ),
-    ),
-  );
-}
+int _startupHolds = 0;
 
-class _GlyphPainter extends CustomPainter {
-  const _GlyphPainter(this.color);
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final ink = Paint()
-      ..color = color
-      ..isAntiAlias = false;
-    for (var row = 0; row < 3; row++) {
-      for (var column = 0; column < (size.width / 7).floor(); column++) {
-        for (var y = 0; y < 5; y++) {
-          // Authored glyph cells with fixed row widths, never invented data.
-          if (column > 3 && column > 19 + row * 3) continue;
-          if ((column * 3 + y + row) % 4 == 0) continue;
-          canvas.drawRect(
-            Rect.fromLTWH(column * 7.0, row * 52.0 + y * 4, 2, 2),
-            ink,
-          );
-        }
+/// First-frame holds taken by [holdFirstFrameForStartupMark] and not yet
+/// released.
+@visibleForTesting
+int get debugStartupMarkHolds => _startupHolds;
+
+/// Keeps the native splash up until [CatalogStartupMark]'s artwork is
+/// decoded, so the first Flutter frame already shows the arm where the splash
+/// drew it instead of one frame without it. Only for the real root before
+/// its first frame. Every path releases the hold: the decoded image, a load
+/// error, a synchronous throw, or at the latest the [limit] timer, which is
+/// armed before anything else can fail.
+void holdFirstFrameForStartupMark({
+  Duration limit = const Duration(milliseconds: 300),
+  @visibleForTesting
+  ImageProvider image = const AssetImage(kAlkionForegroundAsset),
+}) {
+  final binding = WidgetsBinding.instance;
+  if (binding.firstFrameRasterized) return;
+  binding.deferFirstFrame();
+  _startupHolds++;
+  var held = true;
+  Timer? timer;
+  ImageStream? stream;
+  ImageStreamListener? listener;
+  void release() {
+    if (!held) return;
+    held = false;
+    _startupHolds--;
+    timer?.cancel();
+    binding.allowFirstFrame();
+    final registered = listener;
+    if (registered != null) {
+      try {
+        stream?.removeListener(registered);
+      } on Object {
+        // The frame is already released; a stale listener only holds a ref.
       }
     }
   }
 
-  @override
-  bool shouldRepaint(_GlyphPainter old) => color != old.color;
+  timer = Timer(limit, release);
+  try {
+    final watching = listener = ImageStreamListener((info, _) {
+      info.dispose();
+      release();
+    }, onError: (_, _) => release());
+    stream = image.resolve(ImageConfiguration.empty)..addListener(watching);
+  } on Object {
+    release();
+  }
 }
 
-/// A single 200ms decode after a displayed await. Content and controls are
-/// available from frame one; this overlay owns neither focus nor semantics.
+/// A single [Motion.reveal] glyph dissolve after a displayed await. Content
+/// and controls are available from frame one; the overlay owns neither focus,
+/// pointers nor semantics, and reduced motion shows the content at once.
 class CatalogReadyReveal extends StatelessWidget {
   const CatalogReadyReveal({
     super.key,
     required this.enabled,
     required this.child,
-  });
+  }) : skeleton = const SizedBox.expand();
+
+  /// After the startup wait: the [CatalogStartupMark] composition, now
+  /// static, dissolves from the centre into the app.
+  const CatalogReadyReveal.startup({
+    super.key,
+    required this.enabled,
+    required this.child,
+  }) : skeleton = const CatalogStartupMark();
+
   final bool enabled;
   final Widget child;
+  final Widget skeleton;
   @override
   Widget build(BuildContext context) => !enabled
       ? child
-      : EventProgress(
-          event: 'catalog-ready',
-          onMount: true,
-          builder: (context, progress) => Stack(
-            fit: StackFit.passthrough,
-            children: [
-              child,
-              Positioned.fill(
-                child: ExcludeSemantics(
-                  child: IgnorePointer(
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: _DecodePainter(progress, context.tokens.bg),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+      : GlyphReveal(
+          loading: false,
+          revealOnMount: true,
+          skeleton: skeleton,
+          child: child,
         );
-}
-
-class _DecodePainter extends CustomPainter {
-  const _DecodePainter(this.progress, this.color);
-  final double progress;
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress >= 1) return;
-    final ink = Paint()..color = color.withValues(alpha: .4 * (1 - progress));
-    for (var y = 0; y < size.height; y += 8) {
-      for (var x = 0; x < size.width; x += 8) {
-        if (((x ~/ 8) * 3 + (y ~/ 8) * 5) % 8 / 8 >= progress) {
-          canvas.drawRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 3, 3), ink);
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DecodePainter old) =>
-      progress != old.progress || color != old.color;
 }

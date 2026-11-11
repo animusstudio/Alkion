@@ -82,6 +82,56 @@ SyntheticMuscleCatalog _excludedCellFixture() {
 }
 
 void main() {
+  test(
+    'v2 admits new unknown executions without inventing legacy profiles',
+    () {
+      final f = SyntheticMuscleCatalog();
+      final original = f.load();
+      f.addUnknownExecution();
+      final b = f.load();
+      expect(b.variants.length, 2);
+      expect((f.catalog['legacy_muscle_profiles'] as List).length, 1);
+      expect(
+        b.variants[SyntheticMuscleCatalog.variantId]!.id,
+        original.variants[SyntheticMuscleCatalog.variantId]!.id,
+      );
+      final added = b.variants[SyntheticMuscleCatalog.addedVariantId]!;
+      expect(added.muscleCoverage, 'unknown');
+      expect(added.muscleRelationships, isEmpty);
+      final profile = b.muscleProfileFor(added.id)!;
+      expect(profile.revision, 1);
+      expect(profile.assessmentStatus, 'pending');
+      expect(profile.isLegacy, isFalse);
+      expect(f.loadV1, throwsA(isA<CatalogFormatException>()));
+    },
+  );
+  test('v2 still validates every retained legacy row and its lineage', () {
+    for (final change in <void Function(SyntheticMuscleCatalog)>[
+      (f) => (f.catalog['legacy_muscle_profiles'] as List).clear(),
+      (f) => f.catalog['legacy_muscle_profiles'][0]['variant_revision'] = 2,
+      (f) => f.catalog['legacy_muscle_profiles'][0]['variant_id'] =
+          '10000000-0000-4000-8000-000000000099',
+      (f) => f.catalog['legacy_muscle_profiles'][0].remove('relationships'),
+      (f) => f.catalog['legacy_muscle_profiles'][0]['relationships'] = [
+        {'anatomy_node_id': 'missing', 'role': 'primary'},
+      ],
+      (f) => (f.bundle['profile_history'] as List).clear(),
+      (f) => (f.bundle['assessments'] as List).last['assessment_status'] =
+          'assessed',
+      (f) {
+        final p = (f.bundle['profiles'] as List).last;
+        final a = (f.bundle['assessments'] as List).last;
+        p['revision'] = 2;
+        a['profile_revision'] = 2;
+        a['profile_sha256'] = catalogHash(catalogCanonicalJson(p));
+      },
+    ]) {
+      final f = SyntheticMuscleCatalog()..addUnknownExecution();
+      change(f);
+      f.refreshPointer();
+      expect(f.load, throwsA(isA<CatalogFormatException>()));
+    }
+  });
   test('v2 requires referenced raw bundle and separately trusted scopes', () {
     final f = SyntheticMuscleCatalog();
     final b = f.load();

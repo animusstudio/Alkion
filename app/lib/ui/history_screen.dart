@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
@@ -27,13 +29,16 @@ import '../util/group_by_week.dart';
 import '../widgets/card.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/pr_badge.dart';
+import '../util/error_message.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_toast.dart';
 import 'set_editor_sheet.dart';
 import 'catalog_history_editor.dart';
 import '../catalog_ui/catalog_evidence_widgets.dart';
 import '../data/catalog_execution_repository.dart';
 import '../domain/catalog_execution.dart';
 import '../widgets/w_action_sheet.dart';
+import '../widgets/glyph_loading.dart';
 
 /// The History tab — sessions grouped by ISO week, expandable to per-exercise
 /// top sets.
@@ -104,6 +109,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               catalogMap,
               activeSessionId,
               lastFinished,
+              catalogLoaded:
+                  catalogSnap.connectionState == ConnectionState.done,
             );
           },
         );
@@ -145,11 +152,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (!mounted) {
             return;
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(l.historyResumeFailed('$e')),
-              backgroundColor: context.tokens.danger,
-            ),
+          // The mapped message: never the exception text.
+          showWToast(
+            context,
+            l.historyResumeFailed(userMessage(l, e).message),
+            error: true,
           );
         }
     }
@@ -162,8 +169,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     List<HistorySessionRow> sessions,
     Map<String, Exercise> catalogMap,
     String? activeSessionId,
-    FinishedSession? lastFinished,
-  ) {
+    FinishedSession? lastFinished, {
+    bool catalogLoaded = true,
+  }) {
     // Capture the app-scoped owner before an owed delete can outlive this view.
     final manager = context.read<SessionManager>();
     final l = AppLocalizations.of(context);
@@ -217,10 +225,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               : null,
           tokens: tokens,
         ),
-        Text(
-          l.alkionCompatibility,
-          style: WorkoutType.body(size: 12, color: tokens.faint),
-        ),
+        const SizedBox(height: 8),
         if (volume != null && volume.known != volume.total)
           Text(
             l.alkionKnownSubtotal(volume.known, volume.total),
@@ -262,6 +267,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 session: session,
                 onOpenProfile: widget.onOpenProfile,
                 catalogMap: catalogMap,
+                catalogLoaded: catalogLoaded,
                 sessionRepo: _sessionRepo,
                 units: units,
                 resumeState: resumeStateFor(
@@ -407,39 +413,148 @@ class _SummaryRow extends StatelessWidget {
       (l.historySummaryPrs, '$prCount', prCount, null),
       (l.historySummaryVolume, volumeDisplay, null, volumeSemantics),
     ];
-    return Row(
-      children: [
-        for (var i = 0; i < cards.length; i++) ...[
-          if (i > 0) const SizedBox(width: 8),
-          Expanded(
-            child: _SummaryCard(
-              label: cards[i].$1,
+    // A flat band like Today's stat tiles: hairlines above and below, equal
+    // sections split by 1 px rules, no boxes. Three columns are used only when
+    // every label wraps at its natural size and every value stays readable;
+    // otherwise the sections stack (rules between) at natural height.
+    return LayoutBuilder(
+      builder: (context, box) {
+        final stacked = !_summaryRowFits(context, box.maxWidth, [
+          for (final c in cards) (l.historySummarySuffix(c.$1), c.$2),
+        ]);
+        final sections = [
+          for (var i = 0; i < cards.length; i++)
+            _SummarySection(
+              key: ValueKey('history-summary-$i'),
+              label: l.historySummarySuffix(cards[i].$1),
               value: cards[i].$2,
               intValue: cards[i].$3,
               semanticsLabel: cards[i].$4,
               tokens: tokens,
+              stacked: stacked,
+            ),
+        ];
+        Widget rule({required bool vertical}) => ColoredBox(
+          color: tokens.line,
+          child: SizedBox(
+            width: vertical ? 1 : null,
+            height: vertical ? null : 1,
+          ),
+        );
+        return DecoratedBox(
+          key: const ValueKey('history-summary-band'),
+          decoration: BoxDecoration(
+            border: Border.symmetric(
+              horizontal: BorderSide(color: tokens.line),
             ),
           ),
-        ],
-      ],
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < sections.length; i++) ...[
+                      if (i > 0) rule(vertical: false),
+                      sections[i],
+                    ],
+                  ],
+                )
+              : IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < sections.length; i++) ...[
+                        if (i > 0) rule(vertical: true),
+                        Expanded(child: sections[i]),
+                      ],
+                    ],
+                  ),
+                ),
+        );
+      },
     );
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({
+const double _summarySectionPad = 6;
+
+/// Smallest effective value size (sp) a three-column band may shrink to.
+const double _summaryMinValueSp = 18;
+
+TextStyle _summaryValueStyle(WorkoutTokens tokens) =>
+    WorkoutType.mono(size: 22, weight: FontWeight.w400, color: tokens.text);
+
+TextStyle _summaryLabelStyle(WorkoutTokens tokens) =>
+    WorkoutType.mono(size: 12, color: tokens.faint, letterSpacing: 0.07 * 9.5);
+
+TextPainter _summaryPainter(
+  BuildContext context,
+  String text,
+  TextStyle style,
+) {
+  return TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+  );
+}
+
+/// Whether three equal columns hold [items] (label, value) legibly: each label
+/// wraps into two lines at full size without breaking a word, and each value
+/// needs no more shrinking than [_summaryMinValueSp] allows.
+bool _summaryRowFits(
+  BuildContext context,
+  double maxWidth,
+  List<(String, String)> items,
+) {
+  final tokens = context.tokens;
+  final inner = (maxWidth - 2) / 3 - 2 * _summarySectionPad;
+  final scaler = MediaQuery.textScalerOf(context);
+  final neededFit = math.min(1.0, _summaryMinValueSp / scaler.scale(22));
+  var fits = true;
+  for (final (label, value) in items) {
+    for (final word in label.split(' ')) {
+      final p = _summaryPainter(context, word, _summaryLabelStyle(tokens))
+        ..layout();
+      if (p.width > inner + 0.01) fits = false;
+      p.dispose();
+    }
+    final lines = _summaryPainter(context, label, _summaryLabelStyle(tokens))
+      ..maxLines = 2
+      ..layout(maxWidth: inner);
+    if (lines.didExceedMaxLines) fits = false;
+    lines.dispose();
+    final v = _summaryPainter(context, value, _summaryValueStyle(tokens))
+      ..maxLines = 1
+      ..layout();
+    if (inner < v.width * neededFit - 0.01) fits = false;
+    v.dispose();
+  }
+  return fits;
+}
+
+/// One section of the 4-week band. In the three-column row the value box and
+/// the label box have fixed heights (one value line, two label lines, at the
+/// current text scale), so every section is the same height whatever the
+/// locale or value length. Stacked, a section is compact and natural-height:
+/// value and label on one line when they fit, else the label under the value.
+class _SummarySection extends StatelessWidget {
+  const _SummarySection({
+    super.key,
     required this.label,
     required this.value,
     required this.tokens,
+    required this.stacked,
     this.intValue,
     this.semanticsLabel,
   });
 
+  /// The whole label, suffix included.
   final String label;
   final String value;
   final int? intValue;
   final String? semanticsLabel;
   final WorkoutTokens tokens;
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) {
@@ -450,43 +565,98 @@ class _SummaryCard extends StatelessWidget {
     return _build(context, value);
   }
 
+  static double _lineHeight(BuildContext context, TextStyle style) {
+    final painter = _summaryPainter(context, 'Ag', style)
+      ..maxLines = 1
+      ..layout();
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
   Widget _build(BuildContext context, String value) {
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: BorderRadius.circular(AppRadius.radius),
-        border: Border.all(color: tokens.line),
+    final valueStyle = _summaryValueStyle(tokens);
+    final labelStyle = _summaryLabelStyle(tokens);
+    Widget valueText() => Text(
+      value,
+      semanticsLabel: semanticsLabel,
+      maxLines: 1,
+      softWrap: false,
+      style: valueStyle,
+    );
+    Widget fittedValue() => SizedBox(
+      height: _lineHeight(context, valueStyle),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: valueText(),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
+    );
+    final Widget body;
+    if (stacked) {
+      body = LayoutBuilder(
+        builder: (context, box) {
+          final v = _summaryPainter(context, value, valueStyle)
+            ..maxLines = 1
+            ..layout();
+          final l = _summaryPainter(context, label, labelStyle)
+            ..maxLines = 1
+            ..layout();
+          final sideBySide = v.width + 12 + l.width <= box.maxWidth;
+          v.dispose();
+          l.dispose();
+          return sideBySide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    valueText(),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: labelStyle,
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    fittedValue(),
+                    FitLabel(label, maxLines: 2, style: labelStyle),
+                  ],
+                );
+        },
+      );
+    } else {
+      body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              semanticsLabel: semanticsLabel,
-              maxLines: 1,
-              softWrap: false,
-              style: WorkoutType.mono(
-                size: 22,
-                weight: FontWeight.w400,
-                color: tokens.text,
-              ),
-            ),
-          ),
+          fittedValue(),
           const SizedBox(height: 6),
-          FitLabel(
-            AppLocalizations.of(context).historySummarySuffix(label),
-            maxLines: 2,
-            style: WorkoutType.mono(
-              size: 12,
-              color: tokens.faint,
-              letterSpacing: 0.07 * 9.5,
+          SizedBox(
+            height: _lineHeight(context, labelStyle) * 2,
+            width: double.infinity,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: FitLabel(label, maxLines: 2, style: labelStyle),
             ),
           ),
         ],
+      );
+    }
+    return MergeSemantics(
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: _summarySectionPad,
+          vertical: stacked ? 8 : 12,
+        ),
+        child: body,
       ),
     );
   }
@@ -578,13 +748,14 @@ class _WeekHeader extends StatelessWidget {
 
 // ── SessionCard ───────────────────────────────────────────────────────────────
 
-/// Follow-up of a History delete, run under the delete's ticket (History
-/// forgets the session's finished snapshot here).
+/// Follow-up of a History delete, run as part of the same owed write
+/// (History forgets the session's finished snapshot here).
 typedef HistoryDeleted = Future<void> Function();
 
-/// Deletes [sessionId] and runs [onDeleted] as ONE source operation: the
-/// ticket lives until the snapshot forget (and its file clear) finished, so a
-/// capture cannot take its boundary between the delete and the forget.
+/// Deletes [sessionId] and runs [onDeleted] as ONE owed write: it stays owed
+/// in [UnsavedEditors] until the snapshot forget (and its file clear)
+/// finished, so a persistence flush cannot complete between the delete and
+/// the forget.
 Future<void> deleteHistorySession(
   SessionRepository repo,
   String sessionId, {
@@ -638,11 +809,16 @@ class SessionCard extends StatefulWidget {
     this.onResume,
     this.onDeleted,
     this.onOpenProfile,
+    this.catalogLoaded = true,
   });
 
   final VoidCallback? onOpenProfile;
   final HistorySessionRow session;
   final Map<String, Exercise> catalogMap;
+
+  /// False while the exercise catalog is still loading: the expanded rows
+  /// stay a skeleton instead of reading as deleted exercises.
+  final bool catalogLoaded;
   final SessionRepository sessionRepo;
   final UnitService units;
 
@@ -650,8 +826,8 @@ class SessionCard extends StatefulWidget {
   final SessionResumeState resumeState;
   final VoidCallback? onResume;
 
-  /// Called after the session was deleted from this card, under the
-  /// delete's [SourceTicket] (see [deleteHistorySession]).
+  /// Called after the session was deleted from this card, as part of the
+  /// same owed write (see [deleteHistorySession]).
   final HistoryDeleted? onDeleted;
 
   @override
@@ -924,6 +1100,7 @@ class _SessionCardState extends State<SessionCard> {
                     ? _ExerciseBlocks(
                         session: widget.session,
                         catalogMap: widget.catalogMap,
+                        catalogLoaded: widget.catalogLoaded,
                         sessionRepo: widget.sessionRepo,
                         units: widget.units,
                         resumeState: widget.resumeState,
@@ -964,10 +1141,12 @@ class _ExerciseBlocks extends StatefulWidget {
     required this.resumeState,
     this.onResume,
     this.onDeleted,
+    this.catalogLoaded = true,
   });
 
   final HistorySessionRow session;
   final Map<String, Exercise> catalogMap;
+  final bool catalogLoaded;
   final SessionRepository sessionRepo;
   final UnitService units;
   final SessionResumeState resumeState;
@@ -1013,8 +1192,146 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     _future = _load();
   });
 
+  /// Owed History editor writes block opening another editor anywhere; an
+  /// owed delete of this session blocks editing it. Other owed work (a
+  /// delete elsewhere) is retried on the way in but never blocks.
+  bool _blocksEditing(({String key, String kind}) owed) =>
+      _editorKinds.contains(owed.kind) ||
+      owed.kind == 'history_delete' &&
+          owed.key.contains(':${widget.session.id}:');
+
+  static const _editorKinds = {'history_sets', 'catalog_history'};
+
+  /// Owed History writes whose user may discard them after they failed for
+  /// good (editor writes and session deletes).
+  static const _discardableKinds = {..._editorKinds, 'history_delete'};
+
+  /// Permanent failures already offered for discard while not blocking, so
+  /// a delete failing elsewhere does not interrupt every editor open.
+  static final _offered = <String>{};
+
+  /// True while an editor is being opened: a second tap during the owed
+  /// retry or the picker cannot stack a second editor.
+  bool _opening = false;
+
+  /// Before a History editor prepares anything, lands what an earlier one
+  /// still owes (one closed after a failed save). An editor opened on the
+  /// pre-retry revisions would conflict with a write that just landed, and
+  /// a second editor beside a write still owed could make that write
+  /// conflict for good. So: [open] is false (the failure is shown) while a
+  /// blocking write stays owed, and [landed] says the caller must re-read.
+  Future<({bool open, bool landed})> _landOwedEdits() async {
+    if (UnsavedEditors.instance.owed().isEmpty) {
+      return (open: true, landed: false);
+    }
+    final failures = await UnsavedEditors.instance.retryOwed();
+    if (!mounted) return (open: false, landed: true);
+    final blocking = UnsavedEditors.instance.owed().where(_blocksEditing);
+    if (blocking.isNotEmpty) {
+      await _showOwed({
+        for (final owed in blocking)
+          owed.key:
+              failures[owed.key] ??
+              const StoreException('unsaved_editor_input'),
+      });
+      if (mounted) _reload();
+      return (open: false, landed: true);
+    }
+    // Not blocking: still offer a permanently failed one for discard, once.
+    final unoffered = {
+      for (final MapEntry(:key, :value) in failures.entries)
+        if (historyWriteIsPermanent(value) &&
+            _discardableKinds.contains(UnsavedEditors.instance.kindOf(key)) &&
+            !_offered.contains(key))
+          key: value,
+    };
+    if (unoffered.isNotEmpty) {
+      _offered.addAll(unoffered.keys);
+      await _showOwed(unoffered);
+    }
+    return (open: mounted, landed: true);
+  }
+
+  /// Shows why earlier History changes are still not saved. A History
+  /// write that failed for good ([historyWriteIsPermanent]) is offered an
+  /// explicit, confirmed discard that drops only those owed writes.
+  Future<void> _showOwed(Map<String, Object> failures) async {
+    final l = AppLocalizations.of(context);
+    final error = failures.values.isEmpty
+        ? const StoreException('unsaved_editor_input')
+        : failures.values.first;
+    final mapped = userMessage(l, error);
+    final permanent = [
+      for (final MapEntry(:key, :value) in failures.entries)
+        if (historyWriteIsPermanent(value) &&
+            _discardableKinds.contains(UnsavedEditors.instance.kindOf(key)))
+          key,
+    ];
+    final discard = await showWDialog<bool>(
+      context,
+      title: l.editorSaveFailed,
+      message: '${l.historyEarlierNotSaved} ${mapped.message}',
+      details: mapped.details,
+      actions: [
+        if (permanent.isNotEmpty)
+          WDialogAction(
+            label: l.historyDiscardUnsaved,
+            value: true,
+            destructive: true,
+          ),
+        WDialogAction(label: l.commonOk, value: false),
+      ],
+    );
+    if (discard != true || !mounted) return;
+    final confirmed = await showWConfirm(
+      context,
+      title: l.historyDiscardUnsavedTitle,
+      message: l.historyDiscardUnsavedMessage,
+      cancelLabel: l.commonKeepEditing,
+      confirmLabel: l.commonDiscard,
+      destructive: true,
+    );
+    if (confirmed != true) return;
+    for (final key in permanent) {
+      UnsavedEditors.instance.discard(key);
+    }
+    if (mounted) _reload();
+  }
+
+  /// The session's workout revision as stored now: another editor, a retry
+  /// or a sheet that just closed may have moved it since this card was
+  /// built. Null when the session is gone.
+  Future<int?> _currentRevision() async =>
+      (await widget.sessionRepo.sessionById(widget.session.id))?.localRevision;
+
   /// Opens the per-exercise set editor, then reloads.
   Future<void> _editExercise(ExerciseBlockData block) async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await _openEditor(block);
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _openEditor(ExerciseBlockData block) async {
+    final owed = await _landOwedEdits();
+    if (!owed.open || !mounted) return;
+    if (owed.landed) {
+      // Open on what the store holds now, not the pre-retry block.
+      final blocks = await _load();
+      if (!mounted) return;
+      setState(() {
+        _future = Future.value(blocks);
+      });
+      final id = block.sets.first.id;
+      final fresh =
+          blocks.where((b) => b.sets.any((s) => s.id == id)).firstOrNull ??
+          blocks.where((b) => b.exerciseId == block.exerciseId).firstOrNull;
+      if (fresh == null) return;
+      block = fresh;
+    }
     if (block.sets.first.catalog != null) {
       await showModalBottomSheet<void>(
         context: context,
@@ -1031,6 +1348,8 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       if (mounted) _reload();
       return;
     }
+    // A deleted exercise's row is read-only (no tap reaches here); keep the
+    // guard for a catalog that changed meanwhile.
     final exercise = widget.catalogMap[block.exerciseId];
     if (exercise == null) {
       return;
@@ -1052,9 +1371,22 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
     }
   }
 
-  /// Picks an exercise and seeds one working set so it appears in the session.
-  /// The user then taps the new block to edit/add more sets.
+  /// Picks an exercise, then opens its set editor on an empty block: nothing
+  /// is written until "Add set", and dismissing writes nothing.
   Future<void> _addExercise() async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await _addExerciseNow();
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _addExerciseNow() async {
+    final owed = await _landOwedEdits();
+    if (!owed.open || !mounted) return;
+    if (owed.landed) _reload();
     final exId = await showExerciseSheet(
       context,
       exercises: widget.catalogMap.values.toList(),
@@ -1070,7 +1402,11 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       final selections = await CatalogExecutionRepository.local(
         context.read<LocalDatabase>(),
       ).selectionsForExercise(exId);
-      if (!mounted || selections.isEmpty) return;
+      if (!mounted) return;
+      if (selections.isEmpty) {
+        showWToast(context, AppLocalizations.of(context).historyNoSetupToLog);
+        return;
+      }
       final selected = selections.length == 1
           ? selections.single
           : await showWActionSheet<CatalogSelectionEvidence>(
@@ -1088,7 +1424,9 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
             );
       if (!mounted || selected == null) return;
       await widget.sessionRepo.preloadCatalogDependencies(selected);
-      if (!mounted) return;
+      // Read after the picker: a write since this card was built moved it.
+      final workoutRevision = await _currentRevision();
+      if (!mounted || workoutRevision == null) return;
       final row = LoggedSet(
         id: domainUuid.v4(),
         exerciseId: exId,
@@ -1098,7 +1436,7 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
         isWarmup: false,
         isTopSet: false,
         isPr: false,
-        workoutRevision: widget.session.localRevision,
+        workoutRevision: workoutRevision,
         blockId: domainUuid.v4(),
         catalog: CatalogSetEvidence(selection: selected, metrics: const {}),
       );
@@ -1124,22 +1462,29 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       if (mounted) _reload();
       return;
     }
-    try {
-      await widget.sessionRepo.addSet(
-        widget.session.id,
-        exId,
-        weightKg: '0.00',
-        reps: ex?.defaultRepLow ?? 8,
-        rir: null,
-        isWarmup: false,
-      );
-    } catch (e) {
-      // E.g. refused while a data capture holds the source.
-      if (mounted) {
-        await showWriteFailed(context, e);
-      }
-      return;
-    }
+    if (ex == null) return;
+    // Read after the picker: a write since this card was built moved it.
+    final workoutRevision = await _currentRevision();
+    if (!mounted || workoutRevision == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => SetEditorSheet(
+        block: ExerciseBlockData(
+          exerciseId: ex.id,
+          sets: const [],
+          topWeight: 0,
+          topReps: 0,
+          isPr: false,
+        ),
+        exercise: ex,
+        sessionId: widget.session.id,
+        sessionRepo: widget.sessionRepo,
+        units: widget.units,
+        workoutRevision: workoutRevision,
+      ),
+    );
     if (mounted) {
       _reload();
     }
@@ -1173,7 +1518,7 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
         observedRevision: revision,
       );
     } catch (e) {
-      // E.g. refused while a data capture holds the source: nothing deleted.
+      // E.g. refused while the store needs recovery: nothing deleted.
       if (mounted) {
         await showWriteFailed(context, e);
       }
@@ -1187,34 +1532,38 @@ class _ExerciseBlocksState extends State<_ExerciseBlocks> {
       future: _future,
       builder: (context, snap) {
         final blocks = snap.data;
-        // Spinner only for the very first load; a reload keeps the old data.
-        if (blocks == null && snap.connectionState == ConnectionState.waiting) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Center(
-              child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  color: tokens.faint,
-                ),
-              ),
-            ),
-          );
-        }
         final inProgress = widget.resumeState == SessionResumeState.inProgress;
-        return SessionCardBody(
-          blocks: blocks ?? const [],
-          catalogMap: widget.catalogMap,
-          units: widget.units,
-          resumeState: widget.resumeState,
-          onResume: widget.onResume,
-          // The running workout is where an in-progress session is edited; a
-          // History edit here would be overwritten by its next finish.
-          onEditExercise: inProgress ? null : _editExercise,
-          onAddExercise: _addExercise,
-          onDeleteSession: _deleteSession,
+        // Skeleton only for the very first load; a reload keeps the old data.
+        return GlyphReveal.builder(
+          // Until the catalog resolves an exercise cannot be told from a
+          // deleted one, so the rows stay a skeleton.
+          loading:
+              !widget.catalogLoaded ||
+              blocks == null && snap.connectionState == ConnectionState.waiting,
+          cover: tokens.surface,
+          // Two exercise blocks: a name line over its set line.
+          skeleton: Padding(
+            key: const Key('history-session-loading'),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: GlyphSkeleton.blocks(const [
+              GlyphBlock(14, widthFactor: .5),
+              GlyphBlock(12, widthFactor: .8, gap: 8),
+              GlyphBlock(14, widthFactor: .42, gap: 16),
+              GlyphBlock(12, widthFactor: .7, gap: 8),
+            ]),
+          ),
+          builder: (context) => SessionCardBody(
+            blocks: blocks ?? const [],
+            catalogMap: widget.catalogMap,
+            units: widget.units,
+            resumeState: widget.resumeState,
+            onResume: widget.onResume,
+            // The running workout is where an in-progress session is edited; a
+            // History edit here would be overwritten by its next finish.
+            onEditExercise: inProgress ? null : _editExercise,
+            onAddExercise: _addExercise,
+            onDeleteSession: _deleteSession,
+          ),
         );
       },
     );
@@ -1266,7 +1615,13 @@ class SessionCardBody extends StatelessWidget {
                 block: block,
                 catalogMap: catalogMap,
                 units: units,
-                onTap: edit == null ? null : () => edit(block),
+                // A deleted exercise reads as such and is read-only.
+                onTap:
+                    edit == null ||
+                        block.sets.first.catalog == null &&
+                            !catalogMap.containsKey(block.exerciseId)
+                    ? null
+                    : () => edit(block),
               ),
             ),
           if (blocks.any(
@@ -1402,10 +1757,27 @@ class _BlockRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  FitLabel(
-                    evidence.selection.displayLabel,
-                    maxLines: 3,
-                    style: WorkoutType.body(size: 14, color: tokens.text),
+                  // The stored catalog PR (its derived result, read only)
+                  // takes the legacy row's PR glyph.
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FitLabel(
+                          evidence.selection.displayLabel,
+                          maxLines: 3,
+                          style: WorkoutType.body(size: 14, color: tokens.text),
+                        ),
+                      ),
+                      if (block.sets.any((s) => !s.isWarmup && s.isPr)) ...[
+                        const SizedBox(width: 8),
+                        AlkionIcon(
+                          AlkionGlyph.energy,
+                          key: const Key('history-catalog-pr'),
+                          size: 16,
+                          color: tokens.accentText,
+                        ),
+                      ],
+                    ],
                   ),
                   if (evidence.selection.contextLabel.isNotEmpty)
                     Text(
@@ -1427,7 +1799,7 @@ class _BlockRow extends StatelessWidget {
     }
     final exercise = catalogMap[block.exerciseId];
     final isCompound = exercise?.compound ?? false;
-    final name = exercise?.name ?? block.exerciseId;
+    final name = exercise?.name ?? l.historyDeletedExercise;
     final dotColor = isCompound ? tokens.accentText : tokens.lineStrong;
     // History's own selection; ExerciseBlockData.topWeight stays Summary's.
     final top = historyTopSet(block.sets);

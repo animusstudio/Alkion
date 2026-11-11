@@ -25,11 +25,15 @@ import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../units/unit_service.dart';
 import '../util/dates.dart';
+import '../util/error_message.dart';
 import '../widgets/alkion_brand.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
 import '../widgets/w_action_sheet.dart';
 import '../widgets/w_dialog.dart';
+import '../widgets/w_toast.dart';
+import '../recovery/recovery_host.dart';
+import 'alkion_recovery/recovery_format.dart';
 import 'alkion_recovery/recovery_screen.dart';
 import 'animus_connection_panel.dart';
 import 'export_failure.dart';
@@ -93,7 +97,6 @@ class _Group extends StatelessWidget {
 
 class _Row extends StatelessWidget {
   const _Row({
-    super.key,
     required this.icon,
     required this.title,
     this.sub,
@@ -406,6 +409,29 @@ String? profileTrainingLine(
 
 // ── ProfileScreen ─────────────────────────────────────────────────────────────
 
+/// The export failure dialog's text for [error]: the compatibility refusal
+/// when it applies, otherwise the [userMessage] (a document failure, or a
+/// store-side export verification failure after the external copy was written,
+/// adds that any external copy may be incomplete) with its category as details.
+/// Never the exception text.
+UserMessage exportFailureMessage(AppLocalizations l, Object error) {
+  final mapped = userMessage(l, error);
+  if (compatibilityExportRefusalMessage(l, error) case final refusal?) {
+    return UserMessage(mapped.bucket, refusal);
+  }
+  final externalCopyMayBeIncomplete =
+      error is DocumentException ||
+      (error is StoreException &&
+          error.category == 'export_verification_failed');
+  return externalCopyMayBeIncomplete
+      ? UserMessage(
+          mapped.bucket,
+          l.alkionDocumentFailureMessage(mapped.message),
+          details: mapped.details,
+        )
+      : mapped;
+}
+
 /// Profile & Settings, embedded as a shell destination or opened standalone.
 ///
 /// Exposes:
@@ -422,14 +448,12 @@ class ProfileScreen extends StatefulWidget {
     this.embedded = false,
     this.onLogout,
     this.auth,
-    this.onImportReps,
   });
 
   final VoidCallback onClose;
   final bool embedded;
   final Future<void> Function()? onLogout;
   final Object? auth;
-  final VoidCallback? onImportReps;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -454,6 +478,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // stream it owned would re-query on every remount and make the line blink.
   ({String? firstSessionDate, int dayCount})? _training;
   StreamSubscription<({String? firstSessionDate, int dayCount})>? _trainingSub;
+
+  // The Backup row's subtitle: the newest backup's creation time, read from
+  // the backup file names by the recovery host. Unknown until loaded, and
+  // always unknown without a host.
+  DateTime? _lastBackup;
+  bool _lastBackupKnown = false;
 
   @override
   void initState() {
@@ -482,6 +512,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           },
         );
+    _loadLastBackup();
+  }
+
+  /// Reads the newest backup's creation time; nothing is written.
+  Future<void> _loadLastBackup() async {
+    final host = context.read<RecoveryHost?>();
+    if (host == null) return;
+    try {
+      final last = await host.lastBackupCreated();
+      if (mounted) {
+        setState(() {
+          _lastBackup = last;
+          _lastBackupKnown = true;
+        });
+      }
+    } on Object {
+      // Read-only: when it cannot be read the row keeps its plain subtitle.
+    }
   }
 
   @override
@@ -688,22 +736,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
           actions: [WDialogAction(label: l.commonOk, value: true)],
         );
       case ExportOutcome.empty:
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l.exportNoSessionsInRange)));
+        showWToast(context, l.exportNoSessionsInRange);
     }
   }
 
   Future<void> _exportError(Object e) async {
     final l = AppLocalizations.of(context);
+    final text = exportFailureMessage(l, e);
     await showWDialog<bool>(
       context,
       title: l.exportFailedTitle,
-      message:
-          compatibilityExportRefusalMessage(l, e) ??
-          l.alkionDocumentFailureMessage(
-            e is DocumentException ? e.category : '$e',
-          ),
+      message: text.message,
+      details: text.details,
       actions: [WDialogAction(label: l.commonOk, value: true)],
     );
   }
@@ -841,7 +885,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           items: Unit.values,
                           selected: unitService.unit,
                           labelOf: (u) => u == Unit.kg ? 'kg' : 'lb',
-                          onSelect: unitService.setUnit,
+                          onSelect: (u) => showWriteFailures(
+                            context,
+                            unitService.setUnit(u),
+                          ),
                         ),
                       ),
 
@@ -928,24 +975,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     key: const Key('profile-data-actions'),
                     label: l.profileGroupData,
                     children: [
-                      if (widget.onImportReps != null)
-                        _Row(
-                          key: const Key('profile-history-test'),
-                          icon: AlkionGlyph.history,
-                          title: l.importRepsData,
-                          sub: l.importRepsDataSub,
-                          onTap: widget.onImportReps,
-                        ),
                       _Row(
                         icon: AlkionGlyph.refresh,
                         title: l.alkionBackupRestore,
-                        sub: l.alkionBackupRestoreSub,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                AlkionRecoveryScreen(flush: _flushBoundary),
-                          ),
-                        ),
+                        sub: !_lastBackupKnown
+                            ? l.alkionBackupRestoreSub
+                            : _lastBackup == null
+                            ? l.alkionBackupNone
+                            : l.alkionBackupLast(
+                                fmtRecoveryDateTime(_lastBackup!, l.localeName),
+                              ),
+                        onTap: () => Navigator.of(context)
+                            .push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    AlkionRecoveryScreen(flush: _flushBoundary),
+                              ),
+                            )
+                            .then((_) => _loadLastBackup()),
                       ),
                       _Row(
                         icon: AlkionGlyph.history,

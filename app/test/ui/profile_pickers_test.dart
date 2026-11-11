@@ -14,6 +14,7 @@ import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/profile_screen.dart';
 import 'package:alkion/theme/alkion_icon.dart';
+import 'package:alkion/units/unit_service.dart';
 
 import '../support/screen_harness.dart';
 import '../support/icon_finders.dart';
@@ -130,6 +131,58 @@ void main() {
       },
     );
   }
+
+  testWidgets('a failed unit write shows the write-failed dialog and stays '
+      'owed until it lands', (tester) async {
+    await harness.open(tester);
+    late _RefusingPreferences database;
+    late UnitService units;
+    await tester.runAsync(() async {
+      database = _RefusingPreferences(harness.database);
+      units = UnitService.local(database);
+      await units.load();
+    });
+    addTearDown(units.dispose);
+    setPhone(tester, width: 412);
+    await tester.pumpWidget(
+      harness.wrap(
+        ProfileScreen(onClose: () {}),
+        extra: [ChangeNotifierProvider<UnitService>.value(value: units)],
+      ),
+    );
+    await settleReal(tester);
+    await scrollIntoView(tester, find.byType(ProfileScreen), find.text('lb'));
+    await tester.tap(find.text('lb'));
+    await settleReal(tester, ticks: 10);
+    expect(find.text("Couldn't save"), findsOneWidget);
+    expect(units.unit, Unit.lb);
+    await tester.tap(find.text('OK'));
+    await settleReal(tester, ticks: 10);
+    database.refuse = false;
+    var done = false;
+    Object? failure;
+    unawaited(
+      units.flushPersistence().then(
+        (_) => done = true,
+        onError: (Object e) {
+          failure = e;
+          done = true;
+        },
+      ),
+    );
+    for (var tick = 0; tick < 100 && !done; tick++) {
+      await settleReal(tester, ticks: 1);
+    }
+    expect(failure, isNull);
+    await tester.runAsync(() async {
+      final reopened = UnitService.local(harness.database);
+      await reopened.load();
+      expect(reopened.unit, Unit.lb);
+      reopened.dispose();
+    });
+    expect(tester.takeException(), isNull);
+    await harness.unmount(tester);
+  });
 
   testWidgets(
     'artwork write failure is visible and its owed selection retries',

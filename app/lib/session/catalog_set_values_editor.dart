@@ -144,13 +144,20 @@ class _CatalogSetValuesEditorState extends State<CatalogSetValuesEditor> {
         display.isFinite &&
         display <= 1e9 &&
         !(display == 0 && quantity?.exact?.coefficient != BigInt.zero);
+    // Duration steps 5 s and distance 10 m, with no fine zoom: a ruler is a
+    // quick coarse pick; an exact value is typed in the modal.
+    final coarse = switch (metric) {
+      'duration' => 5.0,
+      'distance' => 10.0,
+      _ => null,
+    };
     final anchor = representable
         ? display
         : metric == 'repetitions'
         ? 1.0
         : load
         ? 0.0
-        : .25;
+        : coarse ?? .25;
     String number(double value) => value == value.roundToDouble()
         ? value.toInt().toString()
         : value.toString();
@@ -234,15 +241,15 @@ class _CatalogSetValuesEditorState extends State<CatalogSetValuesEditor> {
                       ? 0
                       : metric == 'repetitions'
                       ? 1
-                      : .25,
+                      : coarse ?? .25,
                   max: math.max(anchor, switch (metric) {
                     'reported_load' => unit.unit == Unit.lb ? 1100.0 : 500.0,
                     'repetitions' => 100.0,
                     'duration' => 3600.0,
                     _ => 10000.0,
                   }),
-                  step: load && unit.unit == Unit.lb ? 5 : 1,
-                  fineStep: metric == 'repetitions'
+                  step: load && unit.unit == Unit.lb ? 5 : coarse ?? 1,
+                  fineStep: metric == 'repetitions' || coarse != null
                       ? null
                       : load && unit.unit == Unit.lb
                       ? 1

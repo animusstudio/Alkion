@@ -1,5 +1,6 @@
 import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/session/notification_action.dart';
+import 'package:alkion/session/notification_envelope.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -79,9 +80,24 @@ Future<LocalStore> reopen(AlkionProfile p) => LocalStore.open(
   schema: prescriptionSchemaRegistry(),
 );
 
+NotificationIntent _tap(
+  IssuedNotificationToken token,
+  String id,
+  NotificationIntentKind kind,
+  DateTime tappedAt,
+) => NotificationIntent(
+  intentId: id,
+  actionId: kind == NotificationIntentKind.add
+      ? 'alkion.dev.add_30s'
+      : 'alkion.dev.skip_rest',
+  kind: kind,
+  tappedAt: tappedAt.toUtc(),
+  payload: NotificationEnvelope(action: token.action, step: token.step),
+);
+
 void main() {
   test(
-    'visible +30 uses the selected owner and consumes once; SQL timer survives two reopens',
+    'visible +30s, +30s and Skip decide once each on the selected owner; SQL timer survives two reopens',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'alkion-workflow-timer-',
@@ -90,7 +106,8 @@ void main() {
       final profile = await AlkionProfile.open(supportRoot: support);
       var store = await reopen(profile);
       try {
-        final start = DateTime.now().toUtc().toIso8601String();
+        final startAt = DateTime.now().toUtc();
+        final start = startAt.toIso8601String();
         await commitWorkflowState(
           store,
           PreparedWorkflowState(
@@ -105,27 +122,87 @@ void main() {
             0,
           ),
         );
-        final action = (await issueNotificationAction(store))!;
+        final first = (await issueNotificationToken(store))!;
+        expect(first.step, 1);
         final before = await store.inventory();
         await expectLater(reopen(profile), throwsA(isA<StoreException>()));
         expect(await store.inventory(), before);
-        expect(await consumeNotificationAction(store, action), isNotNull);
+        final one = _tap(
+          first,
+          '00000000-0000-4000-8000-000000000001',
+          NotificationIntentKind.add,
+          startAt.add(const Duration(seconds: 10)),
+        );
+        expect(
+          (await consumeNotificationIntent(store, one)).outcome,
+          NotificationOutcome.applied,
+        );
         final committed = await store.inventory();
-        expect(await consumeNotificationAction(store, action), isNotNull);
+        final redelivered = await consumeNotificationIntent(store, one);
+        expect(redelivered.outcome, NotificationOutcome.duplicate);
+        expect(redelivered.change!.restTotal, 150);
         expect(await store.inventory(), committed);
+
+        final second = (await issueNotificationToken(store))!;
+        expect(second.action.encode(), first.action.encode());
+        expect(second.step, 2);
+        expect(
+          (await consumeNotificationIntent(
+            store,
+            _tap(
+              second,
+              '00000000-0000-4000-8000-000000000002',
+              NotificationIntentKind.add,
+              startAt.add(const Duration(seconds: 20)),
+            ),
+          )).outcome,
+          NotificationOutcome.applied,
+        );
+        final third = (await issueNotificationToken(store))!;
+        expect(third.step, 3);
+        final skippedAt = startAt.add(const Duration(seconds: 30));
+        final skip = await consumeNotificationIntent(
+          store,
+          _tap(
+            third,
+            '00000000-0000-4000-8000-000000000003',
+            NotificationIntentKind.skip,
+            skippedAt,
+          ),
+        );
+        expect(skip.outcome, NotificationOutcome.applied);
+        expect(skip.change!.restStart, isNull);
+        expect(skip.change!.restEndedAt, skippedAt);
+
+        final fourth = (await issueNotificationToken(store))!;
+        expect(fourth.step, 4);
+        final decided = await store.inventory();
+        final late = await consumeNotificationIntent(
+          store,
+          _tap(
+            fourth,
+            '00000000-0000-4000-8000-000000000004',
+            NotificationIntentKind.add,
+            startAt.add(const Duration(seconds: 40)),
+          ),
+        );
+        expect(late.marker, 'refused late');
+        expect(await store.inventory(), decided);
+
         final rows = await store.getAll(
           "SELECT * FROM local_state WHERE state_kind IN ('draft','timer') AND state_key='active'",
         );
         expect(rows.length, 2);
         for (final row in rows) {
-          expect(row['revision'], 2);
+          expect(row['revision'], 4);
           final value =
               jsonDecode(
                     utf8.decode((row['payload_bytes'] as List).cast<int>()),
                   )
                   as Map;
-          expect(value['restTotal'], 150);
-          expect(value['restStart'], start);
+          expect(value['restTotal'], 0);
+          expect(value['restStart'], isNull);
+          expect(value['restEndedAt'], skippedAt.toIso8601String());
           expect(value['draftId'], 'draft');
         }
         expect(await store.getAll('SELECT * FROM operations'), isEmpty);

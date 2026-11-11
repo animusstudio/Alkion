@@ -255,7 +255,7 @@ class _AppBodyControlsState extends State<_AppBodyControls> {
         'Drag body to rotate. Tap for detail. Swipe beside it to page.',
       ),
       SizedBox(
-        height: 300,
+        height: 380,
         child: PageView(
           onPageChanged: (value) => setState(() => page = value),
           children: [

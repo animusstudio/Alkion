@@ -388,12 +388,14 @@ void main() {
 
   group('discardDialogCopy', () {
     final en = lookupAppLocalizations(const Locale('en'));
-    SessionDraft d({String? sessionId}) => SessionDraft(
+    SessionDraft d({String? sessionId, bool logged = true}) => SessionDraft(
       templateId: null,
       name: 'Upper A',
       focus: '',
       startedAt: DateTime(2026, 9, 23, 9),
-      blocks: [],
+      blocks: [
+        block('ex1', [], [mkSet('a', done: logged), mkSet('b', done: false)]),
+      ],
       sessionId: sessionId,
     );
 
@@ -401,6 +403,20 @@ void main() {
       final copy = discardDialogCopy(en, d());
       expect(copy.title, 'Discard workout?');
       expect(copy.message, 'Your logged sets will be lost.');
+    });
+
+    test('a fresh workout with nothing logged names its changes', () {
+      for (final code in ['en', 'it', 'de', 'es']) {
+        final l = lookupAppLocalizations(Locale(code));
+        final copy = discardDialogCopy(l, d(logged: false));
+        expect(copy.title, l.sessionDiscardTitle, reason: code);
+        expect(copy.message, l.sessionDiscardChangesOnlyMessage, reason: code);
+        expect(copy.message, isNot(l.sessionDiscardMessage), reason: code);
+      }
+      expect(
+        discardDialogCopy(en, d(logged: false)).message,
+        'This workout and your changes will be lost.',
+      );
     });
 
     test('a resumed workout says History keeps the finished version', () {

@@ -3,11 +3,29 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:alkion/catalog/catalog_artwork.dart';
+import 'package:alkion/catalog/catalog_bundle.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'catalog_media_test.dart' show variant;
+CatalogVariant variant({
+  String key = 'barbell_bench_press',
+  String equipment = 'barbell',
+  Map<String, String> facets = const {'angle': 'flat', 'support': 'flat_bench'},
+  int revision = 1,
+  String name = 'Synthetic exercise',
+}) => CatalogVariant(
+  id: 'synthetic-id',
+  key: key,
+  names: {'en': name},
+  familyId: 'synthetic-family',
+  revision: revision,
+  equipmentKind: equipment,
+  facets: facets,
+  measurementProfileKey: 'load_reps',
+  muscleCoverage: 'unknown',
+  muscleRelationships: const [],
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

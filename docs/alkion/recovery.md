@@ -21,8 +21,9 @@ selected until a restore completes. A restore stages
 lock stays `profiles/<profile>/.store-owner.lock` for every generation.
 Previous generations are never moved or deleted.
 
-`AlkionProfile.databasePath` resolves the selection for every opener (the app,
-the background +30s handler, tools). It refuses, before opening any store byte,
+`AlkionProfile.databasePath` resolves the selection for every opener (the app
+and tools). The background notification handler never opens the store; it only
+journals taps for the app ([notification actions](#notification-actions)). It refuses, before opening any store byte,
 with `GenerationSelectionException`:
 
 | Category | Meaning |
@@ -136,6 +137,18 @@ reviews, records an explicit `kept_as_evidence` decision and reports a
 is undecided (that milestone predates the optional manual sender). Repeating a restore carries lineage
 and creates no duplicate operations or records.
 
+The Backup & restore screen shows undecided reviews as counts per kind and
+disposition (`pendingSummary`, over all of them), for example "Newer than this
+backup: 12 sets"; internal tables share one "internal records" kind and the
+unknown-loss review keeps its own sentence. Table names, dispositions, restore
+IDs and generations appear only under *Show technical details*; review keys are
+not shown. *Keep all as evidence* asks for confirmation, then `keepAll` writes
+the same `alkion-restore-decision/1` / `kept_as_evidence` decision row for every
+undecided `restore_newer_work` review in one write transaction. Reviews of any
+other category and reviews already decided are skipped, so a repeat writes
+nothing; review evidence rows are never changed, and nothing is replayed or
+deleted.
+
 ### Fencing
 
 * The previous generation's metadata is fenced (`write_state='fenced'`,
@@ -143,10 +156,27 @@ and creates no duplicate operations or records.
   fence changes only `profile_state`; every other covered row stays exactly as
   reconciled, which the proof checks on a READONLY copy.
 * The selected generation's higher generation makes every older `StoreToken`,
-  autosave, background +30s payload and callback fail as `stale_generation`.
-* In the app, restore flushes owed input, replaces the UI, then closes the
-  runtime (sessions, timers, watches, store) before staging; the next runtime
-  opens the selected generation.
+  autosave and callback fail as `stale_generation`, and the next drain refuses
+  and removes a journaled notification tap from the old generation.
+* In the app, restore is refused with `workout_active` while a workout is
+  running or starting: the screen asks before any picker opens, and
+  `RuntimeRecoveryHost.restoreBackup` checks `hasActive` and takes the session
+  launch fence (`tryBeginLaunch`) synchronously before verifying, so no workout
+  can start or resume until the restore ends; the fence is released on every
+  path. It then flushes owed input, replaces the UI, closes the runtime
+  (sessions, timers, watches, store) before staging; the next runtime opens the
+  selected generation.
+* If that close fails, nothing is restored. *Reopen* shows the same runtime
+  again only when the flush barrier itself refused, before any teardown
+  (`AlkionRuntime.teardownBegan` is false). The close fence has already closed
+  the optional Animus connection, the workout sender and the recovery review,
+  so they stay closed in that runtime until the next launch; local use, the
+  pause flush and the storage banner keep working. Once teardown began (the
+  lifecycle observer and persistence callbacks are removed, notifications may
+  be closed), *Reopen* retries the close and relaunches. A retry that fails again stays on the
+  screen as a retryable error, so Reopen never meets the still-held store as
+  `profile_in_use`. `AlkionRuntime.close` clears its closing flag on every
+  failure path.
 * These are owned local fences on one storage. A backup cannot stop another
   offline device or installation from becoming writable; global device
   inventory, controlled primary handoff and server containment are future owner
@@ -186,6 +216,182 @@ startup. These are the two additional cases in the 20-case backup qualification;
 scope and the independent R1-public final review PASS (2026-10-17, reviewer
 `public_final_compliance`, no findings) explicit. This accepts the scoped recovery
 implementation; owner and publication gates remain unchanged.
+
+## Unreadable workout state at launch
+
+Implements the [unreadable workout state spec](../specs/2026-11-08-unreadable-workout-state.md)
+(2026-11-09, Approved). Code: `app/lib/data/workflow_state_quarantine.dart`,
+`LocalTransaction.retireLocalState` in `app/lib/store/local_store.dart`, and the
+launch call, notice and Backup section in `app/lib/main.dart`,
+`app/lib/widgets/kept_data_notice.dart` and the Backup screen.
+
+When the saved in-progress workout (`draft/active` with its `timer/active`) or
+the saved "undo finish" snapshot (`finishedRecovery/last`) can't be read by
+the running build, the app no longer fails at every launch. Once per runtime
+open, after the store, settings and catalog are open and before
+`resumeFromDraft` and `loadLastFinished`, `quarantineUnreadableWorkflowState`
+runs:
+
+1. A read transaction classifies only `active` rows, with the same pure
+   classifiers `DraftStore.load` and `FinishedSessionStore.load` use. No damage
+   means nothing is written.
+2. On damage, one write transaction (`expected: store.token`) re-reads and
+   re-classifies, copies each damaged group into one `reviews` row and retires
+   the group's active rows, then commits. Nothing is copied without being
+   retired, or retired without being copied.
+
+| Reason | Condition |
+| --- | --- |
+| `draft_unreadable` | Draft payload isn't a BLOB, UTF-8, JSON or a valid draft |
+| `draft_unsupported_format` | Draft JSON names a `format`/`version` this build doesn't support |
+| `timer_evidence_unavailable` | Decodable draft; `timer/active` missing or not `active` |
+| `timer_evidence_unreadable` | Decodable draft; timer payload isn't a BLOB holding a JSON object |
+| `timer_draft_mismatch` | Decodable draft; timer `draftId` names another draft |
+| `finished_recovery_unreadable` | Snapshot payload isn't a BLOB, UTF-8, JSON or a valid snapshot |
+| `finished_recovery_unsupported_format` | Snapshot whose embedded draft has an unsupported `format`/`version` |
+
+Timer evidence is quarantined, never repaired. Newer-format drafts are retired
+too: this build can't resume them, and the evidence records why it refused.
+Storage failures (SQLite or I/O errors, `recovery_required`,
+`stale_generation`, `foreign_profile`) are rethrown unchanged and keep the
+launch failure screen; rows that aren't `active` and valid snapshots that are
+merely no longer resumable are never inspected as damage. Damage that appears
+while a runtime runs is not quarantined: the loaders keep throwing their
+uniform categories (`malformed_draft_preserved`, `malformed_recovery_preserved`,
+the new `malformed_timer_preserved`), nothing is overwritten, and the next
+launch quarantines it.
+
+**Evidence.** The review has category `workflow_state_unreadable` (not a
+`restore_` category, so restore never treats it as lineage) and evidence
+`localBytes` of `{format: 'alkion-workflow-quarantine/1', kind, reason, rows,
+decoder}`:
+
+- `kind` is `draft` or `finishedRecovery`;
+- `rows` holds every column of each inspected row, ordered by
+  (`state_kind`, `state_key`), encoded as backups encode covered state (TEXT
+  and INTEGER as stored, BLOB as `{blob_base64}`): `[draft/active,
+  timer/active]` (the timer left out when absent) or
+  `[finishedRecovery/last]`. The notification-action receipt is neither copied
+  nor changed;
+- `decoder` records `app_version`, `build_number` (`unknown` when the platform
+  can't say), `flavor`, `supported_formats`, `failed_step` (`blob`, `utf8`,
+  `json`, `shape`, `format` or a `timer_*` step), `error_type` and the first 512
+  characters of `error_message`. The message may quote stored bytes; the review
+  stays local and goes only into backups.
+
+The review ID is `wq-` plus the first 40 hex digits of SHA-256 over
+`localBytes({format, kind, rows})`; the decoder record is outside the hash, so
+a build that words its error differently finds the same review. An existing
+review with that ID and the same `{format, kind, rows}` is reused. One with
+different content (a prefix collision or tampering) is never changed: the new
+review takes a deterministic fallback ID, SHA-256 over `"conflict:" +
+existing_id` followed by the same core bytes, and adds `conflicts_with`. Only if
+that fallback ID is also taken with different content does the quarantine
+refuse with `quarantine_conflict_preserved` and write nothing.
+
+**Retire.** Each inspected `active` row goes through
+`retireLocalState(kind, key, expectedRevision)`: a status-only `UPDATE` to
+`quarantined` with `revision+1` and a new `updated_at`, guarded by revision and
+generation and confirmed by a re-read (`stale_local_state` otherwise).
+`payload_bytes` keeps its value and its SQLite type, TEXT included, so the
+bytes are kept twice: in the review and in place. Both loaders then return
+`null`, and a later workout's first save replaces the retired row normally.
+`FinishedSessionStore.clearForSession` and History delete skip a
+`quarantined` snapshot without decoding it; an `expired` one is still
+rewritten as `review` as before.
+
+**Notice.** After open, the runtime exposes the `workflow_state_unreadable`
+reviews without a `notice` decision as a one-time informational notice (draft,
+finished or combined copy). It is shown only while no storage error banner is
+up, so the two never overlap. OK writes one `review_decisions` row per review
+shown, `decision_id = 'notice'`, bytes
+`{format: 'alkion-workflow-quarantine-decision/1', decision:
+'notice_acknowledged'}`, in one transaction; existing rows are skipped. A
+failed write hides the notice for this run only. `notice` acknowledges that the
+notice was seen; it is not a disposition, and no gate reads it.
+
+**Backup screen.** A read-only "Kept workout data" section lists each review
+with its kind (unfinished workout or finish undo data), the review date and
+"Kept as evidence and included in backups." It has no delete, export or revive
+action and is separate from the restore-review list: `RestoreReviews.keep` and
+`keepAll` decide only `restore_newer_work` reviews and never write a decision
+for a `workflow_state_unreadable` review.
+
+**Backups and restores.** The backup format is unchanged; `reviews`,
+`review_decisions` and `local_state` were already covered.
+
+- A backup taken after a quarantine holds the review, its `notice` decision and
+  the retired rows. Restoring it reproduces them exactly, apart from the
+  local-state generation stamp every restore adopts. The next open finds
+  nothing active to quarantine.
+- Restoring an **older** backup that lacks them keeps them as
+  `restore_newer_work` reviews with the exact previous rows: the review and its
+  decision as `newer_than_backup`; the retired rows as `newer_than_backup`, or
+  as `changed_since_backup` beside the backup's row when the backup holds the
+  same key. "Kept workout data" is then empty for that generation; the data
+  survives in the restore-review list instead.
+- A restored backup whose damaged rows are still `active` is quarantined at the
+  next open, under new IDs, because the restore changed the generation stamp.
+
+The review blocks nothing: not `transportGate`, not the manual send's
+recovery gate (a closed category list), not `replayCompleteness`. Exports
+exclude reviews and draft, timer and finished-recovery state. No schema
+migration: the status, category, evidence and decision formats are content
+(see [storage](storage.md#quarantined-workflow-state)). Only the selected
+generation's store is opened; a second profile and other generation
+directories stay byte-identical.
+
+Evidence is host and real SQLite only (`test/data/workflow_state_quarantine_test.dart`,
+`test/alkion/recovery/workflow_quarantine_backup_test.dart` and the runtime
+launch tests). **The damaged-launch path is host-proven only**: damaged state
+can't be seeded on a release-mode APK, and the device check is a regression
+check on a clean profile.
+
+## Notification actions
+
+Since 2026-11-11 the workout notification's **+30s** and **Skip rest** act
+without opening the app ([plan](../plans/2026-11-08-background-notification-actions.md),
+[spec](../specs/2026-11-08-background-notification-actions.md)). SQLite stays
+the only rest truth and the app's main isolate its only writer.
+
+- **Background tap.** The plugin starts a secondary isolate. It writes one
+  entry `{format: 'alkion-notification-intent/1', intent_id, action_id, kind,
+  tapped_at, payload}` to the intent journal
+  `<parent of support root>/.<applicationId>-notification-intents/`, named
+  `<tapped_at µs>-<intent_id>.json`: written as `.partial`, flushed, renamed,
+  then the directory flushed. At most 64 entries of 8 KiB each; beyond that the
+  tap is refused and nothing is rendered. `.partial` files older than 60 s are
+  removed. If the app is running, the handler wakes it through an
+  `IsolateNameServer` port; otherwise it renders a provisional mirror folded
+  from the journal, so the tap is visible at once.
+- **Owner drain.** The app applies entries in order inside one store
+  transaction per intent, keyed by the rest's step receipt and its one token
+  rule. Each entry ends as applied, duplicate (the state already committed;
+  the draft adopts it) or refused with a reason: `stale_generation`,
+  `foreign`, `draft_not_active`, `token_superseded`, `basis_changed`,
+  `conflict`, `gap`, `late` or `clock`. A refusal writes nothing. The entry
+  is deleted only after its outcome commits; after a crash before that, the
+  entry is decided again from the receipt and never applies twice. Every decided intent forces a re-render from SQL.
+- **When it drains.** At runtime open (spec D6: the port is registered before
+  the first drain, after F1's quarantine), on every wake-up, resume, refresh
+  and flush, and before a backup, so a backup holds the applied rest and no
+  journal. With no active workout the open cancels a leftover notification
+  (ghost).
+- **Unreadable entries.** Their exact bytes are copied into a
+  `notification_intent_unreadable` review with a deterministic ID before the
+  file is deleted; if that write fails the file stays and counts toward the cap.
+- **Not stored or restored.** The journal sits beside the support root, so no
+  profile or restore inventory sees it, and backups exclude it like OS
+  notifications ([backup](backup.md)). After a restore, old-generation entries
+  are refused and removed.
+
+Device evidence (owner's phone, 2026-11-11): foreground, backgrounded and a
+swiped-away process; see [acceptance](acceptance.md#f2-background-notification-actions--2026-11-11).
+Lock screen, Doze, frozen and restricted-bucket processes, taps during a cold
+launch or a restore, and a tap after an app update before opening are not
+device-run (owner waiver). A frozen or cold process can lose a tap before it
+is journaled, because the plugin's receiver holds no `goAsync`; the loss is
+visible as no change on the notification.
 
 ## Limits
 
