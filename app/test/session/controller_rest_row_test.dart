@@ -1,6 +1,47 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkion/data/active_session_draft.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/session/active_session_controller.dart';
+import 'package:alkion/session/notification_action.dart';
+import 'package:alkion/session/notification_envelope.dart';
+import 'package:alkion/store/local_store.dart';
+
+import '../support/screen_harness.dart';
+
+/// Holds the next write transaction until [release] completes.
+class _GatedDatabase extends RealZoneDatabase {
+  _GatedDatabase(LocalDatabase database) : super(database, Zone.current);
+  bool gate = false;
+  final entered = Completer<void>(), release = Completer<void>();
+  @override
+  Future<T> writeTransaction<T>(
+    Future<T> Function(LocalTransaction) callback, {
+    StoreToken? expected,
+  }) async {
+    if (gate && !release.isCompleted) {
+      if (!entered.isCompleted) entered.complete();
+      await release.future;
+    }
+    return super.writeTransaction(callback, expected: expected);
+  }
+}
+
+NotificationIntent _intent(
+  IssuedNotificationToken token,
+  NotificationIntentKind kind,
+  DateTime tappedAt,
+) => NotificationIntent(
+  intentId: '00000000-0000-4000-8000-${kind.index.toString().padLeft(12, '0')}',
+  actionId: kind == NotificationIntentKind.add
+      ? 'alkion.dev.add_30s'
+      : 'alkion.dev.skip_rest',
+  kind: kind,
+  tappedAt: tappedAt.toUtc(),
+  payload: NotificationEnvelope(action: token.action, step: token.step),
+);
 
 Exercise _ex(String id) => Exercise(
   id: id,
@@ -116,6 +157,84 @@ void main() {
       c.setRestRaw(null, 0);
       expect(c.restEndedAt, ended);
     });
+  });
+
+  group('restEndedAt from a notification commit', () {
+    late Directory temp;
+    late FixtureDatabase db;
+    late _GatedDatabase gated;
+    late DraftStore drafts;
+    late ActiveSessionController c;
+    setUp(() async {
+      temp = await Directory.systemTemp.createTemp('alkion-rest-row-');
+      db = await FixtureDatabase.open(temp);
+      gated = _GatedDatabase(db);
+      drafts = DraftStore.local(gated);
+      c = ActiveSessionController(draftStore: drafts)
+        ..seedEmpty(name: 'W', focus: '');
+      c.startRest(600);
+      await c.flushPersistence();
+    });
+    tearDown(() async {
+      c.dispose();
+      await db.close();
+      await temp.delete(recursive: true);
+    });
+
+    test(
+      'a Skip adopts the tap time from the commit, not the adoption time',
+      () async {
+        final token = (await drafts.notificationToken())!;
+        final tapped = DateTime.now().toUtc();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        final outcome = await c.applyNotificationIntent(
+          _intent(token, NotificationIntentKind.skip, tapped),
+        );
+        expect(outcome!.outcome, NotificationOutcome.applied);
+        expect(c.resting, isFalse);
+        expect(c.restTotal, 0);
+        expect(c.restEndedAt, tapped.toLocal());
+        expect(c.persistenceOwed, isFalse);
+      },
+    );
+
+    test('a +30s keeps the committed restEndedAt', () async {
+      final earlier = DateTime.now().subtract(const Duration(minutes: 3));
+      c.restEndedAt = earlier;
+      c.notifyListeners();
+      await c.flushPersistence();
+      final token = (await drafts.notificationToken())!;
+      final outcome = await c.applyNotificationIntent(
+        _intent(token, NotificationIntentKind.add, DateTime.now()),
+      );
+      expect(outcome!.change!.restEndedAt, earlier);
+      expect(c.restTotal, 630);
+      expect(c.restEndedAt, earlier);
+    });
+
+    test(
+      'a rest started while a Skip is in flight replays over the committed end',
+      () async {
+        final token = (await drafts.notificationToken())!;
+        final tapped = DateTime.now().toUtc();
+        gated.gate = true;
+        final work = c.applyNotificationIntent(
+          _intent(token, NotificationIntentKind.skip, tapped),
+        );
+        await gated.entered.future;
+        c.startRest(90);
+        final started = c.restStart;
+        gated.release.complete();
+        expect((await work)!.outcome, NotificationOutcome.applied);
+        expect(c.restStart, started);
+        expect(c.restTotal, 90);
+        expect(c.restEndedAt, isNull);
+        await c.flushPersistence();
+        final saved = (await drafts.load())!;
+        expect(saved.restStart, started);
+        expect(saved.restEndedAt, isNull);
+      },
+    );
   });
 
   group('hasLoggedSet', () {

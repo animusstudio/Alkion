@@ -187,6 +187,24 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   module in the background-safe closure, so any other `dart:` library (for
   example `dart:ffi` or `dart:isolate`) fails until it is reviewed and listed.
 
+- **2026-11-11, T1 review.** Consumption decides in a fixed order, and every
+  refusal writes nothing:
+  - The step checks run before the basis check. A stale step-1 tap after an
+    in-app rest change, once step 1 has been applied, is therefore refused
+    `conflict` rather than `basis_changed`.
+  - A draft and timer that disagree on the rest refuse as `basis_changed`.
+  - A redelivery of an older applied step (below `consumed_step`) refuses as
+    `conflict`, because the receipt keeps only `last_intent_id`.
+  - A `duplicate` always hands back the draft row's current rest and
+    revision, even when the timer row disagrees. The draft is what the owner
+    saves against, so a reconciling owner never keeps a stale revision.
+  - A `duplicate` carries state to adopt, not attribution; callers (T3's
+    drain) must key on the outcome, never treat `change != null` as applied.
+- **2026-11-11, gate: T1 does not ship without T3.** Until T3 posts the step in
+  the payload, the notification carries the bare token, which decodes as
+  step 1. A second foreground +30s on the same notification is then refused
+  `conflict`.
+
 ## Task state
 
 - T0 — done, reviewed (PASS with findings; fixes `2d36824` re-checked PASS). `d6b7bf5d` adds the pure `notification_envelope.dart`
@@ -199,7 +217,20 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   stores a resolved locale, `notificationSupportRoot` mirrors the owner's
   root derivation, a title is never shortened to nothing, and the guard pins
   `dart:` imports and the pending background modules.
-- T1 — not started.
+- T1 — done, reviewed (PASS with findings; fixes `d938e7e` and `eba2431` re-checked; coordinator fix `1557ed4` reviewed with T3; a present non-integer draft rest total on a duplicate is refused as `malformed_draft_preserved`, never written as zero). `71b41c5b`: `issueNotificationToken` applies the
+  one token rule (issued basis or consumed post-step rest; a legacy issued
+  receipt gets its basis at first sight); `consumeNotificationIntent` decides
+  add and Skip with the step, duplicate, conflict, gap, basis and tap-time
+  rules and returns `applied`, `duplicate` or `refused(reason)`; the timer
+  revision is never compared. `CommittedRestChange` has nullable `restStart`
+  and `restEndedAt`; `DraftStore` retains the exact uncertain intent; the
+  controller's `applyNotificationIntent` adopts `endedAt` from the commit.
+  Kept for T3: `issueNotificationAction`/`notificationAction()` (token without
+  step), `applyNotificationAction` and `consumeNotificationAction` as the
+  legacy bare-token +30s (step 1, fresh intent). Review fixes: a test pins
+  `basis_changed` for a stale later step, and a duplicate now adopts the
+  draft row's current rest and revision, even when the timer row disagrees
+  (tested with out-of-band writes).
 - T2 — done, reviewed (PASS with findings; fixes `acadcc2` re-checked PASS). `2f9e9762` adds `notification_journal.dart`
   (atomic `.partial` write, flush, rename and directory flush; 64-entry and
   8 KiB caps; bounds, kind/action and name checks before decoding, with exact

@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:alkion/data/active_session_draft.dart';
+import 'package:alkion/domain/evidence.dart';
 import 'package:alkion/data/session_writer.dart';
 import 'package:alkion/session/active_session_controller.dart';
 import 'package:alkion/session/notification_action.dart';
+import 'package:alkion/session/notification_envelope.dart';
 import 'package:alkion/store/local_store.dart';
 import 'package:alkion/data/models.dart';
 import 'package:alkion/session/active_session_screen.dart';
@@ -43,6 +45,27 @@ class ActionDatabase extends RealZoneDatabase {
     if (fail && afterCommit) throw StateError('forwarded COMMIT failure');
     return result;
   }
+}
+
+var _intents = 0;
+
+/// A journaled tap on [action]'s token at [step], with a fresh intent ID.
+NotificationIntent intentFor(
+  NotificationAction action,
+  int step, {
+  NotificationIntentKind kind = NotificationIntentKind.add,
+  DateTime? tappedAt,
+}) {
+  final n = (++_intents).toRadixString(16).padLeft(12, '0');
+  return NotificationIntent(
+    intentId: '00000000-0000-4000-8000-$n',
+    actionId: kind == NotificationIntentKind.add
+        ? 'alkion.dev.add_30s'
+        : 'alkion.dev.skip_rest',
+    kind: kind,
+    tappedAt: (tappedAt ?? DateTime.now()).toUtc(),
+    payload: NotificationEnvelope(action: action, step: step),
+  );
 }
 
 void main() {
@@ -170,55 +193,318 @@ void main() {
     });
   });
 
+  Future<Map<String, dynamic>> row(String kind, String key) async =>
+      (await db.getAll(
+        'SELECT * FROM local_state WHERE state_kind=? AND state_key=?',
+        [kind, key],
+      )).single;
+  Future<Map<String, Object?>> payload(String kind, String key) async =>
+      Map<String, Object?>.from(
+        jsonDecode(
+              utf8.decode(
+                ((await row(kind, key))['payload_bytes'] as List).cast<int>(),
+              ),
+            )
+            as Map,
+      );
+  Future<IssuedNotificationToken> token() async =>
+      (await drafts.notificationToken())!;
+  Future<void> unrelatedAutosave() async {
+    final before = (await row('timer', 'active'))['revision'] as int;
+    c.notifyListeners();
+    await c.flushPersistence();
+    expect((await row('timer', 'active'))['revision'], before + 1);
+  }
+
+  Future<void> putReceipt(Map<String, Object?> value, String status) =>
+      actions.writeTransaction((tx) async {
+        final old = await tx.localState(
+          LocalStateKind.timer,
+          notificationActionKey,
+        );
+        await tx.putLocalState(
+          LocalStateKind.timer,
+          notificationActionKey,
+          localBytes(value),
+          expectedRevision: old?['revision'] as int? ?? 0,
+          status: status,
+        );
+      });
+
+  Future<NotificationConsumption> decide(
+    NotificationIntent intent, {
+    DateTime? now,
+  }) async {
+    final before = await db.store.inventory();
+    final outcome = await consumeNotificationIntent(actions, intent, now: now);
+    if (outcome.outcome != NotificationOutcome.applied) {
+      expect(await db.store.inventory(), before, reason: outcome.marker);
+    }
+    return outcome;
+  }
+
   test(
-    'one token commits once; refreshed token works; controller autosave retains committed rest',
+    'token rule: autosaves keep the token, each applied step advances it, an in-app rest change replaces it',
     () async {
-      final action = (await drafts.notificationAction())!;
-      expect((await drafts.notificationAction())!.token, action.token);
-      expect(await c.applyNotificationAction(action), isTrue);
+      final first = await token();
+      expect(first.step, 1);
+      final issuedRevision = first.action.timerRevision;
+      await unrelatedAutosave();
+      final again = await token();
+      expect(again.action.encode(), first.action.encode());
+      expect(again.step, 1);
+      // The issued branch never compares the timer revision.
+      final one = intentFor(first.action, 1);
+      final applied = await c.applyNotificationIntent(one);
+      expect(applied!.outcome, NotificationOutcome.applied);
       expect(c.restTotal, 630);
-      final committed = await db.store.inventory();
-      expect(await c.applyNotificationAction(action), isTrue);
-      expect(await db.store.inventory(), committed);
-      final refreshed = (await drafts.notificationAction())!;
-      expect(refreshed.token, isNot(action.token));
-      expect(await c.applyNotificationAction(refreshed), isTrue);
+      expect(applied.change!.restEndedAt, isNull);
+      final timer = await row('timer', 'active');
+      expect(timer['revision'], greaterThan(issuedRevision + 1));
+      final receipt = await payload('timer', notificationActionKey);
+      expect((await row('timer', notificationActionKey))['status'], 'consumed');
+      expect(receipt['consumed_step'], 1);
+      expect(receipt['last_intent_id'], one.intentId);
+      expect(receipt['kind'], 'add');
+      expect(receipt['rest_total'], 630);
+      expect(receipt['rest_start'], c.restStart!.toIso8601String());
+      expect(receipt['basis'], {
+        'draft_id': c.draft.draftId,
+        'rest_start': c.restStart!.toIso8601String(),
+        'rest_total': 600,
+      });
+      expect(
+        (await payload('timer', 'active'))['restTotal'],
+        630,
+        reason: 'the timer is written at its current revision',
+      );
+
+      await unrelatedAutosave();
+      // A redelivered step is a duplicate even after later autosaves.
+      expect(
+        (await decide(one)).outcome,
+        NotificationOutcome.duplicate,
+        reason: 'no consumed-branch revision check',
+      );
+      final second = await token();
+      expect(second.action.encode(), first.action.encode());
+      expect(second.step, 2);
+      await unrelatedAutosave();
+      expect((await token()).step, 2);
+
+      // Another tap that carried the same visible step: refused.
+      expect(
+        (await decide(intentFor(first.action, 1))).marker,
+        'refused conflict',
+      );
+      expect((await decide(intentFor(first.action, 3))).marker, 'refused gap');
+      final two = intentFor(first.action, 2);
+      expect(
+        (await c.applyNotificationIntent(two))!.outcome,
+        NotificationOutcome.applied,
+      );
       expect(c.restTotal, 660);
+      expect((await token()).step, 3);
+      expect((await decide(two)).outcome, NotificationOutcome.duplicate);
+      expect((await decide(one)).marker, 'refused conflict');
+
       c.addRestTime(1);
       await c.flushPersistence();
+      final fresh = await token();
+      expect(fresh.action.token, isNot(first.action.token));
+      expect(fresh.step, 1);
+      expect(
+        (await decide(intentFor(first.action, 3))).marker,
+        'refused token_superseded',
+      );
+      expect(c.restTotal, 661);
       expect((await drafts.load())!.restTotal, 661);
-      final after = await db.store.inventory();
-      expect(await consumeNotificationAction(actions, action), isNull);
-      expect(await db.store.inventory(), after);
       expect(await db.getAll('SELECT * FROM operations'), isEmpty);
     },
   );
 
   test(
-    'variant/profile/generation/draft/rest/revision/token fences are exact no-ops',
+    'Skip ends the rest at the tap time in draft, timer, receipt and controller',
     () async {
-      final action = (await drafts.notificationAction())!;
+      final issued = await token();
+      final tapped = DateTime.now().toUtc();
+      final skip = intentFor(
+        issued.action,
+        1,
+        kind: NotificationIntentKind.skip,
+        tappedAt: tapped,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      final outcome = (await c.applyNotificationIntent(skip))!;
+      expect(outcome.outcome, NotificationOutcome.applied);
+      expect(outcome.change!.restStart, isNull);
+      expect(outcome.change!.restTotal, 0);
+      expect(outcome.change!.restEndedAt, tapped.toLocal());
+      expect(c.restStart, isNull);
+      expect(c.restTotal, 0);
+      expect(c.restEndedAt, tapped.toLocal(), reason: 'not the adoption time');
+      for (final kind in ['draft', 'timer']) {
+        final value = await payload(kind, 'active');
+        expect(value['restStart'], isNull, reason: kind);
+        expect(value['restTotal'], 0, reason: kind);
+        expect(
+          value['restEndedAt'],
+          tapped.toLocal().toIso8601String(),
+          reason: kind,
+        );
+      }
+      final receipt = await payload('timer', notificationActionKey);
+      expect(receipt['kind'], 'skip');
+      expect(receipt['rest_start'], isNull);
+      expect(receipt['rest_total'], 0);
+      expect(receipt['rest_ended_at'], tapped.toLocal().toIso8601String());
+      await c.flushPersistence();
+      expect((await drafts.load())!.restEndedAt, tapped.toLocal());
+      final next = await token();
+      expect(next.action.token, issued.action.token);
+      expect(next.step, 2);
+      // Nothing is running any more: a later step has no rest to change.
+      expect(
+        (await decide(intentFor(issued.action, 2))).marker,
+        'refused late',
+      );
+      expect(await db.getAll('SELECT * FROM operations'), isEmpty);
+    },
+  );
+
+  test(
+    'mixed +30s and Skip at one step: only the first arrival applies',
+    () async {
+      final issued = await token();
+      final add = intentFor(issued.action, 1);
+      final skip = intentFor(
+        issued.action,
+        1,
+        kind: NotificationIntentKind.skip,
+      );
+      expect((await decide(skip)).outcome, NotificationOutcome.applied);
+      expect((await decide(add)).marker, 'refused conflict');
+      expect((await decide(skip)).outcome, NotificationOutcome.duplicate);
+      // The same intent ID with another kind is not the committed tap.
+      expect(
+        (await decide(
+          NotificationIntent(
+            intentId: skip.intentId,
+            actionId: skip.actionId,
+            kind: NotificationIntentKind.add,
+            tappedAt: skip.tappedAt,
+            payload: skip.payload,
+          ),
+        )).marker,
+        'refused conflict',
+      );
+      expect((await payload('timer', 'active'))['restTotal'], 0);
+    },
+  );
+
+  test(
+    'an in-app rest change wins: the ticker stopping the rest refuses a pending +30s',
+    () async {
+      final issued = await token();
+      c.stopRest();
+      await c.flushPersistence();
+      expect(
+        (await decide(intentFor(issued.action, 1))).marker,
+        'refused basis_changed',
+      );
+      c.startRest(90);
+      await c.flushPersistence();
+      expect(
+        (await decide(intentFor(issued.action, 1))).marker,
+        'refused basis_changed',
+      );
+      expect(c.restTotal, 90);
+    },
+  );
+
+  test('tap-time checks: late and clock refusals write nothing', () async {
+    final issued = await token();
+    final start = c.restStart!;
+    final due = start.add(const Duration(seconds: 600));
+    for (final kind in NotificationIntentKind.values) {
+      expect(
+        (await decide(
+          intentFor(issued.action, 1, kind: kind, tappedAt: due),
+          now: due.add(const Duration(seconds: 5)),
+        )).marker,
+        'refused late',
+        reason: kind.wire,
+      );
+      expect(
+        (await decide(
+          intentFor(
+            issued.action,
+            1,
+            kind: kind,
+            tappedAt: start.subtract(const Duration(milliseconds: 1)),
+          ),
+        )).marker,
+        'refused clock',
+        reason: kind.wire,
+      );
+      final now = DateTime.now();
+      expect(
+        (await decide(
+          intentFor(
+            issued.action,
+            1,
+            kind: kind,
+            tappedAt: now.add(const Duration(minutes: 3)),
+          ),
+          now: now,
+        )).marker,
+        'refused clock',
+        reason: kind.wire,
+      );
+    }
+    // Judged at the tap, not at the decision: a tap inside the rest still
+    // applies after the rest would have ended.
+    final inside = intentFor(
+      issued.action,
+      1,
+      tappedAt: due.subtract(const Duration(seconds: 1)),
+    );
+    final outcome = await decide(
+      inside,
+      now: due.add(const Duration(minutes: 1)),
+    );
+    expect(outcome.outcome, NotificationOutcome.applied);
+    expect(outcome.change!.restTotal, 630);
+  });
+
+  test(
+    'application, profile, generation, draft and token fences are exact no-op refusals',
+    () async {
+      final issued = await token();
+      final action = issued.action;
       for (final entry in {
-        'application_id': 'dev.animusstudio.alkion',
-        'profile_id': 'foreign-profile',
-        'generation': action.generation + 1,
-        'draft_id': 'old-draft',
-        'rest_start': DateTime.now()
-            .subtract(const Duration(minutes: 5))
-            .toIso8601String(),
-        'timer_revision': action.timerRevision + 1,
-        'token': 'not-issued',
+        'application_id': ('dev.animusstudio.alkion', 'refused foreign'),
+        'profile_id': ('foreign-profile', 'refused foreign'),
+        'generation': (action.generation + 1, 'refused stale_generation'),
+        'draft_id': ('old-draft', 'refused draft_not_active'),
+        'rest_start': (
+          DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String(),
+          'refused token_superseded',
+        ),
+        'timer_revision': (
+          action.timerRevision + 1,
+          'refused token_superseded',
+        ),
+        'token': ('not-issued', 'refused token_superseded'),
       }.entries) {
         final changed = NotificationAction.decode(
-          jsonEncode(action.toJson()..[entry.key] = entry.value),
+          jsonEncode(action.toJson()..[entry.key] = entry.value.$1),
         )!;
-        final before = await db.store.inventory();
         expect(
-          await consumeNotificationAction(actions, changed),
-          isNull,
+          (await decide(intentFor(changed, 1))).marker,
+          entry.value.$2,
           reason: entry.key,
         );
-        expect(await db.store.inventory(), before, reason: entry.key);
       }
       expect(NotificationAction.decode('{bad'), isNull);
       expect(
@@ -227,40 +513,246 @@ void main() {
         ),
         isNull,
       );
-      final before = await db.store.inventory();
+      await c.discard();
       expect(
-        await consumeNotificationAction(
-          actions,
-          action,
-          now: c.restStart!.add(const Duration(seconds: 601)),
+        (await decide(intentFor(action, 1))).marker,
+        'refused draft_not_active',
+      );
+    },
+  );
+
+  test(
+    'legacy receipts: an issued one gets its basis at first sight, a consumed one counts as step 1',
+    () async {
+      final issued = await token();
+      final action = issued.action;
+      final restStart = c.restStart!.toIso8601String();
+      await putReceipt({'action': action.toJson()}, 'issued');
+      final pinned = await token();
+      expect(pinned.action.encode(), action.encode());
+      expect(pinned.step, 1);
+      expect(await payload('timer', notificationActionKey), {
+        'action': action.toJson(),
+        'basis': {
+          'draft_id': c.draft.draftId,
+          'rest_start': restStart,
+          'rest_total': 600,
+        },
+      });
+
+      // Unpinned, a legacy issued receipt is judged by its rest_start and
+      // the current restTotal; a bare legacy tap is step 1 of an add.
+      await putReceipt({'action': action.toJson()}, 'issued');
+      expect(await c.applyNotificationAction(action), isTrue);
+      expect(c.restTotal, 630);
+      expect((await payload('timer', notificationActionKey))['basis'], {
+        'draft_id': c.draft.draftId,
+        'rest_start': restStart,
+        'rest_total': 600,
+      });
+
+      final revision = (await row('draft', 'active'))['revision'];
+      await putReceipt({
+        'action': action.toJson(),
+        'draft_revision': revision,
+        'rest_total': 630,
+      }, 'consumed');
+      final next = await token();
+      expect(next.action.encode(), action.encode());
+      expect(next.step, 2);
+      expect(await c.applyNotificationAction(action), isFalse);
+      expect(
+        (await decide(legacyNotificationIntent(action))).marker,
+        'refused conflict',
+      );
+      expect(c.restTotal, 630);
+      final two = await c.applyNotificationIntent(intentFor(action, 2));
+      expect(two!.outcome, NotificationOutcome.applied);
+      expect(c.restTotal, 660);
+      final receipt = await payload('timer', notificationActionKey);
+      expect(receipt['consumed_step'], 2);
+      expect(receipt['basis'], {
+        'draft_id': c.draft.draftId,
+        'rest_start': restStart,
+        'rest_total': 630,
+      });
+    },
+  );
+
+  test(
+    'a stale later step is refused basis_changed after an in-app change, with no token refresh',
+    () async {
+      final issued = await token();
+      expect(
+        (await c.applyNotificationIntent(intentFor(issued.action, 1)))!.outcome,
+        NotificationOutcome.applied,
+      );
+      c.addRestTime(1);
+      await c.flushPersistence();
+      expect((await payload('timer', 'active'))['restTotal'], 631);
+      for (final kind in NotificationIntentKind.values) {
+        expect(
+          (await decide(intentFor(issued.action, 2, kind: kind))).marker,
+          'refused basis_changed',
+          reason: kind.wire,
+        );
+      }
+      expect(c.restTotal, 631);
+      expect((await drafts.load())!.restTotal, 631);
+      expect(c.resting, isTrue);
+    },
+  );
+
+  test(
+    'reconciling a committed intent after SQL moved on adopts the durable rest and revision',
+    () async {
+      final issued = await token();
+      final intent = intentFor(issued.action, 1);
+      actions.fail = actions.afterCommit = true;
+      await expectLater(c.applyNotificationIntent(intent), throwsStateError);
+      actions.fail = false;
+      expect(c.restTotal, 600);
+      // No owner path writes the draft while the intent is uncertain; an
+      // out-of-band writer stands in for one, so the duplicate's committed
+      // step is no longer what SQL holds.
+      await actions.writeTransaction((tx) async {
+        for (final kind in [LocalStateKind.draft, LocalStateKind.timer]) {
+          final row = (await tx.localState(kind, 'active'))!;
+          final value = Map<String, Object?>.from(
+            jsonDecode(utf8.decode((row['payload_bytes'] as List).cast<int>()))
+                as Map,
+          )..['restTotal'] = 700;
+          await tx.putLocalState(
+            kind,
+            'active',
+            localBytes(value),
+            expectedRevision: row['revision'] as int,
+          );
+        }
+      });
+      final outcome = (await c.applyNotificationIntent(intent))!;
+      expect(outcome.outcome, NotificationOutcome.duplicate);
+      expect(drafts.pendingNotificationIntent, isNull);
+      expect(c.restTotal, 700);
+      expect(
+        drafts.persistedRevision,
+        (await row('draft', 'active'))['revision'],
+      );
+      c.addRestTime(1);
+      await c.flushPersistence();
+      expect(c.persistenceError, isNull);
+      expect((await drafts.load())!.restTotal, 701);
+    },
+  );
+
+  test(
+    'reconciling a committed intent while the timer row disagrees still adopts the draft row',
+    () async {
+      final issued = await token();
+      final intent = intentFor(issued.action, 1);
+      actions.fail = actions.afterCommit = true;
+      await expectLater(c.applyNotificationIntent(intent), throwsStateError);
+      actions.fail = false;
+      // Only the draft row moves on, so draft and timer disagree.
+      await actions.writeTransaction((tx) async {
+        final row = (await tx.localState(LocalStateKind.draft, 'active'))!;
+        final value = Map<String, Object?>.from(
+          jsonDecode(utf8.decode((row['payload_bytes'] as List).cast<int>()))
+              as Map,
+        )..['restTotal'] = 700;
+        await tx.putLocalState(
+          LocalStateKind.draft,
+          'active',
+          localBytes(value),
+          expectedRevision: row['revision'] as int,
+        );
+      });
+      final outcome = (await c.applyNotificationIntent(intent))!;
+      expect(outcome.outcome, NotificationOutcome.duplicate);
+      expect(drafts.pendingNotificationIntent, isNull);
+      expect(c.restTotal, 700);
+      expect(
+        drafts.persistedRevision,
+        (await row('draft', 'active'))['revision'],
+      );
+      c.addRestTime(1);
+      await c.flushPersistence();
+      expect(c.persistenceError, isNull);
+      expect((await drafts.load())!.restTotal, 701);
+      expect((await payload('timer', 'active'))['restTotal'], 701);
+    },
+  );
+
+  test(
+    'reconciling against a non-integer draft rest total refuses and never writes zero',
+    () async {
+      final issued = await token();
+      final intent = intentFor(issued.action, 1);
+      actions.fail = actions.afterCommit = true;
+      await expectLater(c.applyNotificationIntent(intent), throwsStateError);
+      actions.fail = false;
+      await actions.writeTransaction((tx) async {
+        final row = (await tx.localState(LocalStateKind.draft, 'active'))!;
+        final value = Map<String, Object?>.from(
+          jsonDecode(utf8.decode((row['payload_bytes'] as List).cast<int>()))
+              as Map,
+        )..['restTotal'] = 'not-a-number';
+        await tx.putLocalState(
+          LocalStateKind.draft,
+          'active',
+          localBytes(value),
+          expectedRevision: row['revision'] as int,
+        );
+      });
+      final before = await db.store.inventory();
+      await expectLater(
+        c.applyNotificationIntent(intent),
+        throwsA(
+          isA<StoreException>().having(
+            (e) => e.category,
+            'category',
+            'malformed_draft_preserved',
+          ),
         ),
-        isNull,
       );
       expect(await db.store.inventory(), before);
-      await c.discard();
-      final finished = await db.store.inventory();
-      expect(await consumeNotificationAction(actions, action), isNull);
-      expect(await db.store.inventory(), finished);
+      expect(drafts.pendingNotificationIntent, isNotNull);
     },
   );
 
   for (final after in [false, true]) {
     test(
-      'action ${after ? 'forwarded' : 'refused'} COMMIT retains controller and retries exact token',
+      'intent ${after ? 'forwarded' : 'refused'} COMMIT retains the exact intent and never applies it twice',
       () async {
-        final action = (await drafts.notificationAction())!;
+        final issued = await token();
+        final intent = intentFor(issued.action, 1);
         final before = await db.store.inventory();
         actions.fail = true;
         actions.afterCommit = after;
-        await expectLater(c.applyNotificationAction(action), throwsStateError);
+        await expectLater(c.applyNotificationIntent(intent), throwsStateError);
         expect(c.restTotal, 600);
+        expect(drafts.pendingNotificationIntent!.encode(), intent.encode());
         if (!after) expect(await db.store.inventory(), before);
+        // Another intent cannot pass the uncertain one.
+        await expectLater(
+          drafts.consumeAction(intentFor(issued.action, 1)),
+          throwsA(isA<StoreException>()),
+        );
         actions.fail = false;
-        expect(await c.applyNotificationAction(action), isTrue);
+        final retried = (await c.applyNotificationIntent(intent))!;
+        expect(
+          retried.outcome,
+          after ? NotificationOutcome.duplicate : NotificationOutcome.applied,
+        );
+        expect(drafts.pendingNotificationIntent, isNull);
         expect(c.restTotal, 630);
         final committed = await db.store.inventory();
-        expect(await c.applyNotificationAction(action), isTrue);
+        final again = (await c.applyNotificationIntent(intent))!;
+        expect(again.outcome, NotificationOutcome.duplicate);
+        expect(again.change!.restTotal, 630);
         expect(await db.store.inventory(), committed);
+        expect(c.restTotal, 630);
+        expect((await token()).step, 2);
       },
     );
   }
