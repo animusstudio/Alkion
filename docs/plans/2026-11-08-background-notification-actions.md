@@ -265,7 +265,30 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   - a render that times out isn't cancelled: if it completes after a later
     delivery's render, it can briefly show an older mirror. The owner's
     re-render from SQL corrects it (accepted risk, low).
-- T3 — not started.
+- T3 — done, awaiting review. `SessionManager` runs every drain, refresh,
+  foreground response and rest reconciliation on one tail; it registers the
+  `IsolateNameServer` port (opening → immediate after the owed-drain release,
+  closing ignores wake-ups, only its own mapping is removed), drains through
+  the live controller or in SQL alone (`intent-consume-open` inside the
+  consume transaction, `intent-committed` before the delete; skipped while a
+  launch holds the fence or a Finish is pending), copies an undecodable
+  entry's exact bytes into `reviews` (`notification_intent_unreadable`,
+  deterministic `rv-` ID) before deleting it, ends every decided intent with a
+  forced refresh (or the ghost rule without a workout) and keys on the
+  outcome, never on `change`. Refresh, flush, `init` and `resumed` drain
+  first; reconciliation skips stopping an elapsed rest only while a drain is
+  in flight. Only a body tap requests the open; a legacy bare-token +30s is
+  applied directly. `WorkoutNotification.init` registers the background
+  handler, `showFor` posts the envelope with the step and takes `force`, and
+  the renderer posts +30s then Skip rest, both `showsUserInterface: false`.
+  `AlkionRuntime.open` follows spec D6 steps 1–10 (port before drain #1,
+  failed-open catch unregisters it); `close()` puts the port in closing mode
+  first and unregisters it after the store closes, reopening it if the
+  barrier refused before teardown. The manifest declares the
+  `ActionBroadcastReceiver`. Deviation: "Skip rest" lives in `_notifStrings`
+  (all four languages) and not in the ARB files, because the renderer has no
+  `BuildContext` and an unused ARB key fails `unused_keys_test`. The two other
+  `WorkoutNotification` test fakes gained the `step`/`force` parameters.
 - T4 — not started.
 
 ## Next
