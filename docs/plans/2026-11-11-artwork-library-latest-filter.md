@@ -44,4 +44,16 @@ Run focused Python generator tests and existing offline/queue browser suites,
 then inspect desktop and narrow screenshots in one batched pass. No asset
 regeneration, queue writes, runtime app changes, public push or installation.
 
-State: implementation pending.
+State: Done. Implementation and independent review passed.
+
+Qualification:
+
+- Nine generator tests and nine helper tests passed; deterministic generation
+  validates 760 exercises and 1,520 edition selections.
+- Offline and disposable-queue browser suites passed, including composed
+  search/filter/order, 77/93 membership, DOM/navigation ordering, reload/deep
+  links, outside-filter focus and missing-cohort error handling.
+- Desktop and 360px live screenshots passed in a bounded initial/confirmation
+  pair. Live verification used GET only and preserved all 170 saved marks.
+- Existing artwork item data is unchanged beyond the explicit cohort metadata;
+  no image, manifest, registry or app-runtime changes are included.

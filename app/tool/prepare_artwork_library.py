@@ -18,7 +18,30 @@ ROOT = APP.parent
 DATA_FORMAT = "alkion-artwork-library-v1"
 
 
-def build_data(catalog: dict, registry: dict, manifests: dict, app: Path) -> dict:
+def validate_cohort(cohort: dict, items: list) -> dict:
+    """Bind the declared regeneration to current selections, never queue marks."""
+    fields = {"id", "label", "source_illustration_min", "source_illustration_max", "expected_counts"}
+    if not isinstance(cohort, dict) or set(cohort) != fields:
+        raise ValueError("Invalid latest regeneration metadata fields")
+    artwork.publishable(cohort)
+    if any(not isinstance(cohort[field], str) or not cohort[field].strip() for field in ("id", "label")):
+        raise ValueError("Latest regeneration requires an id and label")
+    lower, upper = (cohort[field] for field in ("source_illustration_min", "source_illustration_max"))
+    if type(lower) is not int or type(upper) is not int or not 0 < lower <= upper:
+        raise ValueError("Invalid latest regeneration source illustration bounds")
+    expected = cohort["expected_counts"]
+    if not isinstance(expected, dict) or set(expected) != {"male", "female"}:
+        raise ValueError("Latest regeneration requires both edition counts")
+    for edition, count in expected.items():
+        if type(count) is not int or count <= 0:
+            raise ValueError("Invalid latest regeneration edition count")
+        actual = sum(lower <= item["editions"][edition]["illustration"] <= upper for item in items)
+        if actual != count:
+            raise ValueError(f"Latest regeneration count mismatch: {edition}: expected {count}, selected {actual}")
+    return cohort
+
+
+def build_data(catalog: dict, registry: dict, manifests: dict, app: Path, cohort: dict) -> dict:
     """Fail closed unless both editions cover the exact current app identities."""
     artwork.publishable(catalog)
     numbers = artwork.validate_registry(registry)
@@ -64,7 +87,7 @@ def build_data(catalog: dict, registry: dict, manifests: dict, app: Path) -> dic
             }
         items.append(item)
     return {"format": DATA_FORMAT, "catalog_revision": catalog.get("catalog_revision"),
-            "items": items}
+            "latest_regeneration": validate_cohort(cohort, items), "items": items}
 
 
 def javascript(data: dict) -> str:
@@ -81,12 +104,15 @@ def main() -> int:
     parser.add_argument("--male-manifest", type=Path, default=APP / "assets/exercise_artwork/manifest.json")
     parser.add_argument("--female-manifest", type=Path, default=APP / "assets/exercise_artwork/female-manifest.json")
     parser.add_argument("--registry", type=Path, default=APP / "assets/exercise_artwork/library-numbers.json")
+    parser.add_argument("--latest-regeneration", type=Path,
+                        default=ROOT / "tools/artwork-library/latest-regeneration.json")
     parser.add_argument("--write", action="store_true", help="Write data.js; default verifies")
     args = parser.parse_args()
     try:
         read = lambda path: json.loads(path.read_text(encoding="utf-8"))
         data = build_data(read(args.catalog), read(args.registry), {
-            "male": read(args.male_manifest), "female": read(args.female_manifest)}, APP)
+            "male": read(args.male_manifest), "female": read(args.female_manifest)}, APP,
+            read(args.latest_regeneration))
         destination = ROOT / "tools/artwork-library/data.js"
         expected = javascript(data)
         if args.write:
@@ -98,7 +124,7 @@ def main() -> int:
                             for status in ("pass", "agreed_defect", "needs_manual_review", "secondary_cleared")}
                   for edition in ("male", "female")}
         print(json.dumps({"format": DATA_FORMAT, "exercises": len(data["items"]),
-                          "quality": counts}, sort_keys=True))
+                          "latest_regeneration": data["latest_regeneration"], "quality": counts}, sort_keys=True))
         return 0
     except (ValueError, KeyError, OSError, TypeError) as error:
         print(f"Artwork library verification failed: {error}", file=sys.stderr)

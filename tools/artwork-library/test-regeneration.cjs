@@ -40,6 +40,43 @@ const {spawn} = require('node:child_process');
     };
     await page.goto(url);
     await ready(0);
+    // Current generated data: filters and navigation never modify queue bytes.
+    const emptyQueueBytes = await fs.readFile(queuePath, 'utf8');
+    const visibleNumbers = () => page.locator('.exercise:visible').evaluateAll(nodes => nodes.map(node => Number(node.id.slice(9))));
+    const expectedLatest = edition => page.evaluate(edition => {
+      const data = window.ALKION_ARTWORK_LIBRARY;
+      const cohort = data.latest_regeneration;
+      return data.items.filter(item => item.editions[edition].illustration >= cohort.source_illustration_min &&
+        item.editions[edition].illustration <= cohort.source_illustration_max)
+        .sort((a, b) => b.editions[edition].illustration - a.editions[edition].illustration || a.number - b.number)
+        .map(item => item.number);
+    }, edition);
+    await page.locator('#scope').selectOption('latest');
+    await page.locator('#order').selectOption('newest');
+    const maleLatest = await expectedLatest('male');
+    const femaleLatest = await expectedLatest('female');
+    assert.equal(maleLatest.length, 77);
+    assert.equal(femaleLatest.length, 93);
+    assert.deepEqual(await visibleNumbers(), maleLatest);
+    await page.locator(`#exercise-${maleLatest[0]} .exercise-button`).click();
+    assert.equal(await page.locator('#previous').isDisabled(), true);
+    await page.locator('#next').click();
+    assert.match(await page.locator('#inspection-title').innerText(), new RegExp('^#' + maleLatest[1] + ' ·'));
+    await page.locator('#close').click();
+    await page.locator('input[name=edition][value=female]').check();
+    assert.deepEqual(await visibleNumbers(), femaleLatest);
+    await page.reload();
+    await ready(0);
+    assert.deepEqual(await visibleNumbers(), femaleLatest);
+    await page.screenshot({path: path.join(temporary, 'latest-desktop.png')});
+    await page.setViewportSize({width: 360, height: 800});
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({path: path.join(temporary, 'latest-narrow.png')});
+    assert.equal(await fs.readFile(queuePath, 'utf8'), emptyQueueBytes);
+    await page.setViewportSize({width: 1440, height: 1000});
+    await page.locator('#scope').selectOption('all');
+    await page.locator('#order').selectOption('number');
+    await page.locator('input[name=edition][value=male]').check();
     await page.locator('#search').fill('#13');
     assert.equal(await page.locator('.exercise:visible').count(), 1);
     assert.equal(await page.locator('.exercise-button .regeneration-button').count(), 0);
@@ -64,6 +101,12 @@ const {spawn} = require('node:child_process');
     await ready(1);
     assert.equal((await readQueue()).entries[0].edition, 'female');
     await page.locator('#close').click();
+    await page.locator('#search').fill('');
+    await page.locator('#scope').selectOption('latest');
+    await page.locator('#order').selectOption('newest');
+    assert.deepEqual(await visibleNumbers(), maleLatest);
+    await page.locator('#scope').selectOption('all');
+    await page.locator('#order').selectOption('number');
 
     // Two live tabs apply independent desired-state changes without replacing the file.
     const other = await context.newPage();

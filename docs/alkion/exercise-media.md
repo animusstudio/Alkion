@@ -75,7 +75,16 @@ is required. The page uses the bundled fonts and
 selected image files. Search by exact library number (with an optional `#`) or
 part of an English catalog name. Select an image to inspect it, switch editions,
 or open its full-size file. Escape closes inspection; Previous/Next and the left
-and right arrow keys move through the current search results.
+and right arrow keys move through the displayed results in their current order.
+
+**Show → Latest regenerated** limits the current edition to the reviewed
+regeneration cohort (source illustrations 2021–2360: 77 male and 93 female
+selections). **Order → Newest artwork first** sorts by descending source
+illustration, with exercise number breaking ties. The default remains all images
+in exercise-number order. Search composes with both controls. Edition comparison
+keeps the selected exercise; navigation is disabled when its counterpart is
+outside the filtered results. The URL preserves edition, Show, Order, search and
+inspection, including a [latest/newest view](../../tools/artwork-library/index.html#edition=male&scope=latest&order=newest).
 
 Use **Mark for regen** on a card or in inspection to flag the current edition.
 Male and female marks are separate; pressing a marked control removes its mark.
@@ -180,7 +189,13 @@ The default catalog is the explicitly named
 `app/assets/catalog_trial/catalog.dev.json`; use `--catalog /path/to/catalog.json`
 for another explicit input. The page data is public metadata only; it contains no
 source-sheet paths. Verification fails on missing or mismatched assets, identities,
-numbers, flags or coverage. No artwork is copied or changed by this generator.
+numbers, flags or coverage. The explicit
+`tools/artwork-library/latest-regeneration.json` declares the cohort id, label,
+source illustration bounds and expected edition counts. The generator publishes
+it into page data and rejects inconsistent counts or invalid metadata. Update it
+only with an approved regeneration; queue marks never determine membership.
+An explicit `--latest-regeneration /path/to/metadata.json` can select another
+declaration for verification. No artwork is copied or changed by this generator.
 
 These selections are a **local review candidate**. Existing asset notices retain
 their existing scope; the review page does not broaden any license grant or

@@ -22,6 +22,22 @@
         <label><input type="radio" name="edition" value="male" checked><span>Male</span></label>
         <label><input type="radio" name="edition" value="female"><span>Female</span></label>
       </fieldset>
+      <div class="view-controls">
+        <div class="select-control">
+          <label for="scope">Show</label>
+          <select id="scope" aria-controls="gallery">
+            <option value="all">All images</option>
+            <option value="latest">Latest regenerated</option>
+          </select>
+        </div>
+        <div class="select-control">
+          <label for="order">Order</label>
+          <select id="order" aria-controls="gallery">
+            <option value="number">Exercise number</option>
+            <option value="newest">Newest artwork first</option>
+          </select>
+        </div>
+      </div>
       <div class="search-control">
         <label for="search">Find an exercise</label>
         <input id="search" type="search" placeholder="Number or exercise name" autocomplete="off" spellcheck="false" aria-controls="gallery">
@@ -34,7 +50,7 @@
       <button id="regeneration-download" type="button">Download regen JSON</button>
     </div>
     <p id="notice" class="notice" hidden></p>
-    <p id="empty" class="empty" hidden>No exercises match. Try another name or number, or <button id="clear" type="button">clear search</button>.</p>
+    <p id="empty" class="empty" hidden>No exercises match this view. Try another name or number, change Show, or <button id="clear" type="button">clear search</button>.</p>
     <div id="gallery" class="gallery" aria-label="Numbered exercise artwork"></div>
     <noscript><p class="notice">JavaScript is needed to show this local library. Enable it and reopen this page.</p></noscript>
   </main>

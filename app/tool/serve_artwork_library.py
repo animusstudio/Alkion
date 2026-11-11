@@ -213,7 +213,8 @@ def create_server(queue: Path, port: int) -> ThreadingHTTPServer:
     registry = read(assets / "exercise_artwork/library-numbers.json")
     data = library.build_data(read(assets / "catalog_trial/catalog.dev.json"), registry,
                               {edition: read(assets / "exercise_artwork" / name) for edition, name in
-                               (("male", "manifest.json"), ("female", "female-manifest.json"))}, library.APP)
+                               (("male", "manifest.json"), ("female", "female-manifest.json"))}, library.APP,
+                              read(library.ROOT / "tools/artwork-library/latest-regeneration.json"))
     queue = queue.resolve()
     if queue.is_relative_to(library.ROOT.resolve()):
         raise QueueError("Choose a queue path outside the public repository.")

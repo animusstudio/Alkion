@@ -18,6 +18,9 @@ class ArtworkLibraryTest(unittest.TestCase):
                                      {"variant_key": "exercise_a", "number": 2},
                                      {"variant_key": "retired", "number": 6}]}
         self.manifests = {}
+        self.cohort = {"id": "synthetic", "label": "Latest regenerated",
+                       "source_illustration_min": 800, "source_illustration_max": 1201,
+                       "expected_counts": {"male": 1, "female": 1}}
         for edition in ("male", "female"):
             self.manifests[edition] = {"edition": edition, "entries": [
                 {"variant_key": key, "library_number": number, "review_status": "reviewed",
@@ -33,19 +36,41 @@ class ArtworkLibraryTest(unittest.TestCase):
         self.addCleanup(self.validation.stop)
 
     def build(self):
-        return library.build_data(self.catalog, self.registry, self.manifests, Path("synthetic"))
+        return library.build_data(self.catalog, self.registry, self.manifests, Path("synthetic"), self.cohort)
 
     def test_numbers_survive_catalog_order_rename_and_source_replacement(self):
         before = self.build()
         self.catalog["variants"].reverse()
         self.catalog["variants"][0]["names"]["en"] = "Renamed exercise"
-        self.manifests["female"]["entries"][1]["illustration"] = 1201
+        self.manifests["female"]["entries"][0]["illustration"] = 1201
         after = self.build()
         self.assertEqual([(x["key"], x["number"]) for x in before["items"]],
                          [(x["key"], x["number"]) for x in after["items"]])
-        self.assertEqual(after["items"][0]["editions"]["female"]["illustration"], 1201)
+        self.assertEqual(after["items"][1]["editions"]["female"]["illustration"], 1201)
         self.assertEqual(after["items"][0]["editions"]["female"]["quality_status"], "agreed_defect")
         self.assertEqual(self.validator.call_count, 4)
+
+    def test_cohort_is_explicit_and_source_bounds_are_inclusive(self):
+        self.manifests["female"]["entries"][0]["illustration"] = 1201
+        self.assertEqual(self.build()["latest_regeneration"], self.cohort)
+        self.manifests["female"]["entries"][0]["illustration"] = 1202
+        with self.assertRaisesRegex(ValueError, "count mismatch: female"):
+            self.build()
+
+    def test_stale_counts_and_invalid_cohort_fail_closed(self):
+        for field, value in (("expected_counts", {"male": 2, "female": 1}),
+                             ("expected_counts", {"male": True, "female": 1}),
+                             ("expected_counts", {"male": 1}),
+                             ("source_illustration_min", 1202),
+                             ("source_illustration_max", "1201"), ("id", "")):
+            with self.subTest(field=field, value=value):
+                cohort = copy.deepcopy(self.cohort)
+                cohort[field] = value
+                with self.assertRaises(ValueError):
+                    library.build_data(self.catalog, self.registry, self.manifests, Path("synthetic"), cohort)
+        self.cohort["queue"] = []
+        with self.assertRaisesRegex(ValueError, "metadata fields"):
+            self.build()
 
     def test_missing_edition_and_identity_do_not_substitute_male(self):
         original = copy.deepcopy(self.manifests)

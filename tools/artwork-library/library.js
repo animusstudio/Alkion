@@ -5,6 +5,8 @@
   const gallery = $('gallery');
   const dialog = $('inspection');
   const search = $('search');
+  const scope = $('scope');
+  const order = $('order');
   const data = window.ALKION_ARTWORK_LIBRARY;
   const qualityLabels = {pass: '', agreed_defect: 'Agreed defect', needs_manual_review: 'Needs manual review', secondary_cleared: 'Secondary review cleared'};
   let edition = 'male';
@@ -173,6 +175,9 @@
   }
   function updateHash() {
     const params = new URLSearchParams({edition});
+    if (scope.value !== 'all') params.set('scope', scope.value);
+    if (order.value !== 'number') params.set('order', order.value);
+    if (search.value) params.set('q', search.value);
     if (selected) params.set('exercise', selected.number);
     // replaceState keeps a useful shareable link without one history entry per image.
     // Some file:// browsers restrict history APIs; hash replacement still works there.
@@ -213,30 +218,40 @@
     updateHash();
     if (!dialog.open) dialog.showModal();
   }
-  function changeEdition(value) {
+  function changeEdition(value, writeHash = true) {
     if (!['male', 'female'].includes(value)) return;
     edition = value;
     for (const radio of document.querySelectorAll('input[type=radio]')) radio.checked = radio.value === edition;
     // Update images in place: card geometry, scroll position and selection stay put.
     for (const item of data.items) updateCard(item);
-    if (selected) inspection();
-    summary();
-    updateHash();
+    filter(writeHash);
   }
   function summary() {
-    const defects = data.items.filter(item => item.editions[edition]?.quality_status === 'agreed_defect').length;
-    const uncertain = data.items.filter(item => item.editions[edition]?.quality_status === 'needs_manual_review').length;
-    $('summary').textContent = `${filtered.length} of ${data.items.length} exercises · ${edition === 'male' ? 'Male' : 'Female'} edition · ${defects} agreed defects · ${uncertain} need manual review`;
+    const defects = filtered.filter(item => item.editions[edition]?.quality_status === 'agreed_defect').length;
+    const uncertain = filtered.filter(item => item.editions[edition]?.quality_status === 'needs_manual_review').length;
+    $('summary').textContent = `${filtered.length} of ${data.items.length} exercises · ${edition === 'male' ? 'Male' : 'Female'} edition${scope.value === 'latest' ? ' · ' + data.latest_regeneration.label : ''} · ${defects} agreed defects · ${uncertain} need manual review`;
   }
-  function filter() {
+  function filter(writeHash = true) {
     const query = search.value.trim().toLocaleLowerCase('en');
     const number = query.replace(/^#\s*/, '');
-    filtered = data.items.filter(item => !query || String(item.number) === number || item.name.toLocaleLowerCase('en').includes(query));
+    const cohort = data.latest_regeneration;
+    const ordered = [...data.items].sort((a, b) => (order.value === 'newest' ?
+      (b.editions[edition]?.illustration || 0) - (a.editions[edition]?.illustration || 0) : 0) || a.number - b.number);
+    filtered = ordered.filter(item => {
+      const illustration = item.editions[edition]?.illustration;
+      return (scope.value !== 'latest' || (illustration >= cohort.source_illustration_min && illustration <= cohort.source_illustration_max)) &&
+        (!query || String(item.number) === number || item.name.toLocaleLowerCase('en').includes(query));
+    });
+    // Change actual DOM order too, so keyboard and screen-reader order agree.
+    if (ordered.some((item, index) => gallery.children[index] !== cards.get(item.number).element)) {
+      gallery.append(...ordered.map(item => cards.get(item.number).element));
+    }
     const visible = new Set(filtered.map(item => item.number));
     for (const [number, card] of cards) card.element.hidden = !visible.has(number);
     $('empty').hidden = filtered.length !== 0;
     if (selected) inspection();
     summary();
+    if (writeHash) updateHash();
   }
   function readHash() {
     const params = new URLSearchParams(location.hash.slice(1));
@@ -245,9 +260,16 @@
       notice('Unknown edition in this link. Choose Male or Female to continue.');
       return;
     }
-    changeEdition(nextEdition);
+    scope.value = params.get('scope') === 'latest' ? 'latest' : 'all';
+    order.value = params.get('order') === 'newest' ? 'newest' : 'number';
+    search.value = params.get('q') || '';
+    changeEdition(nextEdition, false);
     const number = params.get('exercise');
-    if (!number) return;
+    if (!number) {
+      if (dialog.open) closeInspection();
+      else setSelected(null);
+      return;
+    }
     const item = data.items.find(item => String(item.number) === number);
     if (item) {
       open(item);
@@ -255,10 +277,14 @@
     } else notice(`Library number #${number} is not in the current catalog.`);
   }
 
-  if (!data || data.format !== 'alkion-artwork-library-v1' || !Array.isArray(data.items) || !data.items.length) {
+  const cohort = data?.latest_regeneration;
+  if (!data || data.format !== 'alkion-artwork-library-v1' || !Array.isArray(data.items) || !data.items.length ||
+      !cohort || typeof cohort.label !== 'string' || !cohort.label.trim() ||
+      !Number.isInteger(cohort.source_illustration_min) || !Number.isInteger(cohort.source_illustration_max) ||
+      cohort.source_illustration_min < 1 || cohort.source_illustration_max < cohort.source_illustration_min) {
     $('summary').textContent = 'Artwork library unavailable.';
     notice('The generated library data is missing or invalid. Run python3 app/tool/prepare_artwork_library.py --write from the Alkion repository, then reopen this page.');
-    for (const input of document.querySelectorAll('input')) input.disabled = true;
+    for (const input of document.querySelectorAll('input, select')) input.disabled = true;
     return;
   }
   const fragment = document.createDocumentFragment();
@@ -295,17 +321,30 @@
   gallery.append(fragment);
   filtered = [...data.items];
   for (const input of document.querySelectorAll('input[type=radio]')) input.addEventListener('change', () => changeEdition(input.value));
-  search.addEventListener('input', filter);
+  search.addEventListener('input', () => filter());
+  scope.addEventListener('change', () => filter());
+  order.addEventListener('change', () => filter());
   $('clear').addEventListener('click', () => { search.value = ''; filter(); search.focus(); });
-  $('close').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('close', () => {
+  function closeInspection() {
     const previous = selected;
     setSelected(null);
+    dialog.close();
     updateHash();
-    if (previous) cards.get(previous.number).button.focus({preventScroll: true});
+    if (previous) {
+      const card = cards.get(previous.number);
+      (card.element.hidden ? scope : card.button).focus({preventScroll: true});
+    }
+  }
+  $('close').addEventListener('click', closeInspection);
+  dialog.addEventListener('cancel', event => { event.preventDefault(); closeInspection(); });
+  dialog.addEventListener('close', () => {
+    // Close events are queued. A later deep link may already have reopened it.
+    if (!dialog.open && selected) closeInspection();
   });
   function move(step) {
-    const index = filtered.indexOf(selected) + step;
+    const current = filtered.indexOf(selected);
+    if (current < 0) return;
+    const index = current + step;
     if (index >= 0 && index < filtered.length) open(filtered[index]);
   }
   $('previous').addEventListener('click', () => move(-1));
