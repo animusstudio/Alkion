@@ -1,6 +1,6 @@
 # Alkion development and qualified driver handoff
 
-2026-11-11 · [Owner-marked male artwork regeneration](../plans/2026-11-11-owner-marked-male-artwork-regeneration.md) · Approved.
+2026-11-11 · [Owner-marked artwork regeneration](../plans/2026-11-11-owner-marked-male-artwork-regeneration.md) · Approved.
 
 2026-11-11 · [Updated artwork and stable numbered library](../plans/2026-11-11-numbered-artwork-library.md) · Done; see acceptance limits.
 
