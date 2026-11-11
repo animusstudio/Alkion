@@ -645,6 +645,44 @@ void main() {
     },
   );
 
+  test(
+    'reconciling a committed intent while the timer row disagrees still adopts the draft row',
+    () async {
+      final issued = await token();
+      final intent = intentFor(issued.action, 1);
+      actions.fail = actions.afterCommit = true;
+      await expectLater(c.applyNotificationIntent(intent), throwsStateError);
+      actions.fail = false;
+      // Only the draft row moves on, so draft and timer disagree.
+      await actions.writeTransaction((tx) async {
+        final row = (await tx.localState(LocalStateKind.draft, 'active'))!;
+        final value = Map<String, Object?>.from(
+          jsonDecode(utf8.decode((row['payload_bytes'] as List).cast<int>()))
+              as Map,
+        )..['restTotal'] = 700;
+        await tx.putLocalState(
+          LocalStateKind.draft,
+          'active',
+          localBytes(value),
+          expectedRevision: row['revision'] as int,
+        );
+      });
+      final outcome = (await c.applyNotificationIntent(intent))!;
+      expect(outcome.outcome, NotificationOutcome.duplicate);
+      expect(drafts.pendingNotificationIntent, isNull);
+      expect(c.restTotal, 700);
+      expect(
+        drafts.persistedRevision,
+        (await row('draft', 'active'))['revision'],
+      );
+      c.addRestTime(1);
+      await c.flushPersistence();
+      expect(c.persistenceError, isNull);
+      expect((await drafts.load())!.restTotal, 701);
+      expect((await payload('timer', 'active'))['restTotal'], 701);
+    },
+  );
+
   for (final after in [false, true]) {
     test(
       'intent ${after ? 'forwarded' : 'refused'} COMMIT retains the exact intent and never applies it twice',

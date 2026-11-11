@@ -195,8 +195,11 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   - A draft and timer that disagree on the rest refuse as `basis_changed`.
   - A redelivery of an older applied step (below `consumed_step`) refuses as
     `conflict`, because the receipt keeps only `last_intent_id`.
-  - A `duplicate` hands back the rest and draft revision SQL holds now, so a
-    reconciling owner never keeps a stale revision.
+  - A `duplicate` always hands back the draft row's current rest and
+    revision, even when the timer row disagrees. The draft is what the owner
+    saves against, so a reconciling owner never keeps a stale revision.
+  - A `duplicate` carries state to adopt, not attribution; callers (T3's
+    drain) must key on the outcome, never treat `change != null` as applied.
 - **2026-11-11, gate: T1 does not ship without T3.** Until T3 posts the step in
   the payload, the notification carries the bare token, which decodes as
   step 1. A second foreground +30s on the same notification is then refused
@@ -226,7 +229,8 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   step), `applyNotificationAction` and `consumeNotificationAction` as the
   legacy bare-token +30s (step 1, fresh intent). Review fixes: a test pins
   `basis_changed` for a stale later step, and a duplicate now adopts the
-  current SQL rest and draft revision (tested with an out-of-band write).
+  draft row's current rest and revision, even when the timer row disagrees
+  (tested with out-of-band writes).
 - T2 — not started.
 - T3 — not started.
 - T4 — not started.

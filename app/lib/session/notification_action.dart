@@ -265,10 +265,10 @@ final class NotificationConsumption {
     : outcome = NotificationOutcome.applied,
       reason = null;
 
-  /// [change] is the rest and draft revision SQL durably holds now, so an
-  /// uncertain COMMIT can adopt them. Null only when the draft and timer rows
-  /// disagree on the rest.
-  const NotificationConsumption.duplicate([this.change])
+  /// [change] is the draft row's current rest and revision: state for a
+  /// reconciling owner to adopt, not attribution. Callers key on [outcome],
+  /// never on `change != null`.
+  const NotificationConsumption.duplicate(CommittedRestChange this.change)
     : outcome = NotificationOutcome.duplicate,
       reason = null;
   const NotificationConsumption.refused(NotificationRefusal this.reason)
@@ -359,19 +359,20 @@ Future<NotificationConsumption> consumeNotificationIntent(
           receipt.evidence['kind'] != intent.kind.wire) {
         return refused(NotificationRefusal.conflict);
       }
-      // A reconciling owner adopts what SQL durably holds now. That is the
-      // committed step unless something wrote the draft since; no owner path
-      // does while the intent is uncertain, but adopting the current rest and
-      // revision keeps the next save from failing on a stale revision.
+      // A reconciling owner adopts what the draft row durably holds now,
+      // because the draft is what it saves against. That is the committed
+      // step unless something wrote the draft since; no owner path does while
+      // the intent is uncertain, but adopting the draft row's rest and
+      // revision (even when the timer row disagrees) means the next save
+      // never fails on a stale revision.
+      final total = d['restTotal'];
       return NotificationConsumption.duplicate(
-        current == null
-            ? null
-            : CommittedRestChange(
-                _instant(current.restStart),
-                current.restTotal,
-                draft['revision'] as int,
-                restEndedAt: _instant(t['restEndedAt']),
-              ),
+        CommittedRestChange(
+          _instant(d['restStart']),
+          total is int ? total : 0,
+          draft['revision'] as int,
+          restEndedAt: _instant(d['restEndedAt']),
+        ),
       );
     }
     if (step > consumed + 1) return refused(NotificationRefusal.gap);
