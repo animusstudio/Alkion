@@ -547,6 +547,7 @@ class _Overview extends StatelessWidget {
         final figure = Visibility.of(context)
             // The figure sits on the page, not a card: its box takes `bg`.
             ? BodyFigure(
+                introKey: DayView,
                 width: width,
                 workload: workload,
                 background: context.tokens.bg,

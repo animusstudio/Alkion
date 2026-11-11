@@ -11,7 +11,9 @@ pipeline in one Android system WebView. No new package is required.
 - `CharacterBodyController`: `front()`, `back()`, `side()`, `rotateBy(radians)`,
   `orbitBy(yaw, pitch)`, `zoomBy`, `setViewport`, `resetView()`, `resume()`,
   `pause()`, `retry()`; readable `yaw` and `pitch` (radians), `zoom`, `pan` and
-  `paused`. Default is paused at front, level. Manual turns pause. `pitch` is
+  `paused`. Default is paused at front, level. Manual turns pause. `resume()`
+  asks for one slow intro turn (see Intro turn below), then the artwork holds
+  still. `pitch` is
   camera elevation (positive looks down from above), clamped to ±45°
   (`maxPitch`); Explore keeps it at 0 (see Camera pitch). Front, Back, Side
   and Reset return it to 0 and advance
@@ -58,13 +60,13 @@ elevation within ±π/4, so a view without it or beyond it is invalid. In additi
 turn modulo 2π. Front/Back advance `command` and reset `turn`; relative drag
 keeps that absolute command and accumulates `turn`. JavaScript applies the
 difference from the last accepted turn at its current rendered angle. The first
-drag therefore starts at the actual autoplay angle even when native telemetry
+drag therefore starts at the actual intro angle even when native telemetry
 is older. Replacing intermediate displays retains all drag movement modulo 2π.
 Each controller action also advances a bounded `revision`, even when turns
 return to the same angle. Status echoes `command`, `turn` and `revision`; Dart
 accepts yaw telemetry only for its current triple, so delayed reports cannot
-overwrite a newer gesture. Autoplay retains the existing periodic telemetry;
-relative drag does not depend on more frequent reports.
+overwrite a newer gesture. The intro reports at most once a second and once
+more on its last frame; relative drag does not depend on more frequent reports.
 
 Dart pipelines displays: the latest state leaves at most once per frame, in a
 post-frame callback after that frame's input and animation, without awaiting
@@ -75,13 +77,34 @@ backgrounded surface sends immediately, because it may get no frames. Android
 retains one JavaScript evaluation in flight and one replaceable latest
 snapshot containing both display and host lifecycle state. Closing a view or
 losing its process invalidates pending work and completion callbacks. One RAF
-scheduler handles manual invalidation, resizing and autoplay: updates before a
-frame draw only the latest state, identical paused displays do not redraw, and
+scheduler handles manual invalidation, resizing and the intro turn: updates
+before a frame draw only the latest state, identical displays do not redraw, and
 manual controls still work under reduced motion. Hidden state cancels scheduled
-drawing and clears the autoplay time anchor; resuming never catches up elapsed
-background time. Character sampling reuses renderer-owned temporary storage;
+drawing; nothing catches up elapsed background time. Character sampling reuses renderer-owned temporary storage;
 its shade, anchor, coverage, edge direction, glyph and alpha outputs match the
 accepted sampler's frozen synthetic references.
+
+## Intro turn
+
+Owner choice 2026-11-11: the figure turns once, slowly, when it appears, then
+holds still, so idle artwork requests no frames (`assets/character_body/motion.js`).
+
+- One full turn from the current yaw over `INTRO_MS` = 8 s on a sine ease-in-out,
+  ending exactly where it began. Sine keeps the peak speed at π/2 × the mean
+  (about 71°/s); a stalled frame advances it at most 100 ms.
+- JavaScript arms it when a display turns `paused` from true to false: the first
+  display of every lease (a new view, or Retry, which recreates the view) when
+  the controller is unpaused, or an explicit `resume()`. The next drawn frame
+  starts it when it may animate; under reduced motion or paused it is dropped.
+- Hiding, pausing (a drag start), reduced motion, failure or a new load end a
+  running intro for good. Hiding and showing the same lease (route cover, app
+  lifecycle) never re-arms it. After it, frames run only for changes: drags,
+  view commands, display changes and resizes, each drawing once per frame.
+- Callers unmount hidden figures (pager slides, tab switches), so `BodyFigure`
+  remembers the turn: once per figure, and once per `introKey` in the route's
+  `PageStorage`. Today's split pager, the Split volume card and the day view each
+  pass a key, so returning to them stays still; the workload sheet is a new view
+  and turns once each time it opens. Explore opens paused and never turns.
 
 ## Rendering pipeline
 

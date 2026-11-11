@@ -26,7 +26,7 @@ class CharacterBodyController extends ChangeNotifier {
   double _pitch = 0;
   double _zoom = 1;
   Offset _pan = Offset.zero;
-  // Cumulative modulo turn is independent of delayed autoplay telemetry.
+  // Cumulative modulo turn is independent of delayed intro-turn telemetry.
   // JS applies its difference at the current rendered angle, even when the
   // native queue replaces intermediate drag messages with the latest one.
   double _turn = 0;
@@ -542,7 +542,7 @@ class _CharacterBodyState extends State<CharacterBody>
       final yaw = event['yaw'];
       if (yaw is num) {
         // Acknowledgments belong to the exact absolute anchor and cumulative
-        // turn. A delayed autoplay report cannot overwrite a newer gesture.
+        // turn. A delayed intro report cannot overwrite a newer gesture.
         widget.controller.acknowledgeRenderedYaw(
           yaw: yaw.toDouble(),
           command: event['command'],
