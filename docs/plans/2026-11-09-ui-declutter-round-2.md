@@ -255,4 +255,4 @@ device measurement and needs the coordinator's phone access, so the coordinator 
 
 ## Next
 
-T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
+All tasks are done and integrated. The owner device check of the `651a882e` APK is pending, then publication.

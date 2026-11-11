@@ -1,11 +1,11 @@
 # Alkion development and qualified driver handoff
 
-2026-11-09 · [UI declutter round 2](../plans/2026-11-09-ui-declutter-round-2.md) · Approved.
-2026-11-09 · [Toast redesign](../plans/2026-11-09-toast-redesign.md) · Approved.
-2026-11-09 · [Live workout declutter](../plans/2026-11-09-live-workout-declutter.md) · Approved.
-2026-11-09 · [Training day view](../plans/2026-11-09-training-day-view.md) · Approved.
-2026-11-09 · [Day editor rebuild](../plans/2026-11-09-day-editor-rebuild.md) · Approved.
-2026-11-09 · [Split volume overview](../plans/2026-11-09-split-volume-overview.md) · Approved.
+2026-11-09 · [UI declutter round 2](../plans/2026-11-09-ui-declutter-round-2.md) · Code-complete; owner device check pending.
+2026-11-09 · [Toast redesign](../plans/2026-11-09-toast-redesign.md) · Code-complete; owner device check pending.
+2026-11-09 · [Live workout declutter](../plans/2026-11-09-live-workout-declutter.md) · Code-complete; owner device check pending.
+2026-11-09 · [Training day view](../plans/2026-11-09-training-day-view.md) · Code-complete; owner device check pending.
+2026-11-09 · [Day editor rebuild](../plans/2026-11-09-day-editor-rebuild.md) · Code-complete; owner device check pending.
+2026-11-09 · [Split volume overview](../plans/2026-11-09-split-volume-overview.md) · Code-complete; owner device check pending.
 
 2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Done.
 

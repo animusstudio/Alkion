@@ -280,4 +280,4 @@ T3 after both; T4 (ARBs) last.
 
 ## Next
 
-Code-complete. Integrated in `feat/ui-declutter-20261109`; full suite, Dev APK and owner device check follow.
+Code-complete. Integrated in `feat/ui-declutter-20261109`, then carried by [round 2](2026-11-09-ui-declutter-round-2.md), which records the full suite and Dev APKs. Owner device check pending.
