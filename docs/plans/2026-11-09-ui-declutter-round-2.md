@@ -211,6 +211,20 @@ device measurement and needs the coordinator's phone access, so the coordinator 
     - The preview harness's Rotate now plays one turn.
   - **On-device idle-frame numbers:** pending.
 
+- **Integrated at `4a97ec5`** (T1–T6 plus published main `f919aea`).
+  - `make -C app test TEST=--concurrency=2` → +3670 ~3 −4. The three inherited failures, plus
+    `workflow_state_quarantine_test` A6. That case is an F1 × U2 interaction: F1's fixture builds
+    an unversioned legacy draft by removing the catalog block keys, but did not know U2's new
+    `catalogLastSets` key. Real legacy drafts never carry it.
+  - Coordinator fix `02a1411`: the fixture removes that key too. That file plus `draft_json_test`
+    → +66 pass.
+  - `node tool/check_character_body.mjs` passes; analyze clean; `format` 0 changed.
+- **Private Dev APK `c634ca9e…`** built at `02a1411`. Catalog hashes match (`4ff35c33…`,
+  `3a3d197d…`).
+  - The first two builds failed the APK verifier with "stale merged JNI libapp.so": Gradle
+    reused `merged_jni_libs`/`merged_native_libs` from the earlier build.
+  - Removing those `devRelease` intermediates fixed it.
+
 ## Next
 
 T1, T2 and T5 in parallel (three agents), then T4, T3 and T6.
