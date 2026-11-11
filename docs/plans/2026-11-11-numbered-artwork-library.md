@@ -73,6 +73,8 @@ a permanent exercise number and edition.
 
 ## Task state and qualification
 
+Implementation tree: `1100a62`; the checks below qualify that tree.
+
 T1, T2 and T3 are **Done**. The library maps all 760 male and 760 female
 current variants. It preserves 707 male WebPs byte-for-byte, replaces 53 male
 images and adds 760 female images. The append-only registry holds 760 reserved

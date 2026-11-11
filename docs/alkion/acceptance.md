@@ -8,6 +8,8 @@ observed: 2026-11-11
 
 ## Updated artwork and stable numbered review library — 2026-11-11
 
+Qualified implementation tree: `1100a62`.
+
 The [approved plan](../plans/2026-11-11-numbered-artwork-library.md) updates
 all 760 current catalog variants in both editions. The append-only registry
 reserves 760 stable numbers in the range 1–792, preserving gaps; male and female
