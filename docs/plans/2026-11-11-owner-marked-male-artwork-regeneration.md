@@ -1,7 +1,7 @@
 # Owner-marked artwork regeneration
 
-Date: 2026-11-11. Lane: **Standard**. Status: **Approved** by the owner
-(explicit regeneration direction and manual completion mark, 2026-11-11).
+Date: 2026-11-11. Lane: **Standard**. Status: **Complete (local qualification)**.
+Owner authorized regeneration after completing both manual reviews, 2026-11-11.
 Parent: [development](../alkion/development.md).
 
 ## Outcome
@@ -22,11 +22,13 @@ and the HTML review library. Keep all review marks for owner reassessment.
 - Initial batches 506–525 cover male targets; 526–549 cover female targets.
   Initial source IDs span 2021–2196. Bounded corrections receive fresh reserved
   batches and IDs; targeted edits preserve already successful geometry.
+  When local edits retain defects, use a clearer pose guide and a fresh
+  composition of the same identities; context cells never replace app assets.
 - Keep the fixed source-batch and source-ID allocations distinct from stable
   library numbers. Preserve originals, prompts, prompt hashes, source IDs,
   candidate outcomes and review evidence. Never reuse source IDs; rejected
   candidates remain recorded. Bounded corrections receive new source IDs.
-- Review full-body pose, mechanics, durable-body equipment, perspective and
+- Review full-body pose, mechanics, equipment geometry, perspective and
   technical extraction details. Artwork conveys no new canonical muscle facts
   or health claims; historical overlays remain historical targets.
 - Keep the live regeneration queue and every mark, including after replacing
@@ -60,19 +62,36 @@ and the HTML review library. Keep all review marks for owner reassessment.
 
 1. **T1 — Generate candidates.** Image generation, 20 artists; built-in
    imagegen. Generate the 44 initial source batches and bounded corrections;
-   preserve provenance and rejected candidates. Status: in progress.
+   preserve provenance and rejected candidates. Status: complete.
 2. **T2 — Independent visual review.** Art review, 20 reviewers independent of
    generation. Inspect every candidate and any corrected candidate against A2;
-   reject defects with recorded reasons. Status: pending.
+   reject defects with recorded reasons. Status: complete.
 3. **T3 — Extract, import and qualify.** Standard asset preparation, Sol high;
    independent Sol medium review (up to four code workers/reviewers). Update
    only approved selections, run focused checks and compare changed hashes to
-   the frozen baseline. Status: pending.
+   the frozen baseline. Status: complete.
 
 ## Task state and qualification
 
-T1: initial 44 sheets saved; bounded corrective edits in progress. T2: initial
-independent reviews complete; corrective reviews in progress. T3: qualified
-subsets staged privately; import waits for all 170 targets to qualify.
+T1: complete. All 85 source sheets (batches 506–590, source IDs 2021–2360)
+and their rejected attempts, prompts and review evidence are retained.
+T2: complete. All 170 selected replacements passed independent visual review.
+T3: complete. Exactly 170 WebPs, two manifests, generated Dart registrations
+and gallery data were applied from the independently reviewed proposal.
 
-Next: complete candidate generation and independent art review before import.
+Qualification passed:
+
+- Exactly 77 male and 93 female replacements; the other 1,350 asset files and
+  their manifest selections remain unchanged.
+- Registry bytes and all 170 saved review marks remain unchanged. The library
+  still has 760 identities, with reservations through 792 and next number 793.
+- Full 1,520-image preparation and gallery validation, 28 Python tests,
+  25 Flutter artwork/media/UI tests, and offline/disposable-queue browser suites.
+- Live browser verification served all 170 expected new image hashes; edition
+  switches, 77/93 markers, desktop and 360px layouts passed without page errors.
+- Independent implementation review approved the exact 174-file import;
+  applied-file hashes match that reviewed preview. Strict extraction guards
+  remain unchanged, with source-bound annotations for reviewed exceptions.
+
+Owner acceptance remains separate: marks are retained for the next library
+review. Local qualification does not publish or install the artwork.
