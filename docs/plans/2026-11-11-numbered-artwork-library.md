@@ -76,7 +76,7 @@ a permanent exercise number and edition.
 ### T4 — Saved regeneration marks
 
 Approved owner extension, 2026-11-11: "add to the library a marker that saves
-the image number in a file for regen". Status: **In progress**.
+the image number in a file for regen". Status: **Done** at `d36e6b5c`.
 
 Add an edition-specific mark/unmark control to cards and inspection. A local
 loopback review helper saves an explicit JSON queue file atomically; retain
@@ -88,6 +88,11 @@ Standard scripts/HTML task: Sol high implementation, Sol medium independent
 review. Check persistent reload/unmark, male/female separation, concurrent
 updates, invalid identities/files, save failures and desktop/narrow controls
 using disposable queues. Root coordinates the existing local preview switch.
+
+T4 qualification: server/API tests PASS (9); gallery preparation tests PASS (7);
+real HTTP and offline browser persistence, failure/retry, export and layout
+checks PASS with disposable queues. Independent review PASS; visual disposition
+ship. Existing image/app qualification inputs are unchanged.
 
 Implementation tree: `1100a62`; the checks below qualify that tree.
 

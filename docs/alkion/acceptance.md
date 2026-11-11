@@ -6,6 +6,16 @@ observed: 2026-11-11
 
 # Alkion integrated acceptance
 
+## Saved artwork regeneration marks — 2026-11-11
+
+The numbered library now marks/unmarks each edition independently and saves
+stable exercise numbers, variant keys and image snapshots to an explicit local
+JSON queue. Reload, atomic concurrent updates, retries and corrupt-file
+preservation passed disposable server/API (9) and browser checks at `d36e6b5c`.
+Offline file viewing labels browser-only marks and offers JSON download;
+HTTP marking requires the local saving helper. Independent review PASS and
+desktop/narrow visual review ship. No image generation is triggered.
+
 ## Updated artwork and stable numbered review library — 2026-11-11
 
 Qualified implementation tree: `1100a62`.
