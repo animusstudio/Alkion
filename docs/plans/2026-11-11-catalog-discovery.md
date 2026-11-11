@@ -126,4 +126,14 @@ publishes, verifies CI/merge, rebuilds the private Dev APK and updates the paren
 pin. Full app tests, analysis/format, focused catalog/binding checks and packaged
 asset/native-library guards are required. Previous evidence remains dated.
 
-T4–T5 pending. Publication approval covers this bounded continuation.
+T4 complete at `1f84ba4a`: 49 focused tests PASS; full suite 3,441 PASS,
+three existing skips, zero failures (742 seconds); analysis zero issues and owned
+format/diff checks PASS. Tests now prove optional measurement disclosure without
+editing evidence and await observed workout completion states. No runtime change.
+T5 code and outgoing review PASS, no findings; final evidence documentation and
+exact-head CI gate publication. Publication approval covers this continuation.
+
+Actual-bundle qualification at `1f84ba4a`: nine tests PASS, zero skips (11 seconds),
+242 naming/control probes plus 512 discovery probes; loader and four saved bindings
+with completed history PASS. Prior private evidence was preserved and restored.
+Source hashes and receipts remain private; no corpus is committed publicly.

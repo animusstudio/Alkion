@@ -6,6 +6,29 @@ observed: 2026-11-11
 
 # Alkion integrated acceptance
 
+## Catalog publication qualification — 2026-11-11
+
+The integrated catalog branch includes current public main and the latest private
+naming bundle: 771 executions and 1,109 scoped terms. Vertical Traction, Delts
+Machine and leg curling are available in both English and Italian interfaces.
+The earlier metric-control failures were stale expectations for optional fields;
+tests now exercise More measurements and preserve unset evidence. The integrated
+workflow test waits for the rendered live set and explicit Finish/Summary states.
+No product behavior changed for those fixes.
+
+At `1f84ba4a`, the full app suite passes **3,441 tests, zero failures and three
+existing skips**. Focused checks pass 49 tests; analysis reports zero issues.
+Ignored private proof harnesses were temporarily isolated for analysis and then
+restored. This supersedes the earlier full-suite failure for the integrated tree;
+the earlier device evidence and its limits remain unchanged. Publication proceeds
+through the reviewed PR with green exact-head checks; no catalog redistribution
+or owner-device qualification is implied.
+
+Nine actual-bundle tests also pass on `1f84ba4a`: 242 machine-name/control
+queries, 512 prior discovery probes, loader admission and four saved bindings
+with byte-identical completed history. All 771 execution definitions and canonical
+labels remain compatible. Exact private receipts bind the tested source hashes.
+
 ## Bilingual catalog discovery — 2026-11-11
 
 Implements the approved [catalog discovery plan](../plans/2026-11-11-catalog-discovery.md).
