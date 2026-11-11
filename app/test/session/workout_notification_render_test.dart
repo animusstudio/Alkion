@@ -32,6 +32,27 @@ void main() {
     }
   });
 
+  test('the owner view stores the resolved locale, never null', () {
+    final platform = notificationLocale(null);
+    expect(platform, isNotEmpty);
+    final view = workoutNotificationView(
+      name: 'Synthetic',
+      startedAt: DateTime.utc(2026, 6, 3, 10),
+      nextName: 'Row',
+    );
+    expect(view.locale, platform);
+    expect(view.restBody, notificationNextBody(platform, 'Row', 'x'));
+    expect(
+      workoutNotificationView(
+        name: 'Synthetic',
+        startedAt: DateTime.utc(2026, 6, 3, 10),
+        locale: 'it',
+      ).locale,
+      'it',
+    );
+    expect(notificationLocale('de'), 'de');
+  });
+
   test('+30s holds the fixed first action index', () {
     expect(addRestActionIndex, 0);
     final actions = workoutNotificationActions();

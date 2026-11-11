@@ -178,6 +178,15 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
 - **The secondary engine stays resident** for the life of the process once a
   background action has run.
 
+## Coordinator decisions
+
+- **2026-11-11, D1 amendment (T0 review).** The pure renderer
+  `workout_notification_render.dart` also imports `dart:ui`, for
+  `PlatformDispatcher`'s locale fallback when no locale is stored (a legacy or
+  view-less payload). The guard pins the allowed `dart:` imports of every
+  module in the background-safe closure, so any other `dart:` library (for
+  example `dart:ffi` or `dart:isolate`) fails until it is reviewed and listed.
+
 ## Task state
 
 - T0 — done, awaiting review. `d6b7bf5d` adds the pure `notification_envelope.dart`
@@ -186,7 +195,10 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   (builders, `_notifStrings`, `renderRestMirror`, fixed +30s index 0), which
   `workout_notification.dart` delegates to and re-exports; `owns` is now
   `ownsNotificationAction`. Guard, envelope and renderer tests added; the
-  existing notification tests pass unchanged.
+  existing notification tests pass unchanged. Review fixes: the owner view
+  stores a resolved locale, `notificationSupportRoot` mirrors the owner's
+  root derivation, a title is never shortened to nothing, and the guard pins
+  `dart:` imports and the pending background modules.
 - T1 — not started.
 - T2 — not started.
 - T3 — not started.

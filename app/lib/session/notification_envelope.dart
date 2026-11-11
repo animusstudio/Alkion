@@ -25,6 +25,17 @@ const notificationWakeMessage = 'alkion-notification-wake/1';
 String get notificationPortName =>
     '${AlkionIdentity.applicationId}.notification-intents';
 
+/// The support root a support directory names, without Flutter: the same
+/// derivation as `checkedAlkionSupportRoot` in `main.dart` (a directory
+/// already named for the application is the root, otherwise the root is its
+/// application-named child). The background passes path_provider's support
+/// directory here; the owner passes its checked root straight to
+/// [notificationJournalDirectory].
+Directory notificationSupportRoot(Directory supportDirectory) =>
+    p.basename(supportDirectory.path) == AlkionIdentity.applicationId
+    ? supportDirectory
+    : Directory(p.join(supportDirectory.path, AlkionIdentity.applicationId));
+
 /// The only journal-path function. Both engines pass their support root: the
 /// owner its checked root, the background its derivation from the files
 /// directory. The journal is a sibling of that root (like the first-entry
@@ -233,14 +244,15 @@ final class NotificationEnvelope {
 
   /// Fits the payload into [notificationPayloadByteLimit] UTF-8 bytes: first
   /// whole, then with the view's title shortened on a code point boundary,
-  /// then without a view (the tap still journals but cannot render). Null
-  /// only if the action and step alone do not fit.
+  /// then without a view (the tap still journals but cannot render). A title
+  /// is never shortened to nothing: the view is dropped instead. Null only if
+  /// the action and step alone do not fit.
   String? encodeWithinBudget() {
     final whole = encode();
     if (whole != null || view == null) return whole;
     final title = view!.title.runes.toList();
     String? fitted;
-    var low = 0, high = title.length - 1;
+    var low = 1, high = title.length - 1;
     while (low <= high) {
       final keep = (low + high) ~/ 2;
       final payload = NotificationEnvelope(

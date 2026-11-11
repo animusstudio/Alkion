@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:alkion/identity/alkion_identity.dart';
+import 'package:alkion/main.dart' show checkedAlkionSupportRoot;
 import 'package:alkion/session/notification_envelope.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -331,6 +332,44 @@ void main() {
       expect(kept, base.substring(0, base.length - 2));
     });
 
+    test('a title is never shortened to nothing: the view is dropped', () {
+      final action = _action();
+      // The longest rest body that fits beside an empty title: 4096 bytes.
+      var body = '';
+      while (NotificationEnvelope(
+            action: action,
+            step: 1,
+            view: _view(title: '', restBody: '${body}a'),
+          ).encode() !=
+          null) {
+        body = '${body}a';
+      }
+      String? fit(String title, String restBody) => NotificationEnvelope(
+        action: action,
+        step: 1,
+        view: _view(title: title, restBody: restBody),
+      ).encodeWithinBudget();
+      final full = NotificationEnvelope(
+        action: action,
+        step: 1,
+        view: _view(title: '', restBody: body),
+      ).encode()!;
+      expect(_bytes(full), 4096);
+
+      // No room for one code point: the view goes, never a blank title.
+      final dropped = NotificationEnvelope.decode(fit('abc', body))!;
+      expect(dropped.view, isNull);
+      // One byte of room: one ASCII code point stays.
+      final shortened = fit('abc', body.substring(1))!;
+      expect(_bytes(shortened), 4096);
+      expect(NotificationEnvelope.decode(shortened)!.view!.title, 'a');
+      // One byte of room cannot hold a 4-byte emoji: the view goes.
+      expect(
+        NotificationEnvelope.decode(fit('😀a', body.substring(1)))!.view,
+        isNull,
+      );
+    });
+
     test('when shortening the title is not enough, the view is omitted', () {
       final body = 'Ü' * 2100;
       final fitted = NotificationEnvelope(
@@ -410,6 +449,35 @@ void main() {
   });
 
   group('journal directory and port', () {
+    test(
+      'the support root matches the owner derivation in main.dart',
+      () async {
+        final base = p.join(Directory.systemTemp.path, 'synthetic-support');
+        for (final supplied in [
+          p.join(base, 'files'),
+          p.join(base, 'files', ''),
+          p.join(base, 'files', AlkionIdentity.applicationId),
+          p.join(base, AlkionIdentity.applicationId, 'files'),
+        ]) {
+          final owner = await checkedAlkionSupportRoot(
+            verifyIdentity: () async => null,
+            supportDirectory: () async => Directory(supplied),
+          );
+          final background = notificationSupportRoot(Directory(supplied));
+          expect(background.path, owner.path, reason: supplied);
+          expect(
+            notificationJournalDirectory(background).path,
+            notificationJournalDirectory(owner).path,
+            reason: supplied,
+          );
+        }
+        expect(
+          notificationSupportRoot(Directory(p.join(base, 'files'))).path,
+          p.join(base, 'files', AlkionIdentity.applicationId),
+        );
+      },
+    );
+
     test('the journal is a variant-scoped sibling of the support root', () {
       final files = p.join(Directory.systemTemp.path, 'synthetic-files');
       final root = Directory(p.join(files, AlkionIdentity.applicationId));

@@ -12,6 +12,22 @@ const backgroundSafe = <String>[
   'session/workout_notification_render.dart',
 ];
 
+/// Background modules that must join [backgroundSafe] once they exist.
+const pendingBackgroundModules = <String>[
+  'session/notification_background.dart',
+  'session/notification_journal.dart',
+];
+
+/// The `dart:` libraries each reachable module may import. A reachable
+/// module that is not listed, or a new `dart:` import (`dart:ffi`,
+/// `dart:isolate`, ...), fails until it is reviewed and listed here.
+const allowedDartImports = <String, Set<String>>{
+  'session/notification_envelope.dart': {'dart:convert', 'dart:io'},
+  // Coordinator decision 2026-11-11: PlatformDispatcher's locale fallback.
+  'session/workout_notification_render.dart': {'dart:ui'},
+  'identity/alkion_identity.dart': {'dart:io'},
+};
+
 /// Paths under `lib/` that must never be reachable.
 const forbiddenPrefixes = <String>[
   'store/',
@@ -97,15 +113,35 @@ void main() {
     expect(closure.reachable, contains('identity/alkion_identity.dart'));
   });
 
+  test('every background module is a guarded root', () {
+    for (final module in pendingBackgroundModules) {
+      if (File(p.join('lib', module)).existsSync()) {
+        expect(backgroundSafe, contains(module), reason: module);
+      }
+    }
+  });
+
+  test('each reachable module imports only its listed dart: libraries', () {
+    final closure = importClosure(backgroundSafe, _readLib);
+    expect(allowedDartImports.keys.toSet(), closure.reachable);
+    for (final path in closure.reachable) {
+      final dart = directiveUris(
+        _readLib(path),
+      ).where((uri) => uri.startsWith('dart:')).toSet();
+      expect(dart, allowedDartImports[path], reason: path);
+    }
+  });
+
   test('the pure modules import only their declared dependencies', () {
-    Set<String> direct(String path) => directiveUris(
-      _readLib(path),
-    ).where((uri) => !uri.startsWith('dart:')).toSet();
+    Set<String> direct(String path) => directiveUris(_readLib(path)).toSet();
     expect(direct('session/notification_envelope.dart'), {
+      'dart:convert',
+      'dart:io',
       'package:path/path.dart',
       '../identity/alkion_identity.dart',
     });
     expect(direct('session/workout_notification_render.dart'), {
+      'dart:ui',
       'package:flutter_local_notifications/flutter_local_notifications.dart',
       'package:timezone/timezone.dart',
       '../identity/alkion_identity.dart',

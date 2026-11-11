@@ -77,10 +77,15 @@ const _notifStrings = <String, Map<String, String>>{
   },
 };
 
+/// The language code notification strings use: the persisted override, else
+/// the platform locale's.
+String notificationLocale(String? locale) =>
+    locale ?? PlatformDispatcher.instance.locale.languageCode;
+
 /// Resolves a notification string for the active locale WITHOUT a BuildContext
 /// Order: persisted override → platform locale → en.
 String notifString(String? locale, String key) {
-  final code = locale ?? PlatformDispatcher.instance.locale.languageCode;
+  final code = notificationLocale(locale);
   final table = _notifStrings[code] ?? _notifStrings['en']!;
   return table[key] ?? _notifStrings['en']![key]!;
 }
@@ -94,7 +99,9 @@ String notificationNextBody(String? locale, String? nextName, String fallback) {
 }
 
 /// The view the owner renders for a workout: the bodies carry the next-set
-/// line, every label comes from [locale] at render time.
+/// line, every label comes from the view's locale at render time. The locale
+/// is resolved here, never stored as null, so a render in another engine
+/// uses the owner's language.
 NotificationView workoutNotificationView({
   required String name,
   required DateTime startedAt,
@@ -102,15 +109,18 @@ NotificationView workoutNotificationView({
   int restTotal = 0,
   String? nextName,
   String? locale,
-}) => NotificationView(
-  title: name,
-  restBody: notificationNextBody(locale, nextName, notifString(locale, 'rest')),
-  elapsedBody: notificationNextBody(locale, nextName, name),
-  startedAt: startedAt,
-  restStart: restStart,
-  restTotal: restTotal,
-  locale: locale,
-);
+}) {
+  final code = notificationLocale(locale);
+  return NotificationView(
+    title: name,
+    restBody: notificationNextBody(code, nextName, notifString(code, 'rest')),
+    elapsedBody: notificationNextBody(code, nextName, name),
+    startedAt: startedAt,
+    restStart: restStart,
+    restTotal: restTotal,
+    locale: code,
+  );
+}
 
 /// Pure payload mapping for the ongoing workout notification (testable, no
 /// plugin types). Elapsed mode: `when` = session start, Android chronometer
