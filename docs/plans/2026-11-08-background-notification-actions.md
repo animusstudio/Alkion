@@ -299,9 +299,25 @@ are **serial** with respect to `main.dart` and `workout_notification.dart`.
   registered before drain #1, `init` draining before it reconciles, the
   abandoned failed open, the required journal and the absent-total
   duplicate; `RecordingNotification` moved to `test/support/`.
-- T4 — not started.
+- Device fixes after the first OG3 run: `0175b603` lets the private Dev
+  release APK route take `ALKION_NOTIFICATION_TRACE=1`; `9dc2fbac` pins both
+  actions in the identity tests; `b6f1fc04` updates the notification in place
+  (only the pending rest-end alarm is cancelled first), after the owner saw it
+  vanish and reappear on every tap.
+- OG3/OG4 — run on the owner's A024 (Android 17, patch 2026-09-01) on
+  2026-11-11: foreground (14/14, p90 402 ms), backgrounded (9/9, p90 172 ms)
+  and swiped from recents (2/2 applied at next open, which is also the OG4
+  killed-state row). No tap lost, no refusal, every p90 under 3 s: design (a)
+  stands. Deviation: latency runs from the `getevent` touch-down to the
+  system's `notification_enqueue`, not to a screen-recording frame. The owner
+  waived the other OG3 states and OG4 rows the same day.
+- T4 — docs written: `recovery.md` (new "Notification actions" section and
+  the two "background +30s" phrases), `acceptance.md` (dated F2 entry with
+  the device table and the waived states), `android-smoke.md` (the
+  notification-action step), `development.md`, and the trace flag in
+  `app/README.md`.
 
 ## Next
 
-Start after P8 and F1 merge. OG3
-decides whether design (a) stands or the fallback gets specified.
+Independent review of the device fixes and T4, then the outgoing-range review
+and delivery after owner approval.

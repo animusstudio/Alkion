@@ -77,7 +77,10 @@ ANDROID_USER_HOME=/tmp/alkion-debug-user make -C app build-catalog-dev
 ```
 
 `build-catalog-dev-local-test-release` (with `ALKION_LOCAL_RELEASE_TEST=1` and
-an explicit `CATALOG_DEV_NDK`) is the optimized ARM64 variant. Before
+an explicit `CATALOG_DEV_NDK`) is the optimized ARM64 variant. Adding
+`ALKION_NOTIFICATION_TRACE=1` to that route compiles in the `alkion-notif`
+logcat markers used for the notification-action device check; no other route
+sets it. Before
 2026-11-08 the staging step was `stage-catalog-trial` with
 `CATALOG_TRIAL_INPUT`/`CATALOG_TRIAL_SHA256`; existing staging under
 `assets/catalog_trial/` and `build/private-catalog-trial/` stays valid and

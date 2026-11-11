@@ -139,7 +139,12 @@ normal app, from the private Dev build: stage once with
 Since 2026-11-08, History and Progress show no `reps-compat/1` compatibility
 caption; the derivation, its numbers and its exports are unchanged. When exact
 alarms are not allowed, rest notifications fall back to inexact scheduling
-without a separate "may be delayed" notice. Every ARB key must be used by app
+without a separate "may be delayed" notice. Since 2026-11-11 the rest
+notification's +30s and Skip rest act in the background through a durable
+intent journal that the app applies at its next drain
+([notification actions](recovery.md#notification-actions)); the private Dev
+release APK accepts `ALKION_NOTIFICATION_TRACE=1` for `alkion-notif` logcat
+markers. Every ARB key must be used by app
 code in all four locales (`test/l10n/unused_keys_test.dart`).
 
 Capture evidence checkers remain available; old capture-production and release

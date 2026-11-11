@@ -1,10 +1,71 @@
 ---
 app: alkion
 stage: development
-observed: 2026-11-09
+observed: 2026-11-11
 ---
 
 # Alkion integrated acceptance
+
+## F2 background notification actions — 2026-11-11
+
+Implements the approved [background notification actions plan](../plans/2026-11-08-background-notification-actions.md)
+([spec](../specs/2026-11-08-background-notification-actions.md)). Before it,
++30s brought the app forward and there was no Skip.
+Contract: [recovery](recovery.md#notification-actions).
+
+- The rest countdown notification offers **+30s** and **Skip rest** (that
+  order, in en, it, de and es). Neither opens the app; a body tap still opens
+  the workout, and legacy `/1` body payloads keep working (A21).
+- A tap is journaled durably by a background handler that never opens the
+  store, then applied by the app's main isolate through step receipts and one
+  token rule: applied, duplicate (adopted state, no second change) or refused
+  with a reason, writing nothing (A5–A12, A20).
+- Each visible tap counts once, with no debounce; double and mixed taps fold
+  in order. With the app running, the handler wakes it and the app
+  re-renders from SQL; otherwise the handler renders a provisional mirror from
+  the journal (A7, A10, A19, A22).
+- Runtime open follows spec D6: the port is registered before the first drain,
+  drains run after F1's quarantine, a failed open unregisters it, and with no
+  active workout a leftover notification is cancelled. Close stops wake-ups
+  before teardown (A1–A4, A13–A19).
+- A backup drains first and holds no journal; after a restore, old-generation
+  entries are refused and removed; a populated journal changes neither the
+  fresh-start nor the restore inventory. Undecodable entries are kept as
+  `notification_intent_unreadable` reviews (A20, A23).
+- The notification is updated in place under id 4101. Only the pending
+  rest-end alarm is cancelled before an update, so the visible notification no
+  longer vanishes and reappears (owner device report, fixed in `b6f1fc04`).
+- The private Dev release APK route accepts `ALKION_NOTIFICATION_TRACE=1`,
+  which compiles in `alkion-notif` logcat markers; without it no marker code
+  ships.
+- No schema migration; the store stays at schema 6.
+
+**Device (OG3/OG4), owner's A024, Android 17, patch 2026-09-01, private Dev
+release APK with the trace flag (`c268ca50`), 2026-11-11.** Latency was taken
+from the touch-down (`getevent`) to the system's `notification_enqueue` for id
+4101, both on the phone's monotonic clock, instead of screen-recording frames.
+
+| State | Taps | Journaled → decided | Refused | Touch → post p90 |
+| --- | --- | --- | --- | --- |
+| Foreground, shade down (in-place build) | 14 (13 +30s, 1 Skip) | 14/14 applied | 0 | 402 ms |
+| Backgrounded | 9 (8 +30s, 1 Skip) | 9/9 applied | 0 | 172 ms |
+| Swiped from recents (process killed) | 2 +30s | 2/2 applied at next open | 0 | provisional render 27–40 ms after `received` |
+
+An earlier foreground run on the cancel-then-post build (10 taps, 10/10, p90
+205 ms) showed the vanish-and-reappear flicker that `b6f1fc04` fixes. The
+killed run is also the OG4 killed-state row: the first tap cold-started the
+process through the plugin's receiver, both taps were journaled and rendered
+without the app, and the next open applied them in order. Every tap was
+journaled and decided, and every p90 is under the 3 s bar, so design (a)
+stands without the fallback.
+
+**Not device-run (owner waiver, 2026-11-11):** lock screen, Doze, a frozen
+cached process, battery saver with the restricted bucket, taps during a cold
+launch or a restore, and the OG4 rows for the alert at the new end after +30s
+and never after Skip, ghost cancel, `profile_in_use` during a background tap,
+a tap after an app update before opening, and nothing pending after a
+force-stop. Those paths are host-proven only. Host checks are listed in the
+plan's task state.
 
 ## F1 unreadable workout state at launch — 2026-11-09
 
