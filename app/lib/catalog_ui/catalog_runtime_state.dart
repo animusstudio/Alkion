@@ -369,6 +369,9 @@ class CatalogRuntimeState extends ChangeNotifier {
                   bundle: choice.variantId == null ? null : bundle,
                   variantId: choice.variantId,
                   displayLabel: identifyingLabel(choice, locale),
+                  labelPolicy: choice.variantId == null
+                      ? 'eligible-familiar/1'
+                      : CatalogIndex.labelPolicy,
                   setupId: choice.setupId,
                   nickname: choice.nickname,
                   customId: choice.customId,

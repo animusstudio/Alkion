@@ -150,16 +150,28 @@ void main() {
       );
       expect(old.exercise.muscleGroup, '');
       final oldJson = jsonEncode(old.selection.toJson());
+      expect(old.selection.labelPolicy, 'eligible-familiar/1');
       await finish('synthetic-old-muscle-workout', [metrics(old.selection)]);
       final prepared = await repo.prepareSelection(
         bundle: fixture.load(),
         variantId: SyntheticMuscleCatalog.variantId,
         displayLabel: 'Changed catalog label',
+        labelPolicy: CatalogIndex.labelPolicy,
       );
       final fresh = await repo.commitPrepared(prepared);
       await repo.commitPrepared(prepared);
       expect(fresh.exercise.id, old.exercise.id);
       expect(fresh.exercise.name, 'Owned synthetic name');
+      expect(fresh.selection.labelPolicy, old.selection.labelPolicy);
+      final newContext = await repo.prepareSelection(
+        bundle: fixture.load(),
+        variantId: SyntheticMuscleCatalog.variantId,
+        displayLabel: 'Changed catalog label',
+        labelPolicy: CatalogIndex.labelPolicy,
+        setupId: 'synthetic-policy-context',
+      );
+      expect(newContext.selection.labelPolicy, old.selection.labelPolicy);
+      expect(newContext.selection.displayLabel, old.selection.displayLabel);
       expect(fresh.selection.contextId, old.selection.contextId);
       expect(
         fresh.selection.contextRevision,

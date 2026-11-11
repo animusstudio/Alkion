@@ -241,6 +241,126 @@ void main() {
   );
 
   test(
+    'canonical bundle renaming preserves saved selection and completed history',
+    () async {
+      final source = syntheticCatalog();
+      final original = source['variants'][4];
+      // Simulate a previously shipped canonical label, independently authored.
+      original['names']['en'] = 'Original overhead execution';
+      runtime = await AlkionRuntime.open(
+        root,
+        catalogBundle: CatalogBundle.fromJsonString(jsonEncode(source)),
+      );
+      final state = runtime!.catalog!;
+      final choice = CatalogChoice.variant(original['id']);
+      final exercise = await state.materialize(
+        choice,
+        ExerciseRepository.local(runtime!.store),
+        locale: 'en',
+      );
+      final originalSelection = state.selectionFor(choice)!;
+      expect(originalSelection.labelPolicy, CatalogIndex.labelPolicy);
+      final selection = originalSelection.toJson();
+      final controller = ActiveSessionController(
+        draftStore: runtime!.sessions.draftStore,
+      )..seedEmpty(name: 'Synthetic saved wording', focus: '');
+      runtime!.sessions.register(controller);
+      await controller.addCatalogBlock(
+        exercise,
+        state.selectionFor(choice)!,
+        sessionRepo: SessionRepository.local(runtime!.store),
+      );
+      final set = controller.draft.blocks.single.workingSets.single;
+      controller.updateCatalogMetric(
+        set,
+        'reported_load',
+        '40.000000000000000001',
+      );
+      controller.updateCatalogMetric(set, 'repetitions', '007');
+      controller.focusSet(set);
+      controller.logLiveSet();
+      final sessionId = await finishWorkout(
+        controller,
+        runtime!.sessions,
+        repository: WorkoutRepository.local(runtime!.store),
+      );
+      final history = (await SessionRepository.local(
+        runtime!.store,
+      ).setsForSession(sessionId)).single.catalog!.toJson();
+      final savedRows = <String, List<Map<String, Object?>>>{};
+      for (final table in ['exercises', 'sessions', 'sets']) {
+        savedRows[table] = await runtime!.store.getAll(
+          'SELECT * FROM $table ORDER BY id',
+        );
+      }
+      await runtime!.flushPersistence();
+      await runtime!.close();
+      runtime = null;
+
+      source['catalog_revision'] = 'synthetic.renamed';
+      source['search_revision'] = 'synthetic-search.renamed';
+      source['aliases'].add({
+        'id': 'original-overhead-wording',
+        'text': original['names']['en'],
+        'locale': 'en',
+        'target': {'kind': 'variant', 'id': original['id']},
+      });
+      original['names']['en'] = 'Standing barbell shoulder press';
+      runtime = await AlkionRuntime.open(
+        root,
+        catalogBundle: CatalogBundle.fromJsonString(jsonEncode(source)),
+      );
+      final fresh = runtime!.catalog!;
+      expect(
+        fresh.index('it').search('Original overhead execution').variantIds,
+        {original['id']},
+      );
+      expect(fresh.label(choice, 'en'), 'Standing barbell shoulder press');
+      final repeated = await fresh.materialize(
+        choice,
+        ExerciseRepository.local(runtime!.store),
+        locale: 'it',
+      );
+      expect(repeated.id, exercise.id);
+      expect(repeated.name, 'Original overhead execution');
+      final refreshed = fresh.selectionFor(choice)!.toJson();
+      // Selecting the same compatible execution pins the new bundle through
+      // forward revisions; the earlier saved selection remains in History.
+      expect(refreshed['bundleDigest'], fresh.bundle.digest);
+      expect(
+        refreshed['contextRevision'],
+        originalSelection.contextRevision + 1,
+      );
+      expect(
+        refreshed['bindingRevision'],
+        originalSelection.bindingRevision! + 1,
+      );
+      for (final key in [
+        'bundleDigest',
+        'contextRevision',
+        'bindingRevision',
+      ]) {
+        refreshed.remove(key);
+        selection.remove(key);
+      }
+      expect(refreshed, selection);
+      expect(
+        (await SessionRepository.local(
+          runtime!.store,
+        ).setsForSession(sessionId)).single.catalog!.toJson(),
+        history,
+      );
+      for (final table in savedRows.keys) {
+        expect(
+          await runtime!.store.getAll('SELECT * FROM $table ORDER BY id'),
+          savedRows[table],
+          reason: table,
+        );
+      }
+    },
+  );
+
+  test(
     'recents and favorites retain vocabulary indexes across locale and restart',
     () async {
       runtime = await AlkionRuntime.open(root, catalogBundle: _bundle());

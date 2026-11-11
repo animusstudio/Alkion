@@ -358,6 +358,7 @@ final class CatalogExecutionRepository {
     CatalogMeasurementProfileEvidence? profile,
     Set<String> personalGroups = const {},
     String catalogNamespace = 'alkion-exercises',
+    String labelPolicy = 'eligible-familiar/1',
     String resistanceSource = 'unknown',
     String loadConvention = 'unknown',
     String? operationId,
@@ -508,6 +509,11 @@ final class CatalogExecutionRepository {
             ? bundle!.muscleProfileFor(variantId!)!.executionSha256
             : null,
         catalogNamespace: catalogNamespace,
+        // A newer presentation policy never relabels a saved binding/context.
+        labelPolicy:
+            previousSelection?.labelPolicy ??
+            (binding?['label_policy'] as String?) ??
+            labelPolicy,
         profile: metricProfile,
         displayLabel: label,
         contextLabel: previousSelection?.contextLabel ?? nickname?.trim() ?? '',
