@@ -1,8 +1,8 @@
+import 'dart:async';
+
 import '../catalog_ui/catalog_picker.dart';
-import '../catalog_ui/catalog_measurement_form.dart';
 import '../catalog_ui/catalog_scope.dart';
 import '../catalog_ui/catalog_runtime_state.dart';
-import '../catalog_ui/catalog_evidence_widgets.dart';
 import '../domain/catalog_execution.dart';
 import '../domain/local_action.dart';
 import 'package:provider/provider.dart';
@@ -12,11 +12,11 @@ import 'package:flutter/services.dart' hide TextInput;
 import '../data/day_template_repository.dart';
 import '../data/exercise_repository.dart';
 import '../data/catalog_execution_repository.dart';
+import '../data/session_repository.dart';
 import '../data/models.dart';
 import '../l10n/app_localizations.dart';
 import '../store/local_store.dart';
 import '../theme/app_theme.dart';
-import '../theme/alkion_icon.dart';
 import '../theme/motion.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
@@ -24,13 +24,13 @@ import '../util/dates.dart';
 import '../widgets/delete_button.dart';
 import '../widgets/fit_label.dart';
 import '../widgets/plan_form.dart';
-import '../widgets/prescription_controls.dart';
 import '../widgets/w_action_sheet.dart';
 import '../settings/settings_service.dart';
-import '../util/prescription_format.dart';
-import '../widgets/stepper.dart';
 import '../widgets/w_dialog.dart';
 import '../widgets/w_toast.dart';
+import '../units/unit_service.dart';
+import 'day_slot_card.dart';
+import 'slot_modes.dart' show hasLoadRow, newSlotDefaults;
 import '../widgets/glyph_loading.dart';
 import 'editor_guard.dart';
 import 'plan_save_failed.dart';
@@ -38,40 +38,38 @@ import 'exercise_sheet.dart';
 
 // ── DaySlotState ────────────────────────────────────────────────────────────────
 
-/// Mutable UI state for a single slot row (wraps [SlotDraft]).
+/// Mutable UI state for a single slot card (wraps [SlotDraft]).
 class DaySlotState {
-  DaySlotState({required this.draft, this.showRirAdd = false})
+  DaySlotState({required this.draft})
     : instanceKey = draft.itemId ?? domainUuid.v4();
   final String instanceKey;
 
   SlotDraft draft;
 
-  /// Captured disclosure for a new slot; never follows live preferences.
-  final bool showRirAdd;
-
   String get exerciseId => draft.exerciseId;
 }
 
-DaySlotState daySlotStateFromResolved(
-  ResolvedSlot r,
-  String? itemId, {
-  bool showRirAdd = false,
-}) {
-  return DaySlotState(
-    showRirAdd: showRirAdd,
-    draft: SlotDraft(
-      itemId: itemId,
-      exerciseId: r.exercise.id,
-      workSets: r.workSets,
-      warmupSets: r.warmupSets,
-      repLow: r.repLow,
-      repHigh: r.repHigh,
-      rirLow: r.rirLow,
-      rirHigh: r.rirHigh,
-      rirPolicy: r.rirPolicy,
-    ),
-  );
-}
+/// A stored [slot] as the editor opens it: every field as stored, nothing
+/// changed yet. A null field shows the value the workout resolves and stays
+/// null until touched, so an untouched Save writes the same values.
+DaySlotState daySlotStateFromSlot(Slot slot) => DaySlotState(
+  draft: SlotDraft(
+    itemId: slot.id,
+    exerciseId: slot.exerciseId,
+    workSets: slot.workSets,
+    warmupSets: slot.warmupSets,
+    repLow: slot.repLow,
+    repHigh: slot.repHigh,
+    rirLow: slot.rirLow,
+    rirHigh: slot.rirHigh,
+    rirPolicy: slot.rirPolicy,
+    localRevision: slot.localRevision,
+    rawFields: slot.rawFields,
+    changedFields: {},
+    catalog: slot.catalog,
+    catalogTargets: slot.catalogTargets,
+  ),
+);
 
 // ── DayEditor ─────────────────────────────────────────────────────────────────
 
@@ -109,7 +107,15 @@ class _DayEditorState extends State<DayEditor> {
   int? _weekday; // 0=Mon … 6=Sun
 
   final List<DaySlotState> _slots = [];
-  String? _expandedExId; // keyed by exerciseId (NOT index)
+
+  // The open card, keyed by [DaySlotState.instanceKey] (NOT index): one at a
+  // time; the last exercise added opens, reordering collapses, and a loaded
+  // day starts collapsed.
+  String? _expandedExId;
+
+  // Each catalog context's last logged load, read once per context (never in
+  // build); it seeds a Load switch from Last to Fixed.
+  final Map<String, CatalogLoadReference> _loadReferences = {};
 
   List<Exercise> _catalog = [];
   DayTemplate? _original;
@@ -194,29 +200,15 @@ class _DayEditorState extends State<DayEditor> {
     // Resolve slots.
     final slots = <DaySlotState>[];
     for (final slot in day.slots) {
-      final ex = exById[slot.exerciseId];
-      if (ex == null) throw const StoreException('unavailable_definition');
-      slots.add(
-        DaySlotState(
-          draft: SlotDraft(
-            itemId: slot.id,
-            exerciseId: slot.exerciseId,
-            workSets: slot.workSets,
-            warmupSets: slot.warmupSets,
-            repLow: slot.repLow,
-            repHigh: slot.repHigh,
-            rirLow: slot.rirLow,
-            rirHigh: slot.rirHigh,
-            rirPolicy: slot.rirPolicy,
-            localRevision: slot.localRevision,
-            rawFields: slot.rawFields,
-            changedFields: {},
-            catalog: slot.catalog,
-            catalogTargets: slot.catalogTargets,
-          ),
-        ),
-      );
+      if (exById[slot.exerciseId] == null) {
+        throw const StoreException('unavailable_definition');
+      }
+      slots.add(daySlotStateFromSlot(slot));
     }
+    for (final slot in slots) {
+      await _readLoadReference(slot.draft);
+    }
+    if (!mounted) return;
 
     setState(() {
       _catalog = catalog;
@@ -231,24 +223,27 @@ class _DayEditorState extends State<DayEditor> {
     });
   }
 
-  Future<void> _pickWeekday() async {
-    final selected = await showWActionSheet<int>(
-      context,
-      title: AppLocalizations.of(context).dayEditorScheduledDay,
-      actions: [
-        for (var i = 0; i < 7; i++)
-          WSheetAction(
-            label: weekdayShort(
-              i,
-              Localizations.localeOf(context).toLanguageTag(),
-            ),
-            value: i,
-            selected: i == _weekday,
-          ),
-      ],
-    );
-    if (mounted && !_controlsLocked && selected != null) {
-      setState(() => _weekday = selected);
+  /// A weekday chip: the selected one clears, any other selects. An
+  /// out-of-range stored weekday selects no chip and is kept until touched.
+  void _selectWeekday(int day) {
+    if (_controlsLocked) return;
+    setState(() => _weekday = _weekday == day ? null : day);
+  }
+
+  /// Reads the last logged load of [draft]'s catalog context once, for the
+  /// Load row's Fixed seed. A failed read leaves the default seed.
+  Future<void> _readLoadReference(SlotDraft draft) async {
+    final selection = draft.catalog;
+    if (selection == null || !hasLoadRow(draft) || !mounted) return;
+    final key = selection.compatibilityKey;
+    if (_loadReferences.containsKey(key)) return;
+    try {
+      final reference = await SessionRepository.local(
+        context.read<LocalDatabase>(),
+      ).catalogLoadReference(selection);
+      _loadReferences[key] = reference;
+    } catch (e) {
+      debugPrint('day editor load reference unavailable: $e');
     }
   }
 
@@ -391,62 +386,34 @@ class _DayEditorState extends State<DayEditor> {
     }
   }
 
+  /// Adds [ex] as a new slot with explicit values that follow the Training
+  /// preferences (catalog slots included) and opens its card.
   void _appendExercise(
     Exercise ex, {
     CatalogChoice? catalogChoice,
     CatalogSelectionEvidence? selection,
   }) {
-    final r = ex.id;
-    final slot = Slot(
-      exerciseId: r,
-      position: _slots.length + 1,
-      rirPolicy: _rirControls == RirControls.off
-          ? RirPolicy.off
-          : RirPolicy.inherit,
+    final runtime = CatalogScope.maybeOf(context);
+    if (catalogChoice != null && runtime != null && !catalogChoice.isOwned) {
+      selection = runtime.selectionFor(catalogChoice);
+    }
+    final added = DaySlotState(
+      draft: newSlotDefaults(
+        exercise: ex,
+        repEntry: _repEntry,
+        rirControls: _rirControls,
+        selection: selection,
+      ),
     );
-    final resolved = resolveSlot(slot, ex);
-    final defaults = qualifiedRepPair(
-      ex.defaultRepLow,
-      ex.defaultRepHigh,
-      rawFields: ex.rawFields,
-      lowKey: 'default_rep_low',
-      highKey: 'default_rep_high',
-    );
-    final absent =
-        ex.defaultRepLow == null &&
-        ex.defaultRepHigh == null &&
-        ex.rawFields['default_rep_low'] == null &&
-        ex.rawFields['default_rep_high'] == null;
-    // Unavailable defaults remain evidence on the exercise; the new slot never
-    // assembles a prescription from one unrelated bound.
-    final reps =
-        defaults ??
-        (absent ? (low: 8, high: _repEntry == RepEntry.range ? 12 : 8) : null);
     setState(() {
-      final added = daySlotStateFromResolved(
-        resolved,
-        null,
-        showRirAdd: _rirControls == RirControls.show,
-      );
-      added.draft.repLow = reps?.low;
-      added.draft.repHigh = reps?.high;
-      // Preserve unavailable exercise evidence through inheritance.
-      added.draft.rirLow = null;
-      added.draft.rirHigh = null;
       _slots.add(added);
-      final runtime = CatalogScope.maybeOf(context);
-      if (catalogChoice != null && runtime != null && !catalogChoice.isOwned) {
-        selection = runtime.selectionFor(catalogChoice);
-      }
-      if (selection != null) {
-        added.draft.catalog = selection;
-        added.draft.catalogTargets = {};
-        added.draft.repLow = null;
-        added.draft.repHigh = null;
-        added.draft.workSets = ex.defaultWorkingSets ?? 1;
-        added.draft.warmupSets = ex.defaultWarmupSets ?? 0;
-      }
+      _expandedExId = added.instanceKey;
     });
+    unawaited(
+      _readLoadReference(added.draft).then((_) {
+        if (mounted) setState(() {});
+      }),
+    );
   }
 
   // ── save / delete ─────────────────────────────────────────────────────────
@@ -607,6 +574,9 @@ class _DayEditorState extends State<DayEditor> {
     final tokens = context.tokens;
     final localeName = Localizations.localeOf(context).toLanguageTag();
 
+    // The unit the card's Load row shows, as [UnitService] holds it.
+    final unit = (Provider.of<UnitService?>(context) ?? UnitService()).unit;
+
     final canSave = _nameCtrl.text.trim().isNotEmpty;
     final isOwned = _editId != null;
 
@@ -645,43 +615,38 @@ class _DayEditorState extends State<DayEditor> {
                   ),
                 ),
 
+                // ── Weekday ───────────────────────────────────────────────────────
                 Field(
                   label: l.dayEditorScheduledDay,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (_weekday != null)
-                        Text(
-                          _weekday! >= 0 && _weekday! <= 6
-                              ? weekdayShort(_weekday!, localeName)
-                              : l.trainingWeekdayUnavailable,
-                          style: WorkoutType.body(color: tokens.text),
+                      if (_weekday case final day? when day < 0 || day > 6)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: FitLabel(
+                            l.trainingWeekdayUnavailable,
+                            key: const Key('day-editor-weekday-unavailable'),
+                            maxLines: 2,
+                            style: WorkoutType.body(color: tokens.dim),
+                          ),
                         ),
-                      TrainingAction(
-                        _weekday == null
-                            ? l.trainingAddWeekday
-                            : l.trainingChangeWeekday,
-                        onTap: _controlsLocked ? null : _pickWeekday,
+                      ChipSelect<int>(
+                        key: const Key('day-editor-weekday'),
+                        enabled: !_controlsLocked,
+                        items: const [0, 1, 2, 3, 4, 5, 6],
+                        selected: _weekday,
+                        labelOf: (day) => weekdayShort(day, localeName),
+                        onSelect: _selectWeekday,
                       ),
-                      if (_weekday != null)
-                        TrainingAction(
-                          l.trainingRemoveWeekday,
-                          icon: AlkionGlyph.minus,
-                          onTap: _controlsLocked
-                              ? null
-                              : () => setState(() => _weekday = null),
-                        ),
                     ],
                   ),
                 ),
 
                 // ── Slots section ─────────────────────────────────────────────────
-                PlanSection(
-                  l.dayEditorExercisesCount(_slots.length),
-                  hint: l.dayEditorSlotHint,
-                ),
+                PlanSection(l.dayEditorExercisesCount(_slots.length)),
 
-                // Slot rows (reorderable by drag handle)
+                // Slot cards (reorderable by drag handle)
                 ReorderableListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -718,200 +683,42 @@ class _DayEditorState extends State<DayEditor> {
                     );
                     final scope = CatalogScope.maybeOf(context);
                     final choice = _choiceFor(slot, scope);
-                    if (slot.draft.catalog != null ||
-                        (scope != null &&
-                            choice != null &&
-                            scope.measurement(choice).key != 'load_reps')) {
-                      return Padding(
-                        key: ValueKey(slot.instanceKey),
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                ReorderableDragStartListener(
-                                  index: i,
-                                  enabled: !_controlsLocked,
-                                  child: const SizedBox(
-                                    width: 48,
-                                    height: 48,
-                                    child: AlkionIcon(AlkionGlyph.reorder),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: FitLabel(
-                                    slot.draft.catalog != null
-                                        ? slot.draft.catalog!.displayLabel
-                                        : scope!.identifyingLabel(
-                                            choice!,
-                                            Localizations.localeOf(
-                                              context,
-                                            ).languageCode,
-                                          ),
-                                    maxLines: 3,
-                                    style: WorkoutType.body(
-                                      size: 16,
-                                      color: tokens.text,
-                                    ),
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: l.commonRemove,
-                                  onPressed: _controlsLocked
-                                      ? null
-                                      : () => _removeSlot(i),
-                                  icon: const AlkionIcon(AlkionGlyph.close),
-                                ),
-                              ],
-                            ),
-                            Field(
-                              label: l.dayEditorWorkingSets,
-                              child: WStepper(
-                                semanticLabel: l.dayEditorWorkingSets,
-                                format: (v) => v.round().toString(),
-                                value:
-                                    (slot.draft.workSets ??
-                                            ex.defaultWorkingSets ??
-                                            1)
-                                        .toDouble(),
-                                min: 1,
-                                max: 99,
-                                step: 1,
-                                onChanged: _controlsLocked
-                                    ? (_) {}
-                                    : (v) => setState(() {
-                                        slot.draft.workSets = v.round();
-                                        slot.draft.changedFields?.add(
-                                          'target_working_sets',
-                                        );
-                                      }),
-                              ),
-                            ),
-                            if (slot.draft.catalog != null) ...[
-                              if (slot.draft.workSets != null)
-                                TrainingAction(
-                                  l.trainingRemove(l.dayEditorWorkingSets),
-                                  onTap: _controlsLocked
-                                      ? null
-                                      : () => setState(() {
-                                          slot.draft.workSets = null;
-                                          slot.draft.changedFields?.add(
-                                            'target_working_sets',
-                                          );
-                                        }),
-                                ),
-                              Field(
-                                label: l.dayEditorWarmups,
-                                child: WStepper(
-                                  semanticLabel: l.dayEditorWarmups,
-                                  format: (v) => v.round().toString(),
-                                  value:
-                                      (slot.draft.warmupSets ??
-                                              ex.defaultWarmupSets ??
-                                              0)
-                                          .toDouble(),
-                                  min: 0,
-                                  max: 99,
-                                  step: 1,
-                                  editable: !_controlsLocked,
-                                  onChanged: (v) {
-                                    if (!_controlsLocked) {
-                                      setState(() {
-                                        slot.draft.warmupSets = v.round();
-                                        slot.draft.changedFields?.add(
-                                          'target_warmup_sets',
-                                        );
-                                      });
-                                    }
-                                  },
-                                ),
-                              ),
-                              if (slot.draft.warmupSets != null)
-                                TrainingAction(
-                                  l.trainingRemove(l.dayEditorWarmups),
-                                  onTap: _controlsLocked
-                                      ? null
-                                      : () => setState(() {
-                                          slot.draft.warmupSets = null;
-                                          slot.draft.changedFields?.add(
-                                            'target_warmup_sets',
-                                          );
-                                        }),
-                                ),
-                            ],
-                            const SizedBox(height: 12),
-                            CatalogMeasurementForm(
-                              key: ValueKey('routine-${slot.instanceKey}'),
-                              profile:
-                                  slot.draft.catalog?.profile
-                                      .toCatalogMeasurementProfile() ??
-                                  scope!.measurement(choice!),
-                              // Targets are editable only with selection
-                              // evidence, which Save persists.
-                              values: slot.draft.catalog != null
-                                  ? catalogInputValues(
-                                      CatalogSetEvidence(
-                                        selection: slot.draft.catalog!,
-                                        metrics: slot.draft.catalogTargets,
-                                      ),
-                                    )
-                                  : <String, String>{},
-                              enabled:
-                                  !_controlsLocked &&
-                                  slot.draft.catalog != null,
-                              units: {
-                                for (final entry
-                                    in slot.draft.catalogTargets.entries)
-                                  entry.key: entry.value.unit,
-                              },
-                              onMetricChanged: slot.draft.catalog == null
-                                  ? null
-                                  : (metric, text) {
-                                      slot.draft.changedFields?.add(
-                                        'catalogTargets',
-                                      );
-                                      slot.draft.catalogTargets = {
-                                        ...slot.draft.catalogTargets,
-                                        metric: CatalogMetricEvidence.fromInput(
-                                          text,
-                                          metric: metric,
-                                          unit:
-                                              slot
-                                                  .draft
-                                                  .catalogTargets[metric]
-                                                  ?.unit ??
-                                              CatalogMetricEvidence.defaultUnit(
-                                                metric,
-                                              ),
-                                        ),
-                                      };
-                                    },
-                              onChanged: () => setState(() {}),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
+                    final selection = slot.draft.catalog;
+                    // Without selection evidence, the catalog choice's
+                    // profile decides whether the slot measures reps.
+                    final profile = selection == null && choice != null
+                        ? scope!.measurement(choice)
+                        : null;
                     return Reveal(
                       key: ValueKey(slot.instanceKey),
                       child: Padding(
-                        padding: const EdgeInsets.only(bottom: 7),
-                        child: DaySlotRow(
-                          readOnly: _controlsLocked,
-                          index: i,
-                          reorderIndex: i,
-                          total: _slots.length,
-                          slot: slot,
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: DaySlotCard(
+                          instanceKey: slot.instanceKey,
+                          draft: slot.draft,
                           exercise: ex,
-                          displayName: choice == null
+                          displayName:
+                              selection?.displayLabel ??
+                              (choice == null
+                                  ? null
+                                  : scope!.identifyingLabel(
+                                      choice,
+                                      Localizations.localeOf(
+                                        context,
+                                      ).languageCode,
+                                    )),
+                          reorderIndex: i,
+                          measuresReps:
+                              profile == null ||
+                              profile.requiredMetrics.contains('repetitions') ||
+                              profile.optionalMetrics.contains('repetitions'),
+                          unit: unit,
+                          rirControls: _rirControls,
+                          loadReference: selection == null
                               ? null
-                              : scope!.identifyingLabel(
-                                  choice,
-                                  Localizations.localeOf(context).languageCode,
-                                ),
-                          tokens: tokens,
+                              : _loadReferences[selection.compatibilityKey],
                           expanded: _expandedExId == slot.instanceKey,
+                          enabled: !_controlsLocked,
                           onToggle: () => _toggleSlot(slot.instanceKey),
                           onRemove: () => _removeSlot(i),
                           onChanged: () {
@@ -965,490 +772,6 @@ class _DayEditorState extends State<DayEditor> {
           ),
         ],
       ],
-    );
-  }
-}
-
-// ── SlotRow ───────────────────────────────────────────────────────────────────
-
-class DaySlotRow extends StatefulWidget {
-  const DaySlotRow({
-    super.key,
-    required this.index,
-    required this.reorderIndex,
-    required this.total,
-    required this.slot,
-    required this.exercise,
-    required this.tokens,
-    required this.expanded,
-    required this.onToggle,
-    required this.onRemove,
-    required this.onChanged,
-    this.readOnly = false,
-    this.displayName,
-  });
-
-  final int index;
-  final int reorderIndex;
-  final int total;
-  final DaySlotState slot;
-  final Exercise exercise;
-  final String? displayName;
-  final WorkoutTokens tokens;
-  final bool expanded;
-  final VoidCallback onToggle;
-  final VoidCallback onRemove;
-  final VoidCallback onChanged;
-  final bool readOnly;
-
-  @override
-  State<DaySlotRow> createState() => _DaySlotRowState();
-}
-
-class _DaySlotRowState extends State<DaySlotRow> {
-  void _updateWork(double v) {
-    if (widget.readOnly) return;
-    widget.slot.draft.changedFields?.addAll(['target_working_sets']);
-    setState(() {
-      widget.slot.draft.workSets = v.round().clamp(1, 99);
-    });
-    widget.onChanged();
-  }
-
-  void _updateWarmup(double v) {
-    if (widget.readOnly) return;
-    widget.slot.draft.changedFields?.addAll(['target_warmup_sets']);
-    setState(() {
-      widget.slot.draft.warmupSets = v.round().clamp(0, 99);
-    });
-    widget.onChanged();
-  }
-
-  // RIR keeps low ≤ high by moving the OTHER bound, unlike reps (whose high
-  // stepper is floored at low): stepping either one past the other drags it
-  // along. A null bound displays as 1, so touching either stepper writes both.
-  void _updateRirLow(double v) {
-    if (widget.readOnly) return;
-    widget.slot.draft.changedFields?.addAll([
-      'target_rir_low',
-      'target_rir_high',
-      'rir_policy',
-    ]);
-    final d = widget.slot.draft;
-    final r = rirWithLow(
-      resolveSlot(_source, widget.exercise).rirLow ?? 1,
-      resolveSlot(_source, widget.exercise).rirHigh ?? 1,
-      v.round(),
-    );
-    setState(() {
-      d.rirLow = r.low;
-      d.rirHigh = r.high;
-      d.rirPolicy = RirPolicy.target;
-    });
-    widget.onChanged();
-  }
-
-  void _updateRirHigh(double v) {
-    if (widget.readOnly) return;
-    widget.slot.draft.changedFields?.addAll([
-      'target_rir_low',
-      'target_rir_high',
-      'rir_policy',
-    ]);
-    final d = widget.slot.draft;
-    final r = rirWithHigh(
-      resolveSlot(_source, widget.exercise).rirLow ?? 1,
-      resolveSlot(_source, widget.exercise).rirHigh ?? 1,
-      v.round(),
-    );
-    setState(() {
-      d.rirLow = r.low;
-      d.rirHigh = r.high;
-      d.rirPolicy = RirPolicy.target;
-    });
-    widget.onChanged();
-  }
-
-  bool _more = false;
-  Slot get _source => Slot(
-    exerciseId: widget.slot.draft.exerciseId,
-    position: widget.index,
-    workSets: widget.slot.draft.workSets,
-    warmupSets: widget.slot.draft.warmupSets,
-    repLow: widget.slot.draft.repLow,
-    repHigh: widget.slot.draft.repHigh,
-    rirLow: widget.slot.draft.rirLow,
-    rirHigh: widget.slot.draft.rirHigh,
-    rirPolicy: widget.slot.draft.rirPolicy,
-    rawFields: {
-      for (final e in widget.slot.draft.rawFields.entries)
-        if (!(widget.slot.draft.changedFields?.contains(e.key) ?? false))
-          e.key: e.value,
-    },
-  );
-
-  void _reps(int low, int high) {
-    if (widget.readOnly) return;
-    setState(() {
-      final d = widget.slot.draft;
-      d.repLow = low;
-      d.repHigh = high;
-      d.changedFields?.addAll({'target_rep_low', 'target_rep_high'});
-    });
-    widget.onChanged();
-  }
-
-  void _rirPolicy(String policy) {
-    if (widget.readOnly) return;
-    setState(() {
-      final d = widget.slot.draft;
-      d.rirPolicy = policy;
-      d.rirLow = policy == RirPolicy.target ? 1 : null;
-      d.rirHigh = policy == RirPolicy.target ? 1 : null;
-      d.changedFields?.addAll({
-        'rir_policy',
-        'target_rir_low',
-        'target_rir_high',
-      });
-    });
-    widget.onChanged();
-  }
-
-  String _collapsedLabel(AppLocalizations l) {
-    final r = resolveSlot(_source, widget.exercise);
-    final base = formatPrescription(
-      workSets: r.workSets,
-      reps: resolveRepPair(_source, widget.exercise),
-      rirLow: r.rirLow,
-      rirHigh: r.rirHigh,
-      unavailable: l.trainingUnavailable,
-    );
-    return '$base${r.rirUnavailable ? ' · ${l.trainingRirUnavailable}' : ''}${r.warmupSets > 0 ? ' · ${l.dayEditorWarmupShort(r.warmupSets)}' : ''}';
-  }
-
-  Widget _rirField(String label, bool low) {
-    final r = resolveSlot(_source, widget.exercise);
-    return Field(
-      label: label,
-      child: WStepper(
-        value: ((low ? r.rirLow : r.rirHigh) ?? 1).toDouble(),
-        step: 1,
-        format: (v) => v.round().toString(),
-        onChanged: low ? _updateRirLow : _updateRirHigh,
-        editable: !widget.readOnly,
-        allowDecimal: false,
-        min: rirMin.toDouble(),
-        max: rirMax.toDouble(),
-        semanticLabel: label,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final tokens = widget.tokens;
-    final d = widget.slot.draft;
-
-    return Material(
-      color: tokens.surface,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(
-          color: widget.expanded ? tokens.lineStrong : tokens.line,
-        ),
-        borderRadius: BorderRadius.circular(AppRadius.panel),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Collapsed row ─────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                // Only the index + name/summary toggle the expanded panel —
-                // the drag handle and trash button below sit outside this
-                // expansion control so tapping them never also expands the row.
-                Expanded(
-                  child: TextButton(
-                    key: ValueKey('day-slot-expand-${widget.slot.instanceKey}'),
-                    onPressed: widget.onToggle,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(48, 48),
-                      padding: EdgeInsets.zero,
-                      alignment: Alignment.centerLeft,
-                      overlayColor: tokens.focus.withValues(alpha: .16),
-                    ),
-                    child: Semantics(
-                      expanded: widget.expanded,
-                      child: Row(
-                        children: [
-                          // Index
-                          SizedBox(
-                            width: 16,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '${widget.index + 1}',
-                                maxLines: 1,
-                                style: WorkoutType.mono(
-                                  size: 12,
-                                  weight: FontWeight.w400,
-                                  color: tokens.faint,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-
-                          // Name + summary
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                FitLabel(
-                                  (widget.displayName ?? widget.exercise.name),
-                                  maxLines: 2,
-                                  style: WorkoutType.body(
-                                    size: 14,
-                                    weight: FontWeight.w500,
-                                    color: tokens.text,
-                                  ),
-                                ),
-                                const SizedBox(height: 1),
-                                FitLabel(
-                                  _collapsedLabel(l),
-                                  maxLines: 2,
-                                  style: WorkoutType.mono(
-                                    size: 12,
-                                    color: tokens.faint,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Chevron (non-interactive; header toggles expanded)
-                          ExcludeSemantics(
-                            child: AnimatedRotation(
-                              turns: widget.expanded
-                                  ? (Directionality.of(context) ==
-                                            TextDirection.rtl
-                                        ? -0.25
-                                        : 0.25)
-                                  : 0,
-                              duration: Motion.of(context, Motion.fast),
-                              child: AlkionIcon(
-                                AlkionGlyph.chevronRight,
-                                size: 16,
-                                color: tokens.faint,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                // Drag handle (only while collapsed — a reordering list
-                // needs similar-height rows).
-                if (!widget.expanded)
-                  Semantics(
-                    container: true,
-                    label: l.a11yReorderExercise(
-                      (widget.displayName ?? widget.exercise.name),
-                    ),
-                    child: ReorderableDragStartListener(
-                      index: widget.reorderIndex,
-                      child: SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: AlkionIcon(
-                          AlkionGlyph.reorder,
-                          size: 20,
-                          color: tokens.dim,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                // Trash button
-                TextButton(
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(48, 48),
-                    padding: EdgeInsets.zero,
-                    alignment: Alignment.centerLeft,
-                    overlayColor: tokens.focus.withValues(alpha: .16),
-                  ),
-                  onPressed: widget.onRemove,
-
-                  child: Semantics(
-                    label: l.dayEditorRemoveExercise(
-                      (widget.displayName ?? widget.exercise.name),
-                    ),
-                    excludeSemantics: true,
-                    child: SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: Center(
-                        child: Container(
-                          width: 30,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: tokens.surface3,
-                            borderRadius: BorderRadius.circular(
-                              AppRadius.control,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: AlkionIcon(
-                            AlkionGlyph.delete,
-                            size: 16,
-                            color: tokens.danger,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ── Expanded panel ────────────────────────────────────────────
-          if (widget.expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                children: [
-                  Field(
-                    label: l.dayEditorWorkingSets,
-                    child: WStepper(
-                      value:
-                          (d.workSets ??
-                                  widget.exercise.defaultWorkingSets ??
-                                  3)
-                              .toDouble(),
-                      step: 1,
-                      format: (v) => v.round().toString(),
-                      onChanged: _updateWork,
-                      editable: !widget.readOnly,
-                      allowDecimal: false,
-                      min: 1,
-                      max: 99,
-                      semanticLabel: l.dayEditorWorkingSets,
-                    ),
-                  ),
-                  if (resolveRepPair(_source, widget.exercise) case final reps?)
-                    RepControls(
-                      low: reps.low,
-                      high: reps.high,
-                      enabled: !widget.readOnly,
-                      currentValues: () =>
-                          resolveRepPair(_source, widget.exercise)!,
-                      onChanged: _reps,
-                    )
-                  else ...[
-                    Text(
-                      l.trainingUnavailable,
-                      style: WorkoutType.body(color: tokens.dim),
-                    ),
-                    TrainingAction(
-                      l.trainingRepairReps,
-                      onTap: widget.readOnly ? null : () => _reps(8, 8),
-                    ),
-                  ],
-                  if (resolveSlot(_source, widget.exercise).hasRirTarget) ...[
-                    Text(
-                      l.trainingRirTarget,
-                      style: WorkoutType.body(color: tokens.text),
-                    ),
-                    _rirField(l.dayEditorRirLow, true),
-                    _rirField(l.dayEditorRirHigh, false),
-                    TrainingAction(
-                      l.trainingRemoveRir,
-                      icon: AlkionGlyph.minus,
-                      onTap: widget.readOnly
-                          ? null
-                          : () => _rirPolicy(RirPolicy.off),
-                    ),
-                  ],
-                  if (resolveSlot(_source, widget.exercise).rirUnavailable)
-                    Text(
-                      l.trainingRirUnavailable,
-                      style: WorkoutType.body(color: tokens.dim),
-                    ),
-                  if (widget.slot.showRirAdd &&
-                      !resolveSlot(_source, widget.exercise).hasRirTarget)
-                    TrainingAction(
-                      l.trainingAddRir,
-                      onTap: widget.readOnly
-                          ? null
-                          : () => _rirPolicy(RirPolicy.target),
-                    ),
-                  TrainingDisclosure(
-                    label: l.trainingMoreOptions,
-                    expanded: _more,
-                    onTap: widget.readOnly
-                        ? null
-                        : () => setState(() => _more = !_more),
-                  ),
-                  if (_more) ...[
-                    Field(
-                      label: l.dayEditorWarmups,
-                      child: WStepper(
-                        value:
-                            (d.warmupSets ??
-                                    widget.exercise.defaultWarmupSets ??
-                                    0)
-                                .toDouble(),
-                        step: 1,
-                        format: (v) => v.round().toString(),
-                        onChanged: _updateWarmup,
-                        editable: !widget.readOnly,
-                        allowDecimal: false,
-                        min: 0,
-                        max: 99,
-                        semanticLabel: l.dayEditorWarmups,
-                      ),
-                    ),
-                    if (!widget.slot.showRirAdd &&
-                        !resolveSlot(_source, widget.exercise).hasRirTarget)
-                      TrainingAction(
-                        l.trainingAddRir,
-                        onTap: widget.readOnly
-                            ? null
-                            : () => _rirPolicy(RirPolicy.target),
-                      ),
-                    TrainingAction(
-                      l.trainingUseExerciseDefault,
-                      icon: AlkionGlyph.refresh,
-                      onTap: widget.readOnly
-                          ? null
-                          : () => _rirPolicy(RirPolicy.inherit),
-                    ),
-                    Text(
-                      d.rirPolicy == RirPolicy.off
-                          ? l.trainingRirOff
-                          : d.rirPolicy == RirPolicy.target
-                          ? l.trainingRirTarget
-                          : l.trainingUseExerciseDefault,
-                      style: WorkoutType.body(size: 12, color: tokens.dim),
-                    ),
-                    Text(
-                      l.trainingRirExplanation,
-                      style: WorkoutType.body(size: 12, color: tokens.dim),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

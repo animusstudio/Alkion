@@ -137,3 +137,12 @@ Actual-bundle qualification at `1f84ba4a`: nine tests PASS, zero skips (11 secon
 242 naming/control probes plus 512 discovery probes; loader and four saved bindings
 with completed history PASS. Prior private evidence was preserved and restored.
 Source hashes and receipts remain private; no corpus is committed publicly.
+
+## Resumed integration — 2026-11-12
+
+Owner requested resume. Integrate published main `4623c238` while retaining the
+reviewed catalog and CI fixes. Its latest CI passed 3,811 tests and failed only
+the three optional-control expectations fixed here. Recheck affected catalog,
+binding, prefill and completion tests locally, then require the full suite in
+fresh exact-head CI before merging. Rebuild the private APK from the integrated
+source; retain earlier evidence as dated results. No new product scope.

@@ -189,6 +189,7 @@ Map<String, dynamic> _legacy() {
       'catalogBaselines',
       'catalogDependencies',
       'catalogLastMetrics',
+      'catalogLastSets',
     ]) {
       block.remove(key);
     }

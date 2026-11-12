@@ -82,7 +82,6 @@ class ExerciseBlock extends StatefulWidget {
     required this.onFocusSet,
     required this.onSetChanged,
     required this.onRir,
-    this.onClearRir,
     required this.onMarkNotDone,
     this.onRemoveSet,
     required this.onMenu,
@@ -114,8 +113,10 @@ class ExerciseBlock extends StatefulWidget {
 
   final void Function(BlockState, SetState) onFocusSet;
   final void Function(BlockState, SetState) onSetChanged;
-  final void Function(BlockState, SetState, int) onRir;
-  final void Function(BlockState, SetState)? onClearRir;
+
+  /// A RIR chip tap on a set line's strip; null when the selected chip is
+  /// tapped again to clear it.
+  final void Function(BlockState, SetState, int?) onRir;
   final void Function(BlockState, SetState) onMarkNotDone;
 
   /// Explicit deletion of a set. Logged sets are confirmed first.
@@ -123,7 +124,14 @@ class ExerciseBlock extends StatefulWidget {
 
   /// The header's ⋯ button (add set / warm-up, reorder, remove exercise).
   final void Function(BlockState) onMenu;
-  final Widget Function(SetState)? valuesEditorBuilder, referenceBuilder;
+  final Widget Function(SetState)? valuesEditorBuilder;
+
+  /// A typed set's last-session reference; null (or an empty `SizedBox`)
+  /// when there is none, so the card keeps no gap for it.
+  final Widget? Function(SetState)? referenceBuilder;
+
+  /// A typed set's variant or setup, empty when it matches the block header.
+  /// Shown on the live card and, dim, on the set's line.
   final String Function(SetState)? selectionLabel;
   final void Function(SetState)? onSetMenu;
 
@@ -205,15 +213,18 @@ class _ExerciseBlockState extends State<ExerciseBlock>
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       decoration: BoxDecoration(
-                        color: tokens.surface2,
+                        color: allDone ? tokens.accent : tokens.surface2,
                         borderRadius: BorderRadius.circular(AppRadius.control),
                       ),
                       alignment: Alignment.center,
+                      // The all-done badge is one of the live page's four
+                      // accent marks, filled like a logged set's ring; the
+                      // count stays neutral.
                       child: allDone
                           ? AlkionIcon(
                               AlkionGlyph.check,
                               size: 18,
-                              color: tokens.text,
+                              color: tokens.accentInk,
                             )
                           : Text(
                               '$doneWorking/${working.length}',
@@ -416,21 +427,24 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         lastTopUnavailable: block.lastTopUnavailable,
         unit: widget.unit,
         showRir: widget.showRir,
-        targetLabel:
+        repRange:
             widget.showRepRange &&
                 !s.isWarmup &&
+                targetRange != null &&
                 (s.catalog == null ||
                     s.catalog!.selection.profile.metrics.contains(
                       'repetitions',
                     ))
-            ? '${AppLocalizations.of(context).trainingRepRange}: ${targetRange == null ? '—' : '${targetRange.low}–${targetRange.high}'}'
+            ? (low: targetRange.low, high: targetRange.high)
             : null,
         onChanged: () => widget.onSetChanged(block, s),
         onMarkNotDone: () => widget.onMarkNotDone(block, s),
         valuesEditor: s.catalog == null
             ? null
             : widget.valuesEditorBuilder?.call(s),
-        reference: s.catalog == null ? null : widget.referenceBuilder?.call(s),
+        reference: s.catalog == null
+            ? null
+            : _presentReference(widget.referenceBuilder?.call(s)),
         selectionLabel: s.catalog == null
             ? null
             : widget.selectionLabel?.call(s),
@@ -458,13 +472,21 @@ class _ExerciseBlockState extends State<ExerciseBlock>
         },
         onMenu: _canOpenSetMenu ? () => _openSetMenu(block, s) : null,
         onRir: (v) => widget.onRir(block, s, v),
-        onClearRir: widget.onClearRir == null
-            ? null
-            : () => widget.onClearRir!(block, s),
+        variantLabel: s.catalog == null ? null : widget.selectionLabel?.call(s),
       );
     }
     return Reveal(key: ValueKey(s.id), child: child);
   }
+
+  /// A builder's "nothing" (an empty `SizedBox`) counts as no reference, so
+  /// the card does not keep a gap for it.
+  static Widget? _presentReference(Widget? reference) =>
+      reference is SizedBox &&
+          reference.child == null &&
+          (reference.width ?? 0) == 0 &&
+          (reference.height ?? 0) == 0
+      ? null
+      : reference;
 
   bool get _canOpenSetMenu =>
       widget.onSetMenu != null || widget.onRemoveSet != null;

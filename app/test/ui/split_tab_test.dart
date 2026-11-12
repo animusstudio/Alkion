@@ -1,14 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/ui/split_tab.dart';
 
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
 import '../support/layout_expect.dart';
+import '../support/screen_harness.dart';
 
 void main() {
   setUpAll(preloadAppFonts);
+
+  testWidgets('a card opens its day; the menu Edit and New training day '
+      'open the editor', (tester) async {
+    final harness = ScreenHarness();
+    addTearDown(harness.close);
+    await harness.open(tester);
+    setPhone(tester, width: 412);
+    final opened = <String>[];
+    final edited = <String?>[];
+    await tester.pumpWidget(
+      harness.wrap(
+        Scaffold(
+          body: SplitTab(onOpenDay: opened.add, onEditDay: edited.add),
+        ),
+      ),
+    );
+    final l = lookupAppLocalizations(const Locale('en'));
+    final card = find.byWidgetPredicate(
+      (w) => w is SplitDayCard && w.name == 'Pull',
+    );
+    await settleUntilFound(tester, find.byType(SplitDayCard), where: 'split');
+    // The overview sits above the day cards.
+    await scrollIntoView(tester, find.byType(SplitTab), card);
+    await tester.tap(card);
+    expect(opened, ['d2']);
+    expect(edited, isEmpty);
+
+    await tester.tap(find.byTooltip(l.trainingDayActions('Pull')));
+    await settleReal(tester, ticks: 10);
+    await tester.tap(find.text(l.planEditDay).last);
+    await settleReal(tester, ticks: 10);
+    expect(edited, ['d2']);
+
+    final create = find.text(l.planNewDay);
+    await scrollIntoView(tester, find.byType(SplitTab), create);
+    await tester.tap(create);
+    expect(edited, ['d2', null]);
+    expect(opened, ['d2']);
+    await harness.unmount(tester);
+  });
 
   testWidgets('shows "Push · 7 exercises" for the day card meta', (
     tester,

@@ -6,6 +6,7 @@ import 'package:alkion/domain/catalog_execution.dart';
 import 'package:alkion/l10n/app_localizations.dart';
 import 'package:alkion/session/set_line.dart';
 import 'package:alkion/units/unit_service.dart';
+import 'package:alkion/widgets/tag.dart';
 
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
@@ -27,11 +28,33 @@ SetState _s({
   done: done,
 );
 
+CatalogSetEvidence _typed({
+  String profile = 'load_reps',
+  Map<String, CatalogMetricEvidence> metrics = const {},
+}) => CatalogSetEvidence(
+  selection: CatalogSelectionEvidence(
+    exerciseId: 'synthetic-exercise',
+    contextId: 'synthetic-context',
+    contextRevision: 1,
+    displayLabel: 'Synthetic press',
+    contextLabel: 'Machine A',
+    profile: CatalogMeasurementProfileEvidence.forKey(profile),
+  ),
+  metrics: metrics,
+);
+
+CatalogMetricEvidence _q(String metric, String raw, [String? unit]) =>
+    CatalogMetricEvidence.fromInput(
+      raw,
+      metric: metric,
+      unit: unit ?? CatalogMetricEvidence.defaultUnit(metric),
+    );
+
 void main() {
   setUpAll(preloadAppFonts);
 
   late int taps;
-  late List<int> rirs;
+  late List<int?> rirs;
   setUp(() {
     taps = 0;
     rirs = [];
@@ -42,6 +65,7 @@ void main() {
     bool prompt = false,
     bool top = false,
     int idx = 1,
+    String? variant,
   }) => SetLine(
     set: s,
     workIndex: s.isWarmup ? -1 : idx,
@@ -51,6 +75,7 @@ void main() {
     showRirPrompt: prompt,
     onTap: () => taps++,
     onRir: rirs.add,
+    variantLabel: variant,
   );
 
   testWidgets(
@@ -66,12 +91,15 @@ void main() {
     },
   );
 
-  testWidgets('a pending line is a 48dp tap target showing weight × reps', (
+  testWidgets('a pending line is a 48dp tap target showing only its index', (
     tester,
   ) async {
     await tester.pumpWidget(wrapL10n(line(_s())));
-    // A Text.rich matches find.text by its whole plain text.
-    expect(find.text('140kg  ×  6'), findsOneWidget);
+    // Blank until logged: the values live on the card when focused.
+    expect(find.textContaining('140'), findsNothing);
+    expect(find.textContaining('×'), findsNothing);
+    expect(find.textContaining('RIR'), findsNothing);
+    expect(find.text('1'), findsOneWidget);
     expect(
       tester.getSize(find.byType(SetLine)).height,
       greaterThanOrEqualTo(48),
@@ -81,36 +109,113 @@ void main() {
   });
 
   testWidgets(
-    'an empty pending catalog row names required evidence without fabricated quantities',
+    'a pending catalog line is blank: no exercise, no prompt, no quantities',
     (tester) async {
       final set = _s()
-        ..catalog = CatalogSetEvidence(
-          selection: CatalogSelectionEvidence(
-            exerciseId: 'synthetic-exercise',
-            contextId: 'synthetic-context',
-            contextRevision: 1,
-            displayLabel: 'Synthetic duration',
-            profile: CatalogMeasurementProfileEvidence.forKey(
-              'duration_distance_optional',
-            ),
-          ),
-          metrics: const {},
+        ..catalog = _typed(
+          profile: 'load_reps',
+          metrics: {
+            'reported_load': _q('reported_load', '18'),
+            'repetitions': _q('repetitions', '12'),
+          },
         );
-      await tester.pumpWidget(wrapL10n(line(set)));
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(wrapL10n(line(set, idx: 2)));
       final l = AppLocalizations.of(tester.element(find.byType(SetLine)));
-      expect(find.text(l.catalogRequired), findsOneWidget);
-      expect(find.textContaining('kg'), findsNothing);
-      expect(find.textContaining('140'), findsNothing);
-      expect(set.catalog!.metrics, isEmpty);
+      expect(find.text(l.catalogRequired), findsNothing);
+      expect(find.textContaining('Synthetic press'), findsNothing);
+      expect(find.textContaining('Machine A'), findsNothing);
+      expect(find.textContaining('18'), findsNothing);
+      expect(
+        tester.getSemantics(find.byType(SetLine)).getSemanticsData().label,
+        'Set 2, not done',
+      );
       await tester.tap(find.byType(SetLine));
       expect(taps, 1);
+      handle.dispose();
     },
   );
+
+  testWidgets(
+    'a logged catalog line shows the compact form, RIR as a muted tag, and '
+    'never the exercise name',
+    (tester) async {
+      final set = _s(done: true, rir: 2)
+        ..catalog = _typed(
+          metrics: {
+            'reported_load': _q('reported_load', '18'),
+            'repetitions': _q('repetitions', '12'),
+          },
+        );
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(wrapL10n(line(set, idx: 2)));
+      expect(find.text('18 kg × 12'), findsOneWidget);
+      expect(find.textContaining('Load (kg)'), findsNothing);
+      expect(find.textContaining('Synthetic press'), findsNothing);
+      final tag = tester.widget<Tag>(find.byKey(const Key('set-line-rir')));
+      expect((tag.label, tag.tone), ('RIR 2', TagTone.mute));
+      expect(
+        tester.getSemantics(find.byType(SetLine)).getSemanticsData().label,
+        'Set 2, 18 kg × 12, RIR 2, done',
+      );
+      handle.dispose();
+    },
+  );
+
+  testWidgets('a different variant shows once, dim, and is read after the '
+      'name', (tester) async {
+    final set = _s(done: true, rir: null)
+      ..catalog = _typed(
+        metrics: {
+          'reported_load': _q('reported_load', '40', 'lb'),
+          'repetitions': _q('repetitions', '8'),
+        },
+      );
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      wrapL10n(line(set, idx: 3, variant: 'Cable · Machine B')),
+    );
+    expect(find.text('Cable · Machine B'), findsOneWidget);
+    expect(find.text('40 lb × 8'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byType(SetLine)).getSemanticsData().label,
+      'Set 3, Cable · Machine B, 40 lb × 8, done',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a pending line stays blank even in a different variant', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrapL10n(line(_s(), variant: 'Machine B')));
+    expect(find.text('Machine B'), findsNothing);
+    expect(find.textContaining('×'), findsNothing);
+  });
+
+  testWidgets('a logged line in a different variant shows it once, dim', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapL10n(line(_s(done: true), variant: 'Machine B')),
+    );
+    expect(find.text('Machine B'), findsOneWidget);
+  });
 
   testWidgets('a logged line shows its RIR and the TOP tag', (tester) async {
     await tester.pumpWidget(wrapL10n(line(_s(done: true), top: true)));
     expect(find.text('RIR 1'), findsOneWidget);
     expect(find.text('TOP'), findsOneWidget);
+  });
+
+  testWidgets('tapping the selected chip in the strip clears the RIR', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrapL10n(line(_s(done: true), prompt: true)));
+    await tester.pumpAndSettle();
+    expect(find.text('Clear RIR'), findsNothing);
+    await tester.tap(find.byKey(const Key('rir-1')));
+    expect(rirs, [null]);
+    expect(taps, 0);
   });
 
   testWidgets('a logged working set with no RIR shows no RIR text', (
@@ -344,5 +449,61 @@ void main() {
         );
       }
     }
+  }
+
+  for (final code in ['en', 'de', 'it', 'es']) {
+    testWidgets('a logged catalog line with variant, RIR tag and PR fits '
+        '320dp / 2.0x ($code)', (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final set = _s(done: true, rir: 3)
+        ..catalog = _typed(
+          profile: 'reps_duration_optional_load',
+          metrics: {
+            'repetitions': _q('repetitions', '12'),
+            'duration': _q('duration', '30'),
+            'reported_load': _q('reported_load', '142.5'),
+          },
+        );
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 900),
+            textScaler: TextScaler.linear(2.0),
+          ),
+          child: wrapL10n(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 29),
+              child: SetLine(
+                set: set,
+                workIndex: 1,
+                unit: UnitService(),
+                isLiveTop: true,
+                isLivePr: true,
+                showRirPrompt: false,
+                onTap: () {},
+                onRir: (_) {},
+                onMenu: () {},
+                variantLabel: 'Synthetic long variant · Machine B',
+              ),
+            ),
+            locale: Locale(code),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final p = tester.renderObject<RenderParagraph>(
+        find.text('142.5 kg × 12 · 30 s'),
+      );
+      expect(p.didExceedMaxLines, isFalse);
+      expect(
+        tester.getRect(find.text('142.5 kg × 12 · 30 s')).right,
+        lessThanOrEqualTo(320 - 29),
+      );
+      expect(find.byKey(const Key('set-line-rir')), findsOneWidget);
+      expectNoSplitWords(tester);
+    });
   }
 }

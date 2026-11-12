@@ -2,6 +2,13 @@
 
 2026-11-11 · [Bilingual catalog discovery](../plans/2026-11-11-catalog-discovery.md) · Done.
 
+2026-11-09 · [UI declutter round 2](../plans/2026-11-09-ui-declutter-round-2.md) · Done.
+2026-11-09 · [Toast redesign](../plans/2026-11-09-toast-redesign.md) · Done.
+2026-11-09 · [Live workout declutter](../plans/2026-11-09-live-workout-declutter.md) · Done.
+2026-11-09 · [Training day view](../plans/2026-11-09-training-day-view.md) · Done.
+2026-11-09 · [Day editor rebuild](../plans/2026-11-09-day-editor-rebuild.md) · Done.
+2026-11-09 · [Split volume overview](../plans/2026-11-09-split-volume-overview.md) · Done.
+
 2026-11-08 · [Legacy removal](../plans/2026-11-08-legacy-removal.md) · Done.
 
 2026-11-05 · [Artwork, discovery and live-workout refinement](../plans/2026-11-05-ui-performance-refinement.md) · Implemented locally; see acceptance limits.

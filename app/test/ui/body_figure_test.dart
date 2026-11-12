@@ -7,6 +7,8 @@ import 'package:alkion/theme/app_theme.dart';
 import 'package:alkion/theme/tokens.dart';
 import 'package:alkion/ui/body_figure.dart';
 import 'package:alkion/ui/character_body.dart';
+import 'package:alkion/ui/workload_top_muscles.dart';
+import 'package:alkion/widgets/glyph_loading.dart';
 import '../support/app_fonts.dart';
 import '../support/l10n_harness.dart';
 import '../support/body_sheet_expect.dart';
@@ -29,6 +31,20 @@ WorkoutWorkload _workload() => calculateWorkoutWorkload(
         WorkloadSetInput(completed: false, isWarmup: null),
       ],
     ),
+  ],
+);
+
+WorkoutWorkload _legacy(Map<String, int> sets) => calculateWorkoutWorkload(
+  mode: WorkoutWorkloadMode.planned,
+  exercises: [
+    for (final entry in sets.entries)
+      WorkloadExerciseInput(
+        muscleGroup: entry.key,
+        sets: [
+          for (var i = 0; i < entry.value; i++)
+            const WorkloadSetInput(completed: false, isWarmup: false),
+        ],
+      ),
   ],
 );
 
@@ -66,6 +82,35 @@ void main() {
     expect(artwork().accent, defaultWorkoutAccent);
     expect(artwork().controller, same(controller));
     expect(artwork().scores, scores);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the artwork box defaults to the card surface in both themes', (
+    tester,
+  ) async {
+    for (final brightness in Brightness.values) {
+      final tokens = brightness == Brightness.dark
+          ? WorkoutTokens.dark(defaultWorkoutAccent)
+          : WorkoutTokens.light(defaultWorkoutAccent);
+      Widget scene({Color? background}) => wrapL10n(
+        Theme(
+          data: buildTheme(brightness, defaultWorkoutAccent),
+          child: Center(
+            child: BodyFigure(workload: _workload(), background: background),
+          ),
+        ),
+      );
+      CharacterBody artwork() =>
+          tester.widget<CharacterBody>(find.byType(CharacterBody));
+      await tester.pumpWidget(scene());
+      await tester.pump();
+      expect(artwork().background, tokens.surface);
+      // A caller on another surface passes its colour through.
+      await tester.pumpWidget(scene(background: tokens.bg));
+      await tester.pump();
+      expect(artwork().background, tokens.bg);
+      expect(tokens.bg, isNot(tokens.surface));
+    }
     await tester.pumpWidget(const SizedBox());
   });
   for (final code in ['en', 'de', 'es', 'it']) {
@@ -240,6 +285,9 @@ void main() {
       await tester.tap(find.byTooltip('Done'));
       await tester.pumpAndSettle();
       expect(art().compact, isTrue);
+      // The remounted compact artwork is the same figure: it does not turn again.
+      expect(art().controller, isNot(same(compact)));
+      expect(art().controller.paused, isTrue);
 
       // The split pager remains available when the drag starts outside artwork.
       final pagerBounds = tester.getRect(find.byType(PageView));
@@ -254,6 +302,58 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+  testWidgets('one intro turn per figure host, not per remount', (
+    tester,
+  ) async {
+    var shown = true;
+    var host = 0;
+    late StateSetter setScene;
+    await tester.pumpWidget(
+      wrapL10n(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setScene = setState;
+            // Hidden hosts unmount their figure, as Today and Plan do.
+            if (!shown) return const SizedBox();
+            return Column(
+              children: [
+                BodyFigure(
+                  key: ValueKey(host),
+                  introKey: host < 2 ? 'today' : null,
+                  workload: _workload(),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    CharacterBodyController controller() =>
+        tester.widget<CharacterBody>(find.byType(CharacterBody)).controller;
+    final first = controller();
+    expect(first.paused, isFalse, reason: 'the first appearance turns once');
+
+    // Shown again after a tab switch: a new mount under the same key holds.
+    setScene(() => shown = false);
+    await tester.pumpAndSettle();
+    setScene(() => shown = true);
+    await tester.pumpAndSettle();
+    expect(controller(), isNot(same(first)));
+    expect(controller().paused, isTrue);
+
+    // Another slide under the same key holds too.
+    setScene(() => host = 1);
+    await tester.pumpAndSettle();
+    expect(controller().paused, isTrue);
+
+    // A figure with no shared key is its own view and turns once.
+    setScene(() => host = 2);
+    await tester.pumpAndSettle();
+    expect(controller().paused, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('loading and read failure never appear as zero counts', (
     tester,
   ) async {
@@ -387,6 +487,90 @@ void main() {
       lookupAppLocalizations(const Locale('en')),
       mode: 'Planned working sets',
     );
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets('exported counts and labels are the ones the sheet lists', (
+    tester,
+  ) async {
+    final workload = _workload();
+    final counts = workloadDisplayCounts(workload);
+    expect(counts[WorkloadMuscle.chest]!.count, 2);
+    late BuildContext context;
+    await tester.pumpWidget(
+      wrapL10n(
+        SingleChildScrollView(
+          child: Builder(
+            builder: (c) {
+              context = c;
+              return BodyWorkloadCounts(workload: workload);
+            },
+          ),
+        ),
+      ),
+    );
+    for (final muscle in WorkloadMuscle.values) {
+      expect(
+        tester
+            .widget<Text>(find.byKey(ValueKey('body-count-${muscle.name}')))
+            .data,
+        '${counts[muscle]!.count}',
+      );
+      expect(find.text(workloadRegionLabel(context, muscle)), findsOneWidget);
+    }
+    expect(workloadRegionLabel(context, WorkloadMuscle.glutes), 'Glutes');
+    expect(workloadRegionLabel(context, WorkloadMuscle.chest), 'Chest');
+  });
+  test('top muscles are highest first, ties in region order, zeros out', () {
+    final workload = _legacy({'biceps': 2, 'back': 5, 'chest': 5, 'quads': 1});
+    expect(topWorkloadMuscles(workload, 3), [
+      (muscle: WorkloadMuscle.chest, count: 5),
+      (muscle: WorkloadMuscle.back, count: 5),
+      (muscle: WorkloadMuscle.biceps, count: 2),
+    ]);
+    expect(topWorkloadMuscles(workload, 10), hasLength(4));
+    expect(topWorkloadMuscles(workload, 0), isEmpty);
+    expect(topWorkloadMuscles(_legacy(const {}), 3), isEmpty);
+    for (final pending in [
+      WorkoutWorkload.loading(WorkoutWorkloadMode.planned),
+      WorkoutWorkload.unavailable(WorkoutWorkloadMode.planned),
+    ]) {
+      expect(topWorkloadMuscles(pending, 3), isEmpty);
+    }
+  });
+  testWidgets('top muscles list rows, and never reads loading as zero', (
+    tester,
+  ) async {
+    final l = lookupAppLocalizations(const Locale('en'));
+    await tester.pumpWidget(
+      wrapL10n(WorkloadTopMuscles(workload: _legacy({'chest': 9, 'back': 4}))),
+    );
+    expect(find.byKey(const ValueKey('workload-top-chest')), findsOneWidget);
+    expect(find.text('Chest'), findsOneWidget);
+    expect(find.text('9'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.byKey(const ValueKey('workload-top-quads')), findsNothing);
+
+    await tester.pumpWidget(
+      wrapL10n(
+        WorkloadTopMuscles(
+          workload: WorkoutWorkload.loading(WorkoutWorkloadMode.planned),
+        ),
+      ),
+    );
+    expect(find.byType(GlyphSkeleton), findsOneWidget);
+    expect(find.text('0'), findsNothing);
+
+    for (final (workload, text) in [
+      (
+        WorkoutWorkload.unavailable(WorkoutWorkloadMode.planned),
+        l.bodyReadUnavailable,
+      ),
+      (_legacy(const {}), l.bodyEmpty),
+    ]) {
+      await tester.pumpWidget(wrapL10n(WorkloadTopMuscles(workload: workload)));
+      expect(find.text(text), findsOneWidget);
+      expect(find.byKey(const Key('workload-top-muscles')), findsNothing);
+    }
     await tester.pumpWidget(const SizedBox());
   });
 }

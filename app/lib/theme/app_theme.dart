@@ -8,10 +8,6 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
   final tokens = brightness == Brightness.dark
       ? WorkoutTokens.dark(accent)
       : WorkoutTokens.light(accent);
-  // The opposite palette, for surfaces drawn inverse (toasts).
-  final inverse = brightness == Brightness.dark
-      ? WorkoutTokens.light(accent)
-      : WorkoutTokens.dark(accent);
 
   return ThemeData(
     useMaterial3: true,
@@ -104,22 +100,24 @@ ThemeData buildTheme(Brightness brightness, Color accent) {
         ),
       ),
     ),
-    // Every SnackBar floats as a flat, inverse Alkion toast; `showWToast`
-    // adds the danger style, actions and the tab-bar clearance. The action
-    // takes the opposite palette's accent text, which is legible on the
-    // inverse surface. A site that still sets a danger background keeps
-    // legible `tokens.bg` content.
+    // Every SnackBar floats as a flat card like the app's other cards: a
+    // `surface2` fill with a 1dp `line` border. It is dismissed sideways,
+    // never down, which would collide with Android's one-handed mode.
+    // `showWToast` adds the glyph, tap to hide, the danger border for errors
+    // and the tab-bar clearance.
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: tokens.text,
-      contentTextStyle: WorkoutType.body(size: 14, color: tokens.bg),
-      actionTextColor: inverse.accentText,
-      disabledActionTextColor: inverse.dim,
-      closeIconColor: tokens.bg,
+      backgroundColor: tokens.surface2,
+      contentTextStyle: WorkoutType.body(size: 14, color: tokens.text),
+      actionTextColor: tokens.accentText,
+      disabledActionTextColor: tokens.dim,
+      closeIconColor: tokens.text,
       elevation: 0,
       insetPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      dismissDirection: DismissDirection.horizontal,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.control),
+        borderRadius: BorderRadius.circular(AppRadius.panel),
+        side: BorderSide(color: tokens.line),
       ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.text),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../catalog_ui/catalog_evidence_widgets.dart';
+import '../catalog_ui/catalog_set_format.dart';
 
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -20,8 +20,11 @@ import 'active_session_controller.dart';
 /// additionally shows the RIR correction strip under it while
 /// [showRirPrompt] is true.
 ///
-/// Logged: `1  140kg × 6  RIR 1   [TOP|PR]  ●✓`
-/// Pending: `3  140kg × 6   ○`
+/// Logged: `1  140kg × 6  [RIR 1]   [TOP|PR]  ●✓` (a typed set: `18 kg × 12`)
+/// Pending: `3   ○` (blank until logged; the live card holds the values)
+///
+/// The exercise is named by the block header; a set done in another variant
+/// or setup shows that once, dim, as [variantLabel].
 class SetLine extends StatelessWidget {
   const SetLine({
     super.key,
@@ -33,9 +36,9 @@ class SetLine extends StatelessWidget {
     required this.showRirPrompt,
     required this.onTap,
     required this.onRir,
-    this.onClearRir,
     this.onMenu,
     this.showRir = true,
+    this.variantLabel,
   });
 
   final bool showRir;
@@ -48,9 +51,14 @@ class SetLine extends StatelessWidget {
   final bool isLivePr;
   final bool showRirPrompt;
   final VoidCallback onTap;
-  final ValueChanged<int> onRir;
-  final VoidCallback? onClearRir;
+
+  /// A chip tap sets RIR; tapping the selected chip clears it (null).
+  final ValueChanged<int?> onRir;
   final VoidCallback? onMenu;
+
+  /// The set's variant or setup when it differs from the block header;
+  /// null or empty otherwise.
+  final String? variantLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -61,17 +69,21 @@ class SetLine extends StatelessWidget {
     // A logged working set with no RIR (resumed, or added in History) shows
     // none, as History's line does.
     final rir = showRir && done && !set.isWarmup ? set.rir : null;
-    final typedSummary = set.catalog == null
-        ? null
-        : catalogEvidenceSummary(set.catalog!, l);
-    final weightShown =
-        set.weightTouched ||
-        (!set.weightUnavailable && double.tryParse(set.weightText) != null);
+    // A pending set is blank until logged (owner decision): the variant
+    // shows on the live card when focused, and on the line once logged.
+    final variant = done ? variantLabel ?? '' : '';
 
     return Semantics(
       container: true,
       button: true,
-      label: setLineSemanticsLabel(l, unit, set, workIndex, showRir: showRir),
+      label: setLineSemanticsLabel(
+        l,
+        unit,
+        set,
+        workIndex,
+        showRir: showRir,
+        variantLabel: variant,
+      ),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
@@ -101,126 +113,50 @@ class SetLine extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    // The weight and reps are numbers: they never ellipsize.
-                    // The group is laid out at its natural width and, only
-                    // when the row is too narrow for it, scales down as a
-                    // whole. The RIR text takes whatever is left and gives
-                    // way first.
                     child: ExcludeSemantics(
-                      child: set.catalog != null
-                          ? Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                FitLabel(
-                                  [
-                                        set.catalog!.selection.displayLabel,
-                                        set.catalog!.selection.contextLabel,
-                                      ]
-                                      .where((text) => text.isNotEmpty)
-                                      .join(' · '),
-                                  maxLines: 2,
-                                  style: WorkoutType.body(
-                                    size: 12,
-                                    color: tokens.dim,
-                                  ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (variant.isNotEmpty)
+                              FitLabel(
+                                variant,
+                                maxLines: 2,
+                                style: WorkoutType.body(
+                                  size: 12,
+                                  color: tokens.dim,
                                 ),
-                                FitLabel(
-                                  typedSummary!.isEmpty
-                                      ? l.catalogRequired
-                                      : typedSummary,
-                                  maxLines: 3,
-                                  style: WorkoutType.mono(
-                                    size: 14,
-                                    color: done ? tokens.text : tokens.dim,
-                                  ),
-                                ),
-                                if (rir != null)
-                                  FitLabel(
-                                    l.sessionRir(rir),
-                                    maxLines: 2,
-                                    style: WorkoutType.mono(
-                                      size: 12,
-                                      color: tokens.dim,
-                                    ),
-                                  ),
-                              ],
-                            )
-                          : LayoutBuilder(
-                              builder: (context, box) => Row(
+                              ),
+                            // A pending set stays blank until logged.
+                            if (done)
+                              // The weight and reps are numbers: they never
+                              // ellipsize. The group scales down as a whole
+                              // only when the row is too narrow for it; the
+                              // RIR tag wraps under it rather than squeeze it.
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      maxWidth: box.maxWidth,
-                                    ),
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text.rich(
-                                        TextSpan(
-                                          children: [
-                                            TextSpan(
-                                              text: weightShown
-                                                  ? unit.fmtWt(set.weightKg)
-                                                  : '—',
-                                              style: WorkoutType.mono(
-                                                size: 15,
-                                                weight: FontWeight.w500,
-                                                color: done
-                                                    ? tokens.text
-                                                    : tokens.dim,
-                                              ),
-                                            ),
-                                            TextSpan(
-                                              text: unit.uLabel,
-                                              style: WorkoutType.mono(
-                                                size: 12,
-                                                color: tokens.dim,
-                                              ),
-                                            ),
-                                            TextSpan(
-                                              text: '  ×  ',
-                                              style: WorkoutType.mono(
-                                                size: 12,
-                                                color: tokens.faint,
-                                              ),
-                                            ),
-                                            TextSpan(
-                                              text: set.repsAvailable
-                                                  ? '${set.reps}'
-                                                  : '—',
-                                              style: WorkoutType.mono(
-                                                size: 15,
-                                                weight: FontWeight.w500,
-                                                color: done
-                                                    ? tokens.text
-                                                    : tokens.dim,
-                                              ),
-                                            ),
-                                          ],
+                                  set.catalog != null
+                                      ? CatalogSetText(set.catalog!)
+                                      : _ClassicValues(
+                                          set: set,
+                                          unit: unit,
+                                          tokens: tokens,
                                         ),
-                                        maxLines: 1,
-                                        softWrap: false,
-                                      ),
-                                    ),
-                                  ),
                                   if (rir != null)
-                                    Flexible(
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: 10,
-                                        ),
-                                        child: FitLabel(
-                                          l.sessionRir(rir),
-                                          style: WorkoutType.mono(
-                                            size: 12,
-                                            color: tokens.dim,
-                                          ),
-                                        ),
-                                      ),
+                                    Tag(
+                                      key: const Key('set-line-rir'),
+                                      label: l.sessionRir(rir),
                                     ),
                                 ],
                               ),
-                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                   if (isLivePr)
@@ -267,46 +203,30 @@ class SetLine extends StatelessWidget {
                         padding: const EdgeInsets.only(left: 22, bottom: 8),
                         // When the chips wrap to two rows, the caption stays
                         // level with the first.
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  height: 48,
-                                  child: Center(
-                                    child: Text(
-                                      l.sessionColRir,
-                                      style: WorkoutType.body(
-                                        size: 12,
-                                        color: tokens.dim,
-                                      ),
-                                    ),
+                            SizedBox(
+                              height: 48,
+                              child: Center(
+                                child: Text(
+                                  l.sessionColRir,
+                                  style: WorkoutType.body(
+                                    size: 12,
+                                    color: tokens.dim,
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: RirPicker(
-                                    value: set.rir,
-                                    onChanged: onRir,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (set.rir != null && onClearRir != null)
-                              TextButton(
-                                onPressed: onClearRir,
-                                style: TextButton.styleFrom(
-                                  minimumSize: const Size(48, 48),
-                                  foregroundColor: tokens.text,
-                                ),
-                                child: FitLabel(
-                                  l.sessionClearRir,
-                                  maxLines: 2,
-                                  style: WorkoutType.body(color: tokens.dim),
                                 ),
                               ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              // Tapping the selected chip clears the RIR.
+                              child: RirPicker(
+                                value: set.rir,
+                                onChanged: onRir,
+                                onClear: () => onRir(null),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -320,23 +240,83 @@ class SetLine extends StatelessWidget {
   }
 }
 
+/// A logged classic set's `140kg × 6`, laid out at its natural width and
+/// scaled down as a whole when the row is too narrow.
+class _ClassicValues extends StatelessWidget {
+  const _ClassicValues({
+    required this.set,
+    required this.unit,
+    required this.tokens,
+  });
+
+  final SetState set;
+  final UnitService unit;
+  final WorkoutTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    final weightShown =
+        set.weightTouched ||
+        (!set.weightUnavailable && double.tryParse(set.weightText) != null);
+    final number = WorkoutType.mono(
+      size: 15,
+      weight: FontWeight.w500,
+      color: tokens.text,
+    );
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerStart,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: weightShown ? unit.fmtWt(set.weightKg) : '—',
+              style: number,
+            ),
+            TextSpan(
+              text: unit.uLabel,
+              style: WorkoutType.mono(size: 12, color: tokens.dim),
+            ),
+            TextSpan(
+              text: '  ×  ',
+              style: WorkoutType.mono(size: 12, color: tokens.faint),
+            ),
+            TextSpan(
+              text: set.repsAvailable ? '${set.reps}' : '—',
+              style: number,
+            ),
+          ],
+        ),
+        maxLines: 1,
+        softWrap: false,
+      ),
+    );
+  }
+}
+
 /// What a screen reader says for [set]'s line: "Set 2, 140 kg × 6, RIR 1,
-/// done" (warm-up: "Warm-up, …"; a typed catalog set reads its measurement
-/// summary). The visual digits and marks are excluded so nothing repeats.
+/// done" (warm-up: "Warm-up, …"; a typed set reads its compact form, "Set 2,
+/// 18 kg × 12, done"). A pending set has no values on screen and reads "Set 3,
+/// not done". A logged set in a different variant or setup ([variantLabel])
+/// reads it after the name.
+/// The visual digits and marks are excluded so nothing repeats.
 String setLineSemanticsLabel(
   AppLocalizations l,
   UnitService unit,
   SetState set,
   int workIndex, {
   bool showRir = true,
+  String variantLabel = '',
 }) {
   final name = set.isWarmup
       ? l.sessionWarmupSpoken
       : l.sessionSetSpoken(workIndex);
-  final String values;
-  if (set.catalog case final evidence?) {
-    final summary = catalogEvidenceSummary(evidence, l);
-    values = summary.isEmpty ? l.catalogRequired : summary;
+  final String? values;
+  if (!set.done) {
+    values = null;
+  } else if (set.catalog case final evidence?) {
+    final compact = catalogSetCompact(evidence, l);
+    values = compact.isEmpty ? l.sessionSetNoValue : compact;
   } else {
     final weightShown =
         set.weightTouched ||
@@ -350,7 +330,8 @@ String setLineSemanticsLabel(
   final rir = showRir && set.done && !set.isWarmup ? set.rir : null;
   return [
     name,
-    values,
+    if (set.done && variantLabel.isNotEmpty) variantLabel,
+    ?values,
     if (rir != null) l.sessionRir(rir),
     set.done ? l.sessionSetStateDone : l.sessionSetStateNotDone,
   ].join(', ');

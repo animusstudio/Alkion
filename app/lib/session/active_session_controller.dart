@@ -23,6 +23,7 @@ import '../domain/catalog_execution.dart';
 import '../domain/local_action.dart';
 import '../domain/evidence.dart';
 import '../data/catalog_execution_repository.dart';
+import 'catalog_set_defaults.dart';
 
 const uuid = Uuid();
 
@@ -252,6 +253,12 @@ RepPair? authoredRepRangeFor(Slot slot, Exercise exercise) {
 
 /// Catalog quantities have their own policy. Numeric compatibility defaults
 /// are deliberately inert; only the per-set evidence is authored at finish.
+///
+/// Each set opens with [catalogSetDefaults]: the slot's valid [targets], a
+/// fixed authored [repRange] (low == high), then [reference]'s last session
+/// (same-numbered set, then top set for working sets). Prefilled sets stay
+/// untouched (`catalogTouched == false`). [reference] is attached to the
+/// block with [attachCatalogReference].
 BlockState buildCatalogBlock({
   required ResolvedSlot resolved,
   required CatalogSelectionEvidence selection,
@@ -259,6 +266,7 @@ BlockState buildCatalogBlock({
   RepPair? repRange,
   String? originSlotId,
   int? originSlotRevision,
+  CatalogLoadReference reference = const CatalogLoadReference(),
 }) {
   if (resolved.workSets < 1 ||
       resolved.workSets > 99 ||
@@ -266,26 +274,67 @@ BlockState buildCatalogBlock({
       resolved.warmupSets > 99) {
     throw const FreshSessionLimitException(FreshSessionLimit.generatedSets);
   }
-  SetState fresh(bool warmup) => SetState(
+  final fixedReps = repRange != null && repRange.low == repRange.high
+      ? repRange.low
+      : null;
+  SetState fresh(bool warmup, int index) => SetState(
     id: uuid.v4(),
     weightKg: 0,
     reps: 0,
     rir: null,
     isWarmup: warmup,
     done: false,
-    catalog: CatalogSetEvidence(selection: selection, metrics: targets),
+    catalog: CatalogSetEvidence(
+      selection: selection,
+      metrics: catalogSetDefaults(
+        selection: selection,
+        isWarmup: warmup,
+        index: index,
+        slotTargets: targets,
+        fixedReps: fixedReps,
+        lastSets: reference.lastSets,
+        lastTop: reference.lastMetrics,
+      ),
+    ),
   )..weightUnavailable = true;
-  return BlockState(
+  final block = BlockState(
     exercise: resolved.exercise,
     resolved: resolved,
     originSlotId: originSlotId,
     originSlotRevision: originSlotRevision,
     catalogSelection: selection,
     targetRepRange: repRange,
-    warmupSets: List.generate(resolved.warmupSets, (_) => fresh(true)),
-    workingSets: List.generate(resolved.workSets, (_) => fresh(false)),
+    warmupSets: List.generate(resolved.warmupSets, (i) => fresh(true, i)),
+    workingSets: List.generate(resolved.workSets, (i) => fresh(false, i)),
     expanded: true,
   );
+  attachCatalogReference(block, selection, reference);
+  return block;
+}
+
+/// Attaches [selection]'s exact-context [reference] to [block]: the best and
+/// last top set, the PR baseline, and the last session's sets that later
+/// appended sets prefill from. Shared by every site that reads a reference.
+void attachCatalogReference(
+  BlockState block,
+  CatalogSelectionEvidence selection,
+  CatalogLoadReference reference,
+) {
+  final key = selection.compatibilityKey;
+  block.bestKg = reference.bestKg;
+  if (reference.lastMetrics case final metrics?) {
+    block.catalogLastMetrics[key] = metrics;
+  }
+  if (reference.bestMetrics?['reported_load'] case final best?) {
+    block.catalogBaselines[key] = best;
+  }
+  if (reference.lastSets.isNotEmpty) {
+    block.catalogLastSets[key] = List.of(reference.lastSets);
+  }
+  final last = reference.last;
+  block.lastTop = last == null
+      ? null
+      : (weight: last.weightKg, reps: last.reps, date: last.date);
 }
 
 /// A set together with the block it belongs to.
@@ -488,6 +537,10 @@ class BlockState {
   final Map<String, CatalogMetricEvidence> catalogBaselines;
   final List<OperationDependency> catalogDependencies;
   final Map<String, Map<String, CatalogMetricEvidence>> catalogLastMetrics;
+
+  /// The last session's sets per exact context (`compatibilityKey`), in
+  /// `set_number` order, so sets appended later prefill like built ones.
+  final Map<String, List<CatalogLastSet>> catalogLastSets;
   final Exercise exercise;
   final ResolvedSlot resolved;
   List<SetState> warmupSets;
@@ -513,6 +566,7 @@ class BlockState {
     List<OperationDependency> catalogDependencies = const [],
     Map<String, Map<String, CatalogMetricEvidence>> catalogLastMetrics =
         const {},
+    Map<String, List<CatalogLastSet>> catalogLastSets = const {},
     required this.exercise,
     required this.resolved,
     required this.warmupSets,
@@ -524,7 +578,8 @@ class BlockState {
   }) : blockId = blockId ?? uuid.v4(),
        catalogBaselines = Map.of(catalogBaselines),
        catalogDependencies = List.of(catalogDependencies),
-       catalogLastMetrics = Map.of(catalogLastMetrics);
+       catalogLastMetrics = Map.of(catalogLastMetrics),
+       catalogLastSets = Map.of(catalogLastSets);
 
   /// All sets in display order: warm-ups first, then working.
   List<SetState> get allSets => [...warmupSets, ...workingSets];
@@ -556,6 +611,19 @@ class BlockState {
           for (final metric in entry.value.entries)
             metric.key: metric.value.toJson(),
         },
+    },
+    'catalogLastSets': {
+      for (final entry in catalogLastSets.entries)
+        entry.key: [
+          for (final set in entry.value)
+            {
+              'isWarmup': set.isWarmup,
+              'metrics': {
+                for (final metric in set.metrics.entries)
+                  metric.key: metric.value.toJson(),
+              },
+            },
+        ],
     },
     'exerciseId': exercise.id,
     'exerciseName': exercise.name,
@@ -601,6 +669,7 @@ class BlockState {
       'catalogBaselines',
       'catalogDependencies',
       'catalogLastMetrics',
+      'catalogLastSets',
       'exerciseId',
       'exerciseName',
       'exerciseSlug',
@@ -782,6 +851,12 @@ class BlockState {
           ),
         ),
       ),
+      // Absent in drafts written before prefill: read as empty.
+      catalogLastSets: (json['catalogLastSets'] as Map? ?? {}).map(
+        (key, sets) => MapEntry(key as String, [
+          for (final raw in sets as List) _lastSetFromJson(raw),
+        ]),
+      ),
       exercise: exercise,
       resolved: resolved,
       warmupSets: (json['warmupSets'] as List)
@@ -803,6 +878,21 @@ class BlockState {
     }
     return block;
   }
+}
+
+CatalogLastSet _lastSetFromJson(Object? raw) {
+  if (raw is! Map) throw const FormatException('Invalid draft last set');
+  final json = Map<String, dynamic>.from(raw);
+  _draftFields(json, {'isWarmup', 'metrics'});
+  return CatalogLastSet(
+    isWarmup: json['isWarmup'] as bool,
+    metrics: (json['metrics'] as Map).map(
+      (metric, value) => MapEntry(
+        metric as String,
+        CatalogMetricEvidence.fromJson(Map<String, dynamic>.from(value as Map)),
+      ),
+    ),
+  );
 }
 
 /// The in-memory model for an ongoing session, held by [ActiveSessionController].
@@ -918,6 +1008,7 @@ class SessionDraft {
                         'catalogBaselines',
                         'catalogDependencies',
                         'catalogLastMetrics',
+                        'catalogLastSets',
                       }.contains,
                     ) ||
                     [block['warmupSets'], block['workingSets']].any(
@@ -1424,7 +1515,10 @@ class ActiveSessionController extends ChangeNotifier {
       final resolved = prescriptions[i];
       final exerciseId = resolved.exercise.id;
       if (selections[i] case final selection?) {
-        final reference = await sessionRepo.catalogLoadReference(selection);
+        final reference = await sessionRepo.catalogLoadReference(
+          selection,
+          includeLastSets: true,
+        );
         final dependencies = await CatalogExecutionRepository.local(
           sessionRepo.db,
         ).dependenciesForSelection(selection);
@@ -1435,19 +1529,9 @@ class ActiveSessionController extends ChangeNotifier {
           repRange: authoredRepRanges[i],
           originSlotId: originSlotIds[i],
           originSlotRevision: originSlotRevisions[i],
+          reference: reference,
         );
-        block.bestKg = reference.bestKg;
         block.catalogDependencies.addAll(dependencies);
-        if (reference.lastMetrics case final metrics?) {
-          block.catalogLastMetrics[selection.compatibilityKey] = metrics;
-        }
-        if (reference.bestMetrics?['reported_load'] case final best?) {
-          block.catalogBaselines[selection.compatibilityKey] = best;
-        }
-        final last = reference.last;
-        block.lastTop = last == null
-            ? null
-            : (weight: last.weightKg, reps: last.reps, date: last.date);
         blocks.add(block);
         continue;
       }
@@ -1909,21 +1993,13 @@ class ActiveSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void useCatalogValues(
-    SetState set,
-    Map<String, CatalogMetricEvidence> metrics,
-  ) {
-    if (finishPending) throw const StoreException('finish_retry_required');
-    set.catalog = CatalogSetEvidence(
-      selection: set.catalog!.selection,
-      metrics: metrics,
-    );
-    set.catalogTouched = true;
-    notifyListeners();
-  }
-
   /// Appends one new occurrence and preserves all prior pending/logged sets,
   /// their measurements and the running timer.
+  ///
+  /// The new set prefills from the last session in [selection]'s exact
+  /// context (rules 2-4 of [catalogSetDefaults]: the same-numbered set among
+  /// this block's sets of that kind and context, then the top set for a
+  /// working set). It stays untouched.
   SetState appendCatalogSet(
     BlockState block,
     CatalogSelectionEvidence selection, {
@@ -1931,6 +2007,10 @@ class ActiveSessionController extends ChangeNotifier {
     List<OperationDependency> dependencies = const [],
   }) {
     if (finishPending) throw const StoreException('finish_retry_required');
+    final key = selection.compatibilityKey;
+    final index = (isWarmup ? block.warmupSets : block.workingSets)
+        .where((set) => set.catalog?.selection.compatibilityKey == key)
+        .length;
     final added = SetState(
       id: uuid.v4(),
       weightKg: 0,
@@ -1938,7 +2018,16 @@ class ActiveSessionController extends ChangeNotifier {
       rir: null,
       isWarmup: isWarmup,
       done: false,
-      catalog: CatalogSetEvidence(selection: selection, metrics: const {}),
+      catalog: CatalogSetEvidence(
+        selection: selection,
+        metrics: catalogSetDefaults(
+          selection: selection,
+          isWarmup: isWarmup,
+          index: index,
+          lastSets: block.catalogLastSets[key] ?? const [],
+          lastTop: block.catalogLastMetrics[key],
+        ),
+      ),
     )..weightUnavailable = true;
     block.catalogSelection = selection;
     for (final dependency in dependencies) {
@@ -2202,6 +2291,7 @@ class ActiveSessionController extends ChangeNotifier {
     final reference = await sessionRepo.catalogLoadReference(
       selection,
       excludeSessionId: current.sessionId,
+      includeLastSets: true,
     );
     final dependencies = await CatalogExecutionRepository.local(
       sessionRepo.db,
@@ -2226,19 +2316,9 @@ class ActiveSessionController extends ChangeNotifier {
         Slot(exerciseId: exercise.id, position: current.blocks.length),
         exercise,
       ),
+      reference: reference,
     );
-    block.bestKg = reference.bestKg;
     block.catalogDependencies.addAll(dependencies);
-    if (reference.lastMetrics case final metrics?) {
-      block.catalogLastMetrics[selection.compatibilityKey] = metrics;
-    }
-    if (reference.bestMetrics?['reported_load'] case final best?) {
-      block.catalogBaselines[selection.compatibilityKey] = best;
-    }
-    final last = reference.last;
-    block.lastTop = last == null
-        ? null
-        : (weight: last.weightKg, reps: last.reps, date: last.date);
     current.blocks.add(block);
     _structureEdited = true;
     _closeRirPrompt();
